@@ -1,0 +1,3 @@
+[submodule "engines/OmniVoice"]
+	path = engines/OmniVoice
+	url = https://github.com/k2-fsa/OmniVoice.git

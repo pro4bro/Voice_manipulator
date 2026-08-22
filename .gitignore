@@ -1,0 +1,17 @@
+.venv/
+.cache/
+.runtime/
+.tools/
+data/
+apps/web/node_modules/
+apps/web/dist/
+apps/web/*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+services/api/**/__pycache__/
+.pytest_cache/
+.scratch/
+*.log
+.env
+.env.*
+!.env.example

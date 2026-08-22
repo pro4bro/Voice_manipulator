@@ -1,0 +1,114 @@
+import type { EngineStatus, MediaRevisionSource, Project, ProjectCreate, ProjectMediaAsset, ProjectMediaImportResult, StudioAudioItem, StudioJobResult, StudioWord, SystemPaths, WorkspacePage } from "../domain/types";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = init?.body instanceof FormData;
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
+      ...init?.headers,
+    },
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `Request failed (${response.status})`);
+  }
+  return response.json() as Promise<T>;
+}
+
+function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
+  return {
+    ...word,
+    reviewState: word.reviewState ?? word.review_state as StudioWord["reviewState"],
+    selectedVariant: word.selectedVariant ?? word.selected_variant as StudioWord["selectedVariant"],
+  };
+}
+
+function normalizeStudioItem(item: StudioAudioItem): StudioAudioItem {
+  const legacy = item as unknown as Record<string, unknown>;
+  return {
+    ...item,
+    url: item.url.startsWith("/media/") ? `/api/studio${item.url}` : item.url,
+    sampleRate: item.sampleRate ?? Number(legacy.sample_rate ?? 0),
+    voiceId: item.voiceId ?? String(legacy.voice_id ?? ""),
+    voiceName: item.voiceName ?? String(legacy.voice_name ?? ""),
+    words: (item.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
+  };
+}
+
+function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
+  return {
+    ...asset,
+    url: asset.url?.startsWith("/media/") ? `/api/studio${asset.url}` : asset.url,
+    words: (asset.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
+  };
+}
+
+export const api = {
+  listProjects: () => request<Project[]>("/api/projects"),
+  createProject: (payload: ProjectCreate) =>
+    request<Project>("/api/projects", { method: "POST", body: JSON.stringify(payload) }),
+  openProject: (path: string) =>
+    request<Project>("/api/projects/open", { method: "POST", body: JSON.stringify({ path }) }),
+  setLastPage: (projectId: string, page: WorkspacePage) =>
+    request<Project>(`/api/projects/${projectId}/last-page?page=${page}`, { method: "PATCH" }),
+  getOmniVoiceStatus: () => request<EngineStatus>("/api/engines/omnivoice"),
+  getSystemPaths: () => request<SystemPaths>("/api/system/paths"),
+  pickFolder: (initialPath: string) =>
+    request<{ path: string | null }>("/api/system/pick-folder", {
+      method: "POST",
+      body: JSON.stringify({ initialPath }),
+    }),
+  listProjectMedia: async (projectId: string) => {
+    const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
+    return assets.map(normalizeMediaAsset);
+  },
+  importProjectMedia: async (projectId: string, file: File, origin: "record" | "import", realtimeText = "") => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("origin", origin);
+    body.append("realtime_text", realtimeText);
+    const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body });
+    return {
+      ...result,
+      asset: normalizeMediaAsset(result.asset),
+      item: result.item ? normalizeStudioItem(result.item) : null,
+    };
+  },
+  updateMediaScript: async (projectId: string, assetId: string, text: string, source: MediaRevisionSource, words?: StudioWord[]) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/script`, {
+      method: "PATCH",
+      body: JSON.stringify({ text, source, words }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  importAudio: async (file: File, origin: "record" | "import", realtimeText = "") => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("origin", origin);
+    body.append("realtime_text", realtimeText);
+    const result = await request<StudioJobResult>("/api/studio/audio/import", { method: "POST", body });
+    return { ...result, item: normalizeStudioItem(result.item) };
+  },
+  transcribeAudio: async (sourceId: string, realtimeText = "", knownText = "") => {
+    const result = await request<StudioJobResult>("/api/studio/transcribe", {
+      method: "POST",
+      body: JSON.stringify({ source_id: sourceId, realtime_text: realtimeText, known_text: knownText, contextual: true }),
+    });
+    return { ...result, item: normalizeStudioItem(result.item) };
+  },
+  generateVoice: async (payload: { text: string; voiceId: string; speed: number; emotion: string; preview?: boolean }) => {
+    const result = await request<StudioJobResult>("/api/studio/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        text: payload.text,
+        voice_id: payload.voiceId,
+        speed: payload.speed,
+        emotion: payload.emotion,
+        quality: payload.preview ? "quick" : "studio",
+        preview: Boolean(payload.preview),
+      }),
+    });
+    return { ...result, item: normalizeStudioItem(result.item) };
+  },
+};

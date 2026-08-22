@@ -1,0 +1,27 @@
+:root {
+  color-scheme: light;
+  --ink: #181a16;
+  --ink-soft: #34372f;
+  --coal: #1c1f1b;
+  --coal-2: #262a24;
+  --paper: #f3f0e7;
+  --paper-2: #e6e0d3;
+  --paper-3: #d8d1c2;
+  --cream: #faf7ef;
+  --accent: #ff6745;
+  --accent-dark: #ce4126;
+  --lime: #caed70;
+  --lime-dark: #8fb43b;
+  --gold: #eac75f;
+  --red: #e34e3d;
+  --muted: #74776d;
+  --line: rgba(24, 26, 22, 0.17);
+  --line-dark: rgba(255, 255, 255, 0.12);
+  --shadow: 0 18px 50px rgba(35, 31, 23, 0.12);
+  --display: "Bahnschrift", "Aptos Display", sans-serif;
+  --editorial: "Georgia Pro", Georgia, serif;
+  --mono: "Cascadia Mono", "IBM Plex Mono", Consolas, monospace;
+  font-family: var(--display);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
