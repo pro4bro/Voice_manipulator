@@ -13,6 +13,8 @@
 - Added Open Existing so a moved project folder can be reconnected.
 - Added a project audio route so Timeline no longer depends on a legacy output
   filesystem path.
+- Added durable session/project handoff notes and pushed the source baseline to
+  `pro4bro/Voice_manipulator` with OmniVoice represented as an upstream submodule.
 
 ## 2026-08-22 - Pro4Bro Application Foundation
 

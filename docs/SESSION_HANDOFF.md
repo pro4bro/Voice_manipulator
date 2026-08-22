@@ -20,6 +20,11 @@ Pool, and portable project folders. Read `AGENTS.md`, `CONTEXT.md`,
 - `.tools/ffmpeg`: ignored project-local FFmpeg and FFprobe binaries.
 - `.planning`: durable GSD requirements, roadmap, state, phase plans, and QA.
 
+The canonical Git remote is `https://github.com/pro4bro/Voice_manipulator.git`
+on branch `main`. Initial source baseline commit `2bf627f` was pushed on
+2026-08-23. Git HTTPS authentication succeeded through Windows Git Credential
+Manager; GitHub CLI OAuth is not required for normal pull/push.
+
 The Pro4Bro API runs on `127.0.0.1:18120`; the interim Studio sidecar runs on
 `127.0.0.1:18081`. Launchers derive paths from their own repository root and do
 not require a fixed drive letter.
@@ -86,7 +91,8 @@ not require a fixed drive letter.
 - Frontend: 6 files, 11 tests passed.
 - Backend: 12 tests passed; only the known Starlette/httpx deprecation warning.
 - Browser QA: 1440x900 and 1280x720, no page-level overflow, no console errors.
-- Engine: upstream checkout remained clean at `38e992b` before Git integration.
+- Engine: upstream submodule remained clean at `38e992bc60f8`.
+- Git: source baseline pushed to `origin/main`; runtime/model/project data excluded.
 
 Run the final gates from the repository root:
 
