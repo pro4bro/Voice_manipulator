@@ -6,6 +6,8 @@
 - Added portable Training Catalog storage under each project.
 - Added Speaker Profiles and multi-speaker asset mapping.
 - Added asset-level and word-level emotion labels with automatic `mix` rollup.
+- Kept Media Pool compact: asset tags are edited through a right-click menu,
+  while Speaker & Emotion and Speaker Isolation are separate right-column modules.
 - Added Speaker Isolation/Diarization UI seam without fake processor results.
 - Replaced Recorder and Control Rack on Voice Training with Train.
 - Added 1,000-step checkpoint default, denoise settings, and multi-file

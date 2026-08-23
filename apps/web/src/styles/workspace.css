@@ -53,7 +53,7 @@
 .module-column--center { grid-column: 3; grid-row: 1; padding-left: 4px; padding-right: 4px; }
 .module-column--right { grid-column: 5; grid-row: 1; padding-left: 4px; }
 .module-column--bottom { grid-column: 1 / -1; grid-row: 2; overflow: hidden; padding-top: 0; background: var(--surface-panel); }
-.studio-board--speech-to-text .module-column--right { overflow: hidden; }
+.studio-board--speech-to-text .module-column--right { overflow-y: auto; }
 .column-resizer { grid-row: 1; display: grid; place-items: center; z-index: 3; cursor: col-resize; touch-action: none; background: var(--paper-3); }
 .studio-board > .column-resizer:nth-child(2) { grid-column: 2; }
 .studio-board > .column-resizer:nth-child(4) { grid-column: 4; }

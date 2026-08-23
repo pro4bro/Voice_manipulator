@@ -11,8 +11,8 @@ describe("workspaceManifest", () => {
     expect(manifest.modules).not.toContain("recent-takes");
     expect(manifest.modules).not.toContain("voice-vault");
     expect(manifest.modules).not.toContain("control-rack");
-    expect(manifest.columns.left).toEqual(["media-pool", "speaker-isolation"]);
-    expect(manifest.columns.right).toContain("recorder");
+    expect(manifest.columns.left).toEqual(["media-pool"]);
+    expect(manifest.columns.right).toEqual(["recorder", "speaker-emotion", "speaker-isolation"]);
   });
 
   it("reuses Media Pool, Script, and Timeline across all workspace pages", () => {

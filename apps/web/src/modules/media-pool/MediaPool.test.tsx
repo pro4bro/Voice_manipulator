@@ -35,7 +35,8 @@ describe("MediaPool", () => {
     expect(input.accept).toContain(".mov");
     expect(input.accept).toContain(".mkv");
     expect(input.accept).toContain(".wav");
-    expect(screen.getByText(/1 revision/)).toBeInTheDocument();
+    expect(screen.getByText(/1 REV/)).toBeInTheDocument();
+    expect(screen.getByText(/NORMAL · CHƯA GÁN SPEAKER/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /interview.mov/ }));
     expect(onSelect).toHaveBeenCalledWith("asset-1");
@@ -68,13 +69,16 @@ describe("MediaPool", () => {
     expect(onToggleTraining).toHaveBeenCalledWith("asset-1", true);
   });
 
-  it("assigns a speaker and emotion to the selected footage", () => {
+  it("assigns speaker and emotion tags from the footage right-click menu", () => {
     const onUpdateAnnotations = vi.fn();
     const speaker = { id: "speaker-1", name: "Anh Vũ", language: "Tiếng Việt", region: "Miền Nam", age: 35, gender: "male" as const, color: "#ff6745", createdAt: "2026-08-23T00:00:00Z" };
     render(<MediaPool assets={[asset]} busy={false} onImport={vi.fn()} onSelect={vi.fn()} onSendToTraining={vi.fn()} onToggleTraining={vi.fn()} onUpdateAnnotations={onUpdateAnnotations} selectedAssetId="asset-1" speakers={[speaker]} workflow="speech-to-text" />);
 
-    fireEvent.click(screen.getByLabelText("Gán Anh Vũ cho interview.mov"));
-    fireEvent.change(screen.getByLabelText("Cảm xúc của footage"), { target: { value: "exciting" } });
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }), { clientX: 100, clientY: 100 });
+    expect(screen.getByRole("menu", { name: "Gán tag cho interview.mov" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Gán Anh Vũ cho interview.mov")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Anh Vũ" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exciting" }));
 
     expect(onUpdateAnnotations).toHaveBeenNthCalledWith(1, "asset-1", ["speaker-1"], "normal");
     expect(onUpdateAnnotations).toHaveBeenNthCalledWith(2, "asset-1", [], "exciting");

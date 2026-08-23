@@ -67,9 +67,12 @@ processing. See `.planning/ROADMAP.md`.
 7. Tick `TRAIN` only on footage intended for the dataset, then use `Gửi ... sang
    Voice Training`. Selection persists inside the project and the Voice
    Training readiness module reads only that subset.
-8. Select a footage to assign one or more Speaker Profiles and its file-level
-   emotion. Use `TAG WORDS` in Script when the speaker or emotion changes inside
-   one file; multiple word emotions automatically make the footage `Mix`.
+8. Right-click a footage to assign one or more Speaker Profiles and its
+   file-level emotion. Media Pool keeps these properties as compact metadata
+   below the footage name; the selected asset is summarized in the right-column
+   `Speaker & Emotion` module. Use `TAG WORDS` in Script when the speaker or
+   emotion changes inside one file; multiple word emotions automatically make
+   the footage `Mix`.
 
 ## Voice Training
 

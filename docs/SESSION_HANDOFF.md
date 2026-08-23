@@ -80,8 +80,11 @@ not require a fixed drive letter.
   Environment Noise Profiles, and Training Settings. It contains project-local
   IDs rather than absolute paths and survives moving the whole project folder.
 - Media Pool can assign multiple speakers and one emotion to each footage.
-  Script `TAG WORDS` assigns exact timed words to a speaker and emotion; multiple
-  word emotions roll up to the asset-level `mix` label.
+  Footage rows show compact metadata only; right-click opens the tag menu without
+  persistent tag checkboxes. `Speaker & Emotion` and `Speaker Isolation` live in
+  the Speech to Text right column below Recorder. Script `TAG WORDS` assigns
+  exact timed words to a speaker and emotion; multiple word emotions roll up to
+  the asset-level `mix` label.
 - Voice Training replaces Recorder and Control Rack with Train. It supports
   multi-speaker targets, max steps, batch size, learning rate, a default 1,000
   step checkpoint interval, pre-training denoise, and multi-file Environment

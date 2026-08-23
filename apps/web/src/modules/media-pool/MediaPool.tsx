@@ -1,6 +1,7 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 
-import { EMOTION_OPTIONS } from "../../domain/emotions";
+import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
 import type { EmotionLabel, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -43,8 +44,30 @@ export function MediaPool({
   onSendToTraining,
 }: MediaPoolProps) {
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const trainingCount = assets.filter((asset) => asset.trainingSelected).length;
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) setContextMenu(null);
+    };
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    const closeWithBlur = () => setContextMenu(null);
+    window.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("keydown", closeWithEscape);
+    window.addEventListener("blur", closeWithBlur);
+    return () => {
+      window.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", closeWithEscape);
+      window.removeEventListener("blur", closeWithBlur);
+    };
+  }, [contextMenu]);
 
   function importFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -62,6 +85,16 @@ export function MediaPool({
     if (!pendingImports.length) return;
     onImport(pendingImports);
     setPendingImports([]);
+  }
+
+  function openContextMenu(event: MouseEvent, assetId: string) {
+    event.preventDefault();
+    onSelect(assetId);
+    setContextMenu({
+      assetId,
+      left: Math.max(8, Math.min(event.clientX, window.innerWidth - 272)),
+      top: Math.max(8, Math.min(event.clientY, window.innerHeight - 480)),
+    });
   }
 
   return (
@@ -87,8 +120,10 @@ export function MediaPool({
           const selected = asset.id === selectedAssetId;
           const codec = asset.audioCodec ?? asset.videoCodec ?? asset.sourceExtension.slice(1).toUpperCase();
           const revisions = asset.revisions.length;
+          const assignedNames = speakers.filter((speaker) => asset.speakerProfileIds.includes(speaker.id)).map((speaker) => speaker.name);
+          const state = asset.status === "no-audio" ? "NO AUDIO" : asset.origin === "record" ? "REC" : "READY";
           return (
-            <div className={`media-pool-item ${selected ? "is-active" : ""}`} key={asset.id}>
+            <div className={`media-pool-item ${selected ? "is-active" : ""}`} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)}>
               <button
                 aria-pressed={selected}
                 className="media-pool-item__main"
@@ -98,11 +133,8 @@ export function MediaPool({
                 <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
                 <span className="media-item-copy">
                   <strong>{asset.name}</strong>
-                  <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}</small>
-                  <em>{revisions} {revisions === 1 ? "revision" : "revisions"} · {asset.transcriptionStatus === "skipped" ? "NO STT" : asset.transcriptionStatus === "not-applicable" ? "NO AUDIO" : "TRANSCRIPT"}</em>
-                </span>
-                <span className={`media-state media-state--${asset.status ?? "ready"}`}>
-                  {asset.status === "no-audio" ? "NO AUDIO" : asset.origin === "record" ? "REC" : "READY"}
+                  <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)} · {state}</small>
+                  <em>{asset.transcriptionStatus === "skipped" ? "NO STT" : asset.transcriptionStatus === "not-applicable" ? "NO AUDIO" : "TRANSCRIPT"} · {revisions} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}</em>
                 </span>
               </button>
               <label className={`media-training-toggle ${asset.trainingSelected ? "is-selected" : ""}`}>
@@ -126,32 +158,6 @@ export function MediaPool({
           </div>
         ) : null}
       </div>
-      {selectedAsset ? (
-        <details className="media-annotations" open>
-          <summary><span>SPEAKER & EMOTION</span><b>{selectedAsset.speakerProfileIds.length || "-"}</b></summary>
-          <label className="media-emotion-field">
-            <span>File emotion</span>
-            <select aria-label="Cảm xúc của footage" onChange={(event) => onUpdateAnnotations(selectedAsset.id, selectedAsset.speakerProfileIds, event.target.value as EmotionLabel)} value={selectedAsset.emotion}>
-              {EMOTION_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
-          </label>
-          <div className="media-speaker-choices">
-            {speakers.map((speaker) => (
-              <label key={speaker.id}>
-                <input
-                  aria-label={`Gán ${speaker.name} cho ${selectedAsset.name}`}
-                  checked={selectedAsset.speakerProfileIds.includes(speaker.id)}
-                  onChange={(event) => onUpdateAnnotations(selectedAsset.id, event.target.checked ? [...selectedAsset.speakerProfileIds, speaker.id] : selectedAsset.speakerProfileIds.filter((id) => id !== speaker.id), selectedAsset.emotion)}
-                  type="checkbox"
-                />
-                <i style={{ background: speaker.color }} />
-                <span>{speaker.name}</span>
-              </label>
-            ))}
-            {!speakers.length ? <p>Thêm Speaker Profile trong Voice Training để phân vai footage.</p> : null}
-          </div>
-        </details>
-      ) : null}
       {selectedAsset ? (
         <details className="media-history">
           <summary><span>TEXT HISTORY</span><b>{selectedAsset.revisions.length}</b></summary>
@@ -198,6 +204,29 @@ export function MediaPool({
             </footer>
           </section>
         </div>
+      ) : null}
+      {contextMenu && contextAsset ? createPortal(
+        <div aria-label={`Gán tag cho ${contextAsset.name}`} className="media-context-menu" ref={contextMenuRef} role="menu" style={{ left: contextMenu.left, top: contextMenu.top }}>
+          <header><span>FOOTAGE TAGS</span><b>{contextAsset.name}</b></header>
+          <section>
+            <strong>EMOTION</strong>
+            <div className="media-context-options media-context-options--emotion">
+              {EMOTION_OPTIONS.map((option) => <button aria-pressed={contextAsset.emotion === option.id} className={contextAsset.emotion === option.id ? "is-active" : ""} key={option.id} onClick={() => onUpdateAnnotations(contextAsset.id, contextAsset.speakerProfileIds, option.id)} role="menuitem" type="button">{option.label}</button>)}
+            </div>
+          </section>
+          <section>
+            <strong>SPEAKERS</strong>
+            <div className="media-context-options media-context-options--speakers">
+              {speakers.map((speaker) => {
+                const assigned = contextAsset.speakerProfileIds.includes(speaker.id);
+                return <button aria-pressed={assigned} className={assigned ? "is-active" : ""} key={speaker.id} onClick={() => onUpdateAnnotations(contextAsset.id, assigned ? contextAsset.speakerProfileIds.filter((id) => id !== speaker.id) : [...contextAsset.speakerProfileIds, speaker.id], contextAsset.emotion)} role="menuitem" type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>;
+              })}
+              {!speakers.length ? <p>Thêm Speaker Profile trong Voice Training trước.</p> : null}
+            </div>
+          </section>
+          <footer><span>RCLICK MENU</span><button onClick={() => setContextMenu(null)} type="button">Đóng</button></footer>
+        </div>,
+        document.body,
       ) : null}
     </ModuleFrame>
   );

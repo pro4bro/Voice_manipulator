@@ -21,6 +21,7 @@ export type ModuleId =
   | "recent-takes"
   | "training-job"
   | "speaker-isolation"
+  | "speaker-emotion"
   | "train"
   | "voice-generator";
 

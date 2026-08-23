@@ -10,6 +10,7 @@ import { VoicePatch } from "../voice-patch/VoicePatch";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 import { MediaPool } from "../media-pool/MediaPool";
 import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
+import { SpeakerEmotion } from "../speaker-emotion/SpeakerEmotion";
 import { Train } from "../train/Train";
 
 export interface StudioContext {
@@ -103,6 +104,8 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <TrainingJob assets={context.mediaAssets} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
+    case "speaker-emotion":
+      return <SpeakerEmotion asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":
       return <Train assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} />;
     case "recent-takes":
