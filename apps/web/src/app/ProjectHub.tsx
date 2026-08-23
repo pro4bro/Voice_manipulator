@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import type { EngineStatus, Project, ProjectCreate } from "../domain/types";
+import type { EngineStatus, Project, ProjectCreate, ThemeMode } from "../domain/types";
 import { Icon } from "../ui/Icon";
 
 interface ProjectHubProps {
@@ -14,6 +14,8 @@ interface ProjectHubProps {
   onOpenExisting: (path: string) => Promise<boolean>;
   onPickLocation: (initialPath: string) => Promise<string | null>;
   onRetry: () => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
 }
 
 function newDraft(location: string): ProjectCreate {
@@ -24,7 +26,7 @@ function projectInitials(name: string) {
   return name.split(/\s+/u).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry }: ProjectHubProps) {
+export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, theme, onToggleTheme }: ProjectHubProps) {
   const [showCreate, setShowCreate] = useState(projects.length === 0);
   const [showDetails, setShowDetails] = useState(false);
   const [draft, setDraft] = useState<ProjectCreate>(() => newDraft(defaultLocation));
@@ -83,6 +85,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
           <span><b>PRO4BRO</b><strong>VOICE MANIPULATOR</strong></span>
         </div>
         <div className="hub-header__actions">
+          <button aria-label={theme === "light" ? "Bật giao diện tối" : "Bật giao diện sáng"} className="theme-toggle" onClick={onToggleTheme} title={theme === "light" ? "Dark mode" : "Light mode"} type="button"><Icon name={theme === "light" ? "moon" : "sun"} /></button>
           <div className={`engine-chip ${engine?.installed ? "is-ready" : "is-offline"}`}>
             <i /><span><b>OMNIVOICE</b><small>{engine?.installed ? `${engine.branch ?? "detached"} · ${engine.revision?.slice(0, 8)}` : "Engine offline"}</small></span>
           </div>

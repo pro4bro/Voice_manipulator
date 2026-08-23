@@ -1,4 +1,7 @@
 export type WorkspacePage = "speech-to-text" | "voice-training" | "voice-manipulator";
+export type ThemeMode = "light" | "dark";
+export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
+export type SpeakerGender = "female" | "male" | "nonbinary" | "unspecified";
 
 export type ManipulatorMode =
   | "voice-over"
@@ -17,6 +20,8 @@ export type ModuleId =
   | "voice-patch"
   | "recent-takes"
   | "training-job"
+  | "speaker-isolation"
+  | "train"
   | "voice-generator";
 
 export interface Project {
@@ -55,6 +60,8 @@ export interface StudioWord {
   corrected?: string;
   reviewState?: "pending" | "confirmed" | "manual";
   selectedVariant?: "realtime" | "accurate" | "corrected" | "manual" | null;
+  speakerId?: string | null;
+  emotion?: EmotionLabel | null;
 }
 
 export interface StudioAudioItem {
@@ -103,9 +110,60 @@ export interface ProjectMediaAsset {
   words: StudioWord[];
   origin: "import" | "record";
   status?: "ready" | "no-audio" | "error";
+  transcriptionStatus: "complete" | "skipped" | "not-applicable";
+  trainingSelected: boolean;
+  speakerProfileIds: string[];
+  emotion: EmotionLabel;
   createdAt: string;
   updatedAt: string;
   revisions: MediaRevision[];
+}
+
+export interface SpeakerProfile {
+  id: string;
+  name: string;
+  language: string | null;
+  region: string | null;
+  age: number | null;
+  gender: SpeakerGender;
+  color: string;
+  createdAt: string;
+}
+
+export interface EnvironmentNoiseProfile {
+  id: string;
+  name: string;
+  assetIds: string[];
+  createdAt: string;
+}
+
+export interface TrainingSettings {
+  targetSpeakerIds: string[];
+  maxSteps: number;
+  checkpointEvery: number;
+  batchSize: number;
+  learningRate: number;
+  denoiseBeforeTraining: boolean;
+  learnEnvironmentNoise: boolean;
+  environmentProfileId: string | null;
+}
+
+export interface TrainingCatalog {
+  speakers: SpeakerProfile[];
+  environmentProfiles: EnvironmentNoiseProfile[];
+  settings: TrainingSettings;
+  updatedAt: string;
+}
+
+export interface MediaImportChoice {
+  file: File;
+  transcribe: boolean;
+}
+
+export interface RecordingWaveformPreview {
+  active: boolean;
+  duration: number;
+  samples: number[];
 }
 
 export interface ProjectMediaImportResult {

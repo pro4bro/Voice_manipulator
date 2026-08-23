@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
-import type { EngineStatus, Project, ProjectCreate, WorkspacePage } from "../domain/types";
+import type { EngineStatus, Project, ProjectCreate, ThemeMode, WorkspacePage } from "../domain/types";
 import { ProjectHub } from "./ProjectHub";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 export function App() {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem("pro4bro:theme");
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
   const [projects, setProjects] = useState<Project[]>([]);
   const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [defaultLocation, setDefaultLocation] = useState("");
@@ -34,6 +39,14 @@ export function App() {
   }
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("pro4bro:theme", theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((current) => current === "light" ? "dark" : "light");
+  }
 
   async function createProject(payload: ProjectCreate) {
     setBusy(true);
@@ -80,7 +93,7 @@ export function App() {
   }
 
   if (activeProject) {
-    return <WorkspaceShell engine={engine} onBack={() => setActiveProject(null)} onPageChange={changePage} project={activeProject} />;
+    return <WorkspaceShell engine={engine} onBack={() => setActiveProject(null)} onPageChange={changePage} onToggleTheme={toggleTheme} project={activeProject} theme={theme} />;
   }
 
   return (
@@ -95,6 +108,8 @@ export function App() {
       onPickLocation={async (initialPath) => (await api.pickFolder(initialPath)).path}
       onRetry={() => void load()}
       projects={projects}
+      onToggleTheme={toggleTheme}
+      theme={theme}
     />
   );
 }

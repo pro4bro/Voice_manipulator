@@ -25,6 +25,7 @@
 - **UI-02**: Left, center, and right workspace columns are resizable within safe minimums.
 - **UI-03**: Loading, empty, ready, recording, processing, success, and error states are visually explicit.
 - **UI-04**: Keyboard focus, labels, contrast, and reduced-motion behavior meet baseline accessibility expectations.
+- **UI-05**: Light and dark themes use one synchronized surface/token system across Project Hub and every module, including Recorder and Timeline.
 
 ## Speech To Text
 
@@ -37,12 +38,19 @@
 - **STT-07**: Recorder can capture microphone audio or a browser-authorized tab/window/system audio stream.
 - **STT-08**: Media Pool accepts common audio/video containers and codecs and preserves the original project-owned source.
 - **STT-09**: Every Media Pool asset owns an independent Script, word timing set, and transcript revision history.
+- **STT-10**: Speech to Text exposes speaker diarization/isolation status and manual speaker attribution without reporting unavailable processors as complete.
+- **STT-11**: Script words can carry a Speaker Profile so one mixed file can be reviewed as multiple named speakers.
+- **STT-12**: Media assets and individual Script words can carry controlled Emotion Labels from positive through critical; multi-emotion assets are labeled `mix`.
 
 ## Voice Training
 
-- **TRN-01**: The page reuses Recorder, Script, Timeline, Voice Vault, and Control Rack.
+- **TRN-01**: The page reuses Media Pool, Script, Timeline, and Voice Vault, replaces Recorder with Train, and does not expose capture controls.
 - **TRN-02**: Training-specific controls expose dataset readiness, segmentation, checkpoint, progress, and validation status.
 - **TRN-03**: Transcript text can be corrected before data preparation or training starts.
+- **TRN-04**: One Training Run can target multiple Speaker Profiles, with footage and Script words explicitly attributed to each speaker.
+- **TRN-05**: Training Settings persist max steps, batch size, learning rate, and checkpoint backup interval, defaulting to every 1,000 steps.
+- **TRN-06**: Training can enable/disable denoising independently from learning a named Environment Noise Profile from multiple selected audio assets.
+- **TRN-07**: Voice Vault can create Speaker Profiles with name, language, region, age, and gender before training.
 
 ## Voice Manipulator
 

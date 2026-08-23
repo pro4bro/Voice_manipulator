@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
@@ -19,12 +20,15 @@ from app.domain.models import (
     FolderPickResult,
     HealthStatus,
     MediaImportResult,
+    MediaAnnotationUpdate,
     MediaScriptUpdate,
+    MediaTrainingSelection,
     ProjectCreate,
     ProjectOpen,
     ProjectMediaAsset,
     ProjectRecord,
     SystemPaths,
+    TrainingCatalog,
     WorkspacePage,
 )
 from app.domain.ports import FolderPicker, ProjectRepository, VoiceEngine
@@ -40,6 +44,7 @@ def create_app(
     settings = settings or Settings.from_env()
     projects = project_repository or FileProjectRepository(settings.data_root / "projects")
     media = FileMediaLibrary(projects)
+    training_catalogs = FileTrainingCatalog(projects)
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url, media, settings.ffmpeg_path
     )
@@ -105,10 +110,11 @@ def create_app(
         file: UploadFile = File(...),
         origin: str = Form(default="import"),
         realtime_text: str = Form(default=""),
+        transcribe: bool = Form(default=True),
     ) -> MediaImportResult:
         try:
             project = projects.get(project_id)
-            return await media_importer.process(project, file, origin, realtime_text)
+            return await media_importer.process(project, file, origin, realtime_text, transcribe)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except ValueError as exc:
@@ -129,6 +135,57 @@ def create_app(
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/training-selection",
+        response_model=ProjectMediaAsset,
+    )
+    def update_media_training_selection(
+        project_id: str, asset_id: str, payload: MediaTrainingSelection
+    ) -> ProjectMediaAsset:
+        try:
+            return media.set_training_selected(project_id, asset_id, payload.selected)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/annotations",
+        response_model=ProjectMediaAsset,
+    )
+    def update_media_annotations(
+        project_id: str, asset_id: str, payload: MediaAnnotationUpdate
+    ) -> ProjectMediaAsset:
+        try:
+            return media.update_annotations(
+                project_id,
+                asset_id,
+                payload.speaker_profile_ids,
+                payload.emotion,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog
+    )
+    def get_training_catalog(project_id: str) -> TrainingCatalog:
+        try:
+            return training_catalogs.get(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.put(
+        "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog
+    )
+    def save_training_catalog(
+        project_id: str, payload: TrainingCatalog
+    ) -> TrainingCatalog:
+        try:
+            return training_catalogs.save(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}", response_model=ProjectRecord)
     def get_project(project_id: str) -> ProjectRecord:

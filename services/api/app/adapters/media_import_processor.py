@@ -40,6 +40,7 @@ class MediaImportProcessor:
         upload: UploadFile,
         origin: str,
         realtime_text: str = "",
+        transcribe: bool = True,
     ) -> MediaImportResult:
         started = time.perf_counter()
         filename = Path(upload.filename or "media.wav").name
@@ -76,6 +77,7 @@ class MediaImportProcessor:
                     video_codec=self._codec(video_stream),
                     origin=origin,
                     status="no-audio",
+                    transcription_status="not-applicable",
                 ),
                 asset_id,
             )
@@ -84,6 +86,30 @@ class MediaImportProcessor:
         analysis_path = asset_dir / "analysis.wav"
         await asyncio.to_thread(self._extract_audio, source_path, analysis_path)
         portable_analysis_path = analysis_path.relative_to(Path(project.project_path)).as_posix()
+        if not transcribe:
+            asset = self.library.create(
+                project.id,
+                MediaAssetCreate(
+                    name=filename,
+                    source_extension=extension,
+                    media_kind=media_kind,
+                    source_path=portable_source_path,
+                    analysis_path=portable_analysis_path,
+                    url=f"/api/projects/{project.id}/media/{asset_id}/audio",
+                    duration=duration,
+                    sample_rate=self._sample_rate(audio_stream),
+                    audio_codec=self._codec(audio_stream),
+                    video_codec=self._codec(video_stream),
+                    origin=origin,
+                    status="ready",
+                    transcription_status="skipped",
+                ),
+                asset_id,
+            )
+            return MediaImportResult(
+                asset=asset, elapsed=round(time.perf_counter() - started, 2)
+            )
+
         item, studio_elapsed = await self._run_studio_import(analysis_path, origin, realtime_text)
         asset = self.library.create(
             project.id,
@@ -103,6 +129,7 @@ class MediaImportProcessor:
                 words=list(item.get("words", [])),
                 origin=origin,
                 status="ready",
+                transcription_status="complete",
             ),
             asset_id,
         )
@@ -169,6 +196,13 @@ class MediaImportProcessor:
     @staticmethod
     def _codec(stream: dict[str, Any] | None) -> str | None:
         return str(stream.get("codec_name")) if stream and stream.get("codec_name") else None
+
+    @staticmethod
+    def _sample_rate(stream: dict[str, Any] | None) -> int | None:
+        try:
+            return int(stream.get("sample_rate")) if stream and stream.get("sample_rate") else None
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _duration(probe: dict[str, Any]) -> float:

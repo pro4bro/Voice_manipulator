@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
-import type { EngineStatus, ManipulatorMode, Project, ProjectMediaAsset, StudioAudioItem, WorkspacePage } from "../domain/types";
+import type { EmotionLabel, EngineStatus, ManipulatorMode, MediaImportChoice, Project, ProjectMediaAsset, RecordingWaveformPreview, StudioAudioItem, StudioWord, ThemeMode, TrainingCatalog, WorkspacePage } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
 import type { ActiveTake } from "../modules/timeline/Timeline";
 import { workspaceManifest } from "../pages/workspaceManifest";
@@ -13,6 +13,8 @@ interface WorkspaceShellProps {
   engine: EngineStatus | null;
   onBack: () => void;
   onPageChange: (page: WorkspacePage) => Promise<Project>;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
 }
 
 const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: IconName }> = [
@@ -29,18 +31,41 @@ const modeLabels: Record<ManipulatorMode, string> = {
   "voice-patch": "Voice Patch",
 };
 
-export function WorkspaceShell({ project, engine, onBack, onPageChange }: WorkspaceShellProps) {
+function emptyTrainingCatalog(): TrainingCatalog {
+  return {
+    speakers: [],
+    environmentProfiles: [],
+    settings: {
+      targetSpeakerIds: [],
+      maxSteps: 10000,
+      checkpointEvery: 1000,
+      batchSize: 4,
+      learningRate: 0.00002,
+      denoiseBeforeTraining: true,
+      learnEnvironmentNoise: false,
+      environmentProfileId: null,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, onToggleTheme }: WorkspaceShellProps) {
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
   const [activeMode, setActiveMode] = useState<ManipulatorMode>("voice-over");
   const [leftWidth, setLeftWidth] = useState(260);
   const [rightWidth, setRightWidth] = useState(300);
-  const [selectedVoice, setSelectedVoice] = useState("mien_nam_trained");
+  const [selectedVoice, setSelectedVoice] = useState("");
   const [speed, setSpeed] = useState(1);
   const [gain, setGain] = useState(0);
   const [take, setTake] = useState<ActiveTake | null>(null);
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
+  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  const [trainingCatalog, setTrainingCatalog] = useState<TrainingCatalog>(emptyTrainingCatalog);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const catalogRevisionRef = useRef(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [job, setJob] = useState<string | null>(null);
   const [scriptDirty, setScriptDirty] = useState(false);
@@ -57,9 +82,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
   useEffect(() => {
     let cancelled = false;
     setMediaBusy(true);
-    void api.listProjectMedia(project.id).then((assets) => {
+    void Promise.all([api.listProjectMedia(project.id), api.getTrainingCatalog(project.id)]).then(([assets, catalog]) => {
       if (cancelled) return;
       setMediaAssets(assets);
+      setTrainingCatalog(catalog);
+      if (catalog.speakers[0]) setSelectedVoice((current) => current || catalog.speakers[0].id);
       if (assets[0]) applyMediaAsset(assets[0]);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Media Pool");
@@ -68,6 +95,22 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
     });
     return () => { cancelled = true; };
   }, [project.id]);
+  useEffect(() => {
+    if (!catalogRevision) return;
+    const revision = catalogRevision;
+    const snapshot = trainingCatalog;
+    const timer = window.setTimeout(() => {
+      void api.saveTrainingCatalog(project.id, snapshot).then((saved) => {
+        if (catalogRevisionRef.current === revision) {
+          setTrainingCatalog(saved);
+          setCatalogRevision(0);
+        }
+      }).catch((error: unknown) => {
+        setNotice(error instanceof Error ? error.message : "Không lưu được Training Catalog");
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [catalogRevision, project.id, trainingCatalog]);
   useEffect(() => {
     if (!scriptDirty || !selectedAssetId) return;
     const pendingAssetId = selectedAssetId;
@@ -139,8 +182,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
     setSelectedAssetId(asset.id);
     setScript(asset.text);
     setScriptDirty(false);
-    setTake(asset.url && asset.studioItemId ? {
-      id: asset.studioItemId,
+    setTake(asset.url ? {
+      id: asset.studioItemId ?? asset.id,
       name: asset.name,
       url: asset.url,
       duration: asset.duration,
@@ -177,6 +220,44 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
     setScriptDirty(true);
   }
 
+  function changeCatalog(catalog: TrainingCatalog) {
+    catalogRevisionRef.current += 1;
+    setTrainingCatalog(catalog);
+    setCatalogRevision(catalogRevisionRef.current);
+  }
+
+  async function updateMediaAnnotations(assetId: string, speakerProfileIds: string[], emotion: EmotionLabel) {
+    const previous = mediaAssets.find((asset) => asset.id === assetId);
+    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, speakerProfileIds, emotion } : asset));
+    try {
+      const updated = await api.updateMediaAnnotations(project.id, assetId, speakerProfileIds, emotion);
+      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+    } catch (error) {
+      if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
+      setNotice(error instanceof Error ? error.message : "Không lưu được speaker/emotion của footage");
+    }
+  }
+
+  async function changeWordAnnotations(words: StudioWord[]) {
+    if (!selectedAssetId) return;
+    const asset = mediaAssets.find((item) => item.id === selectedAssetId);
+    if (!asset) return;
+    const wordSpeakerIds = words.map((word) => word.speakerId).filter((id): id is string => Boolean(id));
+    const speakerProfileIds = [...new Set([...asset.speakerProfileIds, ...wordSpeakerIds])];
+    const emotions = [...new Set(words.map((word) => word.emotion ?? asset.emotion))];
+    const emotion = emotions.length > 1 ? "mix" : emotions[0] ?? asset.emotion;
+    setTake((current) => current ? { ...current, words } : current);
+    setMediaAssets((current) => current.map((item) => item.id === asset.id ? { ...item, words, speakerProfileIds, emotion } : item));
+    try {
+      await api.updateMediaScript(project.id, asset.id, scriptRef.current, "user", words);
+      const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, emotion);
+      setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(`Đã gán ${speakerProfileIds.length} speaker · emotion ${emotion}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không lưu được nhãn theo từ");
+    }
+  }
+
   async function processCapturedAudio(captured: CapturedAudio) {
     setTake(captured);
     setMediaBusy(true);
@@ -195,14 +276,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
     }
   }
 
-  async function importMedia(files: File[]) {
+  async function importMedia(choices: MediaImportChoice[]) {
     setMediaBusy(true);
     let imported = 0;
     let lastAsset: ProjectMediaAsset | null = null;
     try {
-      for (const [index, file] of files.entries()) {
-        setJob(`Đang import ${index + 1}/${files.length}: ${file.name}`);
-        const result = await api.importProjectMedia(project.id, file, "import");
+      for (const [index, choice] of choices.entries()) {
+        setJob(`Đang import ${index + 1}/${choices.length}: ${choice.file.name}${choice.transcribe ? " · STT" : " · bỏ STT"}`);
+        const result = await api.importProjectMedia(project.id, choice.file, "import", "", choice.transcribe);
         storeMediaAsset(result.asset);
         lastAsset = result.asset;
         imported += 1;
@@ -213,14 +294,36 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
       }
       setNotice(lastAsset?.status === "no-audio"
         ? `${lastAsset.name} đã vào Media Pool nhưng không có audio stream.`
-        : `Đã import ${imported} asset và tạo transcript riêng.`);
+        : `Đã import ${imported} asset · ${choices.filter((choice) => choice.transcribe).length} file chạy transcript.`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Import media thất bại";
-      setNotice(imported ? `Đã import ${imported}/${files.length} asset. File tiếp theo lỗi: ${detail}` : detail);
+      setNotice(imported ? `Đã import ${imported}/${choices.length} asset. File tiếp theo lỗi: ${detail}` : detail);
     } finally {
       setMediaBusy(false);
       setJob(null);
     }
+  }
+
+  async function toggleTrainingAsset(assetId: string, selected: boolean) {
+    const previous = mediaAssets.find((asset) => asset.id === assetId);
+    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, trainingSelected: selected } : asset));
+    try {
+      const updated = await api.setMediaTrainingSelected(project.id, assetId, selected);
+      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+    } catch (error) {
+      if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
+      setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn Voice Training");
+    }
+  }
+
+  function sendSelectedToTraining() {
+    const selectedCount = mediaAssets.filter((asset) => asset.trainingSelected).length;
+    if (!selectedCount) {
+      setNotice("Hãy tick TRAIN cho ít nhất một footage.");
+      return;
+    }
+    void selectPage("voice-training");
+    setNotice(`Đã chuyển ${selectedCount} footage đã chọn sang Voice Training.`);
   }
 
   async function runAccurateTranscription(source: "stt" | "ai" = "stt") {
@@ -273,20 +376,30 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
     mediaAssets,
     selectedAssetId,
     mediaBusy,
+    recordingPreview,
+    activeWordIndex,
+    trainingCatalog,
     onScriptChange: changeScript,
     onVoiceChange: setSelectedVoice,
     onSpeedChange: setSpeed,
     onGainChange: setGain,
     onTakeChange: (captured) => void processCapturedAudio(captured),
-    onImportMedia: (files) => void importMedia(files),
+    onImportMedia: (choices) => void importMedia(choices),
     onSelectAsset: selectMediaAsset,
+    onRecordingPreview: setRecordingPreview,
+    onActiveWordChange: setActiveWordIndex,
+    onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
+    onUpdateAnnotations: (assetId, speakerProfileIds, emotion) => void updateMediaAnnotations(assetId, speakerProfileIds, emotion),
+    onWordsChange: (words) => void changeWordAnnotations(words),
+    onCatalogChange: changeCatalog,
+    onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),
     onDeferredAction: (action) => {
       if (action === "STT kỹ") void runAccurateTranscription("stt");
       else if (action === "AI fix") void runAccurateTranscription("ai");
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
-  }), [activePage, gain, mediaAssets, mediaBusy, script, selectedAssetId, selectedVoice, speed, take]);
+  }), [activePage, activeWordIndex, gain, mediaAssets, mediaBusy, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
 
   return (
     <main className="workspace-shell">
@@ -299,7 +412,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
             </button>
           ))}
         </nav>
-        <div className="workspace-meta"><span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span><button aria-label="Cài đặt" type="button"><Icon name="settings" /></button></div>
+        <div className="workspace-meta"><span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span><button aria-label={theme === "light" ? "Bật giao diện tối" : "Bật giao diện sáng"} onClick={onToggleTheme} title={theme === "light" ? "Dark mode" : "Light mode"} type="button"><Icon name={theme === "light" ? "moon" : "sun"} /></button></div>
       </header>
 
       <div className="workspace-body">
@@ -330,7 +443,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange }: Worksp
             </div>
           ) : null}
 
-          <div className={`studio-board ${manifest.columns.left.length ? "" : "is-two-column"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>

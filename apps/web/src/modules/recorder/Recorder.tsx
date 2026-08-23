@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import type { RecordingWaveformPreview } from "../../domain/types";
 
 export interface CapturedAudio {
   name: string;
@@ -12,6 +13,7 @@ export interface CapturedAudio {
 
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
+  onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
 }
 
 type RecorderStatus = "idle" | "recording" | "finalizing" | "error";
@@ -22,7 +24,7 @@ function friendlyDeviceName(device: MediaDeviceInfo, index: number, kind: "input
   return device.label || `${kind === "input" ? "Microphone" : "Audio output"} ${index + 1}`;
 }
 
-export function Recorder({ onRecordingReady }: RecorderProps) {
+export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
@@ -42,6 +44,8 @@ export function Recorder({ onRecordingReady }: RecorderProps) {
   const animationRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
+  const liveSamplesRef = useRef<number[]>([]);
+  const lastPreviewAtRef = useRef(0);
 
   async function refreshDevices() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -128,6 +132,19 @@ export function Recorder({ onRecordingReady }: RecorderProps) {
       });
       setMeter(bars);
       setPeakDb(peak > 0.0001 ? Math.max(-60, 20 * Math.log10(peak)) : -60);
+      const now = performance.now();
+      if (now - lastPreviewAtRef.current >= 70) {
+        lastPreviewAtRef.current = now;
+        liveSamplesRef.current.push(Math.max(0.008, peak));
+        if (liveSamplesRef.current.length > 3000) {
+          liveSamplesRef.current = liveSamplesRef.current.filter((_, index) => index % 2 === 0);
+        }
+        onRecordingPreview?.({
+          active: true,
+          duration: Math.max(0, (now - startedAtRef.current) / 1000),
+          samples: liveSamplesRef.current.slice(),
+        });
+      }
       animationRef.current = requestAnimationFrame(draw);
     };
     draw();
@@ -186,12 +203,16 @@ export function Recorder({ onRecordingReady }: RecorderProps) {
         const duration = Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         stopResources();
         onRecordingReady({ name: file.name, url, duration, file, origin: "record" });
+        onRecordingPreview?.({ active: false, duration, samples: liveSamplesRef.current.slice() });
         setStatus("idle");
         setMessage("Đã thu xong · đang sẵn sàng cho STT kỹ");
         setPeakDb(-60);
       };
       recorder.start(250);
       startedAtRef.current = performance.now();
+      liveSamplesRef.current = [];
+      lastPreviewAtRef.current = 0;
+      onRecordingPreview?.({ active: true, duration: 0, samples: [] });
       setElapsed(0);
       setStatus("recording");
       setMessage(`REC LIVE · ${sourceLabel}${monitorEnabled ? " · monitor ON" : ""}`);
@@ -199,6 +220,7 @@ export function Recorder({ onRecordingReady }: RecorderProps) {
       await refreshDevices();
     } catch (error) {
       stopResources();
+      onRecordingPreview?.({ active: false, duration: 0, samples: [] });
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Không mở được microphone");
     }

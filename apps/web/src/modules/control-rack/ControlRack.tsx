@@ -1,4 +1,5 @@
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import type { EnvironmentNoiseProfile } from "../../domain/types";
 
 interface ControlRackProps {
   speed: number;
@@ -6,6 +7,9 @@ interface ControlRackProps {
   onSpeedChange: (value: number) => void;
   onGainChange: (value: number) => void;
   compact?: boolean;
+  environmentProfiles?: EnvironmentNoiseProfile[];
+  environmentProfileId?: string | null;
+  onEnvironmentProfileChange?: (profileId: string | null) => void;
 }
 
 export function ControlRack({
@@ -14,6 +18,9 @@ export function ControlRack({
   onSpeedChange,
   onGainChange,
   compact = false,
+  environmentProfiles = [],
+  environmentProfileId = null,
+  onEnvironmentProfileChange,
 }: ControlRackProps) {
   return (
     <ModuleFrame eyebrow="CONTROL RACK" title="Điều khiển" className={`control-rack-module ${compact ? "is-compact" : ""}`}>
@@ -51,7 +58,14 @@ export function ControlRack({
           <button type="button">Thì thầm</button>
         </div>
       </div>
+      <label className="rack-control rack-environment">
+        <span><b>Environment profile</b><em>REUSABLE</em></span>
+        <select aria-label="Environment profile cho Voice Manipulator" onChange={(event) => onEnvironmentProfileChange?.(event.target.value || null)} value={environmentProfileId ?? ""}>
+          <option value="">Studio clean</option>
+          {environmentProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+        </select>
+        <small>Voice Dub · Change · Fix dùng chung catalog này khi processor được kết nối.</small>
+      </label>
     </ModuleFrame>
   );
 }
-

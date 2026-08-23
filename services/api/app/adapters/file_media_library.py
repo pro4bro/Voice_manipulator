@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.domain.models import (
+    EmotionLabel,
     MediaAssetCreate,
     MediaRevision,
     MediaRevisionSource,
@@ -90,6 +91,65 @@ class FileMediaLibrary:
                 "SCRIPT_REVISED",
                 f"Transcript revision cho {asset.name}",
                 {"assetId": asset.id, "source": source, "revisionCount": len(revisions)},
+            )
+            return updated
+        raise KeyError(asset_id)
+
+    def set_training_selected(
+        self, project_id: str, asset_id: str, selected: bool
+    ) -> ProjectMediaAsset:
+        assets = self.list(project_id)
+        for index, asset in enumerate(assets):
+            if asset.id != asset_id:
+                continue
+            updated = asset.model_copy(
+                update={
+                    "training_selected": selected,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            )
+            assets[index] = updated
+            self._write(project_id, assets)
+            project = self.projects.get(project_id)
+            self.activity.append(
+                project.project_path,
+                "TRAINING_SELECTION_CHANGED",
+                f"{'Selected' if selected else 'Removed'} {asset.name} for Voice Training",
+                {"assetId": asset.id, "selected": selected},
+            )
+            return updated
+        raise KeyError(asset_id)
+
+    def update_annotations(
+        self,
+        project_id: str,
+        asset_id: str,
+        speaker_profile_ids: list[str],
+        emotion: EmotionLabel,
+    ) -> ProjectMediaAsset:
+        assets = self.list(project_id)
+        for index, asset in enumerate(assets):
+            if asset.id != asset_id:
+                continue
+            updated = asset.model_copy(
+                update={
+                    "speaker_profile_ids": list(dict.fromkeys(speaker_profile_ids)),
+                    "emotion": emotion,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            )
+            assets[index] = updated
+            self._write(project_id, assets)
+            project = self.projects.get(project_id)
+            self.activity.append(
+                project.project_path,
+                "MEDIA_ANNOTATIONS_CHANGED",
+                f"Updated speaker and emotion labels for {asset.name}",
+                {
+                    "assetId": asset.id,
+                    "speakerProfileIds": updated.speaker_profile_ids,
+                    "emotion": updated.emotion,
+                },
             )
             return updated
         raise KeyError(asset_id)

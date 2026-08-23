@@ -5,11 +5,13 @@ from typing import Protocol
 from .models import (
     EngineStatus,
     MediaAssetCreate,
+    EmotionLabel,
     MediaRevisionSource,
     ProjectCreate,
     ProjectOpen,
     ProjectMediaAsset,
     ProjectRecord,
+    TrainingCatalog,
     WorkspacePage,
 )
 
@@ -49,3 +51,21 @@ class MediaLibrary(Protocol):
         source: MediaRevisionSource,
         words: list[dict] | None = None,
     ) -> ProjectMediaAsset: ...
+
+    def set_training_selected(
+        self, project_id: str, asset_id: str, selected: bool
+    ) -> ProjectMediaAsset: ...
+
+    def update_annotations(
+        self,
+        project_id: str,
+        asset_id: str,
+        speaker_profile_ids: list[str],
+        emotion: EmotionLabel,
+    ) -> ProjectMediaAsset: ...
+
+
+class TrainingCatalogRepository(Protocol):
+    def get(self, project_id: str) -> TrainingCatalog: ...
+
+    def save(self, project_id: str, catalog: TrainingCatalog) -> TrainingCatalog: ...

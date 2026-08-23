@@ -1,4 +1,4 @@
-import type { EngineStatus, MediaRevisionSource, Project, ProjectCreate, ProjectMediaAsset, ProjectMediaImportResult, StudioAudioItem, StudioJobResult, StudioWord, SystemPaths, WorkspacePage } from "../domain/types";
+import type { EmotionLabel, EngineStatus, MediaRevisionSource, Project, ProjectCreate, ProjectMediaAsset, ProjectMediaImportResult, StudioAudioItem, StudioJobResult, StudioWord, SystemPaths, TrainingCatalog, WorkspacePage } from "../domain/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
@@ -21,6 +21,7 @@ function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
     ...word,
     reviewState: word.reviewState ?? word.review_state as StudioWord["reviewState"],
     selectedVariant: word.selectedVariant ?? word.selected_variant as StudioWord["selectedVariant"],
+    speakerId: word.speakerId ?? word.speaker_id as string | null | undefined,
   };
 }
 
@@ -39,6 +40,10 @@ function normalizeStudioItem(item: StudioAudioItem): StudioAudioItem {
 function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
   return {
     ...asset,
+    transcriptionStatus: asset.transcriptionStatus ?? "complete",
+    trainingSelected: asset.trainingSelected ?? false,
+    speakerProfileIds: asset.speakerProfileIds ?? [],
+    emotion: asset.emotion ?? "normal",
     url: asset.url?.startsWith("/media/") ? `/api/studio${asset.url}` : asset.url,
     words: (asset.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
   };
@@ -63,11 +68,12 @@ export const api = {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
     return assets.map(normalizeMediaAsset);
   },
-  importProjectMedia: async (projectId: string, file: File, origin: "record" | "import", realtimeText = "") => {
+  importProjectMedia: async (projectId: string, file: File, origin: "record" | "import", realtimeText = "", transcribe = true) => {
     const body = new FormData();
     body.append("file", file);
     body.append("origin", origin);
     body.append("realtime_text", realtimeText);
+    body.append("transcribe", String(transcribe));
     const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body });
     return {
       ...result,
@@ -82,6 +88,27 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  setMediaTrainingSelected: async (projectId: string, assetId: string, selected: boolean) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/training-selection`, {
+      method: "PATCH",
+      body: JSON.stringify({ selected }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  updateMediaAnnotations: async (projectId: string, assetId: string, speakerProfileIds: string[], emotion: EmotionLabel) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/annotations`, {
+      method: "PATCH",
+      body: JSON.stringify({ speakerProfileIds, emotion }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  getTrainingCatalog: (projectId: string) =>
+    request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
+  saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>
+    request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`, {
+      method: "PUT",
+      body: JSON.stringify(catalog),
+    }),
   importAudio: async (file: File, origin: "record" | "import", realtimeText = "") => {
     const body = new FormData();
     body.append("file", file);

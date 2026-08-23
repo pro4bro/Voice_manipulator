@@ -1,8 +1,8 @@
 # State
 
-- **Current phase**: 02 Speech to Text
+- **Current phase**: 03 Voice Training
 - **Status**: In progress
-- **Last action**: Made project folders portable, added complete handoff/activity notes, committed the source with OmniVoice as a submodule, and pushed `main` to `pro4bro/Voice_manipulator`.
-- **Next action**: Add chunked live transcription and merged per-word transcript review, then feed selected Media Pool sources into project-native training jobs.
+- **Last action**: Added synchronized Light/Dark themes, portable Training Catalog, Speaker Profiles, asset/word speaker and emotion labels, Speaker Isolation seam, multi-speaker Train controls, 1,000-step checkpoint default, denoise settings, and reusable Environment Noise Profiles.
+- **Next action**: Connect automatic diarization/isolation, forced alignment for supplied scripts, and the project-native OmniVoice training adapter to the verified catalog contracts.
 - **Blockers**: None for finalized recording/import STT. Live low-latency STT still needs a local streaming/chunking design.
-- **Decisions**: The folder containing project.json is the portable project aggregate; the app registry is disposable. Speech to Text owns Media Pool, Script, Recorder, and Timeline but no Voice Vault or Control Rack. Browser capture uses the native secure share picker. Legacy Studio is an interim adapter and upstream OmniVoice remains untouched.
+- **Decisions**: The folder containing project.json is the portable project aggregate; the app registry is disposable. Speech to Text owns Media Pool, Script, Recorder, Speaker Isolation, and Timeline but no Voice Vault or Control Rack. Voice Training replaces Recorder with Train. Speaker Diarization and Voice Isolation are separate processors. Emotion may be asset-level or word-level; multi-emotion assets use `mix`. Environment Noise Profiles are learned references and remain separate from denoising. ASR may be skipped for a known script, but alignment/validation is still required before training. Legacy Studio is an interim adapter and upstream OmniVoice remains untouched.

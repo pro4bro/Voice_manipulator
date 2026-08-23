@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | 01 Foundation | Runnable project shell, project persistence, reusable modules, upstream engine adapter | Complete |
 | 02 Speech to Text | Real recording/import, two-pass STT, merged Script review, timeline sync | In progress |
-| 03 Voice Training | Dataset preparation, segmentation review, train jobs, checkpoints, validation | Planned |
+| 03 Voice Training | Dataset preparation, segmentation review, train jobs, checkpoints, validation | In progress |
 | 04 Manipulator Pipeline | Voice over, isolation, changing, dubbing, patching, asset lineage | Planned |
 | 05 Desktop Release | Native shell, isolated runtimes, model manager, updater, installer | Planned |
 
@@ -23,4 +23,14 @@
 - Complete: shared project Media Pool, common audio/video ingest through local FFmpeg, per-asset Script/timings/revisions, two-pass Whisper transcription, real waveform, scrub, zoom, source gain, and playback to 8x.
 - Complete: portable project manifests/media paths, moved-project reconnection, project-owned playback URL, and project-contained activity/handoff notes.
 - Complete: Speech to Text contains Media Pool, Script, Recorder, and Timeline without Voice Vault or Control Rack and remains viewport-bound.
-- Remaining: chunked live transcript while recording, per-word realtime/accurate/AI review choices in Script, and wiring selected Media Pool assets into training jobs.
+- Complete: per-file `Transcript`/`Skip STT` import decisions, persisted footage selection for Voice Training, live recording waveform, continuous PCM waveform, decoded-duration subtitle sync, and Timeline/Script current-word highlighting.
+- Remaining: forced alignment/validation for supplied scripts, chunked live transcript while recording, per-word realtime/accurate/AI review choices in Script, and project-native training execution from the selected subset.
+
+## Phase 03 Current Slice
+
+- Complete: project-owned `assets/training/catalog.json` with Speaker Profiles, Environment Noise Profiles, and Training Settings.
+- Complete: asset-level multi-speaker/emotion annotation and word-level speaker/emotion tagging in Script; mixed word emotions roll up to `mix`.
+- Complete: Voice Training no longer contains Recorder or Control Rack; Train owns multi-speaker targets, max steps, batch size, learning rate, checkpoint interval, denoise, and environment-learning settings.
+- Complete: checkpoint backup interval defaults to 1,000 steps; noise profiles accept multiple project media asset IDs and are reusable from Voice Manipulator Control Rack.
+- Complete: synchronized Light/Dark theme surfaces across Project Hub, workspace modules, Recorder, and Timeline.
+- Remaining: automatic speaker diarization, audio stem isolation, forced alignment, actual environment-profile learning, and project-native fine-tune execution.

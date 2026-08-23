@@ -1,7 +1,7 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
-html { background: var(--paper); }
-body { min-width: 320px; overflow: hidden; color: var(--ink); }
+html { background: var(--surface-app); }
+body { min-width: 320px; overflow: hidden; color: var(--text); }
 button, input, textarea, select { color: inherit; font: inherit; }
 button, select { cursor: pointer; }
 button { border: 0; }
@@ -29,7 +29,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 .button:disabled { cursor: not-allowed; opacity: .45; }
 .button--accent { color: #fff; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0,0,0,.16); }
 .button--accent:hover:not(:disabled) { background: #f45a38; }
-.button--lime { color: var(--ink); background: var(--lime); }
+.button--lime { color: var(--text-on-accent); background: var(--lime); }
 .button--quiet { border-color: var(--line); background: transparent; }
 .button--quiet:hover:not(:disabled) { background: rgba(0,0,0,.05); }
 .button--full { width: 100%; }
@@ -41,8 +41,8 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
   display: grid;
   place-items: center;
   overflow: hidden;
-  color: var(--cream);
-  background: var(--ink);
+  color: var(--text-inverse);
+  background: var(--surface-inverse);
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 800;
@@ -57,7 +57,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
   place-content: center;
   justify-items: center;
   gap: 18px;
-  background-color: var(--paper);
+  background-color: var(--surface-panel);
   background-image: linear-gradient(rgba(24,26,22,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(24,26,22,.055) 1px, transparent 1px);
   background-size: 32px 32px;
 }

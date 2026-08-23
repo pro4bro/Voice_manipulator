@@ -18,6 +18,8 @@ describe("ProjectHub", () => {
         onPickLocation={vi.fn()}
         onRetry={() => undefined}
         projects={[]}
+        theme="light"
+        onToggleTheme={vi.fn()}
       />,
     );
 
@@ -43,6 +45,8 @@ describe("ProjectHub", () => {
         onPickLocation={vi.fn()}
         onRetry={() => undefined}
         projects={[]}
+        theme="light"
+        onToggleTheme={vi.fn()}
       />,
     );
 
@@ -82,6 +86,8 @@ describe("ProjectHub", () => {
           updatedAt: "2026-01-01T00:00:00Z",
           lastPage: "speech-to-text",
         }]}
+        theme="light"
+        onToggleTheme={vi.fn()}
       />,
     );
 

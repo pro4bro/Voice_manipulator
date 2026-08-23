@@ -41,6 +41,58 @@ def test_media_library_keeps_assets_and_script_revisions_per_project(tmp_path):
     assert "SCRIPT_REVISED" in activity.read_text(encoding="utf-8")
 
 
+def test_media_library_persists_training_selection_per_asset(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Training Selection"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="voice.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/voice.wav",
+            duration=2,
+            origin="import",
+            transcription_status="skipped",
+        ),
+    )
+
+    selected = library.set_training_selected(project.id, asset.id, True)
+    reopened = FileMediaLibrary(projects).get(project.id, asset.id)
+
+    assert selected.training_selected is True
+    assert reopened.training_selected is True
+    assert reopened.transcription_status == "skipped"
+    activity = Path(project.project_path) / "activity" / "events.jsonl"
+    assert "TRAINING_SELECTION_CHANGED" in activity.read_text(encoding="utf-8")
+
+
+def test_media_library_persists_speaker_and_emotion_annotations(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Annotated Media"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="dialogue.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/dialogue.wav",
+            duration=2,
+            origin="import",
+        ),
+    )
+
+    library.update_annotations(project.id, asset.id, ["speaker-a", "speaker-b"], "mix")
+    reopened = FileMediaLibrary(projects).get(project.id, asset.id)
+
+    assert reopened.speaker_profile_ids == ["speaker-a", "speaker-b"]
+    assert reopened.emotion == "mix"
+    activity = Path(project.project_path) / "activity" / "events.jsonl"
+    assert "MEDIA_ANNOTATIONS_CHANGED" in activity.read_text(encoding="utf-8")
+
+
 def test_media_paths_and_history_survive_moving_the_project_folder(tmp_path):
     projects = FileProjectRepository(tmp_path / "registry")
     created = projects.create(ProjectCreate(name="Portable Media", location=str(tmp_path / "before")))

@@ -11,7 +11,7 @@ describe("workspaceManifest", () => {
     expect(manifest.modules).not.toContain("recent-takes");
     expect(manifest.modules).not.toContain("voice-vault");
     expect(manifest.modules).not.toContain("control-rack");
-    expect(manifest.columns.left).toEqual(["media-pool"]);
+    expect(manifest.columns.left).toEqual(["media-pool", "speaker-isolation"]);
     expect(manifest.columns.right).toContain("recorder");
   });
 
@@ -26,6 +26,9 @@ describe("workspaceManifest", () => {
     }
 
     expect(workspaceManifest("voice-training").modules).toContain("voice-vault");
+    expect(workspaceManifest("voice-training").modules).toContain("train");
+    expect(workspaceManifest("voice-training").modules).not.toContain("recorder");
+    expect(workspaceManifest("voice-training").modules).not.toContain("control-rack");
     expect(workspaceManifest("voice-manipulator").modules).toContain("voice-vault");
   });
 

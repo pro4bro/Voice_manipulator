@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
+import type { RecordingWaveformPreview, StudioWord } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { StudioWord } from "../../domain/types";
 
 export interface ActiveTake {
   id?: string;
@@ -13,13 +13,22 @@ export interface ActiveTake {
   words?: StudioWord[];
 }
 
+interface EnvelopePoint {
+  min: number;
+  max: number;
+}
+
 interface TimelineProps {
   take: ActiveTake | null;
   gain: number;
+  recordingPreview?: RecordingWaveformPreview | null;
   onGainChange: (value: number) => void;
+  onActiveWordChange?: (index: number) => void;
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8];
+const PATH_WIDTH = 1200;
+const PATH_HEIGHT = 100;
 
 function timecode(seconds: number) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -27,22 +36,76 @@ function timecode(seconds: number) {
   return `${String(minutes).padStart(2, "0")}:${(safe - minutes * 60).toFixed(3).padStart(6, "0")}`;
 }
 
-export function Timeline({ take, gain, onGainChange }: TimelineProps) {
+function waveformPath(points: EnvelopePoint[], gain: number) {
+  if (!points.length) return "";
+  const center = PATH_HEIGHT / 2;
+  const amplitude = PATH_HEIGHT * 0.46;
+  const coordinate = (point: EnvelopePoint, index: number, edge: "min" | "max") => {
+    const x = points.length === 1 ? 0 : (index / (points.length - 1)) * PATH_WIDTH;
+    const value = Math.max(-1, Math.min(1, point[edge] * gain));
+    return `${x.toFixed(2)},${(center - value * amplitude).toFixed(2)}`;
+  };
+  const top = points.map((point, index) => coordinate(point, index, "max"));
+  const bottom = points.map((_, reverseIndex) => {
+    const index = points.length - reverseIndex - 1;
+    return coordinate(points[index], index, "min");
+  });
+  return `M ${top.join(" L ")} L ${bottom.join(" L ")} Z`;
+}
+
+function liveEnvelope(samples: number[]): EnvelopePoint[] {
+  return samples.map((sample) => ({ min: -sample, max: sample }));
+}
+
+export function Timeline({
+  take,
+  gain,
+  recordingPreview = null,
+  onGainChange,
+  onActiveWordChange,
+}: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [peaks, setPeaks] = useState<number[]>([]);
+  const [envelope, setEnvelope] = useState<EnvelopePoint[]>([]);
+  const [decodedDuration, setDecodedDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const duration = take?.duration || 12.4;
-  const visualGain = Math.min(2.5, Math.max(0.08, 10 ** (gain / 20)));
+  const scrubbingRef = useRef(false);
+  const isRecording = Boolean(recordingPreview?.active);
+  const words = take?.words ?? [];
+  const lastWordEnd = words.length ? Math.max(...words.map((word) => word.end)) : 0;
+  const sourceDuration = isRecording
+    ? Math.max(0.1, recordingPreview?.duration ?? 0)
+    : decodedDuration || take?.duration || lastWordEnd;
+  const duration = sourceDuration || 10;
+  const visualGain = Math.min(4, Math.max(0.025, 10 ** (gain / 20)));
+  const visibleEnvelope = isRecording ? liveEnvelope(recordingPreview?.samples ?? []) : envelope;
+  const path = waveformPath(visibleEnvelope, visualGain);
+  const sourcePeak = visibleEnvelope.reduce((peak, point) => Math.max(peak, Math.abs(point.min), Math.abs(point.max)), 0);
+  const peakDb = sourcePeak > 0.0001 ? Math.min(12, 20 * Math.log10(sourcePeak) + gain) : -60;
+  const activeWordIndex = isRecording ? -1 : words.findIndex((word) => currentTime >= word.start && currentTime < word.end);
+  const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
 
   useEffect(() => {
     setCurrentTime(0);
     setPlaying(false);
+    setDecodedDuration(0);
   }, [take?.name]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    setPlaying(false);
+    setCurrentTime(recordingPreview?.duration ?? 0);
+  }, [isRecording, recordingPreview?.duration]);
+
+  useEffect(() => {
+    onActiveWordChange?.(activeWordIndex);
+  }, [activeWordIndex, onActiveWordChange]);
+
+  useEffect(() => () => onActiveWordChange?.(-1), [onActiveWordChange]);
 
   useEffect(() => {
     const node = gainNodeRef.current;
@@ -59,7 +122,8 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
 
   useEffect(() => {
     if (!take?.url) {
-      setPeaks([]);
+      setEnvelope([]);
+      setDecodedDuration(0);
       return;
     }
     const controller = new AbortController();
@@ -71,21 +135,30 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
         const bytes = await response.arrayBuffer();
         context = new AudioContext();
         const buffer = await context.decodeAudioData(bytes.slice(0));
-        const barCount = 240;
-        const samplesPerBar = Math.max(1, Math.floor(buffer.length / barCount));
+        const pointCount = Math.min(900, Math.max(240, Math.floor(buffer.duration * 30)));
+        const samplesPerPoint = Math.max(1, Math.floor(buffer.length / pointCount));
         const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
-        const nextPeaks = Array.from({ length: barCount }, (_, bar) => {
-          const start = bar * samplesPerBar;
-          const end = Math.min(buffer.length, start + samplesPerBar);
-          let peak = 0;
-          for (let sample = start; sample < end; sample += Math.max(1, Math.floor(samplesPerBar / 80))) {
-            for (const channel of channels) peak = Math.max(peak, Math.abs(channel[sample] ?? 0));
+        const nextEnvelope = Array.from({ length: pointCount }, (_, pointIndex) => {
+          const start = pointIndex * samplesPerPoint;
+          const end = Math.min(buffer.length, start + samplesPerPoint);
+          const stride = Math.max(1, Math.floor(samplesPerPoint / 120));
+          let min = 0;
+          let max = 0;
+          for (let sample = start; sample < end; sample += stride) {
+            for (const channel of channels) {
+              min = Math.min(min, channel[sample] ?? 0);
+              max = Math.max(max, channel[sample] ?? 0);
+            }
           }
-          return Math.max(0.015, peak);
+          return { min: Math.min(-0.006, min), max: Math.max(0.006, max) };
         });
-        setPeaks(nextPeaks);
-      } catch (error) {
-        if (!controller.signal.aborted) setPeaks([]);
+        setEnvelope(nextEnvelope);
+        setDecodedDuration(buffer.duration);
+      } catch {
+        if (!controller.signal.aborted) {
+          setEnvelope([]);
+          setDecodedDuration(0);
+        }
       } finally {
         await context?.close().catch(() => undefined);
       }
@@ -109,7 +182,7 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
 
   async function togglePlay() {
     const audio = audioRef.current;
-    if (!audio || !take?.url) return;
+    if (!audio || !take?.url || isRecording) return;
     if (audio.paused) {
       try {
         await preparePlayback(audio);
@@ -118,21 +191,27 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
       }
       audio.playbackRate = playbackRate;
       await audio.play();
-    }
-    else audio.pause();
+    } else audio.pause();
   }
 
-  function scrub(event: PointerEvent<HTMLDivElement>) {
+  function seek(event: PointerEvent<HTMLDivElement>) {
+    if (isRecording || !take?.url) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((event.clientX - rect.left) / rect.width) * duration));
     setCurrentTime(nextTime);
     if (audioRef.current) audioRef.current.currentTime = nextTime;
   }
 
+  function beginScrub(event: PointerEvent<HTMLDivElement>) {
+    scrubbingRef.current = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seek(event);
+  }
+
   return (
     <ModuleFrame
       eyebrow="TIMELINE"
-      title={take?.name ?? "Chưa có audio trong timeline"}
+      title={isRecording ? "REC LIVE · waveform trực tiếp" : take?.name ?? "Chưa có audio trong timeline"}
       index="A1"
       tone="dark"
       className="timeline-module"
@@ -147,6 +226,7 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
       <div className="timeline-stage">
         <label className="timeline-gain">
           <span>GAIN</span>
+          <output>{gain > 0 ? "+" : ""}{gain.toFixed(1)}</output>
           <input
             aria-label="Source gain"
             max="12"
@@ -156,35 +236,55 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
             type="range"
             value={gain}
           />
-          <output>{gain > 0 ? "+" : ""}{gain.toFixed(1)}</output>
+          <small>PK {peakDb.toFixed(1)}</small>
         </label>
         <div className="timeline-scroll">
-          <div className="timeline-canvas" style={{ "--zoom": zoom, "--gain": visualGain } as CSSProperties}>
+          <div className="timeline-canvas" style={{ "--zoom": zoom } as CSSProperties}>
             <div className="timeline-ruler">
               {Array.from({ length: 9 }, (_, index) => {
                 const seconds = (duration * index) / 8;
                 return <span key={index} style={{ left: `${index * 12.5}%` }}>{seconds.toFixed(duration < 8 ? 1 : 0)}s</span>;
               })}
             </div>
-            <div className="waveform" aria-label="Waveform timeline" onPointerDown={scrub}>
-              {peaks.map((amplitude, index) => <i key={index} style={{ height: `${Math.min(1, amplitude * 1.7) * 100}%` }} />)}
-              <div className="timeline-playhead" style={{ left: `${(currentTime / duration) * 100}%` }} />
-              {!take ? <div className="timeline-empty"><Icon name="waveform" /><b>Import, thu âm hoặc chọn một Take</b><span>Audio lineage sẽ bắt đầu tại đây</span></div> : null}
+            <div
+              className="waveform"
+              aria-label="Waveform timeline"
+              onPointerDown={beginScrub}
+              onPointerMove={(event) => { if (scrubbingRef.current) seek(event); }}
+              onPointerUp={() => { scrubbingRef.current = false; }}
+            >
+              {path ? (
+                <svg aria-label="Natural audio waveform" className="waveform-shape" preserveAspectRatio="none" viewBox={`0 0 ${PATH_WIDTH} ${PATH_HEIGHT}`}>
+                  <path d={path} />
+                </svg>
+              ) : null}
+              {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>Import, thu âm hoặc chọn một Take</b><span>Audio lineage sẽ bắt đầu tại đây</span></div> : null}
             </div>
             <div className="word-track">
-              {take?.words?.length ? take.words.map((word, index) => (
-                <span className={currentTime >= word.end ? "is-past" : ""} key={`${word.text}-${index}`} style={{ left: `${(word.start / duration) * 100}%`, width: `${Math.max(1.5, ((word.end - word.start) / duration) * 100)}%` }}>{word.text}</span>
-              )) : <em>WORD SYNC · subtitle sẽ khớp theo timestamp</em>}
+              {words.length && !isRecording ? words.map((word, index) => {
+                const start = Math.min(duration, Math.max(0, word.start));
+                const end = Math.min(duration, Math.max(start, word.end));
+                return (
+                  <span
+                    className={index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""}
+                    key={`${word.text}-${index}`}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.04, ((end - start) / duration) * 100)}%` }}
+                  >
+                    {word.text}
+                  </span>
+                );
+              }) : <em>{isRecording ? "REC LIVE · waveform đang cập nhật" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
+            <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} style={{ left: `${playheadPercent}%` }} />
           </div>
         </div>
       </div>
       <div className="transport-bar">
-        <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url} onClick={togglePlay} type="button">
+        <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
         </button>
         <code>{timecode(currentTime)}</code>
-        <div className="transport-progress"><i style={{ width: `${(currentTime / duration) * 100}%` }} /></div>
+        <div className="transport-progress"><i style={{ width: `${playheadPercent}%` }} /></div>
         <code>{timecode(duration)}</code>
         <label className="transport-rate">
           <span>RATE</span>
@@ -197,6 +297,9 @@ export function Timeline({ take, gain, onGainChange }: TimelineProps) {
       {take?.url ? (
         <audio
           onEnded={() => setPlaying(false)}
+          onLoadedMetadata={(event) => {
+            if (Number.isFinite(event.currentTarget.duration)) setDecodedDuration(event.currentTarget.duration);
+          }}
           onPause={() => setPlaying(false)}
           onPlay={() => setPlaying(true)}
           onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}

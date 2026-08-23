@@ -57,7 +57,21 @@ class ProjectRecord(ProjectCreate):
 MediaKind = Literal["audio", "video"]
 MediaOrigin = Literal["import", "record"]
 MediaStatus = Literal["ready", "no-audio", "error"]
+MediaTranscriptionStatus = Literal["complete", "skipped", "not-applicable"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
+EmotionLabel = Literal[
+    "exciting",
+    "funny",
+    "good",
+    "normal",
+    "low-energy",
+    "sad",
+    "cry",
+    "angry",
+    "critical",
+    "mix",
+]
+SpeakerGender = Literal["female", "male", "nonbinary", "unspecified"]
 
 
 class MediaRevision(DomainModel):
@@ -83,6 +97,10 @@ class MediaAssetCreate(DomainModel):
     words: list[dict[str, Any]] = Field(default_factory=list)
     origin: MediaOrigin
     status: MediaStatus = "ready"
+    transcription_status: MediaTranscriptionStatus = "complete"
+    training_selected: bool = False
+    speaker_profile_ids: list[str] = Field(default_factory=list)
+    emotion: EmotionLabel = "normal"
 
 
 class ProjectMediaAsset(MediaAssetCreate):
@@ -108,6 +126,51 @@ class MediaScriptUpdate(DomainModel):
     text: str = Field(max_length=500_000)
     source: MediaRevisionSource = "user"
     words: list[dict[str, Any]] | None = None
+
+
+class MediaTrainingSelection(DomainModel):
+    selected: bool
+
+
+class MediaAnnotationUpdate(DomainModel):
+    speaker_profile_ids: list[str] = Field(default_factory=list)
+    emotion: EmotionLabel = "normal"
+
+
+class SpeakerProfile(DomainModel):
+    id: str = Field(default_factory=lambda: f"speaker-{uuid4().hex[:12]}")
+    name: str = Field(min_length=1, max_length=120)
+    language: str | None = Field(default=None, max_length=80)
+    region: str | None = Field(default=None, max_length=120)
+    age: int | None = Field(default=None, ge=0, le=120)
+    gender: SpeakerGender = "unspecified"
+    color: str = Field(default="#ff6745", pattern=r"^#[0-9a-fA-F]{6}$")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class EnvironmentNoiseProfile(DomainModel):
+    id: str = Field(default_factory=lambda: f"noise-{uuid4().hex[:12]}")
+    name: str = Field(min_length=1, max_length=120)
+    asset_ids: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TrainingSettings(DomainModel):
+    target_speaker_ids: list[str] = Field(default_factory=list)
+    max_steps: int = Field(default=10_000, ge=1, le=10_000_000)
+    checkpoint_every: int = Field(default=1_000, ge=1, le=10_000_000)
+    batch_size: int = Field(default=4, ge=1, le=512)
+    learning_rate: float = Field(default=0.00002, gt=0, le=1)
+    denoise_before_training: bool = True
+    learn_environment_noise: bool = False
+    environment_profile_id: str | None = None
+
+
+class TrainingCatalog(DomainModel):
+    speakers: list[SpeakerProfile] = Field(default_factory=list)
+    environment_profiles: list[EnvironmentNoiseProfile] = Field(default_factory=list)
+    settings: TrainingSettings = Field(default_factory=TrainingSettings)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MediaImportResult(DomainModel):

@@ -3,7 +3,14 @@
 - **Project**: A portable folder containing one voice production effort, its manifest, assets, activity, notes, jobs, exports, cache, and last workspace state.
 - **Asset**: An immutable audio or transcript input/output with provenance.
 - **Take**: A playable audio Asset created by recording, generation, conversion, dubbing, or patching.
-- **Voice Profile**: Reusable speaker identity material, whether trained checkpoint or reference prompt.
+- **Speaker Profile**: A human identity in one Project, described by name, language, region, age, and gender. Footage and Script words may reference it before any model exists.
+- **Voice Model**: A reusable trained checkpoint or reference-based voice artifact produced for one or more Speaker Profiles.
+- **Speaker Diarization**: Assigning time-aware speech spans to Speaker Profiles; it answers who spoke when but does not produce isolated audio.
+- **Voice Isolation**: Producing separate voice stems from mixed audio. Isolation output may then be diarized and annotated.
+- **Emotion Label**: Controlled delivery/psychological context attached to a whole footage Asset or individual Script words. `mix` means the Asset contains more than one word-level label.
+- **Environment Noise Profile**: A named reusable model of ambient sound learned from multiple audio Assets; it is distinct from destructive denoising.
+- **Training Catalog**: Project-owned aggregate containing Speaker Profiles, Environment Noise Profiles, and Training Settings.
+- **Training Run**: One job that may fine-tune multiple Speaker Profiles and emits periodic checkpoint backups.
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
 - **Workspace Page**: Speech to Text, Voice Training, or Voice Manipulator.
 - **Manipulator Mode**: Voice Over, Voice Isolator, Voice Changer, Voice Dubber, or Voice Patch.
