@@ -12,7 +12,7 @@ A creator can open one project, move an audio asset through transcription, voice
 
 - Project Hub with recent projects, project creation, and moved-project reconnection.
 - Full-screen, resizable workspaces for Speech to Text, Voice Training, and Voice Manipulator.
-- Reusable deep UI modules: Voice Vault, Script, Control Rack, Recorder, Timeline, Voice Patch, Project Rail, and Job Monitor.
+- Reusable deep UI modules: Media Pool, Voice Vault, Script, Control Rack, Recorder, Timeline, Speaker & Emotion, Speaker Isolation, Train, Training Job, Voice Patch, Recent Takes, and Project Rail.
 - Editable transcript inside Script after accurate STT and AI correction.
 - OmniVoice checked out as an untouched upstream engine under `engines/OmniVoice`.
 - A backend engine adapter and project persistence outside OmniVoice.
@@ -35,4 +35,4 @@ A creator can open one project, move an audio asset through transcription, voice
 - React and TypeScript provide the modular frontend.
 - FastAPI owns projects, jobs, media, and engine orchestration.
 - OmniVoice is a read-only upstream Git submodule reached through an adapter.
-- Local markdown is the issue tracker until a remote repository is configured.
+- GSD markdown is the durable planning and handoff source; the canonical Git remote is `pro4bro/Voice_manipulator` on `main`.

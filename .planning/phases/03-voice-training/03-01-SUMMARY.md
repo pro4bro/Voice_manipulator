@@ -22,6 +22,27 @@
 - Browser QA passed at 1280x720 for synchronized Light/Dark module backgrounds,
   Speech to Text module composition, and Recorder-free Voice Training layout.
 
+## Persisted Contracts
+
+- Training Catalog: `<project>/assets/training/catalog.json`; created on the
+  first catalog save and contains Speaker Profiles, Environment Noise Profiles,
+  and Training Settings using IDs rather than machine-absolute file paths.
+- Footage annotations: `<project>/assets/media/index.json` stores
+  `speakerProfileIds`, one file-level `emotion`, and `trainingSelected`.
+- Word annotations: each timed Script word may store `speakerId` and `emotion`;
+  differing word emotions roll the parent footage up to `mix`.
+- API: `GET/PUT /api/projects/{project_id}/training-catalog` and
+  `PATCH /api/projects/{project_id}/media/{asset_id}/annotations`.
+
+## UI Composition At Completion
+
+- Speech to Text: Media Pool left; Script center; Recorder, Speaker & Emotion,
+  and Speaker Isolation right; Timeline bottom.
+- Voice Training: Media Pool and Voice Vault left; Script center; Train and
+  Training Job right; Timeline bottom. Recorder and Control Rack are absent.
+- Voice Manipulator: Media Pool, Voice Vault, and Recent Takes left; Script
+  center; Recorder, Control Rack, and Voice Patch right; Timeline bottom.
+
 ## Deferred Processors
 
 - Automatic Speaker Diarization and audio stem Voice Isolation.

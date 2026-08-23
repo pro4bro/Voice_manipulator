@@ -5,8 +5,9 @@
 Pro4Bro Voice Manipulator is a local-first React/FastAPI audio workstation. The
 current milestone delivers a professional Project Hub, three manifest-composed
 workspaces, real finalized recording/import STT, reusable audio modules, Media
-Pool, and portable project folders. Read `AGENTS.md`, `CONTEXT.md`,
-`.planning/STATE.md`, and `.planning/ROADMAP.md` before changing behavior.
+Pool, portable project folders, and project-owned training metadata. Read
+`AGENTS.md`, `CONTEXT.md`, this file, `docs/NEXT_SESSION.md`, `.planning/STATE.md`,
+and `.planning/ROADMAP.md` before changing behavior.
 
 ## Repository Topology
 
@@ -21,9 +22,10 @@ Pool, and portable project folders. Read `AGENTS.md`, `CONTEXT.md`,
 - `.planning`: durable GSD requirements, roadmap, state, phase plans, and QA.
 
 The canonical Git remote is `https://github.com/pro4bro/Voice_manipulator.git`
-on branch `main`. Initial source baseline commit `2bf627f` was pushed on
-2026-08-23. Git HTTPS authentication succeeded through Windows Git Credential
-Manager; GitHub CLI OAuth is not required for normal pull/push.
+on branch `main`. Feature history includes source baseline `2bf627f`, portable
+project handoff `7ff0e5e`, speaker-aware catalog/themes `9926080`, and compact
+footage tagging `002c55a`. Git HTTPS authentication succeeded through Windows
+Git Credential Manager; GitHub CLI OAuth is not required for normal pull/push.
 
 The Pro4Bro API runs on `127.0.0.1:18120`; the interim Studio sidecar runs on
 `127.0.0.1:18081`. Launchers derive paths from their own repository root and do
@@ -47,8 +49,9 @@ not require a fixed drive letter.
 - Split the UI into reusable modules composed through
   `apps/web/src/pages/workspaceManifest.ts` and
   `apps/web/src/modules/registry/ModuleRegistry.tsx`.
-- Speech to Text contains Media Pool, Speaker Isolation, Script, Recorder, and
-  Timeline; Voice Vault and Control Rack remain absent there.
+- Speech to Text contains Media Pool left, Script center, Recorder plus Speaker
+  & Emotion plus Speaker Isolation right, and Timeline below; Voice Vault and
+  Control Rack remain absent there.
 - Recorder supports microphone selection, monitor output, optional live
   monitoring, level/peak metering, and browser-authorized tab/window/system
   audio through `getDisplayMedia`.
@@ -93,6 +96,44 @@ not require a fixed drive letter.
   region, age, and gender. Environment profiles are selectable from Voice
   Manipulator Control Rack for future Voice Dub/Change/Fix processors.
 
+## Module Composition
+
+| Page | Left | Center | Right | Bottom |
+| --- | --- | --- | --- | --- |
+| Speech to Text | Media Pool | Script | Recorder, Speaker & Emotion, Speaker Isolation | Timeline |
+| Voice Training | Media Pool, Voice Vault | Script | Train, Training Job | Timeline |
+| Voice Manipulator | Media Pool, Voice Vault, Recent Takes | Script | Recorder, Control Rack, Voice Patch | Timeline |
+
+`workspaceManifest.ts` is the composition source of truth and
+`ModuleRegistry.tsx` maps module IDs to implementations. Reuse those modules;
+do not copy page-specific versions.
+
+## Project Storage Contract
+
+- `project.json`: canonical metadata; persistent `projectPath` and `location`
+  are `.` and runtime API responses resolve the current display path.
+- `assets/media/index.json`: Media Pool records, project-relative source and
+  analysis paths, Script text, timed words, revisions, training selection, and
+  file-level annotations.
+- `assets/media/<asset-id>/`: immutable imported/recorded source plus normalized
+  `analysis.wav` used for playback and processing.
+- `assets/training/catalog.json`: created on first catalog save; Speaker
+  Profiles, Environment Noise Profiles, and Training Settings use IDs only.
+- `activity/events.jsonl` and `notes/ACTIVITY.md`: machine and human activity
+  history. `notes/PROJECT_HANDOFF.md` travels with a moved project.
+- `jobs`, `exports`, and `cache`: project-owned future job state, deliverables,
+  and disposable cache. Large runtime/model state remains outside Git.
+
+## API Surface At Handoff
+
+- Projects: list/create/open/get/update last page.
+- Media: list, stream analysis audio, import/record upload, update Script/words,
+  training selection, and speaker/emotion annotations.
+- Training catalog: get and replace the project-owned catalog.
+- System/engine: health, folder picker, system paths, OmniVoice status.
+- Compatibility: `/api/studio/*` proxies the interim Studio sidecar for working
+  finalized transcription until project-native processor ports replace it.
+
 ## Important Current Behavior
 
 - Browser security prevents a web app from silently enumerating playing tabs or
@@ -124,6 +165,29 @@ not require a fixed drive letter.
 - Moving the multi-gigabyte trained model/checkpoint into Git. Runtime/model
   folders are intentionally ignored and must be copied separately or rebuilt.
 
+## Original Migration Runtime
+
+The adjacent `../OmniVoice` folder is the customized migration runtime used as
+the current compatibility sidecar. It contains the one-click prepare, tokenize,
+Southern Vietnamese training, trained-voice TTS, and Studio launch scripts. Its
+PowerShell Stage splatting bug was fixed and `segments_review.csv` was rewritten
+as Unicode-safe output. That folder also contains local modifications, outputs,
+checkpoints, and Studio code, so it is not the clean update boundary.
+
+The clean update boundary is only `engines/OmniVoice`, which remains an
+unmodified submodule at `38e992bc60f85548faeb77e8fa70158ba71deb30`. Migrate
+needed compatibility behavior behind Pro4Bro adapters instead of copying edits
+into this submodule.
+
+## Current Local Sample Project
+
+`data/projects/south-voice-session-5df71a07` is intentionally ignored because
+it contains private user audio and transcript data. At handoff it contains one
+170.211-second, 24 kHz WAV asset with 684 timed words and one transcript
+revision. Source and analysis paths are project-relative. No Speaker Profile or
+saved Training Catalog exists yet, and the footage is not selected for training
+until the user explicitly enables `TRAIN`.
+
 ## Verification At Handoff
 
 - Frontend: 7 files, 19 tests passed; TypeScript and production Vite build passed.
@@ -136,11 +200,12 @@ not require a fixed drive letter.
   contained Train with checkpoint `1000` and no Recorder.
 - Engine: upstream submodule remained clean at `38e992bc60f8`.
 - Git: source baseline pushed to `origin/main`; runtime/model/project data excluded.
+- Planning: Plan 03-01 complete; Plan 03-02 is the next executable plan and has
+  its own validation matrix.
 
 Run the final gates from the repository root:
 
 ```powershell
-apps\web\node_modules\.bin\vitest.cmd run
+Push-Location apps\web; npm test; npm run build; Pop-Location
 .venv\Scripts\python.exe -m pytest services\api\tests -q
-Push-Location apps\web; npm run build; Pop-Location
 ```

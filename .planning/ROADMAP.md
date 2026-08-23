@@ -22,7 +22,7 @@
 - Complete: microphone/output selection, optional live monitor, browser-authorized tab/window/system capture, real recorder meter/peak, and finalized-record upload.
 - Complete: shared project Media Pool, common audio/video ingest through local FFmpeg, per-asset Script/timings/revisions, two-pass Whisper transcription, real waveform, scrub, zoom, source gain, and playback to 8x.
 - Complete: portable project manifests/media paths, moved-project reconnection, project-owned playback URL, and project-contained activity/handoff notes.
-- Complete: Speech to Text contains Media Pool, Script, Recorder, and Timeline without Voice Vault or Control Rack and remains viewport-bound.
+- Complete: Speech to Text contains Media Pool on the left, Script in the center, Recorder plus Speaker & Emotion plus Speaker Isolation in the internally scrollable right column, and Timeline below. Voice Vault and Control Rack remain absent and the page stays viewport-bound.
 - Complete: per-file `Transcript`/`Skip STT` import decisions, persisted footage selection for Voice Training, live recording waveform, continuous PCM waveform, decoded-duration subtitle sync, and Timeline/Script current-word highlighting.
 - Remaining: forced alignment/validation for supplied scripts, chunked live transcript while recording, per-word realtime/accurate/AI review choices in Script, and project-native training execution from the selected subset.
 
@@ -33,4 +33,10 @@
 - Complete: Voice Training no longer contains Recorder or Control Rack; Train owns multi-speaker targets, max steps, batch size, learning rate, checkpoint interval, denoise, and environment-learning settings.
 - Complete: checkpoint backup interval defaults to 1,000 steps; noise profiles accept multiple project media asset IDs and are reusable from Voice Manipulator Control Rack.
 - Complete: synchronized Light/Dark theme surfaces across Project Hub, workspace modules, Recorder, and Timeline.
+- Complete: compact Media Pool footage rows show summary metadata while file-level speaker/emotion assignment lives in a right-click menu.
 - Remaining: automatic speaker diarization, audio stem isolation, forced alignment, actual environment-profile learning, and project-native fine-tune execution.
+
+## Next Executable Plan
+
+- `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training.
+- `03-03`: connect validated manifests to project-native OmniVoice jobs, checkpoint lineage, progress, cancellation, and recovery.

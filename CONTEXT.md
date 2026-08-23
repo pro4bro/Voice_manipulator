@@ -10,6 +10,8 @@
 - **Emotion Label**: Controlled delivery/psychological context attached to a whole footage Asset or individual Script words. `mix` means the Asset contains more than one word-level label.
 - **Environment Noise Profile**: A named reusable model of ambient sound learned from multiple audio Assets; it is distinct from destructive denoising.
 - **Training Catalog**: Project-owned aggregate containing Speaker Profiles, Environment Noise Profiles, and Training Settings.
+- **Footage Tag Menu**: The Media Pool right-click menu used to assign file-level Speaker Profiles and one Emotion Label without permanently expanding every footage row.
+- **Dataset Manifest**: A deterministic, portable snapshot of selected audio segments, verified text, timing, speaker, and emotion attribution that a Training Run consumes.
 - **Training Run**: One job that may fine-tune multiple Speaker Profiles and emits periodic checkpoint backups.
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
 - **Workspace Page**: Speech to Text, Voice Training, or Voice Manipulator.

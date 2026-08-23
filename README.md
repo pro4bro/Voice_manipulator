@@ -28,7 +28,7 @@ machine-local folders are committed.
 
 ## Current Delivery
 
-Phase 02 is in progress. The current app has a persisted Project Hub, reusable
+Phases 02 and 03 are in progress. The current app has a persisted Project Hub, reusable
 manifest-driven modules, a project-scoped Media Pool, editable Script, real
 microphone/system/import capture, finalized two-pass Whisper transcription,
 word timestamps, continuous PCM waveform scrub/zoom, source gain/peak preview,
@@ -132,13 +132,15 @@ engine checkout is dirty and only uses `git pull --ff-only`, so it cannot silent
 rewrite local engine history.
 
 Current implementation status and intentionally deferred processors are tracked
-in [Session Handoff](docs/SESSION_HANDOFF.md) and [Roadmap](.planning/ROADMAP.md).
+in [Session Handoff](docs/SESSION_HANDOFF.md), [Next Session](docs/NEXT_SESSION.md),
+and [Roadmap](.planning/ROADMAP.md).
 
 ## Development Verification
 
 ```powershell
-apps\web\node_modules\.bin\vitest.cmd run
-.venv\Scripts\python.exe -m pytest services\api\tests -q
-cd apps\web
+Push-Location apps\web
+npm test
 npm run build
+Pop-Location
+.venv\Scripts\python.exe -m pytest services\api\tests -q
 ```

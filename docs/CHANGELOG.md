@@ -1,5 +1,24 @@
 # Development Changelog
 
+## 2026-08-23 - Compact Footage Tagging
+
+- Moved Speaker & Emotion and Speaker Isolation below Recorder in the Speech to
+  Text right column.
+- Returned Media Pool to compact footage rows with metadata under the name.
+- Moved file-level speaker and emotion assignment into an unclipped right-click
+  menu and retained word-level tagging in Script.
+
+## 2026-08-23 - Speaker-Aware Training Catalog And Themes
+
+- Added synchronized Light/Dark theme tokens for Project Hub and every module.
+- Added portable Speaker Profiles, Environment Noise Profiles, and Training
+  Settings under each project.
+- Added file-level and timed-word speaker/emotion attribution with `mix` rollup.
+- Replaced Recorder and Control Rack on Voice Training with Train and Training
+  Job, including 1,000-step checkpoint defaults, denoise, and environment setup.
+- Kept automatic diarization, isolation, environment learning, and training
+  execution explicitly unavailable until their adapters are implemented.
+
 ## 2026-08-23 - Portable Media Projects
 
 - Added shared Media Pool to Speech to Text, Voice Training, and Voice

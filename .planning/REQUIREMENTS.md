@@ -29,9 +29,9 @@
 
 ## Speech To Text
 
-- **STT-01**: The page includes Media Pool, Script, Recorder, and Timeline production modules, without Voice Vault or Control Rack.
+- **STT-01**: The page includes Media Pool, Script, Recorder, Speaker & Emotion, Speaker Isolation, and Timeline production modules, without Voice Vault or Control Rack.
 - **STT-02**: Generate Voice, Voice Patch, and Recent Takes are absent from the Speech to Text page.
-- **STT-03**: Recorder occupies the third column.
+- **STT-03**: Recorder occupies the top of the third column; Speaker & Emotion and Speaker Isolation follow in the same internally scrollable column.
 - **STT-04**: Live, accurate, AI-corrected, and user-corrected transcript states render and edit inside Script.
 - **STT-05**: Recorder can select an audio input, select a monitor output, and optionally monitor the live microphone stream.
 - **STT-06**: Recording or importing audio invokes the working Studio transcription pipeline and returns audio plus word timing to Script and Timeline.
@@ -41,6 +41,7 @@
 - **STT-10**: Speech to Text exposes speaker diarization/isolation status and manual speaker attribution without reporting unavailable processors as complete.
 - **STT-11**: Script words can carry a Speaker Profile so one mixed file can be reviewed as multiple named speakers.
 - **STT-12**: Media assets and individual Script words can carry controlled Emotion Labels from positive through critical; multi-emotion assets are labeled `mix`.
+- **STT-13**: Media Pool footage rows remain compact; file-level speaker/emotion tags are edited through a right-click menu instead of persistent checkbox groups.
 
 ## Voice Training
 
@@ -51,6 +52,8 @@
 - **TRN-05**: Training Settings persist max steps, batch size, learning rate, and checkpoint backup interval, defaulting to every 1,000 steps.
 - **TRN-06**: Training can enable/disable denoising independently from learning a named Environment Noise Profile from multiple selected audio assets.
 - **TRN-07**: Voice Vault can create Speaker Profiles with name, language, region, age, and gender before training.
+- **TRN-08**: A Training Run consumes a deterministic Dataset Manifest compiled only from explicitly selected footage and verified timed spans.
+- **TRN-09**: A supplied reading script may skip ASR but must pass alignment/validation before its audio-text segments become training-ready.
 
 ## Voice Manipulator
 
