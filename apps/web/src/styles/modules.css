@@ -376,11 +376,11 @@
 .library-panel-tabs,
 .sound-library-tabs { display: flex; gap: 2px; padding: 4px; background: var(--surface-sunken); border: 1px solid var(--line); }
 .library-panel-tabs button,
-.sound-library-tabs button { min-width: 0; flex: 1; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; color: var(--text-muted); background: transparent; font-size: calc(9px * var(--font-scale)); font-weight: 800; }
+.sound-library-tabs button { min-width: 0; flex: 1; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; color: var(--text-muted); background: transparent; font-size: calc(10.8px * var(--font-scale)); font-weight: 800; }
 .library-panel-tabs button svg,
-.sound-library-tabs button svg { width: 15px; }
+.sound-library-tabs button svg { width: 18px; }
 .library-panel-tabs button b,
-.sound-library-tabs button b { padding: 1px 4px; color: var(--text-muted); background: var(--strong-fill); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.sound-library-tabs button b { padding: 1px 4px; color: var(--text-muted); background: var(--strong-fill); font-family: var(--mono); font-size: calc(9.6px * var(--font-scale)); }
 .library-panel-tabs button.is-active,
 .sound-library-tabs button.is-active { color: var(--text); background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .library-panel > .module-frame { border-top: 0; }
@@ -643,3 +643,13 @@
 .timeline-playhead { left: 0; transform: translate3d(0,0,0); will-change: transform; }
 .timeline-gain-keyframe { position: absolute; z-index: 5; top: 0; bottom: 0; width: 1px; margin-left: -1px; border-left: 1px solid color-mix(in srgb, var(--lime) 75%, white); box-shadow: 0 0 5px color-mix(in srgb, var(--lime) 70%, transparent); pointer-events: none; }
 .timeline-auto-calibrate:disabled { cursor: not-allowed; opacity: .42; }
+/* Recorder controls remain compact while their labels are comfortably readable. */
+.recorder-module .module-frame__header h2 { font-size: calc(18px * var(--font-scale)); }
+.recorder-module .module-frame__index { font-size: calc(12px * var(--font-scale)); }
+.recorder-module .module-frame__copy .eyebrow { font-size: calc(9.6px * var(--font-scale)); }
+.recorder-module .recorder-device-grid label > span { font-size: calc(9.6px * var(--font-scale)); }
+.recorder-module .recorder-device-grid select { font-size: calc(12px * var(--font-scale)); }
+.recorder-module .monitor-toggle > span { font-size: calc(12px * var(--font-scale)); }
+.recorder-module .monitor-toggle small { font-size: calc(9.6px * var(--font-scale)); }
+.recorder-module .record-button { font-size: calc(12px * var(--font-scale)); }
+.recorder-module .record-button span { width: 10px; height: 10px; }
