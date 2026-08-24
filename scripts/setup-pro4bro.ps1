@@ -56,15 +56,21 @@ if (-not (Test-Path -LiteralPath $localFfmpeg) -or -not (Test-Path -LiteralPath 
 & $venvPython -m pip install -r (Join-Path $root "services\api\requirements.txt")
 if ($LASTEXITCODE -ne 0) { throw "Không cài được dependency backend." }
 
-Push-Location $webRoot
-try {
-    & npm install
-    if ($LASTEXITCODE -ne 0) { throw "Không cài được dependency frontend." }
-    & npm run build
-    if ($LASTEXITCODE -ne 0) { throw "Frontend build thất bại." }
+function Invoke-WebNpm {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    # CMD does not support a UNC working directory. pushd supplies a temporary drive.
+    $command = 'pushd "' + $webRoot + '" && npm ' + $Arguments
+    & cmd.exe /d /c $command
+    if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
 }
-finally {
-    Pop-Location
-}
+
+Invoke-WebNpm -Arguments "install" -FailureMessage "Không cài được dependency frontend."
+Invoke-WebNpm -Arguments "run build" -FailureMessage "Frontend build thất bại."
 
 Write-Host "`nSetup hoàn tất. Chạy start-pro4bro.bat để mở app." -ForegroundColor Green
