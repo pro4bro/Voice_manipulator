@@ -35,6 +35,7 @@ const GAIN_PREVIEW_DIVISIONS = 12;
 const GAIN_PREVIEW_PARTS = [1, 5, 9];
 const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
 const MAX_GAIN_RANGES = 96;
+const CLOCK_STATE_INTERVAL_MS = 80;
 
 interface WaveformRange {
   start: number;
@@ -164,13 +165,16 @@ export function Timeline({
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
+  const playheadRef = useRef<HTMLDivElement>(null);
   const playheadDragRef = useRef(false);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFrameRef = useRef<number | null>(null);
+  const lastMeterStateUpdateRef = useRef(0);
   const playbackClockFrameRef = useRef<number | null>(null);
+  const lastClockStateUpdateRef = useRef(0);
   const scrubbingRef = useRef(false);
   const gainInteractionRef = useRef(false);
   const isRecording = Boolean(recordingPreview?.active);
@@ -261,9 +265,18 @@ export function Timeline({
     setPeakDb((current) => Math.max(previewDb, current - 0.3));
   }, [isRecording, previewDb]);
 
-  function syncPlaybackClock(audio = audioRef.current) {
+  function paintPlayhead(time: number) {
+    const percent = Math.min(100, Math.max(0, (time / Math.max(duration, 0.001)) * 100));
+    if (playheadRef.current) playheadRef.current.style.left = `${percent}%`;
+  }
+
+  function syncPlaybackClock(audio = audioRef.current, forceState = true) {
     if (!audio) return;
     const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    paintPlayhead(nextTime);
+    const now = performance.now();
+    if (!forceState && now - lastClockStateUpdateRef.current < CLOCK_STATE_INTERVAL_MS) return;
+    lastClockStateUpdateRef.current = now;
     setCurrentTime((current) => Math.abs(current - nextTime) >= 0.004 ? nextTime : current);
   }
 
@@ -282,8 +295,7 @@ export function Timeline({
     const tick = () => {
       const audio = audioRef.current;
       if (!audio || audio.paused || audio.ended) return;
-      const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-      setCurrentTime((current) => Math.abs(current - nextTime) >= 0.004 ? nextTime : current);
+      syncPlaybackClock(audio, false);
       playbackClockFrameRef.current = requestAnimationFrame(tick);
     };
     playbackClockFrameRef.current = requestAnimationFrame(tick);
@@ -304,8 +316,12 @@ export function Timeline({
       let peak = 0;
       for (const value of values) peak = Math.max(peak, Math.abs(value));
       const nextDb = peak > 0.0001 ? Math.min(96, Math.max(-96, 20 * Math.log10(peak))) : -96;
-      setSignalDb(nextDb);
-      setPeakDb((current) => Math.max(nextDb, current - 0.17));
+      const now = performance.now();
+      if (now - lastMeterStateUpdateRef.current >= CLOCK_STATE_INTERVAL_MS) {
+        lastMeterStateUpdateRef.current = now;
+        setSignalDb(nextDb);
+        setPeakDb((current) => Math.max(nextDb, current - 0.85));
+      }
       meterFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -641,7 +657,7 @@ export function Timeline({
                 );
               }) : <em>{isRecording ? "REC LIVE · waveform đang cập nhật" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
-            <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag} style={{ left: `${playheadPercent}%` }} />
+            <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag} style={{ left: `${playheadPercent}%` }} />
           </div>
         </div>
       </div>
