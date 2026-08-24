@@ -36,3 +36,19 @@ without losing project-owned annotations.
 The next Phase 03 slice was narrowed to Dataset Manifest compilation and forced
 alignment. Actual OmniVoice execution follows only after that dataset boundary
 is deterministic and verifiable.
+
+
+## 2026-08-24 - Background STT And Sound Library
+
+User direction made transcript processing asynchronous and made audio metadata a
+first-class reusable library. The product now imports/normalizes footage quickly,
+then serializes detailed STT in add order without an overlay. Browser live
+speech transcript writes directly in Script during recording; an optional
+OpenAI-compatible review pass follows detailed STT only when configured in
+Windows → Preferences. Credentials live in machine-local runtime data and never
+in a portable project.
+
+Voice Vault is presented as Sound Library, with separate Speaker and Environment
+profile types. The OmniVoice adapter supplies all 646 supported languages and
+voice-design facets; the profile model keeps arbitrary attributes for future
+engines. Both profile types are assignable to footage and timed words.

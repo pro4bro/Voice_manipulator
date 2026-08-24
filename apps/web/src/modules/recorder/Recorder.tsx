@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { RecordingWaveformPreview } from "../../domain/types";
+import type { RecordingWaveformPreview, WaveformPoint } from "../../domain/types";
 
 export interface CapturedAudio {
   name: string;
@@ -9,22 +9,57 @@ export interface CapturedAudio {
   duration: number;
   file: File;
   origin: "record" | "import";
+  realtimeText: string;
 }
 
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
   onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
+  onLiveTranscript?: (text: string, active: boolean) => void;
 }
 
+interface BrowserSpeechRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
+}
+
+type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type SinkAudioElement = HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
 type RecorderStatus = "idle" | "recording" | "finalizing" | "error";
 type CaptureSource = "microphone" | "display";
-type SinkAudioElement = HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
 
 function friendlyDeviceName(device: MediaDeviceInfo, index: number, kind: "input" | "output") {
   return device.label || `${kind === "input" ? "Microphone" : "Audio output"} ${index + 1}`;
 }
 
-export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps) {
+function mergeWaveform(points: WaveformPoint[]): WaveformPoint[] {
+  const reduced: WaveformPoint[] = [];
+  for (let index = 0; index < points.length; index += 2) {
+    const next = points[index + 1];
+    const current = points[index];
+    reduced.push(next ? { min: Math.min(current.min, next.min), max: Math.max(current.max, next.max) } : current);
+  }
+  return reduced;
+}
+
+function speechConstructor(): SpeechRecognitionConstructor | null {
+  const browser = window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
+}
+
+export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscript }: RecorderProps) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
@@ -44,8 +79,11 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
   const animationRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
-  const liveSamplesRef = useRef<number[]>([]);
+  const liveSamplesRef = useRef<WaveformPoint[]>([]);
   const lastPreviewAtRef = useRef(0);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechFinalRef = useRef("");
+  const speechInterimRef = useRef("");
 
   async function refreshDevices() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -82,7 +120,6 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
       monitor.srcObject = null;
       return;
     }
-
     monitor.srcObject = stream;
     const route = outputDeviceId && monitor.setSinkId ? monitor.setSinkId(outputDeviceId) : Promise.resolve();
     void route.then(() => monitor.play()).catch((error: unknown) => {
@@ -93,9 +130,57 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
 
   useEffect(() => () => stopResources(), []);
 
+  function stopLiveTranscript() {
+    const recognition = speechRecognitionRef.current;
+    speechRecognitionRef.current = null;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      try { recognition.stop(); } catch { /* browser may have already stopped */ }
+    }
+  }
+
+  function startLiveTranscript() {
+    const Recognition = speechConstructor();
+    speechFinalRef.current = "";
+    speechInterimRef.current = "";
+    if (!Recognition) {
+      onLiveTranscript?.("", true);
+      return;
+    }
+    const recognition = new Recognition();
+    speechRecognitionRef.current = recognition;
+    recognition.lang = document.documentElement.lang || "vi-VN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const text = result?.[0]?.transcript?.trim() ?? "";
+        if (!text) continue;
+        if (result.isFinal) finalText += `${text} `;
+        else interimText += `${text} `;
+      }
+      speechFinalRef.current = finalText.trim();
+      speechInterimRef.current = interimText.trim();
+      onLiveTranscript?.([speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" "), true);
+    };
+    recognition.onerror = (event) => {
+      if (event.error !== "aborted" && event.error !== "no-speech") setMessage("Live Speech Transcript tạm thời không khả dụng; audio vẫn được thu.");
+    };
+    recognition.onend = () => {
+      if (status === "recording") onLiveTranscript?.([speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" "), true);
+    };
+    try { recognition.start(); } catch { /* browser can reject duplicate start */ }
+  }
+
   function stopResources() {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     animationRef.current = null;
+    stopLiveTranscript();
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -113,8 +198,8 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
     if (!AudioContextClass) return;
     const context = new AudioContextClass();
     const analyser = context.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.72;
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.18;
     context.createMediaStreamSource(stream).connect(analyser);
     const values = new Float32Array(analyser.fftSize);
     audioContextRef.current = context;
@@ -122,23 +207,31 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
     const draw = () => {
       analyser.getFloatTimeDomainData(values);
       let peak = 0;
+      let liveMin = 0;
+      let liveMax = 0;
       const bars = Array.from({ length: 24 }, (_, bar) => {
         const start = Math.floor((bar / 24) * values.length);
         const end = Math.floor(((bar + 1) / 24) * values.length);
         let localPeak = 0;
-        for (let index = start; index < end; index += 1) localPeak = Math.max(localPeak, Math.abs(values[index]));
-        peak = Math.max(peak, localPeak);
+        for (let index = start; index < end; index += 1) {
+          const value = values[index] ?? 0;
+          localPeak = Math.max(localPeak, Math.abs(value));
+          peak = Math.max(peak, Math.abs(value));
+          liveMin = Math.min(liveMin, value);
+          liveMax = Math.max(liveMax, value);
+        }
         return Math.max(0.06, Math.min(1, localPeak * 3.6));
       });
       setMeter(bars);
       setPeakDb(peak > 0.0001 ? Math.max(-60, 20 * Math.log10(peak)) : -60);
       const now = performance.now();
-      if (now - lastPreviewAtRef.current >= 70) {
+      if (now - lastPreviewAtRef.current >= 20) {
         lastPreviewAtRef.current = now;
-        liveSamplesRef.current.push(Math.max(0.008, peak));
-        if (liveSamplesRef.current.length > 3000) {
-          liveSamplesRef.current = liveSamplesRef.current.filter((_, index) => index % 2 === 0);
-        }
+        liveSamplesRef.current.push({
+          min: Math.min(-0.004, liveMin),
+          max: Math.max(0.004, liveMax),
+        });
+        if (liveSamplesRef.current.length > 4096) liveSamplesRef.current = mergeWaveform(liveSamplesRef.current);
         onRecordingPreview?.({
           active: true,
           duration: Math.max(0, (now - startedAtRef.current) / 1000),
@@ -187,8 +280,7 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
         });
         sourceLabel = stream.getAudioTracks()[0]?.label || "Microphone";
       }
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
-        .find((type) => MediaRecorder.isTypeSupported(type));
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
       streamRef.current = stream;
@@ -201,11 +293,13 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
         const file = new File([blob], `${prefix}-${Date.now()}.${extension}`, { type: blob.type });
         const url = URL.createObjectURL(blob);
         const duration = Math.max(0, (performance.now() - startedAtRef.current) / 1000);
+        const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
         stopResources();
-        onRecordingReady({ name: file.name, url, duration, file, origin: "record" });
+        onRecordingReady({ name: file.name, url, duration, file, origin: "record", realtimeText });
         onRecordingPreview?.({ active: false, duration, samples: liveSamplesRef.current.slice() });
+        onLiveTranscript?.(realtimeText, false);
         setStatus("idle");
-        setMessage("Đã thu xong · đang sẵn sàng cho STT kỹ");
+        setMessage("Đã thu xong · STT kỹ và AI review đang chạy nền");
         setPeakDb(-60);
       };
       recorder.start(250);
@@ -217,10 +311,12 @@ export function Recorder({ onRecordingReady, onRecordingPreview }: RecorderProps
       setStatus("recording");
       setMessage(`REC LIVE · ${sourceLabel}${monitorEnabled ? " · monitor ON" : ""}`);
       startMeter(stream);
+      startLiveTranscript();
       await refreshDevices();
     } catch (error) {
       stopResources();
       onRecordingPreview?.({ active: false, duration: 0, samples: [] });
+      onLiveTranscript?.("", false);
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Không mở được microphone");
     }

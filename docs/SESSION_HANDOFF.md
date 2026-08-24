@@ -209,3 +209,34 @@ Run the final gates from the repository root:
 Push-Location apps\web; npm test; npm run build; Pop-Location
 .venv\Scripts\python.exe -m pytest services\api\tests -q
 ```
+
+
+## 2026-08-24 Integration Slice: Background STT And Sound Library
+
+This supersedes older references to Voice Vault in the module composition:
+the shared left panel now has **Media Pool** and **Sound Library** tabs on all
+three pages. Sound Library stores Speaker Profiles (person icon) and Environment
+Profiles (landscape icon); double/right click opens properties. Profiles can be
+attached to a whole footage from Media Pool or to exact words from Script.
+
+The API now exposes project-media deletion, STT selection/enqueue routes, the
+OmniVoice profile schema, and app-local AI review preferences. The single-worker
+queue processes asset IDs in chronological add order. It updates each asset
+through queued → processing → reviewing → complete while UI polling keeps the
+rest of the workstation available. AI review is optional and calls an
+OpenAI-compatible chat/completions endpoint only when enabled, base URL, model,
+and API key are configured in Windows → Preferences. The key is held only in
+ignored runtime preferences, not in project manifests.
+
+Recorder captures detailed min/max waveform points at high cadence and uses
+browser SpeechRecognition when available for a live Script transcript. It is a
+live convenience stream, not the final transcript; on record stop the
+background detailed-STT + optional-AI path owns the saved revision.
+
+Verification for this slice:
+- Backend: 21 tests passed.
+- Frontend: TypeScript project check passed.
+- Vite/Vitest executable discovery/build could not be completed in this session
+  because the mapped network drive drops the V drive prefix for Node/Vite entry
+  resolution. This is an execution-path limitation; re-run from a local checkout
+  or a normal mapped path before release.

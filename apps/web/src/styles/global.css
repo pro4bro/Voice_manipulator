@@ -19,7 +19,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
   border: 1px solid transparent;
   border-radius: 3px;
   padding: 0 15px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 760;
   letter-spacing: .02em;
   transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
@@ -44,7 +44,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
   color: var(--text-inverse);
   background: var(--surface-inverse);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 800;
   letter-spacing: -.08em;
 }
@@ -61,7 +61,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
   background-image: linear-gradient(rgba(24,26,22,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(24,26,22,.055) 1px, transparent 1px);
   background-size: 32px 32px;
 }
-.boot-screen b { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+.boot-screen b { font-size: calc(13px * var(--font-scale)); letter-spacing: .12em; text-transform: uppercase; }
 .boot-screen > div { display: flex; gap: 5px; }
 .boot-screen > div i { width: 6px; height: 18px; background: var(--accent); animation: boot 700ms ease-in-out infinite alternate; }
 .boot-screen > div i:nth-child(2) { animation-delay: 110ms; }

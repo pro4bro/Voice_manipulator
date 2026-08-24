@@ -1,8 +1,8 @@
 # State
 
-- **Current phase**: 03 Voice Training
+- **Current phase**: 03 Voice Training (with a delivered Phase 02/03 integration slice)
 - **Status**: Plan 03-01 complete; Plan 03-02 ready
-- **Last action**: Completed the portable Training Catalog, multi-speaker/emotion annotations, synchronized themes, Voice Training composition, and compact Media Pool right-click tagging. Recorded a full repository/project handoff for a clean next session.
+- **Last action**: Delivered background sequential detailed STT with optional AI transcript review, live in-Script browser speech transcript, detailed realtime waveform, and the Sound Library profile taxonomy/assignment workflow. Also corrected launcher UTF-8 diagnostics and increased UI typography to 150%.
 - **Next action**: Execute `.planning/phases/03-voice-training/03-02-PLAN.md`: compile only selected footage into a deterministic dataset manifest and add forced alignment/validation for supplied scripts before any fine-tune process starts.
-- **Blockers**: None for finalized recording/import STT. Live low-latency STT still needs a local streaming/chunking design.
-- **Decisions**: The folder containing `project.json` is the portable project aggregate; the app registry is disposable. Speech to Text owns Media Pool on the left, Script in the center, Recorder plus Speaker & Emotion plus Speaker Isolation on the right, and Timeline below; it has no Voice Vault or Control Rack. Voice Training replaces capture controls with Train and Training Job. Speaker Diarization and Voice Isolation are separate processors. Emotion may be asset-level or word-level; multi-emotion assets use `mix`. Environment Noise Profiles are learned references and remain separate from denoising. ASR may be skipped for a known script, but alignment/validation is still required before training. Legacy Studio is an interim adapter and upstream OmniVoice remains untouched.
+- **Blockers**: No functional blocker. Browser live transcript depends on browser SpeechRecognition; detailed STT remains local/background through the configured Studio adapter. AI review requires endpoint, model, and API key in Windows → Preferences.
+- **Decisions**: The folder containing project.json is the portable project aggregate; app registry and runtime preferences are machine-local. Media Pool and Sound Library are tabs in one left panel. Sound Library owns Speaker and Environment profiles, while both can be attached at footage and word level. OmniVoice remains untouched; its language/facet schema is exposed through the application adapter.

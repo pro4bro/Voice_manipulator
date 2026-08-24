@@ -57,7 +57,10 @@ class ProjectRecord(ProjectCreate):
 MediaKind = Literal["audio", "video"]
 MediaOrigin = Literal["import", "record"]
 MediaStatus = Literal["ready", "no-audio", "error"]
-MediaTranscriptionStatus = Literal["complete", "skipped", "not-applicable"]
+MediaTranscriptionStatus = Literal[
+    "queued", "processing", "reviewing", "complete", "skipped", "not-applicable", "error"
+]
+AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
 EmotionLabel = Literal[
     "exciting",
@@ -71,7 +74,6 @@ EmotionLabel = Literal[
     "critical",
     "mix",
 ]
-SpeakerGender = Literal["female", "male", "nonbinary", "unspecified"]
 
 
 class MediaRevision(DomainModel):
@@ -81,12 +83,19 @@ class MediaRevision(DomainModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class TimelineEditRange(DomainModel):
+    id: str = Field(default_factory=lambda: f"cut-{uuid4().hex[:12]}")
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+
+
 class MediaAssetCreate(DomainModel):
     name: str = Field(min_length=1, max_length=512)
     source_extension: str = Field(max_length=20)
     media_kind: MediaKind
     source_path: str
     analysis_path: str | None = None
+    removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
     studio_item_id: str | None = None
     url: str | None = None
     duration: float = Field(default=0, ge=0)
@@ -98,8 +107,13 @@ class MediaAssetCreate(DomainModel):
     origin: MediaOrigin
     status: MediaStatus = "ready"
     transcription_status: MediaTranscriptionStatus = "complete"
+    transcription_selected: bool = False
+    transcription_progress: int = Field(default=0, ge=0, le=100)
+    transcription_error: str | None = Field(default=None, max_length=2000)
+    ai_review_status: AIReviewStatus = "skipped"
     training_selected: bool = False
     speaker_profile_ids: list[str] = Field(default_factory=list)
+    environment_profile_ids: list[str] = Field(default_factory=list)
     emotion: EmotionLabel = "normal"
 
 
@@ -128,22 +142,44 @@ class MediaScriptUpdate(DomainModel):
     words: list[dict[str, Any]] | None = None
 
 
+class MediaTranscriptReviewResult(DomainModel):
+    asset: ProjectMediaAsset
+    reviewed_text: str
+    status: AIReviewStatus
+    error: str | None = None
+
+
+class MediaTimelineEditsUpdate(DomainModel):
+    removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
+
+
 class MediaTrainingSelection(DomainModel):
     selected: bool
 
 
+class MediaTranscriptionSelection(DomainModel):
+    selected: bool
+
+
+class MediaTranscriptionEnqueue(DomainModel):
+    asset_ids: list[str] = Field(min_length=1, max_length=500)
+
+
 class MediaAnnotationUpdate(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list)
+    environment_profile_ids: list[str] = Field(default_factory=list)
     emotion: EmotionLabel = "normal"
 
 
 class SpeakerProfile(DomainModel):
     id: str = Field(default_factory=lambda: f"speaker-{uuid4().hex[:12]}")
     name: str = Field(min_length=1, max_length=120)
-    language: str | None = Field(default=None, max_length=80)
+    language: str | None = Field(default=None, max_length=120)
+    language_id: str | None = Field(default=None, max_length=32)
     region: str | None = Field(default=None, max_length=120)
-    age: int | None = Field(default=None, ge=0, le=120)
-    gender: SpeakerGender = "unspecified"
+    age: str | None = Field(default=None, max_length=80)
+    gender: str = Field(default="unspecified", max_length=80)
+    attributes: dict[str, str] = Field(default_factory=dict)
     color: str = Field(default="#ff6745", pattern=r"^#[0-9a-fA-F]{6}$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -152,6 +188,7 @@ class EnvironmentNoiseProfile(DomainModel):
     id: str = Field(default_factory=lambda: f"noise-{uuid4().hex[:12]}")
     name: str = Field(min_length=1, max_length=120)
     asset_ids: list[str] = Field(default_factory=list)
+    attributes: dict[str, str] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -179,8 +216,74 @@ class MediaImportResult(DomainModel):
     elapsed: float
 
 
+class ProfileChoice(DomainModel):
+    id: str
+    label: str
+    hint: str | None = None
+
+
+class ProfileFacet(DomainModel):
+    id: str
+    label: str
+    options: list[ProfileChoice] = Field(default_factory=list)
+    hint: str | None = None
+
+
+class EngineProfileSchema(DomainModel):
+    engine_id: str
+    engine_name: str
+    languages: list[ProfileChoice] = Field(default_factory=list)
+    facets: list[ProfileFacet] = Field(default_factory=list)
+
+
+class AIReviewPreferences(DomainModel):
+    enabled: bool = False
+    base_url: str = Field(default="", max_length=1024)
+    model: str = Field(default="", max_length=256)
+    api_key: str | None = Field(default=None, max_length=4096)
+    api_key_configured: bool = False
+
+
+class EmotionStylePreferences(DomainModel):
+    color_mode: Literal["gradient", "per-emotion"] = "gradient"
+    gradient_start: str = Field(default="#18d9ff", max_length=32)
+    gradient_end: str = Field(default="#ff4b52", max_length=32)
+    emotion_colors: dict[str, str] = Field(
+        default_factory=lambda: {
+            "exciting": "#18d9ff", "funny": "#49e886", "good": "#b9ff38",
+            "low-energy": "#8ea2ff", "sad": "#7da9e8", "cry": "#bd8de8",
+            "angry": "#ff7b35", "critical": "#ff4b52",
+        }
+    )
+    background_enabled: bool = False
+    background_color: str = Field(default="#24384b", max_length=32)
+    background_opacity: float = Field(default=0.34, ge=0, le=1)
+
+
+class AppPreferences(DomainModel):
+    ai_review: AIReviewPreferences = Field(default_factory=AIReviewPreferences)
+    emotion_style: EmotionStylePreferences = Field(default_factory=EmotionStylePreferences)
+
+
 class SystemPaths(DomainModel):
     default_project_location: str
+
+
+class SystemMetrics(DomainModel):
+    cpu_percent: float = 0
+    gpu_percent: float | None = None
+    gpu_memory_used_mb: int | None = None
+    gpu_memory_total_mb: int | None = None
+    memory_percent: float = 0
+    memory_used_mb: int = 0
+    memory_total_mb: int = 0
+    network_mbps: float = 0
+    sampled_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SystemLog(DomainModel):
+    files: list[str] = Field(default_factory=list)
+    text: str = ""
 
 
 class FolderPickRequest(DomainModel):

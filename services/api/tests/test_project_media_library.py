@@ -168,3 +168,35 @@ def test_media_library_migrates_legacy_absolute_asset_paths(tmp_path):
     assert migrated.source_path == "assets/media/asset-legacy/source.wav"
     assert migrated.analysis_path == "assets/media/asset-legacy/analysis.wav"
     assert str(tmp_path) not in persisted
+
+
+def test_media_library_removes_only_the_selected_asset_folder_and_annotations(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Remove Media"))
+    asset_dir = Path(project.project_path) / "assets" / "media" / "asset-remove"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "source.wav").write_bytes(b"source")
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="remove.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/asset-remove/source.wav",
+            duration=1,
+            origin="import",
+        ),
+        "asset-remove",
+    )
+
+    updated = library.update_annotations(
+        project.id, asset.id, ["speaker-a"], ["environment-room"], "normal"
+    )
+    library.remove(project.id, asset.id)
+
+    assert updated.environment_profile_ids == ["environment-room"]
+    assert not asset_dir.exists()
+    assert library.list(project.id) == []
+    activity = Path(project.project_path) / "activity" / "events.jsonl"
+    assert "MEDIA_REMOVED" in activity.read_text(encoding="utf-8")

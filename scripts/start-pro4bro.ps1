@@ -42,13 +42,32 @@ $env:HF_HUB_DISABLE_TELEMETRY = "1"
 $env:DO_NOT_TRACK = "1"
 
 New-Item -ItemType Directory -Force -Path $env:PRO4BRO_DATA_ROOT, $env:HF_HOME, $env:TORCH_HOME | Out-Null
+$logRoot = Join-Path $env:PRO4BRO_DATA_ROOT "logs"
+New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+$serverOutputLog = Join-Path $logRoot "pro4bro-api.out.log"
+$serverErrorLog = Join-Path $logRoot "pro4bro-api.err.log"
+$studioOutputLog = Join-Path $logRoot "omnivoice-studio.out.log"
+$studioErrorLog = Join-Path $logRoot "omnivoice-studio.err.log"
+Remove-Item -LiteralPath $serverOutputLog, $serverErrorLog, $studioOutputLog, $studioErrorLog -Force -ErrorAction SilentlyContinue
 
+function Get-StartupDiagnostics {
+    param(
+        [string[]]$Paths
+    )
+
+    foreach ($path in $Paths) {
+        if (Test-Path -LiteralPath $path) {
+            "---- $path ----"
+            Get-Content -LiteralPath $path -Tail 40
+        }
+    }
+}
 $studioServer = $null
 $studioExisting = Get-NetTCPConnection -LocalPort 18081 -State Listen -ErrorAction SilentlyContinue
 if (-not $studioExisting) {
     if ((Test-Path -LiteralPath $legacyPython) -and (Test-Path -LiteralPath (Join-Path $legacyRoot "studio_app\server.py"))) {
         Write-Host "Starting OmniVoice Studio runtime..." -ForegroundColor DarkGray
-        $studioServer = Start-Process -FilePath $legacyPython -ArgumentList "-m", "studio_app.server", "--host", "127.0.0.1", "--port", "18081" -WorkingDirectory $legacyRoot -PassThru -WindowStyle Hidden
+        $studioServer = Start-Process -FilePath $legacyPython -ArgumentList "-m", "studio_app.server", "--host", "127.0.0.1", "--port", "18081" -WorkingDirectory $legacyRoot -RedirectStandardOutput $studioOutputLog -RedirectStandardError $studioErrorLog -PassThru -WindowStyle Hidden
         $studioReady = $false
         for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
             if ($studioServer.HasExited) { throw "OmniVoice Studio runtime dừng sớm với code $($studioServer.ExitCode)." }
@@ -74,11 +93,15 @@ if ($existing) {
     exit 0
 }
 
-$server = Start-Process -FilePath $python -ArgumentList "-m", "app" -WorkingDirectory $apiRoot -PassThru -WindowStyle Hidden
+
+$server = Start-Process -FilePath $python -ArgumentList "-m", "app" -WorkingDirectory $apiRoot -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru -WindowStyle Hidden
 try {
     $ready = $false
-    for ($attempt = 0; $attempt -lt 40; $attempt += 1) {
-        if ($server.HasExited) { throw "Local server dừng sớm với code $($server.ExitCode)." }
+    for ($attempt = 0; $attempt -lt 240; $attempt += 1) {
+        if ($server.HasExited) {
+            $diagnostics = (Get-StartupDiagnostics -Paths @($serverOutputLog, $serverErrorLog)) -join [Environment]::NewLine
+            throw "Local server dừng sớm với code $($server.ExitCode).`n$diagnostics"
+        }
         try {
             $health = Invoke-RestMethod -Uri "$url/api/health" -TimeoutSec 1
             if ($health.status -eq "ok") { $ready = $true; break }
@@ -87,7 +110,10 @@ try {
             Start-Sleep -Milliseconds 250
         }
     }
-    if (-not $ready) { throw "Local server không sẵn sàng sau 10 giây." }
+    if (-not $ready) {
+        $diagnostics = (Get-StartupDiagnostics -Paths @($serverOutputLog, $serverErrorLog)) -join [Environment]::NewLine
+        throw "Local server không sẵn sàng sau 60 giây.`n$diagnostics"
+    }
 
     Start-Process $url
     Write-Host "`nPro4Bro Voice Manipulator đang chạy tại $url" -ForegroundColor Green
@@ -97,4 +123,5 @@ try {
 finally {
     if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
     if ($studioServer -and -not $studioServer.HasExited) { Stop-Process -Id $studioServer.Id -Force }
+    # Keep the runtime logs under data/logs so the status bar can show the real process history.
 }

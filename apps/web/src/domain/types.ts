@@ -1,7 +1,8 @@
 export type WorkspacePage = "speech-to-text" | "voice-training" | "voice-manipulator";
 export type ThemeMode = "light" | "dark";
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
-export type SpeakerGender = "female" | "male" | "nonbinary" | "unspecified";
+export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
+export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
 
 export type ManipulatorMode =
   | "voice-over"
@@ -11,6 +12,7 @@ export type ManipulatorMode =
   | "voice-patch";
 
 export type ModuleId =
+  | "library-panel"
   | "media-pool"
   | "voice-vault"
   | "script"
@@ -62,6 +64,7 @@ export interface StudioWord {
   reviewState?: "pending" | "confirmed" | "manual";
   selectedVariant?: "realtime" | "accurate" | "corrected" | "manual" | null;
   speakerId?: string | null;
+  environmentProfileIds?: string[];
   emotion?: EmotionLabel | null;
 }
 
@@ -94,6 +97,19 @@ export interface MediaRevision {
   createdAt: string;
 }
 
+export interface TranscriptReviewResult {
+  asset: ProjectMediaAsset;
+  reviewedText: string;
+  status: AIReviewStatus;
+  error: string | null;
+}
+
+export interface TimelineEditRange {
+  id: string;
+  start: number;
+  end: number;
+}
+
 export interface ProjectMediaAsset {
   id: string;
   name: string;
@@ -101,6 +117,7 @@ export interface ProjectMediaAsset {
   mediaKind: "audio" | "video";
   sourcePath: string;
   analysisPath?: string | null;
+  removedRanges?: TimelineEditRange[];
   studioItemId: string | null;
   url: string | null;
   duration: number;
@@ -111,9 +128,14 @@ export interface ProjectMediaAsset {
   words: StudioWord[];
   origin: "import" | "record";
   status?: "ready" | "no-audio" | "error";
-  transcriptionStatus: "complete" | "skipped" | "not-applicable";
+  transcriptionStatus: MediaTranscriptionStatus;
+  transcriptionSelected: boolean;
+  transcriptionProgress?: number;
+  transcriptionError: string | null;
+  aiReviewStatus: AIReviewStatus;
   trainingSelected: boolean;
   speakerProfileIds: string[];
+  environmentProfileIds: string[];
   emotion: EmotionLabel;
   createdAt: string;
   updatedAt: string;
@@ -124,9 +146,11 @@ export interface SpeakerProfile {
   id: string;
   name: string;
   language: string | null;
+  languageId: string | null;
   region: string | null;
-  age: number | null;
-  gender: SpeakerGender;
+  age: string | null;
+  gender: string;
+  attributes: Record<string, string>;
   color: string;
   createdAt: string;
 }
@@ -135,6 +159,7 @@ export interface EnvironmentNoiseProfile {
   id: string;
   name: string;
   assetIds: string[];
+  attributes: Record<string, string>;
   createdAt: string;
 }
 
@@ -156,15 +181,65 @@ export interface TrainingCatalog {
   updatedAt: string;
 }
 
+export interface ProfileChoice {
+  id: string;
+  label: string;
+  hint?: string | null;
+}
+
+export interface ProfileFacet {
+  id: string;
+  label: string;
+  options: ProfileChoice[];
+  hint?: string | null;
+}
+
+export interface EngineProfileSchema {
+  engineId: string;
+  engineName: string;
+  languages: ProfileChoice[];
+  facets: ProfileFacet[];
+}
+
+export interface AIReviewPreferences {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  apiKey: string | null;
+  apiKeyConfigured: boolean;
+}
+
+export type EmotionColorMode = "gradient" | "per-emotion";
+
+export interface EmotionStylePreferences {
+  colorMode: EmotionColorMode;
+  gradientStart: string;
+  gradientEnd: string;
+  emotionColors: Record<string, string>;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  backgroundOpacity: number;
+}
+
+export interface AppPreferences {
+  aiReview: AIReviewPreferences;
+  emotionStyle: EmotionStylePreferences;
+}
+
 export interface MediaImportChoice {
   file: File;
   transcribe: boolean;
 }
 
+export interface WaveformPoint {
+  min: number;
+  max: number;
+}
+
 export interface RecordingWaveformPreview {
   active: boolean;
   duration: number;
-  samples: number[];
+  samples: WaveformPoint[];
 }
 
 export interface ProjectMediaImportResult {
@@ -197,4 +272,20 @@ export interface WorkspaceManifest {
   };
   modes: ManipulatorMode[];
   plannedModes: ManipulatorMode[];
+}
+export interface SystemMetrics {
+  cpuPercent: number;
+  gpuPercent: number | null;
+  gpuMemoryUsedMb: number | null;
+  gpuMemoryTotalMb: number | null;
+  memoryPercent: number;
+  memoryUsedMb: number;
+  memoryTotalMb: number;
+  networkMbps: number;
+  sampledAt: string;
+}
+
+export interface SystemLog {
+  files: string[];
+  text: string;
 }

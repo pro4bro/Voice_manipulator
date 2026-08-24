@@ -24,3 +24,13 @@ def test_engine_status_is_honest_when_checkout_is_missing(tmp_path):
     assert status.installed is False
     assert status.revision is None
     assert status.dirty is False
+
+
+def test_engine_profile_schema_exposes_omnivoice_facet_contract(tmp_path):
+    engine_root = tmp_path / "OmniVoice"
+    engine_root.mkdir()
+    schema = OmniVoiceEngine(engine_root).profile_schema()
+
+    assert schema.engine_id == "omnivoice"
+    assert {facet.id for facet in schema.facets} >= {"age", "gender", "accent", "dialect"}
+    assert next(facet for facet in schema.facets if facet.id == "age").options[0].id == "child"

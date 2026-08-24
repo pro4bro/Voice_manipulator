@@ -40,9 +40,19 @@ export function ControlRack({
       <label className="rack-control">
         <span><b>Source gain</b><output>{gain > 0 ? "+" : ""}{gain.toFixed(1)} dB</output></span>
         <input
+          aria-label="Nhập Source gain dB"
+          className="rack-gain-number"
+          max="96"
+          min="-96"
+          onChange={(event) => onGainChange(Number(event.target.value))}
+          step="0.5"
+          type="number"
+          value={gain}
+        />
+        <input
           aria-label="Source gain"
-          max="12"
-          min="-60"
+          max="96"
+          min="-96"
           onChange={(event) => onGainChange(Number(event.target.value))}
           step="0.5"
           type="range"

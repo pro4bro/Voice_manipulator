@@ -12,7 +12,7 @@ from uuid import uuid4
 import httpx
 from fastapi import UploadFile
 
-from app.domain.models import MediaAssetCreate, MediaImportResult, ProjectRecord
+from app.domain.models import MediaAssetCreate, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
 
 
@@ -41,6 +41,7 @@ class MediaImportProcessor:
         origin: str,
         realtime_text: str = "",
         transcribe: bool = True,
+        queue_for_transcription: bool = False,
     ) -> MediaImportResult:
         started = time.perf_counter()
         filename = Path(upload.filename or "media.wav").name
@@ -60,8 +61,14 @@ class MediaImportProcessor:
         portable_source_path = source_path.relative_to(Path(project.project_path)).as_posix()
 
         probe = await asyncio.to_thread(self._probe, source_path)
-        audio_stream = next((stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"), None)
-        video_stream = next((stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"), None)
+        audio_stream = next(
+            (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
+            None,
+        )
+        video_stream = next(
+            (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
+            None,
+        )
         duration = self._duration(probe)
         media_kind = self._media_kind(extension, audio_stream, video_stream)
 
@@ -86,54 +93,147 @@ class MediaImportProcessor:
         analysis_path = asset_dir / "analysis.wav"
         await asyncio.to_thread(self._extract_audio, source_path, analysis_path)
         portable_analysis_path = analysis_path.relative_to(Path(project.project_path)).as_posix()
+        common = {
+            "name": filename,
+            "source_extension": extension,
+            "media_kind": media_kind,
+            "source_path": portable_source_path,
+            "analysis_path": portable_analysis_path,
+            "url": f"/api/projects/{project.id}/media/{asset_id}/audio",
+            "duration": duration,
+            "sample_rate": self._sample_rate(audio_stream),
+            "audio_codec": self._codec(audio_stream),
+            "video_codec": self._codec(video_stream),
+            "origin": origin,
+            "status": "ready",
+        }
         if not transcribe:
             asset = self.library.create(
                 project.id,
                 MediaAssetCreate(
-                    name=filename,
-                    source_extension=extension,
-                    media_kind=media_kind,
-                    source_path=portable_source_path,
-                    analysis_path=portable_analysis_path,
-                    url=f"/api/projects/{project.id}/media/{asset_id}/audio",
-                    duration=duration,
-                    sample_rate=self._sample_rate(audio_stream),
-                    audio_codec=self._codec(audio_stream),
-                    video_codec=self._codec(video_stream),
-                    origin=origin,
-                    status="ready",
-                    transcription_status="skipped",
+                    **common,
+                    text=realtime_text,
+                    transcription_status="queued" if queue_for_transcription else "skipped",
+                    transcription_selected=queue_for_transcription,
+                    ai_review_status="pending" if queue_for_transcription else "skipped",
                 ),
                 asset_id,
             )
-            return MediaImportResult(
-                asset=asset, elapsed=round(time.perf_counter() - started, 2)
-            )
+            return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
         item, studio_elapsed = await self._run_studio_import(analysis_path, origin, realtime_text)
         asset = self.library.create(
             project.id,
             MediaAssetCreate(
-                name=filename,
-                source_extension=extension,
-                media_kind=media_kind,
-                source_path=portable_source_path,
-                analysis_path=portable_analysis_path,
+                **common,
                 studio_item_id=str(item.get("id", "")) or None,
-                url=f"/api/projects/{project.id}/media/{asset_id}/audio",
                 duration=float(item.get("duration") or duration),
-                sample_rate=int(item.get("sample_rate") or 24000),
-                audio_codec=self._codec(audio_stream),
-                video_codec=self._codec(video_stream),
+                sample_rate=int(item.get("sample_rate") or self._sample_rate(audio_stream) or 24000),
                 text=str(item.get("text", "")),
                 words=list(item.get("words", [])),
-                origin=origin,
-                status="ready",
                 transcription_status="complete",
             ),
             asset_id,
         )
         return MediaImportResult(asset=asset, item=item, elapsed=studio_elapsed)
+
+    async def transcribe_existing(
+        self, project: ProjectRecord, asset: ProjectMediaAsset, realtime_text: str = ""
+    ) -> tuple[ProjectMediaAsset, float]:
+        if not asset.analysis_path:
+            raise ValueError("Footage không có analysis audio để chạy Speech to Text.")
+        analysis_path = Path(project.project_path) / asset.analysis_path
+        if not analysis_path.is_file():
+            raise FileNotFoundError("Analysis audio không còn trong project.")
+        processing_path, kept_ranges = await asyncio.to_thread(self._prepare_processing_audio, analysis_path, asset)
+        item, elapsed = await self._run_studio_import(
+            processing_path,
+            asset.origin,
+            realtime_text or asset.text,
+        )
+        if kept_ranges:
+            item = self._restore_original_timeline(item, kept_ranges, asset.duration)
+        updated = self.library.apply_transcription(project.id, asset.id, item, asset.duration)
+        return updated, elapsed
+
+    def _prepare_processing_audio(
+        self, analysis_path: Path, asset: ProjectMediaAsset
+    ) -> tuple[Path, list[tuple[float, float]] | None]:
+        """Create compact STT input and keep its inverse mapping to the original Timeline."""
+        removed = sorted(asset.removed_ranges, key=lambda item: (item.start, item.end))
+        if not removed:
+            return analysis_path, None
+        duration = max(0.0, asset.duration)
+        cursor = 0.0
+        kept: list[tuple[float, float]] = []
+        for item in removed:
+            start = min(duration, max(0.0, item.start))
+            end = min(duration, max(start, item.end))
+            if start > cursor:
+                kept.append((cursor, start))
+            cursor = max(cursor, end)
+        if cursor < duration:
+            kept.append((cursor, duration))
+        if not kept:
+            raise ValueError("Toàn bộ footage đã bị loại khỏi timeline; hãy Uncut hoặc Reset trước khi chạy STT.")
+        destination = analysis_path.with_name("analysis-timeline-edited.wav")
+        filters = [
+            f"[0:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS[s{index}]"
+            for index, (start, end) in enumerate(kept)
+        ]
+        inputs = "".join(f"[s{index}]" for index in range(len(kept)))
+        filters.append(f"{inputs}concat=n={len(kept)}:v=0:a=1[out]")
+        result = subprocess.run(
+            [
+                self.ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error", "-i", str(analysis_path),
+                "-filter_complex", ";".join(filters), "-map", "[out]", "-ac", "1", "-ar", "24000",
+                "-c:a", "pcm_s16le", str(destination),
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.returncode != 0 or not destination.is_file():
+            raise ValueError(f"Không tạo được audio đã cắt: {result.stderr.strip() or 'FFmpeg error'}")
+        return destination, kept
+
+    @staticmethod
+    def _restore_original_timeline(
+        item: dict[str, Any], kept_ranges: list[tuple[float, float]], original_duration: float
+    ) -> dict[str, Any]:
+        """Map compacted STT word offsets back to the original, playable audio timeline."""
+        restored = dict(item)
+
+        def original_time(value: Any) -> float:
+            try:
+                compact_time = max(0.0, float(value))
+            except (TypeError, ValueError):
+                compact_time = 0.0
+            consumed = 0.0
+            for start, end in kept_ranges:
+                span = max(0.0, end - start)
+                if compact_time <= consumed + span:
+                    return min(end, max(start, start + compact_time - consumed))
+                consumed += span
+            return kept_ranges[-1][1]
+
+        restored_words: list[dict[str, Any]] = []
+        for raw_word in item.get("words", []):
+            if not isinstance(raw_word, dict):
+                continue
+            word = dict(raw_word)
+            start = original_time(word.get("start", 0.0))
+            end = original_time(word.get("end", word.get("start", 0.0)))
+            word["start"] = start
+            word["end"] = max(start, end)
+            restored_words.append(word)
+        restored["words"] = restored_words
+        # The app always plays the original project analysis WAV, so its duration stays authoritative.
+        restored["duration"] = max(0.0, original_duration)
+        return restored
 
     async def _save_upload(self, upload: UploadFile, destination: Path) -> None:
         size = 0
@@ -226,7 +326,9 @@ class MediaImportProcessor:
     @staticmethod
     def _find_ffprobe(ffmpeg_path: str | None) -> str | None:
         if ffmpeg_path:
-            sibling = Path(ffmpeg_path).with_name("ffprobe.exe" if Path(ffmpeg_path).suffix else "ffprobe")
+            sibling = Path(ffmpeg_path).with_name(
+                "ffprobe.exe" if Path(ffmpeg_path).suffix else "ffprobe"
+            )
             if sibling.is_file():
                 return str(sibling)
         return shutil.which("ffprobe")

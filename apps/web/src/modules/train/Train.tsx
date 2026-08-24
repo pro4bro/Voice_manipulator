@@ -32,6 +32,7 @@ export function Train({ assets, catalog, onCatalogChange }: TrainProps) {
       id: `noise-${crypto.randomUUID().slice(0, 12)}`,
       name,
       assetIds: noiseAssetIds,
+      attributes: {},
       createdAt: new Date().toISOString(),
     };
     onCatalogChange({
@@ -54,7 +55,7 @@ export function Train({ assets, catalog, onCatalogChange }: TrainProps) {
               <i style={{ background: speaker.color }} />{speaker.name}
             </label>
           ))}
-          {!catalog.speakers.length ? <small>Tạo Speaker Profile trong Voice Vault.</small> : null}
+          {!catalog.speakers.length ? <small>Tạo Speaker Profile trong Sound Library.</small> : null}
         </div>
       </div>
       <div className="train-parameter-grid">

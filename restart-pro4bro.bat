@@ -6,12 +6,12 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\start-pro4bro.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\restart-pro4bro.ps1"
 set "exitCode=%errorlevel%"
 popd
 if not "%exitCode%"=="0" (
   echo.
-  echo Pro4Bro could not start. Review the error above.
+  echo Pro4Bro could not restart. Review the error above.
   pause
 )
 exit /b %exitCode%

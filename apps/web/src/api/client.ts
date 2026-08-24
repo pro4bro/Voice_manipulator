@@ -1,4 +1,24 @@
-import type { EmotionLabel, EngineStatus, MediaRevisionSource, Project, ProjectCreate, ProjectMediaAsset, ProjectMediaImportResult, StudioAudioItem, StudioJobResult, StudioWord, SystemPaths, TrainingCatalog, WorkspacePage } from "../domain/types";
+import type {
+  AppPreferences,
+  EmotionLabel,
+  EngineProfileSchema,
+  EngineStatus,
+  MediaRevisionSource,
+  Project,
+  ProjectCreate,
+  ProjectMediaAsset,
+  ProjectMediaImportResult,
+  StudioAudioItem,
+  StudioJobResult,
+  StudioWord,
+  SystemLog,
+  SystemMetrics,
+  SystemPaths,
+  TimelineEditRange,
+  TranscriptReviewResult,
+  TrainingCatalog,
+  WorkspacePage,
+} from "../domain/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
@@ -22,6 +42,7 @@ function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
     reviewState: word.reviewState ?? word.review_state as StudioWord["reviewState"],
     selectedVariant: word.selectedVariant ?? word.selected_variant as StudioWord["selectedVariant"],
     speakerId: word.speakerId ?? word.speaker_id as string | null | undefined,
+    environmentProfileIds: word.environmentProfileIds ?? word.environment_profile_ids as string[] | undefined ?? [],
   };
 }
 
@@ -41,8 +62,14 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
   return {
     ...asset,
     transcriptionStatus: asset.transcriptionStatus ?? "complete",
+    transcriptionSelected: asset.transcriptionSelected ?? false,
+    transcriptionProgress: asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0),
+    transcriptionError: asset.transcriptionError ?? null,
+    aiReviewStatus: asset.aiReviewStatus ?? "skipped",
+    removedRanges: asset.removedRanges ?? [],
     trainingSelected: asset.trainingSelected ?? false,
     speakerProfileIds: asset.speakerProfileIds ?? [],
+    environmentProfileIds: asset.environmentProfileIds ?? [],
     emotion: asset.emotion ?? "normal",
     url: asset.url?.startsWith("/media/") ? `/api/studio${asset.url}` : asset.url,
     words: (asset.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
@@ -58,6 +85,12 @@ export const api = {
   setLastPage: (projectId: string, page: WorkspacePage) =>
     request<Project>(`/api/projects/${projectId}/last-page?page=${page}`, { method: "PATCH" }),
   getOmniVoiceStatus: () => request<EngineStatus>("/api/engines/omnivoice"),
+  getOmniVoiceProfileSchema: () => request<EngineProfileSchema>("/api/engines/omnivoice/profile-schema"),
+  getPreferences: () => request<AppPreferences>("/api/preferences"),
+  savePreferences: (preferences: AppPreferences) =>
+    request<AppPreferences>("/api/preferences", { method: "PUT", body: JSON.stringify(preferences) }),
+  getSystemStatus: () => request<SystemMetrics>("/api/system/status"),
+  getSystemLogs: () => request<SystemLog>("/api/system/logs?lines=320"),
   getSystemPaths: () => request<SystemPaths>("/api/system/paths"),
   pickFolder: (initialPath: string) =>
     request<{ path: string | null }>("/api/system/pick-folder", {
@@ -68,12 +101,20 @@ export const api = {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
     return assets.map(normalizeMediaAsset);
   },
-  importProjectMedia: async (projectId: string, file: File, origin: "record" | "import", realtimeText = "", transcribe = true) => {
+  importProjectMedia: async (
+    projectId: string,
+    file: File,
+    origin: "record" | "import",
+    realtimeText = "",
+    transcribe = false,
+    queueForTranscription = false,
+  ) => {
     const body = new FormData();
     body.append("file", file);
     body.append("origin", origin);
     body.append("realtime_text", realtimeText);
     body.append("transcribe", String(transcribe));
+    body.append("queue_for_transcription", String(queueForTranscription));
     const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body });
     return {
       ...result,
@@ -88,6 +129,19 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  reviewMediaTranscript: async (projectId: string, assetId: string) => {
+    const result = await request<TranscriptReviewResult>(`/api/projects/${projectId}/media/${assetId}/review`, {
+      method: "POST",
+    });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
+  updateMediaTimelineEdits: async (projectId: string, assetId: string, removedRanges: TimelineEditRange[]) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/timeline-edits`, {
+      method: "PATCH",
+      body: JSON.stringify({ removedRanges }),
+    });
+    return normalizeMediaAsset(asset);
+  },
   setMediaTrainingSelected: async (projectId: string, assetId: string, selected: boolean) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/training-selection`, {
       method: "PATCH",
@@ -95,10 +149,32 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
-  updateMediaAnnotations: async (projectId: string, assetId: string, speakerProfileIds: string[], emotion: EmotionLabel) => {
+  setMediaTranscriptionSelected: async (projectId: string, assetId: string, selected: boolean) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/transcription-selection`, {
+      method: "PATCH",
+      body: JSON.stringify({ selected }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  enqueueMediaTranscriptions: async (projectId: string, assetIds: string[]) => {
+    const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/transcriptions`, {
+      method: "POST",
+      body: JSON.stringify({ assetIds }),
+    });
+    return assets.map(normalizeMediaAsset);
+  },
+  removeProjectMedia: (projectId: string, assetId: string) =>
+    request<void>(`/api/projects/${projectId}/media/${assetId}`, { method: "DELETE" }),
+  updateMediaAnnotations: async (
+    projectId: string,
+    assetId: string,
+    speakerProfileIds: string[],
+    environmentProfileIds: string[],
+    emotion: EmotionLabel,
+  ) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/annotations`, {
       method: "PATCH",
-      body: JSON.stringify({ speakerProfileIds, emotion }),
+      body: JSON.stringify({ speakerProfileIds, environmentProfileIds, emotion }),
     });
     return normalizeMediaAsset(asset);
   },

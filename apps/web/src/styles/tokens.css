@@ -38,6 +38,8 @@
   --soft-fill: rgba(24, 26, 22, 0.045);
   --strong-fill: rgba(24, 26, 22, 0.085);
   --overlay: rgba(17, 19, 15, 0.68);
+  --font-scale: .96;
+  --script-font-adjust: .75;
   --display: "Bahnschrift", "Aptos Display", sans-serif;
   --editorial: "Georgia Pro", Georgia, serif;
   --mono: "Cascadia Mono", "IBM Plex Mono", Consolas, monospace;
