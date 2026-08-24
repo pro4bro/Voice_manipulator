@@ -18,6 +18,7 @@ import type {
   ThemeMode,
   SystemMetrics,
   TimelineEditRange,
+  TimelineGainKeyframe,
   TrainingCatalog,
   WorkspacePage,
 } from "../domain/types";
@@ -93,7 +94,6 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [liveTranscriptActive, setLiveTranscriptActive] = useState(false);
   const [aiReviewBusy, setAiReviewBusy] = useState(false);
-  const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const [trainingCatalog, setTrainingCatalog] = useState<TrainingCatalog>(emptyTrainingCatalog);
   const [profileSchema, setProfileSchema] = useState<EngineProfileSchema | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(defaultPreferences);
@@ -293,15 +293,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     setCatalogRevision(catalogRevisionRef.current);
   }
 
-  async function updateTimelineEdits(ranges: TimelineEditRange[]) {
+  async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[]) {
     if (!selectedAssetId) return;
     const previous = mediaAssets.find((asset) => asset.id === selectedAssetId);
     if (!previous) return;
-    setMediaAssets((current) => current.map((asset) => asset.id === selectedAssetId ? { ...asset, removedRanges: ranges } : asset));
+    const nextKeyframes = gainKeyframes ?? previous.gainKeyframes ?? [];
+    setMediaAssets((current) => current.map((asset) => asset.id === selectedAssetId ? { ...asset, removedRanges: ranges, gainKeyframes: nextKeyframes } : asset));
     try {
-      const updated = await api.updateMediaTimelineEdits(project.id, selectedAssetId, ranges);
+      const updated = await api.updateMediaTimelineEdits(project.id, selectedAssetId, ranges, nextKeyframes);
       setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
-      setNotice(ranges.length ? `${ranges.length} đoạn đã được loại khỏi audio xử lý STT/training.` : "Đã reset timeline; STT/training sẽ dùng lại toàn bộ audio.");
+      setNotice(nextKeyframes.length ? `Đã lưu ${nextKeyframes.length} keyframe Auto Calibration.` : ranges.length ? `${ranges.length} đoạn đã được loại khỏi audio xử lý STT/training.` : "Đã reset timeline; STT/training sẽ dùng lại toàn bộ audio.");
     } catch (error) {
       setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
       setNotice(error instanceof Error ? error.message : "Không lưu được timeline edits");
@@ -559,7 +560,6 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     selectedAssetId,
     mediaBusy,
     recordingPreview,
-    activeWordIndex,
     liveTranscriptActive,
     emotionStyle: preferences.emotionStyle,
     aiReviewText: latestAiRevision?.text ?? null,
@@ -577,8 +577,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     onSelectAsset: selectMediaAsset,
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
-    onActiveWordChange: setActiveWordIndex,
-    onTimelineEditsChange: (ranges) => void updateTimelineEdits(ranges),
+    onTimelineEditsChange: (ranges, gainKeyframes) => void updateTimelineEdits(ranges, gainKeyframes),
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
     onQueueTranscriptions: () => void queueSelectedTranscriptions(),
@@ -593,7 +592,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
     onRunAiReview: () => void runAiReview(),
-  }), [activePage, activeWordIndex, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
+  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
 
   return (
     <main className="workspace-shell">

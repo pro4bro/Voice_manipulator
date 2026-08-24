@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
-import type { RecordingWaveformPreview, StudioWord, TimelineEditRange } from "../../domain/types";
+import { publishPlaybackWord } from "../../domain/playback-sync";
+import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
+import type { RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -23,9 +25,11 @@ interface TimelineProps {
   gain: number;
   recordingPreview?: RecordingWaveformPreview | null;
   removedRanges?: TimelineEditRange[];
+  gainKeyframes?: TimelineGainKeyframe[];
   onGainChange: (value: number) => void;
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
-  onActiveWordChange?: (index: number) => void;
+  onGainKeyframesChange?: (keyframes: TimelineGainKeyframe[]) => void;
+
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8];
@@ -143,9 +147,10 @@ export function Timeline({
   gain,
   recordingPreview = null,
   removedRanges = [],
+  gainKeyframes = [],
   onGainChange,
   onRemovedRangesChange,
-  onActiveWordChange,
+  onGainKeyframesChange,
 }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -166,10 +171,11 @@ export function Timeline({
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
+  const timelinePixelWidthRef = useRef(0);
   const playheadDragRef = useRef(false);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFrameRef = useRef<number | null>(null);
   const lastMeterStateUpdateRef = useRef(0);
@@ -213,6 +219,23 @@ export function Timeline({
     if (!gainInteractionRef.current) setDraftGain(gain);
   }, [gain]);
 
+  useEffect(() => {
+    setAutoCalibrate(gainKeyframes.length > 0);
+  }, [gainKeyframes.length, take?.id]);
+
+  useLayoutEffect(() => {
+    const canvas = timelineCanvasRef.current;
+    if (!canvas) return;
+    const update = () => {
+      timelinePixelWidthRef.current = canvas.getBoundingClientRect().width;
+      paintPlayhead(currentTime);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [duration, zoom]);
+
   useLayoutEffect(() => {
     if (isRecording || playheadDragRef.current) return;
     followPlayhead();
@@ -241,19 +264,14 @@ export function Timeline({
   }, [isRecording, recordingPreview?.duration]);
 
   useEffect(() => {
-    onActiveWordChange?.(activeWordIndex);
-  }, [activeWordIndex, onActiveWordChange]);
+    publishPlaybackWord(take?.id, activeWordIndex);
+  }, [activeWordIndex, take?.id]);
 
-  useEffect(() => () => onActiveWordChange?.(-1), [onActiveWordChange]);
-
-  useEffect(() => {
-    const node = gainNodeRef.current;
-    if (node) node.gain.setTargetAtTime(10 ** (gain / 20), node.context.currentTime, 0.01);
-  }, [gain]);
+  useEffect(() => () => publishPlaybackWord(null, -1), []);
 
   useEffect(() => {
-    configureAutoCalibrate();
-  }, [autoCalibrate]);
+    scheduleGainAutomation();
+  }, [autoCalibrate, gain, gainKeyframes, playbackRate]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = playbackRate;
@@ -267,7 +285,10 @@ export function Timeline({
 
   function paintPlayhead(time: number) {
     const percent = Math.min(100, Math.max(0, (time / Math.max(duration, 0.001)) * 100));
-    if (playheadRef.current) playheadRef.current.style.left = `${percent}%`;
+    const node = playheadRef.current;
+    if (!node) return;
+    const width = timelinePixelWidthRef.current || node.parentElement?.getBoundingClientRect().width || 0;
+    node.style.transform = `translate3d(${(width * percent) / 100}px, 0, 0)`;
   }
 
   function syncPlaybackClock(audio = audioRef.current, forceState = true) {
@@ -348,7 +369,7 @@ export function Timeline({
         const bytes = await response.arrayBuffer();
         context = new AudioContext();
         const buffer = await context.decodeAudioData(bytes.slice(0));
-        const pointCount = Math.min(24000, Math.max(2400, Math.ceil(buffer.duration * 180)));
+        const pointCount = Math.min(7200, Math.max(1800, Math.ceil(buffer.duration * 72)));
         const samplesPerPoint = Math.max(1, Math.floor(buffer.length / pointCount));
         const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
         const nextEnvelope = Array.from({ length: pointCount }, (_, pointIndex) => {
@@ -379,14 +400,20 @@ export function Timeline({
     return () => controller.abort();
   }, [take?.url]);
 
-  function configureAutoCalibrate(compressor = compressorRef.current) {
-    if (!compressor) return;
-    const now = compressor.context.currentTime;
-    compressor.threshold.setTargetAtTime(autoCalibrate ? -1 : 0, now, 0.01);
-    compressor.knee.setTargetAtTime(autoCalibrate ? 0 : 40, now, 0.01);
-    compressor.ratio.setTargetAtTime(autoCalibrate ? 20 : 1, now, 0.01);
-    compressor.attack.setTargetAtTime(0.003, now, 0.01);
-    compressor.release.setTargetAtTime(0.08, now, 0.01);
+  function scheduleGainAutomation(audio = audioRef.current) {
+    const node = gainNodeRef.current;
+    if (!node) return;
+    const now = node.context.currentTime;
+    const sourceTime = audio?.currentTime ?? 0;
+    const playbackSpeed = Math.max(0.01, audio?.playbackRate ?? playbackRate);
+    const keyframes = autoCalibrate ? gainKeyframes : [];
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(dbToLinear(gainAtTime(keyframes, sourceTime, gain)), now);
+    for (const frame of keyframes) {
+      if (frame.time <= sourceTime + 0.0005) continue;
+      const when = now + (frame.time - sourceTime) / playbackSpeed;
+      node.gain.linearRampToValueAtTime(dbToLinear(frame.gainDb), when);
+    }
   }
 
   async function preparePlayback(audio: HTMLAudioElement) {
@@ -395,20 +422,16 @@ export function Timeline({
       context = new AudioContext();
       const source = context.createMediaElementSource(audio);
       const gainNode = context.createGain();
-      const compressor = context.createDynamicsCompressor();
       const analyser = context.createAnalyser();
       analyser.fftSize = 1024;
-      gainNode.gain.value = 10 ** (gain / 20);
-      configureAutoCalibrate(compressor);
-      source.connect(gainNode).connect(compressor).connect(analyser).connect(context.destination);
+      source.connect(gainNode).connect(analyser).connect(context.destination);
       playbackContextRef.current = context;
       gainNodeRef.current = gainNode;
-      compressorRef.current = compressor;
       analyserRef.current = analyser;
+      scheduleGainAutomation(audio);
     }
     if (context.state === "suspended") await context.resume();
   }
-
   async function togglePlay() {
     const audio = audioRef.current;
     if (!audio || !take?.url || isRecording) return;
@@ -443,6 +466,18 @@ export function Timeline({
     setDraftGain(nextGain);
     setIsGainPreviewing(false);
     if (nextGain !== gain) onGainChange(nextGain);
+    if (autoCalibrate && envelope.length) onGainKeyframesChange?.(buildAutoCalibrationKeyframes(envelope, duration, nextGain));
+  }
+
+  function toggleAutoCalibration() {
+    if (autoCalibrate) {
+      setAutoCalibrate(false);
+      onGainKeyframesChange?.([]);
+      return;
+    }
+    const frames = buildAutoCalibrationKeyframes(envelope, duration, gain);
+    setAutoCalibrate(true);
+    onGainKeyframesChange?.(frames);
   }
 
   function markTimelinePoint(kind: "in" | "out") {
@@ -557,7 +592,7 @@ export function Timeline({
             <button className="is-delete" disabled={!stagedCut || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
             <button disabled={!removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={resetTimelineEdits} type="button">RESET</button>
           </div>
-          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} onClick={() => setAutoCalibrate((enabled) => !enabled)} type="button">AUTO CAL</button>
+          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !envelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
           <div className="timeline-zoom">
             <button aria-label="Thu nhỏ timeline" onClick={() => setZoom(Math.max(1, zoom - 0.5))} type="button">−</button>
             <span>{zoom.toFixed(1)}×</span>
@@ -636,6 +671,7 @@ export function Timeline({
                 </svg>
               ) : null}
               {gainOverflows.map((range, index) => <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(range.start / Math.max(envelope.length, 1)) * 100}%`, width: `${Math.max(0.08, ((range.end - range.start) / Math.max(envelope.length, 1)) * 100)}%` }} />)}
+              {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
               {removedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
               {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
               {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
@@ -657,7 +693,7 @@ export function Timeline({
                 );
               }) : <em>{isRecording ? "REC LIVE · waveform đang cập nhật" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
-            <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag} style={{ left: `${playheadPercent}%` }} />
+            <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
         </div>
       </div>
@@ -686,8 +722,8 @@ export function Timeline({
           onDurationChange={(event) => syncPlaybackDuration(event.currentTarget)}
           onPause={() => { setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
           onPlay={() => { setPlaying(true); syncPlaybackClock(); startSignalMeter(); startPlaybackClock(); }}
-          onSeeking={(event) => syncPlaybackClock(event.currentTarget)}
-          onSeeked={(event) => syncPlaybackClock(event.currentTarget)}
+          onSeeking={(event) => { scheduleGainAutomation(event.currentTarget); syncPlaybackClock(event.currentTarget); }}
+          onSeeked={(event) => { scheduleGainAutomation(event.currentTarget); syncPlaybackClock(event.currentTarget); }}
           onTimeUpdate={(event) => syncPlaybackClock(event.currentTarget)}
           preload="metadata"
           ref={audioRef}

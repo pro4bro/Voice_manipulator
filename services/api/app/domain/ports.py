@@ -8,6 +8,8 @@ from .models import (
     EngineStatus,
     MediaAssetCreate,
     MediaRevisionSource,
+    TimelineEditRange,
+    TimelineGainKeyframe,
     ProjectCreate,
     ProjectMediaAsset,
     ProjectRecord,
@@ -65,7 +67,11 @@ class MediaLibrary(Protocol):
     ) -> ProjectMediaAsset: ...
 
     def update_timeline_edits(
-        self, project_id: str, asset_id: str, removed_ranges: list[TimelineEditRange]
+        self,
+        project_id: str,
+        asset_id: str,
+        removed_ranges: list[TimelineEditRange],
+        gain_keyframes: list[TimelineGainKeyframe] | None = None,
     ) -> ProjectMediaAsset: ...
 
     def update_annotations(

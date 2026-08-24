@@ -89,6 +89,13 @@ class TimelineEditRange(DomainModel):
     end: float = Field(gt=0)
 
 
+class TimelineGainKeyframe(DomainModel):
+    id: str = Field(default_factory=lambda: f"gain-{uuid4().hex[:12]}")
+    time: float = Field(ge=0)
+    gain_db: float = Field(ge=-96, le=96)
+    source: Literal["auto-calibration", "manual"] = "auto-calibration"
+
+
 class MediaAssetCreate(DomainModel):
     name: str = Field(min_length=1, max_length=512)
     source_extension: str = Field(max_length=20)
@@ -96,6 +103,7 @@ class MediaAssetCreate(DomainModel):
     source_path: str
     analysis_path: str | None = None
     removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
+    gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
     studio_item_id: str | None = None
     url: str | None = None
     duration: float = Field(default=0, ge=0)
@@ -151,6 +159,7 @@ class MediaTranscriptReviewResult(DomainModel):
 
 class MediaTimelineEditsUpdate(DomainModel):
     removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
+    gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
 
 
 class MediaTrainingSelection(DomainModel):

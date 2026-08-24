@@ -17,6 +17,7 @@ from app.domain.models import (
     MediaTranscriptionStatus,
     ProjectMediaAsset,
     TimelineEditRange,
+    TimelineGainKeyframe,
 )
 from app.domain.ports import ProjectRepository
 
@@ -234,8 +235,10 @@ class FileMediaLibrary:
         project_id: str,
         asset_id: str,
         removed_ranges: list[TimelineEditRange],
+        gain_keyframes: list[TimelineGainKeyframe] | None = None,
     ) -> ProjectMediaAsset:
         ordered = sorted(removed_ranges, key=lambda item: (item.start, item.end))
+        ordered_keyframes = sorted(gain_keyframes or [], key=lambda item: item.time)
         previous_end = -1.0
         for item in ordered:
             if item.end <= item.start:
@@ -253,9 +256,15 @@ class FileMediaLibrary:
                     for item in ordered
                     if item.start < asset.duration
                 ]
+                bounded_keyframes = [
+                    item.model_copy(update={"time": min(asset.duration, item.time)})
+                    for item in ordered_keyframes
+                    if item.time <= asset.duration
+                ]
                 updated = asset.model_copy(
                     update={
                         "removed_ranges": bounded,
+                        "gain_keyframes": bounded_keyframes,
                         "updated_at": datetime.now(timezone.utc),
                     }
                 )
@@ -265,7 +274,7 @@ class FileMediaLibrary:
                     project_id,
                     "TIMELINE_EDITS_CHANGED",
                     asset,
-                    {"removedRangeCount": len(bounded)},
+                    {"removedRangeCount": len(bounded), "gainKeyframeCount": len(bounded_keyframes)},
                 )
                 return updated
         raise KeyError(asset_id)

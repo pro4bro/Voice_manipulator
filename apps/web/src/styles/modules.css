@@ -637,3 +637,9 @@
 .gain-warning { padding: 4px 6px; color: color-mix(in srgb, var(--gold) 78%, white); border: 1px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
 .gain-warning.is-calibrated { color: color-mix(in srgb, var(--accent) 70%, white); border-color: color-mix(in srgb, var(--accent) 70%, white); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .transport-bar { grid-template-columns: 29px 66px minmax(80px,1fr) 66px auto auto auto; }
+/* Playback stays on the compositor; moving the playhead must not relayout the SVG waveform. */
+.timeline-canvas { contain: layout paint; }
+.waveform-shape { contain: paint; }
+.timeline-playhead { left: 0; transform: translate3d(0,0,0); will-change: transform; }
+.timeline-gain-keyframe { position: absolute; z-index: 5; top: 0; bottom: 0; width: 1px; margin-left: -1px; border-left: 1px solid color-mix(in srgb, var(--lime) 75%, white); box-shadow: 0 0 5px color-mix(in srgb, var(--lime) 70%, transparent); pointer-events: none; }
+.timeline-auto-calibrate:disabled { cursor: not-allowed; opacity: .42; }

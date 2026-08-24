@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { usePlaybackWord } from "../../domain/playback-sync";
 
 import { DEFAULT_EMOTION_STYLE, emotionVisualStyle } from "../../domain/emotion-style";
 import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
@@ -7,7 +8,7 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
 interface ScriptEditorProps {
-  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; activeWordIndex?: number; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; onWordsChange?: (words: StudioWord[]) => void;
+  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; activeWordIndex?: number; playbackAssetId?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; onWordsChange?: (words: StudioWord[]) => void;
 }
 interface ScriptSegment { text: string; wordIndex: number | null; }
 type ReviewChoice = "stt" | "ai" | "manual";
@@ -53,7 +54,9 @@ function scriptWordRanges(value: string, words: StudioWord[]): ScriptWordRange[]
   });
 }
 
-export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], activeWordIndex = -1, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, onWordsChange }: ScriptEditorProps) {
+export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, onWordsChange }: ScriptEditorProps) {
+  const syncedActiveWordIndex = usePlaybackWord(playbackAssetId);
+  const activeWordIndex = explicitActiveWordIndex ?? syncedActiveWordIndex;
   const playbackLayerRef = useRef<HTMLDivElement>(null); const reviewLayerRef = useRef<HTMLDivElement>(null); const textareaRef = useRef<HTMLTextAreaElement>(null); const activePlaybackWordRef = useRef<HTMLSpanElement>(null); const selectionMenuRef = useRef<HTMLDivElement>(null); const [tagMode, setTagMode] = useState(false); const [tagSpeakerId, setTagSpeakerId] = useState(""); const [tagEnvironmentId, setTagEnvironmentId] = useState(""); const [tagEmotion, setTagEmotion] = useState<EmotionLabel>("normal"); const [reviewPieces, setReviewPieces] = useState<ReviewPiece[]>([]); const [reviewResolutions, setReviewResolutions] = useState<Record<string, ReviewResolution>>({}); const [showReview, setShowReview] = useState(false); const [hoveredReviewId, setHoveredReviewId] = useState<string | null>(null); const [manualDraft, setManualDraft] = useState(""); const [selectionMenu, setSelectionMenu] = useState<ScriptSelectionMenu | null>(null); const reviewSignature = `${aiReviewKey ?? ""}:${aiReviewText ?? ""}`;
   useEffect(() => { if (!aiReviewText || !value || aiReviewText.trim() === value.trim()) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } const nextPieces = buildReviewPieces(value, aiReviewText); if (!nextPieces.some((piece) => piece.kind === "change")) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } setReviewPieces(nextPieces); setReviewResolutions({}); setShowReview(true); /* A persisted AI revision starts a comparison; normal typing must not reset choices. */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewSignature]);

@@ -110,6 +110,13 @@ export interface TimelineEditRange {
   end: number;
 }
 
+export interface TimelineGainKeyframe {
+  id: string;
+  time: number;
+  gainDb: number;
+  source?: "auto-calibration" | "manual";
+}
+
 export interface ProjectMediaAsset {
   id: string;
   name: string;
@@ -118,6 +125,7 @@ export interface ProjectMediaAsset {
   sourcePath: string;
   analysisPath?: string | null;
   removedRanges?: TimelineEditRange[];
+  gainKeyframes?: TimelineGainKeyframe[];
   studioItemId: string | null;
   url: string | null;
   duration: number;

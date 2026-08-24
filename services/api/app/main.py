@@ -205,7 +205,7 @@ def create_app(
         project_id: str, asset_id: str, payload: MediaTimelineEditsUpdate
     ) -> ProjectMediaAsset:
         try:
-            return media.update_timeline_edits(project_id, asset_id, payload.removed_ranges)
+            return media.update_timeline_edits(project_id, asset_id, payload.removed_ranges, payload.gain_keyframes)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
         except ValueError as exc:

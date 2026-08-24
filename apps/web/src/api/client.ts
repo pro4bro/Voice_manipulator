@@ -15,6 +15,7 @@ import type {
   SystemMetrics,
   SystemPaths,
   TimelineEditRange,
+  TimelineGainKeyframe,
   TranscriptReviewResult,
   TrainingCatalog,
   WorkspacePage,
@@ -67,6 +68,7 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
     transcriptionError: asset.transcriptionError ?? null,
     aiReviewStatus: asset.aiReviewStatus ?? "skipped",
     removedRanges: asset.removedRanges ?? [],
+    gainKeyframes: asset.gainKeyframes ?? [],
     trainingSelected: asset.trainingSelected ?? false,
     speakerProfileIds: asset.speakerProfileIds ?? [],
     environmentProfileIds: asset.environmentProfileIds ?? [],
@@ -135,10 +137,10 @@ export const api = {
     });
     return { ...result, asset: normalizeMediaAsset(result.asset) };
   },
-  updateMediaTimelineEdits: async (projectId: string, assetId: string, removedRanges: TimelineEditRange[]) => {
+  updateMediaTimelineEdits: async (projectId: string, assetId: string, removedRanges: TimelineEditRange[], gainKeyframes: TimelineGainKeyframe[] = []) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/timeline-edits`, {
       method: "PATCH",
-      body: JSON.stringify({ removedRanges }),
+      body: JSON.stringify({ removedRanges, gainKeyframes }),
     });
     return normalizeMediaAsset(asset);
   },
