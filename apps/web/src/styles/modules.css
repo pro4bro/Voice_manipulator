@@ -626,3 +626,14 @@
 .timeline-playhead { pointer-events: auto; cursor: ew-resize; touch-action: none; }
 .timeline-playhead::before { pointer-events: none; }
 .timeline-playhead:active { width: 3px; }
+/* Gain uses a three-part live preview; full waveform work happens on commit. */
+.timeline-auto-calibrate { min-height: 25px; padding: 0 6px; color: var(--text-muted); border: 1px solid var(--line); background: transparent; font-family: var(--mono); font-size: calc(7px * var(--font-scale)); font-weight: 900; white-space: nowrap; }
+.timeline-auto-calibrate:hover { color: var(--text); border-color: var(--lime); }
+.timeline-auto-calibrate.is-active { color: var(--text-on-accent); border-color: var(--lime); background: var(--lime-dark); }
+.waveform-shape path.waveform-shape__gain-preview { fill: color-mix(in srgb, var(--lime) 74%, white); opacity: .94; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--lime) 58%, transparent)); }
+.timeline-gain-range { position: absolute; z-index: 3; top: 0; bottom: 0; min-width: 2px; border-left: 1px solid color-mix(in srgb, var(--gold) 80%, white); border-right: 1px solid color-mix(in srgb, var(--gold) 80%, white); background: color-mix(in srgb, var(--gold) 34%, transparent); pointer-events: none; }
+.timeline-gain-range.is-calibrated { border-color: color-mix(in srgb, var(--accent) 70%, white); background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.gain-badge.is-preview { color: var(--lime); border-color: var(--lime); }
+.gain-warning { padding: 4px 6px; color: color-mix(in srgb, var(--gold) 78%, white); border: 1px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
+.gain-warning.is-calibrated { color: color-mix(in srgb, var(--accent) 70%, white); border-color: color-mix(in srgb, var(--accent) 70%, white); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.transport-bar { grid-template-columns: 29px 66px minmax(80px,1fr) 66px auto auto auto; }

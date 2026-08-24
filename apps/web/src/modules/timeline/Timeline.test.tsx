@@ -4,13 +4,25 @@ import { describe, expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
 
 describe("Timeline", () => {
-  it("keeps source gain and playback rate inside the reusable timeline module", () => {
+  it("previews source gain while dragging and commits it only when released", () => {
     const onGainChange = vi.fn();
     render(<Timeline gain={0} onGainChange={onGainChange} take={null} />);
-    fireEvent.input(screen.getByRole("slider", { name: "Source gain" }), { target: { value: "6" } });
+    const slider = screen.getByRole("slider", { name: "Source gain" });
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: "6" } });
+    expect(onGainChange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(slider, { target: { value: "6" } });
     fireEvent.change(screen.getByRole("combobox", { name: "Tốc độ phát" }), { target: { value: "8" } });
     expect(onGainChange).toHaveBeenCalledWith(6);
     expect(screen.getByRole("combobox", { name: "Tốc độ phát" })).toHaveValue("8");
+  });
+
+  it("moves the playhead from the audio clock", () => {
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "test.wav", url: "/audio.wav", duration: 10 }} />);
+    const audio = container.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 2.5 });
+    fireEvent.timeUpdate(audio);
+    expect(screen.getByLabelText("Playhead indicator")).toHaveStyle({ left: "25%" });
   });
 
   it("renders a detailed live waveform and visible playhead while recording", () => {

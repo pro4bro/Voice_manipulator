@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
 import type { RecordingWaveformPreview, StudioWord, TimelineEditRange } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
@@ -31,6 +31,15 @@ interface TimelineProps {
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8];
 const PATH_WIDTH = 12000;
 const PATH_HEIGHT = 100;
+const GAIN_PREVIEW_DIVISIONS = 12;
+const GAIN_PREVIEW_PARTS = [1, 5, 9];
+const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
+const MAX_GAIN_RANGES = 96;
+
+interface WaveformRange {
+  start: number;
+  end: number;
+}
 
 function timecode(seconds: number) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -38,21 +47,74 @@ function timecode(seconds: number) {
   return `${String(minutes).padStart(2, "0")}:${(safe - minutes * 60).toFixed(3).padStart(6, "0")}`;
 }
 
-function waveformPath(points: EnvelopePoint[], gain: number) {
+function waveformPath(
+  points: EnvelopePoint[],
+  gain: number,
+  ranges: WaveformRange[] = [{ start: 0, end: points.length }],
+  autoCalibrate = false,
+) {
   if (!points.length) return "";
   const center = PATH_HEIGHT / 2;
   const amplitude = PATH_HEIGHT * 0.46;
   const coordinate = (point: EnvelopePoint, index: number, edge: "min" | "max") => {
     const x = points.length === 1 ? 0 : (index / (points.length - 1)) * PATH_WIDTH;
-    const value = Math.max(-1, Math.min(1, point[edge] * gain));
+    const peak = Math.max(Math.abs(point.min * gain), Math.abs(point.max * gain));
+    const calibration = autoCalibrate && peak > AUTO_CALIBRATE_CEILING
+      ? AUTO_CALIBRATE_CEILING / peak
+      : 1;
+    const value = Math.max(-1, Math.min(1, point[edge] * gain * calibration));
     return `${x.toFixed(2)},${(center - value * amplitude).toFixed(2)}`;
   };
-  const top = points.map((point, index) => coordinate(point, index, "max"));
-  const bottom = points.map((_, reverseIndex) => {
-    const index = points.length - reverseIndex - 1;
-    return coordinate(points[index], index, "min");
+  return ranges
+    .filter((range) => range.end - range.start > 0)
+    .map((range) => {
+      const start = Math.max(0, Math.floor(range.start));
+      const end = Math.min(points.length, Math.ceil(range.end));
+      const top = Array.from({ length: end - start }, (_, offset) => {
+        const index = start + offset;
+        return coordinate(points[index], index, "max");
+      });
+      const bottom = Array.from({ length: end - start }, (_, reverseIndex) => {
+        const index = end - reverseIndex - 1;
+        return coordinate(points[index], index, "min");
+      });
+      return `M ${top.join(" L ")} L ${bottom.join(" L ")} Z`;
+    })
+    .join(" ");
+}
+
+function gainPreviewRanges(pointCount: number): WaveformRange[] {
+  return GAIN_PREVIEW_PARTS.map((part) => ({
+    start: Math.floor((part / GAIN_PREVIEW_DIVISIONS) * pointCount),
+    end: Math.ceil(((part + 1) / GAIN_PREVIEW_DIVISIONS) * pointCount),
+  }));
+}
+
+function overflowRanges(points: EnvelopePoint[], gain: number): WaveformRange[] {
+  if (!points.length || gain <= 0) return [];
+  const threshold = 1 / gain;
+  const ranges: WaveformRange[] = [];
+  const permittedGap = Math.max(1, Math.floor(points.length / 1600));
+  let start = -1;
+  let lastOver = -1;
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const over = Math.max(Math.abs(point.min), Math.abs(point.max)) > threshold;
+    if (over) {
+      if (start < 0) start = index;
+      lastOver = index;
+    } else if (start >= 0 && index - lastOver > permittedGap) {
+      ranges.push({ start, end: lastOver + 1 });
+      start = -1;
+    }
+  }
+  if (start >= 0) ranges.push({ start, end: lastOver + 1 });
+  if (ranges.length <= MAX_GAIN_RANGES) return ranges;
+  const stride = Math.ceil(ranges.length / MAX_GAIN_RANGES);
+  return Array.from({ length: Math.ceil(ranges.length / stride) }, (_, index) => {
+    const group = ranges.slice(index * stride, (index + 1) * stride);
+    return { start: group[0].start, end: group[group.length - 1].end };
   });
-  return `M ${top.join(" L ")} L ${bottom.join(" L ")} Z`;
 }
 
 function liveEnvelope(samples: EnvelopePoint[]): EnvelopePoint[] {
@@ -96,16 +158,21 @@ export function Timeline({
   const [markIn, setMarkIn] = useState<number | null>(null);
   const [markOut, setMarkOut] = useState<number | null>(null);
   const [stagedCut, setStagedCut] = useState<TimelineEditRange | null>(null);
+  const [draftGain, setDraftGain] = useState(gain);
+  const [isGainPreviewing, setIsGainPreviewing] = useState(false);
+  const [autoCalibrate, setAutoCalibrate] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const playheadDragRef = useRef(false);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const meterFrameRef = useRef<number | null>(null);
   const playbackClockFrameRef = useRef<number | null>(null);
   const scrubbingRef = useRef(false);
+  const gainInteractionRef = useRef(false);
   const isRecording = Boolean(recordingPreview?.active);
   const words = take?.words ?? [];
   const lastWordEnd = words.length ? Math.max(...words.map((word) => word.end)) : 0;
@@ -113,9 +180,21 @@ export function Timeline({
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
-  const visualGain = Math.min(63.1, Math.max(0.0000158, 10 ** (gain / 20)));
+  const visualGain = 10 ** (gain / 20);
+  const draftVisualGain = 10 ** (draftGain / 20);
   const visibleEnvelope = isRecording ? liveEnvelope(recordingPreview?.samples ?? []) : envelope;
-  const path = waveformPath(visibleEnvelope, visualGain);
+  const path = useMemo(
+    () => waveformPath(visibleEnvelope, visualGain, undefined, autoCalibrate),
+    [autoCalibrate, visibleEnvelope, visualGain],
+  );
+  const previewPath = useMemo(() => {
+    if (isRecording || !isGainPreviewing) return "";
+    return waveformPath(envelope, draftVisualGain, gainPreviewRanges(envelope.length), autoCalibrate);
+  }, [autoCalibrate, draftVisualGain, envelope, isGainPreviewing, isRecording]);
+  const gainOverflows = useMemo(
+    () => isRecording ? [] : overflowRanges(envelope, visualGain),
+    [envelope, isRecording, visualGain],
+  );
   const latestPreview = visibleEnvelope[visibleEnvelope.length - 1];
   const latestPreviewPeak = latestPreview ? Math.max(Math.abs(latestPreview.min), Math.abs(latestPreview.max)) : 0;
   const previewDb = latestPreviewPeak > 0.0001 ? Math.min(96, Math.max(-96, 20 * Math.log10(latestPreviewPeak) + gain)) : -96;
@@ -125,6 +204,10 @@ export function Timeline({
   const peakPercent = Math.min(100, Math.max(0, ((activePeakDb + 96) / 192) * 100));
   const activeWordIndex = isRecording ? -1 : activeWordAt(words, currentTime);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+
+  useEffect(() => {
+    if (!gainInteractionRef.current) setDraftGain(gain);
+  }, [gain]);
 
   useLayoutEffect(() => {
     if (isRecording || playheadDragRef.current) return;
@@ -165,6 +248,10 @@ export function Timeline({
   }, [gain]);
 
   useEffect(() => {
+    configureAutoCalibrate();
+  }, [autoCalibrate]);
+
+  useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = playbackRate;
   }, [playbackRate]);
 
@@ -195,10 +282,11 @@ export function Timeline({
     const tick = () => {
       const audio = audioRef.current;
       if (!audio || audio.paused || audio.ended) return;
-      syncPlaybackClock(audio);
+      const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      setCurrentTime((current) => Math.abs(current - nextTime) >= 0.004 ? nextTime : current);
       playbackClockFrameRef.current = requestAnimationFrame(tick);
     };
-    tick();
+    playbackClockFrameRef.current = requestAnimationFrame(tick);
   }
 
   function stopSignalMeter() {
@@ -215,7 +303,7 @@ export function Timeline({
       analyser.getFloatTimeDomainData(values);
       let peak = 0;
       for (const value of values) peak = Math.max(peak, Math.abs(value));
-      const nextDb = peak > 0.0001 ? Math.min(96, Math.max(-96, 20 * Math.log10(peak) + gain)) : -96;
+      const nextDb = peak > 0.0001 ? Math.min(96, Math.max(-96, 20 * Math.log10(peak))) : -96;
       setSignalDb(nextDb);
       setPeakDb((current) => Math.max(nextDb, current - 0.17));
       meterFrameRef.current = requestAnimationFrame(tick);
@@ -275,18 +363,31 @@ export function Timeline({
     return () => controller.abort();
   }, [take?.url]);
 
+  function configureAutoCalibrate(compressor = compressorRef.current) {
+    if (!compressor) return;
+    const now = compressor.context.currentTime;
+    compressor.threshold.setTargetAtTime(autoCalibrate ? -1 : 0, now, 0.01);
+    compressor.knee.setTargetAtTime(autoCalibrate ? 0 : 40, now, 0.01);
+    compressor.ratio.setTargetAtTime(autoCalibrate ? 20 : 1, now, 0.01);
+    compressor.attack.setTargetAtTime(0.003, now, 0.01);
+    compressor.release.setTargetAtTime(0.08, now, 0.01);
+  }
+
   async function preparePlayback(audio: HTMLAudioElement) {
     let context = playbackContextRef.current;
     if (!context) {
       context = new AudioContext();
       const source = context.createMediaElementSource(audio);
       const gainNode = context.createGain();
+      const compressor = context.createDynamicsCompressor();
       const analyser = context.createAnalyser();
       analyser.fftSize = 1024;
       gainNode.gain.value = 10 ** (gain / 20);
-      source.connect(gainNode).connect(analyser).connect(context.destination);
+      configureAutoCalibrate(compressor);
+      source.connect(gainNode).connect(compressor).connect(analyser).connect(context.destination);
       playbackContextRef.current = context;
       gainNodeRef.current = gainNode;
+      compressorRef.current = compressor;
       analyserRef.current = analyser;
     }
     if (context.state === "suspended") await context.resume();
@@ -304,6 +405,28 @@ export function Timeline({
       audio.playbackRate = playbackRate;
       await audio.play();
     } else audio.pause();
+  }
+
+  function clampGain(value: number) {
+    return Math.max(-96, Math.min(96, Number.isFinite(value) ? value : 0));
+  }
+
+  function beginGainPreview() {
+    gainInteractionRef.current = true;
+    setIsGainPreviewing(true);
+  }
+
+  function previewGain(value: number) {
+    if (!gainInteractionRef.current) beginGainPreview();
+    setDraftGain(clampGain(value));
+  }
+
+  function commitGain(value = draftGain) {
+    const nextGain = clampGain(value);
+    gainInteractionRef.current = false;
+    setDraftGain(nextGain);
+    setIsGainPreviewing(false);
+    if (nextGain !== gain) onGainChange(nextGain);
   }
 
   function markTimelinePoint(kind: "in" | "out") {
@@ -418,6 +541,7 @@ export function Timeline({
             <button className="is-delete" disabled={!stagedCut || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
             <button disabled={!removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={resetTimelineEdits} type="button">RESET</button>
           </div>
+          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} onClick={() => setAutoCalibrate((enabled) => !enabled)} type="button">AUTO CAL</button>
           <div className="timeline-zoom">
             <button aria-label="Thu nhỏ timeline" onClick={() => setZoom(Math.max(1, zoom - 0.5))} type="button">−</button>
             <span>{zoom.toFixed(1)}×</span>
@@ -435,19 +559,36 @@ export function Timeline({
               className="timeline-gain__number"
               max="96"
               min="-96"
-              onChange={(event) => onGainChange(Math.max(-96, Math.min(96, Number(event.currentTarget.value) || 0)))}
+              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
+              onChange={(event) => previewGain(Number(event.currentTarget.value))}
+              onFocus={beginGainPreview}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  gainInteractionRef.current = false;
+                  setDraftGain(gain);
+                  setIsGainPreviewing(false);
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
               step="0.5"
               type="number"
-              value={gain}
+              value={draftGain}
             />
             <input
               aria-label="Source gain"
               max="96"
               min="-96"
-              onInput={(event) => onGainChange(Number(event.currentTarget.value))}
+              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
+              onChange={(event) => previewGain(Number(event.currentTarget.value))}
+              onKeyDown={beginGainPreview}
+              onKeyUp={(event) => commitGain(Number(event.currentTarget.value))}
+              onPointerCancel={(event) => commitGain(Number(event.currentTarget.value))}
+              onPointerDown={beginGainPreview}
+              onPointerUp={(event) => commitGain(Number(event.currentTarget.value))}
               step="0.5"
               type="range"
-              value={gain}
+              value={draftGain}
             />
           </label>
           <div aria-label={`Sound level ${activeSignalDb.toFixed(1)} dB, peak ${activePeakDb.toFixed(1)} dB`} className="timeline-signal">
@@ -475,8 +616,10 @@ export function Timeline({
               {path ? (
                 <svg aria-label="Natural audio waveform" className="waveform-shape" preserveAspectRatio="none" viewBox={`0 0 ${PATH_WIDTH} ${PATH_HEIGHT}`}>
                   <path d={path} />
+                  {previewPath ? <path className="waveform-shape__gain-preview" d={previewPath} /> : null}
                 </svg>
               ) : null}
+              {gainOverflows.map((range, index) => <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(range.start / Math.max(envelope.length, 1)) * 100}%`, width: `${Math.max(0.08, ((range.end - range.start) / Math.max(envelope.length, 1)) * 100)}%` }} />)}
               {removedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
               {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
               {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
@@ -515,7 +658,8 @@ export function Timeline({
             {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
           </select>
         </label>
-        <span className="gain-badge">{gain > 0 ? "+" : ""}{gain.toFixed(1)} dB</span>
+        <span className={`gain-badge ${isGainPreviewing ? "is-preview" : ""}`}>{isGainPreviewing ? "PREVIEW 3/12 · " : ""}{draftGain > 0 ? "+" : ""}{draftGain.toFixed(1)} dB</span>
+        {gainOverflows.length ? <span className={`gain-warning ${autoCalibrate ? "is-calibrated" : ""}`}>{autoCalibrate ? "AUTO CAL" : "CLIP"} · {gainOverflows.length} vùng</span> : null}
       </div>
       {take?.url ? (
         <audio
