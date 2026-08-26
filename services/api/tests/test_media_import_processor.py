@@ -5,7 +5,7 @@ from fastapi import UploadFile
 
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
-from app.adapters.media_import_processor import MediaImportProcessor
+from app.adapters.media_import_processor import MediaImportProcessor, TranscriptionChunk
 from app.domain.models import ProjectCreate
 
 
@@ -45,3 +45,51 @@ def test_import_can_extract_audio_without_running_transcription(tmp_path, monkey
     assert result.asset.transcription_status == "skipped"
     assert result.asset.sample_rate == 48000
     assert result.asset.analysis_path.endswith("analysis.wav")
+
+def test_long_audio_is_split_into_ten_minute_stt_chunks_with_overlap():
+    chunks = MediaImportProcessor._stt_chunks(1201.0)
+
+    assert chunks == [
+        TranscriptionChunk(0.0, 602.0, 0.0, 600.0),
+        TranscriptionChunk(598.0, 1201.0, 600.0, 1200.0),
+        TranscriptionChunk(1198.0, 1201.0, 1200.0, 1201.0),
+    ]
+
+
+def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
+    chunks = MediaImportProcessor._stt_chunks(1200.0)
+    merged = MediaImportProcessor._merge_studio_chunks(
+        [
+            (
+                chunks[0],
+                {
+                    "id": "first",
+                    "text": "xin duplicate",
+                    "words": [
+                        {"text": "xin", "start": 599.4, "end": 599.8},
+                        {"text": "duplicate", "start": 600.1, "end": 600.5},
+                    ],
+                },
+            ),
+            (
+                chunks[1],
+                {
+                    "id": "second",
+                    "text": "xin chao",
+                    "words": [
+                        {"text": "xin", "start": 1.4, "end": 1.8},
+                        {"text": "chao", "start": 2.7, "end": 3.0},
+                    ],
+                },
+            ),
+        ],
+        1200.0,
+    )
+
+    assert merged["id"] == "second"
+    assert merged["text"] == "xin chao"
+    assert [(word["text"], word["start"]) for word in merged["words"]] == [
+        ("xin", 599.4),
+        ("chao", 600.7),
+    ]
+    assert merged["duration"] == 1200.0

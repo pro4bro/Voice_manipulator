@@ -5,6 +5,8 @@ import json
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -25,6 +27,19 @@ VIDEO_EXTENSIONS = {
     ".avi", ".av1", ".h264", ".h265", ".hevc", ".mkv", ".mov", ".mp4",
     ".mxf", ".prores", ".webm",
 }
+
+# A short request keeps the Studio sidecar responsive and avoids one multi-hour upload
+# exceeding the HTTP deadline. The overlap protects words at chunk boundaries.
+STT_CHUNK_SECONDS = 10 * 60
+STT_CHUNK_OVERLAP_SECONDS = 2.0
+
+
+@dataclass(frozen=True)
+class TranscriptionChunk:
+    source_start: float
+    source_end: float
+    timeline_start: float
+    timeline_end: float
 
 
 class MediaImportProcessor:
@@ -146,10 +161,23 @@ class MediaImportProcessor:
         if not analysis_path.is_file():
             raise FileNotFoundError("Analysis audio không còn trong project.")
         processing_path, kept_ranges = await asyncio.to_thread(self._prepare_processing_audio, analysis_path, asset)
+
+        def report_chunk_progress(completed: int, total: int) -> None:
+            # Reserve the last fifth of the job for persisting transcript + AI review.
+            progress = min(80, 5 + round(75 * completed / max(1, total)))
+            self.library.set_transcription_state(
+                project.id,
+                asset.id,
+                "processing",
+                ai_review_status="pending",
+                progress=progress,
+            )
+
         item, elapsed = await self._run_studio_import(
             processing_path,
             asset.origin,
             realtime_text or asset.text,
+            on_chunk_complete=report_chunk_progress,
         )
         if kept_ranges:
             item = self._restore_original_timeline(item, kept_ranges, asset.duration)
@@ -275,17 +303,64 @@ class MediaImportProcessor:
             raise ValueError(f"Không trích xuất được audio: {result.stderr.strip() or 'FFmpeg error'}")
 
     async def _run_studio_import(
-        self, analysis_path: Path, origin: str, realtime_text: str
+        self,
+        analysis_path: Path,
+        origin: str,
+        realtime_text: str,
+        *,
+        on_chunk_complete: Callable[[int, int], None] | None = None,
+    ) -> tuple[dict[str, Any], float]:
+        duration = await asyncio.to_thread(self._audio_duration, analysis_path)
+        chunks = self._stt_chunks(duration)
+        if len(chunks) == 1:
+            item, elapsed = await self._upload_studio_audio(analysis_path, origin, realtime_text)
+            if on_chunk_complete:
+                on_chunk_complete(1, 1)
+            return item, elapsed
+
+        # Files over ten minutes are processed sequentially. This avoids a single multi-hour
+        # request monopolising Studio or reaching its request timeout while still preserving
+        # word timestamps on the original timeline.
+        cache_dir = analysis_path.parent / "cache" / "stt-chunks"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        job_id = uuid4().hex[:8]
+        results: list[tuple[TranscriptionChunk, dict[str, Any]]] = []
+        elapsed = 0.0
+        try:
+            for index, chunk in enumerate(chunks, start=1):
+                chunk_path = cache_dir / f"stt-{job_id}-{index:03d}.wav"
+                try:
+                    await asyncio.to_thread(self._extract_stt_chunk, analysis_path, chunk, chunk_path)
+                    item, chunk_elapsed = await self._upload_studio_audio(chunk_path, origin, "")
+                    results.append((chunk, item))
+                    elapsed += chunk_elapsed
+                finally:
+                    chunk_path.unlink(missing_ok=True)
+                if on_chunk_complete:
+                    on_chunk_complete(index, len(chunks))
+        finally:
+            try:
+                cache_dir.rmdir()
+            except OSError:
+                pass
+        return self._merge_studio_chunks(results, duration), elapsed
+
+    async def _upload_studio_audio(
+        self, audio_path: Path, origin: str, realtime_text: str
     ) -> tuple[dict[str, Any], float]:
         timeout = httpx.Timeout(900.0, connect=3.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                with analysis_path.open("rb") as audio:
+                with audio_path.open("rb") as audio:
                     response = await client.post(
                         f"{self.studio_url}/api/audio/import",
-                        files={"file": (analysis_path.name, audio, "audio/wav")},
+                        files={"file": (audio_path.name, audio, "audio/wav")},
                         data={"origin": origin, "realtime_text": realtime_text},
                     )
+        except httpx.ReadTimeout as exc:
+            raise RuntimeError(
+                "Studio mất quá 15 phút để xử lý một đoạn audio. Hãy thử lại; audio dài sẽ tự chia đoạn 10 phút."
+            ) from exc
         except httpx.RequestError as exc:
             raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
         payload = response.json()
@@ -293,6 +368,87 @@ class MediaImportProcessor:
             raise RuntimeError(payload.get("detail", f"Studio import thất bại ({response.status_code})."))
         return dict(payload["item"]), float(payload.get("elapsed", 0))
 
+    def _audio_duration(self, audio_path: Path) -> float:
+        return self._duration(self._probe(audio_path))
+
+    @staticmethod
+    def _stt_chunks(duration: float) -> list[TranscriptionChunk]:
+        total = max(0.0, duration)
+        if total <= STT_CHUNK_SECONDS:
+            return [TranscriptionChunk(0.0, total, 0.0, total)]
+        chunks: list[TranscriptionChunk] = []
+        timeline_start = 0.0
+        while timeline_start < total:
+            timeline_end = min(total, timeline_start + STT_CHUNK_SECONDS)
+            chunks.append(
+                TranscriptionChunk(
+                    source_start=max(0.0, timeline_start - STT_CHUNK_OVERLAP_SECONDS),
+                    source_end=min(total, timeline_end + STT_CHUNK_OVERLAP_SECONDS),
+                    timeline_start=timeline_start,
+                    timeline_end=timeline_end,
+                )
+            )
+            timeline_start = timeline_end
+        return chunks
+
+    def _extract_stt_chunk(
+        self, source: Path, chunk: TranscriptionChunk, destination: Path
+    ) -> None:
+        length = max(0.001, chunk.source_end - chunk.source_start)
+        result = subprocess.run(
+            [
+                self.ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                "-ss", f"{chunk.source_start:.6f}", "-i", str(source), "-t", f"{length:.6f}",
+                "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le",
+                str(destination),
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.returncode != 0 or not destination.is_file():
+            raise ValueError(f"Không cắt được audio cho STT: {result.stderr.strip() or 'FFmpeg error'}")
+
+    @staticmethod
+    def _merge_studio_chunks(
+        results: list[tuple[TranscriptionChunk, dict[str, Any]]], duration: float
+    ) -> dict[str, Any]:
+        if not results:
+            raise RuntimeError("Studio không trả về kết quả Speech to Text.")
+        merged = dict(results[-1][1])
+        words: list[dict[str, Any]] = []
+        fallback_text: list[str] = []
+        for chunk, item in results:
+            item_words = item.get("words", [])
+            has_words = False
+            for raw_word in item_words if isinstance(item_words, list) else []:
+                if not isinstance(raw_word, dict):
+                    continue
+                word = dict(raw_word)
+                try:
+                    start = max(chunk.source_start, chunk.source_start + float(word.get("start", 0.0)))
+                    end = max(start, chunk.source_start + float(word.get("end", word.get("start", 0.0))))
+                except (TypeError, ValueError):
+                    continue
+                if start < chunk.timeline_start or start >= chunk.timeline_end:
+                    continue
+                word["start"] = round(min(duration, start), 6)
+                word["end"] = round(min(duration, end), 6)
+                words.append(word)
+                has_words = True
+            if not has_words and item.get("text"):
+                fallback_text.append(str(item["text"]).strip())
+        merged["words"] = words
+        merged["text"] = " ".join(
+            str(word.get("text", "")).strip() for word in words if str(word.get("text", "")).strip()
+        ) or " ".join(text for text in fallback_text if text)
+        merged["duration"] = max(0.0, duration)
+        if len(results) > 1:
+            merged["transcription_engine"] = f"OmniVoice Studio · {len(results)} segments"
+        return merged
     @staticmethod
     def _codec(stream: dict[str, Any] | None) -> str | None:
         return str(stream.get("codec_name")) if stream and stream.get("codec_name") else None

@@ -10,19 +10,23 @@ $url = "http://127.0.0.1:18120"
 $studioUrl = "http://127.0.0.1:18081"
 $localLegacyRoot = Join-Path $root ".runtime\omnivoice-studio"
 $migrationLegacyRoot = Join-Path (Split-Path -Parent $root) "OmniVoice"
+$legacyRootCandidates = @()
 if ($env:PRO4BRO_LEGACY_STUDIO_ROOT) {
-    $legacyRoot = if ([System.IO.Path]::IsPathRooted($env:PRO4BRO_LEGACY_STUDIO_ROOT)) {
+    $legacyRootCandidates += if ([System.IO.Path]::IsPathRooted($env:PRO4BRO_LEGACY_STUDIO_ROOT)) {
         $env:PRO4BRO_LEGACY_STUDIO_ROOT
     } else {
         Join-Path $root $env:PRO4BRO_LEGACY_STUDIO_ROOT
     }
 }
-elseif (Test-Path -LiteralPath (Join-Path $localLegacyRoot "studio_app\server.py")) {
-    $legacyRoot = $localLegacyRoot
-}
 else {
-    $legacyRoot = $migrationLegacyRoot
+    $legacyRootCandidates += $localLegacyRoot
+    $legacyRootCandidates += $migrationLegacyRoot
+    $legacyRootCandidates += Join-Path $migrationLegacyRoot "OmniVoice"
 }
+$legacyRoot = $legacyRootCandidates |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ "studio_app\server.py") } |
+    Select-Object -First 1
+if (-not $legacyRoot) { $legacyRoot = $legacyRootCandidates[0] }
 $legacyPython = Join-Path $legacyRoot ".venv\Scripts\python.exe"
 $localFfmpeg = Join-Path $root ".tools\ffmpeg\ffmpeg.exe"
 
