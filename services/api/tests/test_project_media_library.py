@@ -193,10 +193,47 @@ def test_media_library_removes_only_the_selected_asset_folder_and_annotations(tm
     updated = library.update_annotations(
         project.id, asset.id, ["speaker-a"], ["environment-room"], "normal"
     )
+    library.set_transcription_state(project.id, asset.id, "processing", progress=20)
+    progress_file = Path(project.project_path) / "jobs" / "transcription" / f"{asset.id}.json"
+    assert progress_file.is_file()
     library.remove(project.id, asset.id)
 
     assert updated.environment_profile_ids == ["environment-room"]
     assert not asset_dir.exists()
     assert library.list(project.id) == []
+    assert not progress_file.exists()
     activity = Path(project.project_path) / "activity" / "events.jsonl"
     assert "MEDIA_REMOVED" in activity.read_text(encoding="utf-8")
+
+
+def test_media_library_exposes_lightweight_transcription_progress_snapshots(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Progress"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="long.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/long/source.wav",
+            analysis_path="assets/media/long/analysis.wav",
+            duration=3600,
+            origin="import",
+            transcription_status="skipped",
+        ),
+    )
+
+    library.set_transcription_state(project.id, asset.id, "processing", progress=0)
+    library.set_transcription_progress(project.id, asset.id, 12.34)
+    snapshot = next(item for item in library.transcription_progresses(project.id) if item.id == asset.id)
+
+    assert snapshot.transcription_status == "processing"
+    assert snapshot.transcription_progress == 12.3
+    progress_file = Path(project.project_path) / "jobs" / "transcription" / f"{asset.id}.json"
+    assert progress_file.is_file()
+
+    library.set_transcription_state(project.id, asset.id, "complete", progress=100)
+    completed = next(item for item in library.transcription_progresses(project.id) if item.id == asset.id)
+    assert completed.transcription_progress == 100
+    assert progress_file.is_file()

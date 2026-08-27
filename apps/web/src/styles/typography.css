@@ -1,0 +1,50 @@
+/* Production workstation type scale: compact metadata, readable controls, clear hierarchy. */
+:root {
+  --font-scale: 1.08;
+  --type-meta: 11px;
+  --type-label: 12px;
+  --type-control: 13px;
+  --type-body: 14px;
+  --type-title: 18px;
+  --type-page-title: 26px;
+}
+
+body { font-size: var(--type-body); line-height: 1.4; }
+
+.workspace-topbar nav button b { font-size: 15px; }
+.workspace-topbar nav button span,
+.workspace-meta > span,
+.workspace-windows-button { font-size: var(--type-meta); }
+.stage-heading h1 { font-size: var(--type-page-title); }
+.stage-heading > div:first-child span,
+.stage-lineage,
+.workspace-status-bar { font-size: var(--type-meta); }
+
+.workspace-shell .module-frame__header h2 { font-size: var(--type-title); line-height: 1.08; }
+.workspace-shell .module-frame .eyebrow,
+.workspace-shell .module-frame .module-note b,
+.workspace-shell .module-frame .module-note span,
+.workspace-shell .module-frame .media-pool-summary,
+.workspace-shell .module-frame .media-item-copy small,
+.workspace-shell .module-frame .media-item-copy em,
+.workspace-shell .module-frame .media-state,
+.workspace-shell .module-frame .media-history summary,
+.workspace-shell .module-frame .script-stats,
+.workspace-shell .module-frame .script-module__duration span,
+.workspace-shell .module-frame .review-status { font-size: var(--type-meta); }
+
+.workspace-shell .module-frame :is(button, input, select) { font-size: var(--type-control); }
+.workspace-shell .module-frame .button { font-size: var(--type-control); }
+.workspace-shell .module-frame .media-item-copy strong,
+.workspace-shell .module-frame .voice-card__copy strong,
+.workspace-shell .module-frame .voice-card__copy span,
+.workspace-shell .module-frame .media-pool-note,
+.workspace-shell .module-frame .module-note span { font-size: var(--type-label); }
+.workspace-shell .module-frame .script-editor,
+.workspace-shell .module-frame .script-playback-layer { font-size: clamp(18px, 1.45vw, 23px); }
+
+@media (max-width: 1180px) {
+  .workspace-topbar nav button b { font-size: 14px; }
+  .stage-heading h1 { font-size: 24px; }
+  .workspace-shell .module-frame :is(button, input, select) { font-size: 12px; }
+}

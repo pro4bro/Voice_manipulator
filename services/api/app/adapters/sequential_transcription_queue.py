@@ -91,10 +91,15 @@ class SequentialTranscriptionQueue:
             project = self.projects.get(task.project_id)
             asset = self.media.get(task.project_id, task.asset_id)
             self.media.set_transcription_state(
-                task.project_id, task.asset_id, "processing", ai_review_status="pending", progress=5
+                task.project_id, task.asset_id, "processing", ai_review_status="pending", progress=0
             )
+            async def report_progress(value: float) -> None:
+                self.media.set_transcription_progress(
+                    task.project_id, task.asset_id, value
+                )
+
             transcribed, _ = await self.importer.transcribe_existing(
-                project, asset, task.realtime_text
+                project, asset, task.realtime_text, on_progress=report_progress
             )
             # AI review is an explicit Script action: retain the STT transcript until the user compares candidates.
             self.media.set_transcription_state(

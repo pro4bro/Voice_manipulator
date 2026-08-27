@@ -14,8 +14,10 @@ class FakeImporter:
         self.media = media
         self.calls: list[str] = []
 
-    async def transcribe_existing(self, project, asset, realtime_text: str):
+    async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None):
         self.calls.append(asset.id)
+        if on_progress:
+            await on_progress(12.3)
         updated = self.media.apply_transcription(
             project.id,
             asset.id,

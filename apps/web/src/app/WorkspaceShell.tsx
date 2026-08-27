@@ -10,6 +10,7 @@ import type {
   EngineStatus,
   ManipulatorMode,
   MediaImportChoice,
+  MediaTranscriptionProgress,
   Project,
   ProjectMediaAsset,
   RecordingWaveformPreview,
@@ -148,7 +149,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
   useEffect(() => {
     if (!hasBackgroundTranscription) return;
     let cancelled = false;
-    const refresh = () => {
+    let fullMediaRefreshInFlight = false;
+
+    const refreshFullMedia = () => {
+      if (fullMediaRefreshInFlight) return;
+      fullMediaRefreshInFlight = true;
       void api.listProjectMedia(project.id).then((assets) => {
         if (cancelled) return;
         const currentAssets = mediaAssetsRef.current;
@@ -160,13 +165,40 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
           return unchanged ? current : assets;
         });
         if (selected && selectedChanged && !scriptDirty && !liveTranscriptActive) {
-          setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words } : null);
+          setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
           setScript(selected.text);
         }
+      }).catch(() => undefined).finally(() => { fullMediaRefreshInFlight = false; });
+    };
+
+    const refreshStatus = () => {
+      void api.listProjectMediaTranscriptionStatus(project.id).then((snapshots) => {
+        if (cancelled) return;
+        const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+        const currentAssets = mediaAssetsRef.current;
+        const hasTerminalTransition = snapshots.some((snapshot: MediaTranscriptionProgress) => {
+          const previous = currentAssets.find((asset) => asset.id === snapshot.id);
+          return Boolean(previous && isBackgroundTranscribing(previous) && !["queued", "processing", "reviewing"].includes(snapshot.transcriptionStatus));
+        });
+        setMediaAssets((current) => current.map((asset) => {
+          const snapshot = byId.get(asset.id);
+          if (!snapshot) return asset;
+          const changed = asset.transcriptionStatus !== snapshot.transcriptionStatus
+            || asset.transcriptionProgress !== snapshot.transcriptionProgress
+            || asset.transcriptionError !== snapshot.transcriptionError;
+          return changed ? {
+            ...asset,
+            transcriptionStatus: snapshot.transcriptionStatus,
+            transcriptionProgress: snapshot.transcriptionProgress,
+            transcriptionError: snapshot.transcriptionError,
+          } : asset;
+        }));
+        if (hasTerminalTransition) refreshFullMedia();
       }).catch(() => undefined);
     };
-    refresh();
-    const timer = window.setInterval(refresh, 1200);
+
+    refreshStatus();
+    const timer = window.setInterval(refreshStatus, 150);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [project.id, hasBackgroundTranscription, selectedAssetId, scriptDirty, liveTranscriptActive]);
 
@@ -258,7 +290,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     setSelectedAssetId(asset.id);
     setScript(asset.text);
     setScriptDirty(false);
-    setTake(asset.url ? { id: asset.studioItemId ?? asset.id, name: asset.name, url: asset.url, duration: asset.duration, text: asset.text, words: asset.words } : null);
+    setTake(asset.url ? { id: asset.studioItemId ?? asset.id, name: asset.name, url: asset.url, duration: asset.duration, text: asset.text, words: asset.words, wordTimingQuality: asset.wordTimingQuality, wordTimingNote: asset.wordTimingNote } : null);
   }
 
   function storeMediaAsset(asset: ProjectMediaAsset) {
@@ -383,6 +415,45 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     }
   }
 
+  async function importLocalMedia() {
+    setMediaBusy(true);
+    try {
+      const picked = await api.pickMediaFile();
+      if (!picked.path) return;
+      const cacheLocal = window.confirm(
+        "Bật Local File Caching?\n\nOK: copy file vào project để xử lý nhanh.\nCancel: giữ file gốc làm nguồn xử lý.",
+      );
+      const result = await api.importLocalProjectMedia(project.id, picked.path, cacheLocal);
+      flushCurrentMediaDraft();
+      storeMediaAsset(result.asset);
+      applyMediaAsset(result.asset);
+      setNotice(cacheLocal
+        ? "Đã import và cache file vào project. Chuột phải footage để refresh cache khi file gốc thay đổi."
+        : "Đã import theo link file gốc. Bật Local File Caching từ menu chuột phải khi cần.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không import được file gốc");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function setLocalCache(assetId: string, enabled: boolean) {
+    const asset = mediaAssets.find((item) => item.id === assetId);
+    if (!asset) return;
+    setMediaBusy(true);
+    try {
+      const updated = await api.updateMediaLocalCache(project.id, assetId, enabled);
+      storeMediaAsset(updated);
+      if (selectedAssetId === assetId) applyMediaAsset(updated);
+      setNotice(enabled
+        ? "Đã cập nhật Local File Cache và dùng bản trong project để xử lý."
+        : "Đã chuyển sang file gốc và tạo lại analysis audio từ nguồn đó.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không cập nhật được Local File Cache");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
   async function toggleTrainingAsset(assetId: string, selected: boolean) {
     const previous = mediaAssets.find((asset) => asset.id === assetId);
     setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, trainingSelected: selected } : asset));
@@ -473,6 +544,27 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     }
   }
 
+  async function exportSubtitles(mode: "sentence" | "word" | "table") {
+    if (!selectedAssetId) {
+      setNotice("Hãy chọn footage đã có transcript trước khi xuất SRT.");
+      return;
+    }
+    const selected = mediaAssets.find((asset) => asset.id === selectedAssetId);
+    if (!selected?.words.length) {
+      setNotice("Footage này chưa có word timing. Hãy chạy STT kỹ trước khi xuất SRT.");
+      return;
+    }
+    if (mode !== "table" && selected.wordTimingQuality === "needs-alignment") {
+      setNotice(selected.wordTimingNote ?? "Word timing chưa đáng tin; hãy căn chỉnh trước khi xuất SRT.");
+      return;
+    }
+    try {
+      await api.exportProjectSubtitles(project.id, selected.id, mode);
+      setNotice(mode === "sentence" ? "Đã xuất SRT theo câu, gồm nhãn Speaker và tải file về máy." : mode === "word" ? "Đã xuất SRT từng từ, giữ timestamp chính xác và nhãn Speaker." : "Đã xuất bảng Script CSV theo Speaker và tải file về máy.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể xuất SRT.");
+    }
+  }
   async function runAiReview() {
     if (!selectedAssetId) {
       setNotice("Hãy chọn footage trong Media Pool trước khi dùng AI fix.");
@@ -574,6 +666,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     onGainChange: (value) => setGain(Math.max(-96, Math.min(96, value))),
     onTakeChange: (captured) => void processCapturedAudio(captured),
     onImportMedia: (choices) => void importMedia(choices),
+    onImportLocalMedia: () => void importLocalMedia(),
+    onSetLocalCache: (assetId, enabled) => void setLocalCache(assetId, enabled),
     onSelectAsset: selectMediaAsset,
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
@@ -589,6 +683,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     onGenerate: () => void generateVoice(),
     onDeferredAction: (action) => {
       if (action === "STT kỹ") void runAccurateTranscription();
+      else if (action === "Export SRT theo câu") void exportSubtitles("sentence");
+      else if (action === "Export SRT từng từ") void exportSubtitles("word");
+      else if (action === "Export bảng Script") void exportSubtitles("table");
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
     onRunAiReview: () => void runAiReview(),
@@ -597,7 +694,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
   return (
     <main className="workspace-shell">
       <header className="workspace-topbar">
-        <button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button>
+<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name + " · " + (take?.name ?? "Chưa chọn")}><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></div>
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
@@ -607,8 +704,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
       </header>
       <div className="workspace-body">
         <aside className="project-rail"><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div><div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
-        <section className={`workspace-stage ${activePage === "voice-manipulator" ? "has-modes" : ""}`}>
-          <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></header>
+        <section className={`workspace-stage ${activePage === "voice-manipulator" ? "has-modes" : ""} ${activePage === "speech-to-text" ? "is-compact-heading" : ""}`}>
+          {activePage !== "speech-to-text" ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></header> : null}
           {activePage === "voice-manipulator" ? <div className="mode-area"><div className="mode-switcher" role="tablist" aria-label="Chế độ Voice Manipulator">{manifest.modes.map((mode) => { const planned = manifest.plannedModes.includes(mode); return <button aria-selected={activeMode === mode} className={activeMode === mode ? "is-active" : ""} key={mode} onClick={() => setActiveMode(mode)} role="tab" type="button"><span>{modeLabels[mode]}</span>{planned ? <small>PLANNED</small> : null}</button>; })}</div>{manifest.plannedModes.includes(activeMode) ? <div className="processor-banner" role="status"><b>{modeLabels[activeMode]}</b><span>Workspace contract đã sẵn sàng · processor adapter chưa được cài</span></div> : null}</div> : null}
           <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>

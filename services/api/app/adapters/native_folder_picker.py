@@ -17,7 +17,7 @@ class NativeFolderPicker:
                 parent=root,
                 initialdir=initial_directory,
                 mustexist=True,
-                title="Chọn nơi lưu project Pro4Bro",
+                title="Chọn thư mục project Pro4Bro (chứa project.json)",
             )
             return str(Path(selected).resolve()) if selected else None
         finally:

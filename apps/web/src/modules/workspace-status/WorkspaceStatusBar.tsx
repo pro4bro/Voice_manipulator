@@ -19,7 +19,11 @@ export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps)
   const tracked = assets.filter((asset) => asset.transcriptionSelected && !["not-applicable", "skipped"].includes(asset.transcriptionStatus));
   const current = tracked.find(background) ?? null;
   const completed = tracked.filter((asset) => asset.transcriptionStatus === "complete").length;
-  const overallProgress = tracked.length ? Math.round(tracked.reduce((total, asset) => total + (asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0)), 0) / tracked.length) : 0;
+  const progressOf = (asset: ProjectMediaAsset) => asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0);
+  const totalDuration = tracked.reduce((total, asset) => total + Math.max(0, asset.duration), 0);
+  const overallProgress = totalDuration > 0
+    ? tracked.reduce((total, asset) => total + Math.max(0, asset.duration) * progressOf(asset), 0) / totalDuration
+    : tracked.length ? tracked.reduce((total, asset) => total + progressOf(asset), 0) / tracked.length : 0;
   const currentStage = current?.transcriptionStatus === "reviewing" ? "AI CHECK" : current?.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ";
 
   async function openLog() {
@@ -33,7 +37,7 @@ export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps)
       <footer className="workspace-status-bar" aria-live="polite">
         <div className="workspace-status-bar__activity">
           <i className={current ? "is-busy" : ""} />
-          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{completed}/{tracked.length} FOOTAGE · {current.transcriptionProgress ?? 0}% CURRENT · {overallProgress}% TOTAL</strong><progress max="100" value={overallProgress} /></> : <><b>READY</b><span>Không có background task đang chạy</span></>}
+          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{completed}/{tracked.length} FOOTAGE · {progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} /></> : <><b>READY</b><span>Không có background task đang chạy</span></>}
         </div>
         <div className="workspace-status-bar__metrics">
           <span>CPU <b>{metrics ? `${metrics.cpuPercent.toFixed(0)}%` : "—"}</b></span>

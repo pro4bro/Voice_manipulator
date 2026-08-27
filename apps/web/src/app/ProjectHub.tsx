@@ -89,7 +89,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
           <div className={`engine-chip ${engine?.installed ? "is-ready" : "is-offline"}`}>
             <i /><span><b>OMNIVOICE</b><small>{engine?.installed ? `${engine.branch ?? "detached"} · ${engine.revision?.slice(0, 8)}` : "Engine offline"}</small></span>
           </div>
-          <button className="button button--quiet" disabled={busy || pickingFolder} onClick={() => void browseExistingProject()} type="button"><Icon name="folder" />Open existing</button>
+          <button className="button button--quiet" disabled={busy || pickingFolder} onClick={() => void browseExistingProject()} type="button"><Icon name="folder" />Open project</button>
           <button className="button button--accent" onClick={() => setShowCreate(true)} type="button"><Icon name="plus" />New project</button>
         </div>
       </header>
@@ -132,7 +132,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
                   <small>{project.sampleRate ? `${project.sampleRate / 1000} KHZ` : "AUDIO PROJECT"}</small>
                 </span>
                 <span className="project-card__copy"><strong>{project.name}</strong><small>{project.language?.toUpperCase() ?? "NO LANGUAGE"}{project.accent ? ` · ${project.accent.replace("vi-", "")}` : ""}</small><em title={project.projectPath}>{project.projectPath}</em></span>
-                <footer><time>{new Date(project.updatedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "short", year: "numeric" })}</time><span>OPEN <Icon name="arrow" /></span></footer>
+                <footer><time>{new Date(project.updatedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "short", year: "numeric" })}</time><span>OPEN PROJECT <Icon name="arrow" /></span></footer>
               </button>
             ))}
           </div>

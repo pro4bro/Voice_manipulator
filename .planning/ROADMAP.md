@@ -5,8 +5,10 @@
 | 01 Foundation | Runnable project shell, project persistence, reusable modules, upstream engine adapter | Complete |
 | 02 Speech to Text | Real recording/import, two-pass STT, merged Script review, timeline sync | In progress |
 | 03 Voice Training | Dataset preparation, segmentation review, train jobs, checkpoints, validation | In progress |
-| 04 Manipulator Pipeline | Voice over, isolation, changing, dubbing, patching, asset lineage | Planned |
-| 05 Desktop Release | Native shell, isolated runtimes, model manager, updater, installer | Planned |
+| 04 Dockable Workspace | Six-zone docking, location-independent modules, session seam, fourth-page shell | Planned |
+| 05 Manipulator Pipeline | Voice over, isolation, changing, dubbing, patching, asset lineage | Planned |
+| 06 LipSync | Video/audio selection, face-shot review, adapter render, QC and lineage | Planned |
+| 07 Desktop Release | Tauri shell, isolated runtimes, model manager, updater, installer | Planned |
 
 ## Phase 01 Success Criteria
 
@@ -40,3 +42,17 @@
 
 - `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training.
 - `03-03`: connect validated manifests to project-native OmniVoice jobs, checkpoint lineage, progress, cancellation, and recovery.
+
+## Planned Phase Sequence
+
+- **04 Dockable Workspace**: establish bounded six-zone docking, a stable module contract, and `WorkspaceSession`; its compatibility migration protects current pages while the fourth page is introduced.
+- **05 Manipulator Pipeline**: turn voice over, isolation, changing, dubbing, and patching into real adapter-backed jobs with complete asset lineage.
+- **06 LipSync**: make the fourth page render approved dubbed/replaced takes to project-owned video through an interchangeable adapter and human QC.
+- **07 Desktop Release**: package the proven React/FastAPI core as a Windows-first Tauri application; browser development mode stays supported.
+
+## Governing Rules For These Phases
+
+- Complete active Phase 03 execution before starting the Phase 04 implementation slice.
+- Every module stays reusable and location-independent; dock position never changes its service or data contract.
+- Engines and models stay behind backend adapters and a machine-local model registry; `engines/OmniVoice` remains read-only.
+- Project and Media Pool indexes retain only project-relative paths, including rendered LipSync derivatives.

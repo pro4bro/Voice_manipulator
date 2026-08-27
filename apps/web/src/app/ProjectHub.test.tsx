@@ -91,7 +91,7 @@ describe("ProjectHub", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Open existing/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open project/ }));
     await waitFor(() => expect(onOpenExisting).toHaveBeenCalledWith("projects/moved-project"));
   });
 });

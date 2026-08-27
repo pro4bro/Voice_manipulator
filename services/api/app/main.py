@@ -1,27 +1,40 @@
 from __future__ import annotations
 
+import asyncio
+
+from pathlib import Path
+from typing import Literal
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
 from app.adapters.media_import_processor import MediaImportProcessor
+from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.adapters.native_folder_picker import NativeFolderPicker
+from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_engine import OmniVoiceEngine
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.adapters.runtime_status import RuntimeStatus
+from app.adapters.subtitle_exporter import SubtitleExporter
 from app.domain.models import (
     AppPreferences,
     EngineProfileSchema,
     EngineStatus,
     FolderPickRequest,
     FolderPickResult,
+    LocalMediaCacheUpdate,
+    LocalMediaImport,
+    MediaFilePickRequest,
+    MediaFilePickResult,
     HealthStatus,
     MediaAnnotationUpdate,
     MediaImportResult,
@@ -30,6 +43,7 @@ from app.domain.models import (
     MediaTimelineEditsUpdate,
     MediaTrainingSelection,
     MediaTranscriptionEnqueue,
+    MediaTranscriptionProgress,
     MediaTranscriptionSelection,
     ProjectCreate,
     ProjectMediaAsset,
@@ -54,6 +68,9 @@ def create_app(
     settings = settings or Settings.from_env()
     projects = project_repository or FileProjectRepository(settings.data_root / "projects")
     media = FileMediaLibrary(projects)
+    local_media_sources = LocalMediaSourceRegistry(settings.data_root)
+    subtitle_exporter = SubtitleExporter()
+    waveform_envelopes = AudioWaveformEnvelope()
     training_catalogs = FileTrainingCatalog(projects)
     runtime_status = RuntimeStatus(settings.data_root)
     media_importer = MediaImportProcessor(
@@ -61,6 +78,7 @@ def create_app(
     )
     engine = voice_engine or OmniVoiceEngine(settings.omnivoice_root)
     folders = folder_picker or NativeFolderPicker()
+    media_files = NativeMediaFilePicker()
     studio = LegacyStudioGateway(settings.legacy_studio_url)
     preferences = FileAppPreferences(settings.data_root)
     transcript_reviewer = OpenAICompatibleTranscriptReviewer(preferences)
@@ -109,6 +127,43 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
+    @app.get("/api/projects/{project_id}/media/{asset_id}/waveform")
+    async def project_media_waveform(
+        project_id: str,
+        asset_id: str,
+        start: float | None = None,
+        end: float | None = None,
+        points: int | None = None,
+    ) -> dict:
+        try:
+            project = projects.get(project_id)
+            audio_path = media.resolve_audio_path(project_id, asset_id)
+            cache_path = (
+                Path(project.project_path)
+                / "cache"
+                / "waveforms"
+                / f"{asset_id}.json"
+            )
+            if start is None and end is None and points is None:
+                return await asyncio.to_thread(
+                    waveform_envelopes.read,
+                    audio_path,
+                    cache_path,
+                )
+            if start is None or end is None or points is None:
+                raise ValueError("Waveform chi tiết cần start, end và points.")
+            return await asyncio.to_thread(
+                waveform_envelopes.read_detail,
+                audio_path,
+                cache_path,
+                start,
+                end,
+                points,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc) or "Invalid waveform range") from exc
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc) or "Project waveform not found") from exc
     @app.get("/api/projects/{project_id}/media/{asset_id}/audio")
     def project_media_audio(project_id: str, asset_id: str) -> Response:
         try:
@@ -157,6 +212,70 @@ def create_app(
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.post(
+        "/api/projects/{project_id}/media/import-local",
+        response_model=MediaImportResult,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def import_local_project_media(
+        project_id: str, payload: LocalMediaImport
+    ) -> MediaImportResult:
+        try:
+            project = projects.get(project_id)
+            return await media_importer.process_local_path(
+                project,
+                payload.source_path,
+                cache_local=payload.cache_local,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/local-cache",
+        response_model=ProjectMediaAsset,
+    )
+    async def update_project_media_local_cache(
+        project_id: str, asset_id: str, payload: LocalMediaCacheUpdate
+    ) -> ProjectMediaAsset:
+        try:
+            project = projects.get(project_id)
+            asset = media.get(project_id, asset_id)
+            return await media_importer.set_local_file_cache(project, asset, payload.enabled)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project hoặc media asset không tồn tại") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    @app.get("/api/projects/{project_id}/media/{asset_id}/subtitles")
+    def export_project_media_subtitles(
+        project_id: str,
+        asset_id: str,
+        mode: Literal["sentence", "word", "table"] = "sentence",
+    ) -> FileResponse:
+        try:
+            project = projects.get(project_id)
+            asset = media.get(project_id, asset_id)
+            if mode != "table" and asset.word_timing_quality == "needs-alignment":
+                raise ValueError(asset.word_timing_note or "Word timing chưa đáng tin; hãy căn chỉnh trước khi xuất SRT.")
+            subtitle_path = subtitle_exporter.export(project, asset, mode, training_catalogs.get(project_id).speakers)
+            return FileResponse(
+                subtitle_path,
+                media_type="text/csv; charset=utf-8" if mode == "table" else "application/x-subrip",
+                filename=subtitle_path.name,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project hoặc media asset không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/script",
         response_model=ProjectMediaAsset,
@@ -235,6 +354,17 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
 
+    @app.get(
+        "/api/projects/{project_id}/media/transcription-status",
+        response_model=list[MediaTranscriptionProgress],
+    )
+    def list_project_media_transcription_status(
+        project_id: str,
+    ) -> list[MediaTranscriptionProgress]:
+        try:
+            return media.transcription_progresses(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
     @app.post(
         "/api/projects/{project_id}/media/transcriptions",
         response_model=list[ProjectMediaAsset],
@@ -352,6 +482,14 @@ def create_app(
                 status_code=503, detail=f"Không mở được trình chọn thư mục: {exc}"
             ) from exc
 
+    @app.post("/api/system/pick-media-file", response_model=MediaFilePickResult)
+    def pick_media_file(payload: MediaFilePickRequest) -> MediaFilePickResult:
+        try:
+            return MediaFilePickResult(path=media_files.pick(payload.initial_path))
+        except (OSError, RuntimeError, ImportError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Không mở được trình chọn media: {exc}"
+            ) from exc
     @app.api_route(
         "/api/studio/{studio_path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],

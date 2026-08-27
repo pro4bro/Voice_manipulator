@@ -5,17 +5,35 @@ import json
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
+TranscriptionProgressCallback = Callable[[float], Awaitable[None]]
+
+# The Studio request has been validated to 90 minutes. Use 99% of that ceiling
+# so a boundary never fails due to container metadata or sample rounding.
+STT_MAX_REQUEST_SECONDS = 90 * 60
+STT_CHUNK_SECONDS = STT_MAX_REQUEST_SECONDS * 0.99
+STT_CHUNK_OVERLAP_SECONDS = 2.0
+
+
+@dataclass(frozen=True)
+class TranscriptionChunk:
+    source_start: float
+    source_end: float
+    timeline_start: float
+    timeline_end: float
 import httpx
 from fastapi import UploadFile
 
 from app.domain.models import MediaAssetCreate, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
+from app.adapters.word_timing_quality import inspect_word_timings
+from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 
 
 SUPPORTED_MEDIA_EXTENSIONS = {
@@ -28,26 +46,20 @@ VIDEO_EXTENSIONS = {
     ".mxf", ".prores", ".webm",
 }
 
-# A short request keeps the Studio sidecar responsive and avoids one multi-hour upload
-# exceeding the HTTP deadline. The overlap protects words at chunk boundaries.
-STT_CHUNK_SECONDS = 10 * 60
-STT_CHUNK_OVERLAP_SECONDS = 2.0
-
-
-@dataclass(frozen=True)
-class TranscriptionChunk:
-    source_start: float
-    source_end: float
-    timeline_start: float
-    timeline_end: float
-
 
 class MediaImportProcessor:
-    def __init__(self, studio_url: str, library: MediaLibrary, ffmpeg_path: str | None = None) -> None:
+    def __init__(
+        self,
+        studio_url: str,
+        library: MediaLibrary,
+        ffmpeg_path: str | None = None,
+        local_sources: LocalMediaSourceRegistry | None = None,
+    ) -> None:
         self.studio_url = studio_url.rstrip("/")
         self.library = library
         self.ffmpeg_path = ffmpeg_path or shutil.which("ffmpeg")
         self.ffprobe_path = self._find_ffprobe(self.ffmpeg_path)
+        self.local_sources = local_sources
 
     async def process(
         self,
@@ -137,6 +149,7 @@ class MediaImportProcessor:
             return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
         item, studio_elapsed = await self._run_studio_import(analysis_path, origin, realtime_text)
+        item = self._attach_timing_quality(item, duration)
         asset = self.library.create(
             project.id,
             MediaAssetCreate(
@@ -146,14 +159,127 @@ class MediaImportProcessor:
                 sample_rate=int(item.get("sample_rate") or self._sample_rate(audio_stream) or 24000),
                 text=str(item.get("text", "")),
                 words=list(item.get("words", [])),
+                word_timing_quality=str(item.get("word_timing_quality", "unverified")),
+                word_timing_note=item.get("word_timing_note"),
                 transcription_status="complete",
             ),
             asset_id,
         )
         return MediaImportResult(asset=asset, item=item, elapsed=studio_elapsed)
 
+    async def process_local_path(
+        self,
+        project: ProjectRecord,
+        source_value: str,
+        *,
+        cache_local: bool,
+    ) -> MediaImportResult:
+        """Import a native file while retaining its absolute locator only in app-local state."""
+        started = time.perf_counter()
+        original_path = Path(source_value).expanduser().resolve()
+        if not original_path.is_file():
+            raise ValueError("Không tìm thấy file nguồn. Hãy chọn lại file gốc.")
+        extension = original_path.suffix.lower()
+        if extension not in SUPPORTED_MEDIA_EXTENSIONS:
+            raise ValueError(f"Định dạng {extension or 'không rõ'} chưa được hỗ trợ.")
+        if not self.ffmpeg_path or not self.ffprobe_path:
+            raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
+
+        asset_id = f"asset-{uuid4().hex[:12]}"
+        project_root = Path(project.project_path)
+        asset_dir = project_root / "assets" / "media" / asset_id
+        asset_dir.mkdir(parents=True, exist_ok=False)
+        cache_path = asset_dir / f"source{extension}"
+        working_source = original_path
+        cached_at: datetime | None = None
+        if cache_local:
+            await asyncio.to_thread(shutil.copy2, original_path, cache_path)
+            working_source = cache_path
+            cached_at = datetime.now(timezone.utc)
+
+        probe = await asyncio.to_thread(self._probe, working_source)
+        audio_stream = next(
+            (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
+            None,
+        )
+        video_stream = next(
+            (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
+            None,
+        )
+        duration = self._duration(probe)
+        media_kind = self._media_kind(extension, audio_stream, video_stream)
+        portable_source_path = cache_path.relative_to(project_root).as_posix()
+
+        analysis_path: Path | None = None
+        if audio_stream:
+            analysis_path = asset_dir / "analysis.wav"
+            await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
+
+        asset = self.library.create(
+            project.id,
+            MediaAssetCreate(
+                name=original_path.name,
+                source_extension=extension,
+                media_kind=media_kind,
+                source_path=portable_source_path,
+                analysis_path=analysis_path.relative_to(project_root).as_posix() if analysis_path else None,
+                has_external_source=True,
+                local_cache_enabled=cache_local,
+                local_cache_updated_at=cached_at,
+                url=f"/api/projects/{project.id}/media/{asset_id}/audio" if analysis_path else None,
+                duration=duration,
+                sample_rate=self._sample_rate(audio_stream),
+                audio_codec=self._codec(audio_stream),
+                video_codec=self._codec(video_stream),
+                origin="import",
+                status="ready" if audio_stream else "no-audio",
+                transcription_status="skipped" if audio_stream else "not-applicable",
+            ),
+            asset_id,
+        )
+        if self.local_sources:
+            self.local_sources.set(project.id, asset_id, original_path)
+        return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
+
+    async def set_local_file_cache(
+        self,
+        project: ProjectRecord,
+        asset: ProjectMediaAsset,
+        enabled: bool,
+    ) -> ProjectMediaAsset:
+        if not asset.has_external_source:
+            raise ValueError("Footage này được import bằng browser hoặc recorder nên đã là bản project-local.")
+        if not self.local_sources:
+            raise RuntimeError("Không có Local File Cache registry trên máy này. Hãy Open Project rồi chọn lại file nguồn.")
+        original_value = self.local_sources.get(project.id, asset.id)
+        if not original_value:
+            raise FileNotFoundError("Không còn bản ghi file gốc trên máy này. Hãy import lại footage từ file gốc.")
+        original_path = Path(original_value)
+        if not original_path.is_file():
+            raise FileNotFoundError("File gốc đã bị di chuyển hoặc xóa. Hãy chọn/import lại file đó.")
+        if not self.ffmpeg_path or not self.ffprobe_path:
+            raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để cập nhật Local File Cache.")
+
+        project_root = Path(project.project_path)
+        cache_path = project_root / asset.source_path
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        working_source = original_path
+        cached_at: datetime | None = None
+        if enabled:
+            await asyncio.to_thread(shutil.copy2, original_path, cache_path)
+            working_source = cache_path
+            cached_at = datetime.now(timezone.utc)
+
+        if asset.analysis_path:
+            analysis_path = project_root / asset.analysis_path
+            await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
+        return self.library.update_local_cache(project.id, asset.id, enabled, cached_at)
     async def transcribe_existing(
-        self, project: ProjectRecord, asset: ProjectMediaAsset, realtime_text: str = ""
+        self,
+        project: ProjectRecord,
+        asset: ProjectMediaAsset,
+        realtime_text: str = "",
+        on_progress: TranscriptionProgressCallback | None = None,
     ) -> tuple[ProjectMediaAsset, float]:
         if not asset.analysis_path:
             raise ValueError("Footage không có analysis audio để chạy Speech to Text.")
@@ -161,29 +287,27 @@ class MediaImportProcessor:
         if not analysis_path.is_file():
             raise FileNotFoundError("Analysis audio không còn trong project.")
         processing_path, kept_ranges = await asyncio.to_thread(self._prepare_processing_audio, analysis_path, asset)
-
-        def report_chunk_progress(completed: int, total: int) -> None:
-            # Reserve the last fifth of the job for persisting transcript + AI review.
-            progress = min(80, 5 + round(75 * completed / max(1, total)))
-            self.library.set_transcription_state(
-                project.id,
-                asset.id,
-                "processing",
-                ai_review_status="pending",
-                progress=progress,
-            )
-
         item, elapsed = await self._run_studio_import(
             processing_path,
             asset.origin,
             realtime_text or asset.text,
-            on_chunk_complete=report_chunk_progress,
+            on_progress=on_progress,
         )
         if kept_ranges:
             item = self._restore_original_timeline(item, kept_ranges, asset.duration)
+        item = self._attach_timing_quality(item, asset.duration)
         updated = self.library.apply_transcription(project.id, asset.id, item, asset.duration)
         return updated, elapsed
 
+    @staticmethod
+    def _attach_timing_quality(item: dict[str, Any], duration: float) -> dict[str, Any]:
+        """Preserve recognizer timing exactly and label data that needs real alignment."""
+        inspection = inspect_word_timings(list(item.get("words", [])), duration)
+        enriched = dict(item)
+        enriched["words"] = inspection.words
+        enriched["word_timing_quality"] = inspection.quality
+        enriched["word_timing_note"] = inspection.note
+        return enriched
     def _prepare_processing_audio(
         self, analysis_path: Path, asset: ProjectMediaAsset
     ) -> tuple[Path, list[tuple[float, float]] | None]:
@@ -308,19 +432,15 @@ class MediaImportProcessor:
         origin: str,
         realtime_text: str,
         *,
-        on_chunk_complete: Callable[[int, int], None] | None = None,
+        on_progress: TranscriptionProgressCallback | None = None,
     ) -> tuple[dict[str, Any], float]:
         duration = await asyncio.to_thread(self._audio_duration, analysis_path)
         chunks = self._stt_chunks(duration)
         if len(chunks) == 1:
-            item, elapsed = await self._upload_studio_audio(analysis_path, origin, realtime_text)
-            if on_chunk_complete:
-                on_chunk_complete(1, 1)
-            return item, elapsed
+            return await self._upload_studio_audio(
+                analysis_path, origin, realtime_text, on_progress=on_progress
+            )
 
-        # Files over ten minutes are processed sequentially. This avoids a single multi-hour
-        # request monopolising Studio or reaching its request timeout while still preserving
-        # word timestamps on the original timeline.
         cache_dir = analysis_path.parent / "cache" / "stt-chunks"
         cache_dir.mkdir(parents=True, exist_ok=True)
         job_id = uuid4().hex[:8]
@@ -329,45 +449,31 @@ class MediaImportProcessor:
         try:
             for index, chunk in enumerate(chunks, start=1):
                 chunk_path = cache_dir / f"stt-{job_id}-{index:03d}.wav"
+
+                async def report_chunk_progress(value: float, *, completed: int = index - 1) -> None:
+                    if on_progress is None:
+                        return
+                    overall = ((completed + max(0.0, min(100.0, value)) / 100) / len(chunks)) * 100
+                    await on_progress(round(overall, 1))
+
                 try:
                     await asyncio.to_thread(self._extract_stt_chunk, analysis_path, chunk, chunk_path)
-                    item, chunk_elapsed = await self._upload_studio_audio(chunk_path, origin, "")
+                    item, chunk_elapsed = await self._upload_studio_audio(
+                        chunk_path,
+                        origin,
+                        realtime_text if index == 1 else "",
+                        on_progress=report_chunk_progress if on_progress else None,
+                    )
                     results.append((chunk, item))
                     elapsed += chunk_elapsed
                 finally:
                     chunk_path.unlink(missing_ok=True)
-                if on_chunk_complete:
-                    on_chunk_complete(index, len(chunks))
+            return self._merge_studio_chunks(results, duration), elapsed
         finally:
             try:
                 cache_dir.rmdir()
             except OSError:
                 pass
-        return self._merge_studio_chunks(results, duration), elapsed
-
-    async def _upload_studio_audio(
-        self, audio_path: Path, origin: str, realtime_text: str
-    ) -> tuple[dict[str, Any], float]:
-        timeout = httpx.Timeout(900.0, connect=3.0)
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                with audio_path.open("rb") as audio:
-                    response = await client.post(
-                        f"{self.studio_url}/api/audio/import",
-                        files={"file": (audio_path.name, audio, "audio/wav")},
-                        data={"origin": origin, "realtime_text": realtime_text},
-                    )
-        except httpx.ReadTimeout as exc:
-            raise RuntimeError(
-                "Studio mất quá 15 phút để xử lý một đoạn audio. Hãy thử lại; audio dài sẽ tự chia đoạn 10 phút."
-            ) from exc
-        except httpx.RequestError as exc:
-            raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
-        payload = response.json()
-        if response.is_error:
-            raise RuntimeError(payload.get("detail", f"Studio import thất bại ({response.status_code})."))
-        return dict(payload["item"]), float(payload.get("elapsed", 0))
-
     def _audio_duration(self, audio_path: Path) -> float:
         return self._duration(self._probe(audio_path))
 
@@ -391,9 +497,7 @@ class MediaImportProcessor:
             timeline_start = timeline_end
         return chunks
 
-    def _extract_stt_chunk(
-        self, source: Path, chunk: TranscriptionChunk, destination: Path
-    ) -> None:
+    def _extract_stt_chunk(self, source: Path, chunk: TranscriptionChunk, destination: Path) -> None:
         length = max(0.001, chunk.source_end - chunk.source_start)
         result = subprocess.run(
             [
@@ -429,7 +533,7 @@ class MediaImportProcessor:
                     continue
                 word = dict(raw_word)
                 try:
-                    start = max(chunk.source_start, chunk.source_start + float(word.get("start", 0.0)))
+                    start = chunk.source_start + float(word.get("start", 0.0))
                     end = max(start, chunk.source_start + float(word.get("end", word.get("start", 0.0))))
                 except (TypeError, ValueError):
                     continue
@@ -449,6 +553,69 @@ class MediaImportProcessor:
         if len(results) > 1:
             merged["transcription_engine"] = f"OmniVoice Studio · {len(results)} segments"
         return merged
+    async def _upload_studio_audio(
+        self,
+        analysis_path: Path,
+        origin: str,
+        realtime_text: str,
+        *,
+        on_progress: TranscriptionProgressCallback | None = None,
+    ) -> tuple[dict[str, Any], float]:
+        # A queued local STT job may legitimately run for hours; keep the import request alive.
+        timeout = httpx.Timeout(timeout=None, connect=5.0)
+        progress_id = uuid4().hex if on_progress else ""
+        latest_progress = -1.0
+        progress_endpoint_available = bool(progress_id)
+
+        async def publish(value: object) -> None:
+            nonlocal latest_progress
+            try:
+                progress = round(max(0.0, min(100.0, float(value))), 1)
+            except (TypeError, ValueError):
+                return
+            if on_progress is None or progress <= latest_progress:
+                return
+            latest_progress = progress
+            await on_progress(progress)
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                with analysis_path.open("rb") as audio:
+                    data = {"origin": origin, "realtime_text": realtime_text}
+                    if progress_id:
+                        data["progress_id"] = progress_id
+                    import_task = asyncio.create_task(
+                        client.post(
+                            f"{self.studio_url}/api/audio/import",
+                            files={"file": (analysis_path.name, audio, "audio/wav")},
+                            data=data,
+                        )
+                    )
+                    while not import_task.done():
+                        await asyncio.sleep(0.15)
+                        if not progress_endpoint_available:
+                            continue
+                        try:
+                            status = await client.get(
+                                f"{self.studio_url}/api/audio/import/{progress_id}/progress",
+                                timeout=httpx.Timeout(1.5, connect=1.0),
+                            )
+                            if status.status_code == 404:
+                                progress_endpoint_available = False
+                            elif not status.is_error:
+                                await publish(status.json().get("progress", 0))
+                        except httpx.RequestError:
+                            # The import request itself reports the final connection failure.
+                            continue
+                    response = await import_task
+        except httpx.RequestError as exc:
+            raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
+        payload = response.json()
+        if response.is_error:
+            raise RuntimeError(payload.get("detail", f"Studio import thất bại ({response.status_code})."))
+        await publish(100)
+        return dict(payload["item"]), float(payload.get("elapsed", 0))
+
     @staticmethod
     def _codec(stream: dict[str, Any] | None) -> str | None:
         return str(stream.get("codec_name")) if stream and stream.get("codec_name") else None

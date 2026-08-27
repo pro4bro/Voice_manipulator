@@ -61,6 +61,7 @@ MediaTranscriptionStatus = Literal[
     "queued", "processing", "reviewing", "complete", "skipped", "not-applicable", "error"
 ]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
+WordTimingQuality = Literal["unverified", "source", "needs-alignment"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
 EmotionLabel = Literal[
     "exciting",
@@ -102,6 +103,9 @@ class MediaAssetCreate(DomainModel):
     media_kind: MediaKind
     source_path: str
     analysis_path: str | None = None
+    has_external_source: bool = False
+    local_cache_enabled: bool = False
+    local_cache_updated_at: datetime | None = None
     removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
     gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
     studio_item_id: str | None = None
@@ -112,11 +116,13 @@ class MediaAssetCreate(DomainModel):
     video_codec: str | None = None
     text: str = ""
     words: list[dict[str, Any]] = Field(default_factory=list)
+    word_timing_quality: WordTimingQuality = "unverified"
+    word_timing_note: str | None = Field(default=None, max_length=500)
     origin: MediaOrigin
     status: MediaStatus = "ready"
     transcription_status: MediaTranscriptionStatus = "complete"
     transcription_selected: bool = False
-    transcription_progress: int = Field(default=0, ge=0, le=100)
+    transcription_progress: float = Field(default=0, ge=0, le=100)
     transcription_error: str | None = Field(default=None, max_length=2000)
     ai_review_status: AIReviewStatus = "skipped"
     training_selected: bool = False
@@ -174,6 +180,13 @@ class MediaTranscriptionEnqueue(DomainModel):
     asset_ids: list[str] = Field(min_length=1, max_length=500)
 
 
+class MediaTranscriptionProgress(DomainModel):
+    id: str
+    transcription_status: MediaTranscriptionStatus
+    transcription_progress: float = Field(ge=0, le=100)
+    transcription_error: str | None = None
+
+
 class MediaAnnotationUpdate(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list)
     environment_profile_ids: list[str] = Field(default_factory=list)
@@ -217,6 +230,15 @@ class TrainingCatalog(DomainModel):
     environment_profiles: list[EnvironmentNoiseProfile] = Field(default_factory=list)
     settings: TrainingSettings = Field(default_factory=TrainingSettings)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class LocalMediaImport(DomainModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+    cache_local: bool = True
+
+
+class LocalMediaCacheUpdate(DomainModel):
+    enabled: bool
 
 
 class MediaImportResult(DomainModel):
@@ -302,6 +324,13 @@ class FolderPickRequest(DomainModel):
 class FolderPickResult(DomainModel):
     path: str | None = None
 
+
+class MediaFilePickRequest(DomainModel):
+    initial_path: str | None = None
+
+
+class MediaFilePickResult(DomainModel):
+    path: str | None = None
 
 class EngineStatus(DomainModel):
     id: str

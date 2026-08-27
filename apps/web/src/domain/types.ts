@@ -3,6 +3,14 @@ export type ThemeMode = "light" | "dark";
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
 export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
+export type WordTimingQuality = "unverified" | "source" | "needs-alignment";
+
+export interface MediaTranscriptionProgress {
+  id: string;
+  transcriptionStatus: MediaTranscriptionStatus;
+  transcriptionProgress: number;
+  transcriptionError: string | null;
+}
 
 export type ManipulatorMode =
   | "voice-over"
@@ -63,6 +71,8 @@ export interface StudioWord {
   corrected?: string;
   reviewState?: "pending" | "confirmed" | "manual";
   selectedVariant?: "realtime" | "accurate" | "corrected" | "manual" | null;
+  /** Stable diarization label (speaker-1, speaker-2, …); independent from a user profile. */
+  diarizationSpeakerId?: string | null;
   speakerId?: string | null;
   environmentProfileIds?: string[];
   emotion?: EmotionLabel | null;
@@ -124,6 +134,9 @@ export interface ProjectMediaAsset {
   mediaKind: "audio" | "video";
   sourcePath: string;
   analysisPath?: string | null;
+  hasExternalSource?: boolean;
+  localCacheEnabled?: boolean;
+  localCacheUpdatedAt?: string | null;
   removedRanges?: TimelineEditRange[];
   gainKeyframes?: TimelineGainKeyframe[];
   studioItemId: string | null;
@@ -134,6 +147,8 @@ export interface ProjectMediaAsset {
   videoCodec?: string | null;
   text: string;
   words: StudioWord[];
+  wordTimingQuality?: WordTimingQuality;
+  wordTimingNote?: string | null;
   origin: "import" | "record";
   status?: "ready" | "no-audio" | "error";
   transcriptionStatus: MediaTranscriptionStatus;

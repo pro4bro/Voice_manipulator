@@ -5,7 +5,8 @@
 - **Take**: A playable audio Asset created by recording, generation, conversion, dubbing, or patching.
 - **Speaker Profile**: A human identity in one Project, described by name, language, region, age, and gender. Footage and Script words may reference it before any model exists.
 - **Voice Model**: A reusable trained checkpoint or reference-based voice artifact produced for one or more Speaker Profiles.
-- **Speaker Diarization**: Assigning time-aware speech spans to Speaker Profiles; it answers who spoke when but does not produce isolated audio.
+- **Speaker Diarization**: Assigning time-aware speech spans to `Diarization Speaker` labels; it answers who spoke when but does not produce isolated audio. A user can then map each label to a Speaker Profile.
+- **Diarization Speaker**: A processor-generated, time-aware label such as `Speaker 1` or `Speaker 2`; it is distinct from a Speaker Profile and may be mapped to one after review.
 - **Voice Isolation**: Producing separate voice stems from mixed audio. Isolation output may then be diarized and annotated.
 - **Emotion Label**: Controlled delivery/psychological context attached to a whole footage Asset or individual Script words. `mix` means the Asset contains more than one word-level label.
 - **Environment Noise Profile**: A named reusable model of ambient sound learned from multiple audio Assets; it is distinct from destructive denoising.
@@ -18,6 +19,8 @@
 - **Manipulator Mode**: Voice Over, Voice Isolator, Voice Changer, Voice Dubber, or Voice Patch.
 - **Script**: The time-aware transcript document shown and edited in the Script module.
 - **Transcript Candidate**: A realtime, accurate STT, AI-corrected, or user-corrected option for one Script span.
+- **Source Word Timing**: A per-word start/end interval returned by the STT recognizer. It remains the recognizer’s source data and is not a guessed replacement for alignment.
+- **Timing Quality**: The trust state of an Asset’s word timing: `source` has passed structural checks, `needs-alignment` is unsafe for timed subtitle sync, and `unverified` has not yet been checked.
 - **Module**: A reusable deep UI or backend capability with a small interface and hidden implementation.
 - **Engine**: An upstream AI implementation such as OmniVoice.
 - **Adapter**: Pro4Bro code satisfying an interface at the seam between the app and an Engine.

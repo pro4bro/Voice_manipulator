@@ -20,6 +20,8 @@ interface MediaPoolProps {
   speakers: SpeakerProfile[];
   environments: EnvironmentNoiseProfile[];
   onImport: (choices: MediaImportChoice[]) => void;
+  onImportLocal?: () => void;
+  onSetLocalCache?: (assetId: string, enabled: boolean) => void;
   onSelect: (assetId: string) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
@@ -38,6 +40,10 @@ function durationLabel(seconds: number) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
   const minutes = Math.floor(safe / 60);
   return `${String(minutes).padStart(2, "0")}:${String(Math.round(safe % 60)).padStart(2, "0")}`;
+}
+
+function transcriptionProgressLabel(value: number | undefined) {
+  return Math.max(0, Math.min(100, value ?? 0)).toFixed(1);
 }
 
 function transcriptionLabel(asset: ProjectMediaAsset) {
@@ -86,6 +92,8 @@ export function MediaPool({
   speakers,
   environments,
   onImport,
+  onImportLocal = () => undefined,
+  onSetLocalCache = () => undefined,
   onSelect,
   onToggleTraining,
   onToggleTranscription,
@@ -157,7 +165,7 @@ export function MediaPool({
       eyebrow="PROJECT MEDIA"
       index="MP"
       title="Media Pool"
-      action={<label className={`media-import ${busy ? "is-busy" : ""}`}><Icon name="upload" /><span>{busy ? "IMPORTING" : "IMPORT"}</span><input aria-label="Import media" accept={MEDIA_ACCEPT} disabled={busy} multiple onChange={importFiles} type="file" /></label>}
+      action={<div className="media-import-actions"><label className="media-import"><Icon name="upload" /><span>{busy ? "IMPORTING" : "IMPORT"}</span><input aria-label="Import media" accept={MEDIA_ACCEPT} disabled={busy} multiple onChange={importFiles} type="file" /></label><button aria-label="Mở file media từ máy" className="media-import-native" disabled={busy} onClick={onImportLocal} title="Mở file gốc và tùy chọn cache local" type="button"><Icon name="folder" /></button></div>}
     >
       <div className="media-pool-summary">
         <span><b>{assets.length}</b> ASSETS</span>
@@ -177,8 +185,8 @@ export function MediaPool({
                 <span className="media-item-copy">
                   <strong>{asset.name}</strong>
                   <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}</small>
-                  <em>{transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? ` · ${environmentNames.join(", ")}` : ""}</em>
-                  {["queued", "processing", "reviewing"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${(asset.transcriptionProgress ?? 0)}%`} className="media-transcription-progress"><i style={{ width: `${(asset.transcriptionProgress ?? 0)}%` }} /><b>{asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {(asset.transcriptionProgress ?? 0)}%</b></span> : null}
+                  <em>{transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? " · " + environmentNames.join(", ") : ""}{asset.hasExternalSource ? asset.localCacheEnabled ? " · CACHE ✓ " + (asset.localCacheUpdatedAt ? new Date(asset.localCacheUpdatedAt).toLocaleString("vi-VN") : "") : " · ORIGINAL FILE" : ""}</em>
+                  {["queued", "processing", "reviewing"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${transcriptionProgressLabel(asset.transcriptionProgress)}%`} className="media-transcription-progress"><i style={{ width: `${asset.transcriptionProgress ?? 0}%` }} /><b>{asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {transcriptionProgressLabel(asset.transcriptionProgress)}%</b></span> : null}
                 </span>
               </button>
               <div className="media-pool-item__toggles">
@@ -208,7 +216,7 @@ export function MediaPool({
           <section><strong>EMOTION</strong><div className="media-context-options media-context-options--emotion">{EMOTION_OPTIONS.map((option) => <button aria-pressed={contextAsset.emotion === option.id} className={contextAsset.emotion === option.id ? "is-active" : ""} key={option.id} onClick={() => onUpdateAnnotations(contextAsset.id, contextAsset.speakerProfileIds, contextAsset.environmentProfileIds, option.id)} role="menuitem" type="button">{option.label}</button>)}</div></section>
           <section><strong><Icon name="person" /> SPEAKER PROFILE</strong><div className="media-context-options media-context-options--speakers">{speakers.map((speaker) => { const assigned = contextAsset.speakerProfileIds.includes(speaker.id); return <button aria-pressed={assigned} className={assigned ? "is-active" : ""} key={speaker.id} onClick={() => onUpdateAnnotations(contextAsset.id, assigned ? contextAsset.speakerProfileIds.filter((id) => id !== speaker.id) : [...contextAsset.speakerProfileIds, speaker.id], contextAsset.environmentProfileIds, contextAsset.emotion)} role="menuitem" type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>; })}{!speakers.length ? <p>Thêm Speaker Profile trong Sound Library trước.</p> : null}</div></section>
           <section><strong><Icon name="landscape" /> ENVIRONMENT PROFILE</strong><div className="media-context-options media-context-options--speakers">{environments.map((profile) => { const assigned = contextAsset.environmentProfileIds.includes(profile.id); return <button aria-pressed={assigned} className={assigned ? "is-active" : ""} key={profile.id} onClick={() => onUpdateAnnotations(contextAsset.id, contextAsset.speakerProfileIds, assigned ? contextAsset.environmentProfileIds.filter((id) => id !== profile.id) : [...contextAsset.environmentProfileIds, profile.id], contextAsset.emotion)} role="menuitem" type="button"><Icon name="landscape" />{profile.name}</button>; })}{!environments.length ? <p>Thêm Environment Profile trong Sound Library trước.</p> : null}</div></section>
-          <footer><span>RCLICK MENU</span><div><button className="media-history-action" onClick={() => openHistory(contextAsset)} role="menuitem" type="button"><Icon name="file" /> Text History</button><button className="media-remove-action" onClick={() => { setContextMenu(null); onRemove(contextAsset); }} role="menuitem" type="button"><Icon name="trash" /> Remove</button></div></footer>
+          <footer><span>RCLICK MENU</span><div>{contextAsset.hasExternalSource ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}{contextAsset.hasExternalSource && contextAsset.localCacheEnabled ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, true); }} role="menuitem" type="button"><Icon name="upload" /> Refresh local cache</button> : null}<button className="media-history-action" onClick={() => openHistory(contextAsset)} role="menuitem" type="button"><Icon name="file" /> Text History</button><button className="media-remove-action" onClick={() => { setContextMenu(null); onRemove(contextAsset); }} role="menuitem" type="button"><Icon name="trash" /> Remove</button></div></footer>
         </div>,
         document.body,
       ) : null}

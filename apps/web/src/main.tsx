@@ -7,5 +7,6 @@ import "./styles/global.css";
 import "./styles/project-hub.css";
 import "./styles/workspace.css";
 import "./styles/modules.css";
+import "./styles/typography.css";
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

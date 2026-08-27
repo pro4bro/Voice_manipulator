@@ -4,6 +4,7 @@ import type {
   EngineProfileSchema,
   EngineStatus,
   MediaRevisionSource,
+  MediaTranscriptionProgress,
   Project,
   ProjectCreate,
   ProjectMediaAsset,
@@ -37,11 +38,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+
+async function downloadSrt(path: string, fallbackFilename: string): Promise<void> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `Không thể xuất SRT (${response.status})`);
+  }
+  const contentDisposition = response.headers.get("content-disposition") ?? "";
+  const filename = /filename="?([^";]+)"?/iu.exec(contentDisposition)?.[1] ?? fallbackFilename;
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
   return {
     ...word,
     reviewState: word.reviewState ?? word.review_state as StudioWord["reviewState"],
     selectedVariant: word.selectedVariant ?? word.selected_variant as StudioWord["selectedVariant"],
+    diarizationSpeakerId: word.diarizationSpeakerId ?? word.diarization_speaker_id as string | null | undefined,
     speakerId: word.speakerId ?? word.speaker_id as string | null | undefined,
     environmentProfileIds: word.environmentProfileIds ?? word.environment_profile_ids as string[] | undefined ?? [],
   };
@@ -67,6 +88,8 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
     transcriptionProgress: asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0),
     transcriptionError: asset.transcriptionError ?? null,
     aiReviewStatus: asset.aiReviewStatus ?? "skipped",
+    wordTimingQuality: asset.wordTimingQuality ?? (asset as unknown as Record<string, unknown>).word_timing_quality as ProjectMediaAsset["wordTimingQuality"] ?? "unverified",
+    wordTimingNote: asset.wordTimingNote ?? (asset as unknown as Record<string, unknown>).word_timing_note as string | null | undefined ?? null,
     removedRanges: asset.removedRanges ?? [],
     gainKeyframes: asset.gainKeyframes ?? [],
     trainingSelected: asset.trainingSelected ?? false,
@@ -99,10 +122,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ initialPath }),
     }),
+  pickMediaFile: (initialPath = "") =>
+    request<{ path: string | null }>("/api/system/pick-media-file", {
+      method: "POST",
+      body: JSON.stringify({ initialPath }),
+    }),
+  importLocalProjectMedia: async (projectId: string, sourcePath: string, cacheLocal: boolean) => {
+    const result = await request<ProjectMediaImportResult>("/api/projects/" + projectId + "/media/import-local", {
+      method: "POST",
+      body: JSON.stringify({ sourcePath, cacheLocal }),
+    });
+    return { ...result, asset: normalizeMediaAsset(result.asset), item: result.item ? normalizeStudioItem(result.item) : null };
+  },
+  updateMediaLocalCache: async (projectId: string, assetId: string, enabled: boolean) => {
+    const asset = await request<ProjectMediaAsset>("/api/projects/" + projectId + "/media/" + assetId + "/local-cache", {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    });
+    return normalizeMediaAsset(asset);
+  },
   listProjectMedia: async (projectId: string) => {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
     return assets.map(normalizeMediaAsset);
   },
+  listProjectMediaTranscriptionStatus: (projectId: string) =>
+    request<MediaTranscriptionProgress[]>(`/api/projects/${projectId}/media/transcription-status`),
   importProjectMedia: async (
     projectId: string,
     file: File,
@@ -131,6 +175,11 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  exportProjectSubtitles: (projectId: string, assetId: string, mode: "sentence" | "word" | "table") =>
+    downloadSrt(
+      `/api/projects/${projectId}/media/${assetId}/subtitles?mode=${mode}`,
+      `subtitles--${mode}.${mode === "table" ? "csv" : "srt"}`,
+    ),
   reviewMediaTranscript: async (projectId: string, assetId: string) => {
     const result = await request<TranscriptReviewResult>(`/api/projects/${projectId}/media/${assetId}/review`, {
       method: "POST",

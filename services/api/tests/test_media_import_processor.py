@@ -5,7 +5,7 @@ from fastapi import UploadFile
 
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
-from app.adapters.media_import_processor import MediaImportProcessor, TranscriptionChunk
+from app.adapters.media_import_processor import MediaImportProcessor, STT_CHUNK_SECONDS, TranscriptionChunk
 from app.domain.models import ProjectCreate
 
 
@@ -46,18 +46,19 @@ def test_import_can_extract_audio_without_running_transcription(tmp_path, monkey
     assert result.asset.sample_rate == 48000
     assert result.asset.analysis_path.endswith("analysis.wav")
 
-def test_long_audio_is_split_into_ten_minute_stt_chunks_with_overlap():
-    chunks = MediaImportProcessor._stt_chunks(1201.0)
+def test_long_audio_uses_99_percent_of_the_ninety_minute_stt_ceiling_with_overlap():
+    duration = STT_CHUNK_SECONDS + 1.0
+    chunks = MediaImportProcessor._stt_chunks(duration)
 
     assert chunks == [
-        TranscriptionChunk(0.0, 602.0, 0.0, 600.0),
-        TranscriptionChunk(598.0, 1201.0, 600.0, 1200.0),
-        TranscriptionChunk(1198.0, 1201.0, 1200.0, 1201.0),
+        TranscriptionChunk(0.0, duration, 0.0, STT_CHUNK_SECONDS),
+        TranscriptionChunk(STT_CHUNK_SECONDS - 2.0, duration, STT_CHUNK_SECONDS, duration),
     ]
 
 
 def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
-    chunks = MediaImportProcessor._stt_chunks(1200.0)
+    duration = STT_CHUNK_SECONDS * 2
+    chunks = MediaImportProcessor._stt_chunks(duration)
     merged = MediaImportProcessor._merge_studio_chunks(
         [
             (
@@ -66,8 +67,8 @@ def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
                     "id": "first",
                     "text": "xin duplicate",
                     "words": [
-                        {"text": "xin", "start": 599.4, "end": 599.8},
-                        {"text": "duplicate", "start": 600.1, "end": 600.5},
+                        {"text": "xin", "start": STT_CHUNK_SECONDS - 0.6, "end": STT_CHUNK_SECONDS - 0.2},
+                        {"text": "duplicate", "start": STT_CHUNK_SECONDS + 0.1, "end": STT_CHUNK_SECONDS + 0.5},
                     ],
                 },
             ),
@@ -83,13 +84,13 @@ def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
                 },
             ),
         ],
-        1200.0,
+        duration,
     )
 
     assert merged["id"] == "second"
     assert merged["text"] == "xin chao"
     assert [(word["text"], word["start"]) for word in merged["words"]] == [
-        ("xin", 599.4),
-        ("chao", 600.7),
+        ("xin", STT_CHUNK_SECONDS - 0.6),
+        ("chao", STT_CHUNK_SECONDS + 0.7),
     ]
-    assert merged["duration"] == 1200.0
+    assert merged["duration"] == duration

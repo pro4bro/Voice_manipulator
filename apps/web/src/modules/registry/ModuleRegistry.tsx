@@ -40,6 +40,8 @@ export interface StudioContext {
   onTimelineEditsChange: (ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[]) => void;
   onTakeChange: (take: CapturedAudio) => void;
   onImportMedia: (choices: MediaImportChoice[]) => void;
+  onImportLocalMedia: () => void;
+  onSetLocalCache: (assetId: string, enabled: boolean) => void;
   onSelectAsset: (assetId: string) => void;
   onRecordingPreview: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript: (text: string, active: boolean) => void;
@@ -67,6 +69,8 @@ function mediaPoolProps(context: StudioContext) {
     busy: context.mediaBusy,
     environments: context.trainingCatalog.environmentProfiles,
     onImport: context.onImportMedia,
+    onImportLocal: context.onImportLocalMedia,
+    onSetLocalCache: context.onSetLocalCache,
     onQueueTranscriptions: context.onQueueTranscriptions,
     onRemove: context.onRemoveAsset,
     onSelect: context.onSelectAsset,
@@ -88,8 +92,10 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <MediaPool {...mediaPoolProps(context)} />;
     case "voice-vault":
       return <VoiceVault assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
-    case "script":
-      return <ScriptEditor playbackAssetId={context.take?.id ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+    case "script": {
+      const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
+      return <ScriptEditor wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+    }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":

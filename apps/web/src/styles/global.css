@@ -71,3 +71,6 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+::selection { color: var(--text-on-accent); background: var(--accent); text-shadow: 0 0 1px var(--text-on-accent); }
+.script-editor-stack[data-native-tracking="true"] .script-editor::selection { color: var(--text-on-accent); background: var(--accent); text-shadow: 0 0 1px var(--text-on-accent); }

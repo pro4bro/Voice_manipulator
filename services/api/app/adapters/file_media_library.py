@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.adapters.project_activity_log import ProjectActivityLog
+from app.adapters.word_timing_quality import inspect_word_timings
 from app.domain.models import (
     AIReviewStatus,
     EmotionLabel,
@@ -15,6 +16,7 @@ from app.domain.models import (
     MediaRevision,
     MediaRevisionSource,
     MediaTranscriptionStatus,
+    MediaTranscriptionProgress,
     ProjectMediaAsset,
     TimelineEditRange,
     TimelineGainKeyframe,
@@ -167,9 +169,11 @@ class FileMediaLibrary:
                         "sample_rate": int(item.get("sample_rate") or asset.sample_rate or 24000),
                         "text": text,
                         "words": words,
+                        "word_timing_quality": item.get("word_timing_quality", "unverified"),
+                        "word_timing_note": item.get("word_timing_note"),
                         "revisions": revisions,
                         "transcription_status": "reviewing",
-                        "transcription_progress": 82,
+                        "transcription_progress": 99.9,
                         "transcription_error": None,
                         "ai_review_status": "pending",
                         "updated_at": datetime.now(timezone.utc),
@@ -189,7 +193,7 @@ class FileMediaLibrary:
         *,
         ai_review_status: AIReviewStatus | None = None,
         error: str | None = None,
-        progress: int | None = None,
+        progress: float | None = None,
     ) -> ProjectMediaAsset:
         with self._lock:
             assets = self.list(project_id)
@@ -201,21 +205,76 @@ class FileMediaLibrary:
                         "transcription_status": state,
                         "transcription_error": error,
                         "ai_review_status": ai_review_status or asset.ai_review_status,
-                        "transcription_progress": max(0, min(100, progress if progress is not None else asset.transcription_progress)),
+                        "transcription_progress": self._normalize_transcription_progress(
+                            progress if progress is not None else asset.transcription_progress
+                        ),
                         "updated_at": datetime.now(timezone.utc),
                     }
                 )
                 assets[index] = updated
                 self._write(project_id, assets)
+                if state in {"queued", "processing", "reviewing", "complete", "error"}:
+                    self._write_transcription_progress_snapshot(
+                        project_id,
+                        asset_id,
+                        state=state,
+                        progress=updated.transcription_progress,
+                        error=error,
+                    )
+                else:
+                    self._transcription_progress_path(project_id, asset_id).unlink(missing_ok=True)
                 self._append_activity(
                     project_id,
                     "TRANSCRIPTION_STATE_CHANGED",
                     asset,
-                    {"state": state, "progress": updated.transcription_progress, "aiReviewStatus": updated.ai_review_status, "error": error},
+                    {
+                        "state": state,
+                        "progress": updated.transcription_progress,
+                        "aiReviewStatus": updated.ai_review_status,
+                        "error": error,
+                    },
                 )
                 return updated
         raise KeyError(asset_id)
 
+    def set_transcription_progress(
+        self, project_id: str, asset_id: str, progress: float
+    ) -> None:
+        """Persist high-frequency progress without opening the transcript index."""
+        with self._lock:
+            path = self._transcription_progress_path(project_id, asset_id)
+            if not path.is_file():
+                # The asset may have been removed while the background worker was
+                # still unwinding. Do not recreate a stale status file.
+                return
+            try:
+                snapshot = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                snapshot = {}
+            self._write_transcription_progress_snapshot(
+                project_id,
+                asset_id,
+                state=snapshot.get("transcriptionStatus", "processing"),
+                progress=progress,
+                error=snapshot.get("transcriptionError"),
+            )
+
+    def transcription_progresses(
+        self, project_id: str
+    ) -> list[MediaTranscriptionProgress]:
+        """Read only tiny job snapshots while the UI is polling STT status."""
+        with self._lock:
+            progress_dir = self._transcription_progress_path(project_id, "placeholder").parent
+            if not progress_dir.is_dir():
+                return []
+            snapshots: list[MediaTranscriptionProgress] = []
+            for status_path in sorted(progress_dir.glob("*.json")):
+                try:
+                    payload = json.loads(status_path.read_text(encoding="utf-8"))
+                    snapshots.append(MediaTranscriptionProgress.model_validate(payload))
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    continue
+            return snapshots
     def set_training_selected(
         self, project_id: str, asset_id: str, selected: bool
     ) -> ProjectMediaAsset:
@@ -338,6 +397,7 @@ class FileMediaLibrary:
                 raise ValueError("Media asset folder escapes its project folder.")
             if asset_dir.exists():
                 shutil.rmtree(asset_dir)
+            self._transcription_progress_path(project_id, asset_id).unlink(missing_ok=True)
             self._write(project_id, [item for item in assets if item.id != asset_id])
             self._append_activity(project_id, "MEDIA_REMOVED", asset, {"assetId": asset.id})
 
@@ -354,6 +414,38 @@ class FileMediaLibrary:
         project_root = Path(self.projects.get(project_id).project_path).resolve()
         return self._resolved_project_path(project_root, asset.analysis_path)
 
+    def update_local_cache(
+        self,
+        project_id: str,
+        asset_id: str,
+        enabled: bool,
+        cached_at: datetime | None = None,
+    ) -> ProjectMediaAsset:
+        with self._lock:
+            assets = self.list(project_id)
+            for index, asset in enumerate(assets):
+                if asset.id != asset_id:
+                    continue
+                updated = asset.model_copy(
+                    update={
+                        "local_cache_enabled": enabled,
+                        "local_cache_updated_at": cached_at if enabled else asset.local_cache_updated_at,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                )
+                assets[index] = updated
+                self._write(project_id, assets)
+                self._append_activity(
+                    project_id,
+                    "LOCAL_MEDIA_CACHE_UPDATED",
+                    asset,
+                    {
+                        "enabled": enabled,
+                        "cachedAt": cached_at.isoformat() if cached_at else None,
+                    },
+                )
+                return updated
+        raise KeyError(asset_id)
     def _set_boolean(
         self,
         project_id: str,
@@ -382,6 +474,37 @@ class FileMediaLibrary:
                 return updated
         raise KeyError(asset_id)
 
+    @staticmethod
+    def _normalize_transcription_progress(value: float | int) -> float:
+        try:
+            return round(max(0.0, min(100.0, float(value))), 1)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _transcription_progress_path(self, project_id: str, asset_id: str) -> Path:
+        project = self.projects.get(project_id)
+        return Path(project.project_path) / "jobs" / "transcription" / f"{asset_id}.json"
+    def _write_transcription_progress_snapshot(
+        self,
+        project_id: str,
+        asset_id: str,
+        *,
+        state: MediaTranscriptionStatus | str,
+        progress: float | int,
+        error: str | None,
+    ) -> None:
+        path = self._transcription_progress_path(project_id, asset_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "id": asset_id,
+            "transcriptionStatus": state,
+            "transcriptionProgress": self._normalize_transcription_progress(progress),
+            "transcriptionError": error,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
     def _index_path(self, project_id: str) -> Path:
         project = self.projects.get(project_id)
         path = Path(project.project_path) / "assets" / "media" / "index.json"
@@ -406,9 +529,13 @@ class FileMediaLibrary:
             else None
         )
         url = f"/api/projects/{project_id}/media/{asset.id}/audio" if analysis_path else None
-        return asset.model_copy(
-            update={"source_path": source_path, "analysis_path": analysis_path, "url": url}
-        )
+        update = {"source_path": source_path, "analysis_path": analysis_path, "url": url}
+        if asset.word_timing_quality != "source" and asset.words:
+            inspection = inspect_word_timings(asset.words, asset.duration)
+            update["words"] = inspection.words
+            update["word_timing_quality"] = inspection.quality
+            update["word_timing_note"] = inspection.note
+        return asset.model_copy(update=update)
 
     def _append_activity(self, project_id: str, event: str, asset: ProjectMediaAsset, details: dict) -> None:
         project = self.projects.get(project_id)

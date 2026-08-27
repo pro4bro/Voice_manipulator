@@ -1,4 +1,5 @@
-﻿@echo off
+@echo off
+chcp 65001 >nul
 setlocal
 pushd "%~dp0" >nul 2>&1
 if errorlevel 1 (
@@ -6,12 +7,14 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\start-pro4bro.ps1"
+set "command=%~1"
+if "%command%"=="" set "command=start"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\pro4bro-console.ps1" %command%
 set "exitCode=%errorlevel%"
 popd
 if not "%exitCode%"=="0" (
   echo.
-  echo Pro4Bro could not start. Review the error above.
+  echo Pro4Bro could not complete "%command%". Review the error above.
   pause
 )
 exit /b %exitCode%

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type UIEvent } from "react";
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
@@ -13,11 +13,28 @@ export interface ActiveTake {
   duration: number;
   text?: string;
   words?: StudioWord[];
+  wordTimingQuality?: "unverified" | "source" | "needs-alignment";
+  wordTimingNote?: string | null;
 }
 
 interface EnvelopePoint {
   min: number;
   max: number;
+}
+
+interface WaveformDetail {
+  start: number;
+  end: number;
+  resolution: number;
+  points: EnvelopePoint[];
+}
+
+interface DetailWaveformRequest {
+  start: number;
+  end: number;
+  viewportStart: number;
+  viewportEnd: number;
+  points: number;
 }
 
 interface TimelineProps {
@@ -40,6 +57,10 @@ const GAIN_PREVIEW_PARTS = [1, 5, 9];
 const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
 const MAX_GAIN_RANGES = 96;
 const CLOCK_STATE_INTERVAL_MS = 80;
+const MAX_TIMELINE_PIXELS_PER_SECOND = 1000;
+const WORD_TRACK_BUFFER_SECONDS = 2;
+const DETAIL_WAVEFORM_DEBOUNCE_MS = 160;
+const DETAIL_WAVEFORM_MAX_POINTS = 12_000;
 
 interface WaveformRange {
   start: number;
@@ -48,17 +69,22 @@ interface WaveformRange {
 
 function timecode(seconds: number) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
-  const minutes = Math.floor(safe / 60);
-  return `${String(minutes).padStart(2, "0")}:${(safe - minutes * 60).toFixed(3).padStart(6, "0")}`;
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const remainingSeconds = safe - hours * 3600 - minutes * 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${remainingSeconds.toFixed(3).padStart(6, "0")}`;
 }
 
-function waveformPath(
+function paintEnvelopeRange(
+  context: CanvasRenderingContext2D,
   points: EnvelopePoint[],
   gain: number,
-  ranges: WaveformRange[] = [{ start: 0, end: points.length }],
-  autoCalibrate = false,
+  range: WaveformRange,
+  autoCalibrate: boolean,
 ) {
-  if (!points.length) return "";
+  const start = Math.max(0, Math.floor(range.start));
+  const end = Math.min(points.length, Math.ceil(range.end));
+  if (end <= start) return;
   const center = PATH_HEIGHT / 2;
   const amplitude = PATH_HEIGHT * 0.46;
   const coordinate = (point: EnvelopePoint, index: number, edge: "min" | "max") => {
@@ -68,24 +94,49 @@ function waveformPath(
       ? AUTO_CALIBRATE_CEILING / peak
       : 1;
     const value = Math.max(-1, Math.min(1, point[edge] * gain * calibration));
-    return `${x.toFixed(2)},${(center - value * amplitude).toFixed(2)}`;
+    return { x, y: center - value * amplitude };
   };
-  return ranges
-    .filter((range) => range.end - range.start > 0)
-    .map((range) => {
-      const start = Math.max(0, Math.floor(range.start));
-      const end = Math.min(points.length, Math.ceil(range.end));
-      const top = Array.from({ length: end - start }, (_, offset) => {
-        const index = start + offset;
-        return coordinate(points[index], index, "max");
-      });
-      const bottom = Array.from({ length: end - start }, (_, reverseIndex) => {
-        const index = end - reverseIndex - 1;
-        return coordinate(points[index], index, "min");
-      });
-      return `M ${top.join(" L ")} L ${bottom.join(" L ")} Z`;
-    })
-    .join(" ");
+  const first = coordinate(points[start], start, "max");
+  context.beginPath();
+  context.moveTo(first.x, first.y);
+  for (let index = start + 1; index < end; index += 1) {
+    const point = coordinate(points[index], index, "max");
+    context.lineTo(point.x, point.y);
+  }
+  for (let index = end - 1; index >= start; index -= 1) {
+    const point = coordinate(points[index], index, "min");
+    context.lineTo(point.x, point.y);
+  }
+  context.closePath();
+  context.fill();
+}
+
+function paintEnvelope(
+  canvas: HTMLCanvasElement,
+  points: EnvelopePoint[],
+  gain: number,
+  previewGain: number | null,
+  autoCalibrate: boolean,
+) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  canvas.width = PATH_WIDTH;
+  canvas.height = PATH_HEIGHT;
+  const styles = getComputedStyle(canvas);
+  context.fillStyle = styles.getPropertyValue("--surface-audio").trim() || "#151714";
+  context.fillRect(0, 0, PATH_WIDTH, PATH_HEIGHT);
+  if (!points.length) return;
+  context.fillStyle = styles.color || "#ff6745";
+  context.globalAlpha = 0.84;
+  paintEnvelopeRange(context, points, gain, { start: 0, end: points.length }, autoCalibrate);
+  if (previewGain !== null) {
+    context.fillStyle = styles.getPropertyValue("--lime").trim() || "#b9ff38";
+    context.globalAlpha = 0.94;
+    for (const range of gainPreviewRanges(points.length)) {
+      paintEnvelopeRange(context, points, previewGain, range, autoCalibrate);
+    }
+  }
+  context.globalAlpha = 1;
 }
 
 function gainPreviewRanges(pointCount: number): WaveformRange[] {
@@ -126,8 +177,18 @@ function liveEnvelope(samples: EnvelopePoint[]): EnvelopePoint[] {
   return samples;
 }
 
+export function normalizeWordTimings(words: StudioWord[], duration: number): StudioWord[] {
+  const safeDuration = Math.max(0.001, duration);
+  return words.map((word) => {
+    const start = Number.isFinite(word.start) ? Math.min(safeDuration, Math.max(0, word.start)) : 0;
+    const rawEnd = Number.isFinite(word.end) ? word.end : start;
+    const end = Math.min(safeDuration, Math.max(start, rawEnd));
+    return { ...word, start, end };
+  });
+}
+
 function activeWordAt(words: StudioWord[], time: number) {
-  if (!words.length || time < words[0].start - 0.08) return -1;
+  if (!words.length) return -1;
   let low = 0;
   let high = words.length - 1;
   let candidate = -1;
@@ -137,9 +198,8 @@ function activeWordAt(words: StudioWord[], time: number) {
     else high = middle - 1;
   }
   if (candidate < 0) return -1;
-  const nextStart = words[candidate + 1]?.start;
-  const holdUntil = nextStart ?? words[candidate].end + 0.14;
-  return time <= Math.max(words[candidate].end, holdUntil) ? candidate : -1;
+  const word = words[candidate];
+  return time >= word.start && time <= word.end ? candidate : -1;
 }
 
 export function Timeline({
@@ -156,7 +216,8 @@ export function Timeline({
   const [currentTime, setCurrentTime] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [envelope, setEnvelope] = useState<EnvelopePoint[]>([]);
+  const [detailEnvelope, setDetailEnvelope] = useState<WaveformDetail | null>(null);
+  const [detailWaveformState, setDetailWaveformState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [decodedDuration, setDecodedDuration] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [signalDb, setSignalDb] = useState(-60);
@@ -167,12 +228,19 @@ export function Timeline({
   const [draftGain, setDraftGain] = useState(gain);
   const [isGainPreviewing, setIsGainPreviewing] = useState(false);
   const [autoCalibrate, setAutoCalibrate] = useState(false);
+  const [timelineCanvasWidth, setTimelineCanvasWidth] = useState(0);
+  const [timelineViewport, setTimelineViewport] = useState({ left: 0, width: 0 });
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
+  const transportProgressRef = useRef<HTMLDivElement>(null);
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  const detailWaveformCanvasRef = useRef<HTMLCanvasElement>(null);
   const timelinePixelWidthRef = useRef(0);
   const playheadDragRef = useRef(false);
+  const transportScrubRef = useRef(false);
+  const timelineNavigatorDraggingRef = useRef(false);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
 
@@ -190,20 +258,36 @@ export function Timeline({
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
+  const timingNeedsAlignment = take?.wordTimingQuality === "needs-alignment";
+  // Always show recognizer timestamps. A quality warning is informational; hiding words would remove essential review controls.
+  const displayWords = useMemo(() => normalizeWordTimings(words, duration), [duration, words]);
+  const detailRequest = useMemo(() => {
+    if (isRecording || !timelineCanvasWidth || !timelineViewport.width) return null;
+    const fullWidth = Math.max(timelineCanvasWidth, timelineViewport.width);
+    const viewportStart = (timelineViewport.left / fullWidth) * duration;
+    const viewportDuration = (timelineViewport.width / fullWidth) * duration;
+    const buffer = viewportDuration * 0.4;
+    const start = Math.max(0, viewportStart - buffer);
+    const end = Math.min(duration, viewportStart + viewportDuration + buffer);
+    if (end - start <= 0.001) return null;
+    const deviceScale = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
+    return {
+      start,
+      end,
+      viewportStart,
+      viewportEnd: viewportStart + viewportDuration,
+      points: Math.max(1_024, Math.min(DETAIL_WAVEFORM_MAX_POINTS, Math.ceil(timelineViewport.width * deviceScale * 1.5))),
+    } satisfies DetailWaveformRequest;
+  }, [duration, isRecording, timelineCanvasWidth, timelineViewport, zoom]);
   const visualGain = 10 ** (gain / 20);
   const draftVisualGain = 10 ** (draftGain / 20);
-  const visibleEnvelope = isRecording ? liveEnvelope(recordingPreview?.samples ?? []) : envelope;
-  const path = useMemo(
-    () => waveformPath(visibleEnvelope, visualGain, undefined, autoCalibrate),
-    [autoCalibrate, visibleEnvelope, visualGain],
-  );
-  const previewPath = useMemo(() => {
-    if (isRecording || !isGainPreviewing) return "";
-    return waveformPath(envelope, draftVisualGain, gainPreviewRanges(envelope.length), autoCalibrate);
-  }, [autoCalibrate, draftVisualGain, envelope, isGainPreviewing, isRecording]);
+  const visibleEnvelope = isRecording ? liveEnvelope(recordingPreview?.samples ?? []) : detailEnvelope?.points ?? [];
+  const waveformPreviewGain = !isRecording && isGainPreviewing ? draftVisualGain : null;
+  const gainWindowStart = isRecording ? 0 : detailEnvelope?.start ?? 0;
+  const gainWindowDuration = isRecording ? duration : Math.max(0.001, (detailEnvelope?.end ?? duration) - gainWindowStart);
   const gainOverflows = useMemo(
-    () => isRecording ? [] : overflowRanges(envelope, visualGain),
-    [envelope, isRecording, visualGain],
+    () => isRecording ? [] : overflowRanges(visibleEnvelope, visualGain),
+    [isRecording, visibleEnvelope, visualGain],
   );
   const latestPreview = visibleEnvelope[visibleEnvelope.length - 1];
   const latestPreviewPeak = latestPreview ? Math.max(Math.abs(latestPreview.min), Math.abs(latestPreview.max)) : 0;
@@ -212,8 +296,30 @@ export function Timeline({
   const activePeakDb = isRecording ? Math.max(peakDb, previewDb) : peakDb;
   const meterPercent = Math.min(100, Math.max(0, ((activeSignalDb + 96) / 192) * 100));
   const peakPercent = Math.min(100, Math.max(0, ((activePeakDb + 96) / 192) * 100));
-  const activeWordIndex = isRecording ? -1 : activeWordAt(words, currentTime);
+  const activeWordIndex = isRecording ? -1 : activeWordAt(displayWords, currentTime);
+  const wordTrackIndexes = useMemo(() => {
+    if (displayWords.length <= 1400) return displayWords.map((_, index) => index);
+    if (!timelineCanvasWidth) return displayWords.slice(0, 240).map((_, index) => index);
+    const canvasWidth = timelineCanvasWidth || 1000;
+    const viewportWidth = timelineViewport.width || Math.min(canvasWidth, 1000);
+    const start = Math.max(0, ((timelineViewport.left / canvasWidth) * duration) - WORD_TRACK_BUFFER_SECONDS);
+    const end = Math.min(duration, (((timelineViewport.left + viewportWidth) / canvasWidth) * duration) + WORD_TRACK_BUFFER_SECONDS);
+    let low = 0; let high = displayWords.length;
+    while (low < high) { const middle = Math.floor((low + high) / 2); if (displayWords[middle].end < start) low = middle + 1; else high = middle; }
+    const indexes: number[] = [];
+    for (let index = Math.max(0, low - 1); index < displayWords.length && displayWords[index].start <= end; index += 1) indexes.push(index);
+    if (activeWordIndex >= 0 && !indexes.includes(activeWordIndex)) indexes.push(activeWordIndex);
+    return indexes.sort((left, right) => left - right);
+  }, [activeWordIndex, displayWords, duration, timelineCanvasWidth, timelineViewport]);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+  const timelineNavigator = useMemo(() => {
+    const visible = Math.max(0, timelineViewport.width);
+    const total = Math.max(visible, timelineCanvasWidth);
+    const maxScroll = Math.max(0, total - visible);
+    const width = total > 0 ? Math.min(100, (visible / total) * 100) : 100;
+    const left = maxScroll > 0 ? Math.max(0, Math.min(100 - width, (timelineViewport.left / maxScroll) * (100 - width))) : 0;
+    return { left, width, enabled: maxScroll > 0.5 };
+  }, [timelineCanvasWidth, timelineViewport]);
 
   useEffect(() => {
     if (!gainInteractionRef.current) setDraftGain(gain);
@@ -224,13 +330,37 @@ export function Timeline({
   }, [gainKeyframes.length, take?.id]);
 
   useLayoutEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas || !isRecording) return undefined;
+    const repaint = () => paintEnvelope(canvas, visibleEnvelope, visualGain, waveformPreviewGain, autoCalibrate);
+    repaint();
+    const observer = new MutationObserver(repaint);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, [autoCalibrate, isRecording, visibleEnvelope, visualGain, waveformPreviewGain]);
+  useLayoutEffect(() => {
+    const canvas = detailWaveformCanvasRef.current;
+    if (!canvas || !detailEnvelope?.points.length) return undefined;
+    const repaint = () => paintEnvelope(canvas, detailEnvelope.points, visualGain, waveformPreviewGain, autoCalibrate);
+    repaint();
+    const observer = new MutationObserver(repaint);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, [autoCalibrate, detailEnvelope, visualGain, waveformPreviewGain]);
+
+  useLayoutEffect(() => {
     const canvas = timelineCanvasRef.current;
     if (!canvas) return;
     const update = () => {
-      timelinePixelWidthRef.current = canvas.getBoundingClientRect().width;
+      const width = canvas.getBoundingClientRect().width;
+      timelinePixelWidthRef.current = width;
+      setTimelineCanvasWidth((current) => Math.abs(current - width) > 0.5 ? width : current);
+      const scroller = timelineScrollRef.current;
+      if (scroller) setTimelineViewport((current) => current.width !== scroller.clientWidth ? { left: scroller.scrollLeft, width: scroller.clientWidth } : current);
       paintPlayhead(currentTime);
     };
     update();
+    if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(update);
     observer.observe(canvas);
     return () => observer.disconnect();
@@ -252,6 +382,10 @@ export function Timeline({
     setPlaying(false);
     setDecodedDuration(0);
     setMediaDuration(0);
+    setDetailEnvelope(null);
+    setDetailWaveformState("idle");
+    setDetailEnvelope(null);
+    setDetailWaveformState("idle");
     setMarkIn(null);
     setMarkOut(null);
     setStagedCut(null);
@@ -355,51 +489,65 @@ export function Timeline({
   }, []);
 
   useEffect(() => {
-    if (!take?.url) {
-      setEnvelope([]);
-      setDecodedDuration(0);
-      return;
+    if (!take?.url || !detailRequest) {
+      setDetailEnvelope(null);
+      setDetailWaveformState("idle");
+      return undefined;
+    }
+    const requiredDensity = detailRequest.points / Math.max(0.001, detailRequest.end - detailRequest.start);
+    const sourceDensity = detailEnvelope ? 1 / Math.max(0.000001, detailEnvelope.resolution) : 0;
+    const targetDensity = Math.min(requiredDensity, sourceDensity || requiredDensity);
+    const cachedDensity = detailEnvelope ? detailEnvelope.points.length / Math.max(0.001, detailEnvelope.end - detailEnvelope.start) : 0;
+    const cacheCoversViewport = detailEnvelope
+      && detailEnvelope.start <= detailRequest.viewportStart
+      && detailEnvelope.end >= detailRequest.viewportEnd
+      && cachedDensity >= targetDensity * 0.75;
+    if (cacheCoversViewport) {
+      setDetailWaveformState("ready");
+      return undefined;
+    }
+    const waveformUrl = take.url.replace(/\/audio(?:\?.*)?$/u, "/waveform");
+    if (waveformUrl === take.url) {
+      setDetailEnvelope(null);
+      setDetailWaveformState("error");
+      return undefined;
     }
     const controller = new AbortController();
-    let context: AudioContext | null = null;
-    void (async () => {
-      try {
-        const response = await fetch(take.url!, { signal: controller.signal });
-        if (!response.ok) throw new Error(`Audio HTTP ${response.status}`);
-        const bytes = await response.arrayBuffer();
-        context = new AudioContext();
-        const buffer = await context.decodeAudioData(bytes.slice(0));
-        const pointCount = Math.min(7200, Math.max(1800, Math.ceil(buffer.duration * 72)));
-        const samplesPerPoint = Math.max(1, Math.floor(buffer.length / pointCount));
-        const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
-        const nextEnvelope = Array.from({ length: pointCount }, (_, pointIndex) => {
-          const start = pointIndex * samplesPerPoint;
-          const end = Math.min(buffer.length, start + samplesPerPoint);
-          let min = 0;
-          let max = 0;
-          for (let sample = start; sample < end; sample += 1) {
-            for (const channel of channels) {
-              const value = channel[sample] ?? 0;
-              min = Math.min(min, value);
-              max = Math.max(max, value);
-            }
+    setDetailWaveformState("loading");
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        start: detailRequest.start.toFixed(6),
+        end: detailRequest.end.toFixed(6),
+        points: String(detailRequest.points),
+      });
+      void (async () => {
+        try {
+          const response = await fetch(`${waveformUrl}?${query.toString()}`, { signal: controller.signal });
+          if (!response.ok) throw new Error("Detailed waveform request failed");
+          const payload = await response.json() as { start?: number; end?: number; resolution?: number; points?: Array<{ min?: number; max?: number }> };
+          const start = Number(payload.start);
+          const end = Number(payload.end);
+          const resolution = Number(payload.resolution);
+          const points = (payload.points ?? []).map((point) => ({
+            min: Number.isFinite(point.min) ? Number(point.min) : 0,
+            max: Number.isFinite(point.max) ? Number(point.max) : 0,
+          }));
+          if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !Number.isFinite(resolution) || resolution <= 0 || !points.length) throw new Error("Detailed waveform empty");
+          setDetailEnvelope({ start, end, resolution, points });
+          setDetailWaveformState("ready");
+        } catch {
+          if (!controller.signal.aborted) {
+            setDetailEnvelope(null);
+            setDetailWaveformState("error");
           }
-          return { min, max };
-        });
-        setEnvelope(nextEnvelope);
-        setDecodedDuration(buffer.duration);
-      } catch {
-        if (!controller.signal.aborted) {
-          setEnvelope([]);
-          setDecodedDuration(0);
         }
-      } finally {
-        await context?.close().catch(() => undefined);
-      }
-    })();
-    return () => controller.abort();
-  }, [take?.url]);
-
+      })();
+    }, DETAIL_WAVEFORM_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [detailEnvelope, detailRequest, take?.url]);
   function scheduleGainAutomation(audio = audioRef.current) {
     const node = gainNodeRef.current;
     if (!node) return;
@@ -450,6 +598,11 @@ export function Timeline({
     return Math.max(-96, Math.min(96, Number.isFinite(value) ? value : 0));
   }
 
+  function buildVisibleAutoCalibration(baseGain: number) {
+    return buildAutoCalibrationKeyframes(visibleEnvelope, gainWindowDuration, baseGain)
+      .map((frame) => ({ ...frame, time: gainWindowStart + frame.time }));
+  }
+
   function beginGainPreview() {
     gainInteractionRef.current = true;
     setIsGainPreviewing(true);
@@ -466,7 +619,7 @@ export function Timeline({
     setDraftGain(nextGain);
     setIsGainPreviewing(false);
     if (nextGain !== gain) onGainChange(nextGain);
-    if (autoCalibrate && envelope.length) onGainKeyframesChange?.(buildAutoCalibrationKeyframes(envelope, duration, nextGain));
+    if (autoCalibrate && visibleEnvelope.length) onGainKeyframesChange?.(buildVisibleAutoCalibration(nextGain));
   }
 
   function toggleAutoCalibration() {
@@ -475,7 +628,7 @@ export function Timeline({
       onGainKeyframesChange?.([]);
       return;
     }
-    const frames = buildAutoCalibrationKeyframes(envelope, duration, gain);
+    const frames = buildVisibleAutoCalibration(gain);
     setAutoCalibrate(true);
     onGainKeyframesChange?.(frames);
   }
@@ -519,6 +672,71 @@ export function Timeline({
     onRemovedRangesChange?.([]);
   }
 
+  function updateTimelineViewport(event: UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    setTimelineViewport((current) => current.left === target.scrollLeft && current.width === target.clientWidth ? current : { left: target.scrollLeft, width: target.clientWidth });
+  }
+
+  function seekTimelineNavigator(clientX: number) {
+    const scroller = timelineScrollRef.current;
+    if (!scroller) return;
+    const track = scroller.parentElement?.querySelector<HTMLElement>(".timeline-navigator");
+    if (!track || scroller.scrollWidth <= scroller.clientWidth) return;
+    const bounds = track.getBoundingClientRect();
+    const visibleRatio = scroller.clientWidth / scroller.scrollWidth;
+    const pointerRatio = Math.max(0, Math.min(1, (clientX - bounds.left) / Math.max(bounds.width, 1)));
+    const travel = Math.max(0.0001, 1 - visibleRatio);
+    const targetRatio = Math.max(0, Math.min(1, (pointerRatio - visibleRatio / 2) / travel));
+    scroller.scrollLeft = targetRatio * (scroller.scrollWidth - scroller.clientWidth);
+    setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+  }
+
+  function beginTimelineNavigator(event: PointerEvent<HTMLDivElement>) {
+    if (!timelineNavigator.enabled) return;
+    event.preventDefault();
+    timelineNavigatorDraggingRef.current = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seekTimelineNavigator(event.clientX);
+  }
+
+  function moveTimelineNavigator(event: PointerEvent<HTMLDivElement>) {
+    if (!timelineNavigatorDraggingRef.current) return;
+    event.preventDefault();
+    seekTimelineNavigator(event.clientX);
+  }
+
+  function endTimelineNavigator(event: PointerEvent<HTMLDivElement>) {
+    if (!timelineNavigatorDraggingRef.current) return;
+    event.preventDefault();
+    seekTimelineNavigator(event.clientX);
+    timelineNavigatorDraggingRef.current = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
+  function baseTimelinePixelsPerSecond() {
+    return timelinePixelWidthRef.current / Math.max(duration * zoom, 0.001);
+  }
+  function maxTimelineZoom() {
+    return Math.max(1, MAX_TIMELINE_PIXELS_PER_SECOND / Math.max(baseTimelinePixelsPerSecond(), 0.001));
+  }
+  function zoomResolutionLabel() {
+    const secondsPerTenPixels = 10 / Math.max(0.001, baseTimelinePixelsPerSecond() * zoom);
+    return (secondsPerTenPixels >= 1 ? secondsPerTenPixels.toFixed(1) : secondsPerTenPixels.toFixed(2)) + "s / 10px";
+  }
+  function zoomSliderValue() {
+    const maximum = maxTimelineZoom();
+    if (maximum <= 1) return 0;
+    const ratio = Math.log(Math.max(1, Math.min(maximum, zoom))) / Math.log(maximum);
+    return Math.round(Math.max(0, Math.min(1, ratio)) * 1000);
+  }
+  function setZoomFromSlider(value: number) {
+    const maximum = maxTimelineZoom();
+    if (maximum <= 1) {
+      setZoom(1);
+      return;
+    }
+    setZoom(Math.max(1, Math.min(maximum, maximum ** (Math.max(0, Math.min(1000, value)) / 1000))));
+  }
+
   function followPlayhead() {
     const scroller = timelineScrollRef.current;
     if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
@@ -543,6 +761,40 @@ export function Timeline({
 
   function seek(event: PointerEvent<HTMLDivElement>) {
     seekToClientX(event.clientX);
+  }
+
+  function seekTransportToClientX(clientX: number) {
+    const transport = transportProgressRef.current;
+    if (isRecording || !take?.url || !transport) return;
+    const rect = transport.getBoundingClientRect();
+    const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / Math.max(rect.width, 1)) * duration));
+    setCurrentTime(nextTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = nextTime;
+      syncPlaybackClock(audioRef.current);
+    }
+  }
+
+  function beginTransportScrub(event: PointerEvent<HTMLDivElement>) {
+    if (isRecording || !take?.url) return;
+    event.preventDefault();
+    transportScrubRef.current = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seekTransportToClientX(event.clientX);
+  }
+
+  function dragTransportScrub(event: PointerEvent<HTMLDivElement>) {
+    if (!transportScrubRef.current) return;
+    event.preventDefault();
+    seekTransportToClientX(event.clientX);
+  }
+
+  function endTransportScrub(event: PointerEvent<HTMLDivElement>) {
+    if (!transportScrubRef.current) return;
+    event.preventDefault();
+    seekTransportToClientX(event.clientX);
+    transportScrubRef.current = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
 
   function beginPlayheadDrag(event: PointerEvent<HTMLDivElement>) {
@@ -570,9 +822,24 @@ export function Timeline({
   }
 
   function beginScrub(event: PointerEvent<HTMLDivElement>) {
+    if (isRecording || !take?.url) return;
+    event.preventDefault();
     scrubbingRef.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seek(event);
+  }
+
+  function scrubTimeline(event: PointerEvent<HTMLDivElement>) {
+    if (!scrubbingRef.current) return;
+    event.preventDefault();
+    seek(event);
+  }
+
+  function endScrub(event: PointerEvent<HTMLDivElement>) {
+    if (!scrubbingRef.current) return;
+    seek(event);
+    scrubbingRef.current = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
 
   return (
@@ -592,11 +859,22 @@ export function Timeline({
             <button className="is-delete" disabled={!stagedCut || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
             <button disabled={!removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={resetTimelineEdits} type="button">RESET</button>
           </div>
-          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !envelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
+          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
           <div className="timeline-zoom">
-            <button aria-label="Thu nhỏ timeline" onClick={() => setZoom(Math.max(1, zoom - 0.5))} type="button">−</button>
-            <span>{zoom.toFixed(1)}×</span>
-            <button aria-label="Phóng to timeline" onClick={() => setZoom(Math.min(16, zoom + 0.5))} type="button">+</button>
+            <button aria-label="Thu nhỏ timeline" onClick={() => setZoom((current) => Math.max(1, current / 2))} type="button">−</button>
+            <input
+              aria-label="Zoom timeline"
+              aria-valuetext={zoomResolutionLabel()}
+              disabled={maxTimelineZoom() <= 1}
+              max="1000"
+              min="0"
+              onChange={(event) => setZoomFromSlider(Number(event.currentTarget.value))}
+              step="1"
+              type="range"
+              value={zoomSliderValue()}
+            />
+            <span title="Mật độ hiển thị timeline">{zoomResolutionLabel()}</span>
+            <button aria-label="Phóng to timeline" onClick={() => setZoom((current) => Math.min(maxTimelineZoom(), current * 2))} type="button">+</button>
           </div>
         </div>
       }
@@ -649,7 +927,8 @@ export function Timeline({
             <small>PK {activePeakDb.toFixed(0)}</small>
           </div>
         </div>
-        <div className="timeline-scroll" ref={timelineScrollRef}>
+        <div className="timeline-scroll-shell">
+          <div className="timeline-scroll" onScroll={updateTimelineViewport} ref={timelineScrollRef}>
           <div className="timeline-canvas" ref={timelineCanvasRef} style={{ "--zoom": zoom } as CSSProperties}>
             <div className="timeline-ruler">
               {Array.from({ length: 9 }, (_, index) => {
@@ -660,17 +939,17 @@ export function Timeline({
             <div
               className="waveform"
               aria-label="Waveform timeline"
+              onPointerCancel={endScrub}
               onPointerDown={beginScrub}
-              onPointerMove={(event) => { if (scrubbingRef.current) seek(event); }}
-              onPointerUp={() => { scrubbingRef.current = false; }}
+              onPointerMove={scrubTimeline}
+              onPointerUp={endScrub}
             >
-              {path ? (
-                <svg aria-label="Natural audio waveform" className="waveform-shape" preserveAspectRatio="none" viewBox={`0 0 ${PATH_WIDTH} ${PATH_HEIGHT}`}>
-                  <path d={path} />
-                  {previewPath ? <path className="waveform-shape__gain-preview" d={previewPath} /> : null}
-                </svg>
-              ) : null}
-              {gainOverflows.map((range, index) => <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(range.start / Math.max(envelope.length, 1)) * 100}%`, width: `${Math.max(0.08, ((range.end - range.start) / Math.max(envelope.length, 1)) * 100)}%` }} />)}
+              {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
+              {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
+              {take && !isRecording && detailWaveformState === "loading" ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
+              {detailWaveformState === "loading" && detailEnvelope?.points.length ? <span className="timeline-waveform-detail-status">PCM PEAK · đang cập nhật vùng nhìn</span> : null}
+              {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
+              {gainOverflows.map((range, index) => { const start = gainWindowStart + (range.start / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; const end = gainWindowStart + (range.end / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; return <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.08, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }} />; })}
               {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
               {removedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
               {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
@@ -679,21 +958,25 @@ export function Timeline({
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>Import, thu âm hoặc chọn một Take</b><span>Audio lineage sẽ bắt đầu tại đây</span></div> : null}
             </div>
             <div className="word-track">
-              {words.length && !isRecording ? words.map((word, index) => {
+              {displayWords.length && !isRecording ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
                 return (
                   <span
                     className={index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""}
                     key={`${word.text}-${index}`}
-                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.04, ((end - start) / duration) * 100)}%` }}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }}
                   >
                     {word.text}
                   </span>
                 );
-              }) : <em>{isRecording ? "REC LIVE · waveform đang cập nhật" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
+              }) : <em className={timingNeedsAlignment ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingNeedsAlignment ? take?.wordTimingNote ?? "WORD TIMING · cần căn chỉnh trước khi sync subtitle" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
+          </div>
+          </div>
+          <div aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
+            <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
           </div>
         </div>
       </div>
@@ -702,7 +985,18 @@ export function Timeline({
           <Icon name={playing ? "pause" : "play"} />
         </button>
         <code>{timecode(currentTime)}</code>
-        <div className="transport-progress"><i style={{ width: `${playheadPercent}%` }} /></div>
+        <div
+          aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua"
+          className="transport-progress"
+          onPointerCancel={endTransportScrub}
+          onPointerDown={beginTransportScrub}
+          onPointerMove={dragTransportScrub}
+          onPointerUp={endTransportScrub}
+          ref={transportProgressRef}
+        >
+          <i style={{ width: `${playheadPercent}%` }} />
+          <b aria-hidden="true" style={{ left: `${playheadPercent}%` }} />
+        </div>
         <code>{timecode(duration)}</code>
         <label className="transport-rate">
           <span>RATE</span>
