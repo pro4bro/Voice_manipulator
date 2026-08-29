@@ -19,7 +19,7 @@ interface LibraryPanelProps {
   onSelect: (assetId: string) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
-  onQueueTranscriptions: () => void;
+  onQueueTranscriptions: (model: string) => void;
   onRemove: (asset: ProjectMediaAsset) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;

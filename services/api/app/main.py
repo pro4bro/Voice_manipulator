@@ -23,6 +23,8 @@ from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_engine import OmniVoiceEngine
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
+from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
+from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.domain.models import (
@@ -35,6 +37,9 @@ from app.domain.models import (
     LocalMediaImport,
     MediaFilePickRequest,
     MediaFilePickResult,
+    MediaDiarizationAssignmentsUpdate,
+    MediaDiarizationEnqueue,
+    MediaDiarizationProgress,
     HealthStatus,
     MediaAnnotationUpdate,
     MediaImportResult,
@@ -87,6 +92,12 @@ def create_app(
         media,
         media_importer,
         transcript_reviewer,
+    )
+    diarization_queue = SequentialDiarizationQueue(
+        projects,
+        media,
+        preferences,
+        StudioDiarizationGateway(settings.legacy_studio_url),
     )
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0")
     app.add_middleware(
@@ -373,10 +384,60 @@ def create_app(
         project_id: str, payload: MediaTranscriptionEnqueue
     ) -> list[ProjectMediaAsset]:
         try:
-            queued = await transcription_queue.enqueue(project_id, payload.asset_ids)
+            queued = await transcription_queue.enqueue(project_id, payload.asset_ids, model=payload.model)
             return [media.get(project_id, asset_id) for asset_id in queued]
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/media/{asset_id}/diarization-status",
+        response_model=MediaDiarizationProgress,
+    )
+    def get_media_diarization_status(project_id: str, asset_id: str) -> MediaDiarizationProgress:
+        try:
+            asset = media.get(project_id, asset_id)
+            return MediaDiarizationProgress(
+                id=asset.id,
+                diarization_status=asset.diarization_status,
+                diarization_progress=asset.diarization_progress,
+                diarization_error=asset.diarization_error,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/media/{asset_id}/diarization",
+        response_model=ProjectMediaAsset,
+    )
+    async def enqueue_media_diarization(project_id: str, asset_id: str, payload: MediaDiarizationEnqueue | None = None) -> ProjectMediaAsset:
+        try:
+            await diarization_queue.enqueue(project_id, asset_id, payload.expected_speakers if payload else None)
+            return media.get(project_id, asset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/diarization-assignments",
+        response_model=ProjectMediaAsset,
+    )
+    def update_media_diarization_assignments(
+        project_id: str,
+        asset_id: str,
+        payload: MediaDiarizationAssignmentsUpdate,
+    ) -> ProjectMediaAsset:
+        try:
+            catalog = training_catalogs.get(project_id)
+            profile_ids = {speaker.id for speaker in catalog.speakers}
+            unknown = sorted({profile_id for profile_id in payload.assignments.values() if profile_id and profile_id not in profile_ids})
+            if unknown:
+                raise ValueError("Mapping Speaker Diarization chứa Speaker Profile không tồn tại.")
+            return media.update_diarization_assignments(project_id, asset_id, payload.assignments)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset hoặc project không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.delete(
         "/api/projects/{project_id}/media/{asset_id}",

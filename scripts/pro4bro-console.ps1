@@ -15,6 +15,7 @@ $studioUrl = "http://127.0.0.1:18081"
 $dataRoot = Join-Path $root "data"
 $runtimeRoot = Join-Path $dataRoot "runtime"
 $sessionPath = Join-Path $runtimeRoot "pro4bro-services.json"
+$stopRequestPath = Join-Path $runtimeRoot "pro4bro-stop.request"
 $logRoot = Join-Path $dataRoot "logs"
 $localLegacyRoot = Join-Path $root ".runtime\omnivoice-studio"
 $legacyParent = Split-Path -Parent $root
@@ -91,7 +92,7 @@ if ($Command -eq "status") {
     Write-Host ""
     Write-Host "PRO4BRO LOCAL SERVICES" -ForegroundColor Cyan
     Show-PortStatus 18120 "Pro4Bro API" '(?i)-m\s+app(\s|$)'
-    Show-PortStatus 18081 "OmniVoice Studio" '(?i)-m\s+studio_app\.server(\s|$)'
+    Show-PortStatus 18081 "WhisperX STT Studio" '(?i)-m\s+studio_app\.server(\s|$)'
     if (Test-Path -LiteralPath $sessionPath) {
         Write-Host "Session: $sessionPath" -ForegroundColor DarkGray
     }
@@ -101,8 +102,9 @@ if ($Command -eq "status") {
 if ($Command -eq "stop") {
     Write-Host ""
     Write-Host "Stopping Pro4Bro local services..." -ForegroundColor Cyan
+    New-Item -ItemType File -Force -Path $stopRequestPath | Out-Null
+    Stop-ExpectedPort 18081 "WhisperX STT Studio" '(?i)-m\s+studio_app\.server(\s|$)'
     Stop-ExpectedPort 18120 "Pro4Bro API" '(?i)-m\s+app(\s|$)'
-    Stop-ExpectedPort 18081 "OmniVoice Studio" '(?i)-m\s+studio_app\.server(\s|$)'
     Remove-Item -LiteralPath $sessionPath -Force -ErrorAction SilentlyContinue
     Write-Host "Done. Use start-pro4bro.bat start to run again." -ForegroundColor Green
     exit 0
@@ -122,14 +124,14 @@ if (Get-Listener 18120) {
     $existingLegacyPython = Join-Path $existingLegacyRoot ".venv\Scripts\python.exe"
     $canStartStudio = (Test-Path -LiteralPath $existingLegacyPython) -and (Test-Path -LiteralPath (Join-Path $existingLegacyRoot "studio_app\server.py"))
     if (-not $canStartStudio) {
-        Write-Warning "OmniVoice Studio đang dừng và chưa được cài tại $existingLegacyRoot. UI vẫn chạy; STT sẽ offline."
+        Write-Warning "WhisperX STT Studio đang dừng và chưa được cài tại $existingLegacyRoot. UI vẫn chạy; STT sẽ offline."
         Start-Process $url
         exit 0
     }
 
     # API without its STT sidecar is an incomplete session. Restart the managed
     # API so this command can launch OmniVoice Studio and retain one clear CMD owner.
-    Write-Host "OmniVoice Studio đang dừng; khởi động lại API cùng STT sidecar..." -ForegroundColor Yellow
+    Write-Host "WhisperX STT Studio đang dừng; khởi động lại API cùng STT sidecar..." -ForegroundColor Yellow
     Stop-ExpectedPort 18120 "Pro4Bro API" '(?i)-m\s+app(\s|$)'
 }
 
@@ -140,27 +142,39 @@ if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $webD
 $env:PRO4BRO_DATA_ROOT = $dataRoot
 $env:PRO4BRO_OMNIVOICE_ROOT = Join-Path $root "engines\OmniVoice"
 $env:PRO4BRO_LEGACY_STUDIO_URL = $studioUrl
+
 $localFfmpeg = Join-Path $root ".tools\ffmpeg\ffmpeg.exe"
-if (Test-Path -LiteralPath $localFfmpeg) { $env:PRO4BRO_FFMPEG_PATH = $localFfmpeg }
+if (Test-Path -LiteralPath $localFfmpeg) {
+    $env:PRO4BRO_FFMPEG_PATH = $localFfmpeg
+    $env:PATH = "$(Split-Path -Parent $localFfmpeg);$env:PATH"
+}
 $env:HF_HOME = Join-Path $root ".cache\huggingface"
 $env:HUGGINGFACE_HUB_CACHE = Join-Path $env:HF_HOME "hub"
 $env:TRANSFORMERS_CACHE = Join-Path $env:HF_HOME "transformers"
 $env:TORCH_HOME = Join-Path $root ".cache\torch"
 $env:HF_HUB_DISABLE_TELEMETRY = "1"
+$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 $env:DO_NOT_TRACK = "1"
 
 New-Item -ItemType Directory -Force -Path $dataRoot, $runtimeRoot, $logRoot, $env:HF_HOME, $env:TORCH_HOME | Out-Null
+Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
 $apiOut = Join-Path $logRoot "pro4bro-api.out.log"
 $apiErr = Join-Path $logRoot "pro4bro-api.err.log"
 $studioOut = Join-Path $logRoot "omnivoice-studio.out.log"
 $studioErr = Join-Path $logRoot "omnivoice-studio.err.log"
 
 $studioProcess = $null
+$studioStarted = $false
+$apiStarted = $false
 $legacyRoot = Get-LegacyRoot
 $legacyPython = Join-Path $legacyRoot ".venv\Scripts\python.exe"
+if ($legacyRoot -eq $localLegacyRoot) {
+    $env:PRO4BRO_STUDIO_ROOT = $legacyRoot
+    $env:PRO4BRO_STT_MODEL_ROOT = Join-Path $legacyRoot "models"
+}
 if (-not (Get-Listener 18081)) {
     if ((Test-Path -LiteralPath $legacyPython) -and (Test-Path -LiteralPath (Join-Path $legacyRoot "studio_app\server.py"))) {
-        Write-Host "Starting OmniVoice Studio..." -ForegroundColor DarkGray
+        Write-Host "Starting WhisperX STT Studio..." -ForegroundColor DarkGray
         $studioProcess = Start-Process -FilePath $legacyPython -ArgumentList "-m", "studio_app.server", "--host", "127.0.0.1", "--port", "18081" -WorkingDirectory $legacyRoot -RedirectStandardOutput $studioOut -RedirectStandardError $studioErr -PassThru -WindowStyle Hidden
         $studioReady = $false
         for ($attempt = 0; $attempt -lt 300; $attempt++) {
@@ -175,22 +189,35 @@ if (-not (Get-Listener 18081)) {
         }
         if (-not $studioReady) {
             Show-LogTail @($studioOut, $studioErr)
-            throw "OmniVoice Studio không sẵn sàng sau 150 giây."
+            throw "WhisperX STT Studio không sẵn sàng sau 150 giây."
         }
+        $studioStarted = $true
     } else {
-        Write-Warning "Không tìm thấy OmniVoice Studio tại $legacyRoot. UI vẫn chạy, nhưng STT sẽ offline."
+        Write-Warning "Không tìm thấy WhisperX STT Studio tại $legacyRoot. UI vẫn chạy, nhưng STT sẽ offline."
     }
+}
+
+if (Test-Path -LiteralPath $stopRequestPath) {
+    Write-Host "Start cancelled by stop request." -ForegroundColor Yellow
+    if ($studioProcess -and -not $studioProcess.HasExited) {
+        Stop-Process -Id $studioProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    Stop-ExpectedPort 18081 "WhisperX STT Studio" '(?i)-m\s+studio_app\.server(\s|$)'
+    exit 0
 }
 
 Write-Host "Starting Pro4Bro API..." -ForegroundColor DarkGray
 $apiProcess = Start-Process -FilePath $python -ArgumentList "-m", "app" -WorkingDirectory $apiRoot -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru -WindowStyle Hidden
+$apiStarted = $true
 try {
     $ready = $false
+    $cancelledByStop = $false
     for ($attempt = 0; $attempt -lt 240; $attempt++) {
-        if ($apiProcess.HasExited) {
-            Show-LogTail @($apiOut, $apiErr)
-            throw "Pro4Bro API dừng sớm với code $($apiProcess.ExitCode)."
+        if (Test-Path -LiteralPath $stopRequestPath) {
+            $cancelledByStop = $true
+            break
         }
+
         try {
             $health = Invoke-RestMethod -Uri "$url/api/health" -TimeoutSec 1
             if ($health.status -eq "ok") {
@@ -201,15 +228,21 @@ try {
             Start-Sleep -Milliseconds 250
         }
     }
+    if ($cancelledByStop) {
+        Write-Host "Start cancelled by stop request." -ForegroundColor Yellow
+        return
+    }
     if (-not $ready) {
         Show-LogTail @($apiOut, $apiErr)
         throw "Pro4Bro API không sẵn sàng sau 60 giây."
     }
 
+    $apiListener = Get-Listener 18120 | Select-Object -First 1
+    $studioListener = Get-Listener 18081 | Select-Object -First 1
     [ordered]@{
         startedAt = [datetime]::UtcNow.ToString("o")
-        apiPid = $apiProcess.Id
-        studioPid = if ($studioProcess) { $studioProcess.Id } else { $null }
+        apiPid = if ($apiListener) { $apiListener.OwningProcess } else { $null }
+        studioPid = if ($studioListener) { $studioListener.OwningProcess } else { $null }
         root = $root
     } | ConvertTo-Json | Set-Content -LiteralPath $sessionPath -Encoding utf8
 
@@ -219,15 +252,19 @@ try {
     Write-Host "Pro4Bro is running at $url" -ForegroundColor Green
     Write-Host "Keep this CMD window open. Ctrl+C stops services started by this window." -ForegroundColor Cyan
     Write-Host "Another CMD: start-pro4bro.bat status   |   start-pro4bro.bat stop" -ForegroundColor Cyan
-    while (-not $apiProcess.HasExited) { Start-Sleep -Seconds 1 }
+    while (Get-Listener 18120) { Start-Sleep -Seconds 1 }
+    if (Test-Path -LiteralPath $stopRequestPath) {
+        Write-Host "Pro4Bro stopped by request." -ForegroundColor Yellow
+        return
+    }
     throw "Pro4Bro API stopped unexpectedly."
 }
 finally {
-    if ($apiProcess -and -not $apiProcess.HasExited) {
-        Stop-Process -Id $apiProcess.Id -Force -ErrorAction SilentlyContinue
+    if ($apiStarted) {
+        Stop-ExpectedPort 18120 "Pro4Bro API" '(?i)-m\s+app(\s|$)'
     }
-    if ($studioProcess -and -not $studioProcess.HasExited) {
-        Stop-Process -Id $studioProcess.Id -Force -ErrorAction SilentlyContinue
+    if ($studioStarted) {
+        Stop-ExpectedPort 18081 "WhisperX STT Studio" '(?i)-m\s+studio_app\.server(\s|$)'
     }
     Remove-Item -LiteralPath $sessionPath -Force -ErrorAction SilentlyContinue
 }

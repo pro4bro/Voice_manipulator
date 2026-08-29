@@ -280,6 +280,7 @@ class MediaImportProcessor:
         asset: ProjectMediaAsset,
         realtime_text: str = "",
         on_progress: TranscriptionProgressCallback | None = None,
+        model: str = "large-v3",
     ) -> tuple[ProjectMediaAsset, float]:
         if not asset.analysis_path:
             raise ValueError("Footage không có analysis audio để chạy Speech to Text.")
@@ -292,21 +293,80 @@ class MediaImportProcessor:
             asset.origin,
             realtime_text or asset.text,
             on_progress=on_progress,
+            model=model,
         )
         if kept_ranges:
             item = self._restore_original_timeline(item, kept_ranges, asset.duration)
         item = self._attach_timing_quality(item, asset.duration)
+        item = await asyncio.to_thread(self._write_and_read_stt_artifacts, analysis_path.parent, item)
         updated = self.library.apply_transcription(project.id, asset.id, item, asset.duration)
         return updated, elapsed
 
     @staticmethod
+    def _srt_timestamp(value: float) -> str:
+        milliseconds = max(0, round(float(value) * 1000))
+        hours, remainder = divmod(milliseconds, 3_600_000)
+        minutes, remainder = divmod(remainder, 60_000)
+        seconds, milliseconds = divmod(remainder, 1_000)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
+    @staticmethod
+    def _seconds_from_srt_timestamp(value: str) -> float:
+        hours, minutes, seconds_milliseconds = value.strip().replace(".", ",").split(":")
+        seconds, milliseconds = seconds_milliseconds.split(",")
+        return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(milliseconds.ljust(3, "0")[:3]) / 1000
+
+    @classmethod
+    def _write_and_read_stt_artifacts(cls, asset_dir: Path, item: dict[str, Any]) -> dict[str, Any]:
+        """Make a human-checkable SRT the canonical hand-off into the Script model."""
+        artifact_dir = asset_dir / "stt"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        srt_path = artifact_dir / "transcript.stt.srt"
+        json_path = artifact_dir / "transcript.stt.json"
+        raw_words = [dict(word) for word in item.get("words", []) if isinstance(word, dict)]
+        blocks: list[str] = []
+        for index, word in enumerate(raw_words, start=1):
+            text = str(word.get("text") or "").strip()
+            try:
+                start = max(0.0, float(word.get("start", 0.0)))
+                end = max(start, float(word.get("end", start)))
+            except (TypeError, ValueError):
+                continue
+            if text:
+                blocks.append(f"{index}\n{cls._srt_timestamp(start)} --> {cls._srt_timestamp(end)}\n{text}")
+        srt_path.write_text("\n\n".join(blocks) + ("\n" if blocks else ""), encoding="utf-8")
+        json_path.write_text(json.dumps(item, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        canonical_words: list[dict[str, Any]] = []
+        for block in srt_path.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n\n"):
+            lines = [line.strip() for line in block.split("\n") if line.strip()]
+            if len(lines) < 3 or "-->" not in lines[1]:
+                continue
+            try:
+                start_value, end_value = (cls._seconds_from_srt_timestamp(part) for part in lines[1].split("-->", 1))
+            except (ValueError, TypeError):
+                continue
+            text = " ".join(lines[2:]).strip()
+            if text:
+                canonical_words.append({"text": text, "start": start_value, "end": max(start_value, end_value)})
+        canonical = dict(item)
+        canonical["words"] = canonical_words
+        canonical["text"] = " ".join(str(word["text"]) for word in canonical_words)
+        canonical["artifact_srt"] = srt_path.name
+        return canonical
+    @staticmethod
     def _attach_timing_quality(item: dict[str, Any], duration: float) -> dict[str, Any]:
-        """Preserve recognizer timing exactly and label data that needs real alignment."""
+        """Validate recognizer boundaries without upgrading a provisional fallback."""
         inspection = inspect_word_timings(list(item.get("words", [])), duration)
         enriched = dict(item)
         enriched["words"] = inspection.words
-        enriched["word_timing_quality"] = inspection.quality
-        enriched["word_timing_note"] = inspection.note
+        sidecar_quality = item.get("word_timing_quality")
+        if sidecar_quality == "needs-alignment":
+            enriched["word_timing_quality"] = "needs-alignment"
+            enriched["word_timing_note"] = item.get("word_timing_note") or inspection.note
+        else:
+            enriched["word_timing_quality"] = inspection.quality
+            enriched["word_timing_note"] = inspection.note or item.get("word_timing_note")
         return enriched
     def _prepare_processing_audio(
         self, analysis_path: Path, asset: ProjectMediaAsset
@@ -433,12 +493,13 @@ class MediaImportProcessor:
         realtime_text: str,
         *,
         on_progress: TranscriptionProgressCallback | None = None,
+        model: str = "large-v3",
     ) -> tuple[dict[str, Any], float]:
         duration = await asyncio.to_thread(self._audio_duration, analysis_path)
         chunks = self._stt_chunks(duration)
         if len(chunks) == 1:
             return await self._upload_studio_audio(
-                analysis_path, origin, realtime_text, on_progress=on_progress
+                analysis_path, origin, realtime_text, on_progress=on_progress, model=model
             )
 
         cache_dir = analysis_path.parent / "cache" / "stt-chunks"
@@ -463,6 +524,7 @@ class MediaImportProcessor:
                         origin,
                         realtime_text if index == 1 else "",
                         on_progress=report_chunk_progress if on_progress else None,
+                        model=model,
                     )
                     results.append((chunk, item))
                     elapsed += chunk_elapsed
@@ -560,6 +622,7 @@ class MediaImportProcessor:
         realtime_text: str,
         *,
         on_progress: TranscriptionProgressCallback | None = None,
+        model: str = "large-v3",
     ) -> tuple[dict[str, Any], float]:
         # A queued local STT job may legitimately run for hours; keep the import request alive.
         timeout = httpx.Timeout(timeout=None, connect=5.0)
@@ -581,7 +644,7 @@ class MediaImportProcessor:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 with analysis_path.open("rb") as audio:
-                    data = {"origin": origin, "realtime_text": realtime_text}
+                    data = {"origin": origin, "realtime_text": realtime_text, "model": model}
                     if progress_id:
                         data["progress_id"] = progress_id
                     import_task = asyncio.create_task(

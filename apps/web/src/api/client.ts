@@ -63,6 +63,7 @@ function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
     reviewState: word.reviewState ?? word.review_state as StudioWord["reviewState"],
     selectedVariant: word.selectedVariant ?? word.selected_variant as StudioWord["selectedVariant"],
     diarizationSpeakerId: word.diarizationSpeakerId ?? word.diarization_speaker_id as string | null | undefined,
+    manualDiarizationSpeakerId: word.manualDiarizationSpeakerId ?? word.manual_diarization_speaker_id as string | null | undefined,
     speakerId: word.speakerId ?? word.speaker_id as string | null | undefined,
     environmentProfileIds: word.environmentProfileIds ?? word.environment_profile_ids as string[] | undefined ?? [],
   };
@@ -87,6 +88,10 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
     transcriptionSelected: asset.transcriptionSelected ?? false,
     transcriptionProgress: asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0),
     transcriptionError: asset.transcriptionError ?? null,
+    diarizationStatus: asset.diarizationStatus ?? "idle",
+    diarizationProgress: asset.diarizationProgress ?? 0,
+    diarizationError: asset.diarizationError ?? null,
+    diarizationSpeakerAssignments: asset.diarizationSpeakerAssignments ?? (asset as unknown as Record<string, unknown>).diarization_speaker_assignments as Record<string, string | null> | undefined ?? {},
     aiReviewStatus: asset.aiReviewStatus ?? "skipped",
     wordTimingQuality: asset.wordTimingQuality ?? (asset as unknown as Record<string, unknown>).word_timing_quality as ProjectMediaAsset["wordTimingQuality"] ?? "unverified",
     wordTimingNote: asset.wordTimingNote ?? (asset as unknown as Record<string, unknown>).word_timing_note as string | null | undefined ?? null,
@@ -207,10 +212,23 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
-  enqueueMediaTranscriptions: async (projectId: string, assetIds: string[]) => {
+  enqueueMediaDiarization: async (projectId: string, assetId: string, expectedSpeakers: number | null = null) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/diarization`, { method: "POST", body: JSON.stringify({ expectedSpeakers }) });
+    return normalizeMediaAsset(asset);
+  },
+  updateMediaDiarizationAssignments: async (projectId: string, assetId: string, assignments: Record<string, string | null>) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/diarization-assignments`, {
+      method: "PATCH",
+      body: JSON.stringify({ assignments }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  getMediaDiarizationStatus: (projectId: string, assetId: string) =>
+    request<{ id: string; diarizationStatus: string; diarizationProgress: number; diarizationError: string | null }>(`/api/projects/${projectId}/media/${assetId}/diarization-status`),
+  enqueueMediaTranscriptions: async (projectId: string, assetIds: string[], model = "large-v3") => {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/transcriptions`, {
       method: "POST",
-      body: JSON.stringify({ assetIds }),
+      body: JSON.stringify({ assetIds, model }),
     });
     return assets.map(normalizeMediaAsset);
   },

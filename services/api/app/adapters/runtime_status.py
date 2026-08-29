@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import re
 import subprocess
 import threading
 import time
@@ -8,6 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.domain.models import SystemLog, SystemMetrics
+
+
+_LOG_TIMESTAMP_RE = re.compile(r"^(?P<timestamp>\[?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}|\[?\d{2}:\d{2}:\d{2})")
 
 
 class _FileTime(ctypes.Structure):
@@ -94,7 +98,19 @@ class RuntimeStatus:
                 content = path.read_text(encoding="utf-8", errors="replace").splitlines()
             except OSError:
                 continue
-            chunks.append(f"--- {path.name} ---\n" + "\n".join(content[-lines:]))
+            fallback_timestamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            last_timestamp = fallback_timestamp
+            formatted = []
+            for line in content[-lines:]:
+                match = _LOG_TIMESTAMP_RE.match(line)
+                if match:
+                    last_timestamp = match.group("timestamp").strip("[]")
+                    formatted.append(line)
+                elif line.strip():
+                    formatted.append(f"[{last_timestamp}] {line}")
+                else:
+                    formatted.append(line)
+            chunks.append(f"--- {path.name} ---\n" + "\n".join(formatted))
         return SystemLog(files=[path.name for path in files], text="\n\n".join(chunks) or "Chưa có file log runtime.")
 
     def _cpu_percent(self) -> float:

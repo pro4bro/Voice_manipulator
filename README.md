@@ -25,6 +25,20 @@ Run `setup-pro4bro.bat` only when installing or reinstalling dependencies. Pytho
 isolated in `.venv`, npm packages stay in `apps/web/node_modules`, projects stay
 in `data` by default, and model caches stay in `.cache`/`.runtime`. None of these
 machine-local folders are committed.
+### Install the detailed STT runtime
+
+The first detailed transcription requires the project-owned WhisperX sidecar.
+Run this once from the repository root, then keep its downloaded model with the
+application folder:
+
+```powershell
+.\scripts\setup-stt-runtime.ps1
+```
+
+It installs WhisperX and downloads `large-v3` into
+`.runtime/omnivoice-studio/models`. The sidecar is started and stopped by the
+same visible launcher window as the app; it does not modify
+`engines/OmniVoice`, which remains the separate upstream TTS/training engine.
 
 ## Current Delivery
 
@@ -111,7 +125,7 @@ behavior.
 - `engines/OmniVoice`: read-only upstream Git submodule.
 - `.runtime/omnivoice-studio`: preferred local Studio sidecar location for the
   trained checkpoint and model cache; ignored by Git.
-- `../OmniVoice`: relative migration fallback for the original Studio sidecar.
+- `../OmniVoice`: relative migration fallback for the previous Studio sidecar.
 - `<project path>/assets/media`: original footage, normalized analysis WAV,
   per-asset transcript, timings, and revision history.
 - `<project path>/assets/training/catalog.json`: relative-ID Speaker Profiles,

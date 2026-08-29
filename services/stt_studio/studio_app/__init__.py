@@ -1,0 +1,1 @@
+"""Local WhisperX Studio compatibility sidecar for Pro4Bro."""

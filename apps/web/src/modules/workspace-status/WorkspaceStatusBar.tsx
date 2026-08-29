@@ -9,22 +9,30 @@ interface WorkspaceStatusBarProps {
   metrics: SystemMetrics | null;
 }
 
-function background(asset: ProjectMediaAsset) {
+function transcriptionBackground(asset: ProjectMediaAsset) {
   return ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus);
+}
+
+function diarizationBackground(asset: ProjectMediaAsset) {
+  return ["queued", "processing"].includes(asset.diarizationStatus ?? "idle");
 }
 
 export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps) {
   const [log, setLog] = useState<SystemLog | null>(null);
   const [loadingLog, setLoadingLog] = useState(false);
   const tracked = assets.filter((asset) => asset.transcriptionSelected && !["not-applicable", "skipped"].includes(asset.transcriptionStatus));
-  const current = tracked.find(background) ?? null;
+  const transcription = tracked.find(transcriptionBackground) ?? null;
+  const diarization = assets.find(diarizationBackground) ?? null;
+  const current = transcription ?? diarization;
   const completed = tracked.filter((asset) => asset.transcriptionStatus === "complete").length;
-  const progressOf = (asset: ProjectMediaAsset) => asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0);
+  const transcriptionProgressOf = (asset: ProjectMediaAsset) => asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0);
+  const progressOf = (asset: ProjectMediaAsset) => transcription ? transcriptionProgressOf(asset) : asset.diarizationProgress ?? 0;
   const totalDuration = tracked.reduce((total, asset) => total + Math.max(0, asset.duration), 0);
-  const overallProgress = totalDuration > 0
-    ? tracked.reduce((total, asset) => total + Math.max(0, asset.duration) * progressOf(asset), 0) / totalDuration
-    : tracked.length ? tracked.reduce((total, asset) => total + progressOf(asset), 0) / tracked.length : 0;
-  const currentStage = current?.transcriptionStatus === "reviewing" ? "AI CHECK" : current?.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ";
+  const overallProgress = transcription && totalDuration > 0
+    ? tracked.reduce((total, asset) => total + Math.max(0, asset.duration) * transcriptionProgressOf(asset), 0) / totalDuration
+    : transcription && tracked.length ? tracked.reduce((total, asset) => total + transcriptionProgressOf(asset), 0) / tracked.length
+      : diarization?.diarizationProgress ?? 0;
+  const currentStage = transcription?.transcriptionStatus === "reviewing" ? "AI CHECK" : transcription?.transcriptionStatus === "queued" ? "WAITING STT" : transcription ? "STT KỸ" : diarization?.diarizationStatus === "queued" ? "WAITING DIARIZATION" : "SPEAKER DIARIZATION";
 
   async function openLog() {
     setLoadingLog(true);
@@ -37,7 +45,7 @@ export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps)
       <footer className="workspace-status-bar" aria-live="polite">
         <div className="workspace-status-bar__activity">
           <i className={current ? "is-busy" : ""} />
-          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{completed}/{tracked.length} FOOTAGE · {progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} /></> : <><b>READY</b><span>Không có background task đang chạy</span></>}
+          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{transcription ? `${completed}/${tracked.length} FOOTAGE · ` : ""}{progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} /></> : <><b>READY</b><span>Không có background task đang chạy</span></>}
         </div>
         <div className="workspace-status-bar__metrics">
           <span>CPU <b>{metrics ? `${metrics.cpuPercent.toFixed(0)}%` : "—"}</b></span>

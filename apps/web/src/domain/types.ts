@@ -3,6 +3,7 @@ export type ThemeMode = "light" | "dark";
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
 export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
+export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error";
 export type WordTimingQuality = "unverified" | "source" | "needs-alignment";
 
 export interface MediaTranscriptionProgress {
@@ -73,6 +74,8 @@ export interface StudioWord {
   selectedVariant?: "realtime" | "accurate" | "corrected" | "manual" | null;
   /** Stable diarization label (speaker-1, speaker-2, …); independent from a user profile. */
   diarizationSpeakerId?: string | null;
+  /** Manual Script override used when a word is moved to another diarized row. */
+  manualDiarizationSpeakerId?: string | null;
   speakerId?: string | null;
   environmentProfileIds?: string[];
   emotion?: EmotionLabel | null;
@@ -155,6 +158,10 @@ export interface ProjectMediaAsset {
   transcriptionSelected: boolean;
   transcriptionProgress?: number;
   transcriptionError: string | null;
+  diarizationStatus?: MediaDiarizationStatus;
+  diarizationProgress?: number;
+  diarizationError?: string | null;
+  diarizationSpeakerAssignments?: Record<string, string | null>;
   aiReviewStatus: AIReviewStatus;
   trainingSelected: boolean;
   speakerProfileIds: string[];
@@ -234,6 +241,13 @@ export interface AIReviewPreferences {
 
 export type EmotionColorMode = "gradient" | "per-emotion";
 
+export interface DiarizationPreferences {
+  enabled: boolean;
+  model: string;
+  huggingfaceToken: string | null;
+  huggingfaceTokenConfigured: boolean;
+}
+
 export interface EmotionStylePreferences {
   colorMode: EmotionColorMode;
   gradientStart: string;
@@ -246,6 +260,7 @@ export interface EmotionStylePreferences {
 
 export interface AppPreferences {
   aiReview: AIReviewPreferences;
+  diarization: DiarizationPreferences;
   emotionStyle: EmotionStylePreferences;
 }
 

@@ -14,6 +14,7 @@ class TranscriptionTask:
     project_id: str
     asset_id: str
     realtime_text: str = ""
+    model: str = "large-v3"
 
 
 class SequentialTranscriptionQueue:
@@ -36,7 +37,7 @@ class SequentialTranscriptionQueue:
         self._worker: asyncio.Task[None] | None = None
 
     async def enqueue(
-        self, project_id: str, asset_ids: list[str], realtime_text: str = ""
+        self, project_id: str, asset_ids: list[str], realtime_text: str = "", model: str = "large-v3"
     ) -> list[str]:
         requested = set(asset_ids)
         assets = [
@@ -65,6 +66,7 @@ class SequentialTranscriptionQueue:
                         project_id=project_id,
                         asset_id=asset.id,
                         realtime_text=realtime_text if len(assets) == 1 else "",
+                        model=model,
                     )
                 )
                 self._scheduled.add(key)
@@ -99,7 +101,7 @@ class SequentialTranscriptionQueue:
                 )
 
             transcribed, _ = await self.importer.transcribe_existing(
-                project, asset, task.realtime_text, on_progress=report_progress
+                project, asset, task.realtime_text, model=task.model, on_progress=report_progress
             )
             # AI review is an explicit Script action: retain the STT transcript until the user compares candidates.
             self.media.set_transcription_state(

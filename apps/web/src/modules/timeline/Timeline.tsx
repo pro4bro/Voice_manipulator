@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
-import type { RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe } from "../../domain/types";
+import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -46,7 +46,8 @@ interface TimelineProps {
   onGainChange: (value: number) => void;
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
   onGainKeyframesChange?: (keyframes: TimelineGainKeyframe[]) => void;
-
+  speakers?: SpeakerProfile[];
+  onWordsChange?: (words: StudioWord[]) => void;
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8];
@@ -211,6 +212,8 @@ export function Timeline({
   onGainChange,
   onRemovedRangesChange,
   onGainKeyframesChange,
+  speakers = [],
+  onWordsChange,
 }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -230,9 +233,22 @@ export function Timeline({
   const [autoCalibrate, setAutoCalibrate] = useState(false);
   const [timelineCanvasWidth, setTimelineCanvasWidth] = useState(0);
   const [timelineViewport, setTimelineViewport] = useState({ left: 0, width: 0 });
+  const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
+  const [selectedWordIndexes, setSelectedWordIndexes] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    if (!speakerMenu) return undefined;
+    const closeOutside = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".timeline-speaker-menu")) return;
+      setSpeakerMenu(null);
+    };
+    window.addEventListener("pointerdown", closeOutside, true);
+    return () => window.removeEventListener("pointerdown", closeOutside, true);
+  }, [speakerMenu]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
+  const wordTrackRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const transportProgressRef = useRef<HTMLDivElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -251,6 +267,8 @@ export function Timeline({
   const lastClockStateUpdateRef = useRef(0);
   const scrubbingRef = useRef(false);
   const gainInteractionRef = useRef(false);
+  const wordSelectionAnchorRef = useRef<number | null>(null);
+  const wordSelectionDraggingRef = useRef(false);
   const isRecording = Boolean(recordingPreview?.active);
   const words = take?.words ?? [];
   const lastWordEnd = words.length ? Math.max(...words.map((word) => word.end)) : 0;
@@ -259,8 +277,10 @@ export function Timeline({
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
   const timingNeedsAlignment = take?.wordTimingQuality === "needs-alignment";
-  // Always show recognizer timestamps. A quality warning is informational; hiding words would remove essential review controls.
+  // A recognizer fallback must never masquerade as source-aligned subtitles.
+  // Keeping those boxes hidden prevents users from making edits against wrong timing.
   const displayWords = useMemo(() => normalizeWordTimings(words, duration), [duration, words]);
+  const speakerById = useMemo(() => new Map(speakers.map((speaker) => [speaker.id, speaker])), [speakers]);
   const detailRequest = useMemo(() => {
     if (isRecording || !timelineCanvasWidth || !timelineViewport.width) return null;
     const fullWidth = Math.max(timelineCanvasWidth, timelineViewport.width);
@@ -320,6 +340,25 @@ export function Timeline({
     const left = maxScroll > 0 ? Math.max(0, Math.min(100 - width, (timelineViewport.left / maxScroll) * (100 - width))) : 0;
     return { left, width, enabled: maxScroll > 0.5 };
   }, [timelineCanvasWidth, timelineViewport]);
+
+  useEffect(() => {
+    setSelectedWordIndexes(new Set());
+    wordSelectionAnchorRef.current = null;
+    wordSelectionDraggingRef.current = false;
+  }, [take?.id, take?.url]);
+
+  useEffect(() => {
+    const moveWordSelection = (event: globalThis.PointerEvent) => extendWordSelectionAtPoint(event.clientX, event.clientY);
+    const endWordSelection = () => { wordSelectionDraggingRef.current = false; };
+    window.addEventListener("pointermove", moveWordSelection, true);
+    window.addEventListener("pointerup", endWordSelection);
+    window.addEventListener("pointercancel", endWordSelection);
+    return () => {
+      window.removeEventListener("pointermove", moveWordSelection, true);
+      window.removeEventListener("pointerup", endWordSelection);
+      window.removeEventListener("pointercancel", endWordSelection);
+    };
+  }, []);
 
   useEffect(() => {
     if (!gainInteractionRef.current) setDraftGain(gain);
@@ -737,6 +776,87 @@ export function Timeline({
     setZoom(Math.max(1, Math.min(maximum, maximum ** (Math.max(0, Math.min(1000, value)) / 1000))));
   }
 
+  function wordIndexRange(first: number, last: number) {
+    const start = Math.min(first, last);
+    const end = Math.max(first, last);
+    return Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
+  }
+
+  function beginWordSelection(event: PointerEvent<HTMLElement>, index: number) {
+    if (event.button !== 0 && event.button !== -1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    wordSelectionDraggingRef.current = true;
+    const anchor = wordSelectionAnchorRef.current;
+    if (event.shiftKey && anchor !== null) {
+      setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedWordIndexes((current) => {
+        const next = new Set(current);
+        if (next.has(index)) next.delete(index);
+        else next.add(index);
+        return next;
+      });
+      wordSelectionAnchorRef.current = index;
+      return;
+    }
+    wordSelectionAnchorRef.current = index;
+    setSelectedWordIndexes(new Set([index]));
+  }
+
+  function extendWordSelection(index: number) {
+    const anchor = wordSelectionAnchorRef.current;
+    if (!wordSelectionDraggingRef.current || anchor === null) return;
+    setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+  }
+
+  function wordIndexAtTimelinePoint(clientX: number, clientY: number) {
+    const track = wordTrackRef.current;
+    const canvas = timelineCanvasRef.current;
+    if (!track || !canvas || !displayWords.length) return -1;
+    const trackRect = track.getBoundingClientRect();
+    if (clientX < trackRect.left || clientX > trackRect.right || clientY < trackRect.top || clientY > trackRect.bottom) return -1;
+    const canvasRect = canvas.getBoundingClientRect();
+    const time = Math.min(duration, Math.max(0, ((clientX - canvasRect.left) / Math.max(canvasRect.width, 1)) * duration));
+    const current = activeWordAt(displayWords, time);
+    if (current >= 0) return current;
+    let low = 0;
+    let high = displayWords.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (displayWords[middle].start < time) low = middle + 1;
+      else high = middle;
+    }
+    const after = Math.min(displayWords.length - 1, low);
+    const before = Math.max(0, after - 1);
+    const distance = (word: StudioWord) => time < word.start ? word.start - time : Math.max(0, time - word.end);
+    return distance(displayWords[before]) <= distance(displayWords[after]) ? before : after;
+  }
+
+  function extendWordSelectionAtPoint(clientX: number, clientY: number) {
+    if (!wordSelectionDraggingRef.current) return;
+    const index = wordIndexAtTimelinePoint(clientX, clientY);
+    if (index >= 0) extendWordSelection(index);
+  }
+
+  function openSpeakerMenu(index: number, x: number, y: number) {
+    const indexes = selectedWordIndexes.has(index) ? [...selectedWordIndexes] : [index];
+    if (!selectedWordIndexes.has(index)) {
+      wordSelectionAnchorRef.current = index;
+      setSelectedWordIndexes(new Set(indexes));
+    }
+    setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), x, y });
+  }
+
+  function assignSpeakerToSelectedWords(profileId: string | null) {
+    if (!speakerMenu?.indexes.length) return;
+    const indexes = new Set(speakerMenu.indexes);
+    onWordsChange?.(words.map((word, index) => indexes.has(index) ? { ...word, speakerId: profileId ?? undefined } : word));
+    setSpeakerMenu(null);
+  }
+
   function followPlayhead() {
     const scroller = timelineScrollRef.current;
     if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
@@ -957,18 +1077,23 @@ export function Timeline({
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>Import, thu âm hoặc chọn một Take</b><span>Audio lineage sẽ bắt đầu tại đây</span></div> : null}
             </div>
-            <div className="word-track">
-              {displayWords.length && !isRecording ? wordTrackIndexes.map((index) => { const word = displayWords[index];
+            <div className="word-track" onContextMenu={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) beginWordSelection(event, index); }} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY)} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={wordTrackRef}>
+              {displayWords.length && !isRecording && !timingNeedsAlignment ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
                 return (
-                  <span
-                    className={index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""}
+                  <button
+                    aria-label={`Subtitle word ${word.text}`}
+                    aria-pressed={selectedWordIndexes.has(index)}
+                    className={`timeline-word ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
-                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
+                    title="Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile"
+                    type="button"
                   >
                     {word.text}
-                  </span>
+                  </button>
                 );
               }) : <em className={timingNeedsAlignment ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingNeedsAlignment ? take?.wordTimingNote ?? "WORD TIMING · cần căn chỉnh trước khi sync subtitle" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
@@ -980,7 +1105,7 @@ export function Timeline({
           </div>
         </div>
       </div>
-      <div className="transport-bar">
+      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>ĐỔI SPEAKER · {speakerMenu.indexes.length} TỪ</strong><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
         </button>

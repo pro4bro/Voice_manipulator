@@ -44,10 +44,27 @@ describe("Timeline", () => {
     const timings = normalizeWordTimings([{ text: "một", start: 1, end: 1.01 }, { text: "câu", start: 1.01, end: 1.02 }, { text: "dài", start: 1.02, end: 1.03 }, { text: "tiếp", start: 2, end: 2.2 }], 3);
     expect(timings.map((word) => [word.start, word.end])).toEqual([[1, 1.01], [1.01, 1.02], [1.02, 1.03], [2, 2.2]]);
   });
-  it("continues rendering recognizer subtitles when timing is flagged for review", () => {
+  it("hides unaligned recognizer subtitle boxes so they cannot be edited as source timing", () => {
     render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "review.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "needs-alignment", words: [{ text: "vẫn", start: 1, end: 1.3 }, { text: "hiện", start: 1.3, end: 1.6 }] }} />);
-    expect(screen.getByText("vẫn")).toBeInTheDocument();
-    expect(screen.getByText("hiện")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Subtitle word vẫn" })).not.toBeInTheDocument();
+    expect(screen.getByText(/cần căn chỉnh/i)).toBeInTheDocument();
+  });
+
+  it("assigns one speaker profile to a swept selection of subtitle words", () => {
+    const onWordsChange = vi.fn();
+    render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={onWordsChange} speakers={[{ id: "lan", name: "Chị Lan", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "female", attributes: {}, color: "#d95", createdAt: "2026-08-28T00:00:00Z" }]} take={{ name: "dialogue.wav", url: "/audio.wav", duration: 4, words: [{ text: "xin", start: 0, end: 0.4 }, { text: "chào", start: 0.4, end: 0.8 }, { text: "bạn", start: 0.8, end: 1.2 }] }} />);
+    const first = screen.getByRole("button", { name: "Subtitle word xin" });
+    const second = screen.getByRole("button", { name: "Subtitle word chào" });
+    fireEvent.pointerDown(first, { pointerId: 1 });
+    fireEvent.pointerEnter(second, { pointerId: 1 });
+    fireEvent.pointerUp(second, { pointerId: 1 });
+    fireEvent.contextMenu(second, { clientX: 50, clientY: 50 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Chị Lan" }));
+    expect(onWordsChange).toHaveBeenCalledWith([
+      expect.objectContaining({ text: "xin", speakerId: "lan" }),
+      expect.objectContaining({ text: "chào", speakerId: "lan" }),
+      expect.objectContaining({ text: "bạn" }),
+    ]);
   });
 
   it("seeks immediately when the user clicks or drags on the waveform", () => {

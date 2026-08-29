@@ -25,12 +25,13 @@ export interface SpeakerScriptRow {
 }
 
 function normalizedDiarizationId(word: StudioWord) {
-  const explicit = word.diarizationSpeakerId?.trim();
-  if (explicit) return explicit;
+  // Manual Profile assignment is the visible grouping; raw diarization remains provenance.
   const profile = word.speakerId?.trim();
-  return profile ? `profile:${profile}` : "speaker-1";
+  if (profile) return `profile:${profile}`;
+  const manual = word.manualDiarizationSpeakerId?.trim();
+  if (manual) return manual;
+  return word.diarizationSpeakerId?.trim() || "speaker-1";
 }
-
 function labelForDiarization(id: string) {
   if (id.startsWith("profile:")) return "Speaker 1";
   const number = /(?:speaker|spk)[-_ ]?(\d+)$/iu.exec(id)?.[1];
@@ -98,8 +99,47 @@ export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerPro
   return rows;
 }
 
-export function assignProfileToDiarization(words: StudioWord[], speakerKey: string, profileId: string | null) {
-  return words.map((word) => normalizedDiarizationId(word) === speakerKey ? { ...word, speakerId: profileId } : word);
+export function assignProfileToTurn(words: StudioWord[], indexes: number[], profileId: string | null) {
+  const selected = new Set(indexes);
+  return words.map((word, index) => {
+    if (!selected.has(index)) return word;
+    const updated = { ...word, speakerId: profileId ?? undefined };
+    delete updated.manualDiarizationSpeakerId;
+    return updated;
+  });
+}
+
+export function assignProfileToWord(words: StudioWord[], index: number, profileId: string | null) {
+  return assignProfileToTurn(words, [index], profileId);
+}
+export const assignProfileToWords = assignProfileToTurn;
+
+export function moveWordToRow(words: StudioWord[], index: number, row: Pick<SpeakerScriptRow, "speakerKey" | "profileId">) {
+  if (index < 0 || index >= words.length) return words;
+  return words.map((word, wordIndex) => {
+    if (wordIndex !== index) return word;
+    const updated = { ...word, speakerId: row.profileId ?? undefined };
+    if (row.profileId) delete updated.manualDiarizationSpeakerId;
+    else updated.manualDiarizationSpeakerId = row.speakerKey;
+    return updated;
+  });
+}
+export function moveWordsToRow(words: StudioWord[], indexes: number[], row: Pick<SpeakerScriptRow, "speakerKey" | "profileId">) {
+  const selected = new Set(indexes.filter((index) => index >= 0 && index < words.length));
+  if (!selected.size) return words;
+  return words.map((word, index) => {
+    if (!selected.has(index)) return word;
+    const updated = { ...word, speakerId: row.profileId ?? undefined };
+    if (row.profileId) delete updated.manualDiarizationSpeakerId;
+    else updated.manualDiarizationSpeakerId = row.speakerKey;
+    return updated;
+  });
+}
+
+export function updateWordText(words: StudioWord[], index: number, text: string) {
+  const nextText = text.trim();
+  if (!nextText || index < 0 || index >= words.length) return words;
+  return words.map((word, wordIndex) => wordIndex === index ? { ...word, text: nextText, reviewState: "manual" as const, selectedVariant: "manual" as const } : word);
 }
 
 interface ScriptTableProps {
@@ -108,11 +148,12 @@ interface ScriptTableProps {
   activeWordIndex: number;
   emotionStyle: EmotionStylePreferences;
   getEmotionStyle: (emotion: EmotionLabel | null | undefined, preferences: EmotionStylePreferences) => CSSProperties | undefined;
-  onAssignProfile: (speakerKey: string, profileId: string | null) => void;
+  onAssignWords: (indexes: number[], profileId: string | null) => void;
+  onMoveWords: (indexes: number[], row: SpeakerScriptRow) => void;
+  onUpdateWordText: (index: number, text: string) => void;
   onOpenTextEditor: () => void;
   storageKey: string;
 }
-
 interface ScrollMetrics {
   top: number;
   clientHeight: number;
@@ -154,18 +195,46 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenText
     })}
   </div>;
 }
-export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignProfile, onOpenTextEditor, storageKey }: ScriptTableProps) {
+export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const activeWordRef = useRef<HTMLSpanElement>(null);
+  const activeWordRef = useRef<HTMLButtonElement>(null);
   const draggingRef = useRef(false);
   const resizeRef = useRef<ResizeState | null>(null);
+  const [selectedWordIndexes, setSelectedWordIndexes] = useState<Set<number>>(() => new Set());
+  const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
+  const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
+  const wordSelectionAnchorRef = useRef<number | null>(null);
+  const wordSelectionDraggingRef = useRef(false);
+  const wordSelectionExtendedRef = useRef(false);
   const [scroll, setScroll] = useState<ScrollMetrics>({ top: 0, clientHeight: 0, scrollHeight: 0, trackHeight: 0 });
 
   useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
   useEffect(() => { window.localStorage.setItem(`pro4bro:script-table:${storageKey}`, JSON.stringify(columns)); }, [columns, storageKey]);
+  useEffect(() => {
+    if (!speakerMenu) return undefined;
+    const closeMenu = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".script-table__word-menu")) return;
+      setSpeakerMenu(null);
+    };
+    window.addEventListener("pointerdown", closeMenu, true);
+    return () => window.removeEventListener("pointerdown", closeMenu, true);
+  }, [speakerMenu]);
+  useEffect(() => {
+    const moveSelection = (event: globalThis.PointerEvent) => extendWordSelectionAtPoint(event.clientX, event.clientY);
+    const endSelection = () => { wordSelectionDraggingRef.current = false; };
+    window.addEventListener("pointermove", moveSelection, true);
+    window.addEventListener("pointerup", endSelection, true);
+    window.addEventListener("pointercancel", endSelection, true);
+    return () => {
+      window.removeEventListener("pointermove", moveSelection, true);
+      window.removeEventListener("pointerup", endSelection, true);
+      window.removeEventListener("pointercancel", endSelection, true);
+    };
+  }, []);
 
   const gridTemplateColumns = useMemo(() => [...columns.map((column) => `${column.width}px`), "30px"].join(" "), [columns]);
   const thumb = useMemo(() => {
@@ -280,22 +349,113 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     setColumns((current) => current.length > 1 ? current.filter((column) => column.id !== id) : current);
   }
 
+  function wordIndexRange(start: number, end: number) {
+    const first = Math.min(start, end);
+    const last = Math.max(start, end);
+    return Array.from({ length: last - first + 1 }, (_, offset) => first + offset);
+  }
+
+  function beginWordSelection(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
+    if (event.button !== 0 && event.button !== -1) return;
+    event.stopPropagation();
+    wordSelectionDraggingRef.current = true;
+    wordSelectionExtendedRef.current = false;
+    const anchor = wordSelectionAnchorRef.current;
+    if (event.shiftKey && anchor !== null) {
+      setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedWordIndexes((current) => {
+        const next = new Set(current);
+        if (next.has(index)) next.delete(index);
+        else next.add(index);
+        return next;
+      });
+      wordSelectionAnchorRef.current = index;
+      return;
+    }
+    wordSelectionAnchorRef.current = index;
+    setSelectedWordIndexes(new Set([index]));
+  }
+
+  function extendWordSelectionAtPoint(clientX: number, clientY: number) {
+    if (!wordSelectionDraggingRef.current) return;
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-script-word-index]");
+    const index = Number(target?.dataset.scriptWordIndex);
+    if (Number.isInteger(index)) extendWordSelection(index);
+  }
+
+  function extendWordSelection(index: number) {
+    const anchor = wordSelectionAnchorRef.current;
+    if (!wordSelectionDraggingRef.current || anchor === null || anchor === index) return;
+    wordSelectionExtendedRef.current = true;
+    setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+  }
+
+  function openSpeakerMenu(index: number, x: number, y: number) {
+    const indexes = selectedWordIndexes.has(index) ? [...selectedWordIndexes] : [index];
+    if (!selectedWordIndexes.has(index)) {
+      wordSelectionAnchorRef.current = index;
+      setSelectedWordIndexes(new Set(indexes));
+    }
+    setWordEdit(null);
+    setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), x, y });
+  }
+
+  function assignProfileToSelectedWords(profileId: string | null) {
+    if (!speakerMenu?.indexes.length) return;
+    onAssignWords(speakerMenu.indexes, profileId);
+    setSpeakerMenu(null);
+  }
+
+  function moveSelectedWordsToRow(row: SpeakerScriptRow) {
+    if (!speakerMenu?.indexes.length) return;
+    onMoveWords(speakerMenu.indexes, row);
+    setSpeakerMenu(null);
+  }
+
+  function confirmWordEdit() {
+    if (!wordEdit) return;
+    onUpdateWordText(wordEdit.index, wordEdit.value);
+    setWordEdit(null);
+  }
+
+  function renderWord(index: number, word: StudioWord) {
+    const selected = selectedWordIndexes.has(index);
+    const editing = wordEdit?.index === index;
+    return <span className="script-table__word-wrap" key={`${word.start}-${word.end}-${index}`}>
+      <button aria-label={`Chọn từ ${word.text}`} aria-pressed={selected} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.reviewState === "manual" ? "is-manual" : ""}`} data-script-word-index={index} onClick={(event) => {
+        event.stopPropagation();
+        if (wordSelectionExtendedRef.current) {
+          wordSelectionExtendedRef.current = false;
+          return;
+        }
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        wordSelectionAnchorRef.current = index;
+        setSelectedWordIndexes(new Set([index]));
+        setSpeakerMenu(null);
+        setWordEdit({ index, value: word.text });
+      }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerEnter={() => extendWordSelection(index)} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY)} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile hoặc chuyển row" type="button">{word.text}</button>{" "}
+      {editing ? <form aria-label={`Sửa từ ${word.text}`} className="script-table__word-editor" onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
+        <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setWordEdit(null); } }} value={wordEdit.value} />
+      </form> : null}
+    </span>;
+  }
+
   function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn) {
     if (column.builtin === "speaker") {
       return <div className="script-table__speaker" role="gridcell">
         <i style={{ background: row.profile?.color ?? "var(--text-muted)" }} />
         <div>
           <b style={{ color: row.profile?.color }}>{row.diarizationLabel}</b>
-          <select aria-label={`Gán ${row.diarizationLabel} vào Speaker Profile`} onChange={(event) => onAssignProfile(row.speakerKey, event.currentTarget.value || null)} value={row.profileId ?? ""}>
-            <option value="">Chưa gán Profile</option>
-            {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
-          </select>
+          <small>{row.profile ? "Profile đã gán" : "Chuột phải trên từ để gán Profile"}</small>
         </div>
       </div>;
     }
     if (column.builtin === "content") {
-      return <div className="script-table__content" onDoubleClick={onOpenTextEditor} role="gridcell" tabIndex={0} title="Double-click để mở Text Edit">
-        {row.words.map(({ index, word }) => <span className={index === activeWordIndex ? "is-active" : ""} key={`${word.start}-${word.end}-${index}`} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)}>{word.text}{" "}</span>)}
+      return <div className="script-table__content" onDoubleClick={onOpenTextEditor} role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
+        {row.words.map(({ index, word }) => renderWord(index, word))}
       </div>;
     }
     if (column.builtin === "timestamp") {
@@ -324,5 +484,12 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     <div aria-label="Thanh cuộn bảng Script" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(thumb.top)} className={`script-table-scrollbar ${thumb.enabled ? "" : "is-static"}`} onPointerCancel={endScrollbar} onPointerDown={beginScrollbar} onPointerMove={moveScrollbar} onPointerUp={endScrollbar} ref={trackRef} role="scrollbar" tabIndex={0}>
       <i style={{ height: `${thumb.height}%`, top: `${thumb.top}%` }} />
     </div>
+    {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
+      <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
+      <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
+      {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+      <small>CHUYỂN SANG ROW</small>
+      {rows.map((row) => <button key={row.id} onClick={() => moveSelectedWordsToRow(row)} role="menuitem" type="button">→ {row.diarizationLabel} · {timecode(row.words[0]?.word.start ?? 0)}</button>)}
+    </div> : null}
   </div>;
 }

@@ -6,6 +6,13 @@ import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectM
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
+const STT_MODELS = [
+  { id: "tiny", label: "Tiny · nhanh nhất / yếu nhất" },
+  { id: "base", label: "Base · nhẹ" },
+  { id: "small", label: "Small · cân bằng nhẹ" },
+  { id: "medium", label: "Medium · chính xác hơn" },
+  { id: "large-v3", label: "Large v3 · mạnh nhất / mặc định" },
+] as const;
 const MEDIA_ACCEPT = [
   "audio/*", "video/*", ".mov", ".mp4", ".mkv", ".avi", ".webm", ".mxf",
   ".h264", ".h265", ".hevc", ".av1", ".prores", ".mp3", ".wav", ".aac",
@@ -25,7 +32,7 @@ interface MediaPoolProps {
   onSelect: (assetId: string) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
-  onQueueTranscriptions: () => void;
+  onQueueTranscriptions: (model: string) => void;
   onRemove: (asset: ProjectMediaAsset) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
@@ -105,11 +112,12 @@ export function MediaPool({
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
+  const [sttModel, setSttModel] = useState<string>("large-v3");
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const historyAsset = assets.find((asset) => asset.id === historyAssetId) ?? null;
   const trainingCount = assets.filter((asset) => asset.trainingSelected).length;
-  const transcriptionCount = assets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["complete", "processing", "reviewing", "queued"].includes(asset.transcriptionStatus)).length;
+  const transcriptionCount = assets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["processing", "reviewing", "queued"].includes(asset.transcriptionStatus)).length;
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -205,7 +213,7 @@ export function MediaPool({
         {!assets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <button className="button button--accent button--full media-send-training" disabled={!transcriptionCount} onClick={onQueueTranscriptions} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button> : null}
+        {workflow === "speech-to-text" ? <div className="media-stt-action"><button className="button button--accent media-send-training" disabled={!transcriptionCount} onClick={() => onQueueTranscriptions(sttModel)} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button><select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{STT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select></div> : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>

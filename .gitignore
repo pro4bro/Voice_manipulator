@@ -9,6 +9,7 @@ apps/web/*.tsbuildinfo
 apps/web/vite.config.js
 apps/web/vite.config.d.ts
 services/api/**/__pycache__/
+**/__pycache__/
 .pytest_cache/
 .scratch/
 *.log

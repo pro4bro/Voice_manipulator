@@ -26,6 +26,7 @@ export interface StudioContext {
   mediaBusy: boolean;
   recordingPreview: RecordingWaveformPreview | null;
   liveTranscriptActive: boolean;
+  liveTranscriptText: string | null;
   emotionStyle: EmotionStylePreferences;
   aiReviewText: string | null;
   aiReviewKey: string | null;
@@ -47,15 +48,17 @@ export interface StudioContext {
   onLiveTranscript: (text: string, active: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
-  onQueueTranscriptions: () => void;
+  onQueueTranscriptions: (model: string) => void;
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
-  onWordsChange: (words: StudioWord[]) => void;
+  onUpdateDiarizationAssignments: (assetId: string, assignments: Record<string, string | null>) => void;
+  onWordsChange: (words: StudioWord[], text?: string) => void;
   onCatalogChange: (catalog: TrainingCatalog) => void;
   onSendToTraining: () => void;
   onGenerate: () => void;
   onDeferredAction: (action: string) => void;
   onRunAiReview: () => void;
+  onRunDiarization: () => void;
 }
 
 interface ModuleRegistryProps {
@@ -94,7 +97,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceVault assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      return <ScriptEditor wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+      return <ScriptEditor wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
@@ -102,14 +105,14 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <Recorder onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "timeline": {
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      return <Timeline gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={(keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={context.onTimelineEditsChange} recordingPreview={context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} take={context.take} />;
+      return <Timeline gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={(keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={context.onTimelineEditsChange} onWordsChange={context.onWordsChange} recordingPreview={context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={context.take} />;
     }
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
       return <TrainingJob assets={context.mediaAssets} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
-      return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
+      return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":
       return <SpeakerEmotion asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":

@@ -38,7 +38,6 @@ interface WorkspaceShellProps {
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
-
 const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: IconName }> = [
   { id: "speech-to-text", label: "Speech to Text", short: "STT", icon: "mic" },
   { id: "voice-training", label: "Voice Training", short: "TRAIN", icon: "training" },
@@ -70,9 +69,12 @@ function emptyTrainingCatalog(): TrainingCatalog {
     updatedAt: new Date().toISOString(),
   };
 }
-
 function defaultPreferences(): AppPreferences {
-  return { aiReview: { enabled: false, baseUrl: "", model: "", apiKey: null, apiKeyConfigured: false }, emotionStyle: { ...DEFAULT_EMOTION_STYLE, emotionColors: { ...DEFAULT_EMOTION_STYLE.emotionColors } } };
+  return {
+    aiReview: { enabled: false, baseUrl: "", model: "", apiKey: null, apiKeyConfigured: false },
+    diarization: { enabled: true, model: "pyannote/speaker-diarization-community-1", huggingfaceToken: null, huggingfaceTokenConfigured: false },
+    emotionStyle: { ...DEFAULT_EMOTION_STYLE, emotionColors: { ...DEFAULT_EMOTION_STYLE.emotionColors } },
+  };
 }
 
 function isBackgroundTranscribing(asset: ProjectMediaAsset) {
@@ -145,6 +147,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
   }, [project.id]);
 
   const hasBackgroundTranscription = mediaAssets.some(isBackgroundTranscribing);
+  const hasBackgroundDiarization = mediaAssets.some((asset) => ["queued", "processing"].includes(asset.diarizationStatus ?? "idle"));
 
   useEffect(() => {
     if (!hasBackgroundTranscription) return;
@@ -164,9 +167,13 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
           const unchanged = current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt);
           return unchanged ? current : assets;
         });
-        if (selected && selectedChanged && !scriptDirty && !liveTranscriptActive) {
+        // A deliberate rerun of STT is authoritative: it must replace an older dirty Script.
+        // Other background refreshes keep the user's unsaved typing intact.
+        const transcriptionJustCompleted = currentSelected?.transcriptionStatus !== "complete" && selected?.transcriptionStatus === "complete";
+        if (selected && selectedChanged && (!scriptDirty || transcriptionJustCompleted) && !liveTranscriptActive) {
           setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
           setScript(selected.text);
+          if (transcriptionJustCompleted) setScriptDirty(false);
         }
       }).catch(() => undefined).finally(() => { fullMediaRefreshInFlight = false; });
     };
@@ -202,6 +209,23 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [project.id, hasBackgroundTranscription, selectedAssetId, scriptDirty, liveTranscriptActive]);
 
+  useEffect(() => {
+    if (!hasBackgroundDiarization) return;
+    let cancelled = false;
+    const refresh = () => {
+      void api.listProjectMedia(project.id).then((assets) => {
+        if (cancelled) return;
+        setMediaAssets((current) => current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt) ? current : assets);
+        const selected = assets.find((asset) => asset.id === selectedAssetId);
+        if (selected && selected.diarizationStatus === "complete" && !scriptDirty && !liveTranscriptActive) {
+          setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
+        }
+      }).catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 800);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [project.id, hasBackgroundDiarization, selectedAssetId, scriptDirty, liveTranscriptActive]);
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
@@ -352,7 +376,34 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     }
   }
 
-  async function changeWordAnnotations(words: StudioWord[]) {
+  async function updateDiarizationAssignments(assetId: string, assignments: Record<string, string | null>) {
+    if (!assetId) return;
+    const previous = mediaAssets.find((asset) => asset.id === assetId);
+    if (!previous) return;
+    const normalized = Object.fromEntries(Object.entries(assignments).map(([label, profileId]) => [label.trim(), profileId || null]).filter(([label]) => Boolean(label)));
+    const applyAssignments = (words: StudioWord[]) => words.map((word) => {
+      const label = word.diarizationSpeakerId?.trim();
+      if (!label || !Object.prototype.hasOwnProperty.call(normalized, label)) return word;
+      return { ...word, speakerId: normalized[label], manualDiarizationSpeakerId: null };
+    });
+    const optimisticWords = applyAssignments(previous.words);
+    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, words: optimisticWords, diarizationSpeakerAssignments: normalized } : asset));
+    if (selectedAssetId === assetId) setTake((current) => current ? { ...current, words: optimisticWords } : current);
+    try {
+      const updated = await api.updateMediaDiarizationAssignments(project.id, assetId, normalized);
+      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+      if (selectedAssetId === assetId && !scriptDirty && !liveTranscriptActive) {
+        setTake((current) => current ? { ...current, words: updated.words } : current);
+      }
+      setNotice("Đã lưu mapping Speaker Diarization. Có thể sửa từng row hoặc từng word trong Bảng Script.");
+    } catch (error) {
+      setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
+      if (selectedAssetId === assetId) setTake((current) => current ? { ...current, words: previous.words } : current);
+      setNotice(error instanceof Error ? error.message : "Không lưu được mapping Speaker Diarization");
+    }
+  }
+
+  async function changeWordAnnotations(words: StudioWord[], text?: string) {
     if (!selectedAssetId) return;
     const asset = mediaAssets.find((item) => item.id === selectedAssetId);
     if (!asset) return;
@@ -362,10 +413,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     const environmentProfileIds = [...new Set([...asset.environmentProfileIds, ...wordEnvironmentIds])];
     const emotions = [...new Set(words.map((word) => word.emotion ?? asset.emotion))];
     const emotion = emotions.length > 1 ? "mix" : emotions[0] ?? asset.emotion;
-    setTake((current) => current ? { ...current, words } : current);
-    setMediaAssets((current) => current.map((item) => item.id === asset.id ? { ...item, words, speakerProfileIds, environmentProfileIds, emotion } : item));
+    const nextText = text ?? scriptRef.current;
+    if (text !== undefined) {
+      setScript(nextText);
+      scriptRef.current = nextText;
+      setScriptDirty(false);
+    }
+    setTake((current) => current ? { ...current, text: nextText, words } : current);
+    setMediaAssets((current) => current.map((item) => item.id === asset.id ? { ...item, text: nextText, words, speakerProfileIds, environmentProfileIds, emotion } : item));
     try {
-      await api.updateMediaScript(project.id, asset.id, scriptRef.current, "user", words);
+      await api.updateMediaScript(project.id, asset.id, nextText, "user", words);
       const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, environmentProfileIds, emotion);
       setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
       setNotice(`Đã gán ${speakerProfileIds.length} speaker · ${environmentProfileIds.length} environment.`);
@@ -478,14 +535,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     }
   }
 
-  async function queueSelectedTranscriptions() {
-    const assetIds = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["queued", "processing", "reviewing", "complete"].includes(asset.transcriptionStatus)).map((asset) => asset.id);
+  async function queueSelectedTranscriptions(model = "large-v3") {
+    const assetIds = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)).map((asset) => asset.id);
     if (!assetIds.length) {
-      setNotice("Hãy tick STT cho ít nhất một footage chưa có transcript.");
+      setNotice("Hãy tick STT cho ít nhất một footage không đang chạy.");
       return;
     }
     try {
-      const queued = await api.enqueueMediaTranscriptions(project.id, assetIds);
+      const queued = await api.enqueueMediaTranscriptions(project.id, assetIds, model);
       setMediaAssets((current) => current.map((asset) => queued.find((item) => item.id === asset.id) ?? asset));
       setNotice(`Đã đưa ${queued.length} footage vào hàng chờ STT. Chạy lần lượt theo thứ tự thêm vào và không khóa UI.`);
     } catch (error) {
@@ -544,6 +601,26 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     }
   }
 
+  async function runDiarization() {
+    if (!selectedAssetId) {
+      setNotice("Hãy chọn footage trong Media Pool trước khi nhận diện speaker.");
+      return;
+    }
+
+    if (!preferences.diarization.huggingfaceTokenConfigured) {
+      setPreferencesOpen(true);
+      setNotice("Speaker Diarization cần Hugging Face token lần đầu. Hãy chấp nhận model community-1, dán Read token rồi Lưu Preferences.");
+      return;
+    }
+    try {
+      const expectedSpeakers = trainingCatalog.speakers.length || null;
+      const queued = await api.enqueueMediaDiarization(project.id, selectedAssetId, expectedSpeakers);
+      storeMediaAsset(queued);
+      setNotice("Đã đưa Speaker Diarization vào hàng chờ GPU. App vẫn dùng bình thường trong lúc xử lý.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể chạy Speaker Diarization.");
+    }
+  }
   async function exportSubtitles(mode: "sentence" | "word" | "table") {
     if (!selectedAssetId) {
       setNotice("Hãy chọn footage đã có transcript trước khi xuất SRT.");
@@ -640,6 +717,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
 
   const selectedMediaAsset = mediaAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const latestAiRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
+  const latestLiveRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "record") ?? null;
   const canRunAiReview = Boolean(selectedMediaAsset?.text.trim() && selectedMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
   const context = useMemo<StudioContext>(() => ({
     workflow: activePage,
@@ -653,6 +731,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     mediaBusy,
     recordingPreview,
     liveTranscriptActive,
+    liveTranscriptText: latestLiveRevision?.text ?? null,
     emotionStyle: preferences.emotionStyle,
     aiReviewText: latestAiRevision?.text ?? null,
     aiReviewKey: latestAiRevision?.id ?? null,
@@ -674,27 +753,28 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
     onTimelineEditsChange: (ranges, gainKeyframes) => void updateTimelineEdits(ranges, gainKeyframes),
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
-    onQueueTranscriptions: () => void queueSelectedTranscriptions(),
+    onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
     onUpdateAnnotations: (assetId, speakerProfileIds, environmentProfileIds, emotion) => void updateMediaAnnotations(assetId, speakerProfileIds, environmentProfileIds, emotion),
-    onWordsChange: (words) => void changeWordAnnotations(words),
+    onUpdateDiarizationAssignments: (assetId, assignments) => void updateDiarizationAssignments(assetId, assignments),
+    onWordsChange: (words, text) => void changeWordAnnotations(words, text),
     onCatalogChange: changeCatalog,
     onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),
     onDeferredAction: (action) => {
-      if (action === "STT kỹ") void runAccurateTranscription();
-      else if (action === "Export SRT theo câu") void exportSubtitles("sentence");
+      if (action === "Export SRT theo câu") void exportSubtitles("sentence");
       else if (action === "Export SRT từng từ") void exportSubtitles("word");
       else if (action === "Export bảng Script") void exportSubtitles("table");
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
     onRunAiReview: () => void runAiReview(),
-  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
+    onRunDiarization: () => void runDiarization(),
+  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
 
   return (
     <main className="workspace-shell">
       <header className="workspace-topbar">
-<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name + " · " + (take?.name ?? "Chưa chọn")}><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></div>
+<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
@@ -739,7 +819,12 @@ function PreferencesDialog({ preferences, saving, onClose, onSave }: { preferenc
           <label><span>API key {draft.aiReview.apiKeyConfigured ? "(đã lưu)" : ""}</span><input onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, apiKey: event.target.value || null } })} placeholder={draft.aiReview.apiKeyConfigured ? "Để trống để giữ key hiện tại" : "Nhập API key"} type="password" value={draft.aiReview.apiKey ?? ""} /></label>
           <small className="preferences-note">Key chỉ được giữ trong dữ liệu runtime cục bộ, không ghi vào project hay Git.</small>
         </section>
-        <section className="preferences-section preferences-section--emotion"><h3>Emotion text in Script</h3><p>Chữ không có emotion giữ màu theo Light/Dark. Các từ đã gán emotion nhận màu từ gradient hoặc màu riêng.</p>
+        <section className="preferences-section"><h3>Speaker Diarization</h3><p>Chạy local trên GPU sau STT để xác định ai nói khi nào. Lần đầu model community-1 cần token Hugging Face và chấp nhận điều khoản model.</p>
+          <label className="preferences-switch"><input checked={draft.diarization.enabled} onChange={(event) => setDraft({ ...draft, diarization: { ...draft.diarization, enabled: event.target.checked } })} type="checkbox" /><span>Bật Speaker Diarization</span></label>
+          <label><span>Model</span><input onChange={(event) => setDraft({ ...draft, diarization: { ...draft.diarization, model: event.target.value } })} value={draft.diarization.model} /></label>
+          <label><span>Hugging Face token {draft.diarization.huggingfaceTokenConfigured ? "(đã lưu)" : ""}</span><input onChange={(event) => setDraft({ ...draft, diarization: { ...draft.diarization, huggingfaceToken: event.target.value || null } })} placeholder={draft.diarization.huggingfaceTokenConfigured ? "Để trống để giữ token hiện tại" : "Nhập access token"} type="password" value={draft.diarization.huggingfaceToken ?? ""} /></label>
+          <small className="preferences-note">Trước lần chạy đầu: mở model community-1 trên Hugging Face, chấp nhận điều khoản, tạo Read token rồi dán vào đây. Token chỉ nằm trong dữ liệu runtime cục bộ.</small>
+        </section>        <section className="preferences-section preferences-section--emotion"><h3>Emotion text in Script</h3><p>Chữ không có emotion giữ màu theo Light/Dark. Các từ đã gán emotion nhận màu từ gradient hoặc màu riêng.</p>
           <label><span>Color mode</span><select aria-label="Emotion color mode" onChange={(event) => setDraft({ ...draft, emotionStyle: { ...draft.emotionStyle, colorMode: event.target.value as "gradient" | "per-emotion" } })} value={draft.emotionStyle.colorMode}><option value="gradient">Gradient theo dải màu</option><option value="per-emotion">Màu riêng từng emotion</option></select></label>
           {draft.emotionStyle.colorMode === "gradient" ? <div className="preferences-color-row"><label><span>Gradient from</span><input aria-label="Gradient from" onChange={(event) => setDraft({ ...draft, emotionStyle: { ...draft.emotionStyle, gradientStart: event.target.value } })} type="color" value={draft.emotionStyle.gradientStart} /></label><label><span>Gradient to</span><input aria-label="Gradient to" onChange={(event) => setDraft({ ...draft, emotionStyle: { ...draft.emotionStyle, gradientEnd: event.target.value } })} type="color" value={draft.emotionStyle.gradientEnd} /></label></div> : <div className="preferences-emotion-colors">{emotionOptions.map((option) => <label key={option.id}><span>{option.label}</span><input aria-label={`Màu ${option.label}`} onChange={(event) => setDraft({ ...draft, emotionStyle: { ...draft.emotionStyle, emotionColors: { ...draft.emotionStyle.emotionColors, [option.id]: event.target.value } } })} type="color" value={draft.emotionStyle.emotionColors[option.id] ?? "#ffffff"} /></label>)}</div>}
           <label className="preferences-switch"><input checked={draft.emotionStyle.backgroundEnabled} onChange={(event) => setDraft({ ...draft, emotionStyle: { ...draft.emotionStyle, backgroundEnabled: event.target.checked } })} type="checkbox" /><span>Gắn nền cho chữ có emotion</span></label>

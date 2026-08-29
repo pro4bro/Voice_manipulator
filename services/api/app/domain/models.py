@@ -60,6 +60,7 @@ MediaStatus = Literal["ready", "no-audio", "error"]
 MediaTranscriptionStatus = Literal[
     "queued", "processing", "reviewing", "complete", "skipped", "not-applicable", "error"
 ]
+MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error"]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
 WordTimingQuality = Literal["unverified", "source", "needs-alignment"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
@@ -124,6 +125,10 @@ class MediaAssetCreate(DomainModel):
     transcription_selected: bool = False
     transcription_progress: float = Field(default=0, ge=0, le=100)
     transcription_error: str | None = Field(default=None, max_length=2000)
+    diarization_status: MediaDiarizationStatus = "idle"
+    diarization_progress: float = Field(default=0, ge=0, le=100)
+    diarization_error: str | None = Field(default=None, max_length=2000)
+    diarization_speaker_assignments: dict[str, str | None] = Field(default_factory=dict)
     ai_review_status: AIReviewStatus = "skipped"
     training_selected: bool = False
     speaker_profile_ids: list[str] = Field(default_factory=list)
@@ -140,7 +145,12 @@ class ProjectMediaAsset(MediaAssetCreate):
     @classmethod
     def create(cls, asset_id: str, payload: MediaAssetCreate) -> "ProjectMediaAsset":
         now = datetime.now(timezone.utc)
-        revisions = [MediaRevision(source="stt", text=payload.text)] if payload.text else []
+        initial_source: MediaRevisionSource = (
+            "record"
+            if payload.origin == "record" and payload.transcription_status in {"queued", "processing"}
+            else "stt"
+        )
+        revisions = [MediaRevision(source=initial_source, text=payload.text)] if payload.text else []
         return cls(
             id=asset_id,
             created_at=now,
@@ -178,6 +188,7 @@ class MediaTranscriptionSelection(DomainModel):
 
 class MediaTranscriptionEnqueue(DomainModel):
     asset_ids: list[str] = Field(min_length=1, max_length=500)
+    model: str = Field(default="large-v3", max_length=80)
 
 
 class MediaTranscriptionProgress(DomainModel):
@@ -185,6 +196,21 @@ class MediaTranscriptionProgress(DomainModel):
     transcription_status: MediaTranscriptionStatus
     transcription_progress: float = Field(ge=0, le=100)
     transcription_error: str | None = None
+
+
+class MediaDiarizationEnqueue(DomainModel):
+    expected_speakers: int | None = Field(default=None, ge=1, le=8)
+
+
+class MediaDiarizationAssignmentsUpdate(DomainModel):
+    assignments: dict[str, str | None] = Field(default_factory=dict)
+
+
+class MediaDiarizationProgress(DomainModel):
+    id: str
+    diarization_status: MediaDiarizationStatus
+    diarization_progress: float = Field(ge=0, le=100)
+    diarization_error: str | None = None
 
 
 class MediaAnnotationUpdate(DomainModel):
@@ -275,6 +301,13 @@ class AIReviewPreferences(DomainModel):
     api_key_configured: bool = False
 
 
+class DiarizationPreferences(DomainModel):
+    enabled: bool = True
+    model: str = Field(default="pyannote/speaker-diarization-community-1", max_length=256)
+    huggingface_token: str | None = Field(default=None, max_length=4096)
+    huggingface_token_configured: bool = False
+
+
 class EmotionStylePreferences(DomainModel):
     color_mode: Literal["gradient", "per-emotion"] = "gradient"
     gradient_start: str = Field(default="#18d9ff", max_length=32)
@@ -293,6 +326,7 @@ class EmotionStylePreferences(DomainModel):
 
 class AppPreferences(DomainModel):
     ai_review: AIReviewPreferences = Field(default_factory=AIReviewPreferences)
+    diarization: DiarizationPreferences = Field(default_factory=DiarizationPreferences)
     emotion_style: EmotionStylePreferences = Field(default_factory=EmotionStylePreferences)
 
 

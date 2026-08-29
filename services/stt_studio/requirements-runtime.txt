@@ -1,0 +1,9 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0+cu128
+torchaudio==2.8.0+cu128
+whisperx
+# community-1 needs pyannote.audio 4.x; it is loaded only by Speaker Diarization.
+pyannote.audio>=4,<5
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+python-multipart>=0.0.20,<1

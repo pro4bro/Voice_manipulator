@@ -185,6 +185,104 @@ class FileMediaLibrary:
                 return updated
         raise KeyError(asset_id)
 
+    def set_diarization_state(
+        self,
+        project_id: str,
+        asset_id: str,
+        state: str,
+        *,
+        progress: float | None = None,
+        error: str | None = None,
+    ) -> ProjectMediaAsset:
+        allowed = {"idle", "queued", "processing", "complete", "requires-setup", "error"}
+        if state not in allowed:
+            raise ValueError("Trạng thái diarization không hợp lệ.")
+        with self._lock:
+            assets = self.list(project_id)
+            for index, asset in enumerate(assets):
+                if asset.id != asset_id:
+                    continue
+                updated = asset.model_copy(update={
+                    "diarization_status": state,
+                    "diarization_progress": max(0.0, min(100.0, float(progress if progress is not None else asset.diarization_progress))),
+                    "diarization_error": error,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+                assets[index] = updated
+                self._write(project_id, assets)
+                self._append_activity(project_id, "DIARIZATION_STATE_CHANGED", asset, {"state": state, "progress": updated.diarization_progress, "error": error})
+                return updated
+        raise KeyError(asset_id)
+
+    def apply_diarization(self, project_id: str, asset_id: str, words: list[dict]) -> ProjectMediaAsset:
+        with self._lock:
+            assets = self.list(project_id)
+            for index, asset in enumerate(assets):
+                if asset.id != asset_id:
+                    continue
+                updated = asset.model_copy(update={
+                    "words": words,
+                    "diarization_status": "complete",
+                    "diarization_progress": 100,
+                    "diarization_error": None,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+                assets[index] = updated
+                self._write(project_id, assets)
+                self._append_activity(project_id, "DIARIZATION_COMPLETED", asset, {"wordCount": len(words)})
+                return updated
+        raise KeyError(asset_id)
+
+    def update_diarization_assignments(
+        self,
+        project_id: str,
+        asset_id: str,
+        assignments: dict[str, str | None],
+    ) -> ProjectMediaAsset:
+        """Persist the initial Speaker N -> profile mapping without losing raw diarization labels."""
+        normalized = {
+            str(label).strip(): (str(profile_id).strip() if profile_id else None)
+            for label, profile_id in assignments.items()
+            if str(label).strip()
+        }
+        with self._lock:
+            assets = self.list(project_id)
+            for index, asset in enumerate(assets):
+                if asset.id != asset_id:
+                    continue
+                mapped_words: list[dict] = []
+                for raw_word in asset.words:
+                    word = dict(raw_word)
+                    label = str(word.get("diarizationSpeakerId") or "").strip()
+                    if label in normalized:
+                        word["speakerId"] = normalized[label]
+                        word.pop("manualDiarizationSpeakerId", None)
+                    mapped_words.append(word)
+                merged_assignments = dict(asset.diarization_speaker_assignments)
+                merged_assignments.update(normalized)
+                profile_ids = list(dict.fromkeys([
+                    *asset.speaker_profile_ids,
+                    *[profile_id for profile_id in normalized.values() if profile_id],
+                ]))
+                updated = asset.model_copy(
+                    update={
+                        "words": mapped_words,
+                        "diarization_speaker_assignments": merged_assignments,
+                        "speaker_profile_ids": profile_ids,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                )
+                assets[index] = updated
+                self._write(project_id, assets)
+                self._append_activity(
+                    project_id,
+                    "DIARIZATION_SPEAKER_ASSIGNMENTS_CHANGED",
+                    asset,
+                    {"assignments": normalized, "speakerCount": len(merged_assignments)},
+                )
+                return updated
+        raise KeyError(asset_id)
+
     def set_transcription_state(
         self,
         project_id: str,

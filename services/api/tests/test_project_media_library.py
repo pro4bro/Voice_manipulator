@@ -41,6 +41,28 @@ def test_media_library_keeps_assets_and_script_revisions_per_project(tmp_path):
     assert "SCRIPT_REVISED" in activity.read_text(encoding="utf-8")
 
 
+def test_queued_recording_keeps_live_transcript_as_a_record_revision(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Live Revision"))
+    library = FileMediaLibrary(projects)
+
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="recording.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/recording.wav",
+            duration=2,
+            text="Bản Live ban đầu",
+            origin="record",
+            transcription_status="queued",
+        ),
+    )
+
+    assert [(revision.source, revision.text) for revision in asset.revisions] == [("record", "Bản Live ban đầu")]
+
+
 def test_media_library_persists_training_selection_per_asset(tmp_path):
     projects = FileProjectRepository(tmp_path / "registry")
     project = projects.create(ProjectCreate(name="Training Selection"))
@@ -91,6 +113,37 @@ def test_media_library_persists_speaker_and_emotion_annotations(tmp_path):
     assert reopened.emotion == "mix"
     activity = Path(project.project_path) / "activity" / "events.jsonl"
     assert "MEDIA_ANNOTATIONS_CHANGED" in activity.read_text(encoding="utf-8")
+
+
+def test_media_library_persists_initial_diarization_profile_mapping_without_losing_machine_labels(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Diarization Mapping"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="dialogue.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/dialogue.wav",
+            duration=2,
+            words=[
+                {"text": "Xin", "start": 0, "end": 0.3, "diarizationSpeakerId": "speaker-1"},
+                {"text": "chào", "start": 0.3, "end": 0.6, "diarizationSpeakerId": "speaker-2"},
+            ],
+            origin="import",
+        ),
+    )
+
+    updated = library.update_diarization_assignments(
+        project.id, asset.id, {"speaker-1": "profile-lan", "speaker-2": None}
+    )
+    reopened = FileMediaLibrary(projects).get(project.id, asset.id)
+
+    assert updated.diarization_speaker_assignments == {"speaker-1": "profile-lan", "speaker-2": None}
+    assert [word.get("speakerId") for word in reopened.words] == ["profile-lan", None]
+    assert [word["diarizationSpeakerId"] for word in reopened.words] == ["speaker-1", "speaker-2"]
+    assert "DIARIZATION_SPEAKER_ASSIGNMENTS_CHANGED" in (Path(project.project_path) / "activity" / "events.jsonl").read_text(encoding="utf-8")
 
 
 def test_media_paths_and_history_survive_moving_the_project_folder(tmp_path):
