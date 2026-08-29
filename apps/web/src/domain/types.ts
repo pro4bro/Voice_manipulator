@@ -1,5 +1,17 @@
 export type WorkspacePage = "speech-to-text" | "voice-training" | "voice-manipulator";
 export type ThemeMode = "light" | "dark";
+export type RuntimeAction = "start" | "stop" | "restart";
+
+export interface RuntimeWorkloadState {
+  overall: "running" | "stopped" | "partial" | "busy";
+  api: "running" | "stopped";
+  studio: "running" | "stopped";
+  busy: boolean;
+  activeAction: RuntimeAction | null;
+  lastAction: RuntimeAction | null;
+  lastError: string | null;
+  updatedAt: string;
+}
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
 export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
@@ -67,6 +79,11 @@ export interface StudioWord {
   text: string;
   start: number;
   end: number;
+  /** Recognition confidence; it is not by itself proof of acoustic alignment. */
+  confidence?: number;
+  /** Processor that measured this interval. Missing means legacy/unverified data. */
+  timingSource?: "faster-whisper-dtw" | string;
+  segmentIndex?: number;
   realtime?: string;
   accurate?: string;
   corrected?: string;

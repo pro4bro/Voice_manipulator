@@ -1,4 +1,4 @@
-from app.adapters.word_timing_quality import inspect_word_timings
+from app.adapters.word_timing_quality import inspect_word_timings, reconcile_word_timing_quality
 
 
 def test_keeps_plausible_source_word_boundaries_without_redistributing_them():
@@ -43,3 +43,38 @@ def test_drops_missing_or_invalid_timing_instead_of_inventing_an_interval():
 
     assert result.quality == "needs-alignment"
     assert [word["text"] for word in result.words] == ["Hợp lệ"]
+
+
+def test_never_promotes_provisional_timing_just_because_it_is_structurally_plausible():
+    result = reconcile_word_timing_quality(
+        "needs-alignment",
+        "Aligner thất bại; đây là timing tạm.",
+        [{"text": "Xin", "start": 0.0, "end": 0.3}, {"text": "chào", "start": 0.3, "end": 0.7}],
+        1.0,
+    )
+
+    assert result.quality == "needs-alignment"
+    assert result.note == "Aligner thất bại; đây là timing tạm."
+
+
+def test_never_promotes_legacy_unverified_timing_without_processor_provenance():
+    result = reconcile_word_timing_quality(
+        "unverified",
+        None,
+        [{"text": "Cũ", "start": 0.1, "end": 0.4}],
+        1.0,
+    )
+
+    assert result.quality == "unverified"
+
+
+def test_downgrades_legacy_source_label_when_words_do_not_name_a_timing_processor():
+    result = reconcile_word_timing_quality(
+        "source",
+        None,
+        [{"text": "Cũ", "start": 0.1, "end": 0.4}],
+        1.0,
+    )
+
+    assert result.quality == "needs-alignment"
+    assert "không ghi nguồn timing" in result.note

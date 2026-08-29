@@ -27,9 +27,11 @@ project handoff `7ff0e5e`, speaker-aware catalog/themes `9926080`, and compact
 footage tagging `002c55a`. Git HTTPS authentication succeeded through Windows
 Git Credential Manager; GitHub CLI OAuth is not required for normal pull/push.
 
-The Pro4Bro API runs on `127.0.0.1:18120`; the interim Studio sidecar runs on
-`127.0.0.1:18081`. Launchers derive paths from their own repository root and do
-not require a fixed drive letter.
+The browser opens the persistent runtime controller on `127.0.0.1:18119`. It
+serves the built React app and proxies business API traffic to the Pro4Bro API
+on `127.0.0.1:18120`; the Studio sidecar runs on `127.0.0.1:18081`. Launchers
+derive paths from their own repository root and do not require a fixed drive
+letter.
 
 ## Delivered
 
@@ -57,7 +59,8 @@ not require a fixed drive letter.
   audio through `getDisplayMedia`.
 - Media Pool imports common audio/video production formats through local
   FFmpeg/FFprobe, preserves original footage, creates project analysis WAV, runs
-  finalized two-pass Whisper STT, and exposes every asset on all three pages.
+  finalized Faster-Whisper STT with native DTW word timing, and exposes every
+  asset on all three pages.
 - Batch import now opens a per-file review. Every footage can independently run
   STT or use `Skip STT` when the user already owns a verified reading script.
 - Each asset persists `transcriptionStatus` and `trainingSelected`; Speech to
@@ -144,6 +147,9 @@ do not copy page-specific versions.
 - A supplied reading script can bypass ASR, but training still requires a clean
   audio-text pair. Forced alignment/validation remains necessary to catch read
   deviations and to create trustworthy segments.
+- Finalized recognized speech uses non-batched Faster-Whisper cross-attention/
+  DTW word timing. Only words carrying processor provenance may drive Timeline
+  subtitle boxes or timed SRT; legacy/provisional timing is hidden until rerun.
 - Project manifests persist `projectPath: "."` and `location: "."`; API responses
   resolve the current project location for display only.
 - Media paths persist as `assets/media/<asset-id>/...`. Absolute legacy paths
@@ -240,3 +246,50 @@ Verification for this slice:
   because the mapped network drive drops the V drive prefix for Node/Vite entry
   resolution. This is an execution-path limitation; re-run from a local checkout
   or a normal mapped path before release.
+
+## 2026-08-29 Timing And Runtime-Control Slice
+
+- Finalized Faster-Whisper still uses `large-v3`, beam size 5, native
+  cross-attention/DTW word timestamps, and its existing VAD recognition path.
+  A second unpadded Silero pass now refines only plausible phrase edges. This
+  fixes the repeated 0.3–0.4 second lead caused by VAD padding without changing
+  recognized text or replacing DTW's internal word order.
+- The production browser origin is now `http://127.0.0.1:18119`. The small
+  controller remains available when API/STT workloads are off so the recovery
+  screen can still execute `Turn on all`.
+- Windows → Preferences is followed by `Turn on all`, `Restart all`, and
+  `Turn off all`. Restart synchronizes the product-owned Studio adapter into
+  the ignored runtime before relaunching both API and Studio, so code-fix rounds
+  do not reuse stale Studio source.
+- `start-pro4bro.bat` remains the machine-reboot bootstrap. UI Turn off stops
+  API, Studio, model workers, and API-owned background tasks; the controller is
+  intentionally the sole survivor. `start-pro4bro.bat stop` also terminates the
+  controller when a literal zero-process shutdown is required.
+- Verified on the real PDCA sample: the phrase beginning `Thì` moved from
+  13.240 s to 13.568 s against an acoustic onset near 13.55 s, and `Đầu tiên`
+  moved from 16.060 s to 16.352 s. A live stop → recovery UI → start and a full
+  restart both returned API/Studio health to running.
+- Verification: 57 backend tests and 41 frontend tests passed; TypeScript and
+  the production Vite build passed; `engines/OmniVoice` remained clean.
+
+## 2026-08-30 Reliable STT-To-Script Handoff
+
+- Root cause of the intermittent empty Script was a frontend polling race, not
+  lost STT output. The lightweight status response reached `complete`, changed
+  the local asset to a terminal state, and cleaned up the polling effect while
+  its full-media request was still in flight. Depending on response timing, the
+  cleanup then discarded the transcript-bearing response.
+- Terminal status snapshots are now treated only as a signal to fetch the full
+  persisted asset. The local asset stays in its background state until that
+  authoritative response supplies text, words, revisions, and `updatedAt`.
+  Failed or slow full refreshes therefore remain eligible for another poll.
+- `WorkspaceShell.test.tsx` reproduces the old race with a deliberately delayed
+  full-media response and asserts that completed STT always reaches Script.
+- Existing project indexes were audited: current completed samples contain
+  transcript text, timed words, and revisions. Live verification after a full
+  runtime restart returned the controller, API, and Studio to `running`; the
+  production UI served the new bundle and the `test-4` sample returned 2,844
+  transcript characters and rendered all 665 words in both Script and Timeline
+  with no browser console warning/error.
+- Verification: 42 frontend tests and 57 backend tests passed; TypeScript and
+  the production Vite build passed.

@@ -14,6 +14,8 @@ import type {
   Project,
   ProjectMediaAsset,
   RecordingWaveformPreview,
+  RuntimeAction,
+  RuntimeWorkloadState,
   StudioAudioItem,
   StudioWord,
   ThemeMode,
@@ -29,12 +31,15 @@ import type { CapturedAudio } from "../modules/recorder/Recorder";
 import type { ActiveTake } from "../modules/timeline/Timeline";
 import { workspaceManifest } from "../pages/workspaceManifest";
 import { Icon, type IconName } from "../ui/Icon";
+import { RuntimeMenuItems } from "./RuntimeMenuItems";
 
 interface WorkspaceShellProps {
   project: Project;
   engine: EngineStatus | null;
   onBack: () => void;
   onPageChange: (page: WorkspacePage) => Promise<Project>;
+  runtime: RuntimeWorkloadState | null;
+  onRuntimeAction: (action: RuntimeAction) => Promise<void>;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
@@ -81,7 +86,7 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
   return ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus);
 }
 
-export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, onToggleTheme }: WorkspaceShellProps) {
+export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
   const [activeMode, setActiveMode] = useState<ManipulatorMode>("voice-over");
   const [leftWidth, setLeftWidth] = useState(300);
@@ -114,6 +119,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
   const legacyScriptStorageKey = `pro4bro:${project.id}:script`;
   const [script, setScript] = useState(() => localStorage.getItem(scratchStorageKey) ?? localStorage.getItem(legacyScriptStorageKey) ?? "");
   const manifest = workspaceManifest(activePage);
+
+  async function runRuntimeAction(action: RuntimeAction) {
+    setWindowsMenuOpen(false);
+    setNotice(action === "restart" ? "Đang restart toàn bộ API, STT và background workers…" : action === "stop" ? "Đang tắt toàn bộ workload…" : "Đang bật toàn bộ workload…");
+    try {
+      await onRuntimeAction(action);
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Không điều khiển được runtime");
+    }
+  }
 
   scriptRef.current = script;
   mediaAssetsRef.current = mediaAssets;
@@ -190,6 +205,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
         setMediaAssets((current) => current.map((asset) => {
           const snapshot = byId.get(asset.id);
           if (!snapshot) return asset;
+          // A terminal snapshot only says the worker stopped; it does not carry
+          // the transcript, words, revisions, or the new updatedAt. Keep the
+          // asset in its background state until refreshFullMedia has fetched
+          // that authoritative payload. Otherwise this state update makes
+          // hasBackgroundTranscription false, cleans up this effect, and can
+          // cancel the very request that puts the completed STT into Script.
+          const terminalTransition = isBackgroundTranscribing(asset)
+            && !["queued", "processing", "reviewing"].includes(snapshot.transcriptionStatus);
+          if (terminalTransition) return asset;
           const changed = asset.transcriptionStatus !== snapshot.transcriptionStatus
             || asset.transcriptionProgress !== snapshot.transcriptionProgress
             || asset.transcriptionError !== snapshot.transcriptionError;
@@ -778,7 +802,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, theme, o
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
-          <div className="workspace-windows-menu"><button aria-expanded={windowsMenuOpen} className="workspace-windows-button" onClick={() => setWindowsMenuOpen((open) => !open)} type="button"><Icon name="window" />WINDOWS</button>{windowsMenuOpen ? <div role="menu"><button onClick={() => { setWindowsMenuOpen(false); setPreferencesOpen(true); }} role="menuitem" type="button"><Icon name="settings" />Preferences</button></div> : null}</div>
+          <div className="workspace-windows-menu"><button aria-expanded={windowsMenuOpen} className="workspace-windows-button" onClick={() => setWindowsMenuOpen((open) => !open)} type="button"><Icon name="window" />WINDOWS</button>{windowsMenuOpen ? <div role="menu"><button onClick={() => { setWindowsMenuOpen(false); setPreferencesOpen(true); }} role="menuitem" type="button"><Icon name="settings" />Preferences</button><RuntimeMenuItems onAction={runRuntimeAction} runtime={runtime} /></div> : null}</div>
           <button aria-label={theme === "light" ? "Bật giao diện tối" : "Bật giao diện sáng"} onClick={onToggleTheme} title={theme === "light" ? "Dark mode" : "Light mode"} type="button"><Icon name={theme === "light" ? "moon" : "sun"} /></button>
         </div>
       </header>

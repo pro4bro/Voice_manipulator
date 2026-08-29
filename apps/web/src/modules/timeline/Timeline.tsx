@@ -276,8 +276,9 @@ export function Timeline({
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
-  const timingNeedsAlignment = take?.wordTimingQuality === "needs-alignment";
-  // A recognizer fallback must never masquerade as source-aligned subtitles.
+  const timingIsTrusted = take?.wordTimingQuality === "source";
+  const timingUnavailable = Boolean(take && !timingIsTrusted && (words.length || take.wordTimingNote));
+  // Provisional and legacy timings must never masquerade as source-aligned subtitles.
   // Keeping those boxes hidden prevents users from making edits against wrong timing.
   const displayWords = useMemo(() => normalizeWordTimings(words, duration), [duration, words]);
   const speakerById = useMemo(() => new Map(speakers.map((speaker) => [speaker.id, speaker])), [speakers]);
@@ -316,7 +317,7 @@ export function Timeline({
   const activePeakDb = isRecording ? Math.max(peakDb, previewDb) : peakDb;
   const meterPercent = Math.min(100, Math.max(0, ((activeSignalDb + 96) / 192) * 100));
   const peakPercent = Math.min(100, Math.max(0, ((activePeakDb + 96) / 192) * 100));
-  const activeWordIndex = isRecording ? -1 : activeWordAt(displayWords, currentTime);
+  const activeWordIndex = isRecording || !timingIsTrusted ? -1 : activeWordAt(displayWords, currentTime);
   const wordTrackIndexes = useMemo(() => {
     if (displayWords.length <= 1400) return displayWords.map((_, index) => index);
     if (!timelineCanvasWidth) return displayWords.slice(0, 240).map((_, index) => index);
@@ -752,7 +753,10 @@ export function Timeline({
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
   function baseTimelinePixelsPerSecond() {
-    return timelinePixelWidthRef.current / Math.max(duration * zoom, 0.001);
+    const baseWidth = timelinePixelWidthRef.current > 0
+      ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
+      : 1000;
+    return baseWidth / Math.max(duration, 0.001);
   }
   function maxTimelineZoom() {
     return Math.max(1, MAX_TIMELINE_PIXELS_PER_SECOND / Math.max(baseTimelinePixelsPerSecond(), 0.001));
@@ -1078,7 +1082,7 @@ export function Timeline({
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>Import, thu âm hoặc chọn một Take</b><span>Audio lineage sẽ bắt đầu tại đây</span></div> : null}
             </div>
             <div className="word-track" onContextMenu={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) beginWordSelection(event, index); }} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY)} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={wordTrackRef}>
-              {displayWords.length && !isRecording && !timingNeedsAlignment ? wordTrackIndexes.map((index) => { const word = displayWords[index];
+              {displayWords.length && !isRecording && timingIsTrusted ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
                 return (
@@ -1095,7 +1099,7 @@ export function Timeline({
                     {word.text}
                   </button>
                 );
-              }) : <em className={timingNeedsAlignment ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingNeedsAlignment ? take?.wordTimingNote ?? "WORD TIMING · cần căn chỉnh trước khi sync subtitle" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
+              }) : <em className={timingUnavailable ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingUnavailable ? take?.wordTimingNote ?? "WORD TIMING · chưa có nguồn căn chỉnh đáng tin; cần chạy lại STT" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
             </div>
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>

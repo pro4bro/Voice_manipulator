@@ -437,7 +437,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
         setSpeakerMenu(null);
         setWordEdit({ index, value: word.text });
       }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerEnter={() => extendWordSelection(index)} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY)} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile hoặc chuyển row" type="button">{word.text}</button>{" "}
-      {editing ? <form aria-label={`Sửa từ ${word.text}`} className="script-table__word-editor" onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
+      {editing ? <form aria-label={`Trình sửa từ ${word.text}`} className="script-table__word-editor" onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
         <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setWordEdit(null); } }} value={wordEdit.value} />
       </form> : null}
     </span>;

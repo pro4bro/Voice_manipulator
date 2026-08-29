@@ -27,3 +27,24 @@ aligned timing later.
   subtitle timing.
 - A future aligner can be added behind an adapter without changing Script,
   Timeline, or subtitle export contracts.
+
+## 2026-08-29 Implementation Note
+
+Finalized STT now obtains word boundaries directly from Faster-Whisper's
+cross-attention plus dynamic-time-warping path at 20 ms acoustic-frame
+resolution. The non-batched decoder is intentional: on the same Vietnamese
+sample, batched decoding pulled a word onset backward across more than one
+second of silence, while non-batched decoding preserved the gap.
+
+Every trusted word records `timingSource: faster-whisper-dtw` and recognition
+confidence. Legacy, provisional, or structurally plausible words without a
+processor provenance are never upgraded to `source`; Timeline and timed SRT
+hide/reject them until STT is rerun. If native decoding returns transcript text
+without word boundaries, the app keeps the text but does not synthesize evenly
+distributed timestamps.
+
+The former default Vietnamese WhisperX CTC aligner is not used for finalized
+word timing. In the validated runtime it both depended on an inaccessible NLTK
+data path and produced near-zero-confidence, compressed word intervals after
+that path issue was removed. Forced alignment of a user-supplied known Script
+remains a separate Phase 03 processor contract.

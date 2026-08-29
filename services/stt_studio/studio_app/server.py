@@ -32,6 +32,9 @@ DEVICE = os.getenv("PRO4BRO_STT_DEVICE", "cuda")
 COMPUTE_TYPE = os.getenv("PRO4BRO_STT_COMPUTE_TYPE", "float16")
 MODEL_ROOT = Path(os.getenv("PRO4BRO_STT_MODEL_ROOT", RUNTIME_ROOT / "models"))
 SUPPORTED_STT_MODELS = {"tiny", "base", "small", "medium", "large-v3"}
+SPEECH_BOUNDARY_MIN_SILENCE_MS = 120
+SPEECH_BOUNDARY_MERGE_GAP_SECONDS = 0.24
+WORD_GROUP_GAP_SECONDS = 0.52
 
 
 def _configure_windows_cuda_dlls() -> None:
@@ -121,15 +124,6 @@ def _is_near_silent(path: Path) -> bool:
         return False
 
 
-def _import_whisperx() -> Any:
-    _configure_windows_cuda_dlls()
-    try:
-        import whisperx
-    except ImportError as exc:
-        raise RuntimeError("WhisperX chưa được cài. Chạy scripts\\setup-stt-runtime.ps1 trước.") from exc
-    return whisperx
-
-
 def _resolve_device() -> tuple[str, str]:
     if DEVICE != "cuda":
         return DEVICE, COMPUTE_TYPE
@@ -149,12 +143,19 @@ def _model(model_name: str = MODEL_NAME) -> tuple[Any, str]:
         if loaded_model is not None and loaded_model_name == model_name and loaded_device == device:
             return loaded_model, device
         model_load_error = None
-        model_load_state = "importing WhisperX"
+        model_load_state = "importing Faster-Whisper"
         try:
-            whisperx = _import_whisperx()
+            _configure_windows_cuda_dlls()
+            from faster_whisper import WhisperModel
+
             MODEL_ROOT.mkdir(parents=True, exist_ok=True)
-            model_load_state = "loading ASR and VAD models"
-            loaded_model = whisperx.load_model(model_name, device, compute_type=compute_type, language=LANGUAGE, vad_method="silero", download_root=str(MODEL_ROOT))
+            model_load_state = "loading ASR model"
+            loaded_model = WhisperModel(
+                model_name,
+                device=device,
+                compute_type=compute_type,
+                download_root=str(MODEL_ROOT),
+            )
         except Exception as exc:
             model_load_state = "failed"
             model_load_error = str(exc)
@@ -164,54 +165,193 @@ def _model(model_name: str = MODEL_NAME) -> tuple[Any, str]:
         model_load_state = "ready"
         return loaded_model, device
 
-def _words_from_result(result: dict[str, Any]) -> list[dict[str, float | str]]:
-    words: list[dict[str, float | str]] = []
-    for segment in result.get("segments", []):
-        for word in segment.get("words", []) or []:
-            text = str(word.get("word", "")).strip()
-            start = word.get("start")
-            end = word.get("end")
-            if not text or start is None or end is None:
-                continue
+def _value(item: Any, name: str, default: Any = None) -> Any:
+    return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
+
+
+def _merge_speech_spans(
+    spans: list[tuple[float, float]],
+    max_gap: float = SPEECH_BOUNDARY_MERGE_GAP_SECONDS,
+) -> list[tuple[float, float]]:
+    merged: list[tuple[float, float]] = []
+    for start, end in sorted(spans):
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
+            continue
+        if merged and start - merged[-1][1] <= max_gap:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((max(0.0, start), end))
+    return merged
+
+
+def _fine_speech_spans(path: Path) -> list[tuple[float, float]]:
+    """Return unpadded Silero speech spans for waveform-edge refinement."""
+    from faster_whisper.audio import decode_audio
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+    sampling_rate = 16000
+    audio = decode_audio(str(path), sampling_rate=sampling_rate)
+    raw_spans = get_speech_timestamps(
+        audio,
+        VadOptions(
+            min_speech_duration_ms=40,
+            min_silence_duration_ms=SPEECH_BOUNDARY_MIN_SILENCE_MS,
+            speech_pad_ms=0,
+        ),
+        sampling_rate=sampling_rate,
+    )
+    return _merge_speech_spans(
+        [
+            (float(span["start"]) / sampling_rate, float(span["end"]) / sampling_rate)
+            for span in raw_spans
+        ]
+    )
+
+
+def _refine_word_boundaries(
+    words: list[dict[str, Any]], speech_spans: list[tuple[float, float]]
+) -> int:
+    """Warp phrase-sized DTW groups onto unpadded acoustic speech edges.
+
+    Faster-Whisper deliberately pads VAD chunks by 400 ms. DTW can attach the
+    first word to that padding, which makes every visible phrase look uniformly
+    early. We keep DTW's relative word positions, but only warp a phrase when an
+    overlapping Silero span is close enough and the duration change is modest.
+    """
+    if not words or not speech_spans:
+        return 0
+
+    groups: list[tuple[int, int]] = []
+    group_start = 0
+    for index in range(1, len(words)):
+        gap = float(words[index]["start"]) - float(words[index - 1]["end"])
+        if gap > WORD_GROUP_GAP_SECONDS:
+            groups.append((group_start, index))
+            group_start = index
+    groups.append((group_start, len(words)))
+
+    refined = 0
+    previous_end = 0.0
+    for start_index, end_index in groups:
+        source_start = float(words[start_index]["start"])
+        source_end = float(words[end_index - 1]["end"])
+        source_duration = source_end - source_start
+        if source_duration <= 0:
+            previous_end = max(previous_end, source_end)
+            continue
+
+        candidates = [
+            span
+            for span in speech_spans
+            if span[1] >= source_start - 0.10 and span[0] <= source_end + 0.20
+        ]
+        if not candidates:
+            previous_end = max(previous_end, source_end)
+            continue
+        target_start = max(previous_end, candidates[0][0])
+        target_end = candidates[-1][1]
+        target_duration = target_end - target_start
+        scale = target_duration / source_duration if source_duration else 0.0
+        start_shift = target_start - source_start
+        end_shift = target_end - source_end
+        if not (
+            0.70 <= scale <= 1.35
+            and -0.25 <= start_shift <= 0.65
+            and -0.30 <= end_shift <= 0.50
+        ):
+            previous_end = max(previous_end, source_end)
+            continue
+
+        for word in words[start_index:end_index]:
+            mapped_start = target_start + (float(word["start"]) - source_start) * scale
+            mapped_end = target_start + (float(word["end"]) - source_start) * scale
+            word["start"] = round(max(previous_end, mapped_start), 3)
+            word["end"] = round(max(float(word["start"]) + 0.001, mapped_end), 3)
+            word["timingSource"] = "faster-whisper-dtw+silero-boundary"
+            previous_end = float(word["end"])
+        refined += 1
+    return refined
+
+
+def _native_transcription_item(
+    raw_segments: Any,
+    *,
+    duration: float,
+    sample_rate: int,
+    language_code: str,
+    model_name: str,
+    progress_id: str = "",
+) -> dict[str, Any]:
+    """Convert Faster-Whisper DTW words without inventing missing boundaries."""
+    words: list[dict[str, Any]] = []
+    text_parts: list[str] = []
+    untimed_segments = 0
+    safe_duration = max(0.0, float(duration))
+
+    for segment_index, segment in enumerate(raw_segments):
+        segment_text = str(_value(segment, "text", "") or "").strip()
+        if segment_text:
+            text_parts.append(segment_text)
+        timed_in_segment = 0
+        for raw_word in _value(segment, "words", None) or []:
+            text = str(_value(raw_word, "word", "") or "").strip()
             try:
-                start_value = max(0.0, float(start))
-                end_value = max(start_value, float(end))
+                start = max(0.0, float(_value(raw_word, "start")))
+                end = min(safe_duration, float(_value(raw_word, "end")))
             except (TypeError, ValueError):
                 continue
-            words.append({"text": text, "start": round(start_value, 3), "end": round(end_value, 3)})
-    return words
-
-
-def _segment_text(segments: list[dict[str, Any]]) -> str:
-    return " ".join(str(segment.get("text") or "").strip() for segment in segments).strip()
-
-
-def _fallback_words_from_segments(segments: list[dict[str, Any]]) -> list[dict[str, float | str]]:
-    """Keep the recognized transcript when a language aligner omitted word timings.
-
-    These boundaries are explicitly marked provisional; they are never presented as
-    forced alignment. This is materially better than falsely completing STT with no
-    Script, no subtitle, and no artifact at all.
-    """
-    words: list[dict[str, float | str]] = []
-    for segment in segments:
-        tokens = [token for token in str(segment.get("text") or "").split() if token]
-        if not tokens:
-            continue
+            if not text or not math.isfinite(start) or not math.isfinite(end) or end <= start:
+                continue
+            word: dict[str, Any] = {
+                "text": text,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "timingSource": "faster-whisper-dtw",
+                "segmentIndex": segment_index,
+            }
+            try:
+                confidence = float(_value(raw_word, "probability"))
+            except (TypeError, ValueError):
+                confidence = math.nan
+            if math.isfinite(confidence):
+                word["confidence"] = round(max(0.0, min(1.0, confidence)), 4)
+            words.append(word)
+            timed_in_segment += 1
+        if segment_text and timed_in_segment == 0:
+            untimed_segments += 1
         try:
-            start = max(0.0, float(segment.get("start", 0.0)))
-            end = max(start, float(segment.get("end", start)))
+            segment_end = float(_value(segment, "end", 0.0))
         except (TypeError, ValueError):
-            continue
-        duration = max(0.001, end - start)
-        weights = [max(1, len(token.strip(".,!?;:\"'“”()[]{}"))) for token in tokens]
-        total_weight = sum(weights) or len(tokens)
-        cursor = start
-        for index, (token, weight) in enumerate(zip(tokens, weights)):
-            next_cursor = end if index == len(tokens) - 1 else min(end, cursor + duration * weight / total_weight)
-            words.append({"text": token, "start": round(cursor, 3), "end": round(max(cursor, next_cursor), 3)})
-            cursor = next_cursor
-    return words
+            segment_end = 0.0
+        if safe_duration > 0:
+            progress.set(progress_id, 16 + min(76.0, max(0.0, segment_end / safe_duration) * 76.0))
+
+    text = " ".join(text_parts).strip()
+    if words and untimed_segments == 0:
+        quality = "source"
+        note = "Faster-Whisper cross-attention/DTW word timing (20 ms acoustic frame resolution)."
+    elif text:
+        quality = "needs-alignment"
+        note = (
+            f"{untimed_segments or 1} speech segment không có word timing DTW; "
+            "không tạo timestamp chia đều để tránh subtitle lệch waveform."
+        )
+    else:
+        quality = "unverified"
+        note = None
+
+    return {
+        "id": f"stt-{uuid.uuid4().hex[:12]}",
+        "duration": safe_duration,
+        "sample_rate": sample_rate,
+        "text": text,
+        "words": words,
+        "language": language_code,
+        "model": model_name,
+        "transcription_engine": "faster-whisper-native-dtw",
+        "word_timing_quality": quality,
+        "word_timing_note": note,
+    }
 
 def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME) -> dict[str, Any]:
     progress.set(progress_id, 4)
@@ -219,53 +359,49 @@ def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME) -> d
     if _is_near_silent(path):
         progress.set(progress_id, 100)
         return {"id": f"stt-{uuid.uuid4().hex[:12]}", "duration": duration, "sample_rate": sample_rate, "text": "", "words": [], "language": LANGUAGE or "", "model": model_name}
-    model, device = _model(model_name)
+    model, _device = _model(model_name)
     progress.set(progress_id, 16)
-    whisperx = _import_whisperx()
-    audio = whisperx.load_audio(str(path))
-    asr_result = model.transcribe(audio, batch_size=16 if device == "cuda" else 1, language=LANGUAGE)
-    progress.set(progress_id, 72)
-    segments = list(asr_result.get("segments", []))
-    language_code = str(asr_result.get("language") or LANGUAGE or "").strip()
-    aligned_result: dict[str, Any] = asr_result
-    alignment_warning: str | None = None
-    if segments and language_code:
-        try:
-            align_model, metadata = whisperx.load_align_model(language_code=language_code, device=device)
-            aligned_result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=False)
-        except Exception as exc:
-            alignment_warning = str(exc)
-    progress.set(progress_id, 94)
-    words = _words_from_result(aligned_result)
-    provisional = False
-    if not words:
-        words = _fallback_words_from_segments(segments)
-        provisional = bool(words)
-    text = _segment_text(segments) or str(asr_result.get("text") or "").strip()
-    if not text and words:
-        text = " ".join(str(word["text"]) for word in words)
-    progress.set(progress_id, 100)
-    timing_note = (
-        "WhisperX forced alignment"
-        if words and not provisional and not alignment_warning
-        else f"WhisperX forced alignment failed; recognizer segment timing is available for review only. {alignment_warning}"
-        if alignment_warning
-        else "WhisperX returned transcript segments but no word alignment; provisional word timing was generated for review."
-        if provisional
-        else None
+    segments, info = model.transcribe(
+        str(path),
+        language=LANGUAGE,
+        task="transcribe",
+        beam_size=5,
+        patience=1,
+        condition_on_previous_text=False,
+        without_timestamps=False,
+        word_timestamps=True,
+        vad_filter=True,
+        hallucination_silence_threshold=1.0,
     )
-    return {
-        "id": f"stt-{uuid.uuid4().hex[:12]}",
-        "duration": duration,
-        "sample_rate": sample_rate,
-        "text": text,
-        "words": words,
-        "language": language_code,
-        "model": model_name,
-        "word_timing_quality": "source" if words and not provisional and not alignment_warning else "needs-alignment" if words and (provisional or alignment_warning) else "unverified",
-        "word_timing_note": timing_note,
-        "alignment_warning": alignment_warning,
-    }
+    language_code = str(_value(info, "language", LANGUAGE or "") or "").strip()
+    item = _native_transcription_item(
+        segments,
+        duration=duration,
+        sample_rate=sample_rate,
+        language_code=language_code,
+        model_name=model_name,
+        progress_id=progress_id,
+    )
+    if item.get("word_timing_quality") == "source" and item.get("words"):
+        progress.set(progress_id, 94)
+        try:
+            refined_groups = _refine_word_boundaries(
+                item["words"], _fine_speech_spans(path)
+            )
+        except Exception as exc:
+            refined_groups = 0
+            item["word_timing_note"] += (
+                f" Acoustic boundary refinement unavailable ({type(exc).__name__}); "
+                "DTW source timing was retained."
+            )
+        if refined_groups:
+            item["transcription_engine"] = "faster-whisper-native-dtw+silero-boundary"
+            item["word_timing_note"] = (
+                "Faster-Whisper DTW word timing refined against unpadded Silero VAD "
+                f"speech edges ({refined_groups} phrase groups; 20 ms acoustic frames)."
+            )
+    progress.set(progress_id, 100)
+    return item
 
 def _diarization_model(model_name: str, token: str) -> Any:
     global loaded_diarization, loaded_diarization_model
@@ -359,7 +495,7 @@ async def diarize_audio(file: UploadFile = File(...), progress_id: str = Form(""
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     device, compute_type = _resolve_device()
-    return {"status": "ok", "engine": "whisperx", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None, "load_state": model_load_state, "load_error": model_load_error}
+    return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None, "load_state": model_load_state, "load_error": model_load_error}
 
 
 @app.get("/api/audio/import/{progress_id}/progress")

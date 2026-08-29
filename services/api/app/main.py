@@ -102,7 +102,12 @@ def create_app(
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://127.0.0.1:18121", "http://localhost:18121"],
+        allow_origins=[
+            "http://127.0.0.1:18119",
+            "http://localhost:18119",
+            "http://127.0.0.1:18121",
+            "http://localhost:18121",
+        ],
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

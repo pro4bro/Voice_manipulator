@@ -18,6 +18,11 @@ describe("ScriptEditor", () => {
     expect(screen.queryByRole("button", { name: "AI fix" })).not.toBeInTheDocument();
   });
 
+  it("warns when legacy word intervals have no trusted timing source", () => {
+    render(<ScriptEditor onChange={() => undefined} value="Nội dung cũ" wordTimingQuality="unverified" words={[{ text: "Nội", start: 0, end: 0.4 }]} workflow="speech-to-text" />);
+    expect(screen.getByRole("status")).toHaveTextContent(/chưa có nguồn căn chỉnh đáng tin/i);
+  });
+
   it("highlights the word currently playing on the timeline", () => {
     render(<ScriptEditor activeWordIndex={1} onChange={() => undefined} value="Giọng đang phát" words={[{ text: "Giọng", start: 0, end: 0.4 }, { text: "đang", start: 0.4, end: 0.8 }, { text: "phát", start: 0.8, end: 1.2 }]} workflow="speech-to-text" />);
     expect(screen.getByText("đang")).toHaveClass("is-active");
@@ -53,7 +58,7 @@ describe("ScriptEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chọn từ Xin" }));
     const editor = screen.getByRole("textbox", { name: "Sửa từ Xin" });
     fireEvent.change(editor, { target: { value: "Chào" } });
-    fireEvent.submit(screen.getByLabelText("Sửa từ Xin"));
+    fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
     expect(onWordsChange).toHaveBeenCalledWith([
       expect.objectContaining({ text: "Chào", start: 0.12, end: 0.34, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
     ], "Chào");
@@ -62,16 +67,16 @@ describe("ScriptEditor", () => {
   it("shows replaced Live Transcript text struck through and the STT alternative in pale yellow", () => {
     render(<ScriptEditor liveTranscriptText="toi" onChange={vi.fn()} value="tôi" words={[{ text: "tôi", start: 0, end: 0.4 }]} workflow="speech-to-text" />);
     expect(screen.getByLabelText("So sánh Live Transcript và STT")).toBeInTheDocument();
-    expect(screen.getByText("toi").tagName).toBe("S");
-    expect(screen.getByText("tôi").tagName).toBe("B");
+    expect(screen.getByText("toi", { selector: "s" })).toBeInTheDocument();
+    expect(screen.getByText("tôi", { selector: "b" })).toBeInTheDocument();
   });
 
-  it("keeps only the selected AI candidate as a final dark result", () => {
+  it("keeps only the selected AI candidate as a final dark result", async () => {
     const onChange = vi.fn();
     render(<ScriptEditor aiReviewKey="review-1" aiReviewText="tôi" onChange={onChange} value="toi" workflow="speech-to-text" />);
-    fireEvent.click(screen.getByRole("button", { name: "Dùng phương án AI" }));
+    fireEvent.click(screen.getByTitle("Dùng phương án AI"));
     expect(onChange).toHaveBeenCalledWith("tôi");
-    expect(screen.getByText("tôi")).toHaveClass("script-review-choice", "is-ai");
+    expect(await screen.findByText("tôi", { selector: ".script-review-choice" }, { timeout: 5000 })).toHaveClass("is-ai");
     expect(screen.queryByRole("button", { name: "Giữ kết quả Speech to Text" })).not.toBeInTheDocument();
   });
 

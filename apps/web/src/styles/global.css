@@ -68,6 +68,21 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 .boot-screen > div i:nth-child(3) { animation-delay: 220ms; }
 @keyframes boot { to { transform: scaleY(.3); opacity: .35; } }
 
+.runtime-offline-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background-color: var(--surface-panel); background-image: linear-gradient(rgba(24,26,22,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(24,26,22,.055) 1px, transparent 1px); background-size: 32px 32px; }
+.runtime-offline-screen > section { width: min(520px, 100%); padding: 28px; border: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow); }
+.runtime-offline-screen .brand-mark { margin-bottom: 22px; }
+.runtime-offline-screen p { color: var(--text-muted); font-size: calc(12px * var(--font-scale)); line-height: 1.55; }
+.runtime-offline-screen > section > p:first-of-type { margin: 0; color: var(--accent); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
+.runtime-offline-screen h1 { margin: 6px 0 14px; font-size: calc(26px * var(--font-scale)); letter-spacing: -.04em; }
+.runtime-offline-actions { margin-top: 22px; border: 1px solid var(--line); padding: 5px; }
+.runtime-offline-actions > button { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: transparent; text-align: left; }
+.runtime-offline-actions > button:hover:not(:disabled) { background: var(--soft-fill); }
+.runtime-offline-actions > button:disabled { cursor: not-allowed; opacity: .4; }
+.runtime-offline-actions .runtime-menu-stop { color: var(--danger, #ff654f); }
+.runtime-offline-actions .runtime-menu-state { margin-top: 0; }
+.runtime-offline-screen small[role="alert"] { display: block; margin-top: 12px; color: var(--danger, #ff654f); line-height: 1.4; }
+.runtime-theme-button { margin-top: 18px; padding: 7px 0; color: var(--text-muted); background: transparent; font-size: calc(10px * var(--font-scale)); text-decoration: underline; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

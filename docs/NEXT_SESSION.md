@@ -27,9 +27,10 @@ git submodule update --init --recursive
 
 Run the checklist from the repository root, wherever that folder has been
 moved. Do not persist the current workstation drive letter in application data.
-The app should open at `http://127.0.0.1:18120`. The interim customized Studio
-sidecar is expected at `http://127.0.0.1:18081` when finalized STT is required.
-The launcher derives all paths from the repository root.
+The app should open at `http://127.0.0.1:18119`; this runtime controller proxies
+the API at `127.0.0.1:18120`. The interim customized Studio sidecar is expected
+at `http://127.0.0.1:18081` when finalized STT is required. The launcher derives
+all paths from the repository root.
 
 ## Current Page Composition
 
@@ -48,7 +49,8 @@ subset.
 
 - Project create/open/reconnect and project-relative portability.
 - Multi-file media import with per-file Transcript or Skip STT choice.
-- FFmpeg normalization and finalized two-pass STT through the legacy sidecar.
+- FFmpeg normalization and finalized non-batched Faster-Whisper DTW word timing
+  through the compatibility sidecar.
 - Microphone and browser-authorized tab/window/system capture, monitoring,
   live level/peak, and live recording waveform.
 - Per-asset Script, revision history, word timings, waveform scrub/zoom/gain,
@@ -56,6 +58,10 @@ subset.
 - Training-source selection, Speaker Profiles, file/word speaker/emotion tags,
   Environment Noise Profile definitions, and persisted Training Settings.
 - Synchronized Light/Dark theme and manifest-composed reusable modules.
+- Windows-menu runtime controls backed by a persistent controller: API and STT
+  can be stopped, started, or restarted without losing the recovery UI.
+- Native Faster-Whisper DTW timing with conservative unpadded-Silero phrase-edge
+  refinement; rerun finalized STT to upgrade assets created before this slice.
 
 ## Not Yet Connected
 
@@ -87,5 +93,6 @@ Push-Location apps\web; npm test; npm run build; Pop-Location
 git -C engines\OmniVoice status --short
 ```
 
-The last completed feature slice passed 19 frontend tests, 17 backend tests,
-TypeScript/production build, and browser QA at 1280x720.
+The current tree passes 42 frontend tests, 57 backend tests,
+TypeScript/production build, runtime lifecycle QA, and browser QA for both the
+Windows menu and the workload-off recovery screen.

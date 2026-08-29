@@ -3,7 +3,7 @@
 | Phase | Goal | Status |
 | --- | --- | --- |
 | 01 Foundation | Runnable project shell, project persistence, reusable modules, upstream engine adapter | Complete |
-| 02 Speech to Text | Real recording/import, two-pass STT, merged Script review, timeline sync | In progress |
+| 02 Speech to Text | Real recording/import, source-provenanced word timing, merged Script review, timeline sync | In progress |
 | 03 Voice Training | Dataset preparation, segmentation review, train jobs, checkpoints, validation | In progress |
 | 04 Dockable Workspace | Six-zone docking, location-independent modules, session seam, fourth-page shell | Planned |
 | 05 Manipulator Pipeline | Voice over, isolation, changing, dubbing, patching, asset lineage | Planned |
@@ -22,11 +22,17 @@
 ## Phase 02 Current Slice
 
 - Complete: microphone/output selection, optional live monitor, browser-authorized tab/window/system capture, real recorder meter/peak, and finalized-record upload.
-- Complete: shared project Media Pool, common audio/video ingest through local FFmpeg, per-asset Script/timings/revisions, two-pass Whisper transcription, real waveform, scrub, zoom, source gain, and playback to 8x.
+- Complete: shared project Media Pool, common audio/video ingest through local FFmpeg, per-asset Script/timings/revisions, non-batched Faster-Whisper DTW word timing with unpadded acoustic phrase-edge refinement, real waveform, scrub, zoom, source gain, and playback to 8x.
 - Complete: portable project manifests/media paths, moved-project reconnection, project-owned playback URL, and project-contained activity/handoff notes.
 - Complete: Speech to Text contains Media Pool on the left, Script in the center, Recorder plus Speaker & Emotion plus Speaker Isolation in the internally scrollable right column, and Timeline below. Voice Vault and Control Rack remain absent and the page stays viewport-bound.
 - Complete: per-file `Transcript`/`Skip STT` import decisions, persisted footage selection for Voice Training, live recording waveform, continuous PCM waveform, decoded-duration subtitle sync, and Timeline/Script current-word highlighting.
 - Remaining: forced alignment/validation for supplied scripts, chunked live transcript while recording, per-word realtime/accurate/AI review choices in Script, and project-native training execution from the selected subset.
+- Complete: persistent local runtime controller with Windows-menu Turn on,
+  Restart, and Turn off controls for API, Studio, model workers, and background
+  processing workloads.
+- Complete: terminal STT polling waits for the full persisted media asset before
+  leaving the background state, so delayed final responses cannot make a
+  completed transcript intermittently disappear from Script.
 
 ## Phase 03 Current Slice
 

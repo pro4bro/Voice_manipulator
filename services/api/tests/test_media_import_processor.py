@@ -94,3 +94,32 @@ def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
         ("chao", STT_CHUNK_SECONDS + 0.7),
     ]
     assert merged["duration"] == duration
+
+
+def test_stt_artifact_round_trip_preserves_timing_provenance_and_transcript(tmp_path):
+    item = {
+        "text": "Xin chào phần chưa time",
+        "words": [
+            {
+                "text": "Xin",
+                "start": 0.1234,
+                "end": 0.4567,
+                "confidence": 0.91,
+                "timingSource": "faster-whisper-dtw",
+            }
+        ],
+        "word_timing_quality": "needs-alignment",
+    }
+
+    canonical = MediaImportProcessor._write_and_read_stt_artifacts(tmp_path, item)
+
+    assert canonical["text"] == "Xin chào phần chưa time"
+    assert canonical["words"] == [
+        {
+            "text": "Xin",
+            "start": 0.123,
+            "end": 0.457,
+            "confidence": 0.91,
+            "timingSource": "faster-whisper-dtw",
+        }
+    ]

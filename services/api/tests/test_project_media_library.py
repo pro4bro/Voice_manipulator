@@ -290,3 +290,79 @@ def test_media_library_exposes_lightweight_transcription_progress_snapshots(tmp_
     completed = next(item for item in library.transcription_progresses(project.id) if item.id == asset.id)
     assert completed.transcription_progress == 100
     assert progress_file.is_file()
+
+
+def test_media_library_does_not_upgrade_provisional_word_timing_on_reopen(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Timing provenance"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="provisional.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/provisional/source.wav",
+            duration=2,
+            text="Xin chào",
+            words=[
+                {"text": "Xin", "start": 0.0, "end": 0.4},
+                {"text": "chào", "start": 0.4, "end": 0.9},
+            ],
+            word_timing_quality="needs-alignment",
+            word_timing_note="CTC aligner failed",
+            origin="import",
+        ),
+    )
+
+    reopened = FileMediaLibrary(projects).get(project.id, asset.id)
+
+    assert reopened.word_timing_quality == "needs-alignment"
+    assert reopened.word_timing_note == "CTC aligner failed"
+
+
+def test_retranscription_replaces_timing_but_keeps_matching_word_annotations(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Retimed annotations"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="dialogue.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/dialogue/source.wav",
+            duration=2,
+            text="Xin chao bạn",
+            words=[
+                {"text": "Xin", "start": 0, "end": 0.4, "speakerId": "lan"},
+                {"text": "chao", "start": 0.4, "end": 0.8, "emotion": "good"},
+                {"text": "bạn", "start": 0.8, "end": 1.2, "diarizationSpeakerId": "speaker-1"},
+            ],
+            origin="import",
+        ),
+    )
+
+    updated = library.apply_transcription(
+        project.id,
+        asset.id,
+        {
+            "text": "Xin chào nhé bạn",
+            "words": [
+                {"text": "Xin", "start": 0.1, "end": 0.3, "timingSource": "faster-whisper-dtw"},
+                {"text": "chào", "start": 0.3, "end": 0.6, "timingSource": "faster-whisper-dtw"},
+                {"text": "nhé", "start": 0.6, "end": 0.8, "timingSource": "faster-whisper-dtw"},
+                {"text": "bạn", "start": 0.8, "end": 1.0, "timingSource": "faster-whisper-dtw"},
+            ],
+            "word_timing_quality": "source",
+        },
+        2,
+    )
+
+    assert updated.words[0]["speakerId"] == "lan"
+    assert "emotion" not in updated.words[1]  # unequal-size replacement is not guessed
+    assert "emotion" not in updated.words[2]
+    assert updated.words[3]["diarizationSpeakerId"] == "speaker-1"
+    assert [(word["start"], word["end"]) for word in updated.words] == [
+        (0.1, 0.3), (0.3, 0.6), (0.6, 0.8), (0.8, 1.0)
+    ]

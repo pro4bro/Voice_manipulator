@@ -9,6 +9,8 @@ import type {
   ProjectCreate,
   ProjectMediaAsset,
   ProjectMediaImportResult,
+  RuntimeAction,
+  RuntimeWorkloadState,
   StudioAudioItem,
   StudioJobResult,
   StudioWord,
@@ -107,6 +109,12 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
 }
 
 export const api = {
+  getRuntimeStatus: () => request<RuntimeWorkloadState>("/api/runtime/status"),
+  controlRuntime: (action: RuntimeAction) =>
+    request<RuntimeWorkloadState>("/api/runtime/actions", {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
   listProjects: () => request<Project[]>("/api/projects"),
   createProject: (payload: ProjectCreate) =>
     request<Project>("/api/projects", { method: "POST", body: JSON.stringify(payload) }),

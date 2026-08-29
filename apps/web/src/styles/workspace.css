@@ -104,10 +104,19 @@
 .workspace-windows-menu { position: relative; }
 .workspace-windows-button { width: auto !important; min-width: 76px; display: inline-flex !important; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; }
 .workspace-windows-button svg { width: 14px; }
-.workspace-windows-menu > div { min-width: 180px; position: absolute; z-index: 31; top: calc(100% + 8px); right: 0; padding: 4px; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.workspace-windows-menu > div { min-width: 210px; position: absolute; z-index: 31; top: calc(100% + 8px); right: 0; padding: 4px; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .workspace-windows-menu > div button { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 8px; color: var(--text); background: transparent; font-size: calc(10px * var(--font-scale)); text-align: left; }
-.workspace-windows-menu > div button:hover { background: var(--soft-fill); }
+.workspace-windows-menu > div button:hover:not(:disabled) { background: var(--soft-fill); }
+.workspace-windows-menu > div button:disabled { cursor: not-allowed; opacity: .4; }
+.workspace-windows-menu > div .runtime-menu-stop { color: var(--danger, #ff654f); }
 .workspace-windows-menu > div svg { width: 15px; }
+.runtime-menu-state { min-height: 34px; display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 7px; margin: 4px 0; padding: 0 8px; border-block: 1px solid var(--line); color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .07em; }
+.runtime-menu-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+.runtime-menu-state--running i { background: var(--lime); box-shadow: 0 0 7px color-mix(in srgb, var(--lime), transparent 35%); }
+.runtime-menu-state--stopped i { background: var(--danger, #ff654f); }
+.runtime-menu-state--busy i { background: var(--accent); animation: runtime-pulse 700ms ease-in-out infinite alternate; }
+.runtime-menu-state small { color: var(--danger, #ff654f); font-size: calc(7px * var(--font-scale)); }
+@keyframes runtime-pulse { to { opacity: .25; transform: scale(.65); } }
 
 .preferences-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 22px; background: var(--overlay); backdrop-filter: blur(5px); }
 .preferences-dialog { width: min(560px, 100%); display: grid; gap: 12px; padding: 18px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }

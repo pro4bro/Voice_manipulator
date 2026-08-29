@@ -32,7 +32,7 @@ from fastapi import UploadFile
 
 from app.domain.models import MediaAssetCreate, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
-from app.adapters.word_timing_quality import inspect_word_timings
+from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 
 
@@ -343,30 +343,40 @@ class MediaImportProcessor:
             if len(lines) < 3 or "-->" not in lines[1]:
                 continue
             try:
+                source_index = int(lines[0]) - 1
                 start_value, end_value = (cls._seconds_from_srt_timestamp(part) for part in lines[1].split("-->", 1))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, IndexError):
                 continue
             text = " ".join(lines[2:]).strip()
             if text:
-                canonical_words.append({"text": text, "start": start_value, "end": max(start_value, end_value)})
+                source_word = dict(raw_words[source_index]) if 0 <= source_index < len(raw_words) else {}
+                source_word.update({"text": text, "start": start_value, "end": max(start_value, end_value)})
+                canonical_words.append(source_word)
         canonical = dict(item)
         canonical["words"] = canonical_words
-        canonical["text"] = " ".join(str(word["text"]) for word in canonical_words)
+        # A fully source-timed SRT remains the canonical Script hand-off. If a
+        # processor could not time every segment, keep the independent transcript
+        # instead of deleting untimed text while round-tripping the partial SRT.
+        canonical["text"] = (
+            " ".join(str(word["text"]) for word in canonical_words)
+            if item.get("word_timing_quality") == "source"
+            else str(item.get("text") or "").strip()
+        )
         canonical["artifact_srt"] = srt_path.name
         return canonical
     @staticmethod
     def _attach_timing_quality(item: dict[str, Any], duration: float) -> dict[str, Any]:
-        """Validate recognizer boundaries without upgrading a provisional fallback."""
-        inspection = inspect_word_timings(list(item.get("words", [])), duration)
+        """Validate recognizer boundaries without upgrading their provenance."""
+        inspection = reconcile_word_timing_quality(
+            str(item.get("word_timing_quality", "unverified")),
+            item.get("word_timing_note"),
+            list(item.get("words", [])),
+            duration,
+        )
         enriched = dict(item)
         enriched["words"] = inspection.words
-        sidecar_quality = item.get("word_timing_quality")
-        if sidecar_quality == "needs-alignment":
-            enriched["word_timing_quality"] = "needs-alignment"
-            enriched["word_timing_note"] = item.get("word_timing_note") or inspection.note
-        else:
-            enriched["word_timing_quality"] = inspection.quality
-            enriched["word_timing_note"] = inspection.note or item.get("word_timing_note")
+        enriched["word_timing_quality"] = inspection.quality
+        enriched["word_timing_note"] = inspection.note
         return enriched
     def _prepare_processing_audio(
         self, analysis_path: Path, asset: ProjectMediaAsset

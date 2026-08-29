@@ -17,6 +17,53 @@ class WordTimingInspection:
     words: list[dict[str, Any]]
 
 
+def reconcile_word_timing_quality(
+    declared_quality: WordTimingQuality | str,
+    declared_note: str | None,
+    raw_words: list[object],
+    duration: float,
+) -> WordTimingInspection:
+    """Validate timing without upgrading its provenance.
+
+    Structural plausibility can disprove a recognizer/aligner result, but it
+    cannot prove that provisional or legacy timestamps are acoustically
+    aligned.  Only the processor that produced real word boundaries may mark
+    them as ``source``.
+    """
+    inspection = inspect_word_timings(raw_words, duration)
+    quality = declared_quality if declared_quality in {
+        "source", "needs-alignment", "unverified"
+    } else "unverified"
+
+    if quality == "source":
+        missing_provenance = sum(
+            1
+            for word in inspection.words
+            if not str(word.get("timingSource") or "").strip()
+        )
+        if missing_provenance:
+            return WordTimingInspection(
+                "needs-alignment",
+                (
+                    f"{missing_provenance} từ thuộc dữ liệu cũ không ghi nguồn timing; "
+                    "cần chạy lại STT để không dùng nhầm timestamp provisional."
+                ),
+                inspection.words,
+            )
+        return WordTimingInspection(
+            inspection.quality,
+            inspection.note or declared_note,
+            inspection.words,
+        )
+    if quality == "needs-alignment" or inspection.quality == "needs-alignment":
+        return WordTimingInspection(
+            "needs-alignment",
+            declared_note or inspection.note,
+            inspection.words,
+        )
+    return WordTimingInspection("unverified", declared_note, inspection.words)
+
+
 def inspect_word_timings(raw_words: list[object], duration: float) -> WordTimingInspection:
     """Keep recognizer timestamps verbatim when plausible, flag them otherwise.
 

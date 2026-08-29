@@ -11,6 +11,13 @@ are intentionally excluded from Git because they are machine-specific or large.
 The source checkout at `engines/OmniVoice` is a Git submodule. Clone with
 `--recurse-submodules` or run `git submodule update --init --recursive`.
 
+The runtime controller uses only paths derived from the current repository
+root. It listens on port 18119, starts API/Studio through
+`scripts/pro4bro-workloads.ps1`, and writes only ignored logs/session state
+under `data/logs` and `data/runtime`. Restart also copies the product-owned
+Studio adapter into `.runtime/omnivoice-studio`; it never writes into
+`engines/OmniVoice` or persists the current drive letter in a project manifest.
+
 ## Project Folder
 
 The folder containing `project.json` is the only project root. Persistent paths

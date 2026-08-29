@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import shutil
 import threading
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from app.adapters.project_activity_log import ProjectActivityLog
-from app.adapters.word_timing_quality import inspect_word_timings
+from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.domain.models import (
     AIReviewStatus,
     EmotionLabel,
@@ -25,6 +26,19 @@ from app.domain.ports import ProjectRepository
 
 
 class FileMediaLibrary:
+    _WORD_ANNOTATION_KEYS = {
+        "realtime",
+        "accurate",
+        "corrected",
+        "reviewState",
+        "selectedVariant",
+        "diarizationSpeakerId",
+        "manualDiarizationSpeakerId",
+        "speakerId",
+        "environmentProfileIds",
+        "emotion",
+    }
+
     def __init__(self, projects: ProjectRepository) -> None:
         self.projects = projects
         self.activity = ProjectActivityLog()
@@ -162,13 +176,14 @@ class FileMediaLibrary:
                 revisions = list(asset.revisions)
                 if text and (not revisions or revisions[-1].text != text or revisions[-1].source != "stt"):
                     revisions.append(MediaRevision(source="stt", text=text))
+                annotated_words = self._carry_word_annotations(asset.words, words)
                 updated = asset.model_copy(
                     update={
                         "studio_item_id": str(item.get("id", "")) or None,
                         "duration": float(item.get("duration") or fallback_duration),
                         "sample_rate": int(item.get("sample_rate") or asset.sample_rate or 24000),
                         "text": text,
-                        "words": words,
+                        "words": annotated_words,
                         "word_timing_quality": item.get("word_timing_quality", "unverified"),
                         "word_timing_note": item.get("word_timing_note"),
                         "revisions": revisions,
@@ -184,6 +199,35 @@ class FileMediaLibrary:
                 self._append_activity(project_id, "STT_COMPLETED", asset, {"wordCount": len(words)})
                 return updated
         raise KeyError(asset_id)
+
+    @classmethod
+    def _carry_word_annotations(
+        cls, previous_words: list[dict], new_words: list[dict]
+    ) -> list[dict]:
+        """Keep human/diarization labels while replacing STT text and timing.
+
+        Equal token runs are exact. A same-length replacement is mapped by
+        position so a spelling correction does not discard a reviewed speaker
+        or emotion. Insertions/deletions stay unassigned instead of guessing.
+        """
+        merged = [dict(word) for word in new_words]
+        previous_tokens = [str(word.get("text") or "").strip().casefold() for word in previous_words]
+        new_tokens = [str(word.get("text") or "").strip().casefold() for word in new_words]
+        matcher = SequenceMatcher(a=previous_tokens, b=new_tokens, autojunk=False)
+
+        for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+            if tag == "equal":
+                pairs = zip(range(old_start, old_end), range(new_start, new_end))
+            elif tag == "replace" and old_end - old_start == new_end - new_start:
+                pairs = zip(range(old_start, old_end), range(new_start, new_end))
+            else:
+                continue
+            for old_index, new_index in pairs:
+                previous = previous_words[old_index]
+                for key in cls._WORD_ANNOTATION_KEYS:
+                    if key in previous:
+                        merged[new_index][key] = previous[key]
+        return merged
 
     def set_diarization_state(
         self,
@@ -628,8 +672,13 @@ class FileMediaLibrary:
         )
         url = f"/api/projects/{project_id}/media/{asset.id}/audio" if analysis_path else None
         update = {"source_path": source_path, "analysis_path": analysis_path, "url": url}
-        if asset.word_timing_quality != "source" and asset.words:
-            inspection = inspect_word_timings(asset.words, asset.duration)
+        if asset.words:
+            inspection = reconcile_word_timing_quality(
+                asset.word_timing_quality,
+                asset.word_timing_note,
+                asset.words,
+                asset.duration,
+            )
             update["words"] = inspection.words
             update["word_timing_quality"] = inspection.quality
             update["word_timing_note"] = inspection.note
