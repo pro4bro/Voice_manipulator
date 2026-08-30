@@ -47,6 +47,33 @@ class FileProjectRepository:
         local_metadata = self._project_path(project_id) / "project.json"
         if local_metadata.is_file():
             return self._read(local_metadata)
+        return self._adopt_unregistered(project_id)
+
+    def _adopt_unregistered(self, project_id: str) -> ProjectRecord:
+        """Find a project folder that `list` can see but the registry has not indexed.
+
+        `list` discovers projects by scanning for `*/project.json`, while `get`
+        only knew the registry and a folder named exactly after the project id.
+        Folders are named after the project's slug, not its id, so a project
+        folder copied to another machine without its registry entry appeared in
+        Project Hub and then failed to open - seven of eight local projects did
+        exactly that. Adopting it here writes the missing entry once.
+        """
+        for metadata_path in self.root.glob("*/project.json"):
+            try:
+                project = self._read_project(metadata_path)
+            except (OSError, ValueError):
+                continue
+            if project.id != project_id:
+                continue
+            self._write(project)
+            self.activity.ensure_handoff(project.project_path)
+            self.activity.append(
+                project.project_path,
+                "PROJECT_ADOPTED",
+                "Thư mục project được nhận lại vào registry của máy này",
+            )
+            return project
         raise KeyError(project_id)
 
     def create(self, payload: ProjectCreate) -> ProjectRecord:

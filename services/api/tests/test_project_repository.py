@@ -95,3 +95,33 @@ def test_repository_reopens_a_project_after_its_folder_moves(tmp_path):
     assert reopened.id == created.id
     assert Path(reopened.project_path) == moved_path.resolve()
     assert Path(repository.get(created.id).project_path) == moved_path.resolve()
+
+
+def test_project_folder_copied_without_its_registry_entry_still_opens(tmp_path):
+    """A copied project folder must open, not just appear in the list.
+
+    Folders are named after the project slug while the registry keys on the id,
+    so `list` could see a copied project that `get` then refused to resolve. On
+    this machine that affected seven of eight projects: they showed up in Project
+    Hub and failed the moment they were opened.
+    """
+    origin = FileProjectRepository(tmp_path / "origin" / "projects")
+    # Choosing a storage location is the normal path through Project Hub, and it
+    # is what makes the folder name a slug rather than the project id.
+    created = origin.create(
+        ProjectCreate(name="Portable Project", location=str(tmp_path / "origin" / "projects"))
+    )
+    assert Path(created.project_path).name != created.id
+
+    destination_root = tmp_path / "laptop" / "projects"
+    destination_root.mkdir(parents=True)
+    shutil.copytree(created.project_path, destination_root / Path(created.project_path).name)
+
+    laptop = FileProjectRepository(destination_root)
+    assert [project.id for project in laptop.list()] == [created.id]
+
+    reopened = laptop.get(created.id)
+    assert reopened.id == created.id
+    assert Path(reopened.project_path) == destination_root / Path(created.project_path).name
+    # Adoption is written back, so the next lookup does not rescan the folder.
+    assert (destination_root / ".registry" / f"{created.id}.json").is_file()
