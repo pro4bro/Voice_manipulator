@@ -6,7 +6,7 @@ import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
 import type { EmotionLabel, EmotionStylePreferences, EnvironmentNoiseProfile, SpeakerProfile, StudioWord, WordTimingQuality, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import { ScriptSpeakerText, ScriptTable, assignProfileToWords, moveWordsToRow, updateWordText } from "./script-table";
+import { ScriptSpeakerText, ScriptTable, assignProfileToWords, keepWordInView, moveWordsToRow, updateWordText } from "./script-table";
 
 export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
 export interface ScriptFormatIntent { kind: ScriptFormatKind; value: string | boolean; selection: { start: number; end: number; text: string }; }
@@ -164,14 +164,9 @@ export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferred
       return;
     }
     if (!activeWord || !playbackLayer) return;
-    const wordTop = activeWord.offsetTop - playbackLayer.offsetTop;
-    const wordBottom = wordTop + activeWord.offsetHeight;
-    const upperBoundary = playbackLayer.scrollTop + playbackLayer.clientHeight * 0.18;
-    const lowerBoundary = playbackLayer.scrollTop + playbackLayer.clientHeight * 0.76;
-    if (wordTop >= upperBoundary && wordBottom <= lowerBoundary) return;
-    const nextTop = Math.max(0, wordTop - playbackLayer.clientHeight * 0.38);
-    playbackLayer.scrollTop = nextTop;
-    textarea.scrollTop = nextTop;
+    const nextTop = keepWordInView(playbackLayer, activeWord);
+    // The textarea sits on top of the layer and must follow it exactly.
+    if (nextTop !== null) textarea.scrollTop = nextTop;
   }, [activeWordIndex, reviewActive, tagMode, useNativePlayback, value, wordRangesByIndex]);
 
   useEffect(() => {

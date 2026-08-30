@@ -175,6 +175,28 @@ interface SpeakerTextProps {
 }
 
 /* The non-table view keeps each diarized turn intact while giving the user a compact reading layout. */
+/** Scroll `view` so `target` sits in its comfortable band, and report the new offset.
+ *
+ * Measured from rects rather than offsetTop. offsetTop is relative to the nearest
+ * positioned ancestor, and `.script-table__word-wrap` is positioned so it can host
+ * the word editor popover - so every word reported offsetTop 0, the arithmetic
+ * produced 0, and playback scrolled the transcript back to the top on every tick
+ * instead of following the word being spoken.
+ */
+export function keepWordInView(view: HTMLElement, target: HTMLElement): number | null {
+  const viewRect = view.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const top = targetRect.top - viewRect.top + view.scrollTop;
+  const bottom = top + targetRect.height;
+  if (top >= view.scrollTop + view.clientHeight * 0.18 && bottom <= view.scrollTop + view.clientHeight * 0.76) {
+    return null;
+  }
+  const furthest = Math.max(0, view.scrollHeight - view.clientHeight);
+  const next = Math.max(0, Math.min(furthest, top - view.clientHeight * 0.38));
+  view.scrollTop = next;
+  return next;
+}
+
 export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor }: SpeakerTextProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
@@ -270,13 +292,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     const element = scrollRef.current;
     const activeWord = activeWordRef.current;
     if (!element || !activeWord || activeWordIndex < 0) return;
-    const wordTop = activeWord.offsetTop - element.offsetTop;
-    const wordBottom = wordTop + activeWord.offsetHeight;
-    const upperBoundary = element.scrollTop + element.clientHeight * 0.18;
-    const lowerBoundary = element.scrollTop + element.clientHeight * 0.76;
-    if (wordTop >= upperBoundary && wordBottom <= lowerBoundary) return;
-    element.scrollTop = Math.max(0, wordTop - element.clientHeight * 0.38);
-    updateScroll(element);
+    if (keepWordInView(element, activeWord) !== null) updateScroll(element);
   }, [activeWordIndex, rows]);
 
   function syncScroll(event: UIEvent<HTMLDivElement>) {
