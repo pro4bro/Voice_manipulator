@@ -14,6 +14,62 @@ append báo cáo theo template ở cuối file này → đổi con trỏ `NEXT` 
 
 Không hạ ngưỡng nghiệm thu để cho pass. Không sửa test cũ để né lỗi. Báo số thật.
 
+## Ba vai, ba chỗ ghi
+
+| Vai | Ghi ở đâu | Làm gì |
+| --- | --- | --- |
+| Agent thi công (Codex) | mục `## Agent tự kiểm` + `## Kết quả so với ngưỡng` | Code một round, chạy đo, báo số thật |
+| Người review (Claude) | mục `### Review (Claude)` | Đối chiếu báo cáo với dữ liệu thật trước khi chủ dự án chấp nhận |
+| Chủ dự án | mục `### Feedback` | Bấm checklist tay, ghi mục nào hỏng |
+
+Thứ tự trong mỗi round: **báo cáo agent → review → feedback → chấp nhận hoặc làm lại.**
+
+## Công cụ đo dùng chung
+
+Cả agent và người review chạy **cùng một lệnh**, để không ai tự chấm bài bằng số
+của riêng mình:
+
+```bash
+.venv/Scripts/python.exe scripts/stt_quality_report.py --project pdca-cldndd-k4 --benchmark pdca-cldndd-k4-949eae9a --silence-probe
+```
+
+Script đọc project ở chế độ chỉ-đọc và chạy được cả trước lẫn sau khi tách
+storage, nên số hai bên so sánh được trực tiếp.
+
+### Baseline trước R1 — đo ngày 2026-08-30
+
+```
+=== pdca-cldndd-k4        index.json 31.30 MB · 3 asset
+
+asset-7e08a3f43af8   9,881s   33,912 từ   quality source
+  timing trusted   33,912 / 33,912  (100.0%)
+  edge-refined          0 / 33,912  (  0.0%)   groups 0/1126
+  phrase group     median   4.72s   max 108.30s
+asset-bd55873fc707  12,104s   43,417 từ   quality needs-alignment
+  timing trusted        0 / 43,417  (  0.0%)
+  word span        tiny(<25ms) 753    long(>8.0s) 8
+asset-bf35963dedac  13,152s   47,719 từ   quality needs-alignment
+  timing trusted        0 / 47,719  (  0.0%)
+  word span        tiny(<25ms) 2,704  long(>8.0s) 24
+
+=== TOTAL   125,048 từ   trusted 27.1%   edge-refined 0.0%
+    phrase groups refined 0 / 3,408  (0.0%)      [R2 threshold >= 60%]
+
+media.list()  first 3.332s   repeat 3.558s      [threshold < 0.150s]
+media.get()         3.297s                      [threshold < 0.300s]
+
+silence probe (audioop)  0.356s cho 236s audio  → ~14.9s cho file 9,881s
+  (vòng lặp Python hiện tại: 3.97s → ~166s)
+```
+
+Hai con số đáng chú ý phát hiện khi dựng script này:
+
+- `media.list()` đo lại là **3.3 s**, không phải 1.5–2.0 s như lần đo đầu. Lần đầu
+  đo trong một process đã ấm cache OS. Số 3.3 s là số dùng để so sánh từ giờ.
+- Phrase group dài nhất trên file thật là **108.30 giây**. Trên sample 236 s là
+  37 s. Ngưỡng gap 0.52 s không tách nổi người nói liên tục, nên `_refine_word_boundaries`
+  từ chối **1,126/1,126 nhóm** — đúng như W2 mô tả, nhưng tệ hơn dự đoán ban đầu.
+
 ## Bảng trạng thái
 
 | Round | Phạm vi | Trạng thái |
@@ -66,6 +122,11 @@ Xem bảng **R0** trong `docs/STABILIZATION-PLAN.md` mục "Checklist nghiệm t
 theo round". Năm mục, quan trọng nhất là mục 2 (đóng bằng nút X) và mục 3
 (sửa React rồi `Restart all`).
 
+### Review (Claude)
+
+Tự làm, nên không phải review độc lập. Ba điều cần chủ dự án xác nhận vì em không
+tự tắt stack đang chạy: mục 2, 3, 5 trong checklist R0.
+
 ### Feedback
 
 _(chưa có)_
@@ -98,12 +159,16 @@ chuyện của round sau.
 
 ## Baseline để so sánh
 
+Dùng số trong mục "Baseline trước R1" ở đầu file này (đo bằng
+`scripts/stt_quality_report.py`, là số chính thức để so sánh):
+
 ```
-media.list()  trên pdca-cldndd-k4     1.46 – 1.95 s
-media.get()                           1.72 s
-index.json                            31.3 MB
-_is_near_silent  file 236 s           3.97 s   → suy ra ~166 s cho file 9,881 s
-activity/events.jsonl mỗi job diarize  hàng trăm dòng
+media.list()  trên pdca-cldndd-k4     3.332 s      → ngưỡng < 0.150 s
+media.get()                           3.297 s      → ngưỡng < 0.300 s
+index.json                            31.30 MB     → kỳ vọng ~3 MB
+_is_near_silent  file 236 s           3.97 s       → ngưỡng < 0.50 s
+                                                     (audioop đo được 0.356 s)
+activity/events.jsonl mỗi job diarize  hàng trăm dòng → ngưỡng ≤ 3 dòng
 ```
 
 MediaIndexStore đã đo sẵn (chưa wire):
@@ -136,6 +201,10 @@ dữ liệu word sau migration giống hệt bản gốc (đã assert)
 ## Anh cần check
 
 Bảng **R1** trong `docs/STABILIZATION-PLAN.md`. Tám mục.
+
+### Review (Claude)
+
+_(chưa có)_
 
 ### Feedback
 
@@ -181,7 +250,30 @@ _(Copy nguyên bảng checklist của round này từ STABILIZATION-PLAN.md.)_
 
 _(Những gì round này cố tình không làm, và round nào sẽ làm.)_
 
+### Review (Claude)
+
+_(Để trống. Người review điền sau khi đối chiếu độc lập.)_
+
 ### Feedback
 
 _(chưa có)_
 ```
+
+---
+
+# Checklist cho người review
+
+Điền vào mục `### Review (Claude)` của round. Bốn việc, làm độc lập với báo cáo
+của agent — mục đích là bắt đúng chế độ hỏng đã xảy ra một lần trong dự án này:
+báo cáo nghe hợp lý mà không ai đối chiếu với dữ liệu thật.
+
+1. **Chạy lại `scripts/stt_quality_report.py`**, không đọc số trong báo cáo. So
+   trực tiếp với baseline ở đầu file này.
+2. **`git diff` với commit trước đó.** Kiểm tra ba thứ:
+   - có test cũ nào bị sửa không, và nếu có thì sửa để đúng hay để né;
+   - có ngưỡng nào trong `STABILIZATION-PLAN.md` bị hạ không;
+   - phạm vi có tràn sang round sau không.
+3. **Đọc code chỗ rủi ro nhất của round**, không đọc toàn bộ diff. R1 là migration
+   và mất dữ liệu; R2 là ngưỡng phân loại từ; R7 là gán nhãn speaker.
+4. **Kết luận một trong ba:** `ĐẠT`, `ĐẠT CÓ ĐIỀU KIỆN` (kèm việc phải làm ở round
+   sau), hoặc `CHƯA ĐẠT` (kèm số thật và lý do).

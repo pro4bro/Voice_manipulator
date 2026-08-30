@@ -485,7 +485,10 @@ File `services/stt_studio/studio_app/server.py`.
 ### Tiêu chí nghiệm thu 1.5
 
 - File 2.7 giờ: thời gian từ lúc nhận request đến khi progress vượt 16% giảm từ
-  ~170 s xuống < 10 s.
+  ~170 s xuống **< 25 s**. Đã đo `audioop` trên sample 236 s: **0.356 s** (vòng lặp
+  Python: 3.97 s), suy ra ~14.9 s cho file 9,881 s — nhanh hơn 11 lần, không phải
+  miễn phí. Nếu muốn gần như miễn phí thì đọc mẫu thưa thay vì quét toàn file;
+  ghi lại thành TODO, đừng làm trong round này.
 - RSS đỉnh của process sidecar khi xử lý file 2.7 giờ giảm ít nhất 500 MB.
 - Text transcript của sample 236 s **không đổi** so với trước (so sánh
   `assets/media/<id>/stt/transcript.stt.json`).
@@ -547,8 +550,13 @@ sample 236 s / 665 từ:
   refine thành công       6 / 665 từ   (0.9%)
 
 sample 9,881 s / 33,912 từ:
+  số phrase group      1,126
+  thời lượng nhóm    median 4.72 s   max 108.30 s
   refine thành công       0 / 33,912 từ   (0.0%)
 ```
+
+Nhóm dài **108 giây** trên file thật. Ngưỡng gap 0.52 s không tách được người nói
+liên tục, và không có phép warp tuyến tính nào hợp lệ trên một nhóm như vậy.
 
 Warp tuyến tính một nhóm dài 37 giây là vô nghĩa, nên bộ lọc an toàn
 (`0.70 <= scale <= 1.35`) từ chối là **đúng**. Lỗi nằm ở thiết kế nhóm.
