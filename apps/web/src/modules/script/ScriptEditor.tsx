@@ -3,7 +3,7 @@ import { usePlaybackWord } from "../../domain/playback-sync";
 
 import { DEFAULT_EMOTION_STYLE, emotionVisualStyle } from "../../domain/emotion-style";
 import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
-import type { EmotionLabel, EmotionStylePreferences, EnvironmentNoiseProfile, SpeakerProfile, StudioWord, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EnvironmentNoiseProfile, SpeakerProfile, StudioWord, WordTimingQuality, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { ScriptSpeakerText, ScriptTable, assignProfileToWords, moveWordsToRow, updateWordText } from "./script-table";
@@ -11,7 +11,7 @@ import { ScriptSpeakerText, ScriptTable, assignProfileToWords, moveWordsToRow, u
 export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
 export interface ScriptFormatIntent { kind: ScriptFormatKind; value: string | boolean; selection: { start: number; end: number; text: string }; }
 interface ScriptEditorProps {
-  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; wordTimingQuality?: "unverified" | "source" | "needs-alignment"; wordTimingNote?: string | null; activeWordIndex?: number; playbackAssetId?: string | null; footageName?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; liveTranscriptText?: string | null; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; onWordsChange?: (words: StudioWord[], text?: string) => void; onFormatIntent?: (intent: ScriptFormatIntent) => void;
+  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; wordTimingQuality?: WordTimingQuality; wordTimingNote?: string | null; activeWordIndex?: number; playbackAssetId?: string | null; footageName?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; liveTranscriptText?: string | null; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; onWordsChange?: (words: StudioWord[], text?: string) => void; onFormatIntent?: (intent: ScriptFormatIntent) => void;
 }
 interface ScriptSegment { text: string; wordIndex: number | null; }
 type ReviewChoice = "stt" | "ai" | "manual";

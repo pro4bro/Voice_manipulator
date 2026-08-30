@@ -11,7 +11,10 @@ from uuid import uuid4
 
 from app.adapters.media_index_store import MediaIndexStore
 from app.adapters.project_activity_log import ProjectActivityLog
-from app.adapters.word_timing_quality import reconcile_word_timing_quality
+from app.adapters.word_timing_quality import (
+    WORD_TIMING_TRUST_VERSION,
+    reconcile_word_timing_quality,
+)
 from app.domain.models import (
     AIReviewStatus,
     EmotionLabel,
@@ -64,11 +67,17 @@ class FileMediaLibrary:
     def get(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
         with self._lock(project_id):
             root = self._project_root(project_id)
-            for asset in self._load(project_id, include_words=False):
+            assets = self._load(project_id, include_words=False)
+            for index, asset in enumerate(assets):
                 if asset.id == asset_id:
-                    return asset.model_copy(
-                        update={"words": self._store.read_words(root, project_id, asset_id)}
+                    words = self._store.read_words(root, project_id, asset_id)
+                    asset, words, migrated = self._backfill_word_timing_trust(
+                        root, project_id, asset, words
                     )
+                    if migrated:
+                        assets[index] = asset
+                        self._store.write_index(root, project_id, assets)
+                    return asset.model_copy(update={"words": words})
         raise KeyError(asset_id)
 
     def resolve_audio_path(self, project_id: str, asset_id: str) -> Path:
@@ -98,6 +107,21 @@ class FileMediaLibrary:
                     else None,
                 }
             )
+            if portable_payload.words:
+                inspection = reconcile_word_timing_quality(
+                    portable_payload.word_timing_quality,
+                    portable_payload.word_timing_note,
+                    portable_payload.words,
+                    portable_payload.duration,
+                )
+                portable_payload = portable_payload.model_copy(
+                    update={
+                        "words": inspection.words,
+                        "word_timing_quality": inspection.quality,
+                        "word_timing_note": inspection.note,
+                        "word_timing_trust_version": WORD_TIMING_TRUST_VERSION,
+                    }
+                )
             asset = ProjectMediaAsset.create(
                 asset_id or f"asset-{uuid4().hex[:12]}", portable_payload
             )
@@ -131,11 +155,16 @@ class FileMediaLibrary:
             next_words = _KEEP_WORDS
             if words is not None:
                 inspection = reconcile_word_timing_quality(
-                    asset.word_timing_quality, asset.word_timing_note, words, asset.duration
+                    asset.word_timing_quality,
+                    asset.word_timing_note,
+                    words,
+                    asset.duration,
+                    trust_version=asset.word_timing_trust_version,
                 )
                 next_words = inspection.words
                 updates["word_timing_quality"] = inspection.quality
                 updates["word_timing_note"] = inspection.note
+                updates["word_timing_trust_version"] = WORD_TIMING_TRUST_VERSION
             return self._update_asset(
                 project_id,
                 asset_id,
@@ -207,6 +236,7 @@ class FileMediaLibrary:
                     "text": text,
                     "word_timing_quality": inspection.quality,
                     "word_timing_note": inspection.note,
+                    "word_timing_trust_version": WORD_TIMING_TRUST_VERSION,
                     "revisions": revisions,
                     "transcription_status": "reviewing",
                     "transcription_progress": 99.9,
@@ -222,6 +252,14 @@ class FileMediaLibrary:
         self, project_id: str, asset_id: str, words: list[dict]
     ) -> ProjectMediaAsset:
         with self._lock(project_id):
+            asset = self._require(project_id, asset_id)
+            inspection = reconcile_word_timing_quality(
+                asset.word_timing_quality,
+                asset.word_timing_note,
+                words,
+                asset.duration,
+                trust_version=asset.word_timing_trust_version,
+            )
             return self._update_asset(
                 project_id,
                 asset_id,
@@ -229,10 +267,13 @@ class FileMediaLibrary:
                     "diarization_status": "complete",
                     "diarization_progress": 100,
                     "diarization_error": None,
+                    "word_timing_quality": inspection.quality,
+                    "word_timing_note": inspection.note,
+                    "word_timing_trust_version": WORD_TIMING_TRUST_VERSION,
                 },
-                words=list(words),
+                words=inspection.words,
                 event="DIARIZATION_COMPLETED",
-                details={"wordCount": len(words)},
+                details={"wordCount": len(inspection.words)},
             )
 
     def update_diarization_assignments(
@@ -571,13 +612,55 @@ class FileMediaLibrary:
             # Legacy absolute paths are rewritten once, not on every read.
             self._store.write_index(root, project_id, normalized)
         if include_words:
-            normalized = [
-                asset.model_copy(
-                    update={"words": self._store.read_words(root, project_id, asset.id)}
+            with_words: list[ProjectMediaAsset] = []
+            migrated = False
+            for asset in normalized:
+                words = self._store.read_words(root, project_id, asset.id)
+                asset, words, did_migrate = self._backfill_word_timing_trust(
+                    root, project_id, asset, words
                 )
-                for asset in normalized
-            ]
+                migrated = migrated or did_migrate
+                with_words.append(asset.model_copy(update={"words": words}))
+            normalized = with_words
+            if migrated:
+                self._store.write_index(
+                    root,
+                    project_id,
+                    [asset.model_copy(update={"words": []}) for asset in normalized],
+                )
         return sorted(normalized, key=lambda asset: asset.created_at, reverse=True)
+
+    def _backfill_word_timing_trust(
+        self,
+        root: Path,
+        project_id: str,
+        asset: ProjectMediaAsset,
+        words: list[dict],
+    ) -> tuple[ProjectMediaAsset, list[dict], bool]:
+        """Persist W2 per-word trust once for projects created by older builds."""
+        if (
+            not words
+            or asset.word_timing_trust_version >= WORD_TIMING_TRUST_VERSION
+        ):
+            return asset, words, False
+        inspection = reconcile_word_timing_quality(
+            asset.word_timing_quality,
+            asset.word_timing_note,
+            words,
+            asset.duration,
+        )
+        self._store.write_words(root, project_id, asset.id, inspection.words)
+        return (
+            asset.model_copy(
+                update={
+                    "word_timing_quality": inspection.quality,
+                    "word_timing_note": inspection.note,
+                    "word_timing_trust_version": WORD_TIMING_TRUST_VERSION,
+                }
+            ),
+            inspection.words,
+            True,
+        )
 
     def _require(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
         for asset in self._load(project_id, include_words=False):

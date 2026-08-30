@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
-import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe } from "../../domain/types";
+import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -13,7 +13,7 @@ export interface ActiveTake {
   duration: number;
   text?: string;
   words?: StudioWord[];
-  wordTimingQuality?: "unverified" | "source" | "needs-alignment";
+  wordTimingQuality?: WordTimingQuality;
   wordTimingNote?: string | null;
 }
 
@@ -282,10 +282,10 @@ export function Timeline({
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
-  const timingIsTrusted = take?.wordTimingQuality === "source";
+  const timingIsTrusted = Boolean(take && take.wordTimingQuality !== "needs-alignment");
   const timingUnavailable = Boolean(take && !timingIsTrusted && (words.length || take.wordTimingNote));
-  // Provisional and legacy timings must never masquerade as source-aligned subtitles.
-  // Keeping those boxes hidden prevents users from making edits against wrong timing.
+  // W2 keeps reviewable intervals visible. The asset summary blocks only the
+  // unsafe >=5% case; individual bad words carry their own warning class.
   const displayWords = useMemo(() => normalizeWordTimings(words, duration), [duration, words]);
   const speakerById = useMemo(() => new Map(speakers.map((speaker) => [speaker.id, speaker])), [speakers]);
   const detailRequest = useMemo(() => {
@@ -1108,11 +1108,11 @@ export function Timeline({
                   <button
                     aria-label={`Subtitle word ${word.text}`}
                     aria-pressed={selectedWordIndexes.has(index)}
-                    className={`timeline-word ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    className={`timeline-word ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
                     style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
-                    title="Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile"
+                    title={word.timingTrusted === false ? "Timestamp của từ này cần căn chỉnh" : "Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile"}
                     type="button"
                   >
                     {word.text}

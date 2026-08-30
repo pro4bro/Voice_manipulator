@@ -20,7 +20,8 @@
 - **Script**: The time-aware transcript document shown and edited in the Script module.
 - **Transcript Candidate**: A realtime, accurate STT, AI-corrected, or user-corrected option for one Script span.
 - **Source Word Timing**: A per-word start/end interval returned by the STT recognizer. It remains the recognizer’s source data and is not a guessed replacement for alignment.
-- **Timing Quality**: The trust state of an Asset’s word timing: `source` has passed structural checks, `needs-alignment` is unsafe for timed subtitle sync, and `unverified` has not yet been checked.
+- **Timing Quality**: The Asset-level summary of word timing trust: `source` means every word is trusted, `partial` means fewer than 5% need individual alignment, `needs-alignment` means at least 5% are unsafe, and `unverified` has not yet been checked.
+- **Word Timing Trust**: Whether one Source Word Timing interval passes structural checks. An untrusted word remains visible for review but is excluded from any subtitle cue that contains it.
 - **Module**: A reusable deep UI or backend capability with a small interface and hidden implementation.
 - **Engine**: An upstream AI implementation such as OmniVoice.
 - **Adapter**: Pro4Bro code satisfying an interface at the seam between the app and an Engine.

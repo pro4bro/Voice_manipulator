@@ -62,7 +62,7 @@ MediaTranscriptionStatus = Literal[
 ]
 MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error"]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
-WordTimingQuality = Literal["unverified", "source", "needs-alignment"]
+WordTimingQuality = Literal["unverified", "source", "partial", "needs-alignment"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
 EmotionLabel = Literal[
     "exciting",
@@ -119,6 +119,7 @@ class MediaAssetCreate(DomainModel):
     words: list[dict[str, Any]] = Field(default_factory=list)
     word_timing_quality: WordTimingQuality = "unverified"
     word_timing_note: str | None = Field(default=None, max_length=500)
+    word_timing_trust_version: int = Field(default=0, ge=0)
     origin: MediaOrigin
     status: MediaStatus = "ready"
     transcription_status: MediaTranscriptionStatus = "complete"

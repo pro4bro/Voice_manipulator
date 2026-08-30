@@ -16,7 +16,7 @@ export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energ
 export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
 export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error";
-export type WordTimingQuality = "unverified" | "source" | "needs-alignment";
+export type WordTimingQuality = "unverified" | "source" | "partial" | "needs-alignment";
 
 export interface MediaTranscriptionProgress {
   id: string;
@@ -90,6 +90,8 @@ export interface StudioWord {
   confidence?: number;
   /** Processor that measured this interval. Missing means legacy/unverified data. */
   timingSource?: "faster-whisper-dtw" | string;
+  /** Structural trust for this exact interval; false words remain visible with a warning. */
+  timingTrusted?: boolean;
   segmentIndex?: number;
   realtime?: string;
   accurate?: string;
@@ -176,6 +178,7 @@ export interface ProjectMediaAsset {
   words: StudioWord[];
   wordTimingQuality?: WordTimingQuality;
   wordTimingNote?: string | null;
+  wordTimingTrustVersion?: number;
   origin: "import" | "record";
   status?: "ready" | "no-audio" | "error";
   transcriptionStatus: MediaTranscriptionStatus;

@@ -22,18 +22,30 @@ probe. That trades text quality for prettier timing and is not acceptable.
 Keep the recognition pass unchanged: `large-v3`, beam size 5, native
 cross-attention/DTW word timestamps, and the established recognition VAD. Once
 recognition completes, run Silero VAD a second time with zero speech padding and
-short-silence detection. Group DTW words by natural phrase gaps and linearly
-map a group onto overlapping acoustic speech edges only when the start/end
-shift and duration scale stay inside conservative bounds.
+short-silence detection. Group DTW words by Whisper `segmentIndex` first and by
+a 0.20-second natural phrase gap second. Snap only the first word's onset and
+last word's offset to the nearest Silero edge within ±0.40 seconds. Do not warp
+the words between those edges.
 
-Record refined words as `faster-whisper-dtw+silero-boundary`. If the boundary
-pass fails or a candidate would require an implausible stretch, retain the
-original DTW timestamps and provenance.
+Record only words whose boundary actually moved as
+`faster-whisper-dtw+silero-edge`. If no nearby edge exists, retain the original
+DTW timestamp and record explicitly in `word_timing_note` that refinement was
+not applied.
+
+## 2026-08-30 Measurement
+
+The former 0.52-second gap produced 17 groups on the 236-second sample
+(median 9.94 seconds, maximum 37.36 seconds) and refined only 6/665 words. On
+the 9,881-second PDCA asset it produced 1,126 groups (median 4.72 seconds,
+maximum 108.30 seconds) and refined 0/33,912 words. The conservative scale
+guard correctly rejected linear warps across groups that long; grouping and
+whole-group warping were the failed design assumptions.
 
 ## Consequences
 
 - Recognition text quality and model configuration do not change.
-- Phrase onset/offset matches visible waveform speech much more closely.
-- DTW still owns relative boundaries inside a phrase; this is not a substitute
+- Phrase onset/offset can match visible waveform speech without changing every
+  word in a long utterance.
+- DTW still owns every middle-word boundary; this is not a substitute
   for future phoneme-level forced alignment of a user-supplied script.
 - Existing completed assets must rerun finalized STT to receive refined timing.

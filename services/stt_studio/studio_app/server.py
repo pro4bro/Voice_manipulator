@@ -34,7 +34,8 @@ MODEL_ROOT = Path(os.getenv("PRO4BRO_STT_MODEL_ROOT", RUNTIME_ROOT / "models"))
 SUPPORTED_STT_MODELS = {"tiny", "base", "small", "medium", "large-v3"}
 SPEECH_BOUNDARY_MIN_SILENCE_MS = 120
 SPEECH_BOUNDARY_MERGE_GAP_SECONDS = 0.24
-WORD_GROUP_GAP_SECONDS = 0.52
+WORD_GROUP_GAP_SECONDS = 0.20
+WORD_EDGE_SNAP_WINDOW_SECONDS = 0.40
 
 
 def _configure_windows_cuda_dlls() -> None:
@@ -237,12 +238,11 @@ def _fine_speech_spans(audio: Any) -> list[tuple[float, float]]:
 def _refine_word_boundaries(
     words: list[dict[str, Any]], speech_spans: list[tuple[float, float]]
 ) -> int:
-    """Warp phrase-sized DTW groups onto unpadded acoustic speech edges.
+    """Snap only phrase-edge words onto nearby unpadded acoustic boundaries.
 
     Faster-Whisper deliberately pads VAD chunks by 400 ms. DTW can attach the
-    first word to that padding, which makes every visible phrase look uniformly
-    early. We keep DTW's relative word positions, but only warp a phrase when an
-    overlapping Silero span is close enough and the duration change is modest.
+    first word to that padding. Segment-aware, short-gap groups keep continuous
+    Vietnamese speech bounded, while middle-word DTW intervals remain untouched.
     """
     if not words or not speech_spans:
         return 0
@@ -251,51 +251,51 @@ def _refine_word_boundaries(
     group_start = 0
     for index in range(1, len(words)):
         gap = float(words[index]["start"]) - float(words[index - 1]["end"])
-        if gap > WORD_GROUP_GAP_SECONDS:
+        previous_segment = words[index - 1].get("segmentIndex")
+        current_segment = words[index].get("segmentIndex")
+        segment_changed = (
+            previous_segment is not None
+            and current_segment is not None
+            and previous_segment != current_segment
+        )
+        if segment_changed or gap > WORD_GROUP_GAP_SECONDS:
             groups.append((group_start, index))
             group_start = index
     groups.append((group_start, len(words)))
 
     refined = 0
-    previous_end = 0.0
     for start_index, end_index in groups:
         source_start = float(words[start_index]["start"])
         source_end = float(words[end_index - 1]["end"])
-        source_duration = source_end - source_start
-        if source_duration <= 0:
-            previous_end = max(previous_end, source_end)
-            continue
-
-        candidates = [
-            span
-            for span in speech_spans
-            if span[1] >= source_start - 0.10 and span[0] <= source_end + 0.20
+        onset_candidates = [
+            start
+            for start, _ in speech_spans
+            if abs(start - source_start) <= WORD_EDGE_SNAP_WINDOW_SECONDS
         ]
-        if not candidates:
-            previous_end = max(previous_end, source_end)
-            continue
-        target_start = max(previous_end, candidates[0][0])
-        target_end = candidates[-1][1]
-        target_duration = target_end - target_start
-        scale = target_duration / source_duration if source_duration else 0.0
-        start_shift = target_start - source_start
-        end_shift = target_end - source_end
-        if not (
-            0.70 <= scale <= 1.35
-            and -0.25 <= start_shift <= 0.65
-            and -0.30 <= end_shift <= 0.50
-        ):
-            previous_end = max(previous_end, source_end)
-            continue
-
-        for word in words[start_index:end_index]:
-            mapped_start = target_start + (float(word["start"]) - source_start) * scale
-            mapped_end = target_start + (float(word["end"]) - source_start) * scale
-            word["start"] = round(max(previous_end, mapped_start), 3)
-            word["end"] = round(max(float(word["start"]) + 0.001, mapped_end), 3)
-            word["timingSource"] = "faster-whisper-dtw+silero-boundary"
-            previous_end = float(word["end"])
-        refined += 1
+        offset_candidates = [
+            end
+            for _, end in speech_spans
+            if abs(end - source_end) <= WORD_EDGE_SNAP_WINDOW_SECONDS
+        ]
+        group_snapped = False
+        first = words[start_index]
+        last = words[end_index - 1]
+        if onset_candidates:
+            target_start = min(onset_candidates, key=lambda value: abs(value - source_start))
+            snapped_start = round(target_start, 3)
+            if snapped_start < float(first["end"]) and snapped_start != float(first["start"]):
+                first["start"] = snapped_start
+                first["timingSource"] = "faster-whisper-dtw+silero-edge"
+                group_snapped = True
+        if offset_candidates:
+            target_end = min(offset_candidates, key=lambda value: abs(value - source_end))
+            snapped_end = round(target_end, 3)
+            if snapped_end > float(last["start"]) and snapped_end != float(last["end"]):
+                last["end"] = snapped_end
+                last["timingSource"] = "faster-whisper-dtw+silero-edge"
+                group_snapped = True
+        if group_snapped:
+            refined += 1
     return refined
 
 
@@ -422,10 +422,15 @@ def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME) -> d
                 "DTW source timing was retained."
             )
         if refined_groups:
-            item["transcription_engine"] = "faster-whisper-native-dtw+silero-boundary"
+            item["transcription_engine"] = "faster-whisper-native-dtw+silero-edge"
             item["word_timing_note"] = (
-                "Faster-Whisper DTW word timing refined against unpadded Silero VAD "
-                f"speech edges ({refined_groups} phrase groups; 20 ms acoustic frames)."
+                "Faster-Whisper DTW word timing snapped to nearby unpadded Silero VAD "
+                f"phrase edges ({refined_groups} phrase groups; middle words unchanged)."
+            )
+        else:
+            item["word_timing_note"] += (
+                " Silero edge refinement found no phrase boundary within ±0.40 s; "
+                "original DTW timing was retained."
             )
     progress.set(progress_id, 100)
     return item

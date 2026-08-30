@@ -28,7 +28,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "services" / "api"))
 
-WORD_GROUP_GAP_SECONDS = 0.52
+WORD_GROUP_GAP_SECONDS = 0.20
 REFINED_SUFFIXES = ("silero-boundary", "silero-edge", "forced-align")
 
 
@@ -57,7 +57,14 @@ def _phrase_groups(words: list[dict], gap: float = WORD_GROUP_GAP_SECONDS) -> li
             silence = float(words[index]["start"]) - float(words[index - 1]["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        if silence > gap:
+        previous_segment = words[index - 1].get("segmentIndex")
+        current_segment = words[index].get("segmentIndex")
+        segment_changed = (
+            previous_segment is not None
+            and current_segment is not None
+            and previous_segment != current_segment
+        )
+        if segment_changed or silence > gap:
             groups.append((start, index))
             start = index
     groups.append((start, len(words)))
@@ -126,6 +133,23 @@ def report_project(project_dir: Path) -> dict:
         words = _load_asset_words(project_dir, asset)
         if not words:
             continue
+        quality = str(asset.get("wordTimingQuality") or "unverified")
+        trust_version = int(asset.get("wordTimingTrustVersion") or 0)
+        if (
+            trust_version < 1
+            or any("timingTrusted" not in word for word in words)
+        ):
+            from app.adapters.word_timing_quality import reconcile_word_timing_quality
+
+            inspection = reconcile_word_timing_quality(
+                quality,
+                asset.get("wordTimingNote"),
+                words,
+                float(asset.get("duration") or 0),
+                trust_version=trust_version,
+            )
+            quality = inspection.quality
+            words = inspection.words
         sources = Counter(str(word.get("timingSource") or "-") for word in words)
         refined = sum(
             count for source, count in sources.items() if source.endswith(REFINED_SUFFIXES)
@@ -139,13 +163,10 @@ def report_project(project_dir: Path) -> dict:
                 for word in words[start:end]
             )
         )
-        # `timingTrusted` arrives in R2; before then, treat a source-quality asset
-        # as fully trusted so the two sides of the change stay comparable.
-        quality = str(asset.get("wordTimingQuality") or "unverified")
         trusted = sum(
             1
             for word in words
-            if word.get("timingTrusted", quality == "source") is not False
+            if word.get("timingTrusted") is True
         )
         durations = [
             float(word["end"]) - float(word["start"])

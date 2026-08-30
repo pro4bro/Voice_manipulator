@@ -50,10 +50,15 @@ describe("Timeline", () => {
     expect(screen.getByText(/chưa có nguồn căn chỉnh đáng tin/i)).toBeInTheDocument();
   });
 
-  it("hides legacy unverified timing until a real timing processor owns it", () => {
-    render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "legacy.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "unverified", words: [{ text: "cũ", start: 1, end: 1.3 }] }} />);
-    expect(screen.queryByRole("button", { name: "Subtitle word cũ" })).not.toBeInTheDocument();
-    expect(screen.getByText(/chưa có nguồn căn chỉnh đáng tin/i)).toBeInTheDocument();
+  it("shows unverified timing as an explicitly warned word instead of hiding it", () => {
+    render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "legacy.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "unverified", words: [{ text: "cũ", start: 1, end: 1.3, timingTrusted: false }] }} />);
+    expect(screen.getByRole("button", { name: "Subtitle word cũ" })).toHaveClass("timeline-word--untrusted");
+  });
+
+  it("renders partial timing and marks only the untrusted word", () => {
+    render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "partial.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "partial", words: [{ text: "đúng", start: 1, end: 1.3, timingTrusted: true }, { text: "cảnh-báo", start: 1.3, end: 1.31, timingTrusted: false }] }} />);
+    expect(screen.getByRole("button", { name: "Subtitle word đúng" })).not.toHaveClass("timeline-word--untrusted");
+    expect(screen.getByRole("button", { name: "Subtitle word cảnh-báo" })).toHaveClass("timeline-word--untrusted");
   });
 
   it("assigns one speaker profile to a swept selection of subtitle words", async () => {

@@ -22,6 +22,7 @@ class SubtitleCue:
     text: str
     diarization_speaker_id: str | None = None
     speaker_profile_id: str | None = None
+    timing_trusted: bool = True
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class TimedWord:
     end: float
     diarization_speaker_id: str | None = None
     speaker_profile_id: str | None = None
+    timing_trusted: bool = True
 
 
 class SubtitleExporter:
@@ -52,13 +54,20 @@ class SubtitleExporter:
         profiles = {speaker.id: speaker for speaker in speakers or []}
         destination = self._destination(project, asset, mode)
         destination.parent.mkdir(parents=True, exist_ok=True)
+        skipped_cues = 0
         if mode == "table":
             destination.write_text(self._render_table(words, profiles), encoding="utf-8-sig", newline="")
         else:
-            cues = self._word_cues(words) if mode == "word" else self._sentence_cues(words)
+            all_cues = self._word_cues(words) if mode == "word" else self._sentence_cues(words)
+            skipped_cues = sum(not cue.timing_trusted for cue in all_cues)
+            cues = [cue for cue in all_cues if cue.timing_trusted]
             if not cues:
                 raise ValueError("Không còn word timing hợp lệ sau các đoạn đã cắt.")
-            destination.write_text(self._render_srt(cues, profiles), encoding="utf-8", newline="\n")
+            destination.write_text(
+                self._render_srt(cues, profiles, skipped_cues),
+                encoding="utf-8",
+                newline="\n",
+            )
         self.activity.append(
             project.project_path,
             "SUBTITLE_EXPORTED",
@@ -68,6 +77,7 @@ class SubtitleExporter:
                 "mode": mode,
                 "file": destination.relative_to(Path(project.project_path)).as_posix(),
                 "wordCount": len(words),
+                "skippedSubtitleLines": skipped_cues if mode != "table" else 0,
             },
         )
         return destination
@@ -78,7 +88,7 @@ class SubtitleExporter:
             text = self._clean_text(str(raw.get("text", "")))
             start = self._number(raw.get("start"))
             end = self._number(raw.get("end"))
-            if not text or start is None or end is None or end < start:
+            if not text or start is None or end is None or end <= start:
                 continue
             start = max(0.0, start)
             end = min(end, asset.duration) if asset.duration > 0 else end
@@ -86,7 +96,16 @@ class SubtitleExporter:
                 continue
             diarization_speaker_id = self._optional_id(raw.get("diarizationSpeakerId") or raw.get("diarization_speaker_id"))
             speaker_profile_id = self._optional_id(raw.get("speakerId") or raw.get("speaker_id"))
-            words.append(TimedWord(text, start, end, diarization_speaker_id, speaker_profile_id))
+            words.append(
+                TimedWord(
+                    text,
+                    start,
+                    end,
+                    diarization_speaker_id,
+                    speaker_profile_id,
+                    raw.get("timingTrusted") is not False,
+                )
+            )
         return words
 
     @staticmethod
@@ -132,11 +151,28 @@ class SubtitleExporter:
 
     @staticmethod
     def _word_cues(words: list[TimedWord]) -> list[SubtitleCue]:
-        return [SubtitleCue(word.start, word.end, word.text, word.diarization_speaker_id, word.speaker_profile_id) for word in words]
+        return [
+            SubtitleCue(
+                word.start,
+                word.end,
+                word.text,
+                word.diarization_speaker_id,
+                word.speaker_profile_id,
+                word.timing_trusted,
+            )
+            for word in words
+        ]
 
     def _cue_from_words(self, words: list[TimedWord]) -> SubtitleCue:
         first = words[0]
-        return SubtitleCue(first.start, words[-1].end, self._wrap_text(self._join_words(words)), first.diarization_speaker_id, first.speaker_profile_id)
+        return SubtitleCue(
+            first.start,
+            words[-1].end,
+            self._wrap_text(self._join_words(words)),
+            first.diarization_speaker_id,
+            first.speaker_profile_id,
+            all(word.timing_trusted for word in words),
+        )
 
     @staticmethod
     def _clean_text(value: str) -> str:
@@ -179,12 +215,23 @@ class SubtitleExporter:
         seconds, milliseconds = divmod(remainder, 1_000)
         return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
-    def _render_srt(self, cues: list[SubtitleCue], profiles: dict[str, SpeakerProfile]) -> str:
+    def _render_srt(
+        self,
+        cues: list[SubtitleCue],
+        profiles: dict[str, SpeakerProfile],
+        skipped_cues: int = 0,
+    ) -> str:
         blocks = []
         for index, cue in enumerate(cues, start=1):
             end = max(cue.end, cue.start + 0.001)
             blocks.append(f"{index}\n{self._format_timestamp(cue.start)} --> {self._format_timestamp(end)}\n{self._render_cue_text(cue, profiles)}")
-        return "\n\n".join(blocks) + "\n"
+        body = "\n\n".join(blocks) + "\n"
+        if not skipped_cues:
+            return body
+        return (
+            f"# Pro4Bro: đã bỏ {skipped_cues} dòng subtitle chứa từ có timing không đáng tin.\n\n"
+            + body
+        )
 
     def _render_cue_text(self, cue: SubtitleCue, profiles: dict[str, SpeakerProfile]) -> str:
         profile = profiles.get(cue.speaker_profile_id or "")

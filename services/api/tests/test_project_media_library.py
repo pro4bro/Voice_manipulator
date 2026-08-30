@@ -319,6 +319,67 @@ def test_media_library_does_not_upgrade_provisional_word_timing_on_reopen(tmp_pa
 
     assert reopened.word_timing_quality == "needs-alignment"
     assert reopened.word_timing_note == "CTC aligner failed"
+    assert all(word["timingTrusted"] is False for word in reopened.words)
+
+
+def test_media_library_backfills_per_word_trust_and_partial_asset_summary(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Legacy structural timing"))
+    words = [
+        {
+            "text": f"từ-{index}",
+            "start": index * 0.1,
+            "end": index * 0.1 + (0.01 if index == 20 else 0.08),
+            "timingSource": "faster-whisper-dtw",
+        }
+        for index in range(21)
+    ]
+    library = FileMediaLibrary(projects)
+    asset = library.create(
+        project.id,
+        MediaAssetCreate(
+            name="legacy-structural.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/legacy-structural/source.wav",
+            duration=3,
+            text=" ".join(word["text"] for word in words),
+            words=words,
+            word_timing_quality="needs-alignment",
+            word_timing_note="Word timing chưa đáng tin (1 từ ngắn bất thường). Timeline và SRT từng từ cần căn chỉnh lại.",
+            origin="import",
+        ),
+    )
+
+    reopened = FileMediaLibrary(projects).get(project.id, asset.id)
+    persisted_words = json.loads(
+        (
+            Path(project.project_path)
+            / "assets"
+            / "media"
+            / asset.id
+            / "words.json"
+        ).read_text(encoding="utf-8")
+    )
+    persisted_index = json.loads(
+        (Path(project.project_path) / "assets" / "media" / "index.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert reopened.word_timing_quality == "partial"
+    assert sum(word["timingTrusted"] is False for word in reopened.words) == 1
+    assert all("timingTrusted" in word for word in persisted_words)
+    assert persisted_index[0]["wordTimingQuality"] == "partial"
+    assert persisted_index[0]["wordTimingTrustVersion"] == 1
+
+    diarized = FileMediaLibrary(projects).apply_diarization(
+        project.id,
+        asset.id,
+        [{**word, "diarizationSpeakerId": "speaker-1"} for word in reopened.words],
+    )
+    assert diarized.word_timing_quality == "partial"
+    assert sum(word["timingTrusted"] is False for word in diarized.words) == 1
 
 
 def test_retranscription_replaces_timing_but_keeps_matching_word_annotations(tmp_path):
@@ -439,9 +500,12 @@ def test_legacy_index_with_embedded_words_is_migrated_without_losing_them(tmp_pa
 
     migrated = FileMediaLibrary(projects).list(project.id)[0]
 
-    assert migrated.words == legacy_words
+    assert [word["text"] for word in migrated.words] == ["một", "hai"]
+    assert all(word["timingTrusted"] is False for word in migrated.words)
     assert "words" not in json.loads(index_path.read_text(encoding="utf-8"))[0]
-    assert json.loads((media_dir / "words.json").read_text(encoding="utf-8")) == legacy_words
+    persisted_words = json.loads((media_dir / "words.json").read_text(encoding="utf-8"))
+    assert [word["text"] for word in persisted_words] == ["một", "hai"]
+    assert all(word["timingTrusted"] is False for word in persisted_words)
 
 
 def test_job_state_changes_do_not_rewrite_word_timings(tmp_path):

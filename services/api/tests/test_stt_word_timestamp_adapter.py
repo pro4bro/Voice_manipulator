@@ -91,7 +91,7 @@ def test_speech_spans_merge_only_short_acoustic_pauses():
     ) == [(13.568, 15.328), (16.352, 18.4)]
 
 
-def test_acoustic_refinement_removes_uniform_phrase_lead_without_guessing_words():
+def test_acoustic_refinement_snaps_only_phrase_edges_without_warping_middle_words():
     words = [
         {"text": "Thì", "start": 13.24, "end": 13.64, "timingSource": "faster-whisper-dtw"},
         {"text": "nó", "start": 13.64, "end": 13.80, "timingSource": "faster-whisper-dtw"},
@@ -112,20 +112,50 @@ def test_acoustic_refinement_removes_uniform_phrase_lead_without_guessing_words(
     assert words[3]["end"] == 15.328
     assert words[4]["start"] == 16.352
     assert words[6]["end"] == 18.4
-    assert all(word["timingSource"] == "faster-whisper-dtw+silero-boundary" for word in words)
+    assert [word["timingSource"] for word in words] == [
+        "faster-whisper-dtw+silero-edge",
+        "faster-whisper-dtw",
+        "faster-whisper-dtw",
+        "faster-whisper-dtw+silero-edge",
+        "faster-whisper-dtw+silero-edge",
+        "faster-whisper-dtw",
+        "faster-whisper-dtw+silero-edge",
+    ]
 
 
-def test_acoustic_refinement_rejects_implausible_single_word_stretch():
+def test_acoustic_refinement_snaps_a_single_word_without_a_group_warp():
     words = [
         {"text": "SEO", "start": 19.88, "end": 20.28, "timingSource": "faster-whisper-dtw"}
     ]
 
     refined = _refine_word_boundaries(words, [(19.808, 20.576)])
 
-    assert refined == 0
+    assert refined == 1
     assert words[0] == {
         "text": "SEO",
-        "start": 19.88,
-        "end": 20.28,
-        "timingSource": "faster-whisper-dtw",
+        "start": 19.808,
+        "end": 20.576,
+        "timingSource": "faster-whisper-dtw+silero-edge",
     }
+
+
+def test_acoustic_refinement_splits_groups_at_whisper_segment_boundaries_before_gap():
+    words = [
+        {"text": "một", "start": 1.0, "end": 1.3, "segmentIndex": 0, "timingSource": "faster-whisper-dtw"},
+        {"text": "hai", "start": 1.31, "end": 1.6, "segmentIndex": 0, "timingSource": "faster-whisper-dtw"},
+        {"text": "ba", "start": 1.61, "end": 1.9, "segmentIndex": 1, "timingSource": "faster-whisper-dtw"},
+        {"text": "bốn", "start": 1.91, "end": 2.2, "segmentIndex": 1, "timingSource": "faster-whisper-dtw"},
+    ]
+
+    refined = _refine_word_boundaries(
+        words,
+        [(1.08, 1.55), (1.68, 2.12)],
+    )
+
+    assert refined == 2
+    assert [(word["start"], word["end"]) for word in words] == [
+        (1.08, 1.3),
+        (1.31, 1.55),
+        (1.68, 1.9),
+        (1.91, 2.12),
+    ]

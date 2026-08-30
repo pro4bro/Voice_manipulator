@@ -58,6 +58,33 @@ def test_word_srt_keeps_one_cue_per_non_removed_word(tmp_path: Path):
     assert rendered.count("-->") == 6
     assert "1\n00:00:00,000 --> 00:00:00,200\nXin" in rendered
 
+
+def test_partial_sentence_srt_skips_only_cues_with_untrusted_words_and_reports_count(tmp_path: Path):
+    asset = make_asset().model_copy(update={
+        "duration": 5,
+        "removed_ranges": [],
+        "word_timing_quality": "partial",
+        "words": [
+            {"text": "Xin", "start": 0.0, "end": 0.4, "timingTrusted": True},
+            {"text": "chào", "start": 0.4, "end": 0.8, "timingTrusted": True},
+            {"text": "mọi", "start": 0.8, "end": 1.1, "timingTrusted": True},
+            {"text": "người.", "start": 1.1, "end": 1.4, "timingTrusted": True},
+            {"text": "lỗi.", "start": 2.2, "end": 2.5, "timingTrusted": False},
+            {"text": "Tạm", "start": 3.5, "end": 3.9, "timingTrusted": True},
+            {"text": "biệt", "start": 3.9, "end": 4.3, "timingTrusted": True},
+            {"text": "nhé.", "start": 4.3, "end": 4.8, "timingTrusted": True},
+        ],
+    })
+
+    output = SubtitleExporter().export(make_project(tmp_path), asset, "sentence")
+    rendered = output.read_text(encoding="utf-8")
+
+    assert rendered.startswith("# Pro4Bro: đã bỏ 1 dòng subtitle")
+    assert "Xin chào mọi người." in rendered
+    assert "lỗi." not in rendered
+    assert "Tạm biệt nhé." in rendered
+    assert rendered.count("-->") == 2
+
 def test_speaker_srt_preserves_each_word_boundary_and_uses_profile_color(tmp_path: Path):
     asset = make_asset().model_copy(update={
         "removed_ranges": [],
