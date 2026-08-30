@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
@@ -147,8 +149,20 @@ class SequentialDiarizationQueue:
             if not settings.enabled:
                 raise RuntimeError("Speaker Diarization đang tắt trong Windows → Preferences.")
             self.media.set_diarization_state(task.project_id, task.asset_id, "processing", progress=1, error=None)
+            started = time.perf_counter()
+            job_started(
+                "diarization", task.project_id, task.asset_id,
+                model=settings.model, words=len(asset.words),
+                expected_speakers=task.expected_speakers,
+            )
+            milestone = 25.0
 
             async def report(value: float) -> None:
+                nonlocal milestone
+                if value >= milestone:
+                    # Every 25% keeps a long job visible without one line per tick.
+                    job_progress("diarization", task.project_id, task.asset_id, value)
+                    milestone = value + 25
                 # Progress goes to a small job snapshot. Routing it through the
                 # asset index rewrote every word in the project several times a
                 # second and starved the rest of the API of the library lock.
@@ -165,12 +179,18 @@ class SequentialDiarizationQueue:
             # Diarization runs for minutes; Script edits made in the meantime were
             # silently overwritten by the stale copy.
             current = self.media.get(task.project_id, task.asset_id)
-            self.media.apply_diarization(
-                task.project_id, task.asset_id, assign_spans_to_words(current.words, spans)
+            labelled = assign_spans_to_words(current.words, spans)
+            self.media.apply_diarization(task.project_id, task.asset_id, labelled)
+            job_finished(
+                "diarization", task.project_id, task.asset_id, time.perf_counter() - started,
+                spans=len(spans),
+                speakers=len({w.get("diarizationSpeakerId") for w in labelled if w.get("diarizationSpeakerId")}),
+                unlabelled=sum(1 for w in labelled if not w.get("diarizationSpeakerId")),
             )
         except KeyError:
             return
         except Exception as exc:
+            job_failed("diarization", task.project_id, task.asset_id, exc)
             state = "requires-setup" if "Hugging Face token" in str(exc) or "chấp nhận model" in str(exc) else "error"
             try:
                 self.media.set_diarization_state(task.project_id, task.asset_id, state, progress=0, error=str(exc))

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 
+from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
@@ -95,13 +97,28 @@ class SequentialTranscriptionQueue:
             self.media.set_transcription_state(
                 task.project_id, task.asset_id, "processing", ai_review_status="pending", progress=0
             )
+            started = time.perf_counter()
+            job_started(
+                "stt", task.project_id, task.asset_id,
+                model=task.model, name=asset.name, duration=round(asset.duration, 1),
+            )
+            milestone = 25.0
+
             async def report_progress(value: float) -> None:
+                nonlocal milestone
                 self.media.set_transcription_progress(
                     task.project_id, task.asset_id, value
                 )
+                if value >= milestone:
+                    job_progress("stt", task.project_id, task.asset_id, value)
+                    milestone = value + 25
 
             transcribed, _ = await self.importer.transcribe_existing(
                 project, asset, task.realtime_text, model=task.model, on_progress=report_progress
+            )
+            job_finished(
+                "stt", task.project_id, task.asset_id, time.perf_counter() - started,
+                words=len(transcribed.words), quality=transcribed.word_timing_quality,
             )
             # AI review is an explicit Script action: retain the STT transcript until the user compares candidates.
             self.media.set_transcription_state(
@@ -116,6 +133,7 @@ class SequentialTranscriptionQueue:
             # A user may remove queued footage before its turn without making the queue fail.
             return
         except Exception as exc:
+            job_failed("stt", task.project_id, task.asset_id, exc)
             try:
                 self.media.set_transcription_state(
                     task.project_id,
