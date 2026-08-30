@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started
@@ -19,8 +21,39 @@ class DiarizationTask:
     expected_speakers: int | None = None
 
 
+# A word whose own span covers less than this is sitting on a boundary; its raw
+# winner is a coin toss between two speakers and should not outvote its neighbours.
+CONFIDENT_SHARE = 0.5
+# Silence that marks a real turn boundary. Speech runs on either side of a shorter
+# gap than this are one continuous stretch, whoever the model says is talking.
+TURN_BOUNDARY_SILENCE = 0.20
+# How far a gap word reaches for a neighbour's label. Wide enough to cover the
+# boundary artefacts that leave a word just outside a span, narrow enough that a
+# word sitting in real silence stays unlabelled rather than being guessed at.
+INHERIT_REACH_SECONDS = 0.6
+
+
+def _word_bounds(word: dict) -> tuple[float, float] | None:
+    try:
+        start = float(word.get("start", 0))
+        return start, max(start, float(word.get("end", start)))
+    except (TypeError, ValueError):
+        return None
+
+
 def assign_spans_to_words(words: list[dict], spans: list[dict]) -> list[dict]:
-    """Assign a stable Speaker N label by maximal time overlap; retain user profile IDs."""
+    """Assign a stable Speaker N label by time overlap; retain user profile IDs.
+
+    Two defects drove this. A word falling in a gap between diarization spans
+    overlapped nothing and came back unlabelled - 39 of 665 words on a real
+    two-speaker sample. And a word straddling a speaker boundary was decided by
+    whichever span held a millisecond more of it, which flipped the speaker
+    mid-sentence and inflated the sample to 40 label runs for two speakers.
+
+    So a word now takes a label only when a span genuinely covers it, gap words
+    inherit from the nearest labelled neighbour, and boundary words defer to
+    their neighbours rather than out-voting them.
+    """
     ordered = sorted(
         (span for span in spans if _valid_span(span)),
         key=lambda span: (float(span["start"]), float(span["end"])),
@@ -30,26 +63,72 @@ def assign_spans_to_words(words: list[dict], spans: list[dict]) -> list[dict]:
         source = str(span.get("speaker") or "unknown")
         if source not in labels:
             labels[source] = f"speaker-{len(labels) + 1}"
-    result: list[dict] = []
-    for raw_word in words:
-        word = dict(raw_word)
-        try:
-            start = float(word.get("start", 0))
-            end = max(start, float(word.get("end", start)))
-        except (TypeError, ValueError):
-            result.append(word)
+
+    result = [dict(word) for word in words]
+    if not ordered:
+        return result
+
+    owners: list[str | None] = []
+    confident: list[bool] = []
+    for word in result:
+        bounds = _word_bounds(word)
+        if bounds is None:
+            owners.append(None)
+            confident.append(False)
             continue
-        midpoint = (start + end) / 2
-        best: dict | None = None
-        best_overlap = -1.0
+        totals: dict[str, float] = {}
         for span in ordered:
-            overlap = max(0.0, min(end, float(span["end"])) - max(start, float(span["start"])))
-            contains_midpoint = float(span["start"]) <= midpoint <= float(span["end"])
-            if overlap > best_overlap or (overlap == best_overlap and contains_midpoint):
-                best, best_overlap = span, overlap
-        if best and (best_overlap > 0 or float(best["start"]) <= midpoint <= float(best["end"])):
-            word["diarizationSpeakerId"] = labels[str(best.get("speaker") or "unknown")]
-        result.append(word)
+            shared = max(0.0, min(bounds[1], float(span["end"])) - max(bounds[0], float(span["start"])))
+            if shared > 0:
+                source = str(span.get("speaker") or "unknown")
+                totals[source] = totals.get(source, 0.0) + shared
+        if not totals:
+            owners.append(None)
+            confident.append(False)
+            continue
+        winner = max(totals, key=lambda source: totals[source])
+        owners.append(labels[winner])
+        confident.append(totals[winner] / max(1e-6, bounds[1] - bounds[0]) >= CONFIDENT_SHARE)
+
+    # A boundary word between two neighbours that agree belongs to them: its own
+    # winner was decided by a sliver of overlap.
+    for index in range(1, len(owners) - 1):
+        if confident[index] or owners[index] is None:
+            continue
+        if owners[index - 1] is not None and owners[index - 1] == owners[index + 1]:
+            owners[index] = owners[index - 1]
+
+    # Gap words: nothing covered them, so take the nearer labelled neighbour.
+    for index, owner in enumerate(owners):
+        if owner is not None:
+            continue
+        bounds = _word_bounds(result[index])
+        if bounds is None:
+            continue
+        before = next(
+            ((position, owners[position]) for position in range(index - 1, -1, -1) if owners[position]),
+            None,
+        )
+        after = next(
+            ((position, owners[position]) for position in range(index + 1, len(owners)) if owners[position]),
+            None,
+        )
+        candidates: list[tuple[float, str]] = []
+        if before is not None:
+            edge = _word_bounds(result[before[0]])
+            if edge:
+                candidates.append((bounds[0] - edge[1], before[1]))
+        if after is not None:
+            edge = _word_bounds(result[after[0]])
+            if edge:
+                candidates.append((edge[0] - bounds[1], after[1]))
+        reachable = [item for item in candidates if item[0] <= INHERIT_REACH_SECONDS]
+        if reachable:
+            owners[index] = min(reachable, key=lambda item: item[0])[1]
+
+    for word, owner in zip(result, owners):
+        if owner is not None:
+            word["diarizationSpeakerId"] = owner
     return _smooth_short_label_flips(result)
 
 
@@ -77,13 +156,37 @@ def _smooth_short_label_flips(words: list[dict]) -> list[dict]:
             index = end
         for previous, current, following in zip(runs, runs[1:], runs[2:]):
             start, end, label = current
-            if previous[2] != following[2] or label == previous[2] or end - start > 5:
+            # Only one or two words. A longer run is left alone even when it looks
+            # like an artefact: Vietnamese conversation is full of short listener
+            # backchannels - "dung roi", "a hieu hieu" - and DTW packs words with no
+            # gap whether the speaker changed or not, so nothing in the timing
+            # separates a real backchannel from a mid-phrase slip. Attributing a
+            # listener's words to the speaker is the worse of the two errors, so the
+            # rule stays narrow and leaves the rest visible for manual correction.
+            if previous[2] != following[2] or label == previous[2] or end - start > 2:
                 continue
             try:
-                duration = float(result[end - 1].get("end", 0)) - float(result[start].get("start", 0))
+                gap_before = float(result[start].get("start", 0)) - float(result[start - 1].get("end", 0))
+                gap_after = float(result[end].get("start", 0)) - float(result[end - 1].get("end", 0))
             except (TypeError, ValueError):
                 continue
-            if duration > 0.7:
+            # Taking a turn requires a turn boundary. A short run with no silence on
+            # either side is a label change made in the middle of continuous speech,
+            # which is not how speakers alternate - it is the model slicing through
+            # one person's sentence. Both flips left on the two-speaker sample were
+            # exactly that: a 1.07s span wedged inside "a Thi cai cong ty...", and a
+            # 0.46s span splitting "Thu | hai la".
+            #
+            # A genuine turn is bounded at BOTH ends: the previous speaker stops and
+            # the next one starts. Silence on one side only means this run runs
+            # straight into its neighbour's speech, so it is part of that neighbour's
+            # sentence - "cong viec | khac" and "No | phai dap di xay lai" on the real
+            # sample were each split that way.
+            #
+            # This replaces a duration cap of 0.7s, which asked the wrong question.
+            # Being brief does not make an utterance unreal, and that cap erased
+            # genuine short turns that were plainly bounded by silence.
+            if gap_before > TURN_BOUNDARY_SILENCE and gap_after > TURN_BOUNDARY_SILENCE:
                 continue
             for word in result[start:end]:
                 word["diarizationSpeakerId"] = previous[2]
@@ -141,6 +244,30 @@ class SequentialDiarizationQueue:
                 async with self._lock:
                     self._scheduled.discard((task.project_id, task.asset_id))
 
+    @staticmethod
+    def _store_spans(project_path: str, asset_id: str, spans: list[dict], model: str) -> None:
+        """Keep the model's raw output beside the asset.
+
+        Only the labels applied to words were persisted, so a questionable result
+        could not be re-examined - or a change to the labelling rules re-scored -
+        without spending another GPU run. The spans are the processor's evidence
+        and belong with the asset, in project-relative form like everything else.
+        """
+        directory = Path(project_path) / "assets" / "media" / asset_id / "diarization"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "model": model,
+                "producedAt": datetime.now(timezone.utc).isoformat(),
+                "spans": spans,
+            }
+            temporary = directory / "spans.json.tmp"
+            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(directory / "spans.json")
+        except OSError:
+            # Evidence is useful, not essential: never fail a finished job over it.
+            pass
+
     async def _process(self, task: DiarizationTask) -> None:
         try:
             asset = self.media.get(task.project_id, task.asset_id)
@@ -175,6 +302,7 @@ class SequentialDiarizationQueue:
                 expected_speakers=task.expected_speakers,
                 on_progress=report,
             )
+            self._store_spans(project.project_path, task.asset_id, spans, settings.model)
             # Re-read words instead of reusing the snapshot taken before the job.
             # Diarization runs for minutes; Script edits made in the meantime were
             # silently overwritten by the stale copy.

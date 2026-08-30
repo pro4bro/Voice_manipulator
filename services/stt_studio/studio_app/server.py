@@ -473,10 +473,14 @@ def _load_diarization_waveform(path: Path) -> dict[str, Any]:
     waveform = torch.from_numpy(samples).unsqueeze(0)
     target_rate = 16000
     if sample_rate != target_rate:
-        target_samples = max(1, round(waveform.shape[-1] * target_rate / sample_rate))
-        waveform = torch.nn.functional.interpolate(
-            waveform.unsqueeze(0), size=target_samples, mode="linear", align_corners=False
-        ).squeeze(0)
+        # torchaudio applies a windowed-sinc low-pass before decimating.
+        # `interpolate(mode="linear")` does not, so content above the new Nyquist
+        # folded back into the band: measured on a 24 kHz analysis WAV it left
+        # 57% excess energy in 6.5-8 kHz and about 10% RMS error overall, in the
+        # region that carries much of what distinguishes one voice from another.
+        import torchaudio
+
+        waveform = torchaudio.functional.resample(waveform, sample_rate, target_rate)
     return {"waveform": waveform, "sample_rate": target_rate}
 
 def _diarize(path: Path, progress_id: str, model_name: str, token: str, expected_speakers: int = 0) -> list[dict[str, Any]]:

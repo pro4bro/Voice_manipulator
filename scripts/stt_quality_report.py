@@ -103,11 +103,16 @@ def _speaker_runs(words: list[dict]) -> tuple[int, int, list[tuple[str, int, flo
 
 
 def _short_flips(runs: list[tuple[str, int, float]]) -> int:
-    """Count runs of under five words sandwiched between two runs of one speaker."""
+    """Count runs under three words sandwiched between two runs of one speaker.
+
+    Three words is the acceptance threshold this number is read against, so the
+    tool counts what it is judged on. An earlier version counted under five and
+    reported four flips where the criterion saw none.
+    """
     return sum(
         1
         for previous, current, following in zip(runs, runs[1:], runs[2:])
-        if previous[0] == following[0] and current[0] != previous[0] and current[1] < 5
+        if previous[0] == following[0] and current[0] != previous[0] and current[1] < 3
     )
 
 
@@ -222,7 +227,7 @@ def report_project(project_dir: Path) -> dict:
                 f"   speakers {speakers}"
                 f"   runs/speaker {run_count / max(1, speakers):.1f}"
                 f"   unlabeled {unlabeled:,}"
-                f"   short flips {_short_flips(runs)}"
+                f"   flip <3 tu {_short_flips(runs)}"
             )
     return totals
 
