@@ -890,7 +890,7 @@ function PreferencesDialog({ preferences, saving, onClose, onSave }: { preferenc
   const [draft, setDraft] = useState(preferences);
   const emotionOptions = EMOTION_OPTIONS.filter((option) => option.id !== "normal" && option.id !== "mix");
   return (
-    <div className="preferences-backdrop">
+    <div className="preferences-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section aria-label="Preferences" aria-modal="true" className="preferences-dialog" role="dialog">
         <header><div><span>WINDOWS / PREFERENCES</span><h2>Transcript & Emotion Display</h2></div><button aria-label="Đóng Preferences" onClick={onClose} type="button">×</button></header>
         <section className="preferences-section"><h3>AI Transcript Review</h3><p>STT kỹ chạy local ở background. AI fix chỉ gửi transcript tới API tương thích OpenAI khi bạn bấm nút AI fix trong Script.</p>

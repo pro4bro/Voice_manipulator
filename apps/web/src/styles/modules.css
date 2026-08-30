@@ -60,7 +60,7 @@
 .media-pool-note { display: flex; align-items: flex-start; gap: 5px; margin: 0; color: var(--muted); font-size: calc(9px * var(--font-scale)); line-height: 1.4; }
 .media-pool-note i { width: 5px; height: 5px; flex: 0 0 auto; margin-top: 2px; border-radius: 50%; background: var(--lime-dark); }
 .media-send-training { min-height: 34px; padding: 0 8px; font-size: calc(9px * var(--font-scale)); }
-.media-import-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(17,19,15,.68); backdrop-filter: blur(5px); }
+.media-import-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(17,19,15,.68); }
 .media-import-dialog { width: min(620px,100%); max-height: min(680px,90dvh); display: grid; gap: 14px; overflow: hidden; padding: 20px; color: var(--ink); border: 1px solid var(--ink); background: var(--paper); box-shadow: 0 28px 80px rgba(0,0,0,.32); }
 .media-import-dialog header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .media-import-dialog header span { font-family: var(--mono); font-size: calc(10px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
@@ -467,7 +467,7 @@
 .timeline-ruler span { font-size: calc(8px * 1.2); }
 
 /* Text History is intentionally outside the constrained Media Pool. */
-.media-history-backdrop { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--overlay); backdrop-filter: blur(5px); }
+.media-history-backdrop { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--overlay); }
 .media-history-dialog { width: min(880px, 100%); max-height: min(680px, 90dvh); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; color: var(--text); border: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow); }
 .media-history-dialog > header { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 13px; border-bottom: 1px solid var(--line); }
 .media-history-dialog header > div { min-width: 0; display: grid; gap: 3px; }

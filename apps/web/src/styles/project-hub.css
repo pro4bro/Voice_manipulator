@@ -98,7 +98,7 @@
 .project-browser__footer { display: flex; justify-content: space-between; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.08); color: rgba(255,255,255,.34); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .12em; }
 
 .create-project { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; }
-.create-project__backdrop { position: absolute; inset: 0; background: rgba(7,8,7,.8); backdrop-filter: blur(6px); }
+.create-project__backdrop { position: absolute; inset: 0; background: rgba(7,8,7,.8); }
 .create-project form { position: relative; width: min(620px,100%); max-height: calc(100dvh - 36px); overflow: auto; color: #f5f2e9; border: 1px solid rgba(255,255,255,.15); border-radius: 4px; background: #222520; box-shadow: 0 32px 100px rgba(0,0,0,.52); animation: project-dialog-in 180ms ease both; }
 @keyframes project-dialog-in { from { opacity: 0; transform: translateY(12px) scale(.985); } }
 .create-project form > header { min-height: 61px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,.09); background: #181a17; }
