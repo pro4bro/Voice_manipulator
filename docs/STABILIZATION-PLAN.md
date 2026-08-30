@@ -7,29 +7,76 @@ Nhánh làm việc: `fix/w1-runtime-and-index-performance` (đã tạo từ `mai
 
 ## Cách dùng file này
 
-Mỗi mục có: **Triệu chứng → Nguyên nhân đã xác minh → Việc phải làm → Tiêu chí
-nghiệm thu**. Số đo trong phần "Baseline" là số thật, đo trên
+File này là **cái gì và tại sao**. `docs/STABILIZATION-LOG.md` là **đang ở đâu**:
+nó giữ con trỏ round hiện tại, báo cáo từng round, và feedback của chủ dự án.
+
+Mỗi mục kỹ thuật có: **Triệu chứng → Nguyên nhân đã xác minh → Việc phải làm →
+Tiêu chí nghiệm thu**. Số trong phần "Baseline" là số đo thật trên
 `data/projects/pdca-cldndd-k4` (3 asset, 125,048 từ). Dùng chính số đó để so sánh
 sau khi sửa.
 
-Ràng buộc bắt buộc, không được vi phạm:
+## Quy trình làm việc (BẮT BUỘC ĐỌC TRƯỚC KHI CODE)
+
+Mỗi lần được gọi, agent thi công làm đúng sáu bước sau, không hơn:
+
+1. Đọc `docs/STABILIZATION-LOG.md`. Tìm round đang đánh dấu `NEXT`.
+2. Nếu round trước có mục `### Feedback` chưa xử lý, **xử lý feedback đó trước**,
+   rồi mới sang round `NEXT`.
+3. Làm **đúng phạm vi round đó**. Không làm sang round sau, kể cả khi thấy dễ.
+   Phạm vi hẹp là để chủ dự án review được từng lớp một.
+4. Chạy phần "Agent tự kiểm" của round. Ghi lại **output thật**, không viết lại
+   từ trí nhớ.
+5. Append báo cáo vào cuối `STABILIZATION-LOG.md` theo đúng template ở cuối file
+   đó. Chuyển con trỏ `NEXT` sang round kế tiếp trong bảng trạng thái.
+6. **Dừng lại.** Không tự động chạy tiếp round sau.
+
+Quy tắc trung thực, quan trọng hơn mọi thứ khác:
+
+- **Không được hạ ngưỡng nghiệm thu để cho nó pass.** Nếu không đạt ngưỡng, ghi
+  con số thật đo được vào báo cáo, giải thích tại sao, và đề xuất hướng. Một round
+  báo "chưa đạt, đây là số thật" có giá trị hơn một round báo "đạt" mà sai.
+- **Không sửa test cũ cho pass.** Nếu một test cũ buộc phải đổi, ghi rõ test nào,
+  đổi gì, và tại sao đổi đó là đúng chứ không phải né lỗi.
+- Nếu phát hiện kế hoạch này sai ở đâu, ghi vào báo cáo thay vì âm thầm làm khác.
+
+Ràng buộc kỹ thuật, không được vi phạm:
 
 - Không sửa `engines/OmniVoice`. Chỉ đi qua adapter.
 - Mọi đường dẫn lưu trong project phải relative so với thư mục chứa `project.json`
   (`docs/PORTABILITY.md`).
 - Không đánh dấu processor là thành công khi chưa có artifact thật (`AGENTS.md`).
-- Gate nghiệm thu: `npm test`, `npm run build`, `pytest services/api/tests -q`,
-  và `git -C engines\OmniVoice status --short` phải sạch.
+- Gate mọi round: `npm test`, `npm run build`,
+  `.venv\Scripts\python.exe -m pytest services\api\tests -q`.
 
-## Trạng thái
+## Bảng round
 
-| Đợt | Nội dung | Trạng thái |
-| --- | --- | --- |
-| W0 | Runtime lifecycle / tắt sạch tiến trình | **Đã làm xong, cần review** |
-| W1 | Tách storage, bỏ poll nóng, gỡ lãng phí sidecar | Một phần (xem 1.1) |
-| W2 | Tin cậy timestamp theo từ | Chưa làm |
-| W3 | Forced alignment | Chưa làm |
-| W4 | Diarization | Chưa làm |
+Chi tiết kỹ thuật của mỗi round nằm ở mục W tương ứng bên dưới.
+
+| Round | Phạm vi | Vùng file | Vì sao ở vị trí này |
+| --- | --- | --- | --- |
+| R0 | W0 runtime lifecycle | `scripts/`, controller | Xong rồi. Chờ chủ dự án nghiệm thu tay. |
+| **R1** | W1.1 + W1.2 + W1.5a | `file_media_library`, queue diarization, `server.py` | Nền móng, rủi ro cao nhất, chặn mọi round sau |
+| R2 | W2 timing trust theo từ | `word_timing_quality`, `Timeline.tsx`, `server.py` | Fix người dùng thấy rõ nhất |
+| R3 | W1.3 + W1.4 frontend | `WorkspaceShell.tsx`, `Timeline.tsx`, `ScriptEditor.tsx` | Sau R2 vì cùng đụng `Timeline.tsx` |
+| R4 | W1.5b + W1.5c sidecar | `server.py`, `media_import_processor` | Sau R2 vì cùng đụng `server.py` |
+| R5 | W3 probe | `.scratch/` | Chỉ ra báo cáo đo, chưa viết adapter |
+| R6 | W3 tích hợp | ports + adapter mới | **Có điều kiện**: chỉ làm nếu R5 đạt ngưỡng |
+| R7 | W4 diarization | `server.py`, queue diarization | Sau R1 vì cùng đụng file queue |
+
+### Vì sao R1 gộp ba việc
+
+W1.1 và W1.2 cùng viết lại `file_media_library.py`; tách ra chỉ tốn thêm một vòng
+đọc hiểu cùng một file. W1.5a (`audioop`) nằm ở service khác hẳn
+(`services/stt_studio`), không chồng lấn gì, dài khoảng 20 dòng, và cắt ~166 giây
+thời gian chết trên mỗi lần STT file 2.7 giờ. Gộp vào R1 để có thắng lợi sớm mà
+không làm rối bề mặt review — đi thành **ba commit riêng**.
+
+### Vì sao R2 đứng trước R3/R4
+
+R2 đụng vào cả bốn file mà R3/R4 cũng sửa (`Timeline.tsx`, `server.py`,
+`main.py`, đường ghi của media library). Chạy song song là conflict chắc chắn.
+R2 đi trước vì nó là round trả lại giá trị người dùng thấy được ngay: 91,136 từ
+đang bị ẩn khỏi Timeline sẽ hiện lại.
 
 ---
 
@@ -673,15 +720,112 @@ Bổ sung dòng chạy gate này vào `docs/NEXT_SESSION.md` mục "Verification
 
 ---
 
-# Thứ tự thi công
+# Checklist nghiệm thu tay theo round
 
-```
-W0  xong  → review + nghiệm thu tay
-W1.1 → W1.2 → W1.3 → W1.4 → W1.5     (độc lập nhau, làm được song song sau 1.1)
-W2   (cần W1.1 vì đụng cùng đường ghi)
-W3   (probe trước; chỉ tích hợp nếu probe đạt)
-W4   (cần W1.2 vì sửa cùng file queue)
+Đây là phần chủ dự án tự bấm. Agent phải copy nguyên bảng của round mình vừa làm
+vào báo cáo, điền cột "Agent đo được", và để trống cột "Anh xác nhận".
+
+Lệnh dùng chung, chạy từ thư mục gốc repo:
+
+```bash
+.venv/Scripts/python.exe -m pytest services/api/tests -q
 ```
 
-W1 và W2 là hai đợt trả lại nhiều giá trị nhất cho người dùng cuối. W3 là đợt duy
-nhất thực sự làm timestamp *đúng* thay vì *bớt sai*.
+```bash
+powershell -NoProfile -Command "Push-Location apps\web; npm test; npm run build; Pop-Location"
+```
+
+## R0 — runtime lifecycle
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Chạy `start-pro4bro.bat` | Cửa sổ in "This window owns every Pro4Bro process." |
+| 2 | Đóng cửa sổ bằng **nút X**, rồi chạy lệnh liệt kê python bên dưới | Không còn process Pro4Bro nào. Trước khi sửa: còn 6. |
+| 3 | Sửa một chuỗi hiển thị bất kỳ trong `apps/web/src`, mở app, menu Windows → `Restart all` | Log in "Rebuilding bundle"; refresh trình duyệt thấy chuỗi mới. Không cần reboot. |
+| 4 | Bấm `Restart all` 5 lần liên tiếp | Lần nào cũng về `running`. Không lần nào báo "port is occupied". |
+| 5 | Sửa `services/api/app/runtime_controller.py`, chạy `start-pro4bro.bat restart` | Thay đổi được nạp trong cửa sổ mới. |
+
+```bash
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Select-Object ProcessId,CommandLine | Format-Table -Wrap"
+```
+
+## R1 — storage + diarization progress + audioop
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Mở project **PDCA CLDNDD K4** trong app | Media Pool hiện đủ 3 footage, không khựng. Lần đầu chậm ~1 s (migration), từ lần hai trở đi tức thì. |
+| 2 | Kiểm tra file trên đĩa | `data/projects/pdca-cldndd-k4/assets/media/index.json` từ 31.3 MB xuống ~3 MB; mỗi thư mục asset có thêm `words.json` |
+| 3 | Chọn từng footage, xem Script | Transcript và word timing hiện đủ, giống hệt trước khi sửa |
+| 4 | Chạy diarization một footage của PDCA. Trong lúc chạy, bấm quanh app | App vẫn phản hồi. Trước đây đứng hình. |
+| 5 | Vừa diarize vừa sửa Script | Sửa đổi **không bị mất** khi job xong |
+| 6 | Đếm dòng `data/projects/pdca-cldndd-k4/activity/events.jsonl` trước và sau một job diarization | Tăng ≤ 3 dòng. Trước đây tăng hàng trăm. |
+| 7 | Chạy STT một file dài (> 1 giờ), nhìn progress | Progress vượt 16% trong vòng ~10 giây. Trước đây đứng ở 4% gần 3 phút. |
+| 8 | So transcript của file 236 s trước/sau | Text **không đổi** |
+
+## R2 — timing trust theo từ
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Mở PDCA, chọn `2026-08-26 08-33-29.mp3` (43,417 từ) | Timeline **hiện word box**. Trước đây trống trơn. |
+| 2 | Nhìn nhãn chất lượng của asset đó | `partial`, kèm ghi chú số vùng cần căn chỉnh |
+| 3 | Phát audio | Từ đang phát được highlight ở cả Timeline và Script |
+| 4 | Tìm vùng có từ xấu (theo ghi chú) | Từ đó hiện với style cảnh báo, **không bị ẩn** |
+| 5 | Export SRT theo câu | Xuất được. Header ghi số dòng đã bỏ qua. |
+| 6 | Chạy lại STT trên footage 236 s, xem báo cáo của agent | Tỉ lệ nhóm được snap biên ≥ 60% (trước: 1/17 nhóm, 6/665 từ) |
+
+## R3 — frontend
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Chạy STT, **vừa chạy vừa gõ liên tục vào Script** | Khi STT xong, transcript vẫn vào Script. Đây là lỗi "lâu lâu không thấy update". |
+| 2 | Gõ vào Script của asset 33,912 từ | Không khựng khi gõ |
+| 3 | Phát audio asset dài, để chạy 30 giây | Playhead chạy mượt, không giật |
+| 4 | Sau một phiên 2 phút có STT, đếm request trong `data/logs/pro4bro-api.out.log` | Số `transcription-status` còn khoảng 1/6 so với 1,213 |
+
+## R4 — sidecar
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Chạy STT file 2.7 giờ, xem Task Manager | RAM đỉnh của process Studio giảm ít nhất 500 MB |
+| 2 | So `assets/media/<id>/stt/transcript.stt.json` trước/sau trên sample 236 s | Text **không đổi** |
+| 3 | Chạy STT bình thường | Không còn thấy file tạm 600 MB xuất hiện trong thư mục temp |
+
+## R5 — probe forced alignment
+
+Round này **không sửa code sản phẩm**. Anh chỉ cần đọc báo cáo và quyết định:
+
+| Chỉ số agent phải báo | Ngưỡng để đi tiếp R6 |
+| --- | --- |
+| Sai lệch onset trung bình so với biên Silero không padding | ≤ 80 ms |
+| Tỉ lệ từ có confidence > 0.3 | ≥ 95% |
+| Số từ align được / tổng số từ | ≥ 98% |
+
+Nếu **không đạt**, agent phải thử phương án hai (`ctc-forced-aligner` với MMS-300M)
+và báo cáo lại, chứ không tự ý sang R6.
+
+## R7 — diarization
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Chạy lại diarization trên project **Test 3** (236 s, 2 người nói) | Số run nhãn ≤ 22 (trước: 41) |
+| 2 | Mở Script ở chế độ speaker | Không còn từ nào thiếu nhãn (trước: 39 từ) |
+| 3 | Đọc qua transcript | Không còn đoạn 1–4 từ bị gán nhầm sang người kia giữa câu |
+
+---
+
+# Nếu một round không đạt
+
+Ghi feedback trực tiếp vào `docs/STABILIZATION-LOG.md`, ngay dưới báo cáo của
+round đó, theo mẫu:
+
+```markdown
+### Feedback — 2026-08-31 — CHƯA ĐẠT
+
+- Mục 4 trong checklist: app vẫn khựng khoảng 2 giây khi bấm sang footage thứ ba.
+- Mục 6: events.jsonl tăng 47 dòng, không phải ≤ 3.
+- Còn lại đạt.
+```
+
+Chỉ cần liệt kê **mục nào không đạt và hiện tượng thật**. Không cần đoán nguyên
+nhân — đó là việc của agent. Lần gọi kế tiếp, agent bắt buộc xử lý feedback này
+trước khi sang round mới.

@@ -14,7 +14,7 @@ the stabilization plan specifies, so it stays next in line after that work.
 1. `AGENTS.md`
 2. `CONTEXT.md`
 3. `docs/SESSION_HANDOFF.md`
-4. `docs/STABILIZATION-PLAN.md`
+4. `docs/STABILIZATION-PLAN.md` then `docs/STABILIZATION-LOG.md`
 5. `.planning/STATE.md`
 6. `.planning/ROADMAP.md`
 7. `.planning/phases/03-voice-training/03-02-PLAN.md`
