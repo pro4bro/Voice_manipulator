@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet("start", "stop", "status")]
+    [ValidateSet("start", "stop", "restart", "status")]
     [string]$Command = "start"
 )
 

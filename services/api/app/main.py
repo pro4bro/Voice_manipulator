@@ -568,12 +568,17 @@ def create_app(
         if assets.is_dir():
             app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
+        # index.html is the only unfingerprinted file in a Vite bundle. Caching it
+        # keeps serving the previous application after a rebuild.
+        no_store = {"cache-control": "no-store, must-revalidate", "pragma": "no-cache"}
+
         @app.get("/{full_path:path}", include_in_schema=False)
         def frontend(full_path: str) -> Response:
             candidate = (settings.web_dist / full_path).resolve()
             if settings.web_dist.resolve() in candidate.parents and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(settings.web_dist / "index.html")
+                headers = no_store if candidate.name == "index.html" else None
+                return FileResponse(candidate, headers=headers)
+            return FileResponse(settings.web_dist / "index.html", headers=no_store)
 
     return app
 

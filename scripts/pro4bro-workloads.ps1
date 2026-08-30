@@ -1,15 +1,19 @@
 [CmdletBinding()]
 param(
     [ValidateSet("start", "stop", "restart", "status")]
-    [string]$Action = "status"
+    [string]$Action = "status",
+    [switch]$SkipWebBuild
 )
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $projectRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "pro4bro-process-tree.ps1")
+
 $apiPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $apiRoot = Join-Path $projectRoot "services\api"
-$webDist = Join-Path $projectRoot "apps\web\dist\index.html"
+$webRoot = Join-Path $projectRoot "apps\web"
+$webDist = Join-Path $webRoot "dist\index.html"
 $apiUrl = "http://127.0.0.1:18120"
 $studioUrl = "http://127.0.0.1:18081"
 $dataRoot = Join-Path $projectRoot "data"
@@ -21,33 +25,21 @@ $studioPython = Join-Path $studioRuntime ".venv\Scripts\python.exe"
 $studioSource = Join-Path $projectRoot "services\stt_studio\studio_app"
 $studioDestination = Join-Path $studioRuntime "studio_app"
 
-function Get-Listener([int]$Port) {
-    @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
-}
-
-function Get-ListenerProcess($Listener) {
-    Get-CimInstance Win32_Process -Filter "ProcessId = $($Listener.OwningProcess)" -ErrorAction SilentlyContinue
-}
-
-function Test-ExpectedProcess($ProcessInfo, [string]$ExpectedPattern) {
-    $ProcessInfo -and $ProcessInfo.Name -match "^python(\.exe)?$" -and $ProcessInfo.CommandLine -match $ExpectedPattern
-}
-
 function Get-ServiceState([int]$Port, [string]$ExpectedPattern) {
-    $listener = Get-Listener $Port | Select-Object -First 1
+    $listener = Get-Pro4BroListener $Port | Select-Object -First 1
     if (-not $listener) {
         return [ordered]@{ state = "stopped"; pid = $null }
     }
-    $processInfo = Get-ListenerProcess $listener
-    if (Test-ExpectedProcess $processInfo $ExpectedPattern) {
+    $processInfo = Get-Pro4BroProcess ([int]$listener.OwningProcess)
+    if (Test-Pro4BroPython $processInfo $ExpectedPattern) {
         return [ordered]@{ state = "running"; pid = [int]$listener.OwningProcess }
     }
     return [ordered]@{ state = "foreign"; pid = [int]$listener.OwningProcess }
 }
 
 function Get-WorkloadStatus {
-    $api = Get-ServiceState 18120 '(?i)-m\s+app(\s|$)'
-    $studio = Get-ServiceState 18081 '(?i)-m\s+studio_app\.server(\s|$)'
+    $api = Get-ServiceState 18120 $script:Pro4BroModulePatterns.api
+    $studio = Get-ServiceState 18081 $script:Pro4BroModulePatterns.studio
     $overall = if ($api.state -eq "running" -and $studio.state -eq "running") {
         "running"
     } elseif ($api.state -eq "foreign" -or $studio.state -eq "foreign") {
@@ -58,16 +50,6 @@ function Get-WorkloadStatus {
         "partial"
     }
     [ordered]@{ overall = $overall; api = $api; studio = $studio }
-}
-
-function Stop-ExpectedPort([int]$Port, [string]$Label, [string]$ExpectedPattern) {
-    foreach ($listener in (Get-Listener $Port)) {
-        $processInfo = Get-ListenerProcess $listener
-        if (-not (Test-ExpectedProcess $processInfo $ExpectedPattern)) {
-            throw "$Label on port $Port is not a verified Pro4Bro process; it was not stopped."
-        }
-        Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop
-    }
 }
 
 function Wait-Endpoint([string]$Uri, [int]$Attempts, [int]$DelayMilliseconds) {
@@ -97,9 +79,56 @@ function Sync-StudioSource {
     Copy-Item -Path (Join-Path $resolvedSource "*") -Destination $resolvedDestination -Recurse -Force
 }
 
+function Get-NewestSourceWrite {
+    <#
+        The built bundle - not the source tree - is what the controller serves, so a
+        code change is invisible until the bundle is rebuilt. Comparing write times
+        makes "Restart all" apply frontend edits instead of silently reusing dist.
+    #>
+    $watched = @(
+        (Join-Path $webRoot "src"),
+        (Join-Path $webRoot "index.html"),
+        (Join-Path $webRoot "vite.config.ts"),
+        (Join-Path $webRoot "package.json"),
+        (Join-Path $webRoot "tsconfig.json"),
+        (Join-Path $webRoot "tsconfig.app.json")
+    )
+    $newest = [datetime]::MinValue
+    foreach ($path in $watched) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $item = Get-Item -LiteralPath $path
+        if ($item.PSIsContainer) {
+            $latest = Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            if ($latest -and $latest.LastWriteTimeUtc -gt $newest) { $newest = $latest.LastWriteTimeUtc }
+        } elseif ($item.LastWriteTimeUtc -gt $newest) {
+            $newest = $item.LastWriteTimeUtc
+        }
+    }
+    return $newest
+}
+
+function Test-WebBundleStale {
+    if (-not (Test-Path -LiteralPath $webDist)) { return $true }
+    $bundleWrite = (Get-Item -LiteralPath $webDist).LastWriteTimeUtc
+    return (Get-NewestSourceWrite) -gt $bundleWrite
+}
+
+function Invoke-WebBuild {
+    Write-Host "Frontend source changed since the last build. Rebuilding bundle..." -ForegroundColor Cyan
+    # CMD cannot use a UNC working directory; pushd maps a temporary drive.
+    $command = 'pushd "' + $webRoot + '" && npm run build'
+    & cmd.exe /d /c $command
+    if ($LASTEXITCODE -ne 0) { throw "Frontend build failed. Fix the build error, then start Pro4Bro again." }
+    Write-Host "Frontend bundle rebuilt." -ForegroundColor Green
+}
+
 function Stop-Workloads {
-    Stop-ExpectedPort 18081 "OmniVoice Studio" '(?i)-m\s+studio_app\.server(\s|$)'
-    Stop-ExpectedPort 18120 "Pro4Bro API" '(?i)-m\s+app(\s|$)'
+    Stop-Pro4BroPort 18081 "OmniVoice Studio" $script:Pro4BroModulePatterns.studio
+    Stop-Pro4BroPort 18120 "Pro4Bro API" $script:Pro4BroModulePatterns.api
+    # A listener check cannot see a workload whose interpreter already died but
+    # whose stub, model worker, or FFmpeg child is still holding files open.
+    Remove-Pro4BroOrphan $projectRoot @("api", "studio") | Out-Null
     Remove-Item -LiteralPath $sessionPath -Force -ErrorAction SilentlyContinue
 }
 
@@ -111,11 +140,23 @@ function Start-Workloads {
     if ($before.overall -eq "running") {
         return
     }
-    if ($before.overall -eq "partial") {
+    # Any non-stopped state means leftovers exist. Clear them and confirm both
+    # ports are actually free before launching, so a restart can never observe a
+    # dying listener and either abort or silently reuse the old build.
+    if ($before.overall -ne "stopped") {
         Stop-Workloads
     }
-    if (-not (Test-Path -LiteralPath $apiPython) -or -not (Test-Path -LiteralPath $webDist)) {
+    foreach ($port in 18081, 18120) {
+        if (-not (Wait-Pro4BroPortFree $port)) {
+            throw "Port $port did not become free. Run start-pro4bro.bat stop, then start again."
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $apiPython)) {
         & (Join-Path $PSScriptRoot "setup-pro4bro.ps1")
+    }
+    if (-not $SkipWebBuild -and (Test-WebBundleStale)) {
+        Invoke-WebBuild
     }
     if (-not (Test-Path -LiteralPath $studioPython) -or -not (Test-Path -LiteralPath (Join-Path $studioDestination "server.py"))) {
         throw "STT runtime is missing. Run scripts\setup-stt-runtime.ps1 first."
@@ -169,8 +210,8 @@ function Start-Workloads {
             root = $projectRoot
         } | ConvertTo-Json | Set-Content -LiteralPath $sessionPath -Encoding utf8
     } catch {
-        if ($apiProcess -and -not $apiProcess.HasExited) { Stop-Process -Id $apiProcess.Id -Force -ErrorAction SilentlyContinue }
-        if ($studioProcess -and -not $studioProcess.HasExited) { Stop-Process -Id $studioProcess.Id -Force -ErrorAction SilentlyContinue }
+        if ($apiProcess) { Stop-Pro4BroTree $apiProcess.Id }
+        if ($studioProcess) { Stop-Pro4BroTree $studioProcess.Id }
         throw
     }
 }

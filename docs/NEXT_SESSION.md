@@ -2,19 +2,23 @@
 
 ## Objective
 
-Continue Phase 03 with `.planning/phases/03-voice-training/03-02-PLAN.md`.
-Build the verified Dataset Manifest boundary and forced alignment before wiring
-project-native OmniVoice fine-tuning.
+Execute `docs/STABILIZATION-PLAN.md` before continuing Phase 03. A measured audit
+found that word-timing refinement reaches under 1% of words, that a whole asset is
+hidden from Timeline by a handful of bad words, that reading the media index costs
+1.5-2.0 seconds per call, and that closing the launcher window leaves every
+workload process running. Phase 03 plan `03-02` depends on the forced aligner that
+the stabilization plan specifies, so it stays next in line after that work.
 
 ## Read Order
 
 1. `AGENTS.md`
 2. `CONTEXT.md`
 3. `docs/SESSION_HANDOFF.md`
-4. `.planning/STATE.md`
-5. `.planning/ROADMAP.md`
-6. `.planning/phases/03-voice-training/03-02-PLAN.md`
-7. `.planning/phases/03-voice-training/03-VALIDATION.md`
+4. `docs/STABILIZATION-PLAN.md`
+5. `.planning/STATE.md`
+6. `.planning/ROADMAP.md`
+7. `.planning/phases/03-voice-training/03-02-PLAN.md`
+8. `.planning/phases/03-voice-training/03-VALIDATION.md`
 
 ## Resume Checklist
 

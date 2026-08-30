@@ -220,15 +220,21 @@ async def proxy_api(api_path: str, request: Request):
 if WEB_DIST.is_dir() and (WEB_DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
 
+# Vite fingerprints everything under /assets, so those stay cacheable forever.
+# index.html is the only file whose name is stable across builds; caching it is
+# what makes a rebuilt bundle keep serving the previous application.
+NO_STORE = {"cache-control": "no-store, must-revalidate", "pragma": "no-cache"}
+
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def frontend(full_path: str):
     candidate = (WEB_DIST / full_path).resolve()
     if WEB_DIST.resolve() in candidate.parents and candidate.is_file():
-        return FileResponse(candidate)
+        headers = None if candidate.name != "index.html" else NO_STORE
+        return FileResponse(candidate, headers=headers)
     index = WEB_DIST / "index.html"
     if index.is_file():
-        return FileResponse(index)
+        return FileResponse(index, headers=NO_STORE)
     return JSONResponse(
         {"detail": "Frontend build is missing. Run scripts/setup-pro4bro.ps1."},
         status_code=503,
