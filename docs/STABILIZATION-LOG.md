@@ -122,9 +122,9 @@ R1 vì cùng một đợt và không còn ai chạy song song để tranh chấp
 | R3 | W1.3 + W1.4 frontend | **ĐÃ XONG** (làm sớm cùng R1) |
 | R4 | W1.5b + W1.5c sidecar | **ĐÃ XONG** (làm sớm cùng R1) |
 | R2 | W2 timing trust theo từ | **ĐÃ CODE — CHỜ NGHIỆM THU; 2 NGƯỠNG CHƯA ĐẠT** |
-| R5 | W3 probe forced alignment | **NEXT** |
-| R6 | W3 tích hợp | chờ — có điều kiện, phụ thuộc kết quả R5 |
-| R7 | W4 diarization | chờ |
+| R5 | W3 probe forced alignment | **ĐÃ XONG — KHÔNG ĐẠT NGƯỠNG** (2/3 trượt) |
+| R6 | W3 tích hợp | **KHÔNG THỰC HIỆN** — điều kiện R5 không thoả |
+| R7 | W4 diarization | **NEXT** |
 
 **Lưu ý cho R2:** vì R1/R3/R4 đã sửa `Timeline.tsx`, `server.py`, `main.py` và
 đường ghi của media library, R2 phải đọc **trạng thái hiện tại** của các file đó
@@ -330,6 +330,106 @@ Những mục em không tự kiểm được vì cần bấm trong app thật:
 ### Review (Claude)
 
 Tự làm nên không phải review độc lập.
+
+### Feedback
+
+_(chưa có)_
+
+---
+
+# R5 — Probe forced alignment
+
+**Trạng thái:** ĐÃ XONG. **KHÔNG ĐẠT NGƯỠNG.** Không sang R6.
+
+Round này theo thiết kế không sửa code sản phẩm — nó là cửa quyết định.
+
+## Đã đổi
+
+| File | Nội dung |
+| --- | --- |
+| `scripts/probe_forced_alignment.py` | Mới. Đo sai lệch onset của từ mở đầu mỗi cụm so với biên Silero không padding, cho cả DTW hiện tại lẫn từng model aligner ứng viên. |
+| `docs/adr/0007-preserve-source-word-timing.md` | Ghi kết quả đo lại và quyết định. |
+
+Kế hoạch bảo đặt probe trong `.scratch/`. Em để vào `scripts/` thay vì vậy: lý do
+phải làm lại probe này ngay từ đầu là **không ai chạy lại được kết luận cũ của
+ADR-0007**, nên nó đứng vững suốt nhiều tháng trong khi runtime đã đổi. Lặp lại
+sai lầm đó là vô nghĩa.
+
+## Kết quả so với ngưỡng
+
+Sample: `conviction`, 236 s, 665 từ, 31 cụm âm học.
+
+| Chỉ số | Ngưỡng | `vi-vlsp2020` (mặc định) | **`vietnamese-250h`** (tốt nhất) | `mms-300m-1130` |
+| --- | --- | --- | --- | --- |
+| tỉ lệ từ align được | ≥ 98% | 100% ĐẠT | **100% ĐẠT** | 100% ĐẠT |
+| confidence > 0.3 | ≥ 95% | 0.0% TRƯỢT | **89.3% TRƯỢT** | 58.5% TRƯỢT |
+| sai lệch onset trung bình | ≤ 80 ms | 1051 ms TRƯỢT | **188 ms TRƯỢT** | 1071 ms TRƯỢT |
+
+Để so sánh, **DTW đang chạy trong sản phẩm**: trung bình 107 ms, median 50 ms,
+p90 230 ms. Ứng viên tốt nhất là 188 / 35 / 358.
+
+## Lệch so với kế hoạch
+
+**Thước đo ban đầu của em sai và em đã sửa giữa chừng.** Bản đầu lấy "word start
+gần nhất với mỗi onset", vốn tự động cho điểm cao khi có nhiều từ — 665 từ trên
+31 onset thì luôn có cái gì đó ở gần, đúng hay sai không quan trọng. Bản đã sửa
+tìm từ đầu tiên có trung điểm nằm trong cụm, tức từ *lẽ ra phải mở đầu* cụm đó.
+Số DTW đổi từ 176 ms xuống 107 ms sau khi sửa, nên mọi con số trước đó trong
+phiên này đều bỏ.
+
+Em cũng đo thêm một biến thể kế hoạch không nêu, vì nó quyết định khuyến nghị:
+**lai ghép — lấy alignment khi confidence cao, giữ DTW khi thấp.**
+
+| Ngưỡng confidence | % từ lấy alignment | trung bình | median | p90 | ≤80ms |
+| --- | --- | --- | --- | --- | --- |
+| 0.3 | 89.3% | 188 ms | 35 ms | 358 ms | 65.5% |
+| 0.5 | 81.8% | 176 ms | 31 ms | 320 ms | 72.4% |
+| 0.7 | 73.2% | 177 ms | 26 ms | 320 ms | 72.4% |
+| 0.9 | 40.8% | 212 ms | 48 ms | 440 ms | 62.1% |
+
+**Lai ghép không cứu được.** Median xuống tới 26 ms, nhưng trung bình đứng ở
+177 ms và p90 ở 320 ms. Siết lên 0.9 làm mọi chỉ số tệ đi. Nghĩa là outlier
+không phải những từ aligner không chắc — mà là những từ nó **sai một cách tự
+tin**. Với ứng dụng này đó là loại sai tệ nhất: không có tín hiệu nào phía sau
+phát hiện được.
+
+## Phát hiện đáng giữ
+
+Model mặc định của WhisperX cho tiếng Việt bị **nạp sai, không phải không phù
+hợp**: checkpoint có tầng `feature_transform` mà `Wav2Vec2ForCTC` âm thầm vứt bỏ,
+nên confidence tụt xuống 0.011. ADR-0007 đọc điều đó thành "aligner không hợp
+tiếng Việt". Thực ra là "checkpoint đó không hợp loader đó". Ai quay lại việc này
+phải bắt đầu từ `wav2vec2-base-vietnamese-250h`.
+
+MMS-300M cần văn bản đã romanize; dấu tiếng Việt nằm ngoài vocab của nó và
+WhisperX không romanize, nên nó suy biến thành nhiễu.
+
+## Giới hạn của kết luận này
+
+Một sample 236 giây, 31 cụm, chấm bằng proxy VAD chứ không phải mốc do người
+đánh dấu. Đủ để **không tiêu tốn công sức R6**; **không** đủ để kết luận forced
+alignment không giúp được gì. Chạy lại probe trước khi xét lại.
+
+## Anh cần check
+
+Round này không đổi hành vi app nên không có gì để bấm. Nếu anh muốn tự xác minh:
+
+```bash
+.runtime/omnivoice-studio/.venv/Scripts/python.exe scripts/probe_forced_alignment.py nguyenvulebinh/wav2vec2-base-vietnamese-250h
+```
+
+## Việc còn treo
+
+- R6 **không thực hiện**. Điều kiện trong kế hoạch không thoả.
+- Forced alignment cho **script người dùng cung cấp** (plan 03-02) vẫn còn nguyên
+  và **không phụ thuộc** kết quả này — nó trả lời câu hỏi khác: người nói có đọc
+  đúng script không, chứ không phải có thắng DTW về onset không.
+- Cải thiện timestamp giờ nằm ở W2 (Codex đã code, 2 ngưỡng chưa đạt) chứ không
+  còn ở W3.
+
+### Review (Claude)
+
+Tự làm nên không phải review độc lập. Số đo tái lập được bằng lệnh ở trên.
 
 ### Feedback
 
