@@ -271,7 +271,13 @@ export function Timeline({
   const wordSelectionDraggingRef = useRef(false);
   const isRecording = Boolean(recordingPreview?.active);
   const words = take?.words ?? [];
-  const lastWordEnd = words.length ? Math.max(...words.map((word) => word.end)) : 0;
+  // Spreading 47,000 arguments into Math.max ran on every render and risks a
+  // call-stack overflow at that size.
+  const lastWordEnd = useMemo(() => {
+    let latest = 0;
+    for (const word of words) if (word.end > latest) latest = word.end;
+    return latest;
+  }, [words]);
   const sourceDuration = isRecording
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
@@ -318,20 +324,33 @@ export function Timeline({
   const meterPercent = Math.min(100, Math.max(0, ((activeSignalDb + 96) / 192) * 100));
   const peakPercent = Math.min(100, Math.max(0, ((activePeakDb + 96) / 192) * 100));
   const activeWordIndex = isRecording || !timingIsTrusted ? -1 : activeWordAt(displayWords, currentTime);
-  const wordTrackIndexes = useMemo(() => {
-    if (displayWords.length <= 1400) return displayWords.map((_, index) => index);
-    if (!timelineCanvasWidth) return displayWords.slice(0, 240).map((_, index) => index);
+  // Always virtualize. The former "render everything under 1400 words" branch
+  // rebuilt up to 1400 DOM nodes roughly twelve times a second during playback,
+  // because activeWordIndex was a dependency of this memo.
+  const visibleWordRange = useMemo(() => {
+    if (!displayWords.length) return { first: 0, last: 0 };
+    if (!timelineCanvasWidth) return { first: 0, last: Math.min(displayWords.length, 240) };
     const canvasWidth = timelineCanvasWidth || 1000;
     const viewportWidth = timelineViewport.width || Math.min(canvasWidth, 1000);
     const start = Math.max(0, ((timelineViewport.left / canvasWidth) * duration) - WORD_TRACK_BUFFER_SECONDS);
     const end = Math.min(duration, (((timelineViewport.left + viewportWidth) / canvasWidth) * duration) + WORD_TRACK_BUFFER_SECONDS);
     let low = 0; let high = displayWords.length;
     while (low < high) { const middle = Math.floor((low + high) / 2); if (displayWords[middle].end < start) low = middle + 1; else high = middle; }
+    const first = Math.max(0, low - 1);
+    let last = first;
+    while (last < displayWords.length && displayWords[last].start <= end) last += 1;
+    return { first, last };
+  }, [displayWords, duration, timelineCanvasWidth, timelineViewport]);
+  const wordTrackIndexes = useMemo(() => {
     const indexes: number[] = [];
-    for (let index = Math.max(0, low - 1); index < displayWords.length && displayWords[index].start <= end; index += 1) indexes.push(index);
-    if (activeWordIndex >= 0 && !indexes.includes(activeWordIndex)) indexes.push(activeWordIndex);
-    return indexes.sort((left, right) => left - right);
-  }, [activeWordIndex, displayWords, duration, timelineCanvasWidth, timelineViewport]);
+    for (let index = visibleWordRange.first; index < visibleWordRange.last; index += 1) indexes.push(index);
+    // The playing word must stay mounted even when the viewport has scrolled off it.
+    if (activeWordIndex >= 0 && (activeWordIndex < visibleWordRange.first || activeWordIndex >= visibleWordRange.last)) {
+      indexes.push(activeWordIndex);
+      indexes.sort((left, right) => left - right);
+    }
+    return indexes;
+  }, [activeWordIndex, visibleWordRange]);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
   const timelineNavigator = useMemo(() => {
     const visible = Math.max(0, timelineViewport.width);

@@ -98,6 +98,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const selectedAssetIdRef = useRef<string | null>(null);
+  const scriptDirtyRef = useRef(false);
+  const liveTranscriptActiveRef = useRef(false);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [liveTranscriptActive, setLiveTranscriptActive] = useState(false);
@@ -132,6 +135,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   scriptRef.current = script;
   mediaAssetsRef.current = mediaAssets;
+  // Background polling reads these through refs, never through its dependency
+  // array. As dependencies they tore the effect down on the first keystroke -
+  // scriptDirty flips false to true - which cancelled the in-flight request
+  // carrying the finished transcript. That is the "STT ran but Script stayed
+  // empty" report: the work was done, the response was thrown away.
+  selectedAssetIdRef.current = selectedAssetId;
+  scriptDirtyRef.current = scriptDirty;
+  liveTranscriptActiveRef.current = liveTranscriptActive;
 
   useEffect(() => {
     if (!selectedAssetId) localStorage.setItem(scratchStorageKey, script);
@@ -175,8 +186,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       void api.listProjectMedia(project.id).then((assets) => {
         if (cancelled) return;
         const currentAssets = mediaAssetsRef.current;
-        const currentSelected = currentAssets.find((asset) => asset.id === selectedAssetId);
-        const selected = assets.find((asset) => asset.id === selectedAssetId);
+        const activeAssetId = selectedAssetIdRef.current;
+        const currentSelected = currentAssets.find((asset) => asset.id === activeAssetId);
+        const selected = assets.find((asset) => asset.id === activeAssetId);
         const selectedChanged = Boolean(selected && (!currentSelected || selected.updatedAt !== currentSelected.updatedAt));
         setMediaAssets((current) => {
           const unchanged = current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt);
@@ -185,7 +197,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         // A deliberate rerun of STT is authoritative: it must replace an older dirty Script.
         // Other background refreshes keep the user's unsaved typing intact.
         const transcriptionJustCompleted = currentSelected?.transcriptionStatus !== "complete" && selected?.transcriptionStatus === "complete";
-        if (selected && selectedChanged && (!scriptDirty || transcriptionJustCompleted) && !liveTranscriptActive) {
+        if (selected && selectedChanged && (!scriptDirtyRef.current || transcriptionJustCompleted) && !liveTranscriptActiveRef.current) {
           setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
           setScript(selected.text);
           if (transcriptionJustCompleted) setScriptDirty(false);
@@ -229,34 +241,79 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     };
 
     refreshStatus();
-    const timer = window.setInterval(refreshStatus, 150);
+    // A progress bar does not need seven updates a second. At 150 ms this issued
+    // over 1,200 requests in a two-minute session, each one re-rendering every
+    // asset in the workspace.
+    const timer = window.setInterval(refreshStatus, 900);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [project.id, hasBackgroundTranscription, selectedAssetId, scriptDirty, liveTranscriptActive]);
+  }, [project.id, hasBackgroundTranscription]);
 
   useEffect(() => {
     if (!hasBackgroundDiarization) return;
     let cancelled = false;
-    const refresh = () => {
+    let fullMediaRefreshInFlight = false;
+
+    // Diarization rewrites word labels, so its result needs the full asset. Its
+    // *progress* does not, and polling the full media list for it shipped every
+    // transcript in the project on every tick.
+    const refreshFullMedia = () => {
+      if (fullMediaRefreshInFlight) return;
+      fullMediaRefreshInFlight = true;
       void api.listProjectMedia(project.id).then((assets) => {
         if (cancelled) return;
         setMediaAssets((current) => current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt) ? current : assets);
-        const selected = assets.find((asset) => asset.id === selectedAssetId);
-        if (selected && selected.diarizationStatus === "complete" && !scriptDirty && !liveTranscriptActive) {
+        const selected = assets.find((asset) => asset.id === selectedAssetIdRef.current);
+        if (selected && selected.diarizationStatus === "complete" && !scriptDirtyRef.current && !liveTranscriptActiveRef.current) {
           setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
         }
+      }).catch(() => undefined).finally(() => { fullMediaRefreshInFlight = false; });
+    };
+
+    const refreshStatus = () => {
+      void api.listProjectMediaDiarizationStatus(project.id).then((snapshots) => {
+        if (cancelled) return;
+        const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+        const currentAssets = mediaAssetsRef.current;
+        const reachedTerminal = snapshots.some((snapshot) => {
+          const previous = currentAssets.find((asset) => asset.id === snapshot.id);
+          return Boolean(previous
+            && ["queued", "processing"].includes(previous.diarizationStatus ?? "idle")
+            && !["queued", "processing"].includes(snapshot.diarizationStatus));
+        });
+        setMediaAssets((current) => current.map((asset) => {
+          const snapshot = byId.get(asset.id);
+          if (!snapshot) return asset;
+          // Same contract as STT: a terminal snapshot only says the worker
+          // stopped. Hold the background state until the authoritative words
+          // arrive, so cleanup cannot discard the response that carries them.
+          if (["queued", "processing"].includes(asset.diarizationStatus ?? "idle")
+            && !["queued", "processing"].includes(snapshot.diarizationStatus)) return asset;
+          const changed = asset.diarizationStatus !== snapshot.diarizationStatus
+            || asset.diarizationProgress !== snapshot.diarizationProgress
+            || asset.diarizationError !== snapshot.diarizationError;
+          return changed ? {
+            ...asset,
+            diarizationStatus: snapshot.diarizationStatus,
+            diarizationProgress: snapshot.diarizationProgress,
+            diarizationError: snapshot.diarizationError,
+          } : asset;
+        }));
+        if (reachedTerminal) refreshFullMedia();
       }).catch(() => undefined);
     };
-    refresh();
-    const timer = window.setInterval(refresh, 800);
+
+    refreshStatus();
+    const timer = window.setInterval(refreshStatus, 900);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [project.id, hasBackgroundDiarization, selectedAssetId, scriptDirty, liveTranscriptActive]);
+  }, [project.id, hasBackgroundDiarization]);
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
       void api.getSystemStatus().then((metrics) => { if (!cancelled) setSystemMetrics(metrics); }).catch(() => undefined);
     };
     refresh();
-    const timer = window.setInterval(refresh, 1400);
+    // System metrics feed a status bar readout, not a control loop.
+    const timer = window.setInterval(refresh, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
   useEffect(() => {

@@ -25,6 +25,13 @@ export interface MediaTranscriptionProgress {
   transcriptionError: string | null;
 }
 
+export interface MediaDiarizationProgress {
+  id: string;
+  diarizationStatus: MediaDiarizationStatus;
+  diarizationProgress: number;
+  diarizationError: string | null;
+}
+
 export type ManipulatorMode =
   | "voice-over"
   | "voice-isolator"

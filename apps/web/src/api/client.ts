@@ -4,6 +4,7 @@ import type {
   EngineProfileSchema,
   EngineStatus,
   MediaRevisionSource,
+  MediaDiarizationProgress,
   MediaTranscriptionProgress,
   Project,
   ProjectCreate,
@@ -160,6 +161,10 @@ export const api = {
   },
   listProjectMediaTranscriptionStatus: (projectId: string) =>
     request<MediaTranscriptionProgress[]>(`/api/projects/${projectId}/media/transcription-status`),
+  // Job snapshots only. Polling the full media list for progress transferred the
+  // entire transcript of every asset several times a second.
+  listProjectMediaDiarizationStatus: (projectId: string) =>
+    request<MediaDiarizationProgress[]>(`/api/projects/${projectId}/media/diarization-status`),
   importProjectMedia: async (
     projectId: string,
     file: File,
