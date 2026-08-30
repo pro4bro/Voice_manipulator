@@ -366,3 +366,142 @@ def test_retranscription_replaces_timing_but_keeps_matching_word_annotations(tmp
     assert [(word["start"], word["end"]) for word in updated.words] == [
         (0.1, 0.3), (0.3, 0.6), (0.6, 0.8), (0.8, 1.0)
     ]
+
+
+def _asset_payload(**overrides) -> MediaAssetCreate:
+    defaults = {
+        "name": "clip.wav",
+        "source_extension": ".wav",
+        "media_kind": "audio",
+        "source_path": "assets/media/asset-split/source.wav",
+        "duration": 4,
+        "origin": "import",
+    }
+    return MediaAssetCreate(**{**defaults, **overrides})
+
+
+def test_word_timings_live_outside_the_shared_index(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Split"))
+    library = FileMediaLibrary(projects)
+
+    asset = library.create(
+        project.id,
+        _asset_payload(
+            text="Xin chào",
+            words=[
+                {"text": "Xin", "start": 0.0, "end": 0.4},
+                {"text": "chào", "start": 0.4, "end": 0.9},
+            ],
+        ),
+        "asset-split",
+    )
+
+    media_dir = Path(project.project_path) / "assets" / "media"
+    index = json.loads((media_dir / "index.json").read_text(encoding="utf-8"))
+    words = json.loads((media_dir / "asset-split" / "words.json").read_text(encoding="utf-8"))
+
+    assert "words" not in index[0]
+    assert [word["text"] for word in words] == ["Xin", "chào"]
+    # The split is a storage detail: callers still receive a complete asset.
+    assert [word["text"] for word in asset.words] == ["Xin", "chào"]
+    assert [word["text"] for word in library.get(project.id, "asset-split").words] == ["Xin", "chào"]
+    assert [word["text"] for word in library.list(project.id)[0].words] == ["Xin", "chào"]
+
+
+def test_legacy_index_with_embedded_words_is_migrated_without_losing_them(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Legacy words"))
+    media_dir = Path(project.project_path) / "assets" / "media" / "asset-legacy"
+    media_dir.mkdir(parents=True)
+    (media_dir / "source.wav").write_bytes(b"source")
+    legacy_words = [
+        {"text": "một", "start": 0.0, "end": 0.3, "timingSource": "faster-whisper-dtw"},
+        {"text": "hai", "start": 0.3, "end": 0.7, "speakerId": "lan"},
+    ]
+    record = {
+        "id": "asset-legacy",
+        "name": "legacy.wav",
+        "sourceExtension": ".wav",
+        "mediaKind": "audio",
+        "sourcePath": "assets/media/asset-legacy/source.wav",
+        "duration": 1,
+        "text": "một hai",
+        "words": legacy_words,
+        "origin": "import",
+        "status": "ready",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "revisions": [],
+    }
+    index_path = Path(project.project_path) / "assets" / "media" / "index.json"
+    index_path.write_text(json.dumps([record]), encoding="utf-8")
+
+    migrated = FileMediaLibrary(projects).list(project.id)[0]
+
+    assert migrated.words == legacy_words
+    assert "words" not in json.loads(index_path.read_text(encoding="utf-8"))[0]
+    assert json.loads((media_dir / "words.json").read_text(encoding="utf-8")) == legacy_words
+
+
+def test_job_state_changes_do_not_rewrite_word_timings(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Untouched words"))
+    library = FileMediaLibrary(projects)
+    library.create(
+        project.id,
+        _asset_payload(words=[{"text": "Xin", "start": 0.0, "end": 0.4}]),
+        "asset-split",
+    )
+    words_path = Path(project.project_path) / "assets" / "media" / "asset-split" / "words.json"
+    signature = words_path.stat().st_mtime_ns
+
+    # Status and progress churn at job cadence; touching words here is what made a
+    # diarization tick rewrite every word in the project.
+    library.set_transcription_state(project.id, "asset-split", "processing", progress=10)
+    library.set_transcription_progress(project.id, "asset-split", 55)
+    library.set_diarization_state(project.id, "asset-split", "processing", progress=5)
+    library.set_diarization_progress(project.id, "asset-split", 60)
+    library.set_training_selected(project.id, "asset-split", True)
+
+    assert words_path.stat().st_mtime_ns == signature
+
+
+def test_diarization_progress_is_reported_from_job_snapshots(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Diarization progress"))
+    library = FileMediaLibrary(projects)
+    library.create(project.id, _asset_payload(), "asset-split")
+
+    assert library.diarization_progresses(project.id) == []
+
+    library.set_diarization_state(project.id, "asset-split", "queued", progress=0)
+    library.set_diarization_progress(project.id, "asset-split", 42.5)
+    snapshot = next(
+        item for item in library.diarization_progresses(project.id) if item.id == "asset-split"
+    )
+
+    assert snapshot.diarization_status == "queued"
+    assert snapshot.diarization_progress == 42.5
+    assert (Path(project.project_path) / "jobs" / "diarization" / "asset-split.json").is_file()
+
+
+def test_removing_an_asset_drops_its_word_file_and_job_snapshots(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Remove split"))
+    asset_dir = Path(project.project_path) / "assets" / "media" / "asset-split"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "source.wav").write_bytes(b"source")
+    library = FileMediaLibrary(projects)
+    library.create(
+        project.id,
+        _asset_payload(words=[{"text": "Xin", "start": 0.0, "end": 0.4}]),
+        "asset-split",
+    )
+    library.set_diarization_state(project.id, "asset-split", "queued", progress=0)
+
+    library.remove(project.id, "asset-split")
+
+    assert library.list(project.id) == []
+    assert not asset_dir.exists()
+    assert not (Path(project.project_path) / "jobs" / "diarization" / "asset-split.json").exists()

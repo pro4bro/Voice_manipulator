@@ -43,3 +43,47 @@ def test_smooths_an_isolated_short_speaker_flip_but_preserves_word_timings() -> 
 
     assert [word["diarizationSpeakerId"] for word in assigned] == ["speaker-1", "speaker-1", "speaker-1"]
     assert [(word["start"], word["end"]) for word in assigned] == [(0.0, 0.2), (0.2, 0.35), (0.35, 0.6)]
+
+def test_api_exposes_diarization_progress_snapshots_for_the_whole_project(tmp_path) -> None:
+    """The UI must be able to poll diarization progress without pulling transcripts."""
+    import dataclasses
+
+    from fastapi.testclient import TestClient
+
+    from app.adapters.file_media_library import FileMediaLibrary
+    from app.adapters.file_project_repository import FileProjectRepository
+    from app.domain.models import MediaAssetCreate, ProjectCreate
+    from app.main import create_app
+    from app.settings import Settings
+
+    settings = dataclasses.replace(Settings.from_env(), data_root=tmp_path / "data")
+    projects = FileProjectRepository(settings.data_root / "projects")
+    project = projects.create(ProjectCreate(name="Diarization polling"))
+    library = FileMediaLibrary(projects)
+    library.create(
+        project.id,
+        MediaAssetCreate(
+            name="clip.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path="assets/media/asset-poll/source.wav",
+            duration=3,
+            origin="import",
+        ),
+        "asset-poll",
+    )
+    library.set_diarization_state(project.id, "asset-poll", "processing", progress=0)
+    library.set_diarization_progress(project.id, "asset-poll", 37.5)
+
+    with TestClient(create_app(project_repository=projects, settings=settings)) as client:
+        response = client.get(f"/api/projects/{project.id}/media/diarization-status")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "asset-poll",
+            "diarizationStatus": "processing",
+            "diarizationProgress": 37.5,
+            "diarizationError": None,
+        }
+    ]

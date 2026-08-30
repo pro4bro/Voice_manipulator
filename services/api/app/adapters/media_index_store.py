@@ -76,13 +76,20 @@ class MediaIndexStore:
     def read_words(
         self, project_root: Path, project_id: str, asset_id: str
     ) -> list[dict[str, Any]]:
+        """Return the asset's words as a fresh list over shared dicts.
+
+        The list is new so appends and reorders cannot reach the cache. The word
+        dicts themselves are shared: copying 125,000 of them cost 0.16 s on every
+        read, and every mutating caller in this package already copies the words
+        it edits. Treat the returned dicts as read-only.
+        """
         path = self._words_path(project_root, asset_id)
         with self._lock:
             entry = self._entries.setdefault(project_id, MediaIndexStore._Entry())
             signature = self._signature(path)
             cached = entry.words.get(asset_id)
             if cached is not None and cached[0] == signature:
-                return [dict(word) for word in cached[1]]
+                return list(cached[1])
             if signature is None:
                 entry.words[asset_id] = (None, [])
                 return []
@@ -92,7 +99,7 @@ class MediaIndexStore:
                 raw = []
             words = [word for word in raw if isinstance(word, dict)] if isinstance(raw, list) else []
             entry.words[asset_id] = (signature, words)
-            return [dict(word) for word in words]
+            return list(words)
 
     def write_words(
         self,

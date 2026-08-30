@@ -147,8 +147,13 @@ class SequentialDiarizationQueue:
             if not settings.enabled:
                 raise RuntimeError("Speaker Diarization đang tắt trong Windows → Preferences.")
             self.media.set_diarization_state(task.project_id, task.asset_id, "processing", progress=1, error=None)
+
             async def report(value: float) -> None:
-                self.media.set_diarization_state(task.project_id, task.asset_id, "processing", progress=value, error=None)
+                # Progress goes to a small job snapshot. Routing it through the
+                # asset index rewrote every word in the project several times a
+                # second and starved the rest of the API of the library lock.
+                self.media.set_diarization_progress(task.project_id, task.asset_id, value)
+
             spans = await self.studio.diarize(
                 Path(project.project_path) / str(asset.analysis_path),
                 token=settings.huggingface_token,
@@ -156,7 +161,13 @@ class SequentialDiarizationQueue:
                 expected_speakers=task.expected_speakers,
                 on_progress=report,
             )
-            self.media.apply_diarization(task.project_id, task.asset_id, assign_spans_to_words(asset.words, spans))
+            # Re-read words instead of reusing the snapshot taken before the job.
+            # Diarization runs for minutes; Script edits made in the meantime were
+            # silently overwritten by the stale copy.
+            current = self.media.get(task.project_id, task.asset_id)
+            self.media.apply_diarization(
+                task.project_id, task.asset_id, assign_spans_to_words(current.words, spans)
+            )
         except KeyError:
             return
         except Exception as exc:

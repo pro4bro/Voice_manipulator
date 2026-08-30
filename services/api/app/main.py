@@ -395,6 +395,18 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
 
     @app.get(
+        "/api/projects/{project_id}/media/diarization-status",
+        response_model=list[MediaDiarizationProgress],
+    )
+    def list_project_media_diarization_status(
+        project_id: str,
+    ) -> list[MediaDiarizationProgress]:
+        try:
+            return media.diarization_progresses(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get(
         "/api/projects/{project_id}/media/{asset_id}/diarization-status",
         response_model=MediaDiarizationProgress,
     )
