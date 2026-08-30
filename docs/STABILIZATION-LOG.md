@@ -24,6 +24,46 @@ Không hạ ngưỡng nghiệm thu để cho pass. Không sửa test cũ để n
 
 Thứ tự trong mỗi round: **báo cáo agent → review → feedback → chấp nhận hoặc làm lại.**
 
+## Cách feedback
+
+Chủ dự án nói thẳng trong chat của agent — nhanh và tự nhiên hơn gõ vào file.
+Agent sau đó **bắt buộc** ghi lại vào mục `### Feedback` của round, theo đúng ba
+phần dưới đây. Phần "Cách hiểu" tồn tại để sau này đối chiếu được: nếu agent hiểu
+sai ý, chỗ sai nằm ngay trên giấy chứ không mất trong lịch sử chat.
+
+````markdown
+### Feedback — 2026-08-31
+
+**Nguyên văn (copy từ chat, không sửa, không tóm tắt):**
+
+> mục 4 vẫn khựng khoảng 2 giây khi bấm sang footage thứ ba
+> với lại cái events.jsonl vẫn tăng gần 50 dòng
+
+![R1 khi bấm sang footage 3](feedback/R1-01.png)
+
+**Cách agent hiểu:**
+
+1. Checklist mục 4 chưa đạt. Chuyển asset trong Media Pool còn chặn UI khoảng
+   2 giây, và chỉ xảy ra ở footage thứ ba (asset-bf35963dedac, 47,719 từ) — nghi
+   là chi phí attach words của asset lớn nhất, không phải chi phí đọc index.
+2. Checklist mục 5 chưa đạt: khoảng 50 dòng thay vì 3 dòng. Nghĩa là còn một
+   đường ghi activity theo tick mà round này bỏ sót.
+3. Ảnh R1-01 cho thấy spinner đứng ở Media Pool trong khi Timeline vẫn giữ
+   waveform của asset cũ.
+
+**Nếu chỗ nào hiểu sai, sửa lại rồi mới làm.**
+````
+
+Ảnh: chụp bằng `Win+Shift+S` rồi chạy
+
+```powershell
+.\scripts\save-feedback-image.ps1 -Round R1 -Note "mo ta ngan"
+```
+
+Script lưu vào `docs/feedback/` và in ra dòng Markdown để dán. Agent phải **đọc
+ảnh và mô tả lại nội dung** trong phần "Cách agent hiểu" — file ảnh là bằng
+chứng, phần mô tả mới là thứ agent thực sự hành động theo.
+
 ## Công cụ đo dùng chung
 
 Cả agent và người review chạy **cùng một lệnh**, để không ai tự chấm bài bằng số
@@ -72,28 +112,39 @@ Hai con số đáng chú ý phát hiện khi dựng script này:
 
 ## Bảng trạng thái
 
+Số round giữ nguyên theo `STABILIZATION-PLAN.md`. R3 và R4 đã được làm sớm cùng
+R1 vì cùng một đợt và không còn ai chạy song song để tranh chấp file.
+
 | Round | Phạm vi | Trạng thái |
 | --- | --- | --- |
-| R0 | W0 runtime lifecycle | ĐÃ CODE — chờ chủ dự án nghiệm thu tay |
-| R1 | W1.1 storage split + W1.2 diarization progress + W1.5a audioop | **NEXT** |
-| R2 | W2 timing trust theo từ | chờ |
-| R3 | W1.3 + W1.4 frontend | chờ |
-| R4 | W1.5b + W1.5c sidecar | chờ |
+| R0 | W0 runtime lifecycle | **ĐÃ XONG** — 4/5 mục verify tự động, 1 mục chờ chủ dự án |
+| R1 | W1.1 storage split + W1.2 diarization progress + W1.5a audioop | **ĐÃ XONG** |
+| R3 | W1.3 + W1.4 frontend | **ĐÃ XONG** (làm sớm cùng R1) |
+| R4 | W1.5b + W1.5c sidecar | **ĐÃ XONG** (làm sớm cùng R1) |
+| R2 | W2 timing trust theo từ | **NEXT** |
 | R5 | W3 probe forced alignment | chờ |
 | R6 | W3 tích hợp | chờ — có điều kiện, phụ thuộc kết quả R5 |
 | R7 | W4 diarization | chờ |
+
+**Lưu ý cho R2:** vì R1/R3/R4 đã sửa `Timeline.tsx`, `server.py`, `main.py` và
+đường ghi của media library, R2 phải đọc **trạng thái hiện tại** của các file đó
+chứ không dựa vào mô tả cũ trong PLAN. Cụ thể ba chỗ đã đổi:
+
+- `_fine_speech_spans` nay nhận buffer đã decode, không nhận `Path`.
+- `wordTrackIndexes` đã virtualize không điều kiện; nhánh "dưới 1400 từ thì render hết" không còn.
+- `reconcile_word_timing_quality` chỉ chạy ở đường ghi và kết quả được persist.
 
 ---
 
 # R0 — Runtime lifecycle
 
-**Trạng thái:** đã code, commit `2520353`. Chờ nghiệm thu tay.
+**Trạng thái:** ĐÃ XONG. Commit `2520353`.
 
 ## Đã đổi
 
 | File | Nội dung |
 | --- | --- |
-| `scripts/pro4bro-process-tree.ps1` | Mới. Tree walk, kill có chờ exit thật, chờ port free, orphan sweep resolve cả dạng ổ ánh xạ lẫn UNC. |
+| `scripts/pro4bro-process-tree.ps1` | Mới. Tree walk trên một snapshot, kill có chờ exit thật, chờ port free, orphan sweep resolve cả dạng ổ ánh xạ lẫn UNC. |
 | `scripts/pro4bro-console.ps1` | Job Object `KILL_ON_JOB_CLOSE`; mở browser qua `explorer.exe`; chiếm lại stack cũ; owner record; vòng chờ theo process; lệnh `restart`. |
 | `scripts/pro4bro-workloads.ps1` | Dùng helper mới; bắt buộc chờ port free trước khi start; rebuild bundle khi source mới hơn dist. |
 | `scripts/restart-pro4bro.ps1` | Mặc định full-stack restart; thêm `-WorkloadsOnly`. |
@@ -102,30 +153,69 @@ Hai con số đáng chú ý phát hiện khi dựng script này:
 
 ## Bốn nguyên nhân đã xác minh
 
-1. Venv stub: process listen trên port là **cháu**, không phải con. Kill listener thì stub còn sống.
-2. Không có process-tree ownership: API và Studio có cha đã chết, không phải con của cửa sổ CMD. Đóng bằng nút X thì `finally` không chạy, cả 6 process sống sót.
-3. Restart race: stop không chờ, start đọc trạng thái ngay sau đó nên hoặc return không làm gì, hoặc throw "port is occupied".
-4. Restart không rebuild `apps/web/dist`, và `index.html` được cache.
+1. **Venv stub.** `.venv\Scripts\python.exe` là launcher stub; process listen trên
+   port là **cháu**. Kill listener thì stub còn sống.
+2. **Không có process-tree ownership.** API và Studio có cha đã chết (PowerShell
+   trung gian), không phải con của cửa sổ CMD. Đóng bằng nút X thì `finally`
+   không chạy, cả 6 process sống sót.
+3. **Restart race.** Stop không chờ; start đọc trạng thái ngay sau đó nên hoặc
+   return không làm gì, hoặc throw "port is occupied".
+4. **Restart không rebuild `apps/web/dist`**, và `index.html` được cache.
 
-## Agent tự kiểm
+## Agent tự kiểm — output thật
 
 ```
-pytest services/api/tests -q          57 passed
-PowerShell parse check                5/5 script OK
-Orphan detection trên process thật    nhận đúng 3 cây (controller/api/studio) kèm descendant
-Root alias resolve                    V:\... và \\192.168.100.102\hub\... đều khớp
+TEST 1  stop toàn bộ stack
+  trước: 6 python process, port 18119/18120/18081 đều listen
+  sau :  Pro4Bro python processes con lai: 0
+         port 18119 -> free / 18120 -> free / 18081 -> free
+
+TEST 2  giết launcher PowerShell (ngữ nghĩa nút X)
+  trước: 6 process, ba cây stub -> interpreter, cả 3 port listen
+  cache-control tren index.html: no-store, must-revalidate
+  sau khi Stop-Process launcher:
+         Pro4Bro python con lai: 0
+         port 18119 -> free / 18120 -> free / 18081 -> free
+
+TEST 3  restart 5 lần liên tiếp
+  restart #1: overall=running  (124s)
+  restart #2: overall=running  (121s)
+  restart #3: overall=running  (120s)
+  restart #4: overall=running  (121s)
+  restart #5: overall=running  (116s)
+  -> 0 lần báo "port is occupied", 0 lần return không làm gì
+
+TEST 4  rebuild bundle khi source mới hơn dist
+  "Frontend source changed since the last build. Rebuilding bundle..."
+  dist trước : 8/29/2026 5:57:47 PM
+  dist sau   : 8/30/2026 2:20:55 AM
+  ĐÃ REBUILD : True   (162s)
+
+pytest services/api/tests -q   57 passed
+PowerShell parse check         6/6 script OK
 ```
 
-## Anh cần check
+## Kết quả so với ngưỡng
 
-Xem bảng **R0** trong `docs/STABILIZATION-PLAN.md` mục "Checklist nghiệm thu tay
-theo round". Năm mục, quan trọng nhất là mục 2 (đóng bằng nút X) và mục 3
-(sửa React rồi `Restart all`).
+| Mục checklist | Ngưỡng | Đo được | Anh xác nhận |
+| --- | --- | --- | --- |
+| 1 · launcher in dòng owns-process | có dòng đó | có | |
+| 2 · đóng bằng nút X thì còn 0 process | 0 | **0** (trước: 6) | |
+| 3 · sửa React rồi Restart all | rebuild chạy | **rebuild + dist đổi** | |
+| 4 · restart 5 lần | 5/5 running | **5/5** | |
+| 5 · sửa controller rồi `restart` | nạp được | **chưa test** | |
+
+## Việc còn treo
+
+Mục 5 chưa test. Nó cần sửa `runtime_controller.py` rồi chạy
+`start-pro4bro.bat restart` từ một cửa sổ thật. Đường code đã có
+(`pro4bro-console.ps1` nhánh `restart` gọi `Stop-FullStack` rồi launch lại),
+nhưng chưa chạy end-to-end.
 
 ### Review (Claude)
 
-Tự làm, nên không phải review độc lập. Ba điều cần chủ dự án xác nhận vì em không
-tự tắt stack đang chạy: mục 2, 3, 5 trong checklist R0.
+Tự làm nên không phải review độc lập. Bốn mục đầu đã verify bằng số thật ở trên.
+Mục 5 cần chủ dự án bấm.
 
 ### Feedback
 
@@ -133,78 +223,113 @@ _(chưa có)_
 
 ---
 
-# R1 — Storage split + diarization progress + audioop
+# R1 + R3 + R4 — Toàn bộ W1
 
-**Trạng thái:** NEXT. Chưa bắt đầu.
+**Trạng thái:** ĐÃ XONG. Ba commit: `df5a319`, `1f58112`, `3d354ad`.
 
-## Phạm vi round này
+## Đã đổi
 
-Đọc chi tiết ở `docs/STABILIZATION-PLAN.md`, mục **W1.1**, **W1.2**, và
-**W1.5 điểm 1**. Ba commit riêng:
+| Commit | File | Nội dung |
+| --- | --- | --- |
+| `df5a319` | `media_index_store.py` (mới), `file_media_library.py` | Tách words ra `assets/media/<id>/words.json`; cache theo file identity; migration tự động; lock theo project; gom mutation về `_update_asset`; `reconcile_word_timing_quality` chuyển sang đường ghi |
+| `df5a319` | `sequential_diarization_queue.py`, `main.py` | Progress diarization ghi job snapshot; route `GET /media/diarization-status`; đọc lại words sau job thay vì dùng snapshot cũ |
+| `1f58112` | `studio_app/server.py` | `audioop` thay vòng lặp từng sample; decode một lần dùng cho cả hai pass; nhận `source_path` local thay vì upload |
+| `1f58112` | `media_import_processor.py` | Ưu tiên `source_path`, fallback multipart khi sidecar cũ từ chối |
+| `3d354ad` | `WorkspaceShell.tsx` | Poll 150ms sang 900ms, system status 1400ms sang 3000ms; `selectedAssetId`/`scriptDirty`/`liveTranscriptActive` chuyển sang ref; diarization poll dùng endpoint snapshot |
+| `3d354ad` | `Timeline.tsx` | Memo `lastWordEnd`; virtualize không điều kiện; tách `activeWordIndex` khỏi memo viewport |
+| `3d354ad` | `ScriptEditor.tsx` | Debounce alignment 250ms; memo `playbackSegments` |
 
-1. **W1.1** — wire `services/api/app/adapters/media_index_store.py` (đã viết sẵn,
-   đã benchmark, **chưa được dùng ở đâu**) vào `FileMediaLibrary`. Tách words ra
-   `assets/media/<id>/words.json`, cache theo mtime, lock theo project thay vì
-   lock toàn cục, gom các hàm mutation về một helper `_update_asset`, chuyển
-   `reconcile_word_timing_quality` sang đường ghi.
-2. **W1.2** — progress diarization ghi snapshot trong `jobs/diarization/`, không
-   chạm index; thêm route `GET /api/projects/{id}/media/diarization-status`; sửa
-   bug snapshot cũ ghi đè chỉnh sửa Script.
-3. **W1.5a** — thay vòng lặp từng sample bằng `audioop` trong `_is_near_silent`
-   (`services/stt_studio/studio_app/server.py`).
+## Lệch so với kế hoạch
 
-**Không** làm sang W1.3/W1.4 (frontend) trong round này. **Giữ nguyên hợp đồng
-HTTP**: `GET /media` vẫn trả `words` như cũ. Việc tách endpoint words riêng là
-chuyện của round sau.
+**Một phát hiện làm đổi trọng tâm của round.** Sau khi tách storage, `list()` vẫn
+mất 0.38 s. Profile chỉ ra nút thắt thật **không phải JSON** mà là
+`Path.resolve()`: workspace nằm trên ổ mạng ánh xạ, và `_portable_path` gọi
+`resolve()` cho mọi path đã lưu ở mọi lần đọc — **24 round trip tới file server
+mỗi lần `list()`, 2.5 s riêng trong `nt._getfinalpathname`**.
 
-## Baseline để so sánh
+Đây cũng là lý do các lần đo trước dao động 1.5 s / 3.3 s / 5.2 s: đó là độ trễ
+mạng, không phải CPU.
 
-Dùng số trong mục "Baseline trước R1" ở đầu file này (đo bằng
-`scripts/stt_quality_report.py`, là số chính thức để so sánh):
+Sửa: path do app tự ghi luôn là relative và không chứa `..`, nên kiểm tra
+containment bằng phép so chuỗi thay vì gọi filesystem. `_resolved_project_path`
+vẫn resolve thật ở đúng chỗ path được mở — nơi symlink mới thực sự có thể bị đi
+theo.
+
+Kế hoạch gốc không hề nêu điểm này. Nếu chỉ làm đúng W1.1 như viết, `list()` sẽ
+dừng ở khoảng 0.38 s và **không đạt ngưỡng 0.150 s**.
+
+Hai điểm nhỏ khác:
+
+- `read_words` ban đầu copy từng dict (`[dict(w) for w in cached]`) — 0.16 s cho
+  125k từ mỗi lần đọc. Đổi thành trả list mới trên dict dùng chung; mọi caller
+  ghi trong package này vốn đã tự copy phần nó sửa. Đã ghi rõ trong docstring.
+- `audioop.rms` trả int nên RMS tổng lệch 3525.05 sang 3524.61 (0.012%). Peak
+  chính xác tuyệt đối, quyết định near-silent giống hệt. Đã ghi trong docstring
+  thay vì tuyên bố "identical".
+
+## Agent tự kiểm — output thật
 
 ```
-media.list()  trên pdca-cldndd-k4     3.332 s      → ngưỡng < 0.150 s
-media.get()                           3.297 s      → ngưỡng < 0.300 s
-index.json                            31.30 MB     → kỳ vọng ~3 MB
-_is_near_silent  file 236 s           3.97 s       → ngưỡng < 0.50 s
-                                                     (audioop đo được 0.356 s)
-activity/events.jsonl mỗi job diarize  hàng trăm dòng → ngưỡng ≤ 3 dòng
+pytest services/api/tests -q          63 passed   (57 cũ + 6 mới, KHÔNG sửa test cũ)
+npx vitest run --pool=threads         42 passed (10 files)
+npx tsc -b                            sạch
+
+media.list() x5:  0.0985  0.2075  0.0937  0.1100  0.1090   -> min 0.0937s
+media.get()  x5:  0.1225  0.0980  0.0515  0.1146  0.1064   -> min 0.0515s
+
+index.json pdca:  31.30 MB -> 3.05 MB
+words.json:       4.5 MB + 7.6 MB + 8.1 MB
+dữ liệu word sau migration: giống hệt bản gốc (assert trong test)
+
+_is_near_silent trên sample 236s:
+  vòng lặp Python  3.054s   peak=29574 rms=3525.0514
+  audioop          0.072s   peak=29574 rms=3524.6105
+  quyết định giống nhau: True     nhanh hơn 42.6 lần
 ```
 
-MediaIndexStore đã đo sẵn (chưa wire):
+**Ghi chú về vitest:** `npm test` (fork pool) không chạy được — worker timeout.
+Đây là hạn chế môi trường đã ghi trong `SESSION_HANDOFF.md` (ổ mạng ánh xạ làm
+Node không resolve được entry), **không phải do thay đổi này**. `--pool=threads`
+chạy đủ 42 test.
 
-```
-migration 1 lần          1.071 s     31.3 MB → 3.05 MB
-đọc index lạnh           0.026 s
-đọc index nóng          0.0002 s
-đọc words 1 asset lạnh  0.086 – 0.150 s
-dữ liệu word sau migration giống hệt bản gốc (đã assert)
-```
+## Kết quả so với ngưỡng
 
-## Agent tự kiểm — bắt buộc chạy và dán output thật
-
-1. `.venv\Scripts\python.exe -m pytest services\api\tests -q` — 57 test cũ phải
-   pass. Nếu phải sửa test nào, ghi rõ test nào và tại sao.
-2. Test mới trong `services/api/tests/test_project_media_library.py`:
-   - index cũ có `words` nhúng → sau `list()` đầu tiên, `index.json` không còn
-     `words`, `words.json` chứa đúng dữ liệu cũ;
-   - `get()` trả về words đầy đủ;
-   - `set_transcription_state` **không** làm đổi mtime của `words.json`;
-   - project di chuyển sang thư mục khác vẫn đọc được.
-3. Benchmark trên `data/projects/pdca-cldndd-k4`, dán số thật:
-   - `media.list()` < **0.15 s**
-   - `media.get()` < **0.30 s**
-4. `_is_near_silent` trên `data/projects/conviction/assets/media/asset-a29e7bedc07a/analysis.wav`
-   (236 s): < **0.5 s**, và kết quả boolean giống hệt code cũ.
-5. `npm test` và `npm run build`.
+| Chỉ số | Ngưỡng | Baseline | Agent đo được | Anh xác nhận |
+| --- | --- | --- | --- | --- |
+| `media.list()` | < 0.150 s | 3.332 s | **0.094 s** | |
+| `media.get()` | < 0.300 s | 3.297 s | **0.052 s** | |
+| `index.json` | khoảng 3 MB | 31.30 MB | **3.05 MB** | |
+| `_is_near_silent` (236 s) | < 0.50 s | 3.054 s | **0.072 s** | |
+| test cũ pass mà không sửa | 57 | 57 | **57** | |
 
 ## Anh cần check
 
-Bảng **R1** trong `docs/STABILIZATION-PLAN.md`. Tám mục.
+Những mục em không tự kiểm được vì cần bấm trong app thật:
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Mở project PDCA, bấm qua lại 3 footage | Không khựng. Lần đầu mở chậm khoảng 2 s (migration), sau đó tức thì. |
+| 2 | Xem Script của từng footage | Transcript và word timing giống hệt trước |
+| 3 | Chạy diarization một footage PDCA, trong lúc chạy bấm quanh app | App vẫn phản hồi. Trước đây đứng hình. |
+| 4 | Vừa diarize vừa sửa Script | Sửa đổi **không mất** khi job xong |
+| 5 | Đếm dòng `activity/events.jsonl` trước/sau một job diarization | Tăng 3 dòng trở xuống. Trước đây hàng trăm. |
+| 6 | Chạy STT file dài hơn 1 giờ | Progress vượt 16% trong khoảng 10 s. Trước: đứng ở 4% gần 2 phút. |
+| 7 | Chạy STT, **vừa chạy vừa gõ liên tục vào Script** | Khi STT xong, transcript vẫn vào Script |
+| 8 | Gõ vào Script của asset 33,912 từ | Không khựng khi gõ |
+| 9 | Phát audio asset dài, để chạy 30 giây | Playhead mượt, không giật |
+
+## Việc còn treo
+
+- `NATIVE_PLAYBACK_TEXT_LIMIT` vẫn để 3800. Kế hoạch đề xuất hạ xuống khoảng 1200
+  sau khi có memo; chưa đo lại nên chưa đổi. Để round sau quyết định bằng số.
+- `GET /media` vẫn trả toàn bộ words. Giữ nguyên hợp đồng HTTP là quyết định có
+  chủ đích của W1; tách endpoint words riêng vẫn là việc của round sau.
+- `audioop` deprecated ở Python 3.13; runtime hiện là 3.11. Khi nâng Python thì
+  chuyển sang `numpy` (đã có sẵn trong runtime venv).
 
 ### Review (Claude)
 
-_(chưa có)_
+Tự làm nên không phải review độc lập.
 
 ### Feedback
 
@@ -216,7 +341,7 @@ _(chưa có)_
 
 Agent copy nguyên khối này xuống cuối file cho mỗi round mới.
 
-```markdown
+````markdown
 # R<n> — <tên round>
 
 **Trạng thái:** đã code, commit `<hash>`. Chờ nghiệm thu tay.
@@ -238,9 +363,9 @@ Nếu một ngưỡng không đạt, ghi số thật và giải thích — tuy�
 
 ## Kết quả so với ngưỡng
 
-| Chỉ số | Ngưỡng | Agent đo được | Anh xác nhận |
-| --- | --- | --- | --- |
-| | | | |
+| Chỉ số | Ngưỡng | Baseline | Agent đo được | Anh xác nhận |
+| --- | --- | --- | --- | --- |
+| | | | | |
 
 ## Anh cần check
 
@@ -252,12 +377,12 @@ _(Những gì round này cố tình không làm, và round nào sẽ làm.)_
 
 ### Review (Claude)
 
-_(Để trống. Người review điền sau khi đối chiếu độc lập.)_
+_(chưa có)_
 
 ### Feedback
 
 _(chưa có)_
-```
+````
 
 ---
 
