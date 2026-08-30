@@ -735,7 +735,12 @@
 .timeline-navigator.is-static { cursor: default; opacity: .56; }
 .timeline-navigator.is-static i { min-width: 0; }
 /* Script table is the default timed-speaker view; Text Edit remains available for freeform changes. */
-.script-table-scroll { min-width: 0; min-height: 100px; height: 100%; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--text); background: var(--surface-field); scrollbar-color: var(--accent) var(--surface-sunken); scrollbar-width: auto; }
+/* scrollbar-color and scrollbar-width are reset to their initial values rather
+   than left unset: scrollbar-color inherits, `.module-column` sets it, and any
+   non-initial value makes Chromium ignore ::-webkit-scrollbar entirely. Only the
+   webkit pseudo-elements can hide one axis while keeping the other, which is what
+   this table needs - a custom vertical bar plus a real horizontal one. */
+.script-table-scroll { min-width: 0; min-height: 100px; height: 100%; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--text); background: var(--surface-field); scrollbar-color: auto; scrollbar-width: auto; }
 .script-table { min-width: 560px; color: var(--text); }
 .script-table__header,
 .script-table__row { display: grid; grid-template-columns: minmax(152px, .3fr) minmax(0, 1fr); }
@@ -824,8 +829,14 @@
 .script-scrollbar.is-static i { min-height: 0; }
 /* The default spreadsheet Script view gets the same direct-click navigation as Text Edit. */
 .script-table-shell { position: relative; min-width: 0; min-height: 100px; height: 100%; }
-.script-table-scroll { height: 100%; padding-right: 22px; scrollbar-width: none; }
-.script-table-scroll::-webkit-scrollbar { display: none; }
+.script-table-scroll { height: 100%; padding-right: 22px; }
+/* Columns are sized in pixels and the user can widen them past the module, so the
+   table has to scroll sideways. Hiding every scrollbar to make room for the custom
+   vertical one also removed the horizontal bar, leaving content reachable only by
+   shift+wheel with nothing on screen saying so. Hide only the vertical axis. */
+.script-table-scroll::-webkit-scrollbar:vertical { display: none; }
+.script-table-scroll::-webkit-scrollbar:horizontal { height: 13px; }
+.script-table-scroll::-webkit-scrollbar-corner { background: transparent; }
 .script-table-scrollbar { position: absolute; z-index: 6; top: 7px; right: 3px; bottom: 7px; width: 13px; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-sunken); cursor: pointer; touch-action: none; }
 .script-table-scrollbar i { position: absolute; right: 1px; left: 1px; min-height: 28px; border-radius: 5px; background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent); }
 .script-table-scrollbar:hover i { background: color-mix(in srgb, var(--accent) 78%, white); }
