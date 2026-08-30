@@ -121,8 +121,8 @@ R1 vì cùng một đợt và không còn ai chạy song song để tranh chấp
 | R1 | W1.1 storage split + W1.2 diarization progress + W1.5a audioop | **ĐÃ XONG** |
 | R3 | W1.3 + W1.4 frontend | **ĐÃ XONG** (làm sớm cùng R1) |
 | R4 | W1.5b + W1.5c sidecar | **ĐÃ XONG** (làm sớm cùng R1) |
-| R2 | W2 timing trust theo từ | **NEXT** |
-| R5 | W3 probe forced alignment | chờ |
+| R2 | W2 timing trust theo từ | **ĐÃ CODE — CHỜ NGHIỆM THU; 2 NGƯỠNG CHƯA ĐẠT** |
+| R5 | W3 probe forced alignment | **NEXT** |
 | R6 | W3 tích hợp | chờ — có điều kiện, phụ thuộc kết quả R5 |
 | R7 | W4 diarization | chờ |
 
@@ -402,3 +402,135 @@ báo cáo nghe hợp lý mà không ai đối chiếu với dữ liệu thật.
    và mất dữ liệu; R2 là ngưỡng phân loại từ; R7 là gán nhãn speaker.
 4. **Kết luận một trong ba:** `ĐẠT`, `ĐẠT CÓ ĐIỀU KIỆN` (kèm việc phải làm ở round
    sau), hoặc `CHƯA ĐẠT` (kèm số thật và lý do).
+
+---
+
+# R2 — Timing trust theo từ
+
+**Trạng thái:** đã code, commit `bfcaafd`. Chờ nghiệm thu tay; 2 ngưỡng dữ liệu
+thật chưa đạt và không được hạ.
+
+## Đã đổi
+
+| File | Nội dung |
+| --- | --- |
+| `services/api/app/adapters/word_timing_quality.py`, `domain/models.py` | Gắn `timingTrusted` cho từng từ theo đúng 5 điều kiện; tóm tắt asset thành `source` / `partial` / `needs-alignment`; version migration để backfill một lần mà không biến dữ liệu provisional thành trusted. |
+| `services/api/app/adapters/file_media_library.py` | Reconcile và persist cờ trust ở mọi đường ghi words; lazy-migrate index cũ đúng một lần. |
+| `apps/web/src/modules/timeline/Timeline.tsx`, `domain/types.ts`, `styles/modules.css` | Timeline chỉ ẩn word box khi asset là `needs-alignment`; từ untrusted vẫn hiện với style cảnh báo; thêm type `partial`. |
+| `services/api/app/adapters/subtitle_exporter.py` | Asset `partial` được export SRT; bỏ đúng cue có từ untrusted và thêm header ghi số cue đã bỏ. Export bảng không đổi. |
+| `services/stt_studio/studio_app/server.py` | Group theo `segmentIndex` rồi gap 0,20 s; bỏ warp toàn nhóm; chỉ snap từ đầu/cuối trong cửa sổ ±0,40 s; chỉ từ thực sự dịch mới mang `faster-whisper-dtw+silero-edge`; note luôn ghi số nhóm hoặc lý do không snap. |
+| `scripts/stt_quality_report.py` | Báo trust theo từng từ và thống kê phrase group theo thuật toán W2. |
+| `docs/adr/0008-refine-dtw-phrase-edges-with-unpadded-vad.md`, `CONTEXT.md` | Ghi lại phép đo, quyết định edge-snap, và thuật ngữ trust mới. |
+| 5 file test backend + `Timeline.test.tsx` | Thêm coverage ngưỡng 5%, từng loại từ lỗi, migration, SRT partial, snap biên và UI cảnh báo. |
+
+## Lệch so với kế hoạch
+
+- Không sửa `main.py`: code hiện tại sau R1 đã chặn SRT đúng duy nhất khi
+  `wordTimingQuality == "needs-alignment"`; sửa thêm sẽ chỉ tạo diff thừa.
+- Kế hoạch dự đoán cả hai asset PDCA chuyển sang `partial`, nhưng chính bộ quy tắc
+  W2 tìm thấy asset `asset-bf35963dedac` có 2.737/47.719 từ untrusted = **5,74%**
+  (phần lớn là span < 25 ms). Theo ngưỡng `>= 5%` đã khóa, kết quả bắt buộc vẫn là
+  `needs-alignment`. Không hạ ngưỡng và không thêm ngoại lệ theo asset.
+- Sample 236 s chạy end-to-end chỉ snap 20/56 nhóm = **35,7%**, thấp hơn 60%.
+  Với cách group bắt buộc theo `segmentIndex`, sample có 53 lần tách theo segment
+  nhưng chỉ 31 Silero span; chỉ 21/56 nhóm có ít nhất một edge gần cửa sổ. Muốn
+  vượt 60% phải đổi thuật toán ngoài phạm vi W2 nên dừng ở số thật.
+- Một số test cũ được đổi kỳ vọng vì W2 cố ý thay hợp đồng: word dict lỗi nay được
+  giữ lại với `timingTrusted=false` thay vì bị bỏ; Timeline hiển thị timing
+  provisional trừ `needs-alignment`; refine chuyển từ warp/reject cả nhóm sang
+  snap riêng hai biên. Không test nào bị sửa để né lỗi.
+
+## Agent tự kiểm
+
+```text
+.venv\Scripts\python.exe -m pytest services\api\tests -q
+69 passed, 2 warnings in 10.38s
+
+npm test
+Vitest caught 10 unhandled errors: Failed to start forks worker (timeout)
+Test Files: no tests; Tests: no tests; Errors: 10; Duration: 60.23s
+
+npm test -- --pool=threads
+Test Files  10 passed (10)
+Tests       43 passed (43)
+Duration    71.36s
+
+npm run build
+tsc -b && vite build
+48 modules transformed; built in 1.07s
+
+git diff --check
+exit 0 (chỉ có cảnh báo LF -> CRLF của Git trên Windows)
+```
+
+Output thật của quality report sau migration:
+
+```text
+asset-7e08a3f43af8  words=33912  quality=partial          trusted=33843/33912 (99.8%)
+asset-bd55873fc707  words=43417  quality=partial          trusted=42656/43417 (98.2%)
+asset-bf35963dedac  words=47719  quality=needs-alignment  trusted=44982/47719 (94.3%)
+TOTAL words=125048 trusted=97.1%
+media.list first=0.450s repeat=0.024s; media.get=0.036s
+```
+
+Probe read-only thuật toán mới trên asset PDCA 9.881 s:
+
+```text
+words=33912; phrase_groups=4565
+snapped_groups=3053/4565 (66.9%); snapped_words=3678
+```
+
+Fresh STT end-to-end trên sample 236 s:
+
+```text
+words=665; phrase_groups=56
+snapped_groups=20/56 (35.7%); snapped_words=25
+engine=faster-whisper-native-dtw+silero-edge
+note=... (20 phrase groups; middle words unchanged)
+```
+
+Các asset PDCA cũ chưa chạy lại STT nên file persist vẫn có 0 provenance
+`silero-edge`; số 3.053/4.565 ở trên là probe read-only bằng thuật toán hiện tại.
+
+## Kết quả so với ngưỡng
+
+| Chỉ số | Ngưỡng | Baseline | Agent đo được | Anh xác nhận |
+| --- | --- | --- | --- | --- |
+| Tỉ lệ từ `timingTrusted` trên 3 asset PDCA | ≥ 95% | 27,1% từ từng được asset-level gate cho hiện | **97,1% — ĐẠT** | |
+| Sample 236 s: nhóm được snap biên | ≥ 60% | 1/17 nhóm; 6/665 từ | **20/56 = 35,7% — CHƯA ĐẠT** | |
+| PDCA 9.881 s: nhóm được snap biên | > 0 | 0/1.126 | **3.053/4.565 = 66,9% — ĐẠT** | |
+| `asset-bd55873fc707` | chuyển sang `partial` | `needs-alignment` | **`partial`, 98,2% trusted — ĐẠT** | |
+| `asset-bf35963dedac` | chuyển sang `partial` | `needs-alignment` | **`needs-alignment`, 94,3% trusted — CHƯA ĐẠT** | |
+| Test ngưỡng 5% và cờ theo từng từ | có | chưa có | **có, backend 69 pass — ĐẠT** | |
+
+## Anh cần check
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Mở PDCA, chọn `2026-08-26 08-33-29.mp3` (43,417 từ) | Timeline **hiện word box**. Trước đây trống trơn. |
+| 2 | Nhìn nhãn chất lượng của asset đó | `partial`, kèm ghi chú số vùng cần căn chỉnh |
+| 3 | Phát audio | Từ đang phát được highlight ở cả Timeline và Script |
+| 4 | Tìm vùng có từ xấu (theo ghi chú) | Từ đó hiện với style cảnh báo, **không bị ẩn** |
+| 5 | Export SRT theo câu | Xuất được. Header ghi số dòng đã bỏ qua. |
+| 6 | Chạy lại STT trên footage 236 s, xem báo cáo của agent | Tỉ lệ nhóm được snap biên ≥ 60% (trước: 1/17 nhóm, 6/665 từ) |
+
+## Việc còn treo
+
+- Chủ dự án/reviewer cần quyết định cách xử lý mâu thuẫn giữa yêu cầu “cả hai
+  asset thành partial” và ngưỡng 5%: asset 47.719 từ đang ở 5,74%. W2 không tự ý
+  thay ngưỡng.
+- Ngưỡng snap 60% của sample chưa đạt vì số Whisper segment nhiều hơn số Silero
+  span. Thay grouping hoặc cho snap qua segment boundary là một quyết định thuật
+  toán mới; để round sau quyết định, không mở rộng W2.
+- Chưa bấm nghiệm thu UI thật; sáu mục ở bảng trên chờ chủ dự án.
+- `npm test` mặc định vẫn gặp fork-worker timeout trên ổ mạng ánh xạ; pool threads
+  chạy đủ 43 test và build sạch.
+- R5 chỉ được bắt đầu ở invocation kế tiếp; round này dừng tại đây.
+
+### Review (Claude)
+
+_(chưa có)_
+
+### Feedback
+
+_(chưa có)_
