@@ -569,3 +569,51 @@ def test_removing_an_asset_drops_its_word_file_and_job_snapshots(tmp_path):
     assert library.list(project.id) == []
     assert not asset_dir.exists()
     assert not (Path(project.project_path) / "jobs" / "diarization" / "asset-split.json").exists()
+
+
+def test_finishing_a_job_publishes_its_terminal_snapshot(tmp_path):
+    """The UI polls only the snapshot, so a finished job must appear finished there.
+
+    apply_diarization wrote `complete` into the index while the snapshot still
+    said `processing`, leaving the progress bar pinned at 100% forever. The same
+    hole existed for apply_transcription; it was hidden because the queue happened
+    to call set_transcription_state afterwards.
+    """
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Terminal snapshot"))
+    library = FileMediaLibrary(projects)
+    library.create(project.id, _asset_payload(), "asset-split")
+
+    library.set_diarization_state(project.id, "asset-split", "processing", progress=10)
+    library.set_diarization_progress(project.id, "asset-split", 100)
+    assert library.diarization_progresses(project.id)[0].diarization_status == "processing"
+
+    library.apply_diarization(
+        project.id, "asset-split", [{"text": "Xin", "start": 0.0, "end": 0.4}]
+    )
+
+    snapshot = library.diarization_progresses(project.id)[0]
+    assert snapshot.diarization_status == "complete"
+    assert snapshot.diarization_progress == 100
+
+    library.set_transcription_state(project.id, "asset-split", "processing", progress=5)
+    library.apply_transcription(
+        project.id,
+        "asset-split",
+        {"text": "Xin", "words": [{"text": "Xin", "start": 0.0, "end": 0.4}], "duration": 4},
+        4.0,
+    )
+    assert library.transcription_progresses(project.id)[0].transcription_status == "reviewing"
+
+
+def test_a_job_that_leaves_the_queue_drops_its_snapshot(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Snapshot cleanup"))
+    library = FileMediaLibrary(projects)
+    library.create(project.id, _asset_payload(), "asset-split")
+
+    library.set_transcription_state(project.id, "asset-split", "queued", progress=0)
+    assert library.transcription_progresses(project.id)
+
+    library.set_transcription_state(project.id, "asset-split", "skipped")
+    assert library.transcription_progresses(project.id) == []

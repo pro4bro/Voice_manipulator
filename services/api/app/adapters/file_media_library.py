@@ -501,15 +501,9 @@ class FileMediaLibrary:
                     "error": error,
                 },
             )
-            if state in {"queued", "processing", "reviewing", "complete", "error"}:
-                self._write_job_snapshot(
-                    project_id, "transcription", asset_id,
-                    state=state, progress=resolved, error=error,
-                )
-            else:
-                self._job_snapshot_path(project_id, "transcription", asset_id).unlink(
-                    missing_ok=True
-                )
+            # The snapshot is published by _update_asset, so every path that moves
+            # a job - including apply_transcription and apply_diarization - keeps
+            # the UI's view in step.
             return updated
 
     def set_diarization_state(
@@ -540,15 +534,6 @@ class FileMediaLibrary:
                 event="DIARIZATION_STATE_CHANGED",
                 details={"state": state, "progress": resolved, "error": error},
             )
-            if state in {"queued", "processing", "complete", "requires-setup", "error"}:
-                self._write_job_snapshot(
-                    project_id, "diarization", asset_id,
-                    state=state, progress=resolved, error=error,
-                )
-            else:
-                self._job_snapshot_path(project_id, "diarization", asset_id).unlink(
-                    missing_ok=True
-                )
             return updated
 
     def set_transcription_progress(
@@ -683,6 +668,12 @@ class FileMediaLibrary:
 
         `words` defaults to a sentinel meaning "leave words.json alone", so a
         status change never rewrites tens of thousands of word records.
+
+        Job snapshots are published here rather than by each caller. The UI polls
+        only the snapshot, so a path that moved a job to its terminal state
+        without republishing left the job visibly stuck: `apply_diarization` wrote
+        `complete` into the index while the snapshot still said `processing`, and
+        the progress bar sat at 100% forever.
         """
         root = self._project_root(project_id)
         assets = self._load(project_id, include_words=False)
@@ -696,6 +687,7 @@ class FileMediaLibrary:
             self._store.write_index(root, project_id, assets)
             if words is not _KEEP_WORDS:
                 self._store.write_words(root, project_id, asset_id, words)
+            self._publish_job_snapshots(project_id, asset_id, updates, updated)
             if event:
                 project = self.projects.get(project_id)
                 self.activity.append(
@@ -764,6 +756,49 @@ class FileMediaLibrary:
             return round(max(0.0, min(100.0, float(value))), 1)
         except (TypeError, ValueError):
             return 0.0
+
+    # A job whose status reaches one of these is no longer polled by the UI, so the
+    # snapshot must carry the transition or the job looks stuck forever.
+    _JOB_STATUS_FIELDS = {
+        "transcription": (
+            "transcription_status",
+            "transcription_progress",
+            "transcription_error",
+            {"queued", "processing", "reviewing", "complete", "error"},
+        ),
+        "diarization": (
+            "diarization_status",
+            "diarization_progress",
+            "diarization_error",
+            {"queued", "processing", "complete", "requires-setup", "error"},
+        ),
+    }
+
+    def _publish_job_snapshots(
+        self,
+        project_id: str,
+        asset_id: str,
+        updates: dict[str, Any],
+        updated: ProjectMediaAsset,
+    ) -> None:
+        for kind, (status_field, progress_field, error_field, tracked) in (
+            self._JOB_STATUS_FIELDS.items()
+        ):
+            if status_field not in updates:
+                continue
+            state = str(getattr(updated, status_field))
+            if state not in tracked:
+                # Skipped or not-applicable assets have no job to report on.
+                self._job_snapshot_path(project_id, kind, asset_id).unlink(missing_ok=True)
+                continue
+            self._write_job_snapshot(
+                project_id,
+                kind,
+                asset_id,
+                state=state,
+                progress=getattr(updated, progress_field),
+                error=getattr(updated, error_field),
+            )
 
     def _job_snapshot_path(self, project_id: str, kind: str, asset_id: str) -> Path:
         return self._project_root(project_id) / "jobs" / kind / f"{asset_id}.json"
