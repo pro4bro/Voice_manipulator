@@ -124,7 +124,7 @@ R1 vì cùng một đợt và không còn ai chạy song song để tranh chấp
 | R2 | W2 timing trust theo từ | **ĐÃ CODE — CHỜ NGHIỆM THU; 2 NGƯỠNG CHƯA ĐẠT** |
 | R5 | W3 probe forced alignment | **ĐÃ XONG — KHÔNG ĐẠT NGƯỠNG** (2/3 trượt) |
 | R6 | W3 tích hợp | **KHÔNG THỰC HIỆN** — điều kiện R5 không thoả |
-| R7 | W4 diarization | **NEXT** |
+| R7 | W4 diarization | **ĐÃ XONG** — cả 3 tiêu chí đạt |
 
 **Lưu ý cho R2:** vì R1/R3/R4 đã sửa `Timeline.tsx`, `server.py`, `main.py` và
 đường ghi của media library, R2 phải đọc **trạng thái hiện tại** của các file đó
@@ -430,6 +430,101 @@ Round này không đổi hành vi app nên không có gì để bấm. Nếu anh
 ### Review (Claude)
 
 Tự làm nên không phải review độc lập. Số đo tái lập được bằng lệnh ở trên.
+
+### Feedback
+
+_(chưa có)_
+
+---
+
+# R7 — W4 Diarization
+
+**Trạng thái:** ĐÃ XONG. Commit `db7f070`. Cả ba tiêu chí đạt.
+
+## Kết quả so với ngưỡng
+
+Sample `test-3` (236 s, 665 từ, 2 người nói), chạy lại end-to-end:
+
+| Chỉ số | Ngưỡng | Trước | Sau |
+| --- | --- | --- | --- |
+| số run nhãn | ≤ 22 | 40 | **17** |
+| từ không có nhãn | 0 | 39 | **0** |
+| run < 3 từ kẹt giữa hai run cùng nhãn | 0 | 5 | **0** |
+
+78 backend test pass, **không sửa test cũ nào**.
+
+## Đã đổi
+
+| File | Nội dung |
+| --- | --- |
+| `sequential_diarization_queue.py` | Gán nhãn theo bằng chứng phủ sóng; từ ở ranh giới nhường hàng xóm; từ trong khe kế thừa trong 0.6 s; smoothing đổi từ ngưỡng thời lượng sang ngưỡng khoảng lặng hai đầu; lưu spans thô |
+| `studio_app/server.py` | `torchaudio.functional.resample` thay `interpolate(mode="linear")` |
+| `scripts/stt_quality_report.py` | Đếm flip theo đúng tiêu chí < 3 từ |
+
+## Lệch so với kế hoạch
+
+**Thiết kế kế hoạch đề xuất bị bác bỏ sau khi thử.** Kế hoạch bảo gom từ thành
+lượt theo khoảng lặng > 0.35 s rồi bỏ phiếu đa số cho cả lượt. Em code xong thì
+một test có sẵn fail: hai người nói cách nhau **0.3 s** — luân phiên bình thường
+trong hội thoại — bị gộp thành một lượt và một người mất tiếng nói. Đã thay bằng
+cách phẫu thuật hơn, sửa đúng hai defect đo được thay vì đổi cả mô hình.
+
+**Dùng `torchaudio.functional.resample` thay vì tạo file 16 kHz bằng FFmpeg.**
+Kế hoạch chọn FFmpeg là chính, torchaudio là dự phòng. Nhưng FFmpeg kéo theo một
+field mới trong model, một file mới cho mỗi asset, và migration cho asset cũ —
+để đổi lấy tiết kiệm 1–2 giây trên một job chạy 154 giây. Kế hoạch cho phép
+torchaudio; đây là đánh đổi tốt hơn.
+
+**Không truyền `min_speakers`/`max_speakers`.** Kế hoạch nêu mục này, nhưng UI chỉ
+có một ô "số người nói", và khi có số đó thì `num_speakers` (đang dùng) mạnh hơn
+min/max. Không có gì để cải thiện nếu không đổi UI, nên em không thêm ống dẫn
+không ai dùng.
+
+**Đo lại aliasing thì nhỏ hơn em từng nói.** Trước em viết "mọi thành phần trên
+8 kHz gập ngược vào dải thoại". Số đo thật: **+57% năng lượng thừa ở 6.5–8 kHz**,
+−10% ở 3–5 kHz, sai lệch RMS tổng ~10%. Vẫn đáng sửa, không phải thảm hoạ.
+
+## Giới hạn phải nói rõ
+
+Smoothing chỉ gộp run **1–2 từ**. Bản mạnh tay hơn (≤5 từ) cho 11 run thay vì 17,
+nhưng audit từng run bị gộp cho thấy nó **xoá mất backchannel thật** — *"À hiểu
+hiểu"*, *"Đúng rồi"* — kiểu đệm rất phổ biến trong hội thoại tiếng Việt.
+
+Nguyên nhân sâu hơn: DTW xếp từ sát nhau nên gap = 0.000 **ở cả backchannel thật
+lẫn artefact giữa câu**. Không tín hiệu nào trong timing hiện tại tách được
+chúng. Gán lời người nghe cho người nói là sai tệ hơn là để lại một run thừa mà
+người dùng nhìn thấy và sửa tay được, nên em chọn phía hẹp.
+
+**Chất lượng gán nhãn diarization bị chặn trên bởi chất lượng word timing.** Nếu
+W2 làm timing tách được ranh giới cụm, quy tắc này có thể mở rộng an toàn.
+
+## Anh cần check
+
+| # | Việc anh làm | Kết quả đúng |
+| --- | --- | --- |
+| 1 | Mở **Test 3**, xem Script chế độ speaker | Không còn từ nào thiếu nhãn |
+| 2 | Đọc qua transcript | Không còn đoạn 1–2 từ bị gán nhầm sang người kia giữa câu |
+| 3 | Kiểm tra các đoạn đệm ngắn ("Đúng rồi", "À hiểu hiểu") | Vẫn thuộc người nghe, không bị gộp vào người nói |
+
+Mục 3 quan trọng nhất — nếu anh thấy backchannel bị gán nhầm, báo em, đó là chỗ
+em đã chọn đánh đổi.
+
+Tự chấm lại không cần GPU (spans đã lưu):
+
+```bash
+.venv/Scripts/python.exe scripts/stt_quality_report.py --project test-3
+```
+
+## Việc còn treo
+
+- `min_speakers`/`max_speakers` cần UI cho khoảng số người nói trước khi có ý nghĩa.
+- Backchannel 1–2 từ vẫn có thể bị gộp; cần word timing tốt hơn (W2) mới sửa được.
+
+### Review (Claude)
+
+Tự làm nên không phải review độc lập. Spans thô của cả hai project giống nhau
+từng byte, nên pyannote deterministic ở sample này và cải thiện 40 → 17 quy được
+cho thay đổi thuật toán chứ không phải may rủi.
 
 ### Feedback
 
