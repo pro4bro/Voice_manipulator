@@ -651,36 +651,38 @@ class MediaImportProcessor:
             latest_progress = progress
             await on_progress(progress)
 
+        data = {"origin": origin, "realtime_text": realtime_text, "model": model}
+        if progress_id:
+            data["progress_id"] = progress_id
+
+        async def send(client: httpx.AsyncClient, *, by_path: bool) -> httpx.Response:
+            """Run one import request while relaying the sidecar's progress."""
+            if by_path:
+                task = asyncio.create_task(
+                    client.post(
+                        f"{self.studio_url}/api/audio/import",
+                        data={**data, "source_path": str(analysis_path.resolve())},
+                    )
+                )
+                return await self._await_import(client, task, progress_id, publish)
+            with analysis_path.open("rb") as audio:
+                task = asyncio.create_task(
+                    client.post(
+                        f"{self.studio_url}/api/audio/import",
+                        files={"file": (analysis_path.name, audio, "audio/wav")},
+                        data=data,
+                    )
+                )
+                return await self._await_import(client, task, progress_id, publish)
+
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                with analysis_path.open("rb") as audio:
-                    data = {"origin": origin, "realtime_text": realtime_text, "model": model}
-                    if progress_id:
-                        data["progress_id"] = progress_id
-                    import_task = asyncio.create_task(
-                        client.post(
-                            f"{self.studio_url}/api/audio/import",
-                            files={"file": (analysis_path.name, audio, "audio/wav")},
-                            data=data,
-                        )
-                    )
-                    while not import_task.done():
-                        await asyncio.sleep(0.15)
-                        if not progress_endpoint_available:
-                            continue
-                        try:
-                            status = await client.get(
-                                f"{self.studio_url}/api/audio/import/{progress_id}/progress",
-                                timeout=httpx.Timeout(1.5, connect=1.0),
-                            )
-                            if status.status_code == 404:
-                                progress_endpoint_available = False
-                            elif not status.is_error:
-                                await publish(status.json().get("progress", 0))
-                        except httpx.RequestError:
-                            # The import request itself reports the final connection failure.
-                            continue
-                    response = await import_task
+                # The sidecar runs on this machine, so handing it a path avoids
+                # streaming and re-writing a multi-hundred-megabyte WAV. Older
+                # sidecars reject the field; fall back rather than fail.
+                response = await send(client, by_path=True)
+                if response.status_code in {400, 422}:
+                    response = await send(client, by_path=False)
         except httpx.RequestError as exc:
             raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
         payload = response.json()
@@ -688,6 +690,32 @@ class MediaImportProcessor:
             raise RuntimeError(payload.get("detail", f"Studio import thất bại ({response.status_code})."))
         await publish(100)
         return dict(payload["item"]), float(payload.get("elapsed", 0))
+
+    async def _await_import(
+        self,
+        client: httpx.AsyncClient,
+        task: asyncio.Task[httpx.Response],
+        progress_id: str,
+        publish: Callable[[object], Awaitable[None]],
+    ) -> httpx.Response:
+        progress_endpoint_available = bool(progress_id)
+        while not task.done():
+            await asyncio.sleep(0.15)
+            if not progress_endpoint_available:
+                continue
+            try:
+                status = await client.get(
+                    f"{self.studio_url}/api/audio/import/{progress_id}/progress",
+                    timeout=httpx.Timeout(1.5, connect=1.0),
+                )
+                if status.status_code == 404:
+                    progress_endpoint_available = False
+                elif not status.is_error:
+                    await publish(status.json().get("progress", 0))
+            except httpx.RequestError:
+                # The import request itself reports the final connection failure.
+                continue
+        return await task
 
     @staticmethod
     def _codec(stream: dict[str, Any] | None) -> str | None:
