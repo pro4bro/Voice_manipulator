@@ -129,6 +129,79 @@ function Test-ControllerProcess($ProcessInfo) {
     return Test-Pro4BroPython $ProcessInfo $script:Pro4BroModulePatterns.controller
 }
 
+$HeartbeatSeconds = 30
+$script:Pro4BroServices = @(
+    @{ Role = "controller"; Label = "Runtime controller"; Port = 18119; Pattern = $script:Pro4BroModulePatterns.controller },
+    @{ Role = "api";        Label = "Pro4Bro API";        Port = 18120; Pattern = $script:Pro4BroModulePatterns.api },
+    @{ Role = "studio";     Label = "OmniVoice Studio";   Port = 18081; Pattern = $script:Pro4BroModulePatterns.studio }
+)
+
+function Get-ServiceRows {
+    <#
+        One row per managed listener: who holds the port, and whether it is ours.
+        A port that is merely occupied is not the same as a service that is up,
+        and the operator needs to be able to tell those apart at a glance.
+    #>
+    foreach ($service in $script:Pro4BroServices) {
+        $listener = Get-Pro4BroListener $service.Port | Select-Object -First 1
+        if (-not $listener) {
+            [pscustomobject]@{ Label = $service.Label; Port = $service.Port; State = "STOPPED"; Pid = $null }
+            continue
+        }
+        $owner = Get-Pro4BroProcess ([int]$listener.OwningProcess)
+        $state = if (Test-Pro4BroPython $owner $service.Pattern) { "RUNNING" } else { "FOREIGN" }
+        [pscustomobject]@{ Label = $service.Label; Port = $service.Port; State = $state; Pid = [int]$listener.OwningProcess }
+    }
+}
+
+function Get-ServiceSignature {
+    ((Get-ServiceRows | ForEach-Object { "$($_.Port):$($_.State):$($_.Pid)" }) -join "|")
+}
+
+function Write-ServiceTable([string]$Reason) {
+    $rows = @(Get-ServiceRows)
+    $stamp = (Get-Date).ToString("HH:mm:ss")
+    Write-Host ""
+    Write-Host "  [$stamp] $Reason" -ForegroundColor DarkGray
+    foreach ($row in $rows) {
+        $colour = switch ($row.State) {
+            "RUNNING" { "Green" }
+            "FOREIGN" { "Red" }
+            default   { "DarkYellow" }
+        }
+        $pidText = if ($null -eq $row.Pid) { "-" } else { $row.Pid }
+        Write-Host ("    {0,-20} port {1}  " -f $row.Label, $row.Port) -NoNewline
+        Write-Host ("{0,-8}" -f $row.State) -ForegroundColor $colour -NoNewline
+        Write-Host " pid $pidText"
+    }
+    if ($rows | Where-Object { $_.State -eq "FOREIGN" }) {
+        Write-Host "    Mot process khac dang giu port. Chay start-pro4bro.bat stop roi start lai." -ForegroundColor Red
+    }
+    Set-WindowTitleFrom $rows
+}
+
+function Write-Heartbeat {
+    $rows = @(Get-ServiceRows)
+    $summary = ($rows | ForEach-Object { "$($_.Label.Split(' ')[0].ToLower())=$($_.State.ToLower())" }) -join "  "
+    Write-Host ("  [{0}] {1}" -f (Get-Date).ToString("HH:mm:ss"), $summary) -ForegroundColor DarkGray
+    Set-WindowTitleFrom $rows
+}
+
+function Set-WindowTitleFrom($Rows) {
+    # The title carries the state even when the window is minimised or scrolled.
+    $running = @($Rows | Where-Object { $_.State -eq "RUNNING" }).Count
+    $title = if ($Rows | Where-Object { $_.State -eq "FOREIGN" }) {
+        "Pro4Bro - PORT BLOCKED"
+    } elseif ($running -eq $Rows.Count) {
+        "Pro4Bro - RUNNING ($running/$($Rows.Count))"
+    } elseif ($running -eq 0) {
+        "Pro4Bro - STOPPED"
+    } else {
+        "Pro4Bro - PARTIAL ($running/$($Rows.Count))"
+    }
+    try { $Host.UI.RawUI.WindowTitle = $title } catch { }
+}
+
 function Stop-Controller {
     foreach ($listener in (Get-Pro4BroListener 18119)) {
         $listenerId = [int]$listener.OwningProcess
@@ -238,7 +311,16 @@ if ($existing) {
 # Reclaim workloads whose launcher window was closed without an orderly shutdown.
 $reclaimed = Remove-Pro4BroOrphan $projectRoot @("controller", "api", "studio")
 if ($reclaimed -gt 0) {
-    Write-Host "Reclaimed $reclaimed orphaned Pro4Bro process tree(s)." -ForegroundColor Yellow
+    Write-Host "  Reclaimed $reclaimed orphaned Pro4Bro process tree(s)." -ForegroundColor Yellow
+    # Also durable: a window that is gone cannot answer why the next start had
+    # to clean up after it.
+    try {
+        $actionLog = Join-Path $logRoot "pro4bro-runtime-actions.log"
+        New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+        Add-Content -LiteralPath $actionLog -Encoding utf8 -Value (
+            "`n[{0}] reclaimed {1} orphaned process tree(s) before start" -f `
+                ([datetime]::UtcNow.ToString("o")), $reclaimed)
+    } catch { }
 }
 
 $controllerOut = Join-Path $logRoot "pro4bro-controller.out.log"
@@ -258,19 +340,39 @@ try {
     }
     & $workloadScript -Action start
     Open-Workspace
-    $Host.UI.RawUI.WindowTitle = "Pro4Bro Runtime Controller - RUNNING"
     Write-Host ""
-    Write-Host "Pro4Bro is available at $controllerUrl" -ForegroundColor Green
-    Write-Host "Windows menu controls API, STT and background workloads." -ForegroundColor Cyan
+    Write-Host "  Pro4Bro is available at $controllerUrl" -ForegroundColor Green
+    Write-Host "  Windows menu controls API, STT and background workloads." -ForegroundColor Cyan
     if ($ownsProcessTree) {
-        Write-Host "This window owns every Pro4Bro process. Closing it stops all of them." -ForegroundColor Cyan
+        Write-Host "  Closing this window stops every Pro4Bro process. Ctrl+C does the same." -ForegroundColor Cyan
     } else {
-        Write-Host "Process-tree ownership unavailable; use Ctrl+C or start-pro4bro.bat stop." -ForegroundColor Yellow
+        Write-Host "  Process-tree ownership unavailable; use Ctrl+C or start-pro4bro.bat stop." -ForegroundColor Yellow
     }
-    Write-Host "Run start-pro4bro.bat restart to reload controller code changes." -ForegroundColor Cyan
-    # Watch our own controller process, not the port. Another window replacing us
-    # must not look like a healthy stack, and our exit must not look like theirs.
-    while (-not $controllerProcess.HasExited) { Start-Sleep -Seconds 1 }
+    Write-Host "  Run start-pro4bro.bat restart to reload controller code changes." -ForegroundColor Cyan
+
+    Write-ServiceTable "STARTED"
+    $lastSignature = Get-ServiceSignature
+    $lastHeartbeat = Get-Date
+
+    # This window is the operator's only view of whether the stack is up, so it
+    # reports rather than sitting silent: a line whenever a service changes state,
+    # and a heartbeat often enough to prove the window itself is still alive.
+    # It watches its own controller process rather than the port - a window that
+    # replaced us must not read as a healthy stack, nor our exit as theirs.
+    while (-not $controllerProcess.HasExited) {
+        Start-Sleep -Seconds 2
+        $signature = Get-ServiceSignature
+        if ($signature -ne $lastSignature) {
+            Write-ServiceTable "CHANGED"
+            $lastSignature = $signature
+            $lastHeartbeat = Get-Date
+        } elseif (((Get-Date) - $lastHeartbeat).TotalSeconds -ge $HeartbeatSeconds) {
+            Write-Heartbeat
+            $lastHeartbeat = Get-Date
+        }
+    }
+    Write-Host ""
+    Write-Host "  Controller exited. Shutting the rest of the stack down." -ForegroundColor Yellow
 } finally {
     if (Test-ConsoleOwnership) {
         try { & $workloadScript -Action stop | Out-Null } catch { }

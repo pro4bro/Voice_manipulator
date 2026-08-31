@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import socket
+import json
+import os
 import subprocess
 import threading
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from app.adapters.listening_ports import descends_from, listening_owners, parent_pids
 from app.domain.models import DomainModel
 
 
@@ -24,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 WEB_DIST = PROJECT_ROOT / "apps" / "web" / "dist"
 WORKLOAD_SCRIPT = PROJECT_ROOT / "scripts" / "pro4bro-workloads.ps1"
 ACTION_LOG = PROJECT_ROOT / "data" / "logs" / "pro4bro-runtime-actions.log"
+SESSION_FILE = PROJECT_ROOT / "data" / "runtime" / "pro4bro-services.json"
 API_ORIGIN = "http://127.0.0.1:18120"
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -41,14 +44,28 @@ class RuntimeActionRequest(BaseModel):
     action: Literal["start", "stop", "restart"]
 
 
+ServiceState = Literal["running", "stopped", "foreign"]
+
+
+class RuntimeProcess(DomainModel):
+    """One managed listener, and whether the process holding its port is ours."""
+
+    role: Literal["controller", "api", "studio"]
+    label: str
+    port: int
+    state: ServiceState
+    pid: int | None = None
+
+
 class RuntimeWorkloadState(DomainModel):
-    overall: Literal["running", "stopped", "partial", "busy"]
-    api: Literal["running", "stopped"]
-    studio: Literal["running", "stopped"]
+    overall: Literal["running", "stopped", "partial", "busy", "blocked"]
+    api: ServiceState
+    studio: ServiceState
     busy: bool = False
     active_action: Literal["start", "stop", "restart"] | None = None
     last_action: Literal["start", "stop", "restart"] | None = None
     last_error: str | None = None
+    processes: list[RuntimeProcess] = []
     updated_at: datetime
 
 
@@ -63,35 +80,78 @@ class RuntimeLifecycle:
         self._last_action: Literal["start", "stop", "restart"] | None = None
         self._last_error: str | None = None
 
+    SERVICES = (
+        ("controller", "Runtime controller", 18119, None),
+        ("api", "Pro4Bro API", 18120, "apiPid"),
+        ("studio", "OmniVoice Studio", 18081, "studioPid"),
+    )
+
     @staticmethod
-    def _port_open(port: int) -> bool:
+    def _session() -> dict:
+        """The pids the launcher recorded when it started the workloads."""
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.25):
-                return True
-        except OSError:
-            return False
+            return json.loads(SESSION_FILE.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def inventory(self) -> list[RuntimeProcess]:
+        """Report who actually holds each port, not merely whether it is held.
+
+        A plain connect test called any listener "running", so a stray process on
+        18120 left the workspace reporting every system healthy while nothing of
+        ours was answering. A service counts as ours when the process owning its
+        port descends from the pid the launcher recorded - or, for the controller,
+        when it is this process.
+        """
+        owners = listening_owners()
+        session = self._session()
+        parents: dict[int, int] | None = None
+        processes: list[RuntimeProcess] = []
+        for role, label, port, key in self.SERVICES:
+            owner = owners.get(port)
+            if owner is None:
+                state: ServiceState = "stopped"
+            elif role == "controller":
+                if parents is None:
+                    parents = parent_pids()
+                own = os.getpid()
+                state = "running" if (owner == own or descends_from(own, owner, parents)) else "foreign"
+            else:
+                expected = session.get(key) if key else None
+                if parents is None:
+                    parents = parent_pids()
+                state = "running" if descends_from(owner, expected, parents) else "foreign"
+            processes.append(
+                RuntimeProcess(role=role, label=label, port=port, state=state, pid=owner)
+            )
+        return processes
 
     def status(self) -> RuntimeWorkloadState:
-        api_running = self._port_open(18120)
-        studio_running = self._port_open(18081)
+        processes = self.inventory()
+        by_role = {process.role: process.state for process in processes}
+        api = by_role.get("api", "stopped")
+        studio = by_role.get("studio", "stopped")
         with self._lock:
             busy = self._busy
             if busy:
                 overall = "busy"
-            elif api_running and studio_running:
+            elif "foreign" in (api, studio) or by_role.get("controller") == "foreign":
+                overall = "blocked"
+            elif api == "running" and studio == "running":
                 overall = "running"
-            elif not api_running and not studio_running:
+            elif api == "stopped" and studio == "stopped":
                 overall = "stopped"
             else:
                 overall = "partial"
             return RuntimeWorkloadState(
                 overall=overall,
-                api="running" if api_running else "stopped",
-                studio="running" if studio_running else "stopped",
+                api=api,
+                studio=studio,
                 busy=busy,
                 active_action=self._active_action,
                 last_action=self._last_action,
                 last_error=self._last_error,
+                processes=processes,
                 updated_at=datetime.now(timezone.utc),
             )
 
@@ -138,6 +198,28 @@ class RuntimeLifecycle:
             self._active_action = None
             self._last_action = action
             self._last_error = error
+        self._record_inventory(action, error)
+
+    def _record_inventory(self, action: str, error: str | None) -> None:
+        """Write who is listening after an action, so the log answers "is it up?".
+
+        The script's own summary named only the listener pid for two of the three
+        services. Reading the log later, there was no way to tell a healthy stack
+        from one where something else had taken a port.
+        """
+        try:
+            with ACTION_LOG.open("a", encoding="utf-8") as action_log:
+                action_log.write(f"[{datetime.now(timezone.utc).isoformat()}] {action} finished\n")
+                for process in self.inventory():
+                    action_log.write(
+                        f"    {process.label:<20} port {process.port}  "
+                        f"{process.state:<8} pid {process.pid if process.pid else '-'}\n"
+                    )
+                if error:
+                    action_log.write(f"    error: {error}\n")
+        except OSError:
+            # The log is a convenience; never fail an action because it cannot be written.
+            pass
 
 
 lifecycle = RuntimeLifecycle(WORKLOAD_SCRIPT)

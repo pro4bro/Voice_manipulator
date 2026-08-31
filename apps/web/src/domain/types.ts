@@ -2,14 +2,25 @@ export type WorkspacePage = "speech-to-text" | "voice-training" | "voice-manipul
 export type ThemeMode = "light" | "dark";
 export type RuntimeAction = "start" | "stop" | "restart";
 
+export type RuntimeServiceState = "running" | "stopped" | "foreign";
+
+export interface RuntimeProcess {
+  role: "controller" | "api" | "studio";
+  label: string;
+  port: number;
+  state: RuntimeServiceState;
+  pid: number | null;
+}
+
 export interface RuntimeWorkloadState {
-  overall: "running" | "stopped" | "partial" | "busy";
-  api: "running" | "stopped";
-  studio: "running" | "stopped";
+  overall: "running" | "stopped" | "partial" | "busy" | "blocked";
+  api: RuntimeServiceState;
+  studio: RuntimeServiceState;
   busy: boolean;
   activeAction: RuntimeAction | null;
   lastAction: RuntimeAction | null;
   lastError: string | null;
+  processes: RuntimeProcess[];
   updatedAt: string;
 }
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
