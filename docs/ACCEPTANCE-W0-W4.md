@@ -177,9 +177,24 @@ Hai ngưỡng của **W2 (R2, do Codex làm)** chưa đạt, và **cố ý khôn
 
 ---
 
-## 10. Chưa làm, đang chờ anh quyết
+## 10. Hiển thị tiến trình — bổ sung sau W4
 
-Bốn mục hiển thị tiến trình trong menu Windows, trong đó có **một lỗi thật**:
-controller chỉ kiểm tra *có ai listen trên port không*, không kiểm tra *có phải
-process của mình không* — nên nếu một process lạ chiếm port 18120, UI vẫn báo
-**"ALL SYSTEMS ON"** trong khi app không hoạt động.
+| # | Việc làm | Kết quả đúng | |
+| --- | --- | --- | --- |
+| 10.1 | Mở `start-pro4bro.bat`, nhìn cửa sổ | In bảng **STARTED** với 3 dòng: controller / API / Studio, kèm port và PID | [TAY] |
+| 10.2 | Để yên 30 giây | Xuất hiện dòng heartbeat `[hh:mm:ss] runtime=running pro4bro=running omnivoice=running` | [TAY] |
+| 10.3 | Nhìn tiêu đề cửa sổ | `Pro4Bro - RUNNING (3/3)` | [TAY] |
+| 10.4 | Mở menu Windows trong app | Liệt kê 3 tiến trình với port và PID | [TAY] |
+| 10.5 | Giết một service từ Task Manager | Cửa sổ in bảng **CHANGED** trong ~2 giây; menu Windows đổi trạng thái | [TAY] |
+| 10.6 | Cho process khác chiếm port 18120 rồi xem menu Windows | Báo **PORT BỊ CHIẾM** / `blocked`, nêu tên và PID kẻ chiếm — **không** báo ALL SYSTEMS ON | [RỦI RO] |
+| 10.7 | Sau một lần dọn orphan, mở `data/logs/pro4bro-runtime-actions.log` | Có dòng `reclaimed N orphaned process tree(s)` và bảng inventory sau mỗi action | [LỆNH] |
+
+**10.6 là lỗi thật đã sửa.** Trước đây một process lạ giữ port 18120 vẫn khiến app
+báo "ALL SYSTEMS ON" trong khi không có gì của mình trả lời — loại sai tệ nhất vì
+mọi chỉ báo đều đồng ý.
+
+---
+
+## 11. Chưa làm, đang chờ anh quyết
+
+Không còn mục nào treo. Hai ngưỡng W2 ở mục 9 vẫn chưa đạt và cố ý không hạ.
