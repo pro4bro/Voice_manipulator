@@ -6,6 +6,7 @@ Sổ theo dõi đợt sửa ổn định. **Đây là file duy nhất chủ dự
 - **Nghiệm thu hợp nhất W0–W4: `docs/ACCEPTANCE-W0-W4.md`** — xếp theo thứ tự thao tác trong một phiên
 - Checklist nghiệm thu từng round: mục "Checklist nghiệm thu tay theo round" trong file kế hoạch
 - Nhánh: `fix/w1-runtime-and-index-performance`
+- **Cây làm việc: `E:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR`** — bản trên ổ V: chỉ là backup, không sửa
 
 ## Cho agent thi công
 
