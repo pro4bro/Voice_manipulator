@@ -293,3 +293,36 @@ Verification for this slice:
   with no browser console warning/error.
 - Verification: 42 frontend tests and 57 backend tests passed; TypeScript and
   the production Vite build passed.
+
+
+## 2026-08-31 Workspace Moved To A Local Disk
+
+The workspace now lives at
+`E:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR`, including both
+virtual environments, the 5.2 GB model folder, and the Hugging Face and torch
+caches. The mapped network share (`V:` → `\192.168.100.102\hub\...`) is no
+longer the working tree.
+
+Copying a venv leaves it pointing at wherever it was built: every console-script
+`.exe` embeds a shebang, and the activate scripts and `pyvenv.cfg` record absolute
+paths. 59 launchers still referenced the old locations - 46 of them the network
+share - and were repointed; the activation scripts were regenerated from the
+stdlib templates. `python.exe` itself was always correct, because CPython derives
+`sys.prefix` from the executable's own location, which is why the application ran
+before any of this was fixed.
+
+The environment limitation recorded on 2026-08-24 is resolved. `npm test` runs
+normally again: 43 tests in about 3 seconds, where the share could not start a
+fork worker at all and the `--pool=threads` workaround took nine minutes.
+
+Measured after the move: full stack up in 8 s (was 28-60 s), backend suite 6.3 s,
+`vite build` 197 ms, `media.list()` 0.005 s warm.
+
+Two copies of the project still exist and are **not** the working tree: the V:
+share, and an older `E:\AI_RND\PRO4BRO_VOICE_MANIPULATOR`. Confirm the path
+before editing.
+
+`engines/OmniVoice` has an empty `.git` and the repository has no `.git/modules`,
+so `update-omnivoice.bat` and `git -C engines/OmniVoice status` do not work. The
+engine source is complete and this predates the move; re-running
+`git submodule update --init --recursive` restores it when needed.

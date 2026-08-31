@@ -22,10 +22,12 @@ Ký hiệu:
 → **78 passed**. Không test cũ nào bị sửa để né lỗi.
 
 ```bash
-powershell -NoProfile -Command "Push-Location apps\web; npx vitest run --pool=threads; Pop-Location"
+powershell -NoProfile -Command "Push-Location apps\web; npm test; Pop-Location"
 ```
-→ **43 passed**. `npm test` (fork pool) **không chạy được** trên ổ mạng ánh xạ —
-hạn chế môi trường đã ghi trong `SESSION_HANDOFF.md`, không phải hồi quy.
+→ **43 passed trong ~3 giây**. Trên ổ mạng cũ lệnh này **không chạy được** và
+phải dùng `--pool=threads` mất ~9 phút; sau khi chuyển sang ổ local E: nó hoạt
+động bình thường. Nếu thấy worker timeout thì kiểm tra xem có đang đứng ở bản
+copy trên ổ mạng không.
 
 ```bash
 .venv/Scripts/python.exe scripts/stt_quality_report.py
