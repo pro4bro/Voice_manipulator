@@ -1,3 +1,4 @@
+import type { WordSelection } from "../../domain/word-selection";
 import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, ProjectMediaAsset, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
@@ -34,6 +35,8 @@ export interface StudioContext {
   canRunAiReview: boolean;
   trainingCatalog: TrainingCatalog;
   profileSchema: EngineProfileSchema | null;
+  /** Shared so a selection made in Script shows up in Timeline, and back. */
+  wordSelection: WordSelection;
   onScriptChange: (value: string) => void;
   onVoiceChange: (voiceId: string) => void;
   onSpeedChange: (value: number) => void;
@@ -49,7 +52,14 @@ export interface StudioContext {
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
+  onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
+  onRestoreAsset: (asset: ProjectMediaAsset) => void;
+  onRevealAsset: (asset: ProjectMediaAsset) => void;
+  onSetAssetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
+  /** True while the selected footage is in the recycle bin: look, do not touch. */
+  readOnlyAsset: boolean;
+  projectLanguage: string | null;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onUpdateDiarizationAssignments: (assetId: string, assignments: Record<string, string | null>) => void;
   onWordsChange: (words: StudioWord[], text?: string) => void;
@@ -59,6 +69,7 @@ export interface StudioContext {
   onDeferredAction: (action: string) => void;
   onRunAiReview: () => void;
   onRunDiarization: () => void;
+  onWordSelectionChange: (selection: WordSelection) => void;
 }
 
 interface ModuleRegistryProps {
@@ -75,7 +86,11 @@ function mediaPoolProps(context: StudioContext) {
     onImportLocal: context.onImportLocalMedia,
     onSetLocalCache: context.onSetLocalCache,
     onQueueTranscriptions: context.onQueueTranscriptions,
+    onControlTranscriptions: context.onControlTranscriptions,
     onRemove: context.onRemoveAsset,
+    onRestore: context.onRestoreAsset,
+    onReveal: context.onRevealAsset,
+    onSetDisabled: context.onSetAssetDisabled,
     onSelect: context.onSelectAsset,
     onSendToTraining: context.onSendToTraining,
     onToggleTraining: context.onToggleTraining,
@@ -97,15 +112,15 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceVault assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      return <ScriptEditor wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+      return <ScriptEditor wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder projectLanguage={context.projectLanguage} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "timeline": {
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      return <Timeline gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={(keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={context.onTimelineEditsChange} onWordsChange={context.onWordsChange} recordingPreview={context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={context.take} />;
+      return <Timeline wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={(keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={context.onTimelineEditsChange} onWordsChange={context.onWordsChange} recordingPreview={context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={context.take} />;
     }
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;

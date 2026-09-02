@@ -444,6 +444,41 @@ class FileMediaLibrary:
             "TRANSCRIPTION_SELECTION_CHANGED", "Speech to Text",
         )
 
+    def set_disabled(self, project_id: str, asset_id: str, disabled: bool) -> ProjectMediaAsset:
+        updates: dict[str, Any] = {"disabled": disabled}
+        if disabled:
+            updates["transcription_selected"] = False
+            updates["training_selected"] = False
+        return self._update_asset(project_id, asset_id, updates, event="MEDIA_DISABLED" if disabled else "MEDIA_ENABLED")
+
+    def send_to_recycle_bin(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
+        """Move footage to the project's recycle bin.
+
+        Nothing is erased and nothing moves on disk: the asset keeps its folder,
+        its words and its whole history, so restoring is a single field away and a
+        multi-gigabyte take is never copied to be deleted. It does leave every
+        work queue, though - transcribing something the user has thrown away
+        would burn GPU time on a mistake.
+        """
+        return self._update_asset(
+            project_id,
+            asset_id,
+            {
+                "deleted_at": datetime.now(timezone.utc),
+                "transcription_selected": False,
+                "training_selected": False,
+            },
+            event="MEDIA_RECYCLED",
+        )
+
+    def restore_from_recycle_bin(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
+        return self._update_asset(
+            project_id,
+            asset_id,
+            {"deleted_at": None},
+            event="MEDIA_RESTORED",
+        )
+
     def remove(self, project_id: str, asset_id: str) -> None:
         with self._lock(project_id):
             root = self._project_root(project_id)

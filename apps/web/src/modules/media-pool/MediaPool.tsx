@@ -33,7 +33,11 @@ interface MediaPoolProps {
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
+  onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemove: (asset: ProjectMediaAsset) => void;
+  onRestore: (asset: ProjectMediaAsset) => void;
+  onReveal: (asset: ProjectMediaAsset) => void;
+  onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
 }
@@ -105,7 +109,11 @@ export function MediaPool({
   onToggleTraining,
   onToggleTranscription,
   onQueueTranscriptions,
+  onControlTranscriptions,
   onRemove,
+  onRestore,
+  onReveal,
+  onSetDisabled,
   onUpdateAnnotations,
   onSendToTraining,
 }: MediaPoolProps) {
@@ -115,6 +123,25 @@ export function MediaPool({
   const [sttModel, setSttModel] = useState<string>("large-v3");
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
+  const liveAssets = assets.filter((asset) => !asset.deletedAt);
+  // Newest first inside the bin; the bin itself is pinned last in the list.
+  const recycledAssets = assets
+    .filter((asset) => asset.deletedAt)
+    .sort((left, right) => String(right.deletedAt).localeCompare(String(left.deletedAt)));
+  const [binOpen, setBinOpen] = useState(false);
+  // Derived from the footage itself rather than polled: the assets already carry
+  // their own status, so there is nothing extra to keep in step.
+  const running = assets.filter((asset) => asset.transcriptionStatus === "queued" || asset.transcriptionStatus === "processing");
+  const heldBack = assets.filter((asset) => asset.transcriptionStatus === "paused");
+  const queueBusy = running.length > 0;
+  // Right-click acts on the whole ticked batch when the footage under the pointer
+  // is part of it, and on that one file otherwise.
+  const contextTargets = (asset: ProjectMediaAsset) => {
+    const batch = [...running, ...heldBack];
+    return batch.some((item) => item.id === asset.id) && batch.length > 1
+      ? batch.map((item) => item.id)
+      : [asset.id];
+  };
   const historyAsset = assets.find((asset) => asset.id === historyAssetId) ?? null;
   const trainingCount = assets.filter((asset) => asset.trainingSelected).length;
   const transcriptionCount = assets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["processing", "reviewing", "queued"].includes(asset.transcriptionStatus)).length;
@@ -167,6 +194,39 @@ export function MediaPool({
     setHistoryAssetId(asset.id);
   }
 
+  function renderAsset(asset: ProjectMediaAsset) {
+    const selected = asset.id === selectedAssetId;
+    const recycled = Boolean(asset.deletedAt);
+    const parked = Boolean(asset.disabled) && !recycled;
+    const codec = asset.audioCodec ?? asset.videoCodec ?? asset.sourceExtension.slice(1).toUpperCase();
+    const assignedNames = speakers.filter((speaker) => asset.speakerProfileIds.includes(speaker.id)).map((speaker) => speaker.name);
+    const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
+    return (
+      <div className={`media-pool-item ${selected ? "is-active" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""}`} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)}>
+        <button aria-pressed={selected} className="media-pool-item__main" onClick={() => onSelect(asset.id)} type="button">
+          <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
+          <span className="media-item-copy">
+            <strong>{asset.name}</strong>
+            <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}</small>
+            <em>{transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? " · " + environmentNames.join(", ") : ""}{asset.hasExternalSource ? asset.localCacheEnabled ? " · CACHE ✓ " + (asset.localCacheUpdatedAt ? new Date(asset.localCacheUpdatedAt).toLocaleString("vi-VN") : "") : " · ORIGINAL FILE" : ""}</em>
+            {["queued", "processing", "reviewing", "paused"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${transcriptionProgressLabel(asset.transcriptionProgress)}%`} className={`media-transcription-progress ${asset.transcriptionStatus === "paused" ? "is-paused" : ""}`}><i style={{ width: `${asset.transcriptionProgress ?? 0}%` }} /><b>{asset.transcriptionStatus === "paused" ? "TẠM DỪNG" : asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {transcriptionProgressLabel(asset.transcriptionProgress)}%</b></span> : null}
+          </span>
+        </button>
+        <div className="media-pool-item__toggles">
+        {recycled ? <><button className="media-restore-action" onClick={() => onRestore(asset)} title="Đưa footage trở lại Media Pool" type="button">Restore</button><button className="media-remove-action" onClick={() => onRemove(asset)} title="Xóa hẳn, không khôi phục được" type="button">Delete</button></> : <>
+          <label className={`media-training-toggle ${asset.transcriptionSelected ? "is-selected" : ""}`}>
+            <input aria-label={`Đưa ${asset.name} vào hàng đợi Speech to text`} checked={asset.transcriptionSelected} disabled={asset.status === "no-audio" || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} onChange={(event) => onToggleTranscription(asset.id, event.target.checked)} type="checkbox" />
+            <span>STT</span>
+          </label>
+          <label className={`media-training-toggle ${asset.trainingSelected ? "is-selected" : ""}`}>
+            <input aria-label={`Dùng ${asset.name} cho Voice Training`} checked={asset.trainingSelected} disabled={asset.status === "no-audio"} onChange={(event) => onToggleTraining(asset.id, event.target.checked)} type="checkbox" />
+            <span>TRAIN</span>
+          </label></>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ModuleFrame
       className="media-pool-module"
@@ -176,44 +236,30 @@ export function MediaPool({
       action={<div className="media-import-actions"><label className="media-import"><Icon name="upload" /><span>{busy ? "IMPORTING" : "IMPORT"}</span><input aria-label="Import media" accept={MEDIA_ACCEPT} disabled={busy} multiple onChange={importFiles} type="file" /></label><button aria-label="Mở file media từ máy" className="media-import-native" disabled={busy} onClick={onImportLocal} title="Mở file gốc và tùy chọn cache local" type="button"><Icon name="folder" /></button></div>}
     >
       <div className="media-pool-summary">
-        <span><b>{assets.length}</b> ASSETS</span>
+        <span><b>{liveAssets.length}</b> ASSETS</span>
         <span><b>{transcriptionCount}</b> TO STT</span>
         <span><b>{trainingCount}</b> TO TRAIN</span>
       </div>
       <div className="media-pool-list">
-        {assets.map((asset) => {
-          const selected = asset.id === selectedAssetId;
-          const codec = asset.audioCodec ?? asset.videoCodec ?? asset.sourceExtension.slice(1).toUpperCase();
-          const assignedNames = speakers.filter((speaker) => asset.speakerProfileIds.includes(speaker.id)).map((speaker) => speaker.name);
-          const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
-          return (
-            <div className={`media-pool-item ${selected ? "is-active" : ""}`} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)}>
-              <button aria-pressed={selected} className="media-pool-item__main" onClick={() => onSelect(asset.id)} type="button">
-                <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
-                <span className="media-item-copy">
-                  <strong>{asset.name}</strong>
-                  <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}</small>
-                  <em>{transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? " · " + environmentNames.join(", ") : ""}{asset.hasExternalSource ? asset.localCacheEnabled ? " · CACHE ✓ " + (asset.localCacheUpdatedAt ? new Date(asset.localCacheUpdatedAt).toLocaleString("vi-VN") : "") : " · ORIGINAL FILE" : ""}</em>
-                  {["queued", "processing", "reviewing"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${transcriptionProgressLabel(asset.transcriptionProgress)}%`} className="media-transcription-progress"><i style={{ width: `${asset.transcriptionProgress ?? 0}%` }} /><b>{asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {transcriptionProgressLabel(asset.transcriptionProgress)}%</b></span> : null}
-                </span>
-              </button>
-              <div className="media-pool-item__toggles">
-                <label className={`media-training-toggle ${asset.transcriptionSelected ? "is-selected" : ""}`}>
-                  <input aria-label={`Đưa ${asset.name} vào hàng đợi Speech to text`} checked={asset.transcriptionSelected} disabled={asset.status === "no-audio" || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} onChange={(event) => onToggleTranscription(asset.id, event.target.checked)} type="checkbox" />
-                  <span>STT</span>
-                </label>
-                <label className={`media-training-toggle ${asset.trainingSelected ? "is-selected" : ""}`}>
-                  <input aria-label={`Dùng ${asset.name} cho Voice Training`} checked={asset.trainingSelected} disabled={asset.status === "no-audio"} onChange={(event) => onToggleTraining(asset.id, event.target.checked)} type="checkbox" />
-                  <span>TRAIN</span>
-                </label>
-              </div>
-            </div>
-          );
-        })}
-        {!assets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
+        {liveAssets.map(renderAsset)}
+        {!liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
+        {/* Rendered after the list rather than inside it, so no amount of
+            importing can push the bin out of last place. */}
+        {recycledAssets.length ? <section className={`media-recycle-bin ${binOpen ? "is-open" : ""}`}>
+          <button aria-expanded={binOpen} className="media-recycle-bin__toggle" onClick={() => setBinOpen((open) => !open)} type="button">
+            <Icon name="trash" />
+            <b>RECYCLE BIN</b>
+            <span>{recycledAssets.length}</span>
+            <i aria-hidden="true">{binOpen ? "▾" : "▸"}</i>
+          </button>
+          {binOpen ? <div className="media-recycle-bin__list">
+            <p>Chỉ xem: play, script, subtitle và zoom vẫn dùng được; muốn sửa thì Restore trước.</p>
+            {recycledAssets.map(renderAsset)}
+          </div> : null}
+        </section> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <div className="media-stt-action"><button className="button button--accent media-send-training" disabled={!transcriptionCount} onClick={() => onQueueTranscriptions(sttModel)} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button><select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{STT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select></div> : null}
+        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><button className="button button--quiet media-stt-stop" onClick={() => onControlTranscriptions("stop")} type="button">Stop</button></> : <button className="button button--accent media-send-training" disabled={!transcriptionCount} onClick={() => onQueueTranscriptions(sttModel)} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{STT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select></div> : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>
@@ -224,7 +270,7 @@ export function MediaPool({
           <section><strong>EMOTION</strong><div className="media-context-options media-context-options--emotion">{EMOTION_OPTIONS.map((option) => <button aria-pressed={contextAsset.emotion === option.id} className={contextAsset.emotion === option.id ? "is-active" : ""} key={option.id} onClick={() => onUpdateAnnotations(contextAsset.id, contextAsset.speakerProfileIds, contextAsset.environmentProfileIds, option.id)} role="menuitem" type="button">{option.label}</button>)}</div></section>
           <section><strong><Icon name="person" /> SPEAKER PROFILE</strong><div className="media-context-options media-context-options--speakers">{speakers.map((speaker) => { const assigned = contextAsset.speakerProfileIds.includes(speaker.id); return <button aria-pressed={assigned} className={assigned ? "is-active" : ""} key={speaker.id} onClick={() => onUpdateAnnotations(contextAsset.id, assigned ? contextAsset.speakerProfileIds.filter((id) => id !== speaker.id) : [...contextAsset.speakerProfileIds, speaker.id], contextAsset.environmentProfileIds, contextAsset.emotion)} role="menuitem" type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>; })}{!speakers.length ? <p>Thêm Speaker Profile trong Sound Library trước.</p> : null}</div></section>
           <section><strong><Icon name="landscape" /> ENVIRONMENT PROFILE</strong><div className="media-context-options media-context-options--speakers">{environments.map((profile) => { const assigned = contextAsset.environmentProfileIds.includes(profile.id); return <button aria-pressed={assigned} className={assigned ? "is-active" : ""} key={profile.id} onClick={() => onUpdateAnnotations(contextAsset.id, contextAsset.speakerProfileIds, assigned ? contextAsset.environmentProfileIds.filter((id) => id !== profile.id) : [...contextAsset.environmentProfileIds, profile.id], contextAsset.emotion)} role="menuitem" type="button"><Icon name="landscape" />{profile.name}</button>; })}{!environments.length ? <p>Thêm Environment Profile trong Sound Library trước.</p> : null}</div></section>
-          <footer><span>RCLICK MENU</span><div>{contextAsset.hasExternalSource ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}{contextAsset.hasExternalSource && contextAsset.localCacheEnabled ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, true); }} role="menuitem" type="button"><Icon name="upload" /> Refresh local cache</button> : null}<button className="media-history-action" onClick={() => openHistory(contextAsset)} role="menuitem" type="button"><Icon name="file" /> Text History</button><button className="media-remove-action" onClick={() => { setContextMenu(null); onRemove(contextAsset); }} role="menuitem" type="button"><Icon name="trash" /> Remove</button></div></footer>
+          <footer><span>RCLICK MENU</span><div>{contextAsset.hasExternalSource ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}{contextAsset.hasExternalSource && contextAsset.localCacheEnabled ? <button className="media-history-action" onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, true); }} role="menuitem" type="button"><Icon name="upload" /> Refresh local cache</button> : null}<button className="media-history-action" onClick={() => { setContextMenu(null); onReveal(contextAsset); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button><button className="media-history-action" onClick={() => { setContextMenu(null); onSetDisabled(contextAsset, !contextAsset.disabled); }} role="menuitem" type="button"><Icon name="power" /> {contextAsset.disabled ? "Enable footage" : "Disable footage"}</button><button className="media-history-action" onClick={() => openHistory(contextAsset)} role="menuitem" type="button"><Icon name="file" /> Text History</button>{contextAsset.transcriptionStatus === "queued" || contextAsset.transcriptionStatus === "processing" ? <button className="media-history-action" onClick={() => { setContextMenu(null); onControlTranscriptions("pause", contextTargets(contextAsset)); }} role="menuitem" type="button"><Icon name="power" /> Pause STT{contextTargets(contextAsset).length > 1 ? ` (${contextTargets(contextAsset).length})` : ""}</button> : null}{contextAsset.transcriptionStatus === "paused" ? <button className="media-history-action" onClick={() => { setContextMenu(null); onControlTranscriptions("resume", contextTargets(contextAsset)); }} role="menuitem" type="button"><Icon name="power" /> Chạy tiếp STT</button> : null}{["queued", "processing", "paused"].includes(contextAsset.transcriptionStatus) ? <button className="media-remove-action" onClick={() => { setContextMenu(null); onControlTranscriptions("stop", contextTargets(contextAsset)); }} role="menuitem" type="button"><Icon name="power" /> Stop STT{contextTargets(contextAsset).length > 1 ? ` (${contextTargets(contextAsset).length})` : ""}</button> : null}<button className="media-remove-action" onClick={() => { setContextMenu(null); onRemove(contextAsset); }} role="menuitem" type="button"><Icon name="trash" /> Remove</button></div></footer>
         </div>,
         document.body,
       ) : null}

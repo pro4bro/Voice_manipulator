@@ -38,6 +38,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail ?? `Request failed (${response.status})`);
   }
+  // A successful delete answers 204 with no body at all. Parsing that as JSON
+  // threw, so the caller saw a failure for work the server had already done -
+  // the row stayed on screen until the app was restarted, and trying again got
+  // "not found" for something genuinely gone.
+  if (response.status === 204 || response.status === 205) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -91,6 +96,8 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
     transcriptionSelected: asset.transcriptionSelected ?? false,
     transcriptionProgress: asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0),
     transcriptionError: asset.transcriptionError ?? null,
+    deletedAt: asset.deletedAt ?? null,
+    disabled: asset.disabled ?? false,
     diarizationStatus: asset.diarizationStatus ?? "idle",
     diarizationProgress: asset.diarizationProgress ?? 0,
     diarizationError: asset.diarizationError ?? null,
@@ -186,6 +193,18 @@ export const api = {
       item: result.item ? normalizeStudioItem(result.item) : null,
     };
   },
+  /** Pause, resume or stop a Speech to text run. No ids means the whole queue. */
+  controlMediaTranscriptions: async (
+    projectId: string,
+    action: "pause" | "resume" | "stop",
+    assetIds?: string[],
+  ) => {
+    const assets = await request<ProjectMediaAsset[]>(
+      `/api/projects/${projectId}/media/transcriptions/control`,
+      { method: "POST", body: JSON.stringify({ action, assetIds: assetIds ?? null }) },
+    );
+    return assets.map(normalizeMediaAsset);
+  },
   updateMediaScript: async (projectId: string, assetId: string, text: string, source: MediaRevisionSource, words?: StudioWord[]) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/script`, {
       method: "PATCH",
@@ -245,8 +264,47 @@ export const api = {
     });
     return assets.map(normalizeMediaAsset);
   },
+  /** Send footage to the project's recycle bin, and get it back as it now stands. */
+  recycleProjectMedia: async (projectId: string, assetId: string) =>
+    normalizeMediaAsset(await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}`, { method: "DELETE" })),
+  restoreProjectMedia: async (projectId: string, assetId: string) =>
+    normalizeMediaAsset(await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/restore`, { method: "POST" })),
+  /**
+   * Add a slice of what is being captured to a live session.
+   *
+   * `text` is settled and never changes; `pending` is the provisional tail that
+   * a later pass may still revise.
+   */
+  liveTranscribeChunk: async (session: string, chunk: Blob, language = "", model = "tiny") => {
+    const body = new FormData();
+    body.append("file", chunk, "chunk.wav");
+    body.append("session", session);
+    body.append("model", model);
+    // The project already knows its language; letting a four-second fragment
+    // guess produced a Vietnamese clip transcribed as Chinese.
+    body.append("language", language);
+    return request<{ committed: string; text: string; pending: string }>("/api/live-transcribe", { method: "POST", body });
+  },
+  endLiveTranscribe: async (session: string) => {
+    const body = new FormData();
+    body.append("session", session);
+    return request<{ text: string; committed: string }>("/api/live-transcribe/end", { method: "POST", body });
+  },
+  setMediaDisabled: async (projectId: string, assetId: string, disabled: boolean) =>
+    normalizeMediaAsset(await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/disabled?disabled=${disabled}`, { method: "POST" })),
+  revealMediaFile: (projectId: string, assetId: string) =>
+    request<void>(`/api/projects/${projectId}/media/${assetId}/reveal`, { method: "POST" }),
+  revealProjectFolder: (projectId: string) =>
+    request<void>(`/api/projects/${projectId}/reveal`, { method: "POST" }),
+  /** Drop a project from the library; its files stay on disk. */
+  forgetProject: (projectId: string) =>
+    request<void>(`/api/projects/${projectId}`, { method: "DELETE" }),
+  /** Erase a project's folder. There is nothing after this. */
+  destroyProject: (projectId: string) =>
+    request<void>(`/api/projects/${projectId}?permanent=true`, { method: "DELETE" }),
+  /** Erase footage and its folder. There is nothing after this. */
   removeProjectMedia: (projectId: string, assetId: string) =>
-    request<void>(`/api/projects/${projectId}/media/${assetId}`, { method: "DELETE" }),
+    request<void>(`/api/projects/${projectId}/media/${assetId}?permanent=true`, { method: "DELETE" }),
   updateMediaAnnotations: async (
     projectId: string,
     assetId: string,

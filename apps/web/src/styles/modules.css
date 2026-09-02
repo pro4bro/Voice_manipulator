@@ -143,11 +143,16 @@
 .monitor-toggle > input:checked + span i::after { transform: translateX(10px); background: var(--ink); }
 .monitor-toggle > input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
 .monitor-toggle small { color: var(--text-subtle); font-size: calc(8px * var(--font-scale)); }
-.recorder-visualizer { height: 45px; display: flex; align-items: center; gap: 2px; position: relative; overflow: hidden; padding: 4px 6px 14px; background: var(--surface-audio); }
-.recorder-visualizer::before { content: ""; position: absolute; inset: 5px 6px 16px; background: linear-gradient(var(--audio-grid) 1px,transparent 1px); background-size: 100% 25%; }
-.recorder-visualizer i { flex: 1; min-height: 2px; z-index: 1; background: var(--audio-line); transition: height 45ms linear; }
-.recorder-visualizer.is-live i { background: var(--accent); }
-.recorder-visualizer output { position: absolute; right: 6px; bottom: 3px; color: var(--audio-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+/* One strip that fills with the signal: the only question while recording is
+   whether the level is right, and a row of dancing bars answered it no better. */
+.recorder-level { height: 26px; position: relative; overflow: hidden; padding: 0; background: var(--surface-audio); }
+.recorder-level i { display: block; height: 100%; width: 0; background: var(--audio-line); transition: width 45ms linear; }
+.recorder-level.is-live i { background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 72%, #e2b93b 86%, #d9483b 100%); }
+.recorder-level output { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); color: var(--audio-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.recorder-gain { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+.recorder-gain span { color: var(--muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .06em; }
+.recorder-gain b { min-width: 40px; color: var(--text-strong); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); text-align: right; }
+.recorder-gain input[type="range"] { width: 100%; }
 .recorder-time { display: flex; align-items: center; justify-content: space-between; }
 .recorder-time strong { font-family: var(--mono); font-size: calc(16px * var(--font-scale)); font-weight: 500; }
 .status-pill { padding: 3px 5px; color: var(--muted); border: 1px solid var(--line); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
@@ -234,6 +239,17 @@
 .timeline-empty b { font-size: calc(10px * var(--font-scale)); }.timeline-empty span { font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
 .word-track { position: relative; overflow: hidden; border-top: 1px solid var(--audio-line); background: var(--soft-fill); cursor: text; touch-action: none; user-select: none; }
 .timeline-word { position: absolute; top: 3px; min-width: 0; height: 21px; overflow: hidden; padding: 4px 1px; color: var(--audio-muted); border: 1px solid var(--audio-line); background: var(--soft-fill); font-family: var(--editorial); font-size: calc(10px * var(--font-scale)); line-height: 1; pointer-events: none; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+/* The word body stays untouchable so a sweep runs across the track uninterrupted
+   and a word only a few pixels wide cannot swallow the gesture; the track works
+   out which word the pointer is over from its position instead. The grips are the
+   one exception - they have to be grabbable for the edges to be draggable at all. */
+.timeline-word__grip { position: absolute; z-index: 2; top: 0; bottom: 0; width: 5px; cursor: ew-resize; pointer-events: auto; opacity: 0; background: var(--accent); }
+.timeline-word__grip--in { left: 0; }
+.timeline-word__grip--out { right: 0; }
+.timeline-word:hover .timeline-word__grip,
+.timeline-word.is-selected .timeline-word__grip { opacity: .85; }
+.timeline-word__grip:hover { opacity: 1; }
+.timeline-word--edited { border-bottom: 2px solid var(--accent); }
 .timeline-word.is-past { color: var(--text-subtle); border-color: rgba(143,180,59,.35); }
 .timeline-word.timeline-word--untrusted { color: #4a2a00; border-color: #e29a24; background: #ffd98a; box-shadow: inset 0 -2px 0 #c96f16; }
 .timeline-word.is-active { color: #1b2630 !important; border-color: #6baee2; background: #b9dcff; box-shadow: 0 0 8px rgba(185,220,255,.30); }
@@ -750,6 +766,55 @@
 .script-table__row { min-height: 54px; border-bottom: 1px solid var(--line); }
 .script-table__row:last-child { border-bottom: 0; }
 .script-table__row.is-active { background: color-mix(in srgb, #b9dcff 18%, transparent); }
+/* Which row a dragged selection would land in, and the edge it joins: words
+   taken off the front of a row attach to the end of the row above, and off the
+   back to the start of the row below. */
+.script-table__row.is-drop-target { position: relative; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.script-table__row.is-drop-target::after { content: ""; position: absolute; z-index: 3; right: 0; left: 0; height: 2px; background: var(--accent); }
+.script-table__row.is-drop-up::after { bottom: -1px; }
+.script-table__row.is-drop-down::after { top: -1px; }
+.script-table__word[aria-pressed="true"] { cursor: grab; }
+/* The prose view selects like the table does, so it has to look selected too. */
+.script-speaker-text p span { border-radius: 2px; }
+.script-speaker-text p span.is-selected { color: #2d1e1a; background: #ffb4a4; }
+.script-speaker-text { cursor: text; user-select: none; }
+/* A held file still shows how far it got, but must not look like it is working. */
+.media-transcription-progress.is-paused i { background: var(--text-muted); }
+.media-transcription-progress.is-paused b { color: var(--text-muted); }
+.media-stt-stop { color: var(--accent-dark); }
+/* The recycle bin is pinned below every footage, closed until asked for. */
+.media-recycle-bin { margin-top: 6px; border-top: 1px solid var(--line); }
+.media-recycle-bin__toggle { display: flex; gap: 8px; align-items: center; width: 100%; padding: 8px 10px; color: var(--text-muted); border: 0; background: transparent; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); cursor: pointer; }
+.media-recycle-bin__toggle b { flex: 0 0 auto; letter-spacing: .08em; }
+.media-recycle-bin__toggle span { padding: 1px 6px; border-radius: 8px; background: var(--soft-fill); }
+.media-recycle-bin__toggle i { margin-left: auto; font-style: normal; }
+.media-recycle-bin__toggle:hover { color: var(--text-strong); }
+.media-recycle-bin__list > p { margin: 0 10px 6px; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+/* Struck through with diagonals so a deleted take can never be mistaken for a
+   live one, even at a glance in a long list. */
+.media-pool-item.is-recycled { color: var(--text-muted); background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--text-muted) 14%, transparent) 6px 8px); }
+.media-pool-item.is-recycled .media-item-copy strong { color: var(--text-muted); text-decoration: line-through; }
+.media-pool-item.is-recycled.is-active { outline: 1px solid var(--text-muted); }
+/* The toggle column is sized for two small checkboxes; Restore and Delete need
+   room, so a recycled row widens it rather than clipping their labels. */
+.media-pool-item.is-recycled { grid-template-columns: minmax(0,1fr) 74px; }
+.media-pool-item.is-recycled .media-pool-item__toggles { padding-right: 8px; }
+.media-restore-action,
+.media-pool-item.is-recycled .media-remove-action { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-field); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); text-align: center; cursor: pointer; }
+.media-restore-action { color: var(--text-strong); }
+/* Parked, not deleted: dimmed enough to read as inactive, with none of the
+   strike-through that would make it look thrown away. */
+.media-pool-item.is-disabled { opacity: .52; }
+.project-context-menu { position: fixed; z-index: 60; min-width: 208px; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); box-shadow: 0 12px 32px rgba(0,0,0,.35); }
+.project-context-menu header { display: grid; gap: 1px; padding: 4px 6px 8px; border-bottom: 1px solid var(--line); }
+.project-context-menu header span { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.project-context-menu header b { overflow: hidden; color: var(--text-strong); font-size: calc(10px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.project-context-menu button { display: flex; gap: 8px; align-items: center; width: 100%; margin-top: 2px; padding: 6px; color: var(--text-strong); border: 0; background: transparent; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); text-align: left; cursor: pointer; }
+.project-context-menu button:hover { background: var(--soft-fill); }
+.project-context-menu__danger { color: var(--accent-dark) !important; }
+.project-context-menu small { display: block; padding: 6px; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); line-height: 1.5; }
+.media-pool-item.is-disabled .media-item-copy strong::after { content: " · OFF"; color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.media-restore-action:hover { border-color: var(--accent); }
 .script-table__speaker { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-content: start; gap: 8px; padding: 9px 10px; background: color-mix(in srgb, var(--surface-sunken) 26%, var(--surface-field)); }
 .script-table__speaker > i { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; box-shadow: 0 0 0 1px var(--line); }
 .script-table__speaker > div { min-width: 0; display: grid; gap: 4px; }

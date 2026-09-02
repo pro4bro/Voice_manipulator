@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,13 +21,38 @@ class FileProjectRepository:
         self.root.mkdir(parents=True, exist_ok=True)
         self.registry_root.mkdir(parents=True, exist_ok=True)
 
+    #: Ids the user removed from the library. The default project folder is also
+    #: scanned directly, so deleting a registry entry does not hide anything -
+    #: the scan simply finds the folder again. This is what a removal means.
+    FORGOTTEN_FILE = "forgotten.json"
+
+    def _forgotten(self) -> set[str]:
+        try:
+            data = json.loads((self.registry_root / self.FORGOTTEN_FILE).read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return set()
+        if not isinstance(data, list):
+            return set()
+        # An id whose folder is gone has nothing left to hide, and keeping it
+        # would silently shadow any later project that took the same id.
+        return {
+            str(item) for item in data
+            if (self.root / str(item) / "project.json").is_file()
+        }
+
+    def _write_forgotten(self, ids: set[str]) -> None:
+        self._atomic_write(
+            self.registry_root / self.FORGOTTEN_FILE,
+            json.dumps(sorted(ids), ensure_ascii=False, indent=2),
+        )
+
     def list(self) -> list[ProjectRecord]:
         projects: list[ProjectRecord] = []
         metadata_paths = [
-            *self.registry_root.glob("*.json"),
+            *(path for path in self.registry_root.glob("*.json") if path.name != self.FORGOTTEN_FILE),
             *self.root.glob("*/project.json"),
         ]
-        seen: set[str] = set()
+        seen: set[str] = self._forgotten()
         for metadata_path in metadata_paths:
             try:
                 project = self._read(metadata_path)
@@ -90,6 +116,7 @@ class FileProjectRepository:
         return project
 
     def open(self, path: str | Path) -> ProjectRecord:
+        """Pointing at a folder is also how a removed project rejoins the list."""
         selected = Path(path).expanduser().resolve()
         metadata_path = selected if selected.name.casefold() == "project.json" else selected / "project.json"
         if not metadata_path.is_file():
@@ -110,6 +137,35 @@ class FileProjectRepository:
         self.activity.append(project.project_path, "WORKSPACE_CHANGED", f"Mở page {page}", {"page": page})
         return project
 
+    def forget(self, project_id: str) -> ProjectRecord:
+        """Drop a project from the library, leaving every file where it is.
+
+        The registry is only a list of places to look, so removing an entry is
+        the whole operation - the project can be opened again later by pointing
+        at its folder.
+        """
+        project = self.get(project_id)
+        (self.registry_root / f"{project.id}.json").unlink(missing_ok=True)
+        self._write_forgotten(self._forgotten() | {project.id})
+        return project
+
+    def destroy(self, project_id: str) -> ProjectRecord:
+        """Erase a project's folder as well as its registry entry.
+
+        Refuses anything that is not a project folder we wrote, so a mistyped or
+        tampered path cannot turn this into a recursive delete of somewhere else.
+        """
+        project = self.get(project_id)
+        project_path = Path(project.project_path).resolve()
+        if not (project_path / "project.json").is_file():
+            raise ValueError("Thư mục này không phải project Pro4Bro; không xóa.")
+        (self.registry_root / f"{project.id}.json").unlink(missing_ok=True)
+        shutil.rmtree(project_path, ignore_errors=False)
+        # Nothing left to hide, and keeping the id would shadow a later project
+        # that happened to be given the same name.
+        self._write_forgotten(self._forgotten() - {project.id})
+        return project
+
     def _write(self, project: ProjectRecord) -> None:
         project_path = Path(project.project_path).resolve()
         portable = project.model_copy(update={"project_path": ".", "location": "."})
@@ -127,6 +183,11 @@ class FileProjectRepository:
             self.registry_root / f"{project.id}.json",
             json.dumps(registry, ensure_ascii=False, indent=2),
         )
+        # Writing a project into the registry is how it joins the library, so it
+        # is also how a removed one comes back: open its folder again.
+        forgotten = self._forgotten()
+        if project.id in forgotten:
+            self._write_forgotten(forgotten - {project.id})
 
     def _project_path(self, project_id: str) -> Path:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,80}", project_id):

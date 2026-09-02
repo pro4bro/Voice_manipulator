@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { api } from "../api/client";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
+import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
 import type {
   AppPreferences,
   EmotionLabel,
@@ -98,6 +99,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  // Owned here rather than in either module, so Script and Timeline agree on
+  // what is selected instead of each keeping a private answer.
+  const [wordSelection, setWordSelection] = useState<WordSelection>(EMPTY_SELECTION);
   const selectedAssetIdRef = useRef<string | null>(null);
   const scriptDirtyRef = useRef(false);
   const liveTranscriptActiveRef = useRef(false);
@@ -147,6 +151,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   useEffect(() => {
     if (!selectedAssetId) localStorage.setItem(scratchStorageKey, script);
   }, [script, scratchStorageKey, selectedAssetId]);
+
+  // Selections are word positions, so they mean nothing once another asset's
+  // words are loaded - carrying them over would highlight unrelated words.
+  useEffect(() => {
+    setWordSelection(EMPTY_SELECTION);
+  }, [selectedAssetId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -512,15 +522,42 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
+  async function controlTranscriptions(action: "pause" | "resume" | "stop", assetIds?: string[]) {
+    try {
+      const updated = await api.controlMediaTranscriptions(project.id, action, assetIds);
+      if (updated.length) {
+        const byId = new Map(updated.map((asset) => [asset.id, asset]));
+        setMediaAssets((current) => current.map((asset) => byId.get(asset.id) ?? asset));
+      }
+      const scope = assetIds?.length ? `${assetIds.length} footage` : "toàn bộ hàng đợi";
+      // Recognition runs in a worker thread that cannot be interrupted, so say
+      // plainly that the file already being transcribed still finishes.
+      setNotice(action === "resume"
+        ? `Đã chạy tiếp ${scope}.`
+        : `Đã ${action === "pause" ? "tạm dừng" : "dừng"} ${scope}. File đang nhận dạng vẫn chạy nốt.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không điều khiển được hàng đợi STT");
+    }
+  }
+
   async function processCapturedAudio(captured: CapturedAudio) {
     setTake(captured);
     setMediaBusy(true);
     try {
-      const result = await api.importProjectMedia(project.id, captured.file, "record", captured.realtimeText, false, true);
+      // A recording is an ordinary file that happens to arrive with a live
+      // transcript. Running STT on it unasked spent GPU time on takes the user
+      // was going to discard, so it queues like anything else: tick it in Media
+      // Pool and press Speech to text.
+      const result = await api.importProjectMedia(project.id, captured.file, "record", captured.realtimeText, false, false);
       flushCurrentMediaDraft();
-      storeMediaAsset(result.asset);
-      applyMediaAsset(result.asset);
-      setNotice("Bản thu đã vào Media Pool. STT kỹ chạy nền; hoàn tất thì bấm AI fix trong Script để duyệt.");
+      let asset = result.asset;
+      if (captured.words.length) {
+        // The live transcript is the recording's subtitle until STT replaces it.
+        asset = await api.updateMediaScript(project.id, asset.id, captured.realtimeText, "record", captured.words);
+      }
+      storeMediaAsset(asset);
+      applyMediaAsset(asset);
+      setNotice("Bản thu đã vào Media Pool cùng live transcript. Tick STT rồi bấm Speech to text khi muốn chạy nhận dạng kỹ.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không xử lý được audio");
     } finally {
@@ -632,25 +669,80 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   async function removeMediaAsset(asset: ProjectMediaAsset) {
-    if (!window.confirm(`Remove "${asset.name}" khỏi Media Pool? File đã import trong project cũng sẽ bị xóa.`)) return;
+    // Deleting recycles; deleting something already recycled is the one that
+    // cannot be undone, so only that path asks.
+    const permanent = Boolean(asset.deletedAt);
+    if (permanent && !window.confirm(`Xóa hẳn "${asset.name}"? File và toàn bộ dữ liệu của nó trong project sẽ mất, không khôi phục được.`)) return;
     try {
-      await api.removeProjectMedia(project.id, asset.id);
-      setMediaAssets((current) => {
-        const remaining = current.filter((item) => item.id !== asset.id);
-        if (selectedAssetId === asset.id) {
-          const next = remaining[0] ?? null;
-          if (next) applyMediaAsset(next);
-          else {
-            setSelectedAssetId(null);
-            setTake(null);
-            setScript(localStorage.getItem(scratchStorageKey) ?? "");
-          }
-        }
-        return remaining;
-      });
-      setNotice(`Đã remove ${asset.name} khỏi Media Pool.`);
+      if (permanent) {
+        await api.removeProjectMedia(project.id, asset.id);
+        setMediaAssets((current) => {
+          const remaining = current.filter((item) => item.id !== asset.id);
+          if (selectedAssetId === asset.id) moveOffAsset(remaining);
+          return remaining;
+        });
+        setNotice(`Đã xóa hẳn ${asset.name}.`);
+        return;
+      }
+      const recycled = await api.recycleProjectMedia(project.id, asset.id);
+      setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item));
+      if (selectedAssetId === asset.id) {
+        moveOffAsset(mediaAssets.filter((item) => item.id !== asset.id && !item.deletedAt));
+      }
+      setNotice(`Đã chuyển ${asset.name} vào Recycle Bin. Mở Recycle Bin trong Media Pool để restore.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không thể remove footage");
+      const message = error instanceof Error ? error.message : "Không thể remove footage";
+      // The server says it is not there; the list saying otherwise is the stale
+      // one, so drop it rather than leaving a row nothing can act on.
+      if (/not found/i.test(message)) {
+        setMediaAssets((current) => {
+          const remaining = current.filter((item) => item.id !== asset.id);
+          if (selectedAssetId === asset.id) moveOffAsset(remaining);
+          return remaining;
+        });
+        setNotice(`${asset.name} đã không còn trong project.`);
+        return;
+      }
+      setNotice(message);
+    }
+  }
+
+  function moveOffAsset(remaining: ProjectMediaAsset[]) {
+    const next = remaining.find((item) => !item.deletedAt) ?? null;
+    if (next) {
+      applyMediaAsset(next);
+      return;
+    }
+    setSelectedAssetId(null);
+    setTake(null);
+    setScript(localStorage.getItem(scratchStorageKey) ?? "");
+  }
+
+  async function revealMediaAsset(asset: ProjectMediaAsset) {
+    try {
+      await api.revealMediaFile(project.id, asset.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không mở được thư mục chứa footage");
+    }
+  }
+
+  async function setMediaDisabled(asset: ProjectMediaAsset, disabled: boolean) {
+    try {
+      const updated = await api.setMediaDisabled(project.id, asset.id, disabled);
+      setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(`${updated.name} ${disabled ? "đã tắt - không vào batch nào nữa" : "đã bật lại"}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không đổi được trạng thái footage");
+    }
+  }
+
+  async function restoreMediaAsset(asset: ProjectMediaAsset) {
+    try {
+      const restored = await api.restoreProjectMedia(project.id, asset.id);
+      setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item));
+      setNotice(`Đã restore ${restored.name}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể restore footage");
     }
   }
 
@@ -797,6 +889,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   const selectedMediaAsset = mediaAssets.find((asset) => asset.id === selectedAssetId) ?? null;
+  // Recycled footage can be played, read and zoomed, but not changed. One gate
+  // in front of every write is worth more than a disabled attribute on each
+  // control: a control that is added later is guarded by default.
+  const previewingRecycled = Boolean(selectedMediaAsset?.deletedAt);
+  function blockedByRecycleBin() {
+    if (!previewingRecycled) return false;
+    setNotice("Footage này đang ở Recycle Bin - chỉ xem được. Restore trước khi sửa.");
+    return true;
+  }
   const latestAiRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
   const latestLiveRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "record") ?? null;
   const canRunAiReview = Boolean(selectedMediaAsset?.text.trim() && selectedMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
@@ -820,7 +921,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     canRunAiReview,
     trainingCatalog,
     profileSchema,
-    onScriptChange: changeScript,
+    wordSelection,
+    onWordSelectionChange: setWordSelection,
+    onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
     onVoiceChange: setSelectedVoice,
     onSpeedChange: setSpeed,
     onGainChange: (value) => setGain(Math.max(-96, Math.min(96, value))),
@@ -831,14 +934,20 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     onSelectAsset: selectMediaAsset,
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
-    onTimelineEditsChange: (ranges, gainKeyframes) => void updateTimelineEdits(ranges, gainKeyframes),
+    onTimelineEditsChange: (ranges, gainKeyframes) => { if (!blockedByRecycleBin()) void updateTimelineEdits(ranges, gainKeyframes); },
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
     onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
+    onControlTranscriptions: (action, assetIds) => void controlTranscriptions(action, assetIds),
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
-    onUpdateAnnotations: (assetId, speakerProfileIds, environmentProfileIds, emotion) => void updateMediaAnnotations(assetId, speakerProfileIds, environmentProfileIds, emotion),
-    onUpdateDiarizationAssignments: (assetId, assignments) => void updateDiarizationAssignments(assetId, assignments),
-    onWordsChange: (words, text) => void changeWordAnnotations(words, text),
+    onRestoreAsset: (asset) => void restoreMediaAsset(asset),
+    onRevealAsset: (asset) => void revealMediaAsset(asset),
+    onSetAssetDisabled: (asset, disabled) => void setMediaDisabled(asset, disabled),
+    readOnlyAsset: previewingRecycled,
+    projectLanguage: project.language ?? null,
+    onUpdateAnnotations: (assetId, speakerProfileIds, environmentProfileIds, emotion) => { if (!blockedByRecycleBin()) void updateMediaAnnotations(assetId, speakerProfileIds, environmentProfileIds, emotion); },
+    onUpdateDiarizationAssignments: (assetId, assignments) => { if (!blockedByRecycleBin()) void updateDiarizationAssignments(assetId, assignments); },
+    onWordsChange: (words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text); },
     onCatalogChange: changeCatalog,
     onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),
@@ -848,9 +957,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       else if (action === "Export bảng Script") void exportSubtitles("table");
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
-    onRunAiReview: () => void runAiReview(),
-    onRunDiarization: () => void runDiarization(),
-  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog]);
+    onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
+    onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
+  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection, previewingRecycled]);
 
   return (
     <main className="workspace-shell">

@@ -27,6 +27,28 @@ export function App() {
     setRuntime(next);
   }
 
+  async function revealProject(project: Project) {
+    try {
+      await api.revealProjectFolder(project.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không mở được thư mục project");
+    }
+  }
+
+  async function removeProject(project: Project, permanent: boolean) {
+    // Only the irreversible one asks. Removing merely forgets where it is.
+    if (permanent && !window.confirm(`Xóa hẳn project "${project.name}"?
+
+Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng và không khôi phục được.`)) return;
+    try {
+      if (permanent) await api.destroyProject(project.id);
+      else await api.forgetProject(project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không xóa được project");
+    }
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -157,6 +179,8 @@ export function App() {
       onOpenExisting={openExistingProject}
       onPickLocation={async (initialPath) => (await api.pickFolder(initialPath)).path}
       onRetry={() => void load()}
+      onRevealProject={(project) => void revealProject(project)}
+      onRemoveProject={(project, permanent) => void removeProject(project, permanent)}
       projects={projects}
       onToggleTheme={toggleTheme}
       theme={theme}

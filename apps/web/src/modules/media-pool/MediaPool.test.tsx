@@ -15,7 +15,7 @@ function props(overrides = {}) {
   return {
     assets: [asset], busy: false, environments: [], onImport: vi.fn(), onSelect: vi.fn(), onSendToTraining: vi.fn(),
     onToggleTraining: vi.fn(), onToggleTranscription: vi.fn(), onQueueTranscriptions: vi.fn(), onRemove: vi.fn(), onUpdateAnnotations: vi.fn(),
-    selectedAssetId: null, speakers: [], workflow: "speech-to-text" as const, ...overrides,
+    selectedAssetId: null, speakers: [], workflow: "speech-to-text" as const, onControlTranscriptions: vi.fn(), onRestore: vi.fn(), onReveal: vi.fn(), onSetDisabled: vi.fn(), ...overrides,
   };
 }
 
@@ -58,5 +58,99 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Exciting" }));
     expect(onUpdateAnnotations).toHaveBeenNthCalledWith(1, "asset-1", ["speaker-1"], [], "normal");
     expect(onUpdateAnnotations).toHaveBeenNthCalledWith(2, "asset-1", [], [], "exciting");
+  });
+
+  it("turns Speech to text into Pause and Stop while a batch is running", () => {
+    const onControlTranscriptions = vi.fn();
+    const running = { ...asset, transcriptionStatus: "processing" as const, transcriptionSelected: true };
+    render(<MediaPool {...props({ assets: [running], onControlTranscriptions })} />);
+    expect(screen.queryByRole("button", { name: /^Speech to text/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Pause/ }));
+    expect(onControlTranscriptions).toHaveBeenCalledWith("pause");
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(onControlTranscriptions).toHaveBeenCalledWith("stop");
+  });
+
+  it("offers to carry on once the whole queue is held", () => {
+    const onControlTranscriptions = vi.fn();
+    const held = { ...asset, transcriptionStatus: "paused" as const, transcriptionSelected: true };
+    render(<MediaPool {...props({ assets: [held], onControlTranscriptions })} />);
+    expect(screen.getByText(/TẠM DỪNG/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Chạy tiếp/ }));
+    expect(onControlTranscriptions).toHaveBeenCalledWith("resume");
+  });
+
+  it("stops just the footage the user right-clicked", () => {
+    const onControlTranscriptions = vi.fn();
+    const queued = { ...asset, transcriptionStatus: "queued" as const, transcriptionSelected: true };
+    render(<MediaPool {...props({ assets: [queued], onControlTranscriptions })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Stop STT/ }));
+    expect(onControlTranscriptions).toHaveBeenCalledWith("stop", ["asset-1"]);
+  });
+
+  const recycled = { ...asset, id: "asset-binned", name: "cu.wav", deletedAt: "2026-09-02T00:00:00Z" };
+
+  it("keeps the recycle bin out of sight until something is in it", () => {
+    render(<MediaPool {...props()} />);
+    expect(screen.queryByRole("button", { name: /RECYCLE BIN/ })).toBeNull();
+  });
+
+  it("shows the bin closed, below every footage, and opens it on request", () => {
+    const { container } = render(<MediaPool {...props({ assets: [recycled, asset] })} />);
+    // Deleted footage is not mixed in with the live list.
+    expect(screen.queryByRole("button", { name: /cu.wav/ })).toBeNull();
+    const toggle = screen.getByRole("button", { name: /RECYCLE BIN/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Last in the list whatever the import order.
+    const list = container.querySelector(".media-pool-list") as HTMLElement;
+    expect(list.lastElementChild).toHaveClass("media-recycle-bin");
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /cu.wav/ })).toBeInTheDocument();
+    expect(container.querySelector(".media-pool-item.is-recycled")).toBeTruthy();
+  });
+
+  it("offers restore and a permanent delete on recycled footage only", () => {
+    const onRestore = vi.fn();
+    const onRemove = vi.fn();
+    render(<MediaPool {...props({ assets: [recycled], onRestore, onRemove })} />);
+    fireEvent.click(screen.getByRole("button", { name: /RECYCLE BIN/ }));
+
+    // The work toggles are gone: nothing in the bin queues for anything.
+    expect(screen.queryByLabelText(/hàng đợi Speech to text/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(onRestore).toHaveBeenCalledWith(recycled);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onRemove).toHaveBeenCalledWith(recycled);
+  });
+
+  it("counts only live footage in the summary", () => {
+    const { container } = render(<MediaPool {...props({ assets: [asset, recycled] })} />);
+    expect(container.querySelector(".media-pool-summary span")).toHaveTextContent("1 ASSETS");
+  });
+
+  it("reveals a footage in the desktop and can park it out of every batch", () => {
+    const onReveal = vi.fn();
+    const onSetDisabled = vi.fn();
+    render(<MediaPool {...props({ onReveal, onSetDisabled })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reveal in Desktop/ }));
+    expect(onReveal).toHaveBeenCalledWith(asset);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Disable footage/ }));
+    expect(onSetDisabled).toHaveBeenCalledWith(asset, true);
+  });
+
+  it("offers to switch a parked footage back on", () => {
+    const onSetDisabled = vi.fn();
+    const parked = { ...asset, disabled: true };
+    const { container } = render(<MediaPool {...props({ assets: [parked], onSetDisabled })} />);
+    expect(container.querySelector(".media-pool-item.is-disabled")).toBeTruthy();
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Enable footage/ }));
+    expect(onSetDisabled).toHaveBeenCalledWith(parked, false);
   });
 });

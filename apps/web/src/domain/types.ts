@@ -24,7 +24,7 @@ export interface RuntimeWorkloadState {
   updatedAt: string;
 }
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
-export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "not-applicable" | "error";
+export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "paused" | "not-applicable" | "error";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
 export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error";
 export type WordTimingQuality = "unverified" | "source" | "partial" | "needs-alignment";
@@ -169,6 +169,10 @@ export interface TimelineGainKeyframe {
 
 export interface ProjectMediaAsset {
   id: string;
+  /** Set while the footage sits in the project's recycle bin. */
+  deletedAt?: string | null;
+  /** Parked: still playable, but kept out of every batch. */
+  disabled?: boolean;
   name: string;
   sourceExtension: string;
   mediaKind: "audio" | "video";

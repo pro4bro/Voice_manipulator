@@ -4,6 +4,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from app.adapters.file_project_repository import FileProjectRepository
 from app.domain.models import ProjectCreate
 
@@ -125,3 +127,57 @@ def test_project_folder_copied_without_its_registry_entry_still_opens(tmp_path):
     assert Path(reopened.project_path) == destination_root / Path(created.project_path).name
     # Adoption is written back, so the next lookup does not rescan the folder.
     assert (destination_root / ".registry" / f"{created.id}.json").is_file()
+
+
+def test_removing_a_project_forgets_it_but_leaves_the_folder(tmp_path):
+    repo = FileProjectRepository(tmp_path / "registry")
+    project = repo.create(ProjectCreate(name="Keep files", location=str(tmp_path / "work")))
+    folder = Path(project.project_path)
+
+    repo.forget(project.id)
+
+    # Projects are discovered by scanning the folder as well as by the registry,
+    # so a removal has to be recorded - deleting the registry entry alone left
+    # the scan finding it again and the project never left the list.
+    assert [item.id for item in repo.list()] == []
+    # The point of Remove: everything is still on disk to be opened again.
+    assert (folder / "project.json").is_file()
+    assert repo.open(folder).id == project.id
+    assert [item.id for item in repo.list()] == [project.id]
+
+
+def test_deleting_a_project_erases_its_folder(tmp_path):
+    repo = FileProjectRepository(tmp_path / "registry")
+    project = repo.create(ProjectCreate(name="Erase me", location=str(tmp_path / "work")))
+    folder = Path(project.project_path)
+
+    repo.destroy(project.id)
+
+    assert not folder.exists()
+    assert [item.id for item in repo.list()] == []
+
+
+def test_deleting_refuses_a_folder_that_is_not_a_project(tmp_path):
+    repo = FileProjectRepository(tmp_path / "registry")
+    project = repo.create(ProjectCreate(name="Guarded", location=str(tmp_path / "work")))
+    folder = Path(project.project_path)
+    # Whatever the record says, without our own marker file this is somebody
+    # else's directory and a recursive delete would be unforgivable.
+    (folder / "project.json").unlink()
+
+    # Either way it refuses; what matters is that the directory is still there.
+    with pytest.raises((KeyError, ValueError)):
+        repo.destroy(project.id)
+    assert folder.exists()
+
+
+def test_a_removal_stops_mattering_once_the_folder_is_gone(tmp_path):
+    repo = FileProjectRepository(tmp_path / "registry")
+    project = repo.create(ProjectCreate(name="Gone anyway", location=str(tmp_path / "work")))
+    repo.forget(project.id)
+    shutil.rmtree(project.project_path)
+
+    # Nothing to hide any more, so the record of the removal must not linger and
+    # shadow a later project that happens to be given the same id.
+    assert repo._forgotten() == set()
+

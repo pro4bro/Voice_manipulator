@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { RecordingWaveformPreview, WaveformPoint } from "../../domain/types";
+import type { RecordingWaveformPreview, StudioWord, WaveformPoint } from "../../domain/types";
+import { api } from "../../api/client";
+import { liveTranscriptWords, type LiveSegment } from "./live-words";
+import { downsample, encodeWav, isSilent } from "./pcm-chunk";
 
 export interface CapturedAudio {
   name: string;
@@ -10,12 +13,16 @@ export interface CapturedAudio {
   file: File;
   origin: "record" | "import";
   realtimeText: string;
+  /** What live recognition heard, timed off the clock. Never trusted timings. */
+  words: StudioWord[];
 }
 
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
   onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript?: (text: string, active: boolean) => void;
+  /** The project's language code, so live passes need not guess it. */
+  projectLanguage?: string | null;
 }
 
 interface BrowserSpeechRecognition {
@@ -59,7 +66,7 @@ function speechConstructor(): SpeechRecognitionConstructor | null {
   return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
 }
 
-export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscript }: RecorderProps) {
+export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscript, projectLanguage = null }: RecorderProps) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
@@ -69,16 +76,33 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
   const [inputDeviceId, setInputDeviceId] = useState("");
   const [outputDeviceId, setOutputDeviceId] = useState("");
   const [monitorEnabled, setMonitorEnabled] = useState(false);
-  const [meter, setMeter] = useState<number[]>(() => Array.from({ length: 24 }, () => 0.08));
+  // One number, not a row of bars: the question while recording is only "is the
+  // level right", and a single lit strip answers it at a glance.
+  const [level, setLevel] = useState(0);
+  /** Input gain as a percentage. 0 is silence; 600 is the ceiling for a quiet mic. */
+  const [inputGain, setInputGain] = useState(100);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  // PCM tapped off the gain node, held until there is a chunk worth sending.
+  const chunkTapRef = useRef<ScriptProcessorNode | null>(null);
+  const chunkBufferRef = useRef<Float32Array[]>([]);
+  const chunkSamplesRef = useRef(0);
+  const chunkBusyRef = useRef(false);
+  const liveSessionRef = useRef<string | null>(null);
   const [peakDb, setPeakDb] = useState(-60);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureStreamRef = useRef<MediaStream | null>(null);
   const monitorRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
+  // Recognition reports text with no timings, so the moment each phrase is
+  // finalised is the only clock there is. Kept to give the recording a
+  // subtitle before anyone runs STT over it.
+  const liveSegmentsRef = useRef<LiveSegment[]>([]);
+  const finalisedCountRef = useRef(0);
   const liveSamplesRef = useRef<WaveformPoint[]>([]);
   const lastPreviewAtRef = useRef(0);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
@@ -145,6 +169,8 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
     const Recognition = speechConstructor();
     speechFinalRef.current = "";
     speechInterimRef.current = "";
+    liveSegmentsRef.current = [];
+    finalisedCountRef.current = 0;
     if (!Recognition) {
       onLiveTranscript?.("", true);
       return;
@@ -164,6 +190,19 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
         if (result.isFinal) finalText += `${text} `;
         else interimText += `${text} `;
       }
+      const results = Array.from({ length: event.results.length }, (_, at) => event.results[at]);
+      const finalised = results.filter((result) => result.isFinal).length;
+      if (finalised > finalisedCountRef.current) {
+        const spoken = results.slice(finalisedCountRef.current)
+          .filter((result) => result.isFinal)
+          .map((result) => result[0]?.transcript?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ");
+        if (spoken) {
+          liveSegmentsRef.current.push({ text: spoken, endedAt: (performance.now() - startedAtRef.current) / 1000 });
+        }
+        finalisedCountRef.current = finalised;
+      }
       speechFinalRef.current = finalText.trim();
       speechInterimRef.current = interimText.trim();
       onLiveTranscript?.([speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" "), true);
@@ -181,8 +220,26 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     animationRef.current = null;
     stopLiveTranscript();
+    if (chunkTapRef.current) {
+      chunkTapRef.current.onaudioprocess = null;
+      chunkTapRef.current.disconnect();
+      chunkTapRef.current = null;
+    }
+    chunkBufferRef.current = [];
+    chunkSamplesRef.current = 0;
+    chunkBusyRef.current = false;
+    if (liveSessionRef.current) {
+      // Take whatever the last pass had but never got a second opinion on.
+      void api.endLiveTranscribe(liveSessionRef.current)
+        .then(({ text }) => { if (text) speechFinalRef.current = text; })
+        .catch(() => undefined);
+      liveSessionRef.current = null;
+    }
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
+    gainNodeRef.current = null;
+    analyserRef.current = null;
+    setLevel(0);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     captureStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -193,36 +250,106 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
     }
   }
 
-  function startMeter(stream: MediaStream) {
+  /**
+   * Put the captured audio through a gain stage and record what comes out.
+   *
+   * The recorder reads the processed stream rather than the raw one, so the
+   * slider changes the file itself and not merely what the meter shows - a mic
+   * that records too quietly is the problem being solved, and a level that only
+   * looked right would not solve it.
+   */
+  function buildAudioGraph(raw: MediaStream): MediaStream {
     const AudioContextClass = window.AudioContext;
-    if (!AudioContextClass) return;
+    if (!AudioContextClass) return raw;
     const context = new AudioContextClass();
+    const gain = context.createGain();
+    gain.gain.value = inputGain / 100;
     const analyser = context.createAnalyser();
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0.18;
-    context.createMediaStreamSource(stream).connect(analyser);
-    const values = new Float32Array(analyser.fftSize);
+    const destination = context.createMediaStreamDestination();
+    context.createMediaStreamSource(raw).connect(gain);
+    gain.connect(analyser);
+    gain.connect(destination);
     audioContextRef.current = context;
+    gainNodeRef.current = gain;
+    analyserRef.current = analyser;
+    return destination.stream;
+  }
+
+  /** Seconds of audio per chunk: long enough to be a phrase, short enough to feel live. */
+  const CHUNK_SECONDS = 4;
+
+  /**
+   * Transcribe the captured audio itself, in chunks, through the local studio.
+   *
+   * Used when the source is a tab, a window or the desktop, because the browser's
+   * own recogniser cannot be pointed at anything but the default microphone. A
+   * warm `tiny` model turns a 3 s chunk around in about 1.3 s here, so the text
+   * lands a beat behind the speech rather than not at all.
+   */
+  function startCapturedTranscript(context: AudioContext, gain: GainNode) {
+    const tap = context.createScriptProcessor(4096, 1, 1);
+    const needed = context.sampleRate * CHUNK_SECONDS;
+    tap.onaudioprocess = (event) => {
+      chunkBufferRef.current.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      chunkSamplesRef.current += event.inputBuffer.length;
+      if (chunkSamplesRef.current < needed || chunkBusyRef.current) return;
+      const merged = new Float32Array(chunkSamplesRef.current);
+      let at = 0;
+      for (const part of chunkBufferRef.current) { merged.set(part, at); at += part.length; }
+      chunkBufferRef.current = [];
+      chunkSamplesRef.current = 0;
+      void sendChunk(merged, context.sampleRate);
+    };
+    gain.connect(tap);
+    // A ScriptProcessor only runs while it is connected to a destination; the
+    // gain of zero keeps it silent so the monitor path is unaffected.
+    const mute = context.createGain();
+    mute.gain.value = 0;
+    tap.connect(mute).connect(context.destination);
+    chunkTapRef.current = tap;
+  }
+
+  async function sendChunk(samples: Float32Array, sampleRate: number) {
+    const session = liveSessionRef.current;
+    const reduced = downsample(samples, sampleRate);
+    if (!session || isSilent(reduced)) return;
+    chunkBusyRef.current = true;
+    try {
+      const { committed, text, pending } = await api.liveTranscribeChunk(session, encodeWav(reduced), projectLanguage ?? "");
+      // `text` is settled and will not be rewritten; `pending` still might be,
+      // so it rides in the interim slot the microphone path already uses.
+      speechFinalRef.current = text;
+      speechInterimRef.current = pending;
+      if (committed) {
+        liveSegmentsRef.current.push({ text: committed, endedAt: (performance.now() - startedAtRef.current) / 1000 });
+      }
+      onLiveTranscript?.([text, pending].filter(Boolean).join(" "), true);
+    } catch {
+      // A dropped chunk is a gap in the live text, never a failed recording.
+    } finally {
+      chunkBusyRef.current = false;
+    }
+  }
+
+  function startMeter() {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    const values = new Float32Array(analyser.fftSize);
 
     const draw = () => {
       analyser.getFloatTimeDomainData(values);
       let peak = 0;
       let liveMin = 0;
       let liveMax = 0;
-      const bars = Array.from({ length: 24 }, (_, bar) => {
-        const start = Math.floor((bar / 24) * values.length);
-        const end = Math.floor(((bar + 1) / 24) * values.length);
-        let localPeak = 0;
-        for (let index = start; index < end; index += 1) {
-          const value = values[index] ?? 0;
-          localPeak = Math.max(localPeak, Math.abs(value));
-          peak = Math.max(peak, Math.abs(value));
-          liveMin = Math.min(liveMin, value);
-          liveMax = Math.max(liveMax, value);
-        }
-        return Math.max(0.06, Math.min(1, localPeak * 3.6));
-      });
-      setMeter(bars);
+      for (let index = 0; index < values.length; index += 1) {
+        const value = values[index] ?? 0;
+        peak = Math.max(peak, Math.abs(value));
+        liveMin = Math.min(liveMin, value);
+        liveMax = Math.max(liveMax, value);
+      }
+      setLevel(Math.min(1, peak * 1.6));
       setPeakDb(peak > 0.0001 ? Math.max(-60, 20 * Math.log10(peak)) : -60);
       const now = performance.now();
       if (now - lastPreviewAtRef.current >= 20) {
@@ -280,8 +407,9 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
         });
         sourceLabel = stream.getAudioTracks()[0]?.label || "Microphone";
       }
+      const recorded = buildAudioGraph(stream);
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(recorded, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
       streamRef.current = stream;
       recorderRef.current = recorder;
@@ -295,7 +423,7 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
         const duration = Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
         stopResources();
-        onRecordingReady({ name: file.name, url, duration, file, origin: "record", realtimeText });
+        onRecordingReady({ name: file.name, url, duration, file, origin: "record", realtimeText, words: liveTranscriptWords(liveSegmentsRef.current, duration) });
         onRecordingPreview?.({ active: false, duration, samples: liveSamplesRef.current.slice() });
         onLiveTranscript?.(realtimeText, false);
         setStatus("idle");
@@ -310,8 +438,20 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
       setElapsed(0);
       setStatus("recording");
       setMessage(`REC LIVE · ${sourceLabel}${monitorEnabled ? " · monitor ON" : ""}`);
-      startMeter(stream);
-      startLiveTranscript();
+      startMeter();
+      // Browser speech recognition always listens to the default microphone, so
+      // it is right for a microphone and wrong for anything else. A captured tab
+      // or window is transcribed from its own audio instead, through the studio.
+      if (captureSource === "microphone") startLiveTranscript();
+      else {
+        const context = audioContextRef.current;
+        const gain = gainNodeRef.current;
+        speechFinalRef.current = "";
+        speechInterimRef.current = "";
+        onLiveTranscript?.("", true);
+        liveSessionRef.current = `live-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        if (context && gain) startCapturedTranscript(context, gain);
+      }
       await refreshDevices();
     } catch (error) {
       stopResources();
@@ -321,6 +461,11 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
       setMessage(error instanceof Error ? error.message : "Không mở được microphone");
     }
   }
+
+  useEffect(() => {
+    const gain = gainNodeRef.current;
+    if (gain) gain.gain.value = inputGain / 100;
+  }, [inputGain]);
 
   function stop() {
     if (recorderRef.current?.state === "recording") {
@@ -334,12 +479,17 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
     <ModuleFrame eyebrow="RECORDER" title="Thu âm" index="01" tone="dark" className="recorder-module">
       <div className="recorder-device-grid">
         <label><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setCaptureSource(event.target.value as CaptureSource)} value={captureSource}><option value="microphone">Microphone / audio input</option><option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option></select></label>
-        {captureSource === "microphone" ? <label><span>MIC INPUT</span><select aria-label="Micro thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setInputDeviceId(event.target.value)} value={inputDeviceId}>{inputs.length ? inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "input")}</option>) : <option value="">Microphone mặc định</option>}</select></label> : <div className="capture-source-note"><b>BROWSER SHARE PICKER</b><span>Khi bấm Record, chọn tab/cửa sổ và bật Share audio. Các tab được trình duyệt tự nhóm theo browser.</span></div>}
+        {captureSource === "microphone" ? <label><span>MIC INPUT</span><select aria-label="Micro thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setInputDeviceId(event.target.value)} value={inputDeviceId}>{inputs.length ? inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "input")}</option>) : <option value="">Microphone mặc định</option>}</select></label> : <div className="capture-source-note"><b>BROWSER SHARE PICKER</b><span>Khi bấm Record, chọn tab/cửa sổ và bật Share audio. Các tab được trình duyệt tự nhóm theo browser.</span><span>Live transcript cho nguồn này chạy bằng chính audio đang bắt, qua OmniVoice Studio (model tiny), nên đúng tiếng tab chứ không phải tiếng phòng. Text hiện chậm hơn lời nói khoảng một nhịp.</span><span>Độ to đầu vào theo volume của chính tab/cửa sổ đó; volume hệ thống không ảnh hưởng.</span></div>}
         <label><span>MONITOR OUTPUT</span><select aria-label="Thiết bị phát monitor" disabled={status === "recording" && monitorEnabled} onChange={(event) => setOutputDeviceId(event.target.value)} value={outputDeviceId}>{outputs.length ? outputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "output")}</option>) : <option value="">Thiết bị mặc định</option>}</select></label>
       </div>
       <label className="monitor-toggle"><input aria-label="Nghe tiếng đang thu" checked={monitorEnabled} onChange={(event) => setMonitorEnabled(event.target.checked)} type="checkbox" /><span><i />Nghe tiếng đang thu</span><small>Nên dùng tai nghe để tránh feedback</small></label>
-      <div className={`recorder-visualizer ${status === "recording" ? "is-live" : ""}`} aria-label={`Peak ${peakDb.toFixed(1)} dB`}>
-        {meter.map((height, index) => <i key={index} style={{ height: `${height * 100}%` }} />)}
+      <label className="recorder-gain">
+        <span>INPUT VOLUME</span>
+        <input aria-label="Âm lượng đầu vào khi thu" max={600} min={0} onChange={(event) => setInputGain(Number(event.target.value))} step={5} type="range" value={inputGain} />
+        <b>{inputGain}%</b>
+      </label>
+      <div className={`recorder-level ${status === "recording" ? "is-live" : ""}`} aria-label={`Mức tín hiệu, đỉnh ${peakDb.toFixed(1)} dB`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
+        <i style={{ width: `${Math.round(level * 100)}%` }} />
         <output>PK {peakDb.toFixed(1)} dB</output>
       </div>
       <div className="recorder-time"><strong>{String(Math.floor(elapsed / 60)).padStart(2, "0")}:{(elapsed % 60).toFixed(3).padStart(6, "0")}</strong><span className={`status-pill status-pill--${status}`}>{status.toUpperCase()}</span></div>

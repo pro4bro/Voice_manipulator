@@ -58,7 +58,7 @@ MediaKind = Literal["audio", "video"]
 MediaOrigin = Literal["import", "record"]
 MediaStatus = Literal["ready", "no-audio", "error"]
 MediaTranscriptionStatus = Literal[
-    "queued", "processing", "reviewing", "complete", "skipped", "not-applicable", "error"
+    "queued", "processing", "reviewing", "complete", "skipped", "paused", "not-applicable", "error"
 ]
 MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error"]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
@@ -135,6 +135,15 @@ class MediaAssetCreate(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list)
     environment_profile_ids: list[str] = Field(default_factory=list)
     emotion: EmotionLabel = "normal"
+    # Parked without being thrown away: still visible and playable, but kept
+    # out of every batch so it is not transcribed or trained on by accident.
+    disabled: bool = False
+    # Set when the footage is in the project's recycle bin. Its files stay where
+    # they are so restoring is instant and nothing large has to be copied; what
+    # makes it deleted is this timestamp, held in the one index every reader
+    # already uses. A second store would be a second source of truth, and that is
+    # what once left most of a workspace's projects unopenable.
+    deleted_at: datetime | None = None
 
 
 class ProjectMediaAsset(MediaAssetCreate):
@@ -190,6 +199,13 @@ class MediaTranscriptionSelection(DomainModel):
 class MediaTranscriptionEnqueue(DomainModel):
     asset_ids: list[str] = Field(min_length=1, max_length=500)
     model: str = Field(default="large-v3", max_length=80)
+
+
+class MediaTranscriptionControl(DomainModel):
+    """Pause, resume or stop a run. No asset ids means the whole project's queue."""
+
+    action: Literal["pause", "resume", "stop"]
+    asset_ids: list[str] | None = Field(default=None, max_length=500)
 
 
 class MediaTranscriptionProgress(DomainModel):

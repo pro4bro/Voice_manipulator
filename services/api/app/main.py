@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -27,6 +28,7 @@ from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.subtitle_exporter import SubtitleExporter
+from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
     AppPreferences,
     EngineProfileSchema,
@@ -47,6 +49,7 @@ from app.domain.models import (
     MediaTranscriptReviewResult,
     MediaTimelineEditsUpdate,
     MediaTrainingSelection,
+    MediaTranscriptionControl,
     MediaTranscriptionEnqueue,
     MediaTranscriptionProgress,
     MediaTranscriptionSelection,
@@ -394,6 +397,34 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
 
+    @app.post(
+        "/api/projects/{project_id}/media/transcriptions/control",
+        response_model=list[ProjectMediaAsset],
+    )
+    async def control_media_transcriptions(
+        project_id: str, payload: MediaTranscriptionControl
+    ) -> list[ProjectMediaAsset]:
+        try:
+            if payload.action == "pause":
+                touched = await transcription_queue.pause(project_id, payload.asset_ids)
+            elif payload.action == "resume":
+                touched = await transcription_queue.resume(project_id, payload.asset_ids)
+            else:
+                touched = await transcription_queue.stop(project_id, payload.asset_ids)
+            assets = []
+            for asset_id in touched:
+                try:
+                    assets.append(media.get(project_id, asset_id))
+                except KeyError:
+                    continue
+            return assets
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get("/api/projects/{project_id}/media/transcription-queue")
+    async def read_transcription_queue(project_id: str) -> dict:
+        return transcription_queue.status(project_id)
+
     @app.get(
         "/api/projects/{project_id}/media/diarization-status",
         response_model=list[MediaDiarizationProgress],
@@ -456,18 +487,127 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.delete(
-        "/api/projects/{project_id}/media/{asset_id}",
-        status_code=status.HTTP_204_NO_CONTENT,
-    )
-    def remove_project_media(project_id: str, asset_id: str) -> Response:
+    # The two outcomes have different shapes, so the model is built per branch.
+    @app.delete("/api/projects/{project_id}/media/{asset_id}", response_model=None)
+    def remove_project_media(
+        project_id: str, asset_id: str, permanent: bool = False
+    ) -> Response | ProjectMediaAsset:
+        """Recycle by default; erase only when the caller says so outright."""
         try:
+            if not permanent:
+                return media.send_to_recycle_bin(project_id, asset_id)
             media.remove(project_id, asset_id)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/media/{asset_id}/disabled",
+        response_model=ProjectMediaAsset,
+    )
+    def set_media_disabled(project_id: str, asset_id: str, disabled: bool = True) -> ProjectMediaAsset:
+        try:
+            return media.set_disabled(project_id, asset_id, disabled)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.post("/api/live-transcribe")
+    async def live_transcribe(
+        file: UploadFile = File(...),
+        session: str = Form(...),
+        model: str = Form("tiny"),
+        language: str = Form(""),
+    ) -> dict:
+        """Transcribe one short chunk of whatever is being captured right now.
+
+        The browser's speech recognition cannot be pointed at a captured stream -
+        it only ever hears the default microphone - so recording a tab used to
+        produce a transcript of the room. Sending the captured audio here instead
+        means the live transcript comes from the source actually being recorded,
+        whichever source that is.
+
+        Measured on this machine: a 3 s chunk takes about 1.3 s with `tiny` once
+        the model is warm, which keeps up with speech comfortably.
+        """
+        # The studio holds one model at a time, so a live chunk asking for `tiny`
+        # while a batch runs `large-v3` would unload the batch's model between
+        # files. The batch is the more expensive work; live transcript waits.
+        if transcription_queue.status_any_running():
+            raise HTTPException(status_code=409, detail="Đang chạy Speech to text hàng loạt; live transcript tạm nghỉ.")
+        payload = await file.read()
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:
+                response = await client.post(
+                    f"{settings.legacy_studio_url.rstrip('/')}/api/audio/live/chunk",
+                    files={"file": ("chunk.wav", payload, "audio/wav")},
+                    data={"session": session, "model": model, "language": language},
+                )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail="OmniVoice Studio chưa chạy.") from exc
+        if response.status_code >= 400:
+            raise HTTPException(status_code=response.status_code, detail="Studio không nhận dạng được đoạn này.")
+        return response.json()
+
+    @app.post("/api/live-transcribe/end")
+    async def live_transcribe_end(session: str = Form(...)) -> dict:
+        """Recording stopped: take the last, unconfirmed words and close the session."""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:
+                response = await client.post(
+                    f"{settings.legacy_studio_url.rstrip('/')}/api/audio/live/end",
+                    data={"session": session},
+                )
+        except httpx.RequestError:
+            return {"text": "", "committed": ""}
+        return response.json() if response.status_code < 400 else {"text": "", "committed": ""}
+
+    @app.post("/api/projects/{project_id}/reveal", status_code=status.HTTP_204_NO_CONTENT)
+    def reveal_project_folder(project_id: str) -> Response:
+        try:
+            reveal(Path(projects.get(project_id).project_path))
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/media/{asset_id}/reveal", status_code=status.HTTP_204_NO_CONTENT)
+    def reveal_media_file(project_id: str, asset_id: str) -> Response:
+        try:
+            project = projects.get(project_id)
+            asset = media.get(project_id, asset_id)
+            reveal(Path(project.project_path) / asset.source_path)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def remove_project(project_id: str, permanent: bool = False) -> Response:
+        """Forget a project, or erase it outright when asked."""
+        try:
+            if permanent:
+                projects.destroy(project_id)
+            else:
+                projects.forget(project_id)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/media/{asset_id}/restore",
+        response_model=ProjectMediaAsset,
+    )
+    def restore_project_media(project_id: str, asset_id: str) -> ProjectMediaAsset:
+        try:
+            return media.restore_from_recycle_bin(project_id, asset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
 
     @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/annotations",

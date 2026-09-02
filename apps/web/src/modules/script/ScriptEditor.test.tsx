@@ -1,8 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { ScriptEditor, scriptWordRanges } from "./ScriptEditor";
 import { moveWordToRow } from "./script-table";
+
+/**
+ * The workspace owns the selection so Script and Timeline agree on it, so a test
+ * that renders the editor bare would be testing a component nothing is driving.
+ */
+function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
+  const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
+  return <ScriptEditor {...props} onWordSelectionChange={setSelection} wordSelection={selection} />;
+}
 
 describe("ScriptEditor", () => {
   it("lets the user edit transcript text after recognition", () => {
@@ -31,7 +42,7 @@ describe("ScriptEditor", () => {
   it("maps a diarized Speaker row to a Speaker Profile", () => {
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }];
-    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[{ id: "speaker-profile-1", name: "Anh Vũ", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "male", attributes: {}, color: "#ff6745", createdAt: "2026-08-23T00:00:00Z" }]} value="Xin chào" words={words} workflow="speech-to-text" />);
+    render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[{ id: "speaker-profile-1", name: "Anh Vũ", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "male", attributes: {}, color: "#ff6745", createdAt: "2026-08-23T00:00:00Z" }]} value="Xin chào" words={words} workflow="speech-to-text" />);
     const first = screen.getByRole("button", { name: "Chọn từ Xin" });
     const second = screen.getByRole("button", { name: "Chọn từ chào" });
     fireEvent.pointerDown(first, { pointerId: 1 });
@@ -55,7 +66,9 @@ describe("ScriptEditor", () => {
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0.12, end: 0.34, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good" as const }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin" words={words} workflow="speech-to-text" />);
-    fireEvent.click(screen.getByRole("button", { name: "Chọn từ Xin" }));
+    // Editing is a deliberate second gesture: a single click only selects, so a
+    // selected word stays free to be dragged into another row.
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Chọn từ Xin" }));
     const editor = screen.getByRole("textbox", { name: "Sửa từ Xin" });
     fireEvent.change(editor, { target: { value: "Chào" } });
     fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
@@ -92,8 +105,31 @@ describe("ScriptEditor", () => {
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }, { text: "bạn", start: 0.8, end: 1.1, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "→ Speaker 2 · 00:00.800" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "↓ Speaker 2 · 00:00.800" }));
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: undefined, manualDiarizationSpeakerId: "speaker-2" }, words[2]]);
+  });
+
+  it("offers no row to a word in the middle of its row, which would reorder the transcript", () => {
+    const words = [
+      { text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" },
+      { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" },
+      { text: "các", start: 0.7, end: 1.0, diarizationSpeakerId: "speaker-1" },
+      { text: "bạn", start: 1.0, end: 1.3, diarizationSpeakerId: "speaker-2" },
+    ];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={vi.fn()} value="Xin chào các bạn" words={words} workflow="speech-to-text" />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
+    expect(screen.getByText("KHÔNG CHUYỂN ĐƯỢC ROW · chọn từ ở đầu hoặc cuối row")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^[↑↓]/ })).toBeNull();
+  });
+
+  it("a single click selects a word and leaves it draggable, without an editor over it", () => {
+    const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }];
+    render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={vi.fn()} value="Xin" words={words} workflow="speech-to-text" />);
+    const word = screen.getByRole("button", { name: "Chọn từ Xin" });
+    fireEvent.pointerDown(word, { pointerId: 1 });
+    fireEvent.click(word);
+    expect(word).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("form", { name: "Trình sửa từ Xin" })).toBeNull();
   });
 
   it("keeps timed words aligned after the user removes an STT intro", () => {

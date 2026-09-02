@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import type { EngineStatus, Project, ProjectCreate, ThemeMode } from "../domain/types";
 import { Icon } from "../ui/Icon";
@@ -14,6 +14,9 @@ interface ProjectHubProps {
   onOpenExisting: (path: string) => Promise<boolean>;
   onPickLocation: (initialPath: string) => Promise<string | null>;
   onRetry: () => void;
+  onRevealProject: (project: Project) => void;
+  /** `permanent` erases the folder; otherwise the project only leaves the list. */
+  onRemoveProject: (project: Project, permanent: boolean) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
@@ -26,9 +29,21 @@ function projectInitials(name: string) {
   return name.split(/\s+/u).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, theme, onToggleTheme }: ProjectHubProps) {
+export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, onRevealProject, onRemoveProject, theme, onToggleTheme }: ProjectHubProps) {
+  const [menu, setMenu] = useState<{ project: Project; left: number; top: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [showCreate, setShowCreate] = useState(projects.length === 0);
   const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = (event: globalThis.PointerEvent) => {
+      if (event.target instanceof Element && menuRef.current?.contains(event.target)) return;
+      setMenu(null);
+    };
+    window.addEventListener("pointerdown", close, true);
+    return () => window.removeEventListener("pointerdown", close, true);
+  }, [menu]);
   const [draft, setDraft] = useState<ProjectCreate>(() => newDraft(defaultLocation));
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -125,7 +140,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
               <span className="new-project-icon"><Icon name="plus" /></span><strong>New project</strong><small>Tạo workspace âm thanh mới</small>
             </button>
             {visibleProjects.map((project, index) => (
-              <button className="project-card" key={project.id} onClick={() => onOpen(project)} type="button">
+              <button className="project-card" key={project.id} onClick={() => onOpen(project)} onContextMenu={(event) => { event.preventDefault(); setMenu({ project, left: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), top: Math.max(8, Math.min(event.clientY, window.innerHeight - 200)) }); }} type="button">
                 <span className="project-preview">
                   <b>{projectInitials(project.name) || "P4"}</b>
                   <span>{Array.from({ length: 28 }, (_, bar) => <i key={bar} style={{ height: `${18 + Math.abs(Math.sin((bar + index) * .51)) * 64}%` }} />)}</span>
@@ -136,6 +151,14 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
               </button>
             ))}
           </div>
+
+          {menu ? <div className="project-context-menu" ref={menuRef} role="menu" style={{ left: menu.left, top: menu.top }}>
+            <header><span>PROJECT</span><b>{menu.project.name}</b></header>
+            <button onClick={() => { const target = menu.project; setMenu(null); onRevealProject(target); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button>
+            <button onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, false); }} role="menuitem" type="button"><Icon name="back" /> Remove Project</button>
+            <button className="project-context-menu__danger" onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, true); }} role="menuitem" type="button"><Icon name="trash" /> Delete Project</button>
+            <small>Remove chỉ bỏ khỏi danh sách, file vẫn còn trên ổ. Delete xóa cả thư mục project.</small>
+          </div> : null}
 
           {!visibleProjects.length && query ? <div className="project-empty"><Icon name="search" /><b>Không tìm thấy project</b><span>Thử tên hoặc đường dẫn khác.</span></div> : null}
           <footer className="project-browser__footer"><span>{visibleProjects.length} PROJECT{visibleProjects.length === 1 ? "" : "S"}</span><span>PRO4BRO LOCAL LIBRARY</span></footer>

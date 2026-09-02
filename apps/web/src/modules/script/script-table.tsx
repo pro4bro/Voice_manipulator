@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type UIEvent } from "react";
 
+import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
+import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
 
 export interface ScriptTableColumn {
@@ -153,6 +155,8 @@ interface ScriptTableProps {
   onUpdateWordText: (index: number, text: string) => void;
   onOpenTextEditor: () => void;
   storageKey: string;
+  selection: WordSelection;
+  onSelectionChange: (selection: WordSelection) => void;
 }
 interface ScrollMetrics {
   top: number;
@@ -172,6 +176,8 @@ interface SpeakerTextProps {
   speakers: SpeakerProfile[];
   activeWordIndex: number;
   onOpenTextEditor: () => void;
+  selection: WordSelection;
+  onSelectionChange: (selection: WordSelection) => void;
 }
 
 /* The non-table view keeps each diarized turn intact while giving the user a compact reading layout. */
@@ -197,27 +203,88 @@ export function keepWordInView(view: HTMLElement, target: HTMLElement): number |
   return next;
 }
 
-export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor }: SpeakerTextProps) {
+export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor, selection, onSelectionChange }: SpeakerTextProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const sweepOriginRef = useRef<number | null>(null);
+  const sweepBaseRef = useRef<WordSelection>(EMPTY_SELECTION);
+  const sweepingRef = useRef(false);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
 
   useLayoutEffect(() => {
     if (activeWordIndex < 0) return;
     activeWordRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
   }, [activeWordIndex]);
 
+  // This view reads like a page of prose, so it selects like one: press and
+  // sweep across the words. Delegating from the container rather than binding
+  // every word keeps a long transcript cheap, and lets the sweep run over the
+  // spaces between words the way dragging over a paragraph does.
+  const wordIndexAt = (clientX: number, clientY: number) => {
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-script-word-index]");
+    const index = Number(target?.dataset.scriptWordIndex);
+    return Number.isInteger(index) ? index : -1;
+  };
+
+  useEffect(() => {
+    const move = (event: globalThis.PointerEvent) => {
+      if (!sweepingRef.current || sweepOriginRef.current === null) return;
+      const index = wordIndexAt(event.clientX, event.clientY);
+      if (index < 0) return;
+      onSelectionChange(sweepTo(sweepBaseRef.current, sweepOriginRef.current, index, {
+        ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey,
+      }));
+    };
+    const end = () => { sweepingRef.current = false; };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    return () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+    };
+  }, [onSelectionChange]);
+
+  // A selection made in the Timeline or the table has to be visible here too.
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view || selection.anchor === null) return;
+    const target = view.querySelector<HTMLElement>(`[data-script-word-index="${selection.anchor}"]`);
+    if (target) keepWordInView(view, target);
+  }, [selection.anchor]);
+
+  function beginSweep(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const index = wordIndexAt(event.clientX, event.clientY);
+    if (index < 0) {
+      if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) onSelectionChange(EMPTY_SELECTION);
+      return;
+    }
+    const next = selectWord(selectionRef.current, index, {
+      ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey,
+    });
+    sweepingRef.current = true;
+    sweepOriginRef.current = index;
+    sweepBaseRef.current = next;
+    onSelectionChange(next);
+  }
+
   if (!rows.length) return null;
-  return <div aria-label="Transcript theo người nói" className="script-speaker-text" onDoubleClick={onOpenTextEditor} title="Double-click để mở Text Edit">
+  const held = new Set(selection.indexes);
+  return <div aria-label="Transcript theo người nói" className="script-speaker-text" onDoubleClick={onOpenTextEditor} onPointerDown={beginSweep} ref={viewRef} title="Quét để chọn nhiều từ · Ctrl/Shift/Alt để cộng trừ · double-click để mở Text Edit">
     {rows.map((row) => {
       const color = row.profile?.color ?? "var(--text-muted)";
       return <article className={row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} key={row.id}>
         <header style={{ borderLeftColor: color }}><i style={{ background: color }} /><b style={{ color }}>{row.diarizationLabel}</b></header>
-        <p>{row.words.map(({ index, word }) => <span className={index === activeWordIndex ? "is-active" : ""} key={`${word.start}-${word.end}-${index}`} ref={index === activeWordIndex ? activeWordRef : undefined}>{word.text}{" "}</span>)}</p>
+        <p>{row.words.map(({ index, word }) => <span aria-selected={held.has(index)} className={`${index === activeWordIndex ? "is-active" : ""} ${held.has(index) ? "is-selected" : ""}`} data-script-word-index={index} key={`${word.start}-${word.end}-${index}`} ref={index === activeWordIndex ? activeWordRef : undefined} role="option">{word.text}{" "}</span>)}</p>
       </article>;
     })}
   </div>;
 }
-export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey }: ScriptTableProps) {
+export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -225,15 +292,34 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   const activeWordRef = useRef<HTMLButtonElement>(null);
   const draggingRef = useRef(false);
   const resizeRef = useRef<ResizeState | null>(null);
-  const [selectedWordIndexes, setSelectedWordIndexes] = useState<Set<number>>(() => new Set());
+  const selectedWordIndexes = useMemo(() => new Set(selection.indexes), [selection.indexes]);
   const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
-  const wordSelectionAnchorRef = useRef<number | null>(null);
+  // A sweep is measured from where it began, against the selection as it stood
+  // then, so dragging back over the run shrinks it instead of piling up.
+  const sweepOriginRef = useRef<number | null>(null);
+  const sweepBaseRef = useRef<WordSelection>(EMPTY_SELECTION);
+  const selectionRef = useRef(selection);
   const wordSelectionDraggingRef = useRef(false);
   const wordSelectionExtendedRef = useRef(false);
+  // Dragging a selection carries it to another row; sweeping would replace it,
+  // so a plain press on a word already selected arms this instead of a sweep.
+  const [rowDragIndexes, setRowDragIndexes] = useState<number[] | null>(null);
+  const rowDragRef = useRef<{ originX: number; originY: number; active: boolean } | null>(null);
+  const rowDropRef = useRef<{ rowId: string; direction: RowMoveDirection } | null>(null);
+  const [rowDrop, setRowDrop] = useState<{ rowId: string; direction: RowMoveDirection } | null>(null);
+  selectionRef.current = selection;
   const [scroll, setScroll] = useState<ScrollMetrics>({ top: 0, clientHeight: 0, scrollHeight: 0, trackHeight: 0 });
 
   useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
+  // A selection made in the Timeline has to be reachable here without hunting
+  // for it, so the table follows the last word touched either side.
+  useLayoutEffect(() => {
+    const view = scrollRef.current;
+    if (!view || selection.anchor === null) return;
+    const target = view.querySelector<HTMLElement>(`[data-script-word-index="${selection.anchor}"]`);
+    if (target && keepWordInView(view, target) !== null) updateScroll(view);
+  }, [selection.anchor]);
   useEffect(() => { window.localStorage.setItem(`pro4bro:script-table:${storageKey}`, JSON.stringify(columns)); }, [columns, storageKey]);
   useEffect(() => {
     if (!speakerMenu) return undefined;
@@ -246,7 +332,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     return () => window.removeEventListener("pointerdown", closeMenu, true);
   }, [speakerMenu]);
   useEffect(() => {
-    const moveSelection = (event: globalThis.PointerEvent) => extendWordSelectionAtPoint(event.clientX, event.clientY);
+    const moveSelection = (event: globalThis.PointerEvent) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event));
     const endSelection = () => { wordSelectionDraggingRef.current = false; };
     window.addEventListener("pointermove", moveSelection, true);
     window.addEventListener("pointerup", endSelection, true);
@@ -365,55 +451,84 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     setColumns((current) => current.length > 1 ? current.filter((column) => column.id !== id) : current);
   }
 
-  function wordIndexRange(start: number, end: number) {
-    const first = Math.min(start, end);
-    const last = Math.max(start, end);
-    return Array.from({ length: last - first + 1 }, (_, offset) => first + offset);
+  function modifiersOf(event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }) {
+    return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey };
   }
 
   function beginWordSelection(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
     if (event.button !== 0 && event.button !== -1) return;
     event.stopPropagation();
-    wordSelectionDraggingRef.current = true;
     wordSelectionExtendedRef.current = false;
-    const anchor = wordSelectionAnchorRef.current;
-    if (event.shiftKey && anchor !== null) {
-      setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+    const bare = !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+    if (bare && selectionRef.current.indexes.includes(index) && selectionRef.current.indexes.length > 0) {
+      wordSelectionDraggingRef.current = false;
+      rowDragRef.current = { originX: event.clientX, originY: event.clientY, active: false };
+      setRowDragIndexes([...selectionRef.current.indexes]);
       return;
     }
-    if (event.ctrlKey || event.metaKey) {
-      setSelectedWordIndexes((current) => {
-        const next = new Set(current);
-        if (next.has(index)) next.delete(index);
-        else next.add(index);
-        return next;
-      });
-      wordSelectionAnchorRef.current = index;
-      return;
-    }
-    wordSelectionAnchorRef.current = index;
-    setSelectedWordIndexes(new Set([index]));
+    wordSelectionDraggingRef.current = true;
+    const next = selectWord(selectionRef.current, index, modifiersOf(event));
+    sweepOriginRef.current = index;
+    // A sweep continues from what this click produced, so Ctrl-sweeping keeps
+    // everything picked up so far instead of dropping it at the first move.
+    sweepBaseRef.current = next;
+    onSelectionChange(next);
   }
 
-  function extendWordSelectionAtPoint(clientX: number, clientY: number) {
+  function extendWordSelectionAtPoint(clientX: number, clientY: number, modifiers: { ctrl: boolean; shift: boolean; alt: boolean }) {
     if (!wordSelectionDraggingRef.current) return;
     const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-script-word-index]");
     const index = Number(target?.dataset.scriptWordIndex);
-    if (Number.isInteger(index)) extendWordSelection(index);
+    if (Number.isInteger(index)) extendWordSelection(index, modifiers);
   }
 
-  function extendWordSelection(index: number) {
-    const anchor = wordSelectionAnchorRef.current;
-    if (!wordSelectionDraggingRef.current || anchor === null || anchor === index) return;
+  function extendWordSelection(index: number, modifiers: { ctrl: boolean; shift: boolean; alt: boolean }) {
+    const origin = sweepOriginRef.current;
+    if (!wordSelectionDraggingRef.current || origin === null || origin === index) return;
     wordSelectionExtendedRef.current = true;
-    setSelectedWordIndexes(new Set(wordIndexRange(anchor, index)));
+    onSelectionChange(sweepTo(sweepBaseRef.current, origin, index, modifiers));
   }
+
+  useEffect(() => {
+    if (!rowDragIndexes) return undefined;
+    const move = (event: globalThis.PointerEvent) => {
+      const drag = rowDragRef.current;
+      if (!drag) return;
+      if (!drag.active && Math.abs(event.clientX - drag.originX) + Math.abs(event.clientY - drag.originY) < 5) return;
+      drag.active = true;
+      const over = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-script-row-id]");
+      const rowId = over?.dataset.scriptRowId;
+      const allowed = rowId ? rowMoveTo(rows, rowDragIndexes, rowId) : null;
+      const next = allowed ? { rowId: allowed.target.id, direction: allowed.direction } : null;
+      rowDropRef.current = next;
+      setRowDrop((current) => current?.rowId === next?.rowId ? current : next);
+    };
+    const finish = () => {
+      const drag = rowDragRef.current;
+      const drop = rowDropRef.current;
+      rowDragRef.current = null;
+      rowDropRef.current = null;
+      setRowDragIndexes(null);
+      setRowDrop(null);
+      if (!drag?.active || !drop) return;
+      const allowed = rowMoveTo(rows, rowDragIndexes, drop.rowId);
+      if (allowed) onMoveWords(rowDragIndexes, allowed.target);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", finish, true);
+    window.addEventListener("pointercancel", finish, true);
+    return () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", finish, true);
+    };
+  }, [onMoveWords, rowDragIndexes, rows]);
 
   function openSpeakerMenu(index: number, x: number, y: number) {
-    const indexes = selectedWordIndexes.has(index) ? [...selectedWordIndexes] : [index];
+    const indexes = selectedWordIndexes.has(index) ? [...selectedWordIndexes].sort((left, right) => left - right) : [index];
     if (!selectedWordIndexes.has(index)) {
-      wordSelectionAnchorRef.current = index;
-      setSelectedWordIndexes(new Set(indexes));
+      sweepOriginRef.current = index;
+      onSelectionChange({ indexes, anchor: index });
     }
     setWordEdit(null);
     setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), x, y });
@@ -447,12 +562,19 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
           wordSelectionExtendedRef.current = false;
           return;
         }
-        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-        wordSelectionAnchorRef.current = index;
-        setSelectedWordIndexes(new Set([index]));
+        if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        sweepOriginRef.current = index;
+        onSelectionChange({ indexes: [index], anchor: index });
+        setSpeakerMenu(null);
+      }} onDoubleClick={(event) => {
+        // Editing is a second, deliberate gesture. Opening the editor on a single
+        // click laid a form over the word, so a selected word could no longer be
+        // picked up and dragged to another row - the click armed the drag and the
+        // form then swallowed it.
+        event.stopPropagation();
         setSpeakerMenu(null);
         setWordEdit({ index, value: word.text });
-      }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerEnter={() => extendWordSelection(index)} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY)} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Kéo quét nhiều từ, sau đó chuột phải để gán Speaker Profile hoặc chuyển row" type="button">{word.text}</button>{" "}
+      }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerEnter={(event) => extendWordSelection(index, modifiersOf(event))} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event))} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Quét hoặc Ctrl/Shift để chọn nhiều từ · kéo phần đầu hoặc cuối row sang row kề · double-click để sửa chữ · chuột phải để gán Speaker" type="button">{word.text}</button>{" "}
       {editing ? <form aria-label={`Trình sửa từ ${word.text}`} className="script-table__word-editor" onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
         <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setWordEdit(null); } }} value={wordEdit.value} />
       </form> : null}
@@ -485,13 +607,18 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   if (!rows.length) return null;
 
   return <div className="script-table-shell">
-    <div className="script-table-scroll" onScroll={syncScroll} ref={scrollRef}>
+    <div className="script-table-scroll" onPointerDown={(event) => {
+      if (event.button !== 0) return;
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
+      onSelectionChange(EMPTY_SELECTION);
+    }} onScroll={syncScroll} ref={scrollRef}>
       <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ gridTemplateColumns }}>
         <div className="script-table__header" role="row" style={{ gridTemplateColumns }}>
           {columns.map((column) => <div className="script-table__header-cell" key={column.id} role="columnheader"><b>{column.label}</b><button aria-label={`Kéo rộng cột ${column.label}`} className="script-table__resize" onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, column)} onPointerMove={resizeColumn} onPointerUp={endColumnResize} type="button" />{columns.length > 1 ? <button aria-label={`Xóa cột ${column.label}`} className="script-table__remove" onClick={() => removeColumn(column.id)} type="button">×</button> : null}</div>)}
           <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
         </div>
-        {rows.map((row) => <div className={`script-table__row ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""}`} key={row.id} role="row" style={{ gridTemplateColumns }}>
+        {rows.map((row) => <div className={`script-table__row ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns }}>
           {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column)}</div>)}
           <i aria-hidden="true" className="script-table__add-space" />
         </div>)}
@@ -504,8 +631,16 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
       <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
       {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
-      <small>CHUYỂN SANG ROW</small>
-      {rows.map((row) => <button key={row.id} onClick={() => moveSelectedWordsToRow(row)} role="menuitem" type="button">→ {row.diarizationLabel} · {timecode(row.words[0]?.word.start ?? 0)}</button>)}
+      {(() => {
+        // Only the neighbouring rows, and only from a row's edge: anything else
+        // would reorder the transcript, which recognition already got right.
+        const moves = legalRowMoves(rows, speakerMenu.indexes);
+        if (!moves.length) return <small>KHÔNG CHUYỂN ĐƯỢC ROW · chọn từ ở đầu hoặc cuối row</small>;
+        return <>
+          <small>CHUYỂN SANG ROW</small>
+          {moves.map((move) => <button key={move.target.id} onClick={() => moveSelectedWordsToRow(move.target)} role="menuitem" type="button">{move.direction === "up" ? "↑" : "↓"} {move.target.diarizationLabel} · {timecode(move.target.words[0]?.word.start ?? 0)}</button>)}
+        </>;
+      })()}
     </div> : null}
   </div>;
 }

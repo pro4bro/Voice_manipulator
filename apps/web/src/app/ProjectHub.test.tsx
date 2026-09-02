@@ -17,6 +17,8 @@ describe("ProjectHub", () => {
         onOpenExisting={vi.fn()}
         onPickLocation={vi.fn()}
         onRetry={() => undefined}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
         projects={[]}
         theme="light"
         onToggleTheme={vi.fn()}
@@ -44,6 +46,8 @@ describe("ProjectHub", () => {
         onOpenExisting={vi.fn()}
         onPickLocation={vi.fn()}
         onRetry={() => undefined}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
         projects={[]}
         theme="light"
         onToggleTheme={vi.fn()}
@@ -73,6 +77,8 @@ describe("ProjectHub", () => {
         onOpenExisting={onOpenExisting}
         onPickLocation={vi.fn().mockResolvedValue("projects/moved-project")}
         onRetry={() => undefined}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
         projects={[{
           id: "project-1",
           name: "Existing",
@@ -93,5 +99,46 @@ describe("ProjectHub", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Open project/ }));
     await waitFor(() => expect(onOpenExisting).toHaveBeenCalledWith("projects/moved-project"));
+  });
+
+  it("offers reveal, remove and delete on a right-clicked project", () => {
+    const onRevealProject = vi.fn();
+    const onRemoveProject = vi.fn();
+    const project = {
+      id: "project-1", name: "Existing", projectPath: "projects/existing", location: null,
+      language: null, accent: null, sampleRate: null, purpose: null,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", lastPage: "speech-to-text" as const,
+    };
+    render(
+      <ProjectHub
+        busy={false}
+        defaultLocation={"projects"}
+        engine={null}
+        error={null}
+        onCreate={vi.fn().mockResolvedValue(false)}
+        onOpen={() => undefined}
+        onOpenExisting={vi.fn()}
+        onPickLocation={vi.fn()}
+        onRetry={() => undefined}
+        onRevealProject={onRevealProject}
+        onRemoveProject={onRemoveProject}
+        projects={[project]}
+        theme="light"
+        onToggleTheme={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Existing/ }));
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reveal in Desktop/ }));
+    expect(onRevealProject).toHaveBeenCalledWith(project);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Existing/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Remove Project/ }));
+    // Remove keeps the files: that is the whole difference from Delete.
+    expect(onRemoveProject).toHaveBeenCalledWith(project, false);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Existing/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete Project/ }));
+    expect(onRemoveProject).toHaveBeenCalledWith(project, true);
   });
 });

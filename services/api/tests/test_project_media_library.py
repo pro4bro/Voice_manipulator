@@ -617,3 +617,64 @@ def test_a_job_that_leaves_the_queue_drops_its_snapshot(tmp_path):
 
     library.set_transcription_state(project.id, "asset-split", "skipped")
     assert library.transcription_progresses(project.id) == []
+
+
+def _recyclable(library, project_id, name: str = "take"):
+    return library.create(
+        project_id,
+        MediaAssetCreate(
+            name=f"{name}.wav",
+            source_extension=".wav",
+            media_kind="audio",
+            source_path=f"assets/media/{name}/source.wav",
+            analysis_path=f"assets/media/{name}/analysis.wav",
+            duration=3,
+            origin="import",
+            text="Xin chào",
+            transcription_selected=True,
+            training_selected=True,
+        ),
+    )
+
+
+def test_recycling_footage_keeps_everything_it_had(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Bin", location=str(tmp_path / "work")))
+    library = FileMediaLibrary(projects)
+    asset = _recyclable(library, project.id)
+
+    recycled = library.send_to_recycle_bin(project.id, asset.id)
+
+    assert recycled.deleted_at is not None
+    # Recycling is not erasing: the transcript and the file are both still there.
+    assert recycled.text == "Xin chào"
+    assert recycled.source_path == asset.source_path
+    assert [item.id for item in library.list(project.id)] == [asset.id]
+    # But it must not keep queueing for work the user has thrown away.
+    assert recycled.transcription_selected is False
+    assert recycled.training_selected is False
+
+
+def test_restoring_puts_footage_back_as_it_was(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Bin", location=str(tmp_path / "work")))
+    library = FileMediaLibrary(projects)
+    asset = _recyclable(library, project.id)
+
+    library.send_to_recycle_bin(project.id, asset.id)
+    restored = library.restore_from_recycle_bin(project.id, asset.id)
+
+    assert restored.deleted_at is None
+    assert restored.text == "Xin chào"
+
+
+def test_recycling_survives_a_reload_from_disk(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Bin", location=str(tmp_path / "work")))
+    library = FileMediaLibrary(projects)
+    asset = _recyclable(library, project.id)
+    library.send_to_recycle_bin(project.id, asset.id)
+
+    reopened = FileMediaLibrary(projects)
+    assert reopened.get(project.id, asset.id).deleted_at is not None
+

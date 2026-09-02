@@ -17,6 +17,8 @@ from typing import Any
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from uvicorn.config import LOGGING_CONFIG
 
+from studio_app.local_agreement import LocalAgreement, Word, text_of
+
 
 def _runtime_root() -> Path:
     configured = os.getenv("PRO4BRO_STUDIO_ROOT")
@@ -379,6 +381,50 @@ def _native_transcription_item(
         "word_timing_note": note,
     }
 
+# ---------- live transcript ----------
+# One buffer and one agreement policy per recording. Held here because this is
+# where the model lives; a second service would mean a second copy of it.
+live_sessions: dict[str, dict[str, Any]] = {}
+live_lock = threading.Lock()
+
+# Every pass re-reads the whole buffer, so the buffer length is what decides
+# whether live transcription keeps up. Measured here: an 18 s buffer took 3.2-4.8 s
+# a pass against a 4 s chunk cadence - at the edge of falling behind. Twelve keeps
+# it comfortably inside.
+LIVE_BUFFER_LIMIT_SECONDS = 12.0
+#: Kept behind the last committed word so the next pass still has context.
+LIVE_CONTEXT_SECONDS = 2.0
+
+
+def _live_words(audio: Any, model_name: str, language: str | None) -> tuple[list[Word], str]:
+    """One pass over the buffer, as words. No artifacts, no progress, no disk.
+
+    Detection is unreliable on a few seconds of cold audio - one pass over a
+    Vietnamese clip came back as Chinese - so the caller passes the project's own
+    language when it knows it. Pinning whatever the *first* pass guessed was
+    tried and was worse: it made an early mistake permanent, where letting each
+    pass decide at least recovers once there is more audio to go on.
+    """
+    model, _device = _model(model_name)
+    segments, info = model.transcribe(
+        audio,
+        language=language or LANGUAGE,
+        task="transcribe",
+        beam_size=1,
+        condition_on_previous_text=False,
+        without_timestamps=False,
+        word_timestamps=True,
+        vad_filter=True,
+    )
+    found: list[Word] = []
+    for segment in segments:
+        for word in _value(segment, "words", None) or []:
+            text = str(_value(word, "word", "") or "").strip()
+            if text:
+                found.append(Word(text, float(_value(word, "start", 0.0) or 0.0), float(_value(word, "end", 0.0) or 0.0)))
+    return found, str(_value(info, "language", "") or "").strip()
+
+
 def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME) -> dict[str, Any]:
     progress.set(progress_id, 4)
     duration, sample_rate = _audio_duration(path)
@@ -527,6 +573,77 @@ async def diarize_audio(file: UploadFile = File(...), progress_id: str = Form(""
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Speaker Diarization thất bại: {exc}") from exc
     return {"spans": spans, "elapsed": round(time.perf_counter() - started, 2)}
+
+@app.post("/api/audio/live/chunk")
+async def live_chunk(
+    file: UploadFile = File(...),
+    session: str = Form(...),
+    model: str = Form("tiny"),
+    language: str = Form(""),
+) -> dict[str, Any]:
+    """Add audio to a live session and report what is now certain.
+
+    The caller sends the newest slice; this keeps the running buffer, transcribes
+    the whole of it, and returns the prefix two passes have agreed on. Committed
+    text never changes, so a caller can append it and forget it - only `pending`
+    is provisional.
+    """
+    payload = await file.read()
+    return await asyncio.to_thread(_advance_live_session, session, payload, model, language.strip() or None)
+
+
+def _advance_live_session(
+    session: str, payload: bytes, model_name: str, language: str | None
+) -> dict[str, Any]:
+    import numpy as np
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        handle.write(payload)
+        chunk_path = Path(handle.name)
+    try:
+        arriving = _decode_recognition_audio(chunk_path)
+    finally:
+        chunk_path.unlink(missing_ok=True)
+
+    with live_lock:
+        state = live_sessions.setdefault(
+            session,
+            {"audio": np.zeros(0, dtype="float32"), "agreement": LocalAgreement()},
+        )
+        state["audio"] = np.concatenate([state["audio"], arriving])
+        audio = state["audio"]
+        agreement: LocalAgreement = state["agreement"]
+
+    hypothesis, _detected = _live_words(audio, model_name, language)
+    committed = agreement.update(hypothesis)
+
+    with live_lock:
+        held = len(state["audio"]) / RECOGNITION_SAMPLE_RATE
+        if held > LIVE_BUFFER_LIMIT_SECONDS and agreement.committed:
+            # Scroll to just before the last committed word so the next pass keeps
+            # a little context, and drop everything settled before it.
+            keep_from = max(0.0, agreement.committed[-1].end - agreement.offset - LIVE_CONTEXT_SECONDS)
+            if keep_from > 0:
+                state["audio"] = state["audio"][int(keep_from * RECOGNITION_SAMPLE_RATE):]
+                agreement.scroll_to(keep_from)
+    return {
+        "committed": text_of(committed),
+        "text": text_of(agreement.committed),
+        "pending": text_of(agreement.pending),
+    }
+
+
+@app.post("/api/audio/live/end")
+async def live_end(session: str = Form(...)) -> dict[str, Any]:
+    """Recording stopped: take the provisional tail and forget the session."""
+    with live_lock:
+        state = live_sessions.pop(session, None)
+    if not state:
+        return {"text": "", "committed": ""}
+    agreement: LocalAgreement = state["agreement"]
+    tail = agreement.flush()
+    return {"committed": text_of(tail), "text": text_of(agreement.committed), "pending": ""}
+
 
 @app.get("/api/status")
 def status() -> dict[str, Any]:

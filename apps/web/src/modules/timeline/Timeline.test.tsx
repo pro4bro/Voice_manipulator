@@ -3,6 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Timeline, normalizeWordTimings } from "./Timeline";
 
+import { useState } from "react";
+
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
+
+/** The workspace owns the selection; render it here the way the app does. */
+function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {
+  const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
+  return <Timeline {...props} onWordSelectionChange={setSelection} wordSelection={selection} />;
+}
+
 describe("Timeline", () => {
   it("previews source gain while dragging and commits it only when released", () => {
     const onGainChange = vi.fn();
@@ -63,7 +73,7 @@ describe("Timeline", () => {
 
   it("assigns one speaker profile to a swept selection of subtitle words", async () => {
     const onWordsChange = vi.fn();
-    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={onWordsChange} speakers={[{ id: "lan", name: "Chị Lan", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "female", attributes: {}, color: "#d95", createdAt: "2026-08-28T00:00:00Z" }]} take={{ name: "dialogue.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "source", words: [{ text: "xin", start: 0, end: 0.4 }, { text: "chào", start: 0.4, end: 0.8 }, { text: "bạn", start: 0.8, end: 1.2 }] }} />);
+    const { container } = render(<SelectableTimeline gain={0} onGainChange={() => undefined} onWordsChange={onWordsChange} speakers={[{ id: "lan", name: "Chị Lan", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "female", attributes: {}, color: "#d95", createdAt: "2026-08-28T00:00:00Z" }]} take={{ name: "dialogue.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "source", words: [{ text: "xin", start: 0, end: 0.4 }, { text: "chào", start: 0.4, end: 0.8 }, { text: "bạn", start: 0.8, end: 1.2 }] }} />);
     const second = screen.getByRole("button", { name: "Subtitle word chào" });
     const track = container.querySelector(".word-track") as HTMLDivElement;
     const canvas = container.querySelector(".timeline-canvas") as HTMLDivElement;
