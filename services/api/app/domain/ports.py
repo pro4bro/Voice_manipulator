@@ -13,6 +13,8 @@ from .models import (
     ProjectCreate,
     ProjectMediaAsset,
     ProjectRecord,
+    ReadingPack,
+    ReadingPackSummary,
     TrainingCatalog,
     WorkspacePage,
 )
@@ -96,3 +98,9 @@ class TrainingCatalogRepository(Protocol):
     def get(self, project_id: str) -> TrainingCatalog: ...
 
     def save(self, project_id: str, catalog: TrainingCatalog) -> TrainingCatalog: ...
+
+
+class ReadingPackLibrary(Protocol):
+    def list(self) -> list[ReadingPackSummary]: ...
+
+    def get(self, pack_id: str) -> ReadingPack: ...

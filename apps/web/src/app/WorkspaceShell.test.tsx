@@ -58,6 +58,7 @@ function mediaAsset(status: ProjectMediaAsset["transcriptionStatus"], text: stri
     transcriptionError: null,
     aiReviewStatus: "pending",
     trainingSelected: false,
+    captureTier: "import",
     speakerProfileIds: [],
     environmentProfileIds: [],
     emotion: "normal",

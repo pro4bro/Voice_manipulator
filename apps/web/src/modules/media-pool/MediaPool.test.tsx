@@ -7,7 +7,7 @@ import { MediaPool } from "./MediaPool";
 const asset: ProjectMediaAsset = {
   id: "asset-1", name: "interview.mov", sourceExtension: ".mov", mediaKind: "video", sourcePath: "assets/media/asset-1/source.mov",
   studioItemId: "studio/interview.wav", url: "/api/studio/media/studio/interview.wav", duration: 42, sampleRate: 24000, text: "Xin chào", words: [], origin: "import",
-  transcriptionStatus: "complete", transcriptionSelected: false, transcriptionError: null, aiReviewStatus: "skipped", trainingSelected: false, speakerProfileIds: [], environmentProfileIds: [], emotion: "normal",
+  transcriptionStatus: "complete", transcriptionSelected: false, transcriptionError: null, aiReviewStatus: "skipped", trainingSelected: false, captureTier: "import", speakerProfileIds: [], environmentProfileIds: [], emotion: "normal",
   createdAt: "2026-08-23T00:00:00Z", updatedAt: "2026-08-23T00:00:00Z", revisions: [{ id: "rev-1", source: "stt", text: "Xin chào", createdAt: "2026-08-23T00:00:00Z" }],
 };
 

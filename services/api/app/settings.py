@@ -13,6 +13,7 @@ class Settings:
     web_dist: Path
     legacy_studio_url: str
     ffmpeg_path: str | None
+    reading_packs_root: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -26,4 +27,10 @@ class Settings:
             web_dist=project_root / "apps" / "web" / "dist",
             legacy_studio_url=os.getenv("PRO4BRO_LEGACY_STUDIO_URL", "http://127.0.0.1:18081"),
             ffmpeg_path=os.getenv("PRO4BRO_FFMPEG_PATH"),
+            reading_packs_root=Path(
+                os.getenv(
+                    "PRO4BRO_READING_PACKS_ROOT",
+                    Path(__file__).resolve().parent / "resources" / "reading-packs",
+                )
+            ),
         )

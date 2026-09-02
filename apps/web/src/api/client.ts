@@ -10,6 +10,8 @@ import type {
   ProjectCreate,
   ProjectMediaAsset,
   ProjectMediaImportResult,
+  ReadingPack,
+  ReadingPackSummary,
   RuntimeAction,
   RuntimeWorkloadState,
   StudioAudioItem,
@@ -318,6 +320,8 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  listReadingPacks: () => request<ReadingPackSummary[]>("/api/reading-packs"),
+  getReadingPack: (packId: string) => request<ReadingPack>(`/api/reading-packs/${packId}`),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>

@@ -1,0 +1,221 @@
+{
+  "packId": "en-core-v1",
+  "language": "en",
+  "languageName": "English",
+  "title": "Pro4Bro Standard Reading Set — English",
+  "version": 1,
+  "license": "pro4bro-original",
+  "passages": [
+    {
+      "id": "en-coverage-01",
+      "kind": "coverage",
+      "emotion": "normal",
+      "title": "The Monday Notice",
+      "direction": "Read evenly and clearly at a moderate pace, with no performance. This is your baseline voice — every other passage is measured against it.",
+      "cards": [
+        { "id": "en-coverage-01-c01", "text": "It is seven in the morning on Monday, the twelfth of April, and the workshop opened on time.", "tags": ["numbers", "dates"] },
+        { "id": "en-coverage-01-c02", "text": "Quang checked forty-eight crates, wrote the figures into the log book, and signed his name.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c03", "text": "The old machine runs far more quietly since we replaced the belt and oiled the main shaft.", "tags": [] },
+        { "id": "en-coverage-01-c04", "text": "Please keep your distance from the press, wear a mask, and switch the lights off on your way out.", "tags": [] },
+        { "id": "en-coverage-01-c05", "text": "Order number three seven two one covers ninety-five metres of fabric, delivered before three in the afternoon.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c06", "text": "Today it is twenty-nine degrees, humidity seventy percent, with a light breeze from the south-east.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c07", "text": "I T will update the E R P software tonight, so log out before the system restarts.", "tags": ["acronym"] },
+        { "id": "en-coverage-01-c08", "text": "The new shop on the south side opens at the end of the month, and we expect roughly three hundred visitors.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c09", "text": "Send your report before Friday, either by email or straight to the desk at reception.", "tags": ["dates"] },
+        { "id": "en-coverage-01-c10", "text": "If anything is unclear, call zero nine one, two three four, five six seven eight.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c11", "text": "The cold store holds minus eighteen degrees and is checked twice every day.", "tags": ["numbers"] },
+        { "id": "en-coverage-01-c12", "text": "Thank you for reading to the end of the notice, and have a smooth day at work.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-drill-01",
+      "kind": "drill",
+      "emotion": "normal",
+      "title": "Articulation Drill",
+      "direction": "Slow and separated. Do not run words together. Clarity matters, speed does not. Leave half a second between groups.",
+      "cards": [
+        { "id": "en-drill-01-c01", "text": "Thin, then, thing, think, this, those. Six words, each one fully finished.", "tags": ["drill"] },
+        { "id": "en-drill-01-c02", "text": "The sixth sick sheikh's sixth sheep is sleeping in the shed.", "tags": ["drill"] },
+        { "id": "en-drill-01-c03", "text": "Red leather, yellow leather, red lorry, yellow lorry, said slowly and clearly.", "tags": ["drill"] },
+        { "id": "en-drill-01-c04", "text": "Strengths, twelfths, sixths, glimpsed. Four clusters that most people rush.", "tags": ["drill"] },
+        { "id": "en-drill-01-c05", "text": "Bought, boat, bout, bot, but, boot. Six vowels, one consonant frame.", "tags": ["drill"] },
+        { "id": "en-drill-01-c06", "text": "Particularly, February, library, February again, and then rural juror.", "tags": ["drill"] },
+        { "id": "en-drill-01-c07", "text": "A proper copper coffee pot, poured properly, twice over.", "tags": ["drill"] },
+        { "id": "en-drill-01-c08", "text": "Measure, pleasure, treasure, closure. Keep the ending soft, never sharp.", "tags": ["drill"] },
+        { "id": "en-drill-01-c09", "text": "Whether the weather is warm, whether the weather is cold, we will go.", "tags": ["drill"] },
+        { "id": "en-drill-01-c10", "text": "Eleven benevolent elephants walked evenly along the eastern edge.", "tags": ["drill"] }
+      ]
+    },
+    {
+      "id": "en-normal-01",
+      "kind": "emotion",
+      "emotion": "normal",
+      "title": "Walking Through The Steps",
+      "direction": "Explaining to a colleague. Level, unhurried, one short beat between steps.",
+      "cards": [
+        { "id": "en-normal-01-c01", "text": "There are four steps, and we will go through them one at a time.", "tags": [] },
+        { "id": "en-normal-01-c02", "text": "Step one, check the power supply and make sure the indicator light is green.", "tags": [] },
+        { "id": "en-normal-01-c03", "text": "Step two, open the rear panel, lift the tray out, and set it on a dry surface.", "tags": [] },
+        { "id": "en-normal-01-c04", "text": "Step three, wipe the dust away with a soft cloth. No water, and no alcohol.", "tags": [] },
+        { "id": "en-normal-01-c05", "text": "Step four, put everything back in the order you removed it, finger tight, never forced.", "tags": [] },
+        { "id": "en-normal-01-c06", "text": "If the indicator turns amber, stop there and call the technical team.", "tags": [] },
+        { "id": "en-normal-01-c07", "text": "The whole routine takes about fifteen minutes once your hands know it.", "tags": ["numbers"] },
+        { "id": "en-normal-01-c08", "text": "Write the date in the log afterwards, so next time you know where you stand.", "tags": [] },
+        { "id": "en-normal-01-c09", "text": "On any machine older than three years, do this every two months.", "tags": ["numbers"] },
+        { "id": "en-normal-01-c10", "text": "If something is unclear, ask. Do not guess and carry on.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-exciting-01",
+      "kind": "emotion",
+      "emotion": "exciting",
+      "title": "It Is Actually Happening",
+      "direction": "High energy, quick pace, pitch a little above your normal register. Do not shout — push from the belly, keep the volume moderate and let the rhythm carry it.",
+      "cards": [
+        { "id": "en-exciting-01-c01", "text": "That is it, the tickets are booked! Three in the morning and we are on the road!", "tags": ["numbers"] },
+        { "id": "en-exciting-01-c02", "text": "You will not believe it. The place we have talked about for two years, and we are finally going!", "tags": [] },
+        { "id": "en-exciting-01-c03", "text": "I just opened the map, and there is a whole stretch of that road running along the coast!", "tags": [] },
+        { "id": "en-exciting-01-c04", "text": "Camera charged, two spare batteries, and sixty-four gigabytes still free on the card!", "tags": ["numbers"] },
+        { "id": "en-exciting-01-c05", "text": "If we get up early enough we will catch the sunrise right at the top of the pass. Picture that!", "tags": [] },
+        { "id": "en-exciting-01-c06", "text": "They say the little place up there opens at five, so we will be the first ones through the door!", "tags": ["numbers"] },
+        { "id": "en-exciting-01-c07", "text": "Everyone said yes. Nobody is busy, nobody is stuck at work. What are the odds!", "tags": [] },
+        { "id": "en-exciting-01-c08", "text": "I printed the plan and stuck it on the fridge so I can look at it once a day and calm down!", "tags": [] },
+        { "id": "en-exciting-01-c09", "text": "Ten hours to go! I am going to pack, because I cannot sit still any longer!", "tags": ["numbers"] },
+        { "id": "en-exciting-01-c10", "text": "And if the weather holds, honestly, it does not get better than this!", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-funny-01",
+      "kind": "emotion",
+      "emotion": "funny",
+      "title": "My Disciplined Morning",
+      "direction": "Deadpan. Leave half a beat before the last line of each card. If a laugh or a breath escapes, keep it — that is exactly what we want on tape.",
+      "cards": [
+        { "id": "en-funny-01-c01", "text": "This morning I got up a full thirty minutes early, determined to be a disciplined person for once.", "tags": ["numbers"] },
+        { "id": "en-funny-01-c02", "text": "I made coffee, opened the laptop, and sat up straight like the people in productivity videos.", "tags": [] },
+        { "id": "en-funny-01-c03", "text": "Four minutes in, the cat walked across the keyboard and produced a longer document than mine.", "tags": [] },
+        { "id": "en-funny-01-c04", "text": "The troubling part is that hers made more sense than what I wrote last night.", "tags": [] },
+        { "id": "en-funny-01-c05", "text": "I moved her off the desk, and she looked at me like someone who had just been robbed.", "tags": [] },
+        { "id": "en-funny-01-c06", "text": "At eight o'clock I remembered that it was Sunday.", "tags": ["numbers"] },
+        { "id": "en-funny-01-c07", "text": "So all that discipline, spent entirely on the one day that did not need any.", "tags": [] },
+        { "id": "en-funny-01-c08", "text": "I closed the laptop and went down to the kitchen, and the cat went straight back to the desk.", "tags": [] },
+        { "id": "en-funny-01-c09", "text": "She is sitting in my chair now. Back straight. Very serious face.", "tags": [] },
+        { "id": "en-funny-01-c10", "text": "At least somebody in this house is disciplined.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-good-01",
+      "kind": "emotion",
+      "emotion": "good",
+      "title": "Saying It Out Loud",
+      "direction": "Warm, unhurried, open throat, sentences settling downward at the end. Speak as if sitting beside one friend, not addressing a room.",
+      "cards": [
+        { "id": "en-good-01-c01", "text": "Thank you for staying until the end today. I know that was not easy.", "tags": [] },
+        { "id": "en-good-01-c02", "text": "What you did last week genuinely helped. I am not saying that to be nice.", "tags": [] },
+        { "id": "en-good-01-c03", "text": "Everyone on the team noticed. Most of them just never say it out loud.", "tags": [] },
+        { "id": "en-good-01-c04", "text": "I like how steady you stay when everything is coming apart. Not many people can do that.", "tags": [] },
+        { "id": "en-good-01-c05", "text": "You may not see the result yet, but the foundation you are laying is solid.", "tags": [] },
+        { "id": "en-good-01-c06", "text": "Keep the same pace. There is no rush, and nothing to prove to anybody.", "tags": [] },
+        { "id": "en-good-01-c07", "text": "If you want someone to listen, I am here. I am really not that busy.", "tags": [] },
+        { "id": "en-good-01-c08", "text": "We still have a long way to go, but it is lighter when we walk it together.", "tags": [] },
+        { "id": "en-good-01-c09", "text": "I am honestly glad to see you sounding like yourself again.", "tags": [] },
+        { "id": "en-good-01-c10", "text": "Go and rest. We will start again tomorrow, slowly.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-low-energy-01",
+      "kind": "emotion",
+      "emotion": "low-energy",
+      "title": "End Of A Long Day",
+      "direction": "Low pitch, short breath, slow, sentences falling away at the end. Let yourself breathe mid-sentence and let a line run out of air — that is the signal we are capturing.",
+      "cards": [
+        { "id": "en-low-energy-01-c01", "text": "That was a long day. I did not think it would be that long.", "tags": [] },
+        { "id": "en-low-energy-01-c02", "text": "I am going to sit here for a minute. Just a minute, then I will get up.", "tags": [] },
+        { "id": "en-low-energy-01-c03", "text": "I have had the coffee. Three cups of it. My eyes are still closing.", "tags": ["numbers"] },
+        { "id": "en-low-energy-01-c04", "text": "Whatever is left, it can wait until tomorrow. I will start early.", "tags": [] },
+        { "id": "en-low-energy-01-c05", "text": "I am not ill tired. I am just out of battery.", "tags": [] },
+        { "id": "en-low-energy-01-c06", "text": "Talking feels heavy. Thinking feels heavy. Everything is running slower than usual.", "tags": [] },
+        { "id": "en-low-energy-01-c07", "text": "That list has been open since this morning and I have not crossed off a single line.", "tags": [] },
+        { "id": "en-low-energy-01-c08", "text": "All right. I am shutting the machine down. Tomorrow.", "tags": [] },
+        { "id": "en-low-energy-01-c09", "text": "It will probably be better tomorrow. It usually is.", "tags": [] },
+        { "id": "en-low-energy-01-c10", "text": "I am going to bed. Good night, everyone.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-sad-01",
+      "kind": "emotion",
+      "emotion": "sad",
+      "title": "The Room Has Not Changed",
+      "direction": "Slow, quiet, plenty of silence, low and fairly level pitch. Sad, not sobbing — if the voice breaks, that belongs to the Tearful passage instead.",
+      "cards": [
+        { "id": "en-sad-01-c01", "text": "The room has not changed at all. There is just nobody in the chair by the window.", "tags": [] },
+        { "id": "en-sad-01-c02", "text": "I still make two cups of tea, and only remember afterwards that one is enough.", "tags": [] },
+        { "id": "en-sad-01-c03", "text": "Some afternoons I stand in the hallway for a very long time, doing nothing.", "tags": [] },
+        { "id": "en-sad-01-c04", "text": "People say you get used to it. I have not got used to any of it.", "tags": [] },
+        { "id": "en-sad-01-c05", "text": "The coat is still hanging there. I have not been brave enough to put it away.", "tags": [] },
+        { "id": "en-sad-01-c06", "text": "I miss the voice, the footsteps, even the way the door was knocked three times.", "tags": [] },
+        { "id": "en-sad-01-c07", "text": "Everything keeps running. The city is still loud. Only the house is quiet.", "tags": [] },
+        { "id": "en-sad-01-c08", "text": "I am not angry with anyone. I am only sorry.", "tags": [] },
+        { "id": "en-sad-01-c09", "text": "If I had stayed ten minutes longer that day.", "tags": ["numbers"] },
+        { "id": "en-sad-01-c10", "text": "It is late. I am going to turn the light off.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-cry-01",
+      "kind": "emotion",
+      "emotion": "cry",
+      "title": "The Sentence I Never Said",
+      "direction": "Broken voice, unsteady breath, catching air mid-sentence, sometimes barely audible. You do not have to actually cry — keep the breath broken and the throat tight. Skip this passage if it is too much; it is optional.",
+      "cards": [
+        { "id": "en-cry-01-c01", "text": "I am sorry. I cannot get a single sentence out properly.", "tags": [] },
+        { "id": "en-cry-01-c02", "text": "I practised this the whole way here, and now I am standing here I have forgotten all of it.", "tags": [] },
+        { "id": "en-cry-01-c03", "text": "I remember you walking me over that bridge when I was small. Every morning.", "tags": [] },
+        { "id": "en-cry-01-c04", "text": "I really thought there was so much more time.", "tags": [] },
+        { "id": "en-cry-01-c05", "text": "I did not get back in time. I am sorry that I did not get back in time.", "tags": [] },
+        { "id": "en-cry-01-c06", "text": "There was so much I meant to tell you and I never told you any of it.", "tags": [] },
+        { "id": "en-cry-01-c07", "text": "I love you. I never once managed to say that properly.", "tags": [] },
+        { "id": "en-cry-01-c08", "text": "I promise I will live well. Please stop worrying about me.", "tags": [] },
+        { "id": "en-cry-01-c09", "text": "All right. I am going now. I will come back again.", "tags": [] },
+        { "id": "en-cry-01-c10", "text": "Sleep well. I will come and sit with you again.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-angry-01",
+      "kind": "emotion",
+      "emotion": "angry",
+      "title": "The Third Time",
+      "direction": "Start clamped down, each word squeezed, then build. Do not shout — support from the belly, moderate volume, high pressure. Shouting clips the take and wastes the card.",
+      "cards": [
+        { "id": "en-angry-01-c01", "text": "Listen to me. I have raised this three times now. Three.", "tags": ["numbers"] },
+        { "id": "en-angry-01-c02", "text": "I do not need another explanation from you.", "tags": [] },
+        { "id": "en-angry-01-c03", "text": "Every time this happens, the whole team starts again from nothing.", "tags": [] },
+        { "id": "en-angry-01-c04", "text": "Do you have any idea what time people were still here last night?", "tags": ["question"] },
+        { "id": "en-angry-01-c05", "text": "No, you do not, because you shut your machine and went home.", "tags": [] },
+        { "id": "en-angry-01-c06", "text": "I can live with mistakes. Everybody makes them. I cannot live with being ignored.", "tags": [] },
+        { "id": "en-angry-01-c07", "text": "That is enough. From now on, whatever you take on, you finish.", "tags": [] },
+        { "id": "en-angry-01-c08", "text": "Stop handing it to somebody else. I mean it.", "tags": [] },
+        { "id": "en-angry-01-c09", "text": "I do not want to have this conversation one more time.", "tags": [] },
+        { "id": "en-angry-01-c10", "text": "Go on, step outside. I need a minute.", "tags": [] }
+      ]
+    },
+    {
+      "id": "en-critical-01",
+      "kind": "emotion",
+      "emotion": "critical",
+      "title": "Notes On The Proposal",
+      "direction": "Calm, sharp, final. Not loud, but cold. Land hard on the opening consonants, break the clauses clearly, and never let a line rise at the end.",
+      "cards": [
+        { "id": "en-critical-01-c01", "text": "I have read the whole proposal, and I will say plainly that it is not good enough.", "tags": [] },
+        { "id": "en-critical-01-c02", "text": "The figures on page three contradict the conclusion on page seven.", "tags": ["numbers"] },
+        { "id": "en-critical-01-c03", "text": "Anyone reading carefully will see it, so do not assume the client will not.", "tags": [] },
+        { "id": "en-critical-01-c04", "text": "The presentation is handsome. Handsome does not replace substance.", "tags": [] },
+        { "id": "en-critical-01-c05", "text": "Three of the four assumptions here carry no source at all.", "tags": ["numbers"] },
+        { "id": "en-critical-01-c06", "text": "As a draft, this is fine. As something we put in front of a client, it is not.", "tags": [] },
+        { "id": "en-critical-01-c07", "text": "I am not judging the person. I am judging this document.", "tags": [] },
+        { "id": "en-critical-01-c08", "text": "And this document reads like it was done in a hurry.", "tags": [] },
+        { "id": "en-critical-01-c09", "text": "Rebuild section two, verify every figure, and send it to me on Thursday morning.", "tags": ["dates"] },
+        { "id": "en-critical-01-c10", "text": "I will read it again. As closely as I read this one.", "tags": [] }
+      ]
+    }
+  ]
+}

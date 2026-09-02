@@ -1,0 +1,221 @@
+{
+  "packId": "vi-core-v1",
+  "language": "vi",
+  "languageName": "Tiếng Việt",
+  "title": "Bộ đọc chuẩn Pro4Bro — Tiếng Việt",
+  "version": 1,
+  "license": "pro4bro-original",
+  "passages": [
+    {
+      "id": "vi-coverage-01",
+      "kind": "coverage",
+      "emotion": "normal",
+      "title": "Bản tin nội bộ",
+      "direction": "Đọc đều và rõ, tốc độ vừa phải, không diễn cảm. Đây là bài đo giọng gốc của bạn — mọi cảm xúc khác sẽ được so với bài này.",
+      "cards": [
+        { "id": "vi-coverage-01-c01", "text": "Bảy giờ sáng thứ Hai, ngày mười hai tháng Tư, xưởng mở cửa đúng giờ như mọi tuần.", "tags": ["numbers", "dates"] },
+        { "id": "vi-coverage-01-c02", "text": "Anh Quang kiểm tra bốn mươi tám thùng hàng, ghi số liệu vào sổ rồi ký tên.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c03", "text": "Chiếc máy cũ chạy êm hơn hẳn sau khi thay dây curoa và tra dầu ở trục chính.", "tags": ["foreign"] },
+        { "id": "vi-coverage-01-c04", "text": "Chị Nhã nhắc mọi người giữ khoảng cách, đeo khẩu trang và tắt điện khi ra ngoài.", "tags": [] },
+        { "id": "vi-coverage-01-c05", "text": "Đơn hàng số ba bảy hai mốt gồm chín mươi lăm mét vải, giao trước mười lăm giờ chiều.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c06", "text": "Trời hôm nay hai mươi chín độ, độ ẩm bảy mươi phần trăm, gió nhẹ hướng đông nam.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c07", "text": "Bộ phận I T cập nhật phần mềm E R P, người dùng nên đăng xuất trước khi hệ thống khởi động lại.", "tags": ["acronym", "foreign"] },
+        { "id": "vi-coverage-01-c08", "text": "Cửa hàng mới ở quận Bình Thạnh sẽ khai trương vào cuối tháng, dự kiến đón khoảng ba trăm khách.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c09", "text": "Các bạn nhớ nộp báo cáo trước thứ Sáu, gửi qua thư điện tử hoặc để trực tiếp ở bàn lễ tân.", "tags": ["dates"] },
+        { "id": "vi-coverage-01-c10", "text": "Nếu có thắc mắc, hãy gọi số không chín một, hai ba bốn, năm sáu bảy tám.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c11", "text": "Kho lạnh giữ nhiệt độ âm mười tám độ và được kiểm tra hai lần mỗi ngày.", "tags": ["numbers"] },
+        { "id": "vi-coverage-01-c12", "text": "Cảm ơn mọi người đã đọc hết bản tin, chúc một ngày làm việc suôn sẻ.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-drill-01",
+      "kind": "drill",
+      "emotion": "normal",
+      "title": "Luyện thanh điệu và âm cuối",
+      "direction": "Đọc chậm, tách rõ từng tiếng, không nối âm. Mục tiêu là độ rõ chứ không phải tốc độ. Nghỉ nửa giây giữa các cụm.",
+      "cards": [
+        { "id": "vi-drill-01-c01", "text": "Ma, mà, má, mả, mã, mạ. Sáu thanh, đọc chậm, tách rõ từng tiếng một.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c02", "text": "Bàn ghế cũ kỹ, mái ngói đỏ au, ngõ nhỏ dẫn thẳng ra bờ sông.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c03", "text": "Khách khứa lách cách, sách vở xếp ngay ngắn trên giá gỗ.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c04", "text": "Tuyết trắng, tuyệt vời, chuyến tàu chuyển bánh lúc chạng vạng.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c05", "text": "Nghiêng nghiêng bóng nắng, quanh quanh lối cỏ, thoang thoảng mùi rơm.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c06", "text": "Người thợ rướn người, vượt qua đoạn dốc trơn ướt sau cơn mưa.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c07", "text": "Ông ốm, ống nước, uống thuốc, uốn cong. Đọc tách rời từng từ một.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c08", "text": "Chị Hạnh hát khe khẽ, giọng lạc hẳn đi vì trận cảm lạnh hôm qua.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c09", "text": "Quả quyết, quen thuộc, quanh quẩn, quấn quýt. Bốn từ cùng bắt đầu bằng qu.", "tags": ["drill"] },
+        { "id": "vi-drill-01-c10", "text": "Trăng treo trên tre, trưa trôi, trời trong, trẻ tròn mắt nhìn theo.", "tags": ["drill"] }
+      ]
+    },
+    {
+      "id": "vi-normal-01",
+      "kind": "emotion",
+      "emotion": "normal",
+      "title": "Hướng dẫn thao tác",
+      "direction": "Giọng giải thích cho đồng nghiệp. Bình thản, không lên xuống nhiều, mỗi bước một nhịp nghỉ ngắn.",
+      "cards": [
+        { "id": "vi-normal-01-c01", "text": "Quy trình gồm bốn bước, mình đi lần lượt từng bước một.", "tags": [] },
+        { "id": "vi-normal-01-c02", "text": "Bước một, kiểm tra nguồn điện và đảm bảo đèn báo đang sáng màu xanh.", "tags": [] },
+        { "id": "vi-normal-01-c03", "text": "Bước hai, mở nắp phía sau, lấy khay ra và đặt lên một mặt phẳng khô.", "tags": [] },
+        { "id": "vi-normal-01-c04", "text": "Bước ba, lau sạch bụi bằng khăn mềm, không dùng nước và cũng không dùng cồn.", "tags": [] },
+        { "id": "vi-normal-01-c05", "text": "Bước bốn, lắp lại đúng thứ tự vừa tháo, vặn vừa tay, không siết quá chặt.", "tags": [] },
+        { "id": "vi-normal-01-c06", "text": "Nếu đèn báo chuyển sang màu cam, dừng lại và gọi bộ phận kỹ thuật.", "tags": [] },
+        { "id": "vi-normal-01-c07", "text": "Toàn bộ quy trình mất khoảng mười lăm phút nếu bạn đã quen tay.", "tags": ["numbers"] },
+        { "id": "vi-normal-01-c08", "text": "Nên ghi lại ngày thực hiện vào sổ để lần sau còn biết mốc thời gian.", "tags": [] },
+        { "id": "vi-normal-01-c09", "text": "Với máy đã dùng trên ba năm, nên làm hai tháng một lần.", "tags": ["numbers"] },
+        { "id": "vi-normal-01-c10", "text": "Có chỗ nào chưa rõ thì hỏi lại, đừng đoán rồi tự làm.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-exciting-01",
+      "kind": "emotion",
+      "emotion": "exciting",
+      "title": "Chuyến đi cuối cùng cũng thành",
+      "direction": "Năng lượng cao, nhịp nhanh, cao độ nhỉnh hơn bình thường. Đừng hét — đẩy hơi từ bụng, giữ âm lượng vừa nhưng nhịp phải dồn.",
+      "cards": [
+        { "id": "vi-exciting-01-c01", "text": "Được rồi! Vé đặt xong hết rồi, ba giờ sáng mai là mình lên đường!", "tags": ["numbers"] },
+        { "id": "vi-exciting-01-c02", "text": "Anh không tin nổi đâu, cái chỗ mình nói suốt hai năm nay, cuối cùng cũng đi thật!", "tags": [] },
+        { "id": "vi-exciting-01-c03", "text": "Em vừa mở bản đồ ra xem, đường lên đó có cả một đoạn chạy dọc bờ biển luôn!", "tags": [] },
+        { "id": "vi-exciting-01-c04", "text": "Máy ảnh sạc đầy, pin dự phòng có hai cục, thẻ nhớ còn trống sáu mươi tư gi ga!", "tags": ["numbers", "foreign"] },
+        { "id": "vi-exciting-01-c05", "text": "Sáng mai mình dậy sớm là kịp ngắm mặt trời lên ngay trên đèo, tưởng tượng đi!", "tags": [] },
+        { "id": "vi-exciting-01-c06", "text": "Nghe nói cái quán trên đỉnh mở cửa từ năm giờ, mình sẽ là khách đầu tiên!", "tags": ["numbers"] },
+        { "id": "vi-exciting-01-c07", "text": "Cả nhóm đồng ý hết rồi, không ai bận, không ai kẹt việc, đúng là quá may!", "tags": [] },
+        { "id": "vi-exciting-01-c08", "text": "Em in sẵn lịch trình dán lên tủ lạnh, mỗi ngày nhìn một lần cho đỡ sốt ruột!", "tags": [] },
+        { "id": "vi-exciting-01-c09", "text": "Còn đúng mười tiếng nữa thôi! Em đi xếp đồ đây, ngồi yên không nổi nữa rồi!", "tags": ["numbers"] },
+        { "id": "vi-exciting-01-c10", "text": "Chuyến này mà đẹp trời nữa thì đúng là không còn gì tuyệt hơn!", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-funny-01",
+      "kind": "emotion",
+      "emotion": "funny",
+      "title": "Ngày kỷ luật của tôi",
+      "direction": "Kể tưng tửng, tỉnh bơ. Nghỉ nửa nhịp ngay trước câu chốt của mỗi thẻ. Cười nhẹ hoặc thở ra thành tiếng thì càng tốt — cứ để nó vào bản thu.",
+      "cards": [
+        { "id": "vi-funny-01-c01", "text": "Sáng nay em dậy sớm hẳn ba mươi phút, quyết tâm sống kỷ luật một lần trong đời.", "tags": ["numbers"] },
+        { "id": "vi-funny-01-c02", "text": "Em pha cà phê, mở máy tính, ngồi thẳng lưng y như trong mấy video năng suất trên mạng.", "tags": [] },
+        { "id": "vi-funny-01-c03", "text": "Ngồi được đúng bốn phút thì con mèo nhảy lên bàn phím, gõ ra một đoạn dài hơn cả của em.", "tags": [] },
+        { "id": "vi-funny-01-c04", "text": "Điều đáng nói là đoạn nó gõ nghe còn có lý hơn cái em viết tối qua.", "tags": [] },
+        { "id": "vi-funny-01-c05", "text": "Em đuổi nó xuống, nó nhìn em bằng ánh mắt của một người vừa bị cướp công.", "tags": [] },
+        { "id": "vi-funny-01-c06", "text": "Đến tám giờ thì em nhớ ra là hôm nay chủ nhật.", "tags": ["numbers"] },
+        { "id": "vi-funny-01-c07", "text": "Cả cái sự kỷ luật ấy, hóa ra em đem tiêu vào đúng ngày không cần dùng đến.", "tags": [] },
+        { "id": "vi-funny-01-c08", "text": "Em đóng máy tính, đi xuống bếp, và trong lúc đó thì con mèo quay lại bàn.", "tags": [] },
+        { "id": "vi-funny-01-c09", "text": "Giờ thì nó ngồi đúng chỗ em ngồi, tư thế thẳng lưng, mặt rất nghiêm túc.", "tags": [] },
+        { "id": "vi-funny-01-c10", "text": "Thôi thì trong nhà này, ít nhất cũng có một đứa sống kỷ luật.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-good-01",
+      "kind": "emotion",
+      "emotion": "good",
+      "title": "Nói với người đang mệt",
+      "direction": "Ấm, chậm vừa, cổ họng mở, kết câu đi xuống nhẹ. Nói như đang ngồi cạnh một người bạn chứ không phải đọc trước đám đông.",
+      "cards": [
+        { "id": "vi-good-01-c01", "text": "Cảm ơn cậu đã ở lại tới cuối buổi hôm nay, mình biết là không dễ.", "tags": [] },
+        { "id": "vi-good-01-c02", "text": "Việc cậu làm tuần rồi thực sự có ích, không phải mình nói cho vui đâu.", "tags": [] },
+        { "id": "vi-good-01-c03", "text": "Mọi người trong nhóm đều nhận ra, chỉ là ít ai nói ra thành lời thôi.", "tags": [] },
+        { "id": "vi-good-01-c04", "text": "Mình thích cách cậu giữ bình tĩnh lúc mọi thứ rối, cái đó không phải ai cũng có.", "tags": [] },
+        { "id": "vi-good-01-c05", "text": "Có thể hôm nay chưa thấy kết quả, nhưng cái nền cậu đang xây là chắc chắn.", "tags": [] },
+        { "id": "vi-good-01-c06", "text": "Cứ giữ nhịp như vậy, không cần vội, không cần chứng minh với ai cả.", "tags": [] },
+        { "id": "vi-good-01-c07", "text": "Nếu cần người nghe thì mình luôn ở đây, mình không bận đến mức đó đâu.", "tags": [] },
+        { "id": "vi-good-01-c08", "text": "Chúng ta còn cả một chặng dài, nhưng đi cùng nhau thì nhẹ hơn nhiều.", "tags": [] },
+        { "id": "vi-good-01-c09", "text": "Mình thật lòng mừng khi thấy cậu trở lại là chính mình.", "tags": [] },
+        { "id": "vi-good-01-c10", "text": "Nghỉ đi đã, mai mình bắt đầu lại, thong thả thôi.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-low-energy-01",
+      "kind": "emotion",
+      "emotion": "low-energy",
+      "title": "Cuối một ngày dài",
+      "direction": "Cao độ thấp, hơi ngắn, tốc độ chậm, thả câu xuống ở cuối. Cho phép thở ra giữa câu và để câu hụt hơi — đó chính là thứ cần thu.",
+      "cards": [
+        { "id": "vi-low-energy-01-c01", "text": "Hôm nay dài quá, em không nghĩ là nó lại dài đến vậy.", "tags": [] },
+        { "id": "vi-low-energy-01-c02", "text": "Em ngồi xuống đây một lát thôi, ngồi thêm chút nữa rồi em đứng dậy.", "tags": [] },
+        { "id": "vi-low-energy-01-c03", "text": "Cà phê thì uống rồi, ba ly rồi, mà mắt vẫn cứ trĩu xuống.", "tags": ["numbers"] },
+        { "id": "vi-low-energy-01-c04", "text": "Mấy việc còn lại, thôi để mai đi, mai em làm sớm.", "tags": [] },
+        { "id": "vi-low-energy-01-c05", "text": "Em không mệt kiểu ốm đâu, chỉ là hết pin thôi.", "tags": [] },
+        { "id": "vi-low-energy-01-c06", "text": "Nói chuyện cũng thấy nặng, nghĩ cũng thấy nặng, cái gì cũng chậm hơn bình thường.", "tags": [] },
+        { "id": "vi-low-energy-01-c07", "text": "Cái danh sách việc ấy, em nhìn từ sáng đến giờ mà chưa gạch được dòng nào.", "tags": [] },
+        { "id": "vi-low-energy-01-c08", "text": "Thôi, em tắt máy đây, mai tính tiếp.", "tags": [] },
+        { "id": "vi-low-energy-01-c09", "text": "Ngày mai chắc sẽ khá hơn, thường thì vẫn khá hơn mà.", "tags": [] },
+        { "id": "vi-low-energy-01-c10", "text": "Em đi ngủ đây, chúc mọi người ngủ ngon.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-sad-01",
+      "kind": "emotion",
+      "emotion": "sad",
+      "title": "Căn phòng vẫn như cũ",
+      "direction": "Chậm, nhỏ, nhiều khoảng lặng, cao độ thấp và khá đều. Buồn chứ không nức nở — nếu giọng vỡ thì đó là bài Nghẹn ngào, không phải bài này.",
+      "cards": [
+        { "id": "vi-sad-01-c01", "text": "Căn phòng vẫn y như cũ, chỉ là không còn ai ngồi ở cái ghế bên cửa sổ.", "tags": [] },
+        { "id": "vi-sad-01-c02", "text": "Em vẫn pha hai ly trà, xong rồi mới nhớ ra là chỉ cần một.", "tags": [] },
+        { "id": "vi-sad-01-c03", "text": "Có những buổi chiều em đứng rất lâu ở hành lang, không làm gì cả.", "tags": [] },
+        { "id": "vi-sad-01-c04", "text": "Người ta bảo rồi sẽ quen, mà em thì chưa thấy quen chút nào.", "tags": [] },
+        { "id": "vi-sad-01-c05", "text": "Cái áo khoác vẫn treo ở đó, em không đủ can đảm để cất nó đi.", "tags": [] },
+        { "id": "vi-sad-01-c06", "text": "Em nhớ giọng nói, nhớ tiếng bước chân, nhớ cả cái cách gõ cửa ba tiếng.", "tags": [] },
+        { "id": "vi-sad-01-c07", "text": "Mọi thứ vẫn chạy, thành phố vẫn ồn, chỉ có trong nhà là im.", "tags": [] },
+        { "id": "vi-sad-01-c08", "text": "Em không giận ai cả, em chỉ tiếc thôi.", "tags": [] },
+        { "id": "vi-sad-01-c09", "text": "Giá như hôm ấy em ở lại thêm mười phút.", "tags": ["numbers"] },
+        { "id": "vi-sad-01-c10", "text": "Thôi, muộn rồi, em tắt đèn đây.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-cry-01",
+      "kind": "emotion",
+      "emotion": "cry",
+      "title": "Câu chưa kịp nói",
+      "direction": "Giọng vỡ, hơi run, hít vào ngay giữa câu, có chỗ gần như không ra tiếng. Bạn không cần khóc thật — chỉ cần giữ hơi thở đứt quãng và cổ họng siết lại. Nếu quá sức thì bỏ qua bài này, nó không bắt buộc.",
+      "cards": [
+        { "id": "vi-cry-01-c01", "text": "Con xin lỗi, con không nói được câu nào cho tử tế cả.", "tags": [] },
+        { "id": "vi-cry-01-c02", "text": "Con đã tập nói câu này suốt cả đường đi, mà giờ đứng đây thì quên hết.", "tags": [] },
+        { "id": "vi-cry-01-c03", "text": "Con nhớ hồi nhỏ mẹ hay dắt con qua cái cầu đó, mỗi buổi sáng.", "tags": [] },
+        { "id": "vi-cry-01-c04", "text": "Con cứ nghĩ là mình còn nhiều thời gian lắm.", "tags": [] },
+        { "id": "vi-cry-01-c05", "text": "Con không kịp về, con xin lỗi vì đã không kịp về.", "tags": [] },
+        { "id": "vi-cry-01-c06", "text": "Có bao nhiêu chuyện con định kể mà chưa kể được câu nào.", "tags": [] },
+        { "id": "vi-cry-01-c07", "text": "Mẹ ơi, con thương mẹ, con chưa từng nói được một lần cho đàng hoàng.", "tags": [] },
+        { "id": "vi-cry-01-c08", "text": "Con hứa con sẽ sống cho tử tế, mẹ đừng lo cho con nữa.", "tags": [] },
+        { "id": "vi-cry-01-c09", "text": "Thôi, con đi đây, lần sau con lại về.", "tags": [] },
+        { "id": "vi-cry-01-c10", "text": "Mẹ ngủ ngon nhé. Con thương mẹ nhiều lắm.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-angry-01",
+      "kind": "emotion",
+      "emotion": "angry",
+      "title": "Lần thứ ba",
+      "direction": "Bắt đầu kìm nén, siết chặt từng chữ, rồi tăng dần về cuối. Đừng gào — giữ hơi ở bụng, âm lượng vừa nhưng lực mạnh. Gào sẽ làm méo tín hiệu và hỏng cả thẻ thu.",
+      "cards": [
+        { "id": "vi-angry-01-c01", "text": "Anh nghe đây, tôi đã nhắc chuyện đó ba lần rồi, ba lần.", "tags": ["numbers"] },
+        { "id": "vi-angry-01-c02", "text": "Tôi không cần thêm một lời giải thích nào nữa đâu.", "tags": [] },
+        { "id": "vi-angry-01-c03", "text": "Mỗi lần như vậy là một lần cả nhóm phải làm lại từ đầu.", "tags": [] },
+        { "id": "vi-angry-01-c04", "text": "Anh có biết tối qua mọi người ngồi đến mấy giờ không?", "tags": ["question"] },
+        { "id": "vi-angry-01-c05", "text": "Không, anh không biết, vì anh đã tắt máy và đi về.", "tags": [] },
+        { "id": "vi-angry-01-c06", "text": "Tôi chịu được sai sót, ai chẳng sai, nhưng tôi không chịu được sự coi thường.", "tags": [] },
+        { "id": "vi-angry-01-c07", "text": "Đủ rồi. Từ giờ việc gì anh nhận thì anh phải làm cho xong.", "tags": [] },
+        { "id": "vi-angry-01-c08", "text": "Đừng đẩy sang người khác nữa, tôi nói thật đấy.", "tags": [] },
+        { "id": "vi-angry-01-c09", "text": "Tôi không muốn phải nói lại chuyện này thêm một lần nào nữa.", "tags": [] },
+        { "id": "vi-angry-01-c10", "text": "Ra ngoài đi, tôi cần yên tĩnh một lát.", "tags": [] }
+      ]
+    },
+    {
+      "id": "vi-critical-01",
+      "kind": "emotion",
+      "emotion": "critical",
+      "title": "Nhận xét bản đề xuất",
+      "direction": "Bình tĩnh, sắc, dứt khoát. Không lớn tiếng nhưng lạnh. Nhấn vào phụ âm đầu, ngắt câu rõ, và đừng để câu nào đi lên ở cuối.",
+      "cards": [
+        { "id": "vi-critical-01-c01", "text": "Tôi đã đọc hết bản đề xuất này, và tôi phải nói thẳng là nó chưa đạt.", "tags": [] },
+        { "id": "vi-critical-01-c02", "text": "Phần số liệu ở trang ba mâu thuẫn với phần kết luận ở trang bảy.", "tags": ["numbers"] },
+        { "id": "vi-critical-01-c03", "text": "Ai đọc kỹ cũng sẽ thấy, nên đừng hy vọng là khách hàng không thấy.", "tags": [] },
+        { "id": "vi-critical-01-c04", "text": "Cách trình bày thì đẹp, nhưng đẹp không thay được nội dung.", "tags": [] },
+        { "id": "vi-critical-01-c05", "text": "Ba trong bốn giả định ở đây không có nguồn nào kèm theo cả.", "tags": ["numbers"] },
+        { "id": "vi-critical-01-c06", "text": "Nếu đây là bản nháp thì được, còn nếu là bản trình khách thì không.", "tags": [] },
+        { "id": "vi-critical-01-c07", "text": "Tôi không đánh giá con người, tôi đánh giá cái tài liệu này.", "tags": [] },
+        { "id": "vi-critical-01-c08", "text": "Và cái tài liệu này cho thấy nó được làm vội.", "tags": [] },
+        { "id": "vi-critical-01-c09", "text": "Làm lại phần hai, kiểm tra lại toàn bộ số liệu, rồi gửi tôi vào sáng thứ Năm.", "tags": ["dates"] },
+        { "id": "vi-critical-01-c10", "text": "Tôi sẽ đọc lại, kỹ đúng như lần này.", "tags": [] }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
+from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
 from app.adapters.media_import_processor import MediaImportProcessor
@@ -57,6 +58,8 @@ from app.domain.models import (
     ProjectMediaAsset,
     ProjectOpen,
     ProjectRecord,
+    ReadingPack,
+    ReadingPackSummary,
     SystemLog,
     SystemMetrics,
     SystemPaths,
@@ -80,6 +83,7 @@ def create_app(
     subtitle_exporter = SubtitleExporter()
     waveform_envelopes = AudioWaveformEnvelope()
     training_catalogs = FileTrainingCatalog(projects)
+    reading_packs = FileReadingPacks(settings.reading_packs_root)
     runtime_status = RuntimeStatus(settings.data_root)
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url, media, settings.ffmpeg_path
@@ -648,6 +652,17 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/reading-packs", response_model=list[ReadingPackSummary])
+    def list_reading_packs() -> list[ReadingPackSummary]:
+        return reading_packs.list()
+
+    @app.get("/api/reading-packs/{pack_id}", response_model=ReadingPack)
+    def get_reading_pack(pack_id: str) -> ReadingPack:
+        try:
+            return reading_packs.get(pack_id)
+        except ReadingPackError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}", response_model=ProjectRecord)
     def get_project(project_id: str) -> ProjectRecord:

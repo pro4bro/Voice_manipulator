@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _to_camel(value: str) -> str:
@@ -56,6 +56,8 @@ class ProjectRecord(ProjectCreate):
 
 MediaKind = Literal["audio", "video"]
 MediaOrigin = Literal["import", "record"]
+# How an asset's audio and transcript came to exist. Provenance, not a quality score.
+CaptureTier = Literal["guided", "record", "import"]
 MediaStatus = Literal["ready", "no-audio", "error"]
 MediaTranscriptionStatus = Literal[
     "queued", "processing", "reviewing", "complete", "skipped", "paused", "not-applicable", "error"
@@ -144,6 +146,24 @@ class MediaAssetCreate(DomainModel):
     # already uses. A second store would be a second source of truth, and that is
     # what once left most of a workspace's projects unopenable.
     deleted_at: datetime | None = None
+    capture_tier: CaptureTier = "import"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_capture_tier(cls, data: Any) -> Any:
+        """Assets written before this field existed carry only `origin`.
+
+        Deriving the tier on load keeps every stored index valid without a
+        rewrite pass. An explicit tier always wins, which is how a guided take
+        stays `guided` even though its origin is `record`.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("captureTier") or data.get("capture_tier"):
+            return data
+        if data.get("origin") == "record":
+            return {**data, "capture_tier": "record"}
+        return data
 
 
 class ProjectMediaAsset(MediaAssetCreate):
@@ -398,3 +418,47 @@ class HealthStatus(DomainModel):
     status: str = "ok"
     app: str = "Pro4Bro Voice Manipulator"
     version: str = "0.1.0"
+
+
+ReadingPassageKind = Literal["coverage", "drill", "emotion"]
+
+
+class ReadingCard(DomainModel):
+    """One utterance intended to be read in a single breath."""
+
+    id: str = Field(min_length=1, max_length=120)
+    text: str = Field(min_length=1, max_length=2000)
+    tags: list[str] = Field(default_factory=list)
+    word_count: int = Field(default=0, ge=0)
+    estimated_seconds: float = Field(default=0, ge=0)
+
+
+class ReadingPassage(DomainModel):
+    id: str = Field(min_length=1, max_length=120)
+    kind: ReadingPassageKind
+    emotion: EmotionLabel
+    title: str = Field(min_length=1, max_length=200)
+    direction: str = Field(default="", max_length=2000)
+    cards: list[ReadingCard] = Field(default_factory=list)
+    word_count: int = Field(default=0, ge=0)
+    estimated_seconds: float = Field(default=0, ge=0)
+
+
+class ReadingPackSummary(DomainModel):
+    """Enough to choose a pack without loading every card."""
+
+    pack_id: str = Field(min_length=1, max_length=120)
+    language: str = Field(min_length=1, max_length=20)
+    language_name: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=200)
+    version: int = Field(ge=1)
+    license: str = Field(default="", max_length=120)
+    passage_count: int = Field(default=0, ge=0)
+    card_count: int = Field(default=0, ge=0)
+    word_count: int = Field(default=0, ge=0)
+    estimated_seconds: float = Field(default=0, ge=0)
+    emotions: list[EmotionLabel] = Field(default_factory=list)
+
+
+class ReadingPack(ReadingPackSummary):
+    passages: list[ReadingPassage] = Field(default_factory=list)

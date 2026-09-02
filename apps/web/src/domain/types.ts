@@ -28,6 +28,9 @@ export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
 export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error";
 export type WordTimingQuality = "unverified" | "source" | "partial" | "needs-alignment";
+/** How an asset's audio and transcript came to exist. Provenance, not a quality score. */
+export type CaptureTier = "guided" | "record" | "import";
+export type ReadingPassageKind = "coverage" | "drill" | "emotion";
 
 export interface MediaTranscriptionProgress {
   id: string;
@@ -206,6 +209,7 @@ export interface ProjectMediaAsset {
   diarizationSpeakerAssignments?: Record<string, string | null>;
   aiReviewStatus: AIReviewStatus;
   trainingSelected: boolean;
+  captureTier: CaptureTier;
   speakerProfileIds: string[];
   environmentProfileIds: string[];
   emotion: EmotionLabel;
@@ -368,4 +372,42 @@ export interface SystemMetrics {
 export interface SystemLog {
   files: string[];
   text: string;
+}
+
+export interface ReadingCard {
+  id: string;
+  text: string;
+  tags: string[];
+  wordCount: number;
+  /** Estimated from a fixed reading rate. Only a recorded take knows the real duration. */
+  estimatedSeconds: number;
+}
+
+export interface ReadingPassage {
+  id: string;
+  kind: ReadingPassageKind;
+  emotion: EmotionLabel;
+  title: string;
+  direction: string;
+  cards: ReadingCard[];
+  wordCount: number;
+  estimatedSeconds: number;
+}
+
+export interface ReadingPackSummary {
+  packId: string;
+  language: string;
+  languageName: string;
+  title: string;
+  version: number;
+  license: string;
+  passageCount: number;
+  cardCount: number;
+  wordCount: number;
+  estimatedSeconds: number;
+  emotions: EmotionLabel[];
+}
+
+export interface ReadingPack extends ReadingPackSummary {
+  passages: ReadingPassage[];
 }
