@@ -3,8 +3,11 @@
 - **Project**: A portable folder containing one voice production effort, its manifest, assets, activity, notes, jobs, exports, cache, and last workspace state.
 - **Asset**: An immutable audio or transcript input/output with provenance.
 - **Take**: A playable audio Asset created by recording, generation, conversion, dubbing, or patching.
+- **Capture Tier**: How an Asset's audio and transcript came to exist — `guided`, `record`, or `import`. It is provenance, not a quality score, and an Asset written before the field existed derives it from its origin.
+- **Capture Check**: The pre-flight measurement of one recording chain — peak headroom, noise floor, clipping — stored with the Reading Session that measured it.
 - **Speaker Profile**: A human identity in one Project, described by name, language, region, age, and gender. Footage and Script words may reference it before any model exists.
 - **Voice Model**: A reusable trained checkpoint or reference-based voice artifact produced for one or more Speaker Profiles.
+- **Voice Model Set**: One Speaker Profile, one base checkpoint, one anchor slice, and the per-emotion adapters trained together against them. A user selects a set and a set publishes; a single adapter is never addressable on its own, because mixing adapters across sets is what makes one speaker sound like several.
 - **Speaker Diarization**: Assigning time-aware speech spans to `Diarization Speaker` labels; it answers who spoke when but does not produce isolated audio. A user can then map each label to a Speaker Profile.
 - **Diarization Speaker**: A processor-generated, time-aware label such as `Speaker 1` or `Speaker 2`; it is distinct from a Speaker Profile and may be mapped to one after review.
 - **Voice Isolation**: Producing separate voice stems from mixed audio. Isolation output may then be diarized and annotated.
@@ -12,6 +15,9 @@
 - **Environment Noise Profile**: A named reusable model of ambient sound learned from multiple audio Assets; it is distinct from destructive denoising.
 - **Training Catalog**: Project-owned aggregate containing Speaker Profiles, Environment Noise Profiles, and Training Settings.
 - **Footage Tag Menu**: The Media Pool right-click menu used to assign file-level Speaker Profiles and one Emotion Label without permanently expanding every footage row.
+- **Reading Pack**: App-level, read-only reading material for one language — passages of Reading Cards, each passage carrying one Emotion Label and a delivery direction. A pack is an application resource, never project data.
+- **Reading Card**: One utterance in a Reading Pack, intended to be read in a single breath and to become one training sample.
+- **Reading Session**: A project-owned guided capture run pairing one Speaker Profile with selected passages, holding its takes, quality results, and per-emotion coverage. It snapshots the cards it recorded, so a moved Project keeps its own ground truth.
 - **Dataset Manifest**: A deterministic, portable snapshot of selected audio segments, verified text, timing, speaker, and emotion attribution that a Training Run consumes.
 - **Training Run**: One job that may fine-tune multiple Speaker Profiles and emits periodic checkpoint backups.
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
