@@ -71,3 +71,59 @@ export function isSilent(samples: Float32Array, floor = 0.006): boolean {
   for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index];
   return Math.sqrt(sum / Math.max(1, samples.length)) < floor;
 }
+
+/**
+ * Keeping the take itself lossless.
+ *
+ * The chunks above exist to be recognised and thrown away, so 16 kHz is plenty.
+ * The take is different: it becomes training data, and both OmniVoice and
+ * VibeVoice tokenize 24 kHz PCM. Routing it through MediaRecorder meant Opus
+ * sat in the middle of that path, discarding exactly the high-frequency detail
+ * an audio tokenizer encodes. The PCM is already on the audio graph, so the take
+ * is accumulated from there and written as WAV instead.
+ *
+ * Capture stays at the device's own rate. Downsampling to 24 kHz is the server's
+ * job, after the file has landed, where it is one resample rather than a codec.
+ */
+
+/** 16-bit samples halve what a long take holds in memory versus Float32. */
+export function toInt16(samples: Float32Array): Int16Array {
+  const out = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const clamped = Math.max(-1, Math.min(1, samples[index]));
+    out[index] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return out;
+}
+
+export function int16FrameCount(chunks: Int16Array[]): number {
+  return chunks.reduce((total, chunk) => total + chunk.length, 0);
+}
+
+/** One mono 16-bit WAV from every chunk captured, in order. */
+export function wavFromInt16(chunks: Int16Array[], sampleRate: number): Blob {
+  const frames = int16FrameCount(chunks);
+  const buffer = new ArrayBuffer(44 + frames * 2);
+  const view = new DataView(buffer);
+  const text = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + frames * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);            // PCM
+  view.setUint16(22, 1, true);            // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, frames * 2, true);
+  let at = 44;
+  for (const chunk of chunks) {
+    for (let index = 0; index < chunk.length; index += 1, at += 2) view.setInt16(at, chunk[index], true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}

@@ -7,7 +7,7 @@ import { ModuleFrame } from "../../ui/ModuleFrame";
 import type { EmotionLabel, ReadingPackSummary, RecordingWaveformPreview, StudioWord, WaveformPoint } from "../../domain/types";
 import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
-import { downsample, encodeWav, isSilent } from "./pcm-chunk";
+import { downsample, encodeWav, int16FrameCount, isSilent, toInt16, wavFromInt16 } from "./pcm-chunk";
 
 export interface CapturedAudio {
   name: string;
@@ -152,6 +152,11 @@ export function Recorder({
   // `recorder.onstop` closes over the render that started the take, so the card
   // has to reach it through a ref or a fast reader would file it under the next one.
   const cardRef = useRef<ReadingPlanCard | null>(null);
+  // The take itself, tapped losslessly off the graph. MediaRecorder stays as a
+  // fallback for a browser that gives us no audio graph at all.
+  const takePcmRef = useRef<Int16Array[]>([]);
+  const takeRateRef = useRef(0);
+  const takeTapRef = useRef<ScriptProcessorNode | null>(null);
   const session = captureMode === "hq" ? readingSession : null;
   cardRef.current = session?.card ?? null;
   const busy = status === "recording" || status === "finalizing";
@@ -272,6 +277,8 @@ export function Recorder({
   }
 
   function stopResources() {
+    takeTapRef.current?.disconnect();
+    takeTapRef.current = null;
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     animationRef.current = null;
     stopLiveTranscript();
@@ -329,7 +336,29 @@ export function Recorder({
     audioContextRef.current = context;
     gainNodeRef.current = gain;
     analyserRef.current = analyser;
+    startTakeCapture(context, gain);
     return destination.stream;
+  }
+
+  /**
+   * Accumulate the take at the device's own rate, after input gain.
+   *
+   * This runs for every source, because any recording can end up in a training
+   * set and Opus is not something a dataset can be talked out of afterwards.
+   */
+  function startTakeCapture(context: AudioContext, gain: GainNode) {
+    takePcmRef.current = [];
+    takeRateRef.current = context.sampleRate;
+    const tap = context.createScriptProcessor(4096, 1, 1);
+    tap.onaudioprocess = (event) => {
+      takePcmRef.current.push(toInt16(event.inputBuffer.getChannelData(0)));
+    };
+    gain.connect(tap);
+    // Silent sink: a ScriptProcessor only runs while it reaches a destination.
+    const mute = context.createGain();
+    mute.gain.value = 0;
+    tap.connect(mute).connect(context.destination);
+    takeTapRef.current = tap;
   }
 
   /** Seconds of audio per chunk: long enough to be a phrase, short enough to feel live. */
@@ -470,12 +499,24 @@ export function Recorder({
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        const extension = recorder.mimeType.includes("mp4") ? "m4a" : "webm";
         const prefix = captureSource === "display" ? "system-recording" : "mic-recording";
+        const frames = int16FrameCount(takePcmRef.current);
+        const rate = takeRateRef.current;
+        // Lossless when the audio graph gave us PCM, which is every browser that
+        // has AudioContext. The encoded fallback exists so a recording is never
+        // lost to a missing graph, not because it is good enough for training.
+        const lossless = frames > 0 && rate > 0;
+        const blob = lossless
+          ? wavFromInt16(takePcmRef.current, rate)
+          : new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const extension = lossless ? "wav" : recorder.mimeType.includes("mp4") ? "m4a" : "webm";
         const file = new File([blob], `${prefix}-${Date.now()}.${extension}`, { type: blob.type });
         const url = URL.createObjectURL(blob);
-        const duration = Math.max(0, (performance.now() - startedAtRef.current) / 1000);
+        // Sample count is the exact length; the wall clock includes the moment
+        // between pressing stop and the graph going quiet.
+        const duration = lossless
+          ? frames / rate
+          : Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
         const card = cardRef.current;
         stopResources();

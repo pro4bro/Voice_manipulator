@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RECOGNITION_SAMPLE_RATE, downsample, encodeWav, isSilent } from "./pcm-chunk";
+import { RECOGNITION_SAMPLE_RATE, downsample, encodeWav, int16FrameCount, isSilent, toInt16, wavFromInt16 } from "./pcm-chunk";
 
 function tone(seconds: number, rate: number, hz = 440, amplitude = 0.5): Float32Array {
   const samples = new Float32Array(Math.round(seconds * rate));
@@ -48,5 +48,63 @@ describe("isSilent", () => {
 
   it("passes speech-level audio through", () => {
     expect(isSilent(tone(0.1, 16000))).toBe(false);
+  });
+});
+
+describe("lossless take encoding", () => {
+  function readHeader(bytes: Uint8Array) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return {
+      riff: String.fromCharCode(...bytes.slice(0, 4)),
+      wave: String.fromCharCode(...bytes.slice(8, 12)),
+      format: view.getUint16(20, true),
+      channels: view.getUint16(22, true),
+      sampleRate: view.getUint32(24, true),
+      bitsPerSample: view.getUint16(34, true),
+      dataBytes: view.getUint32(40, true),
+    };
+  }
+
+  it("keeps the capture rate rather than resampling in the browser", async () => {
+    const blob = wavFromInt16([toInt16(new Float32Array(480))], 48000);
+    const header = readHeader(new Uint8Array(await blob.arrayBuffer()));
+
+    expect(header.riff).toBe("RIFF");
+    expect(header.wave).toBe("WAVE");
+    expect(header.format).toBe(1);        // uncompressed PCM
+    expect(header.channels).toBe(1);
+    expect(header.sampleRate).toBe(48000);
+    expect(header.bitsPerSample).toBe(16);
+  });
+
+  it("writes every chunk, in order, with nothing dropped at the seams", async () => {
+    const first = toInt16(new Float32Array([1, -1]));
+    const second = toInt16(new Float32Array([0, 0.5]));
+    const bytes = new Uint8Array(await wavFromInt16([first, second], 24000).arrayBuffer());
+    const view = new DataView(bytes.buffer);
+
+    expect(readHeader(bytes).dataBytes).toBe(8);
+    expect(view.getInt16(44, true)).toBe(0x7fff);
+    expect(view.getInt16(46, true)).toBe(-0x8000);
+    expect(view.getInt16(48, true)).toBe(0);
+    expect(view.getInt16(50, true)).toBe(Math.trunc(0.5 * 0x7fff));
+  });
+
+  it("clamps rather than wrapping, so a hot take distorts instead of inverting", () => {
+    const clipped = toInt16(new Float32Array([2, -2]));
+
+    expect(clipped[0]).toBe(0x7fff);
+    expect(clipped[1]).toBe(-0x8000);
+  });
+
+  it("counts frames across chunks, which is what gives the take its duration", () => {
+    expect(int16FrameCount([new Int16Array(3), new Int16Array(5)])).toBe(8);
+    expect(int16FrameCount([])).toBe(0);
+  });
+
+  it("produces a header-only file for an empty take instead of throwing", async () => {
+    const blob = wavFromInt16([], 48000);
+
+    expect(blob.size).toBe(44);
   });
 });
