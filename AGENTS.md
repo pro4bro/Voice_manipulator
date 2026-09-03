@@ -1,16 +1,14 @@
 # Agent Guide
 
-## The working tree is on E:
+## Working Tree
 
-`E:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR` is the only copy
-that is edited or run. Two others exist and are **not** the working tree:
+The working tree is this checkout's repository root: the directory containing
+both `.git` and `AGENTS.md`. Derive every local path from that root; do not
+record or depend on a drive letter, network share, or another checkout's path.
 
-- `V:\AI_RND\...` (`\\192.168.100.102\hub\...`) — kept as a backup, read only.
-- `E:\AI_RND\PRO4BRO_VOICE_MANIPULATOR` — an older layout, abandoned.
-
-Check which path you are in before editing or launching anything. Work done in a
-copy is lost, and a stack started from one serves the wrong code while looking
-entirely healthy — that mistake has already cost this project a full session.
+Before editing or launching, confirm the current directory is the repository
+root with `git rev-parse --show-toplevel`. Work done from another copy is lost,
+and a stack started from one can serve the wrong code while appearing healthy.
 
 A stabilization pass is in progress. Read `docs/STABILIZATION-PLAN.md` and
 `docs/STABILIZATION-LOG.md` first; the log holds the current round pointer and the

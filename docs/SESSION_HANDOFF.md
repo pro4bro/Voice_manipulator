@@ -297,11 +297,10 @@ Verification for this slice:
 
 ## 2026-08-31 Workspace Moved To A Local Disk
 
-The workspace now lives at
-`E:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR`, including both
-virtual environments, the 5.2 GB model folder, and the Hugging Face and torch
-caches. The mapped network share (`V:` → `\192.168.100.102\hub\...`) is no
-longer the working tree.
+The workspace was moved from a mapped network share to a local disk, including
+both virtual environments, the 5.2 GB model folder, and the Hugging Face and
+torch caches. Its current location is always the repository root of the active
+checkout; no drive letter is part of the project contract.
 
 Copying a venv leaves it pointing at wherever it was built: every console-script
 `.exe` embeds a shebang, and the activate scripts and `pyvenv.cfg` record absolute
@@ -318,9 +317,8 @@ fork worker at all and the `--pool=threads` workaround took nine minutes.
 Measured after the move: full stack up in 8 s (was 28-60 s), backend suite 6.3 s,
 `vite build` 197 ms, `media.list()` 0.005 s warm.
 
-Two copies of the project still exist and are **not** the working tree: the V:
-share, and an older `E:\AI_RND\PRO4BRO_VOICE_MANIPULATOR`. Confirm the path
-before editing.
+Other copies of the project may exist but are not the working tree. Confirm the
+repository root before editing or launching.
 
 `engines/OmniVoice` has an empty `.git` and the repository has no `.git/modules`,
 so `update-omnivoice.bat` and `git -C engines/OmniVoice status` do not work. The

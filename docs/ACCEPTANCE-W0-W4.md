@@ -25,7 +25,7 @@ Ký hiệu:
 powershell -NoProfile -Command "Push-Location apps\web; npm test; Pop-Location"
 ```
 → **43 passed trong ~3 giây**. Trên ổ mạng cũ lệnh này **không chạy được** và
-phải dùng `--pool=threads` mất ~9 phút; sau khi chuyển sang ổ local E: nó hoạt
+phải dùng `--pool=threads` mất ~9 phút; sau khi chuyển sang ổ local, nó hoạt
 động bình thường. Nếu thấy worker timeout thì kiểm tra xem có đang đứng ở bản
 copy trên ổ mạng không.
 

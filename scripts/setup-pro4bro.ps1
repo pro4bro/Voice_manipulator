@@ -12,6 +12,44 @@ $ffmpegRoot = Join-Path $root ".tools\ffmpeg"
 $localFfmpeg = Join-Path $ffmpegRoot "ffmpeg.exe"
 $localFfprobe = Join-Path $ffmpegRoot "ffprobe.exe"
 
+function Repair-VenvActivationScripts {
+    $replacements = @(
+        @{
+            Path = Join-Path $root ".venv\Scripts\activate.bat"
+            Pattern = '(?m)^set VIRTUAL_ENV=.*$'
+            Replacement = 'for %%I in ("%~dp0..") do set "VIRTUAL_ENV=%%~fI"'
+        },
+        @{
+            Path = Join-Path $root ".venv\Scripts\activate"
+            Pattern = '(?m)^VIRTUAL_ENV=.*$'
+            Replacement = 'VIRTUAL_ENV="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"'
+        },
+        @{
+            Path = Join-Path $root ".venv\Scripts\activate.fish"
+            Pattern = '(?m)^set -gx VIRTUAL_ENV .*$'
+            Replacement = 'set -gx VIRTUAL_ENV (cd (dirname (status -f))/..; and pwd)'
+        },
+        @{
+            Path = Join-Path $root ".venv\Scripts\activate.csh"
+            Pattern = '(?m)^setenv VIRTUAL_ENV .*$'
+            Replacement = 'setenv VIRTUAL_ENV "$cwd/.venv"'
+        }
+    )
+
+    foreach ($entry in $replacements) {
+        if (-not (Test-Path -LiteralPath $entry.Path)) { continue }
+        $content = Get-Content -LiteralPath $entry.Path -Raw
+        $replacement = [string]$entry.Replacement
+        $updated = [regex]::Replace($content, $entry.Pattern, [System.Text.RegularExpressions.MatchEvaluator]{
+            param($match)
+            $replacement
+        })
+        if ($updated -ne $content) {
+            Set-Content -LiteralPath $entry.Path -Value $updated -NoNewline -Encoding utf8
+        }
+    }
+}
+
 function Resolve-Python311 {
     $candidates = @(
         $env:PRO4BRO_BOOTSTRAP_PYTHON,
@@ -38,6 +76,9 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
     & $bootstrapPython -m venv (Join-Path $root ".venv")
     if ($LASTEXITCODE -ne 0) { throw "Không tạo được Python environment." }
 }
+
+# Python generates absolute activation paths; make copied or moved venvs portable.
+Repair-VenvActivationScripts
 
 if (-not (Test-Path -LiteralPath $localFfmpeg) -or -not (Test-Path -LiteralPath $localFfprobe)) {
     $ffmpegCommand = Get-Command ffmpeg -ErrorAction SilentlyContinue

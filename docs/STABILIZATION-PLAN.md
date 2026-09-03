@@ -130,8 +130,8 @@ Helper dùng chung, dot-source vào cả console lẫn workloads script.
 - `Wait-Pro4BroPortFree` — poll đến khi không còn entry Listen.
 - `Stop-Pro4BroPort` — resolve listener → verify command line → **leo lên cha nếu
   cha cũng khớp pattern** (bắt được venv stub) → kill cả cây → chờ port free.
-- `Get-Pro4BroRootAlias` — workspace nằm trên ổ mạng ánh xạ. Cùng một project có
-  thể được khởi chạy qua `V:\...` hoặc `\\192.168.100.102\hub\...`, và process ghi
+- `Get-Pro4BroRootAlias` — workspace có thể nằm trên ổ mạng ánh xạ. Cùng một
+  project có thể được khởi chạy qua đường dẫn ổ đĩa hoặc đường dẫn UNC, và process ghi
   nhớ đúng cách viết lúc khởi chạy. Hàm này resolve **cả hai** dạng qua
   `Win32_LogicalDisk.ProviderName`. Thiếu bước này thì orphan sweep bỏ sót.
 - `Remove-Pro4BroOrphan` — quét mọi python process có command line chứa một trong
