@@ -4,6 +4,7 @@ import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
 import { formatDuration, needsBreak } from "../../domain/reading-plan";
 import type { EmotionCoverage, ReadingMode, ReadingPlanCard } from "../../domain/reading-plan";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { TrainingScriptDialog } from "./TrainingScriptDialog";
 import type { EmotionLabel, ReadingPackSummary, RecordingWaveformPreview, StudioWord, WaveformPoint } from "../../domain/types";
 import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
@@ -109,6 +110,7 @@ export function Recorder({
   const [packId, setPackId] = useState("");
   const [wantedEmotions, setWantedEmotions] = useState<EmotionLabel[]>(["normal"]);
   const [readingMode, setReadingMode] = useState<ReadingMode>("flow");
+  const [authoringOpen, setAuthoringOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
@@ -603,8 +605,10 @@ export function Recorder({
           <label><span>CÁCH ĐỌC</span><select aria-label="Cách đọc" onChange={(event) => setReadingMode(event.target.value as ReadingMode)} value={readingMode}><option value="flow">Liền mạch · đọc cả bài, app tự cắt</option><option value="take">Từng thẻ · mỗi câu một lần bấm</option></select></label>
           <div className="hq-emotions"><span>CẢM XÚC</span><div>{PERFORMABLE_EMOTIONS.map((option) => <label aria-disabled={!packEmotions.includes(option.id)} key={option.id}><input checked={chosenEmotions.includes(option.id)} disabled={!packEmotions.includes(option.id)} onChange={(event) => toggleEmotion(option.id, event.target.checked)} type="checkbox" /><span>{option.label}</span></label>)}</div></div>
           <button className="button button--accent button--full" disabled={!packId || !chosenEmotions.length || readingBusy} onClick={() => onStartReadingSession?.(packId, chosenEmotions, readingMode)} type="button">{readingBusy ? "Đang mở phiên..." : "Bắt đầu phiên đọc"}</button>
+          <button className="button button--quiet button--full" onClick={() => setAuthoringOpen(true)} type="button">Add Training Script</button>
         </div>
       ) : null}
+      {authoringOpen ? <TrainingScriptDialog onClose={() => setAuthoringOpen(false)} onSaved={(note) => setMessage(note)} /> : null}
       {session ? (
         <div className="hq-session">
           <div className="hq-session__head"><b>{session.packTitle}</b><span>{session.mode === "flow" ? "LIỀN MẠCH" : "TỪNG THẺ"} · THẺ {session.cardNumber}/{session.cardTotal}</span></div>

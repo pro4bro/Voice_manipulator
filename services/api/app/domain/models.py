@@ -439,9 +439,51 @@ class ReadingPassage(DomainModel):
     emotion: EmotionLabel
     title: str = Field(min_length=1, max_length=200)
     direction: str = Field(default="", max_length=2000)
+    # Who the passage suits, for filtering the library. Multi-valued, because one
+    # passage serves several regions at once, and an empty list means no
+    # restriction rather than no audience - a passage nobody may read is useless.
+    regions: list[str] = Field(default_factory=list, max_length=40)
+    genders: list[str] = Field(default_factory=list, max_length=8)
+    age_ranges: list[str] = Field(default_factory=list, max_length=12)
+    # Shipped packs are read-only application resources; authored ones live in
+    # machine-local data and are what the authoring dialog writes.
+    source: Literal["shipped", "authored"] = "shipped"
     cards: list[ReadingCard] = Field(default_factory=list)
     word_count: int = Field(default=0, ge=0)
     estimated_seconds: float = Field(default=0, ge=0)
+
+
+class ReadingCardDraft(DomainModel):
+    text: str = Field(min_length=1, max_length=2000)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class ReadingPassageDraft(DomainModel):
+    """What the authoring dialog submits. Ids and counts are the server's to assign."""
+
+    language: str = Field(min_length=1, max_length=20)
+    language_name: str = Field(default="", max_length=120)
+    kind: ReadingPassageKind = "emotion"
+    emotion: EmotionLabel
+    title: str = Field(min_length=1, max_length=200)
+    direction: str = Field(default="", max_length=2000)
+    regions: list[str] = Field(default_factory=list, max_length=40)
+    genders: list[str] = Field(default_factory=list, max_length=8)
+    age_ranges: list[str] = Field(default_factory=list, max_length=12)
+    cards: list[ReadingCardDraft] = Field(min_length=1, max_length=400)
+
+
+class ReadingAudienceOption(DomainModel):
+    id: str
+    label: str
+
+
+class ReadingAudienceVocabulary(DomainModel):
+    """Tag choices for the authoring dialog, so it never hardcodes a list."""
+
+    genders: list[ReadingAudienceOption] = Field(default_factory=list)
+    age_ranges: list[ReadingAudienceOption] = Field(default_factory=list)
+    regions_by_language: dict[str, list[ReadingAudienceOption]] = Field(default_factory=dict)
 
 
 class ReadingPackSummary(DomainModel):

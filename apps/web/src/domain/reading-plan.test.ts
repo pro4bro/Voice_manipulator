@@ -20,6 +20,10 @@ function passage(id: string, emotion: EmotionLabel, cards: number, seconds = 8):
     emotion,
     title: `Passage ${id}`,
     direction: `Deliver it ${emotion}.`,
+    regions: [],
+    genders: [],
+    ageRanges: [],
+    source: "shipped",
     wordCount: cards * 20,
     estimatedSeconds: cards * seconds,
     cards: Array.from({ length: cards }, (_, index) => ({

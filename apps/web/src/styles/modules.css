@@ -985,3 +985,37 @@
 .teleprompter__text b.is-read { color: var(--text); opacity: .45; }
 .teleprompter__text b.is-current { color: var(--surface); background: var(--accent); padding: 0 .12em; }
 .teleprompter__hint { color: var(--text-subtle); font-size: calc(9px * var(--font-scale)); line-height: 1.45; }
+
+/* Authoring a reading passage */
+.authoring-dialog { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; }
+.authoring-dialog__backdrop { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(0,0,0,.55); cursor: default; }
+.authoring-gate, .authoring-form { position: relative; display: grid; gap: 9px; width: min(720px, 100%); max-height: 86vh; overflow-y: auto; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); }
+.authoring-gate { width: min(420px, 100%); }
+.authoring-gate > header, .authoring-form > header { display: flex; align-items: baseline; gap: 9px; }
+.authoring-gate > header span, .authoring-form > header span { color: var(--accent); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); letter-spacing: .12em; }
+.authoring-gate > header b, .authoring-form > header b { font-size: calc(15px * var(--font-scale)); }
+.authoring-form > header small { margin-left: auto; color: var(--text-subtle); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.authoring-note { margin: 0; color: var(--text-subtle); font-size: calc(9.5px * var(--font-scale)); line-height: 1.5; }
+.authoring-error { margin: 0; padding: 5px 8px; color: var(--text); background: var(--surface-field); border-left: 2px solid #d2593f; font-size: calc(9.5px * var(--font-scale)); }
+.authoring-gate label, .authoring-form label { display: grid; gap: 3px; }
+.authoring-gate label > span, .authoring-form > label > span { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .1em; }
+.authoring-gate input, .authoring-form input, .authoring-form select, .authoring-form textarea { width: 100%; border: 1px solid var(--line); padding: 7px 8px; color: var(--text); outline: 0; background: var(--surface-field); font: inherit; font-size: calc(10.5px * var(--font-scale)); }
+.authoring-form textarea { resize: vertical; line-height: 1.6; }
+.authoring-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.authoring-grid label > span { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .1em; }
+.authoring-tags { display: grid; gap: 8px; margin: 0; padding: 9px; border: 1px solid var(--line); }
+.authoring-tags legend { padding: 0 5px; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .1em; }
+.authoring-tags b { display: block; margin-bottom: 4px; font-size: calc(9.5px * var(--font-scale)); }
+.authoring-chips { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.authoring-chips label { display: flex; align-items: center; gap: 5px; font-size: calc(9.5px * var(--font-scale)); }
+.authoring-chips small { color: var(--text-subtle); font-size: calc(9px * var(--font-scale)); }
+.authoring-preview { border: 1px solid var(--line); }
+.authoring-preview > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 6px 9px; background: var(--surface-field); font-size: calc(9.5px * var(--font-scale)); }
+.authoring-preview > header em { color: #d2593f; font-style: normal; font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.authoring-preview > header span { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.authoring-preview ol { max-height: 210px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.authoring-preview li { display: grid; grid-template-columns: 26px 1fr 44px; align-items: baseline; gap: 6px; padding: 4px 9px; border-top: 1px solid var(--line); font-size: calc(10px * var(--font-scale)); line-height: 1.45; }
+.authoring-preview li i { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); font-style: normal; }
+.authoring-preview li small { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); text-align: right; }
+.authoring-preview li.is-short, .authoring-preview li.is-long { background: color-mix(in srgb, #d2593f 12%, transparent); }
+.authoring-gate footer, .authoring-form footer { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

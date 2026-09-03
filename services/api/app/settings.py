@@ -14,6 +14,7 @@ class Settings:
     legacy_studio_url: str
     ffmpeg_path: str | None
     reading_packs_root: Path
+    authored_reading_packs_root: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,4 +34,8 @@ class Settings:
                     Path(__file__).resolve().parent / "resources" / "reading-packs",
                 )
             ),
+            authored_reading_packs_root=Path(
+                os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
+            )
+            / "reading-packs",
         )

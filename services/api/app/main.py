@@ -16,6 +16,7 @@ from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
+from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
 from app.adapters.media_import_processor import MediaImportProcessor
@@ -58,8 +59,10 @@ from app.domain.models import (
     ProjectMediaAsset,
     ProjectOpen,
     ProjectRecord,
+    ReadingAudienceVocabulary,
     ReadingPack,
     ReadingPackSummary,
+    ReadingPassageDraft,
     SystemLog,
     SystemMetrics,
     SystemPaths,
@@ -83,7 +86,9 @@ def create_app(
     subtitle_exporter = SubtitleExporter()
     waveform_envelopes = AudioWaveformEnvelope()
     training_catalogs = FileTrainingCatalog(projects)
-    reading_packs = FileReadingPacks(settings.reading_packs_root)
+    reading_packs = FileReadingPacks(
+        settings.reading_packs_root, settings.authored_reading_packs_root
+    )
     runtime_status = RuntimeStatus(settings.data_root)
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url, media, settings.ffmpeg_path
@@ -658,6 +663,26 @@ def create_app(
     @app.get("/api/reading-packs", response_model=list[ReadingPackSummary])
     def list_reading_packs() -> list[ReadingPackSummary]:
         return reading_packs.list()
+
+    @app.get("/api/reading-packs/audience", response_model=ReadingAudienceVocabulary)
+    def reading_audience_vocabulary() -> ReadingAudienceVocabulary:
+        return audience_vocabulary(engine.profile_schema())
+
+    @app.post(
+        "/api/reading-packs/passages",
+        response_model=ReadingPack,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def add_reading_passage(payload: ReadingPassageDraft) -> ReadingPack:
+        # Deliberately unauthenticated: the password prompt in front of the
+        # authoring dialog is a mis-click guard in the UI, not a check anyone
+        # has to pass to reach this route. See docs/READING-LIBRARY.md.
+        try:
+            return reading_packs.add_passage(payload)
+        except ReadingPackError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/reading-packs/{pack_id}", response_model=ReadingPack)
     def get_reading_pack(pack_id: str) -> ReadingPack:

@@ -389,6 +389,11 @@ export interface ReadingPassage {
   emotion: EmotionLabel;
   title: string;
   direction: string;
+  /** Who the passage suits. Empty means no restriction, not no audience. */
+  regions: string[];
+  genders: string[];
+  ageRanges: string[];
+  source: "shipped" | "authored";
   cards: ReadingCard[];
   wordCount: number;
   estimatedSeconds: number;
@@ -410,4 +415,28 @@ export interface ReadingPackSummary {
 
 export interface ReadingPack extends ReadingPackSummary {
   passages: ReadingPassage[];
+}
+
+export interface ReadingAudienceOption {
+  id: string;
+  label: string;
+}
+
+export interface ReadingAudienceVocabulary {
+  genders: ReadingAudienceOption[];
+  ageRanges: ReadingAudienceOption[];
+  regionsByLanguage: Record<string, ReadingAudienceOption[]>;
+}
+
+export interface ReadingPassageDraft {
+  language: string;
+  languageName: string;
+  kind: ReadingPassageKind;
+  emotion: EmotionLabel;
+  title: string;
+  direction: string;
+  regions: string[];
+  genders: string[];
+  ageRanges: string[];
+  cards: Array<{ text: string; tags: string[] }>;
 }

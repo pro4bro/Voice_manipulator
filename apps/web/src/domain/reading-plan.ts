@@ -9,6 +9,16 @@ import type { EmotionLabel, ReadingPack, ReadingPassage } from "./types";
  * minutes of speech, not minutes of session — retakes and pauses sit on top.
  */
 
+/**
+ * Careful reading runs around 140 words per minute.
+ *
+ * The server owns this same number in `file_reading_packs.py` and its durations
+ * are the ones stored. This copy exists only to preview text that has not been
+ * submitted yet; if one changes, change both or a card will look one length
+ * while being authored and another once saved.
+ */
+export const WORDS_PER_SECOND = 140 / 60;
+
 export const NEUTRAL_TARGET_SECONDS = 750;
 export const EMOTION_TARGET_SECONDS = 270;
 

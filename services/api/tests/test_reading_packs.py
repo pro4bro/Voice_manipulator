@@ -165,3 +165,100 @@ def test_an_unknown_pack_is_a_404(tmp_path):
         response = client.get("/api/reading-packs/does-not-exist")
 
     assert response.status_code == 404
+
+
+def draft(**overrides):
+    base = {
+        "language": "vi",
+        "languageName": "Tiếng Việt",
+        "kind": "emotion",
+        "emotion": "angry",
+        "title": "Bài tự soạn",
+        "direction": "Đọc dứt khoát.",
+        "regions": ["vi-North", "vi-South"],
+        "genders": ["female"],
+        "ageRanges": ["young adult", "middle-aged"],
+        "cards": [{"text": "Một hai ba bốn năm sáu bảy.", "tags": []}],
+    }
+    return {**base, **overrides}
+
+
+def authoring_client(tmp_path):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = replace(
+        Settings.from_env(),
+        data_root=tmp_path / "data",
+        authored_reading_packs_root=tmp_path / "authored",
+    )
+    return TestClient(create_app(settings=settings))
+
+
+def test_the_audience_vocabulary_comes_from_the_engine_rather_than_a_hardcoded_list(tmp_path):
+    with authoring_client(tmp_path) as client:
+        response = client.get("/api/reading-packs/audience")
+
+    assert response.status_code == 200
+    vocabulary = response.json()
+    assert {option["id"] for option in vocabulary["genders"]} == {"male", "female"}
+    assert "elderly" in {option["id"] for option in vocabulary["ageRanges"]}
+    # Region is language-shaped: accents for English, dialects for Chinese.
+    assert any("accent" in option["id"] for option in vocabulary["regionsByLanguage"]["en"])
+    assert {option["id"] for option in vocabulary["regionsByLanguage"]["vi"]} == {
+        "vi-North",
+        "vi-Central",
+        "vi-South",
+    }
+
+
+def test_an_authored_passage_keeps_every_audience_tag_it_was_given(tmp_path):
+    with authoring_client(tmp_path) as client:
+        created = client.post("/api/reading-packs/passages", json=draft())
+
+    assert created.status_code == 201
+    passage = created.json()["passages"][0]
+    assert passage["regions"] == ["vi-North", "vi-South"]
+    assert passage["ageRanges"] == ["young adult", "middle-aged"]
+    assert passage["source"] == "authored"
+    assert passage["cards"][0]["id"].endswith("-c01")
+    assert passage["cards"][0]["wordCount"] == 7
+
+
+def test_authored_passages_land_beside_the_shipped_packs_not_inside_them(tmp_path):
+    with authoring_client(tmp_path) as client:
+        client.post("/api/reading-packs/passages", json=draft())
+        listed = client.get("/api/reading-packs").json()
+
+    assert (tmp_path / "authored" / "vi-authored.json").is_file()
+    # The shipped resource folder is untouched application source.
+    assert not list(Settings.from_env().reading_packs_root.glob("*authored*"))
+    assert {pack["packId"] for pack in listed} >= {"vi-core-v1", "en-core-v1", "vi-authored"}
+
+
+def test_a_second_passage_appends_rather_than_replacing_the_first(tmp_path):
+    with authoring_client(tmp_path) as client:
+        client.post("/api/reading-packs/passages", json=draft(title="Bài một"))
+        client.post("/api/reading-packs/passages", json=draft(title="Bài hai", emotion="sad"))
+        pack = client.get("/api/reading-packs/vi-authored").json()
+
+    assert [passage["title"] for passage in pack["passages"]] == ["Bài một", "Bài hai"]
+    assert sorted(pack["emotions"]) == ["angry", "sad"]
+
+
+def test_mix_is_refused_as_a_delivery_at_the_authoring_route(tmp_path):
+    with authoring_client(tmp_path) as client:
+        response = client.post("/api/reading-packs/passages", json=draft(emotion="mix"))
+
+    assert response.status_code == 400
+    assert not (tmp_path / "authored" / "vi-authored.json").exists()
+
+
+def test_a_passage_with_no_cards_is_rejected_by_the_schema(tmp_path):
+    with authoring_client(tmp_path) as client:
+        response = client.post("/api/reading-packs/passages", json=draft(cards=[]))
+
+    assert response.status_code == 422

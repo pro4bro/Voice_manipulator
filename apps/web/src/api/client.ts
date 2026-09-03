@@ -11,8 +11,10 @@ import type {
   ProjectCreate,
   ProjectMediaAsset,
   ProjectMediaImportResult,
+  ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
+  ReadingPassageDraft,
   RuntimeAction,
   RuntimeWorkloadState,
   StudioAudioItem,
@@ -325,6 +327,12 @@ export const api = {
   },
   listReadingPacks: () => request<ReadingPackSummary[]>("/api/reading-packs"),
   getReadingPack: (packId: string) => request<ReadingPack>(`/api/reading-packs/${packId}`),
+  getReadingAudience: () => request<ReadingAudienceVocabulary>("/api/reading-packs/audience"),
+  addReadingPassage: (draft: ReadingPassageDraft) =>
+    request<ReadingPack>("/api/reading-packs/passages", {
+      method: "POST",
+      body: JSON.stringify(draft),
+    }),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>
