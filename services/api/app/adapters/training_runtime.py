@@ -6,7 +6,8 @@ from pathlib import Path
 from app.domain.models import TrainingRuntimePackage, TrainingRuntimeReport
 
 # What `omnivoice.cli.train` needs beyond what the STT sidecar already carries.
-TRAINING_PACKAGES = ["omnivoice", "accelerate", "peft", "webdataset", "transformers"]
+# `omnivoice` is absent on purpose: it is installed from the checkout, below.
+TRAINING_PACKAGES = ["accelerate", "peft", "webdataset", "transformers"]
 
 # torch is the expensive one and it is already on disk twice over: as an
 # installed package in the STT runtime, and as the wheel that installed it.
@@ -30,9 +31,19 @@ class TrainingRuntime:
     already spent a session on stale paths inside a copied environment.
     """
 
-    def __init__(self, root: Path, wheel_cache: Path | None = None) -> None:
+    def __init__(
+        self,
+        root: Path,
+        wheel_cache: Path | None = None,
+        engine_root: Path | None = None,
+    ) -> None:
         self.root = root
         self.wheel_cache = wheel_cache
+        # Installed from the checkout rather than the index, so the running
+        # package is always the revision this adapter was written against - and
+        # that revision is what a run records as its lineage. Non-editable, so
+        # nothing is written inside the read-only submodule.
+        self.engine_root = engine_root
 
     @property
     def python(self) -> Path:
@@ -54,6 +65,13 @@ class TrainingRuntime:
             )
             for name in TRAINING_PACKAGES + HEAVY_PACKAGES
         ]
+        packages.append(
+            TrainingRuntimePackage(
+                name="omnivoice",
+                installed=self._installed(site, "omnivoice"),
+                wheel_path=str(self.engine_root) if self.engine_root else None,
+            )
+        )
         return TrainingRuntimeReport(
             root=str(self.root),
             exists=exists,
@@ -61,6 +79,8 @@ class TrainingRuntime:
             packages=packages,
             cached_wheels=[str(path.name) for path in self._wheels()],
             ready=exists and all(package.installed for package in packages),
+            interpreter_tag=self._interpreter_tag(),
+            wheel_tag_mismatch=self._wheel_tag_mismatch(),
         )
 
     # ---------- inspection ----------
@@ -83,6 +103,20 @@ class TrainingRuntime:
         return any(site.glob(f"{name.replace('-', '_')}-*.dist-info")) or any(
             site.glob(f"{name}-*.dist-info")
         )
+
+    @staticmethod
+    def _interpreter_tag() -> str:
+        return f"cp{sys.version_info.major}{sys.version_info.minor}"
+
+    def _wheel_tag_mismatch(self) -> list[str]:
+        """A cached wheel is built for one Python. Say so here, not at pip time.
+
+        `torch-2.8.0+cu128-cp311-...whl` installs into a 3.11 environment and
+        nothing else. Failing at the report is a sentence; failing three
+        gigabytes into an install is a wasted evening.
+        """
+        tag = self._interpreter_tag()
+        return [wheel.name for wheel in self._wheels() if f"-{tag}-" not in wheel.name]
 
     def _wheels(self) -> list[Path]:
         if not self.wheel_cache or not self.wheel_cache.is_dir():
@@ -113,10 +147,16 @@ class TrainingRuntime:
         local = [
             package.wheel_path
             for package in report.packages
-            if not package.installed and package.wheel_path
+            if not package.installed and package.wheel_path and package.name != "omnivoice"
         ]
         if local:
             commands.append([str(self.python), "-m", "pip", "install", *local])
+
+        engine = next(
+            (p for p in report.packages if p.name == "omnivoice" and not p.installed), None
+        )
+        if engine and engine.wheel_path:
+            commands.append([str(self.python), "-m", "pip", "install", engine.wheel_path])
 
         remote = [
             package.name

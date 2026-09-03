@@ -171,3 +171,36 @@ class TestTrainingRuntime:
         TrainingRuntime(root, None).install_plan()
 
         assert not root.exists()
+
+    def test_omnivoice_comes_from_the_checkout_not_the_index(self, tmp_path):
+        """The installed package must be the revision the adapter targets."""
+        engine = tmp_path / "engines" / "OmniVoice"
+        engine.mkdir(parents=True)
+        runtime = TrainingRuntime(tmp_path / "train-venv", None, engine)
+
+        plan = runtime.install_plan()
+        engine_step = [command for command in plan if str(engine) in command]
+
+        assert engine_step, "omnivoice should be installed from the checkout path"
+        assert not any("omnivoice" == arg for command in plan for arg in command)
+
+    def test_a_wheel_built_for_another_python_is_named_before_pip_finds_out(self, tmp_path):
+        wheels = tmp_path / "wheels"
+        wheels.mkdir()
+        (wheels / "torch-2.8.0+cu128-cp39-cp39-win_amd64.whl").write_bytes(b"wheel")
+        runtime = TrainingRuntime(tmp_path / "train-venv", wheels)
+
+        report = runtime.report()
+
+        assert report.interpreter_tag.startswith("cp3")
+        assert report.wheel_tag_mismatch == ["torch-2.8.0+cu128-cp39-cp39-win_amd64.whl"]
+
+    def test_a_matching_wheel_raises_no_mismatch(self, tmp_path):
+        import sys
+
+        wheels = tmp_path / "wheels"
+        wheels.mkdir()
+        tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+        (wheels / f"torch-2.8.0+cu128-{tag}-{tag}-win_amd64.whl").write_bytes(b"wheel")
+
+        assert TrainingRuntime(tmp_path / "v", wheels).report().wheel_tag_mismatch == []

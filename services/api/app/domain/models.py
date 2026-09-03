@@ -777,6 +777,10 @@ class TrainingRuntimeReport(DomainModel):
     packages: list[TrainingRuntimePackage] = Field(default_factory=list)
     cached_wheels: list[str] = Field(default_factory=list)
     ready: bool = False
+    interpreter_tag: str = ""
+    # Cached wheels built for another Python. Reported here rather than
+    # discovered three gigabytes into an install.
+    wheel_tag_mismatch: list[str] = Field(default_factory=list)
 
     @property
     def missing(self) -> list[str]:
