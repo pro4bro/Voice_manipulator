@@ -47,7 +47,7 @@
 ## Next Executable Plan
 
 - `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training.
-- `03-03`: connect validated manifests to project-native OmniVoice jobs, checkpoint lineage, progress, cancellation, and recovery.
+- `03-03`: run the training job. Provision the training runtime, tokenize, drive `accelerate` from a runner outside the read-only engine, lease the single GPU, and publish a Voice Model Set with lineage. Plan written 2026-09-03.
 - `03-04`: High Quality Voice Training. Guided reading capture with a live read-along highlight and app-supplied emotion passages. It only adds sources, so it can run alongside 03-02 and 03-03.
 
 ## Planned Phase Sequence
