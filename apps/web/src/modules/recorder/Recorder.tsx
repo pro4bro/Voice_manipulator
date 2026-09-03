@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
+import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
+import { formatDuration, needsBreak } from "../../domain/reading-plan";
+import type { EmotionCoverage, ReadingMode, ReadingPlanCard } from "../../domain/reading-plan";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { RecordingWaveformPreview, StudioWord, WaveformPoint } from "../../domain/types";
+import type { EmotionLabel, ReadingPackSummary, RecordingWaveformPreview, StudioWord, WaveformPoint } from "../../domain/types";
 import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
 import { downsample, encodeWav, isSilent } from "./pcm-chunk";
@@ -15,6 +18,21 @@ export interface CapturedAudio {
   realtimeText: string;
   /** What live recognition heard, timed off the clock. Never trusted timings. */
   words: StudioWord[];
+  /** Set only in HQ mode: the card this take answers. */
+  readingCardId?: string | null;
+  /** The card's exact text. In HQ mode this is ground truth, not a guess. */
+  knownText?: string;
+}
+
+/** What Recorder needs to show about a live session. The session itself is owned upstream. */
+export interface ReadingSessionView {
+  packTitle: string;
+  mode: ReadingMode;
+  card: ReadingPlanCard | null;
+  cardNumber: number;
+  cardTotal: number;
+  coverage: EmotionCoverage[];
+  secondsSinceBreak: number;
 }
 
 interface RecorderProps {
@@ -23,7 +41,15 @@ interface RecorderProps {
   onLiveTranscript?: (text: string, active: boolean) => void;
   /** The project's language code, so live passes need not guess it. */
   projectLanguage?: string | null;
+  readingPacks?: ReadingPackSummary[];
+  readingSession?: ReadingSessionView | null;
+  readingBusy?: boolean;
+  onStartReadingSession?: (packId: string, emotions: EmotionLabel[], mode: ReadingMode) => void;
+  onEndReadingSession?: () => void;
+  onSkipCard?: () => void;
 }
+
+const PERFORMABLE_EMOTIONS = EMOTION_OPTIONS.filter((option) => option.id !== "mix");
 
 interface BrowserSpeechRecognition {
   lang: string;
@@ -66,8 +92,23 @@ function speechConstructor(): SpeechRecognitionConstructor | null {
   return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null;
 }
 
-export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscript, projectLanguage = null }: RecorderProps) {
+export function Recorder({
+  onRecordingReady,
+  onRecordingPreview,
+  onLiveTranscript,
+  projectLanguage = null,
+  readingPacks = [],
+  readingSession = null,
+  readingBusy = false,
+  onStartReadingSession,
+  onEndReadingSession,
+  onSkipCard,
+}: RecorderProps) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
+  const [captureMode, setCaptureMode] = useState<"normal" | "hq">("normal");
+  const [packId, setPackId] = useState("");
+  const [wantedEmotions, setWantedEmotions] = useState<EmotionLabel[]>(["normal"]);
+  const [readingMode, setReadingMode] = useState<ReadingMode>("flow");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
@@ -108,6 +149,20 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const speechFinalRef = useRef("");
   const speechInterimRef = useRef("");
+  // `recorder.onstop` closes over the render that started the take, so the card
+  // has to reach it through a ref or a fast reader would file it under the next one.
+  const cardRef = useRef<ReadingPlanCard | null>(null);
+  const session = captureMode === "hq" ? readingSession : null;
+  cardRef.current = session?.card ?? null;
+  const busy = status === "recording" || status === "finalizing";
+  const packEmotions = readingPacks.find((pack) => pack.packId === packId)?.emotions ?? [];
+  const chosenEmotions = wantedEmotions.filter((emotion) => packEmotions.includes(emotion));
+
+  function toggleEmotion(emotion: EmotionLabel, wanted: boolean) {
+    setWantedEmotions((current) =>
+      wanted ? [...current.filter((item) => item !== emotion), emotion] : current.filter((item) => item !== emotion),
+    );
+  }
 
   async function refreshDevices() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -422,8 +477,19 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
         const url = URL.createObjectURL(blob);
         const duration = Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
+        const card = cardRef.current;
         stopResources();
-        onRecordingReady({ name: file.name, url, duration, file, origin: "record", realtimeText, words: liveTranscriptWords(liveSegmentsRef.current, duration) });
+        onRecordingReady({
+          name: card ? `${card.cardId}.${extension}` : file.name,
+          url,
+          duration,
+          file,
+          origin: "record",
+          realtimeText,
+          words: liveTranscriptWords(liveSegmentsRef.current, duration),
+          readingCardId: card?.cardId ?? null,
+          knownText: card?.text,
+        });
         onRecordingPreview?.({ active: false, duration, samples: liveSamplesRef.current.slice() });
         onLiveTranscript?.(realtimeText, false);
         setStatus("idle");
@@ -476,8 +542,38 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
   }
 
   return (
-    <ModuleFrame eyebrow="RECORDER" title="Thu âm" index="01" tone="dark" className="recorder-module">
-      <div className="recorder-device-grid">
+    <ModuleFrame
+      eyebrow={captureMode === "hq" ? "RECORDER · HIGH QUALITY" : "RECORDER"}
+      title="Thu âm"
+      index="01"
+      tone="dark"
+      className="recorder-module"
+      action={
+        <div className="capture-mode-toggle" role="group" aria-label="Chế độ thu">
+          <button aria-pressed={captureMode === "normal"} className={captureMode === "normal" ? "is-active" : ""} disabled={busy || Boolean(readingSession)} onClick={() => setCaptureMode("normal")} type="button">Thường</button>
+          <button aria-pressed={captureMode === "hq"} className={captureMode === "hq" ? "is-active" : ""} disabled={busy} onClick={() => setCaptureMode("hq")} type="button">HQ</button>
+        </div>
+      }
+    >
+      {captureMode === "hq" && !session ? (
+        <div className="hq-setup">
+          <p className="hq-intro">Chọn bộ bài đọc và cảm xúc. Script sẽ hiện bài để bạn đọc theo, và highlight chạy theo từng từ.</p>
+          <label><span>READING PACK</span><select aria-label="Bộ bài đọc" onChange={(event) => setPackId(event.target.value)} value={packId}><option value="">Chưa chọn</option>{readingPacks.map((pack) => <option key={pack.packId} value={pack.packId}>{pack.title} · {pack.cardCount} thẻ</option>)}</select></label>
+          <label><span>CÁCH ĐỌC</span><select aria-label="Cách đọc" onChange={(event) => setReadingMode(event.target.value as ReadingMode)} value={readingMode}><option value="flow">Liền mạch · đọc cả bài, app tự cắt</option><option value="take">Từng thẻ · mỗi câu một lần bấm</option></select></label>
+          <div className="hq-emotions"><span>CẢM XÚC</span><div>{PERFORMABLE_EMOTIONS.map((option) => <label aria-disabled={!packEmotions.includes(option.id)} key={option.id}><input checked={chosenEmotions.includes(option.id)} disabled={!packEmotions.includes(option.id)} onChange={(event) => toggleEmotion(option.id, event.target.checked)} type="checkbox" /><span>{option.label}</span></label>)}</div></div>
+          <button className="button button--accent button--full" disabled={!packId || !chosenEmotions.length || readingBusy} onClick={() => onStartReadingSession?.(packId, chosenEmotions, readingMode)} type="button">{readingBusy ? "Đang mở phiên..." : "Bắt đầu phiên đọc"}</button>
+        </div>
+      ) : null}
+      {session ? (
+        <div className="hq-session">
+          <div className="hq-session__head"><b>{session.packTitle}</b><span>{session.mode === "flow" ? "LIỀN MẠCH" : "TỪNG THẺ"} · THẺ {session.cardNumber}/{session.cardTotal}</span></div>
+          {session.card ? <p className="hq-direction"><b>{emotionLabel(session.card.emotion)}</b>{session.card.direction}</p> : <p className="hq-direction">Đã thu hết thẻ trong phiên này.</p>}
+          <ul className="hq-coverage">{session.coverage.map((item) => <li key={item.emotion}><span>{emotionLabel(item.emotion)}</span><i><b style={{ width: `${Math.round(item.progress * 100)}%` }} /></i><small>còn {formatDuration(item.remainingSeconds)}</small></li>)}</ul>
+          {needsBreak(session.secondsSinceBreak) ? <p className="hq-warning">Đã thu {formatDuration(session.secondsSinceBreak)} liên tục. Nghỉ một lát — giọng mệt sẽ lệch so với phần đã thu.</p> : null}
+          <div className="hq-session__actions"><button className="button button--quiet" disabled={busy || !session.card} onClick={() => onSkipCard?.()} type="button">Bỏ thẻ này</button><button className="button button--quiet" disabled={busy} onClick={() => onEndReadingSession?.()} type="button">Kết thúc phiên</button></div>
+        </div>
+      ) : null}
+      <div className="recorder-device-grid" hidden={Boolean(session)}>
         <label><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setCaptureSource(event.target.value as CaptureSource)} value={captureSource}><option value="microphone">Microphone / audio input</option><option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option></select></label>
         {captureSource === "microphone" ? <label><span>MIC INPUT</span><select aria-label="Micro thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setInputDeviceId(event.target.value)} value={inputDeviceId}>{inputs.length ? inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "input")}</option>) : <option value="">Microphone mặc định</option>}</select></label> : <div className="capture-source-note"><b>BROWSER SHARE PICKER</b><span>Khi bấm Record, chọn tab/cửa sổ và bật Share audio. Các tab được trình duyệt tự nhóm theo browser.</span><span>Live transcript cho nguồn này chạy bằng chính audio đang bắt, qua OmniVoice Studio (model tiny), nên đúng tiếng tab chứ không phải tiếng phòng. Text hiện chậm hơn lời nói khoảng một nhịp.</span><span>Độ to đầu vào theo volume của chính tab/cửa sổ đó; volume hệ thống không ảnh hưởng.</span></div>}
         <label><span>MONITOR OUTPUT</span><select aria-label="Thiết bị phát monitor" disabled={status === "recording" && monitorEnabled} onChange={(event) => setOutputDeviceId(event.target.value)} value={outputDeviceId}>{outputs.length ? outputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "output")}</option>) : <option value="">Thiết bị mặc định</option>}</select></label>
@@ -495,7 +591,7 @@ export function Recorder({ onRecordingReady, onRecordingPreview, onLiveTranscrip
       <div className="recorder-time"><strong>{String(Math.floor(elapsed / 60)).padStart(2, "0")}:{(elapsed % 60).toFixed(3).padStart(6, "0")}</strong><span className={`status-pill status-pill--${status}`}>{status.toUpperCase()}</span></div>
       <p>{message}</p>
       <div className="recorder-actions recorder-actions--single">
-        <button className={`record-button ${status === "recording" ? "is-live" : ""}`} disabled={status === "finalizing"} onClick={status === "recording" ? stop : start} type="button"><span />{status === "recording" ? "Dừng thu" : "Bắt đầu thu"}</button>
+        <button className={`record-button ${status === "recording" ? "is-live" : ""}`} disabled={status === "finalizing" || (captureMode === "hq" && !session?.card)} onClick={status === "recording" ? stop : start} type="button"><span />{status === "recording" ? "Dừng thu" : session?.card ? `Thu thẻ ${session.cardNumber}` : "Bắt đầu thu"}</button>
       </div>
       <audio ref={monitorRef} hidden />
     </ModuleFrame>

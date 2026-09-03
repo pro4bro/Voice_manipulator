@@ -69,6 +69,7 @@ class MediaImportProcessor:
         realtime_text: str = "",
         transcribe: bool = True,
         queue_for_transcription: bool = False,
+        capture_tier: str | None = None,
     ) -> MediaImportResult:
         started = time.perf_counter()
         filename = Path(upload.filename or "media.wav").name
@@ -77,6 +78,8 @@ class MediaImportProcessor:
             raise ValueError(f"Định dạng {extension or 'không rõ'} chưa được hỗ trợ.")
         if origin not in {"import", "record"}:
             raise ValueError("Nguồn media không hợp lệ.")
+        if capture_tier is not None and capture_tier not in {"guided", "record", "import"}:
+            raise ValueError("Capture tier không hợp lệ.")
         if not self.ffmpeg_path or not self.ffprobe_path:
             raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
 
@@ -110,6 +113,7 @@ class MediaImportProcessor:
                     duration=duration,
                     video_codec=self._codec(video_stream),
                     origin=origin,
+                    capture_tier=capture_tier or origin,
                     status="no-audio",
                     transcription_status="not-applicable",
                 ),
@@ -132,6 +136,7 @@ class MediaImportProcessor:
             "audio_codec": self._codec(audio_stream),
             "video_codec": self._codec(video_stream),
             "origin": origin,
+            "capture_tier": capture_tier or origin,
             "status": "ready",
         }
         if not transcribe:

@@ -209,6 +209,7 @@ def create_app(
         realtime_text: str = Form(default=""),
         transcribe: bool = Form(default=True),
         queue_for_transcription: bool = Form(default=False),
+        capture_tier: str = Form(default=""),
     ) -> MediaImportResult:
         try:
             project = projects.get(project_id)
@@ -219,6 +220,7 @@ def create_app(
                 realtime_text,
                 transcribe,
                 queue_for_transcription,
+                capture_tier or None,
             )
             if queue_for_transcription and result.asset.analysis_path:
                 await transcription_queue.enqueue(

@@ -1,5 +1,6 @@
 import type {
   AppPreferences,
+  CaptureTier,
   EmotionLabel,
   EngineProfileSchema,
   EngineStatus,
@@ -181,11 +182,13 @@ export const api = {
     realtimeText = "",
     transcribe = false,
     queueForTranscription = false,
+    captureTier: CaptureTier | null = null,
   ) => {
     const body = new FormData();
     body.append("file", file);
     body.append("origin", origin);
     body.append("realtime_text", realtimeText);
+    if (captureTier) body.append("capture_tier", captureTier);
     body.append("transcribe", String(transcribe));
     body.append("queue_for_transcription", String(queueForTranscription));
     const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body });

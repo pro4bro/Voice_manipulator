@@ -4,6 +4,8 @@ import { api } from "../api/client";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
 import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
+import { buildReadingPlan, coverageFor, nextCardIndex } from "../domain/reading-plan";
+import type { ReadingMode, ReadingPlan } from "../domain/reading-plan";
 import type {
   AppPreferences,
   EmotionLabel,
@@ -14,6 +16,7 @@ import type {
   MediaTranscriptionProgress,
   Project,
   ProjectMediaAsset,
+  ReadingPackSummary,
   RecordingWaveformPreview,
   RuntimeAction,
   RuntimeWorkloadState,
@@ -57,6 +60,21 @@ const modeLabels: Record<ManipulatorMode, string> = {
   "voice-dubber": "Voice Dubber",
   "voice-patch": "Voice Patch",
 };
+
+/**
+ * A guided reading run, held for as long as the workspace is open.
+ *
+ * `secondsSinceBreak` counts speech, not wall clock: a session left open over
+ * lunch has not tired anyone's voice, and speech time is what the break warning
+ * is actually about.
+ */
+interface ReadingSessionState {
+  plan: ReadingPlan;
+  packTitle: string;
+  cardIndex: number;
+  recordedSecondsByCard: Record<string, number>;
+  secondsSinceBreak: number;
+}
 
 function emptyTrainingCatalog(): TrainingCatalog {
   return {
@@ -112,6 +130,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingCatalog, setTrainingCatalog] = useState<TrainingCatalog>(emptyTrainingCatalog);
   const [profileSchema, setProfileSchema] = useState<EngineProfileSchema | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(defaultPreferences);
+  const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
+  const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
+  const [readingBusy, setReadingBusy] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [windowsMenuOpen, setWindowsMenuOpen] = useState(false);
   const [preferencesSaving, setPreferencesSaving] = useState(false);
@@ -179,6 +200,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }).finally(() => {
       if (!cancelled) setMediaBusy(false);
     });
+
+    api.listReadingPacks()
+      .then((packs) => { if (!cancelled) setReadingPacks(packs); })
+      .catch(() => { /* HQ mode simply offers nothing to read. */ });
     return () => { cancelled = true; };
   }, [project.id]);
 
@@ -540,6 +565,38 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
+  async function startReadingSession(packId: string, emotions: EmotionLabel[], mode: ReadingMode) {
+    setReadingBusy(true);
+    try {
+      const pack = await api.getReadingPack(packId);
+      const plan = buildReadingPlan(pack, emotions, mode);
+      if (!plan.cards.length) {
+        setNotice("Bộ bài đọc này không có thẻ nào cho các cảm xúc đã chọn.");
+        return;
+      }
+      setReadingSession({
+        plan,
+        packTitle: pack.title,
+        cardIndex: 0,
+        recordedSecondsByCard: {},
+        secondsSinceBreak: 0,
+      });
+      setNotice(`Phiên đọc mở với ${plan.cards.length} thẻ. Script đang hiện bài để đọc theo.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không mở được bộ bài đọc");
+    } finally {
+      setReadingBusy(false);
+    }
+  }
+
+  function skipReadingCard() {
+    setReadingSession((current) => {
+      if (!current) return current;
+      const next = nextCardIndex(current.plan, current.recordedSecondsByCard, current.cardIndex + 1);
+      return { ...current, cardIndex: next === -1 ? current.plan.cards.length : next };
+    });
+  }
+
   async function processCapturedAudio(captured: CapturedAudio) {
     setTake(captured);
     setMediaBusy(true);
@@ -548,7 +605,32 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       // transcript. Running STT on it unasked spent GPU time on takes the user
       // was going to discard, so it queues like anything else: tick it in Media
       // Pool and press Speech to text.
-      const result = await api.importProjectMedia(project.id, captured.file, "record", captured.realtimeText, false, false);
+      // In HQ mode the card is the transcript, not a guess, and the take
+      // is filed as guided. Verification stays a later, deliberate pass.
+      const knownText = captured.knownText ?? "";
+      const result = await api.importProjectMedia(
+        project.id,
+        captured.file,
+        "record",
+        knownText || captured.realtimeText,
+        false,
+        false,
+        captured.readingCardId ? "guided" : null,
+      );
+      if (captured.readingCardId) {
+        const cardId = captured.readingCardId;
+        setReadingSession((current) => {
+          if (!current) return current;
+          const recordedSecondsByCard = { ...current.recordedSecondsByCard, [cardId]: captured.duration };
+          const next = nextCardIndex(current.plan, recordedSecondsByCard, current.cardIndex + 1);
+          return {
+            ...current,
+            recordedSecondsByCard,
+            cardIndex: next === -1 ? current.plan.cards.length : next,
+            secondsSinceBreak: current.secondsSinceBreak + captured.duration,
+          };
+        });
+      }
       flushCurrentMediaDraft();
       let asset = result.asset;
       if (captured.words.length) {
@@ -921,6 +1003,22 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     canRunAiReview,
     trainingCatalog,
     profileSchema,
+    readingPacks,
+    readingSession: readingSession
+      ? {
+          packTitle: readingSession.packTitle,
+          mode: readingSession.plan.mode,
+          card: readingSession.plan.cards[readingSession.cardIndex] ?? null,
+          cardNumber: Math.min(readingSession.cardIndex + 1, readingSession.plan.cards.length),
+          cardTotal: readingSession.plan.cards.length,
+          coverage: coverageFor(readingSession.plan, readingSession.recordedSecondsByCard),
+          secondsSinceBreak: readingSession.secondsSinceBreak,
+        }
+      : null,
+    readingBusy,
+    onStartReadingSession: (packId, emotions, mode) => void startReadingSession(packId, emotions, mode),
+    onEndReadingSession: () => setReadingSession(null),
+    onSkipCard: skipReadingCard,
     wordSelection,
     onWordSelectionChange: setWordSelection,
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
@@ -959,7 +1057,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, profileSchema, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection, previewingRecycled]);
+  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
 
   return (
     <main className="workspace-shell">
