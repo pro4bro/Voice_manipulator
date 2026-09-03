@@ -19,6 +19,7 @@ from app.domain.models import (
     ProjectMediaAsset,
     TextProvenance,
 )
+from app.adapters.script_validation import validate_asset
 from app.domain.ports import MediaLibrary, ProjectRepository, TrainingCatalogRepository
 
 # The window both OmniVoice and VibeVoice datasets are comfortable with.
@@ -80,6 +81,13 @@ class ProjectDatasetCompiler:
 
     def readiness(self, project_id: str) -> DatasetReadiness:
         segments, rejections, selected = self._collect(project_id)
+        validations = []
+        for summary in selected:
+            if summary.capture_tier != "guided":
+                continue
+            checked = validate_asset(self.library.get(project_id, summary.id))
+            if checked is not None:
+                validations.append(checked)
         speakers = sorted({s.speaker_profile_id for s in segments if s.speaker_profile_id})
         by_tier: dict[str, int] = {}
         by_emotion: dict[str, float] = {}
@@ -98,6 +106,7 @@ class ProjectDatasetCompiler:
             segments_by_tier=by_tier,
             seconds_by_emotion=by_emotion,
             rejections=rejections,
+            script_validations=validations,
         )
 
     def compile(self, project_id: str) -> DatasetManifest:

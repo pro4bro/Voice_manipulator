@@ -1,6 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { ReadingMode } from "../../domain/reading-plan";
-import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, ProjectMediaAsset, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
@@ -38,6 +38,8 @@ export interface StudioContext {
   profileSchema: EngineProfileSchema | null;
   /** Shared so a selection made in Script shows up in Timeline, and back. */
   wordSelection: WordSelection;
+  datasetReadiness: DatasetReadiness | null;
+  datasetBusy: boolean;
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -77,6 +79,7 @@ export interface StudioContext {
   onStartReadingSession: (packId: string, emotions: EmotionLabel[], mode: ReadingMode) => void;
   onEndReadingSession: () => void;
   onSkipCard: () => void;
+  onCompileDataset: () => void;
 }
 
 interface ModuleRegistryProps {
@@ -132,7 +135,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob assets={context.mediaAssets} speakers={context.trainingCatalog.speakers} />;
+      return <TrainingJob busy={context.datasetBusy} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":

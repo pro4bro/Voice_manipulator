@@ -1,32 +1,114 @@
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
+import { emotionLabel } from "../../domain/emotions";
+import { formatDuration } from "../../domain/reading-plan";
+import type { DatasetReadiness, EmotionLabel, SpeakerProfile } from "../../domain/types";
 
 interface TrainingJobProps {
-  assets: ProjectMediaAsset[];
+  readiness: DatasetReadiness | null;
   speakers: SpeakerProfile[];
+  busy?: boolean;
+  onCompile?: () => void;
 }
 
-export function TrainingJob({ assets, speakers }: TrainingJobProps) {
-  const selected = assets.filter((asset) => asset.trainingSelected && asset.status !== "no-audio");
-  const duration = selected.reduce((total, asset) => total + asset.duration, 0);
-  const withScript = selected.filter((asset) => asset.text.trim()).length;
-  const readiness = selected.length ? Math.round((withScript / selected.length) * 100) : 0;
-  const assignedSpeakerIds = new Set(selected.flatMap((asset) => asset.speakerProfileIds));
-  const assignedSpeakers = speakers.filter((speaker) => assignedSpeakerIds.has(speaker.id));
+const TIER_LABELS: Record<string, string> = {
+  guided: "Đọc theo bài",
+  record: "Tự thu",
+  import: "Nhập vào",
+};
+
+const REJECTION_LABELS: Record<string, string> = {
+  "no-audio": "Không có audio",
+  "missing-audio-file": "Thiếu file audio",
+  "empty-text": "Chưa có transcript",
+  "no-word-timing": "Chưa có word timing",
+  "unassigned-speaker": "Chưa gán speaker",
+  "unknown-speaker": "Speaker không tồn tại",
+  "mixed-speaker-unresolved": "Nhiều người, chưa gán hết",
+  "no-usable-segment": "Không cắt được đoạn nào",
+};
+
+export function TrainingJob({ readiness, speakers, busy = false, onCompile }: TrainingJobProps) {
+  const segments = readiness?.segments ?? 0;
+  const rejections = readiness?.rejections ?? [];
+  const validations = readiness?.scriptValidations ?? [];
+  const misreads = validations.filter((item) => item.matchRatio < 0.95);
+  const speakerNames = (readiness?.speakerProfileIds ?? [])
+    .map((id) => speakers.find((speaker) => speaker.id === id)?.name ?? id)
+    .join(", ");
+  const emotions = Object.entries(readiness?.secondsByEmotion ?? {}).sort((a, b) => b[1] - a[1]);
+
   return (
     <ModuleFrame eyebrow="TRAINING JOB" title="Dataset readiness" className="training-job-module" tone="warm">
       <div className="training-score">
-        <div><strong>{readiness}</strong><span>/100</span></div>
-        <p><b>{selected.length ? `${withScript}/${selected.length} footage có script` : "Chưa nhận footage"}</b><span>{(duration / 60).toFixed(1)} phút · {assignedSpeakers.length} speaker</span></p>
+        <div><strong>{segments}</strong><span>đoạn</span></div>
+        <p>
+          <b>{readiness ? `${readiness.readyAssets}/${readiness.selectedAssets} footage dùng được` : "Chưa đọc được readiness"}</b>
+          <span>{formatDuration(readiness?.totalSeconds ?? 0)} · {speakerNames || "chưa có speaker"}</span>
+        </p>
       </div>
-      <ol className="training-stages">
-        <li className={selected.length ? "is-ready" : ""}><i />Training sources <span>{selected.length || "WAITING"}</span></li>
-        <li className={selected.length && withScript === selected.length ? "is-ready" : selected.length ? "is-active" : ""}><i />Transcript review <span>{selected.length ? `${selected.length - withScript} OPEN` : "WAITING"}</span></li>
-        <li className={assignedSpeakers.length ? "is-ready" : ""}><i />Speaker mapping <span>{assignedSpeakers.length ? assignedSpeakers.map((speaker) => speaker.name).join(", ") : "WAITING"}</span></li>
-        <li><i />Tokenize dataset <span>WAITING</span></li>
-        <li><i />Fine-tune checkpoint <span>WAITING</span></li>
-      </ol>
-      <button className="button button--accent button--full" disabled type="button">Bắt đầu training</button>
+
+      {segments > 0 ? (
+        <ul className="dataset-tiers">
+          {Object.entries(readiness?.segmentsByTier ?? {}).map(([tier, count]) => (
+            <li key={tier}><span>{TIER_LABELS[tier] ?? tier}</span><b>{count}</b></li>
+          ))}
+        </ul>
+      ) : null}
+
+      {emotions.length ? (
+        <div className="dataset-emotions">
+          <span>THEO CẢM XÚC</span>
+          <ul>
+            {emotions.map(([emotion, seconds]) => (
+              <li key={emotion}>
+                <span>{emotionLabel(emotion as EmotionLabel)}</span>
+                <small>{formatDuration(seconds)}</small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {misreads.length ? (
+        <div className="dataset-problems is-warning">
+          <span>ĐỌC LỆCH SO VỚI BÀI · {misreads.length}</span>
+          <ul>
+            {misreads.slice(0, 4).map((item) => (
+              <li key={item.assetId}>
+                <b>{Math.round(item.matchRatio * 100)}% khớp</b>
+                <small>
+                  {item.omissions.length ? `thiếu ${item.omissions.length}` : ""}
+                  {item.substitutions.length ? ` · sai ${item.substitutions.length}` : ""}
+                  {item.insertions.length ? ` · thừa ${item.insertions.length}` : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {rejections.length ? (
+        <div className="dataset-problems">
+          <span>BỊ LOẠI · {rejections.length}</span>
+          <ul>
+            {rejections.slice(0, 5).map((item) => (
+              <li key={item.assetId}>
+                <b>{item.assetName || item.assetId}</b>
+                <small>{REJECTION_LABELS[item.reason] ?? item.reason}</small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <button
+        className="button button--accent button--full"
+        disabled={busy || segments === 0}
+        onClick={() => onCompile?.()}
+        type="button"
+      >
+        {busy ? "Đang biên dịch..." : segments ? `Biên dịch ${segments} đoạn` : "Chưa có đoạn nào để biên dịch"}
+      </button>
     </ModuleFrame>
   );
 }

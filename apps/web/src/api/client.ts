@@ -1,6 +1,8 @@
 import type {
   AppPreferences,
   CaptureTier,
+  DatasetManifest,
+  DatasetReadiness,
   EmotionLabel,
   EngineProfileSchema,
   EngineStatus,
@@ -333,6 +335,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(draft),
     }),
+  getDatasetReadiness: (projectId: string) =>
+    request<DatasetReadiness>(`/api/projects/${projectId}/dataset/readiness`),
+  compileDataset: (projectId: string) =>
+    request<DatasetManifest>(`/api/projects/${projectId}/dataset/compile`, { method: "POST" }),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>

@@ -14,6 +14,7 @@ const apiMocks = vi.hoisted(() => ({
   listProjectMedia: vi.fn(),
   listProjectMediaTranscriptionStatus: vi.fn(),
   listReadingPacks: vi.fn(),
+  getDatasetReadiness: vi.fn(),
 }));
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
@@ -80,6 +81,7 @@ describe("WorkspaceShell STT synchronization", () => {
     vi.clearAllMocks();
     localStorage.clear();
     apiMocks.listReadingPacks.mockResolvedValue([]);
+    apiMocks.getDatasetReadiness.mockResolvedValue(null);
     apiMocks.getTrainingCatalog.mockResolvedValue({
       speakers: [],
       environmentProfiles: [],

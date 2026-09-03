@@ -440,3 +440,55 @@ export interface ReadingPassageDraft {
   ageRanges: string[];
   cards: Array<{ text: string; tags: string[] }>;
 }
+
+export type DatasetSplit = "train" | "dev";
+export type TextProvenance = "script" | "stt" | "user";
+
+export interface DatasetRejection {
+  assetId: string;
+  assetName: string;
+  reason: string;
+  detail: string;
+}
+
+export interface ScriptValidation {
+  assetId: string;
+  expectedWords: number;
+  heardWords: number;
+  matched: number;
+  omissions: string[];
+  insertions: string[];
+  substitutions: Array<[string, string]>;
+  matchRatio: number;
+}
+
+export interface DatasetReadiness {
+  selectedAssets: number;
+  readyAssets: number;
+  segments: number;
+  totalSeconds: number;
+  speakerProfileIds: string[];
+  segmentsByTier: Record<string, number>;
+  secondsByEmotion: Record<string, number>;
+  rejections: DatasetRejection[];
+  scriptValidations: ScriptValidation[];
+}
+
+export interface DatasetStats {
+  segments: number;
+  trainSegments: number;
+  devSegments: number;
+  totalSeconds: number;
+  secondsByEmotion: Record<string, number>;
+  segmentsByTier: Record<string, number>;
+  secondsBySpeaker: Record<string, number>;
+}
+
+export interface DatasetManifest {
+  version: number;
+  id: string;
+  createdAt: string;
+  sourceAssetIds: string[];
+  rejections: DatasetRejection[];
+  stats: DatasetStats;
+}

@@ -643,6 +643,10 @@ class DatasetReadiness(DomainModel):
     segments_by_tier: dict[str, int] = Field(default_factory=dict)
     seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
     rejections: list[DatasetRejection] = Field(default_factory=list)
+    # Only for sources read from a supplied script. A source is not "ready"
+    # merely because it compiled; it is ready when what was read matches what
+    # was written, and this is where that shows.
+    script_validations: list["ScriptValidation"] = Field(default_factory=list)
 
 
 class ScriptValidation(DomainModel):

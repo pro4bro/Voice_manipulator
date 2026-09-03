@@ -15,6 +15,7 @@ import type {
   MediaImportChoice,
   MediaTranscriptionProgress,
   Project,
+  DatasetReadiness,
   ProjectMediaAsset,
   ReadingPackSummary,
   RecordingWaveformPreview,
@@ -130,6 +131,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingCatalog, setTrainingCatalog] = useState<TrainingCatalog>(emptyTrainingCatalog);
   const [profileSchema, setProfileSchema] = useState<EngineProfileSchema | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(defaultPreferences);
+  const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
+  const [datasetBusy, setDatasetBusy] = useState(false);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -204,6 +207,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     api.listReadingPacks()
       .then((packs) => { if (!cancelled) setReadingPacks(packs); })
       .catch(() => { /* HQ mode simply offers nothing to read. */ });
+
+    api.getDatasetReadiness(project.id)
+      .then((readiness) => { if (!cancelled) setDatasetReadiness(readiness); })
+      .catch(() => { /* Training Job shows that it could not read it. */ });
     return () => { cancelled = true; };
   }, [project.id]);
 
@@ -589,6 +596,31 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
+  async function refreshDatasetReadiness() {
+    try {
+      setDatasetReadiness(await api.getDatasetReadiness(project.id));
+    } catch {
+      setDatasetReadiness(null);
+    }
+  }
+
+  async function compileDataset() {
+    setDatasetBusy(true);
+    try {
+      const manifest = await api.compileDataset(project.id);
+      setNotice(
+        `Đã biên dịch ${manifest.stats.segments} đoạn · ` +
+        `${manifest.stats.trainSegments} train / ${manifest.stats.devSegments} dev · ` +
+        `${(manifest.stats.totalSeconds / 60).toFixed(1)} phút.`,
+      );
+      await refreshDatasetReadiness();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không biên dịch được dataset");
+    } finally {
+      setDatasetBusy(false);
+    }
+  }
+
   function skipReadingCard() {
     setReadingSession((current) => {
       if (!current) return current;
@@ -717,6 +749,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     try {
       const updated = await api.setMediaTrainingSelected(project.id, assetId, selected);
       setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+      // Readiness is derived from the selection, so it is stale the moment the
+      // selection changes. Recomputing it is cheap; showing a wrong count is not.
+      void refreshDatasetReadiness();
     } catch (error) {
       if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
       setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn Voice Training");
@@ -1003,6 +1038,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     canRunAiReview,
     trainingCatalog,
     profileSchema,
+    datasetReadiness,
+    datasetBusy,
+    onCompileDataset: () => void compileDataset(),
     readingPacks,
     readingSession: readingSession
       ? {
@@ -1057,7 +1095,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
 
   return (
     <main className="workspace-shell">

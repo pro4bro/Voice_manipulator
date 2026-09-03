@@ -16,6 +16,7 @@ from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
+from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
 from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
@@ -33,6 +34,8 @@ from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
     AppPreferences,
+    DatasetManifest,
+    DatasetReadiness,
     EngineProfileSchema,
     EngineStatus,
     FolderPickRequest,
@@ -86,6 +89,7 @@ def create_app(
     subtitle_exporter = SubtitleExporter()
     waveform_envelopes = AudioWaveformEnvelope()
     training_catalogs = FileTrainingCatalog(projects)
+    dataset_compiler = ProjectDatasetCompiler(projects, media, training_catalogs)
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
@@ -637,6 +641,28 @@ def create_app(
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/dataset/readiness", response_model=DatasetReadiness
+    )
+    def dataset_readiness(project_id: str) -> DatasetReadiness:
+        try:
+            return dataset_compiler.readiness(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/dataset/compile",
+        response_model=DatasetManifest,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def compile_dataset(project_id: str) -> DatasetManifest:
+        try:
+            return dataset_compiler.compile(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except DatasetCompilationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get(
         "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog
