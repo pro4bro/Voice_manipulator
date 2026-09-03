@@ -665,3 +665,119 @@ class ScriptValidation(DomainModel):
     insertions: list[str] = Field(default_factory=list)
     substitutions: list[tuple[str, str]] = Field(default_factory=list)
     match_ratio: float = Field(default=0, ge=0, le=1)
+
+
+# ---------------------------------------------------------------------------
+# Training runs (plan 03-03). A run lasts hours, so the app being closed
+# mid-run is normal rather than exceptional, and `run.json` is what survives it.
+# ---------------------------------------------------------------------------
+
+TRAINING_RUN_VERSION = 1
+
+TrainingStepId = Literal[
+    "provision",
+    "resolve-model",
+    "read-manifest",
+    "write-jsonl",
+    "tokenize",
+    "load-model",
+    "train",
+    "checkpoint",
+    "publish",
+]
+
+# `interrupted` is not `failed`. The process is gone because the machine or the
+# app stopped, which says nothing about whether the run was going well, and a
+# run that reports itself as still running after its process died is the one
+# state that makes a user distrust every other number on the screen.
+TrainingRunStatus = Literal[
+    "pending", "running", "interrupted", "cancelled", "failed", "complete"
+]
+
+
+class TrainingRunConfig(DomainModel):
+    engine: str = "omnivoice"
+    base_model: str = "k2-fsa/OmniVoice"
+    use_lora: bool = True
+    lora_r: int = Field(default=16, ge=1)
+    lora_alpha: int = Field(default=32, ge=1)
+    learning_rate: float = Field(default=1e-4, gt=0)
+    steps: int = Field(default=5000, ge=1)
+    save_steps: int = Field(default=1000, ge=1)
+    batch_tokens: int = Field(default=8192, ge=1)
+    attn_implementation: str = "sdpa"
+
+
+class TrainingCheckpoint(DomainModel):
+    step: int = Field(ge=0)
+    path: str
+    bytes: int = Field(default=0, ge=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TrainingRun(DomainModel):
+    """The record that outlives the process.
+
+    Everything needed to resume is here rather than recomputed from current
+    settings: `accelerate` fails on a shape mismatch if the LoRA fields or the
+    base checkpoint differ from the run that wrote the checkpoint.
+    """
+
+    version: int = TRAINING_RUN_VERSION
+    id: str
+    project_id: str
+    manifest_id: str
+    manifest_hash: str = ""
+    engine_revision: str = ""
+    speaker_profile_id: str | None = None
+    emotion: EmotionLabel = "normal"
+    config: TrainingRunConfig = Field(default_factory=TrainingRunConfig)
+    status: TrainingRunStatus = "pending"
+    step_id: TrainingStepId = "provision"
+    global_step: int = Field(default=0, ge=0)
+    checkpoints: list[TrainingCheckpoint] = Field(default_factory=list)
+    error: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    process_id: int | None = None
+
+
+class TrainingProgressLine(DomainModel):
+    """One append-only line. Never rewritten, so a crash cannot corrupt history."""
+
+    at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    step_id: TrainingStepId
+    message: str = ""
+    # Step 7 is the whole run by wall clock, and a percentage there says almost
+    # nothing. These are what tell a person whether to keep waiting.
+    global_step: int | None = None
+    loss: float | None = None
+    dev_loss: float | None = None
+    learning_rate: float | None = None
+    steps_per_second: float | None = None
+    vram_mb: int | None = None
+    # Tokenization reports in shards, which is its own unit and not a fraction
+    # of the run.
+    done: int | None = None
+    total: int | None = None
+
+
+class TrainingRuntimePackage(DomainModel):
+    name: str
+    installed: bool = False
+    wheel_path: str | None = None
+
+
+class TrainingRuntimeReport(DomainModel):
+    """What provisioning would do, before it does any of it."""
+
+    root: str
+    exists: bool = False
+    python: str | None = None
+    packages: list[TrainingRuntimePackage] = Field(default_factory=list)
+    cached_wheels: list[str] = Field(default_factory=list)
+    ready: bool = False
+
+    @property
+    def missing(self) -> list[str]:
+        return [package.name for package in self.packages if not package.installed]
