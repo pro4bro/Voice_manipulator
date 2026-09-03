@@ -558,3 +558,106 @@ class Principal(DomainModel):
     id: str
     display_name: str = ""
     roles: list[Role] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Dataset compilation (plan 03-02). The manifest is what a training run
+# consumes; everything an engine needs is here, and nothing engine-specific is.
+# ---------------------------------------------------------------------------
+
+DATASET_MANIFEST_VERSION = 1
+
+DatasetSplit = Literal["train", "dev"]
+TextProvenance = Literal["script", "stt", "user"]
+DatasetRejectionReason = Literal[
+    "no-audio",
+    "missing-audio-file",
+    "empty-text",
+    "no-word-timing",
+    "unassigned-speaker",
+    "unknown-speaker",
+    "mixed-speaker-unresolved",
+    "no-usable-segment",
+]
+
+
+class DatasetSegment(DomainModel):
+    id: str
+    asset_id: str
+    # Project-relative, per docs/PORTABILITY.md: a manifest that stored an
+    # absolute path would stop resolving the moment the project moved.
+    audio_path: str
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    text: str = Field(min_length=1)
+    speaker_profile_id: str | None = None
+    emotion: EmotionLabel = "normal"
+    # Derived from the emotion so the conditioning probe stays possible without
+    # a manifest version bump. Exporters that cannot use it drop it.
+    instruct: str = ""
+    capture_tier: CaptureTier = "import"
+    text_provenance: TextProvenance = "stt"
+    language_id: str | None = None
+    split: DatasetSplit = "train"
+
+    @property
+    def duration(self) -> float:
+        return round(self.end - self.start, 3)
+
+
+class DatasetRejection(DomainModel):
+    asset_id: str
+    asset_name: str = ""
+    reason: DatasetRejectionReason
+    detail: str = ""
+
+
+class DatasetStats(DomainModel):
+    segments: int = 0
+    train_segments: int = 0
+    dev_segments: int = 0
+    total_seconds: float = 0
+    seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
+    segments_by_tier: dict[str, int] = Field(default_factory=dict)
+    seconds_by_speaker: dict[str, float] = Field(default_factory=dict)
+
+
+class DatasetManifest(DomainModel):
+    version: int = DATASET_MANIFEST_VERSION
+    id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    source_asset_ids: list[str] = Field(default_factory=list)
+    segments: list[DatasetSegment] = Field(default_factory=list)
+    rejections: list[DatasetRejection] = Field(default_factory=list)
+    stats: DatasetStats = Field(default_factory=DatasetStats)
+
+
+class DatasetReadiness(DomainModel):
+    """What Train and Training Job show before anything is compiled."""
+
+    selected_assets: int = 0
+    ready_assets: int = 0
+    segments: int = 0
+    total_seconds: float = 0
+    speaker_profile_ids: list[str] = Field(default_factory=list)
+    segments_by_tier: dict[str, int] = Field(default_factory=dict)
+    seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
+    rejections: list[DatasetRejection] = Field(default_factory=list)
+
+
+class ScriptValidation(DomainModel):
+    """Did the speaker read the script they were given?
+
+    This is not forced alignment. R5 measured that against DTW and declined it;
+    this answers a different question, at the level of words rather than
+    milliseconds, by diffing the supplied script against what was recognised.
+    """
+
+    asset_id: str
+    expected_words: int = 0
+    heard_words: int = 0
+    matched: int = 0
+    omissions: list[str] = Field(default_factory=list)
+    insertions: list[str] = Field(default_factory=list)
+    substitutions: list[tuple[str, str]] = Field(default_factory=list)
+    match_ratio: float = Field(default=0, ge=0, le=1)

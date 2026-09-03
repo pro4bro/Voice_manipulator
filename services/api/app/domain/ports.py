@@ -6,6 +6,8 @@ from typing import Protocol
 
 from .models import (
     Capability,
+    DatasetManifest,
+    DatasetReadiness,
     EmotionLabel,
     EngineProfileSchema,
     InstalledModel,
@@ -171,3 +173,16 @@ class SecretStore(Protocol):
     def get(self, name: str) -> str | None: ...
 
     def forget(self, name: str) -> None: ...
+
+
+class DatasetCompiler(Protocol):
+    """Turns the assets a user selected into a portable Dataset Manifest.
+
+    Deliberately engine-free: the manifest carries what any engine needs and
+    nothing any single engine wants, so an exporter can shape it per engine
+    without the compiler learning either.
+    """
+
+    def readiness(self, project_id: str) -> DatasetReadiness: ...
+
+    def compile(self, project_id: str) -> DatasetManifest: ...
