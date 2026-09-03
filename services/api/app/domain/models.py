@@ -504,3 +504,57 @@ class ReadingPackSummary(DomainModel):
 
 class ReadingPack(ReadingPackSummary):
     passages: list[ReadingPassage] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Seams for Phase 07. Defined so the vocabulary is settled while the decisions
+# are fresh; no adapter implements these yet, and no route depends on them.
+# See .planning/phases/07-desktop-release/07-01-PLAN.md.
+# ---------------------------------------------------------------------------
+
+ModelKind = Literal["base", "adapter", "tokenizer", "recognizer", "diarizer"]
+
+
+class ModelDescriptor(DomainModel):
+    """One downloadable weight set.
+
+    `sha256` is not optional in spirit: a truncated multi-gigabyte file that
+    loads and produces noise is worse than one that refuses to load, so the
+    store verifies before first use rather than after download.
+    """
+
+    id: str = Field(min_length=1, max_length=200)
+    kind: ModelKind
+    engine: str = Field(min_length=1, max_length=60)
+    version: str = Field(default="", max_length=60)
+    bytes: int = Field(default=0, ge=0)
+    sha256: str = Field(default="", max_length=64)
+    source: str = Field(default="", max_length=500)
+    licence: str = Field(default="", max_length=200)
+
+
+class InstalledModel(DomainModel):
+    descriptor: ModelDescriptor
+    path: str
+    installed_at: datetime
+    verified: bool = False
+
+
+Role = Literal["owner", "admin", "moderator", "staff", "viewer"]
+
+Capability = Literal[
+    "read_project",
+    "write_project",
+    "author_library",
+    "run_training",
+    "export_voice_model",
+    "manage_users",
+]
+
+
+class Principal(DomainModel):
+    """Who is acting. Today there is exactly one, and it is the machine's owner."""
+
+    id: str
+    display_name: str = ""
+    roles: list[Role] = Field(default_factory=list)

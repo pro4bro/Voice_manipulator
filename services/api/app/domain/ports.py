@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 from .models import (
+    Capability,
     EmotionLabel,
     EngineProfileSchema,
+    InstalledModel,
+    ModelDescriptor,
+    Principal,
     EngineStatus,
     MediaAssetCreate,
     MediaRevisionSource,
@@ -104,3 +110,64 @@ class ReadingPackLibrary(Protocol):
     def list(self) -> list[ReadingPackSummary]: ...
 
     def get(self, pack_id: str) -> ReadingPack: ...
+
+
+# ---------------------------------------------------------------------------
+# Phase 07 seams. No adapter satisfies these yet and no route depends on them.
+# They exist so that adding model delivery and identity is a new adapter rather
+# than a pass over every route. See
+# .planning/phases/07-desktop-release/07-01-PLAN.md.
+# ---------------------------------------------------------------------------
+
+
+class ModelCatalog(Protocol):
+    """What weights exist for an engine, and where to get them."""
+
+    def available(self, engine: str) -> list[ModelDescriptor]: ...
+
+
+class ModelStore(Protocol):
+    """Machine-local storage for base weights, shared by every project.
+
+    Deliberately not project-owned: a base model is identical bytes for
+    everyone, so keeping it in a project would multiply gigabytes per project
+    and break the portability contract the moment a project moved.
+    """
+
+    def resolve(self, model_id: str) -> Path | None: ...
+
+    def ensure(
+        self, model_id: str, on_progress: Callable[[float], None] | None = None
+    ) -> Path: ...
+
+    def list_installed(self) -> list[InstalledModel]: ...
+
+    def remove(self, model_id: str) -> None: ...
+
+    def usage(self) -> dict[str, int]: ...
+
+
+class Authentication(Protocol):
+    """Who is calling. The first adapter answers 'the owner' to everything,
+    because there is one user; it checks nothing and claims nothing."""
+
+    def identify(self, credentials: str | None) -> Principal: ...
+
+
+class Authorization(Protocol):
+    def allows(self, principal: Principal, capability: Capability) -> bool: ...
+
+
+class SecretStore(Protocol):
+    """API keys and tokens, kept somewhere the file system is not.
+
+    On Windows that means DPAPI, tied to the user account. Preferences currently
+    write these into `data/preferences.json` in the clear, which must not survive
+    to a shipped build.
+    """
+
+    def put(self, name: str, value: str) -> None: ...
+
+    def get(self, name: str) -> str | None: ...
+
+    def forget(self, name: str) -> None: ...

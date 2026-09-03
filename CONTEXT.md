@@ -30,6 +30,9 @@
 - **Word Timing Trust**: Whether one Source Word Timing interval passes structural checks. An untrusted word remains visible for review but is excluded from any subtitle cue that contains it.
 - **Module**: A reusable deep UI or backend capability with a small interface and hidden implementation.
 - **Engine**: An upstream AI implementation such as OmniVoice.
+- **Base Model**: Weights that are identical bytes for everyone — an engine's checkpoint, a recognizer, a diarizer. Machine-local and shared by every project, downloaded on demand and verified by hash; never project content, because a project would otherwise carry gigabytes and lose portability.
+- **Adapter**: In model terms, the small per-speaker weights produced by training here (tens of MB). User-owned, portable, and stored with the project or the Voice Vault — the opposite of a Base Model on every axis. Distinct from the code sense of adapter, which is Pro4Bro code at an engine seam.
+- **Principal**: Who is acting on a request. Today there is exactly one and it is the machine's owner; the concept exists so identity has somewhere to attach before a second user arrives.
 - **Adapter**: Pro4Bro code satisfying an interface at the seam between the app and an Engine.
 - **Project Manifest**: Portable `project.json`; `projectPath` and `location` are `.` on disk and become resolved runtime paths only in memory/API responses.
 - **Recent Registry**: Disposable app-level index pointing to project manifests; it can be rebuilt with Open Existing.
