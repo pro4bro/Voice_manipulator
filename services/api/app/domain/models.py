@@ -785,3 +785,20 @@ class TrainingRuntimeReport(DomainModel):
     @property
     def missing(self) -> list[str]:
         return [package.name for package in self.packages if not package.installed]
+
+
+class DatasetExportReport(DomainModel):
+    """What an engine-shaped export produced from a manifest.
+
+    Paths here are absolute and machine-local by design: the manifest is the
+    portable record, an export is scratch belonging to one run.
+    """
+
+    train_jsonl: str
+    dev_jsonl: str
+    train_samples: int = Field(default=0, ge=0)
+    dev_samples: int = Field(default=0, ge=0)
+    # A guided take already is its own file, so it is referenced rather than cut.
+    sliced_segments: int = Field(default=0, ge=0)
+    reused_segments: int = Field(default=0, ge=0)
+    total_seconds: float = Field(default=0, ge=0)

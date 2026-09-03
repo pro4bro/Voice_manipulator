@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .models import (
     Capability,
+    DatasetExportReport,
     DatasetManifest,
     DatasetReadiness,
     EmotionLabel,
@@ -22,6 +23,7 @@ from .models import (
     ProjectMediaAsset,
     ProjectRecord,
     ReadingPack,
+    SpeakerProfile,
     ReadingPackSummary,
     TrainingCatalog,
     WorkspacePage,
@@ -186,3 +188,20 @@ class DatasetCompiler(Protocol):
     def readiness(self, project_id: str) -> DatasetReadiness: ...
 
     def compile(self, project_id: str) -> DatasetManifest: ...
+
+
+class DatasetExporter(Protocol):
+    """Shapes a Dataset Manifest into what one engine's tokenizer reads.
+
+    The manifest stays engine-free; every engine-specific choice - path style,
+    field names, how a span becomes a file - lives behind here.
+    """
+
+    def export(
+        self,
+        manifest: DatasetManifest,
+        project_root: Path,
+        run_dir: Path,
+        speakers: list[SpeakerProfile] | None = None,
+        default_language: str | None = None,
+    ) -> DatasetExportReport: ...
