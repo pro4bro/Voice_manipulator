@@ -1,13 +1,24 @@
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { emotionLabel } from "../../domain/emotions";
 import { formatDuration } from "../../domain/reading-plan";
-import type { DatasetReadiness, EmotionLabel, SpeakerProfile } from "../../domain/types";
+import { TrainingRunView } from "./TrainingRunView";
+import type {
+  DatasetReadiness,
+  EmotionLabel,
+  SpeakerProfile,
+  TrainingProgressLine,
+  TrainingRun,
+} from "../../domain/types";
 
 interface TrainingJobProps {
   readiness: DatasetReadiness | null;
   speakers: SpeakerProfile[];
   busy?: boolean;
   onCompile?: () => void;
+  /** The newest run, when there is one. A live run owns the panel. */
+  run?: TrainingRun | null;
+  runProgress?: TrainingProgressLine[];
+  onCancelRun?: () => void;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -27,7 +38,25 @@ const REJECTION_LABELS: Record<string, string> = {
   "no-usable-segment": "Không cắt được đoạn nào",
 };
 
-export function TrainingJob({ readiness, speakers, busy = false, onCompile }: TrainingJobProps) {
+export function TrainingJob({
+  readiness,
+  speakers,
+  busy = false,
+  onCompile,
+  run = null,
+  runProgress = [],
+  onCancelRun,
+}: TrainingJobProps) {
+  // A run in flight is the only thing worth this panel's space; dataset
+  // readiness is what you look at before there is one and after it finishes.
+  if (run && (run.status === "running" || run.status === "pending")) {
+    return (
+      <ModuleFrame eyebrow="TRAINING JOB" title="Đang train" className="training-job-module" tone="warm">
+        <TrainingRunView busy={busy} onCancel={onCancelRun} progress={runProgress} run={run} />
+      </ModuleFrame>
+    );
+  }
+
   const segments = readiness?.segments ?? 0;
   const rejections = readiness?.rejections ?? [];
   const validations = readiness?.scriptValidations ?? [];
@@ -99,6 +128,10 @@ export function TrainingJob({ readiness, speakers, busy = false, onCompile }: Tr
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {run ? (
+        <TrainingRunView busy={busy} onCancel={onCancelRun} progress={runProgress} run={run} />
       ) : null}
 
       <button

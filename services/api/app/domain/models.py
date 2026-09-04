@@ -802,3 +802,17 @@ class DatasetExportReport(DomainModel):
     sliced_segments: int = Field(default=0, ge=0)
     reused_segments: int = Field(default=0, ge=0)
     total_seconds: float = Field(default=0, ge=0)
+
+
+class GpuLeaseHolder(DomainModel):
+    """Who currently holds the machine's GPU.
+
+    `pid` is the liveness proof. A heartbeat alone cannot tell a busy process
+    from a killed one, and a killed one must not keep the card.
+    """
+
+    token: str
+    label: str
+    pid: int
+    acquired_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

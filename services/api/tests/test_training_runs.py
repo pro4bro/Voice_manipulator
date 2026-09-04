@@ -52,19 +52,31 @@ def test_resume_reads_its_config_back_rather_than_rebuilding_it(tmp_path):
     assert reloaded.config.base_model == run.config.base_model
 
 
-def test_a_run_left_running_reappears_as_interrupted_not_running(tmp_path):
+def test_a_run_whose_process_is_gone_reappears_as_interrupted(tmp_path):
     project, runs, _ = runs_for(tmp_path)
     live = runs.create(project.id, "dataset-1")
-    runs.update(project.id, live.model_copy(update={"status": "running", "process_id": 4242}))
+    runs.update(project.id, live.model_copy(update={"status": "running", "process_id": 999_999}))
     done = runs.create(project.id, "dataset-2")
     runs.update(project.id, done.model_copy(update={"status": "complete"}))
 
-    recovered = runs.mark_interrupted(project.id)
+    recovered = runs.reconcile(project.id)
 
     assert [run.id for run in recovered] == [live.id]
     assert runs.get(project.id, live.id).status == "interrupted"
     assert runs.get(project.id, live.id).process_id is None
     assert runs.get(project.id, done.id).status == "complete"
+
+
+def test_a_run_that_really_is_training_is_left_alone(tmp_path):
+    """Marking every live-looking run interrupted would lie about the real one."""
+    import os
+
+    project, runs, _ = runs_for(tmp_path)
+    live = runs.create(project.id, "dataset-1")
+    runs.update(project.id, live.model_copy(update={"status": "running", "process_id": os.getpid()}))
+
+    assert runs.reconcile(project.id) == []
+    assert runs.get(project.id, live.id).status == "running"
 
 
 def test_progress_is_append_only_and_keeps_its_order(tmp_path):

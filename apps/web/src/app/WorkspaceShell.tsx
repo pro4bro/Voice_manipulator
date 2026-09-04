@@ -17,6 +17,8 @@ import type {
   Project,
   DatasetReadiness,
   ProjectMediaAsset,
+  TrainingProgressLine,
+  TrainingRun,
   ReadingPackSummary,
   RecordingWaveformPreview,
   RuntimeAction,
@@ -133,6 +135,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [preferences, setPreferences] = useState<AppPreferences>(defaultPreferences);
   const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
   const [datasetBusy, setDatasetBusy] = useState(false);
+  const [trainingRun, setTrainingRun] = useState<TrainingRun | null>(null);
+  const [trainingProgress, setTrainingProgress] = useState<TrainingProgressLine[]>([]);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -211,6 +215,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     api.getDatasetReadiness(project.id)
       .then((readiness) => { if (!cancelled) setDatasetReadiness(readiness); })
       .catch(() => { /* Training Job shows that it could not read it. */ });
+
+    void refreshTrainingRun();
     return () => { cancelled = true; };
   }, [project.id]);
 
@@ -593,6 +599,31 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       setNotice(error instanceof Error ? error.message : "Không mở được bộ bài đọc");
     } finally {
       setReadingBusy(false);
+    }
+  }
+
+  async function refreshTrainingRun() {
+    try {
+      const runs = await api.listTrainingRuns(project.id);
+      const newest = runs[0] ?? null;
+      setTrainingRun(newest);
+      setTrainingProgress(
+        newest ? await api.getTrainingRunProgress(project.id, newest.id) : [],
+      );
+    } catch {
+      setTrainingRun(null);
+      setTrainingProgress([]);
+    }
+  }
+
+  async function cancelTrainingRun() {
+    if (!trainingRun) return;
+    try {
+      await api.cancelTrainingRun(project.id, trainingRun.id);
+      setNotice("Đã huỷ run. Checkpoint vẫn còn, chạy tiếp được từ mốc cuối.");
+      await refreshTrainingRun();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không huỷ được run");
     }
   }
 
@@ -1040,6 +1071,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     profileSchema,
     datasetReadiness,
     datasetBusy,
+    trainingRun,
+    trainingProgress,
+    onCancelTrainingRun: () => void cancelTrainingRun(),
     onCompileDataset: () => void compileDataset(),
     readingPacks,
     readingSession: readingSession
@@ -1095,7 +1129,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
 
   return (
     <main className="workspace-shell">

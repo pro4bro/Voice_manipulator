@@ -492,3 +492,56 @@ export interface DatasetManifest {
   rejections: DatasetRejection[];
   stats: DatasetStats;
 }
+
+export type TrainingStepId =
+  | "provision" | "resolve-model" | "read-manifest" | "write-jsonl"
+  | "tokenize" | "load-model" | "train" | "checkpoint" | "publish";
+
+export type TrainingRunStatus =
+  | "pending" | "running" | "interrupted" | "cancelled" | "failed" | "complete";
+
+export interface TrainingCheckpoint {
+  step: number;
+  path: string;
+  bytes: number;
+  createdAt: string;
+}
+
+export interface TrainingRun {
+  version: number;
+  id: string;
+  projectId: string;
+  manifestId: string;
+  status: TrainingRunStatus;
+  stepId: TrainingStepId;
+  globalStep: number;
+  emotion: EmotionLabel;
+  speakerProfileId: string | null;
+  checkpoints: TrainingCheckpoint[];
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  config: { steps: number; saveSteps: number; learningRate: number; loraR: number };
+}
+
+export interface TrainingProgressLine {
+  at: string;
+  stepId: TrainingStepId;
+  message: string;
+  globalStep: number | null;
+  loss: number | null;
+  devLoss: number | null;
+  learningRate: number | null;
+  stepsPerSecond: number | null;
+  vramMb: number | null;
+  done: number | null;
+  total: number | null;
+}
+
+export interface GpuLeaseHolder {
+  token: string;
+  label: string;
+  pid: number;
+  acquiredAt: string;
+  heartbeatAt: string;
+}

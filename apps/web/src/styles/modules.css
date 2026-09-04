@@ -1034,3 +1034,38 @@
 .dataset-problems li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: calc(9.5px * var(--font-scale)); }
 .dataset-problems li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .dataset-problems li small { flex: none; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+
+/* A training run in flight */
+.training-run { display: grid; gap: 8px; }
+.training-run > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.training-run > header b { font-size: calc(11px * var(--font-scale)); text-transform: capitalize; }
+.training-run > header small { margin-left: 6px; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.run-status { padding: 2px 7px; font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .08em; text-transform: uppercase; background: var(--surface-field); }
+.run-status--running { color: var(--surface); background: var(--accent); }
+.run-status--failed, .run-status--interrupted { color: #fff; background: #d2593f; }
+.training-steps { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.training-steps li { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 6px; padding: 2px 0; color: var(--text-subtle); font-size: calc(9.5px * var(--font-scale)); }
+.training-steps li i { width: 7px; height: 7px; border: 1px solid var(--line); border-radius: 50%; }
+.training-steps li.is-done { color: var(--text); }
+.training-steps li.is-done i { background: var(--text-subtle); border-color: var(--text-subtle); }
+.training-steps li.is-current i { border-color: var(--accent); }
+.training-steps li.is-active { color: var(--text); }
+.training-steps li.is-active i { background: var(--accent); border-color: var(--accent); animation: run-pulse 1.4s ease-in-out infinite; }
+.training-steps li small { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+@keyframes run-pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+.loss-chart svg { width: 100%; height: 74px; background: var(--surface-audio); }
+.loss-chart path { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1.4; }
+.loss-chart__train { stroke: var(--accent); }
+.loss-chart__dev { stroke: var(--text-subtle); stroke-dasharray: 3 2; }
+.loss-chart footer { display: flex; align-items: center; gap: 10px; margin-top: 3px; font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.loss-chart footer i { display: inline-block; width: 8px; height: 2px; margin-right: 4px; vertical-align: middle; }
+.loss-chart footer i.is-train { background: var(--accent); }
+.loss-chart footer i.is-dev { background: var(--text-subtle); }
+.loss-chart footer small { margin-left: auto; color: var(--text-subtle); }
+.training-rate { margin: 0; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.training-checkpoints > span { display: block; margin-bottom: 3px; color: var(--text-subtle); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .1em; }
+.training-checkpoints ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.training-checkpoints li { display: flex; justify-content: space-between; font-size: calc(9.5px * var(--font-scale)); }
+.training-checkpoints li small { color: var(--text-subtle); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.training-note { margin: 0; padding: 5px 7px; background: var(--surface-field); border-left: 2px solid var(--line); font-size: calc(9px * var(--font-scale)); line-height: 1.45; }
+.training-note.is-error { border-left-color: #d2593f; }

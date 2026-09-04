@@ -1,6 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { ReadingMode } from "../../domain/reading-plan";
-import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
@@ -40,6 +40,8 @@ export interface StudioContext {
   wordSelection: WordSelection;
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
+  trainingRun: TrainingRun | null;
+  trainingProgress: TrainingProgressLine[];
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -80,6 +82,7 @@ export interface StudioContext {
   onEndReadingSession: () => void;
   onSkipCard: () => void;
   onCompileDataset: () => void;
+  onCancelTrainingRun: () => void;
 }
 
 interface ModuleRegistryProps {
@@ -135,7 +138,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob busy={context.datasetBusy} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} speakers={context.trainingCatalog.speakers} />;
+      return <TrainingJob busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":

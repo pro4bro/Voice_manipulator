@@ -16,6 +16,8 @@ from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
+from app.adapters.file_training_runs import FileTrainingRuns
+from app.adapters.gpu_lease import GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
 from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
@@ -36,6 +38,7 @@ from app.domain.models import (
     AppPreferences,
     DatasetManifest,
     DatasetReadiness,
+    GpuLeaseHolder,
     EngineProfileSchema,
     EngineStatus,
     FolderPickRequest,
@@ -67,6 +70,8 @@ from app.domain.models import (
     ReadingPackSummary,
     ReadingPassageDraft,
     SystemLog,
+    TrainingProgressLine,
+    TrainingRun,
     SystemMetrics,
     SystemPaths,
     TrainingCatalog,
@@ -90,6 +95,8 @@ def create_app(
     waveform_envelopes = AudioWaveformEnvelope()
     training_catalogs = FileTrainingCatalog(projects)
     dataset_compiler = ProjectDatasetCompiler(projects, media, training_catalogs)
+    training_runs = FileTrainingRuns(projects)
+    gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
@@ -663,6 +670,58 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except DatasetCompilationError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/projects/{project_id}/training-runs", response_model=list[TrainingRun]
+    )
+    def list_training_runs(project_id: str) -> list[TrainingRun]:
+        try:
+            # Reconcile first: a run whose process died while the app was closed
+            # would otherwise be listed as still running.
+            training_runs.reconcile(project_id)
+            return training_runs.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/training-runs/{run_id}", response_model=TrainingRun
+    )
+    def get_training_run(project_id: str, run_id: str) -> TrainingRun:
+        try:
+            return training_runs.get(project_id, run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/training-runs/{run_id}/progress",
+        response_model=list[TrainingProgressLine],
+    )
+    def training_run_progress(
+        project_id: str, run_id: str, limit: int = 400
+    ) -> list[TrainingProgressLine]:
+        try:
+            return training_runs.progress(project_id, run_id, limit=max(1, min(limit, 5000)))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/training-runs/{run_id}/cancel", response_model=TrainingRun
+    )
+    def cancel_training_run(project_id: str, run_id: str) -> TrainingRun:
+        try:
+            run = training_runs.get(project_id, run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+        if run.status not in {"pending", "running"}:
+            raise HTTPException(status_code=409, detail="Run này không còn đang chạy.")
+        # Checkpoints stay. A cancelled run at step 4,000 is a resumable run.
+        return training_runs.update(
+            project_id, run.model_copy(update={"status": "cancelled", "process_id": None})
+        )
+
+    @app.get("/api/gpu-lease", response_model=GpuLeaseHolder | None)
+    def gpu_lease_holder() -> GpuLeaseHolder | None:
+        return gpu_lease.holder()
 
     @app.get(
         "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog

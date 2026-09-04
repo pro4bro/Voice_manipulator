@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from app.adapters.listening_ports import process_is_alive
 from app.domain.models import (
     TrainingProgressLine,
     TrainingRun,
@@ -100,21 +101,26 @@ class FileTrainingRuns:
         self._write(project_id, updated)
         return updated
 
-    def mark_interrupted(self, project_id: str) -> list[TrainingRun]:
-        """Called at startup: no training process survives an app restart.
+    def reconcile(self, project_id: str) -> list[TrainingRun]:
+        """Demote runs whose process is gone, and leave the living alone.
 
-        A run left saying `running` would report progress that stopped hours ago,
-        and one wrong number on that screen makes every other number suspect.
+        A run left saying `running` reports progress that stopped hours ago, and
+        one wrong number on that screen makes every other number suspect. But the
+        check has to be per run: marking every live-looking run interrupted would
+        lie about the one that really is training right now.
         """
         recovered: list[TrainingRun] = []
         for run in self.list(project_id):
-            if run.status in LIVE_STATUSES:
-                recovered.append(
-                    self.update(
-                        project_id,
-                        run.model_copy(update={"status": "interrupted", "process_id": None}),
-                    )
+            if run.status not in LIVE_STATUSES:
+                continue
+            if run.process_id is not None and process_is_alive(run.process_id):
+                continue
+            recovered.append(
+                self.update(
+                    project_id,
+                    run.model_copy(update={"status": "interrupted", "process_id": None}),
                 )
+            )
         return recovered
 
     # ---------- progress ----------

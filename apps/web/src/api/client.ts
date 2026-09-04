@@ -3,6 +3,7 @@ import type {
   CaptureTier,
   DatasetManifest,
   DatasetReadiness,
+  GpuLeaseHolder,
   EmotionLabel,
   EngineProfileSchema,
   EngineStatus,
@@ -29,6 +30,8 @@ import type {
   TimelineGainKeyframe,
   TranscriptReviewResult,
   TrainingCatalog,
+  TrainingProgressLine,
+  TrainingRun,
   WorkspacePage,
 } from "../domain/types";
 
@@ -339,6 +342,17 @@ export const api = {
     request<DatasetReadiness>(`/api/projects/${projectId}/dataset/readiness`),
   compileDataset: (projectId: string) =>
     request<DatasetManifest>(`/api/projects/${projectId}/dataset/compile`, { method: "POST" }),
+  listTrainingRuns: (projectId: string) =>
+    request<TrainingRun[]>(`/api/projects/${projectId}/training-runs`),
+  getTrainingRunProgress: (projectId: string, runId: string, limit = 400) =>
+    request<TrainingProgressLine[]>(
+      `/api/projects/${projectId}/training-runs/${runId}/progress?limit=${limit}`,
+    ),
+  cancelTrainingRun: (projectId: string, runId: string) =>
+    request<TrainingRun>(`/api/projects/${projectId}/training-runs/${runId}/cancel`, {
+      method: "POST",
+    }),
+  getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>
