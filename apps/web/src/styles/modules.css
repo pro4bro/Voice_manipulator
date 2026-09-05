@@ -405,6 +405,19 @@
 
 .train-module .module-frame__body { display: grid; gap: 9px; }
 .train-engine-state { padding: 3px 5px; color: var(--gold); border: 1px solid currentColor; font-family: var(--mono); font-size: calc(7px * var(--font-scale)); font-weight: 900; }
+.train-engine-state.is-ready { color: var(--lime-dark); }
+.train-engine-picker { display: grid; gap: 5px; padding: 7px; border: 1px solid var(--line); background: var(--soft-fill); }
+.train-picker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.train-engine-picker label, .train-field-wide { display: grid; gap: 3px; }
+.train-engine-picker label > span, .train-field-wide > span, .train-section-label { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .05em; }
+.train-engine-picker select, .train-field-wide input, .train-parameter-grid select { width: 100%; min-width: 0; height: 31px; padding: 0 7px; color: var(--text); border: 1px solid var(--line); background: var(--surface-field); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.train-engine-description, .train-parameter-note { color: var(--text-muted); font-size: calc(8px * var(--font-scale)); line-height: 1.4; }
+.train-engine-parameters { display: grid; gap: 6px; padding: 7px; border: 1px solid var(--line); }
+.train-engine-parameters.is-gated { background: var(--soft-fill); }
+.train-engine-parameters input:disabled, .train-engine-parameters select:disabled { color: var(--text-muted); opacity: .72; }
+.train-checkbox-field { min-height: 31px; display: flex; align-items: center; gap: 6px; padding-top: 15px; color: var(--text-muted); font-size: calc(8px * var(--font-scale)); }
+.train-checkbox-field input { width: 15px; height: 15px; accent-color: var(--lime-dark); }
+.train-section-label { color: var(--ink); }
 .train-speaker-targets { display: grid; gap: 5px; }
 .train-speaker-targets > span { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .07em; }
 .train-speaker-targets > div { display: flex; flex-wrap: wrap; gap: 4px; }

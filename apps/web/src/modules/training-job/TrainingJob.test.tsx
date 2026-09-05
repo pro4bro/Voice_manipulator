@@ -33,32 +33,6 @@ function readiness(overrides: Partial<DatasetReadiness> = {}): DatasetReadiness 
 }
 
 describe("TrainingJob", () => {
-  it("offers both engine families and keeps unavailable VibeVoice modes disabled", () => {
-    render(
-      <TrainingJob
-        manifestId="dataset-1"
-        readiness={readiness()}
-        runtime={{ root: "runtime", exists: true, python: "python", packages: [], cachedWheels: [], ready: true, interpreterTag: "cp311", wheelTagMismatch: [] }}
-        speakers={[SPEAKER]}
-        trainingEngines={[
-          { id: "omnivoice", label: "OmniVoice", description: "", installed: true, modes: [
-            { id: "lora-finetune", label: "LoRA", description: "", available: true },
-            { id: "full-finetune", label: "Full", description: "", available: false },
-            { id: "from-scratch", label: "Scratch", description: "", available: false },
-          ] },
-          { id: "vibevoice", label: "VibeVoice", description: "", installed: false, modes: [
-            { id: "tts-single-speaker-lora", label: "TTS LoRA", description: "", available: false },
-            { id: "asr-lora", label: "ASR LoRA", description: "", available: false },
-          ] },
-        ]}
-      />,
-    );
-
-    expect(screen.getByRole("option", { name: /VibeVoice/ })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Training engine"), { target: { value: "vibevoice" } });
-    expect(screen.getByRole("button", { name: "Mode chưa sẵn sàng" })).toBeDisabled();
-  });
-
   it("reports segments, usable footage and speaker coverage", () => {
     render(<TrainingJob readiness={readiness()} speakers={[SPEAKER]} />);
 

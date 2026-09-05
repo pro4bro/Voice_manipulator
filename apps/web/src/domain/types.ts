@@ -542,6 +542,14 @@ export interface TrainingEngineOption {
   modes: TrainingModeOption[];
 }
 
+export interface OmniVoiceTrainingParameters {
+  baseModel: string;
+  loraR: number;
+  loraAlpha: number;
+  batchTokens: number;
+  attnImplementation: "sdpa" | "flex_attention";
+}
+
 export interface TrainingProgressLine {
   at: string;
   stepId: TrainingStepId;

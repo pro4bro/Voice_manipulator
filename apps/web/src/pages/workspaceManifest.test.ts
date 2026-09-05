@@ -14,17 +14,24 @@ describe("workspaceManifest", () => {
     expect(manifest.columns.right).toEqual(["recorder", "speaker-emotion", "speaker-isolation"]);
   });
 
-  it("reuses the shared library panel, Script, and Timeline across all workspace pages", () => {
-    const pages = ["speech-to-text", "voice-training", "voice-manipulator"] as const;
-    for (const page of pages) {
+  it("keeps editing modules in source workflows and training controls in Train", () => {
+    const editingPages = ["speech-to-text", "voice-manipulator"] as const;
+    for (const page of editingPages) {
       const manifest = workspaceManifest(page);
       expect(manifest.modules).toContain("library-panel");
       expect(manifest.modules).toContain("script");
       expect(manifest.modules).toContain("timeline");
     }
-    expect(workspaceManifest("voice-training").modules).toContain("train");
-    expect(workspaceManifest("voice-training").modules).not.toContain("recorder");
-    expect(workspaceManifest("voice-training").modules).not.toContain("control-rack");
+    const training = workspaceManifest("voice-training");
+    expect(training.modules).toEqual(["library-panel", "train", "training-job"]);
+    expect(training.columns.left).toEqual(["library-panel"]);
+    expect(training.columns.right).toEqual(["train"]);
+    expect(training.columns.center).toEqual(["training-job"]);
+    expect(training.columns.bottom).toEqual([]);
+    expect(training.modules).not.toContain("script");
+    expect(training.modules).not.toContain("timeline");
+    expect(training.modules).not.toContain("recorder");
+    expect(training.modules).not.toContain("control-rack");
   });
 
   it("declares every manipulator mode without claiming unavailable processors are ready", () => {

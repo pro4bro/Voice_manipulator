@@ -48,6 +48,8 @@
 .processor-banner span { color: rgba(255,255,255,.62); }
 
 .studio-board { min-height: 0; display: grid; grid-template-columns: var(--left-column) 7px minmax(380px,1fr) 7px var(--right-column); grid-template-rows: minmax(0,1fr) minmax(220px,36%); overflow: hidden; background: var(--paper-3); }
+.studio-board.is-no-bottom { grid-template-rows: minmax(0,1fr); }
+.studio-board.is-no-bottom .module-column--bottom { display: none; }
 .module-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; padding: 8px; scrollbar-width: thin; scrollbar-color: rgba(24,26,22,.27) transparent; }
 .module-column--left { grid-column: 1; grid-row: 1; }
 .module-column--center { grid-column: 3; grid-row: 1; padding-left: 4px; padding-right: 4px; }

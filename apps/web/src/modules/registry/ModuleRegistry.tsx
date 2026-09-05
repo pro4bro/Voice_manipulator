@@ -45,6 +45,9 @@ export interface StudioContext {
   trainingManifestId: string | null;
   trainingRuntime: import("../../domain/types").TrainingRuntimeReport | null;
   trainingEngines: TrainingEngineOption[];
+  trainingEngine: TrainingEngineId;
+  trainingMode: TrainingModeId;
+  trainingParameters: import("../../domain/types").OmniVoiceTrainingParameters;
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -86,7 +89,10 @@ export interface StudioContext {
   onSkipCard: () => void;
   onCompileDataset: () => void;
   onCancelTrainingRun: () => void;
-  onStartTrainingRun: (engine: TrainingEngineId, mode: TrainingModeId) => void;
+  onTrainingEngineChange: (engine: TrainingEngineId) => void;
+  onTrainingModeChange: (mode: TrainingModeId) => void;
+  onTrainingParametersChange: (parameters: import("../../domain/types").OmniVoiceTrainingParameters) => void;
+  onStartTrainingRun: () => void;
 }
 
 interface ModuleRegistryProps {
@@ -142,13 +148,13 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob busy={context.datasetBusy} manifestId={context.trainingManifestId} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} runtime={context.trainingRuntime} speakers={context.trainingCatalog.speakers} trainingEngines={context.trainingEngines} />;
+      return <TrainingJob busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":
       return <SpeakerEmotion asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":
-      return <Train assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} />;
+      return <Train assets={context.mediaAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} onTrainingEngineChange={context.onTrainingEngineChange} onTrainingModeChange={context.onTrainingModeChange} onTrainingParametersChange={context.onTrainingParametersChange} trainingEngine={context.trainingEngine} trainingEngines={context.trainingEngines} trainingManifestId={context.trainingManifestId} trainingMode={context.trainingMode} trainingParameters={context.trainingParameters} trainingRuntime={context.trainingRuntime} />;
     case "recent-takes":
       return <RecentTakes />;
     case "voice-generator":

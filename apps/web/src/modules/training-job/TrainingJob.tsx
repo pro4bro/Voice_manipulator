@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { emotionLabel } from "../../domain/emotions";
 import { formatDuration } from "../../domain/reading-plan";
@@ -9,11 +7,7 @@ import type {
   EmotionLabel,
   SpeakerProfile,
   TrainingProgressLine,
-  TrainingRuntimeReport,
   TrainingRun,
-  TrainingEngineId,
-  TrainingEngineOption,
-  TrainingModeId,
 } from "../../domain/types";
 
 interface TrainingJobProps {
@@ -25,10 +19,6 @@ interface TrainingJobProps {
   run?: TrainingRun | null;
   runProgress?: TrainingProgressLine[];
   onCancelRun?: () => void;
-  manifestId?: string | null;
-  runtime?: TrainingRuntimeReport | null;
-  trainingEngines?: TrainingEngineOption[];
-  onStart?: (engine: TrainingEngineId, mode: TrainingModeId) => void;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -56,15 +46,7 @@ export function TrainingJob({
   run = null,
   runProgress = [],
   onCancelRun,
-  manifestId = null,
-  runtime = null,
-  trainingEngines = [],
-  onStart,
 }: TrainingJobProps) {
-  const [engineId, setEngineId] = useState<TrainingEngineId>("omnivoice");
-  const [modeId, setModeId] = useState<TrainingModeId>("lora-finetune");
-  const selectedEngine = trainingEngines.find((engine) => engine.id === engineId) ?? trainingEngines[0] ?? null;
-  const selectedMode = selectedEngine?.modes.find((mode) => mode.id === modeId) ?? selectedEngine?.modes[0] ?? null;
   // A run in flight is the only thing worth this panel's space; dataset
   // readiness is what you look at before there is one and after it finishes.
   if (run && (run.status === "running" || run.status === "pending")) {
@@ -160,35 +142,6 @@ export function TrainingJob({
       >
         {busy ? "Đang biên dịch..." : segments ? `Biên dịch ${segments} đoạn` : "Chưa có đoạn nào để biên dịch"}
       </button>
-      {manifestId ? (
-        trainingEngines.length ? (
-          <div className="training-engine-picker">
-            <label>
-              <span>ENGINE</span>
-              <select aria-label="Training engine" onChange={(event) => { const next = event.target.value as TrainingEngineId; setEngineId(next); setModeId(next === "omnivoice" ? "lora-finetune" : "tts-single-speaker-lora"); }} value={selectedEngine?.id ?? engineId}>
-                {trainingEngines.map((engine) => <option key={engine.id} value={engine.id}>{engine.label}{engine.installed ? "" : " · chưa cài"}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>TRAINING MODE</span>
-              <select aria-label="Training mode" onChange={(event) => setModeId(event.target.value as TrainingModeId)} value={selectedMode?.id ?? ""}>
-                {selectedEngine?.modes.map((mode) => <option disabled={!mode.available} key={mode.id} value={mode.id}>{mode.label}{mode.available ? "" : " · chưa hỗ trợ"}</option>)}
-              </select>
-            </label>
-            {selectedMode ? <small>{selectedMode.description}</small> : null}
-          </div>
-        ) : null
-      ) : null}
-      {manifestId ? (
-        <button
-          className="button button--quiet button--full"
-          disabled={busy || !runtime?.ready || !selectedMode?.available}
-          onClick={() => selectedMode && onStart?.(selectedEngine?.id ?? engineId, selectedMode.id)}
-          type="button"
-        >
-          {busy ? "Đang khởi động..." : !selectedMode?.available ? "Mode chưa sẵn sàng" : runtime?.ready ? `Bắt đầu ${selectedEngine?.label ?? "training"}` : `Chưa sẵn sàng · thiếu ${(runtime?.packages ?? []).filter((item) => !item.installed).map((item) => item.name).slice(0, 3).join(", ") || "training runtime"}`}
-        </button>
-      ) : null}
     </ModuleFrame>
   );
 }

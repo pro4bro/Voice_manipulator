@@ -22,6 +22,7 @@ import type {
   TrainingEngineId,
   TrainingEngineOption,
   TrainingModeId,
+  OmniVoiceTrainingParameters,
   TrainingRun,
   ReadingPackSummary,
   RecordingWaveformPreview,
@@ -144,6 +145,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingManifestId, setTrainingManifestId] = useState<string | null>(null);
   const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
   const [trainingEngines, setTrainingEngines] = useState<TrainingEngineOption[]>([]);
+  const [trainingEngine, setTrainingEngine] = useState<TrainingEngineId>("omnivoice");
+  const [trainingMode, setTrainingMode] = useState<TrainingModeId>("lora-finetune");
+  const [trainingParameters, setTrainingParameters] = useState<OmniVoiceTrainingParameters>({ baseModel: "k2-fsa/OmniVoice", loraR: 16, loraAlpha: 32, batchTokens: 8192, attnImplementation: "sdpa" });
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -673,20 +677,24 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  async function startTrainingRun(engine: TrainingEngineId, mode: TrainingModeId) {
+  async function startTrainingRun() {
     if (!trainingManifestId) return;
     setDatasetBusy(true);
     try {
       const run = await api.startTrainingRun(project.id, {
         manifestId: trainingManifestId,
         config: {
-          engine,
-          mode,
-          useLora: mode === "lora-finetune",
+          engine: trainingEngine,
+          mode: trainingMode,
+          baseModel: trainingParameters.baseModel,
+          useLora: trainingMode === "lora-finetune",
+          loraR: trainingParameters.loraR,
+          loraAlpha: trainingParameters.loraAlpha,
           steps: trainingCatalog.settings.maxSteps,
           saveSteps: trainingCatalog.settings.checkpointEvery,
           learningRate: trainingCatalog.settings.learningRate,
-          batchTokens: Math.max(1, trainingCatalog.settings.batchSize) * 2048,
+          batchTokens: trainingParameters.batchTokens,
+          attnImplementation: trainingParameters.attnImplementation,
         },
       });
       setTrainingRun(run);
@@ -1122,10 +1130,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     trainingManifestId,
     trainingRuntime,
     trainingEngines,
+    trainingEngine,
+    trainingMode,
+    trainingParameters,
     trainingProgress,
     onCancelTrainingRun: () => void cancelTrainingRun(),
     onCompileDataset: () => void compileDataset(),
-    onStartTrainingRun: (engine, mode) => void startTrainingRun(engine, mode),
+    onTrainingEngineChange: (engine) => { setTrainingEngine(engine); setTrainingMode(engine === "omnivoice" ? "lora-finetune" : "tts-single-speaker-lora"); },
+    onTrainingModeChange: setTrainingMode,
+    onTrainingParametersChange: setTrainingParameters,
+    onStartTrainingRun: () => void startTrainingRun(),
     readingPacks,
     readingSession: readingSession
       ? {
@@ -1180,7 +1194,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingEngine, trainingEngines, trainingMode, trainingParameters, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">
@@ -1198,7 +1212,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         <section className={`workspace-stage ${activePage === "voice-manipulator" ? "has-modes" : ""} ${activePage === "speech-to-text" ? "is-compact-heading" : ""}`}>
           {activePage !== "speech-to-text" ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></header> : null}
           {activePage === "voice-manipulator" ? <div className="mode-area"><div className="mode-switcher" role="tablist" aria-label="Chế độ Voice Manipulator">{manifest.modes.map((mode) => { const planned = manifest.plannedModes.includes(mode); return <button aria-selected={activeMode === mode} className={activeMode === mode ? "is-active" : ""} key={mode} onClick={() => setActiveMode(mode)} role="tab" type="button"><span>{modeLabels[mode]}</span>{planned ? <small>PLANNED</small> : null}</button>; })}</div>{manifest.plannedModes.includes(activeMode) ? <div className="processor-banner" role="status"><b>{modeLabels[activeMode]}</b><span>Workspace contract đã sẵn sàng · processor adapter chưa được cài</span></div> : null}</div> : null}
-          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
