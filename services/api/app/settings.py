@@ -11,6 +11,8 @@ class Settings:
     data_root: Path
     omnivoice_root: Path
     web_dist: Path
+    training_runtime_root: Path
+    training_wheel_cache: Path
     legacy_studio_url: str
     ffmpeg_path: str | None
     reading_packs_root: Path
@@ -26,6 +28,18 @@ class Settings:
                 os.getenv("PRO4BRO_OMNIVOICE_ROOT", project_root / "engines" / "OmniVoice")
             ),
             web_dist=project_root / "apps" / "web" / "dist",
+            training_runtime_root=Path(
+                os.getenv(
+                    "PRO4BRO_TRAINING_RUNTIME_ROOT",
+                    project_root / ".runtime" / "omnivoice-training" / ".venv",
+                )
+            ),
+            training_wheel_cache=Path(
+                os.getenv(
+                    "PRO4BRO_TRAINING_WHEEL_CACHE",
+                    project_root / ".runtime" / "omnivoice-studio" / "installer-cache",
+                )
+            ),
             legacy_studio_url=os.getenv("PRO4BRO_LEGACY_STUDIO_URL", "http://127.0.0.1:18081"),
             ffmpeg_path=os.getenv("PRO4BRO_FFMPEG_PATH"),
             reading_packs_root=Path(

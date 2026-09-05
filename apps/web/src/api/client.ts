@@ -31,6 +31,7 @@ import type {
   TranscriptReviewResult,
   TrainingCatalog,
   TrainingProgressLine,
+  TrainingRuntimeReport,
   TrainingRun,
   WorkspacePage,
 } from "../domain/types";
@@ -353,6 +354,7 @@ export const api = {
       method: "POST",
     }),
   getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
+  getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>

@@ -32,6 +32,7 @@ from app.adapters.sequential_transcription_queue import SequentialTranscriptionQ
 from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.runtime_status import RuntimeStatus
+from app.adapters.training_runtime import TrainingRuntime
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
@@ -71,6 +72,7 @@ from app.domain.models import (
     ReadingPassageDraft,
     SystemLog,
     TrainingProgressLine,
+    TrainingRuntimeReport,
     TrainingRun,
     SystemMetrics,
     SystemPaths,
@@ -96,6 +98,11 @@ def create_app(
     training_catalogs = FileTrainingCatalog(projects)
     dataset_compiler = ProjectDatasetCompiler(projects, media, training_catalogs)
     training_runs = FileTrainingRuns(projects)
+    training_runtime = TrainingRuntime(
+        settings.training_runtime_root,
+        settings.training_wheel_cache,
+        settings.omnivoice_root,
+    )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
@@ -722,6 +729,10 @@ def create_app(
     @app.get("/api/gpu-lease", response_model=GpuLeaseHolder | None)
     def gpu_lease_holder() -> GpuLeaseHolder | None:
         return gpu_lease.holder()
+
+    @app.get("/api/training-runtime", response_model=TrainingRuntimeReport)
+    def training_runtime_report() -> TrainingRuntimeReport:
+        return training_runtime.report()
 
     @app.get(
         "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog

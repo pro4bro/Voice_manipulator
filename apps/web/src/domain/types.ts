@@ -538,6 +538,23 @@ export interface TrainingProgressLine {
   total: number | null;
 }
 
+export interface TrainingRuntimePackage {
+  name: string;
+  installed: boolean;
+  wheelPath: string | null;
+}
+
+export interface TrainingRuntimeReport {
+  root: string;
+  exists: boolean;
+  python: string | null;
+  packages: TrainingRuntimePackage[];
+  cachedWheels: string[];
+  ready: boolean;
+  interpreterTag: string;
+  wheelTagMismatch: string[];
+}
+
 export interface GpuLeaseHolder {
   token: string;
   label: string;

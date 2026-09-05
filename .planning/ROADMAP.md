@@ -46,8 +46,8 @@
 
 ## Next Executable Plan
 
-- `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training.
-- `03-03`: run the training job. Provision the training runtime, tokenize, drive `accelerate` from a runner outside the read-only engine, lease the single GPU, and publish a Voice Model Set with lineage. Plan written 2026-09-03.
+- `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training. Implementation and contract tests delivered.
+- `03-03`: run the training job. Runtime inspection, run records, dataset export, process parsing, GPU lease, and progress UI are delivered; the live runner, checkpoints, resume, and Voice Model Set publishing remain. Plan written 2026-09-03.
 - `03-04`: High Quality Voice Training. Guided reading capture with a live read-along highlight and app-supplied emotion passages. It only adds sources, so it can run alongside 03-02 and 03-03.
 
 ## Planned Phase Sequence

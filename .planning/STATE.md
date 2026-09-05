@@ -5,20 +5,20 @@
 - **Status**:
   - Stabilization W0–W4 is merged into `main` (25 commits, fast-forward). R0/R1/R3/R4 done, R7 done, R5 measured and declined, R6 not performed.
   - **R2 accepted by the owner** on 2026-09-03 with two thresholds knowingly unmet — it does what it claims (mark untrusted timing, keep it out of cues) but it never claimed to make timing correct, which is the problem the owner actually has.
-  - Plan 03-01 complete. Plan 03-02 written, not started. Plan 03-03 not written.
+  - Plan 03-01 complete. Plan 03-02 compiler and validation implementation delivered. Plan 03-03 is in progress: run records, runtime inspection, dataset export, process parsing, GPU lease, and progress UI are delivered; the live runner route and model publishing remain.
   - Plan 03-04 (High Quality Voice Training) in progress: tasks 1, 2 and 5 delivered.
   - Plan 07-01 written: model delivery and security seams defined, no adapter, no route touched.
 
 - **Last action**: Recording no longer passes through Opus on its way to a dataset — the take is tapped as PCM off the audio graph and uploaded as WAV, with MediaRecorder kept only as a fallback. Added the reading-passage authoring dialog so a moderator writes passages instead of JSON. 125 backend and 179 frontend tests, production build.
 
-- **Next action**: Alignment. The owner's live complaint is that subtitles do not line up with the waveform, and neither R2 nor R5 addressed that. Before writing code, run a probe in the R5 pattern — thresholds stated first, willing to decline — on two questions: whether cue-level VAD snapping fixes what is visibly wrong, and whether gating the `vietnamese-250h` aligner by agreement with Silero (rather than by its own confidence) beats DTW. Then 03-02, then 03-03.
+  - **Next action**: Finish 03-03 by wiring the validated manifest, runtime report, JSONL exporter, tokenization process, `accelerate` training process, GPU lease, checkpoints, resume, and publish path into one `TrainingRunner`. Keep the Start button disabled until the live route and runtime checks are complete.
 
 - **Blockers**:
-  - Nothing actually trains yet. 03-04 keeps raising source quality while 03-03 — the path from a manifest into an OmniVoice job — does not exist. Every further 03-04 task stockpiles ingredients for a kitchen that is not built.
+  - Nothing actually trains yet. 03-03 now has the execution ingredients, but the API orchestration from a validated manifest into a real OmniVoice job is still missing. The training runtime currently has torch/torchaudio but lacks `omnivoice`, `accelerate`, `peft`, and `webdataset`.
   - Guided reading's read-along follows manually; it needs the local streaming recogniser, which now exists in Recorder for the live transcript and has not been wired to the teleprompter.
   - AI review still needs endpoint, model and API key in Windows → Preferences.
 
-- **Environment**: The working tree is `E:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR`. The `V:` copy is a read-only backup on `\\192.168.100.102\hub`; a session on 2026-09-03 did three commits' work in it before this was noticed. Tests on the share either fail outright or take 440 s; on E: the same suite takes 4.9 s.
+  - **Environment**: The working tree is the active checkout repository root, confirmed with `git rev-parse --show-toplevel`. Other copies are backups only. Project paths remain relative; runtime and model paths are machine-local and ignored.
 
 - **Branches**: `main` at the stabilization tip. `feat/03-04-high-quality-training` is main plus the 03-04 work. `docs/remote-access` is main plus one doc commit and merges independently.
 
