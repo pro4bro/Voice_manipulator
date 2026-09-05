@@ -99,8 +99,13 @@ processing. See `.planning/ROADMAP.md`.
 4. Enable or disable denoise before training independently from learning an
    `Environment Noise Profile`. A profile may reference multiple project media
    files and can be selected later in Voice Manipulator Control Rack.
-5. `Bắt đầu training` remains disabled until the project-native OmniVoice
-   training adapter is connected. The app does not report a fake training run.
+5. Compile the Dataset Manifest in Training Job, then start training once the
+   runtime status reports ready. The runner writes progress and checkpoints
+   inside the project and keeps the run resumable after cancellation.
+
+Before the first run, provision the separate training environment from the
+checkout root with `scripts\provision-training-runtime.ps1`. It uses the local
+CUDA torch wheel when available and installs OmniVoice from `engines/OmniVoice`.
 
 If the speaker follows an existing script exactly, ASR is optional, not the
 audio-text pairing. Paste/review that script on the asset. A later forced

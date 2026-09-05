@@ -708,6 +708,14 @@ class TrainingRunConfig(DomainModel):
     attn_implementation: str = "sdpa"
 
 
+class TrainingRunStart(DomainModel):
+    """Request to start a new run or resume one whose checkpoints survived."""
+
+    manifest_id: str = Field(min_length=1, max_length=160)
+    config: TrainingRunConfig = Field(default_factory=TrainingRunConfig)
+    resume_run_id: str | None = Field(default=None, max_length=160)
+
+
 class TrainingCheckpoint(DomainModel):
     step: int = Field(ge=0)
     path: str

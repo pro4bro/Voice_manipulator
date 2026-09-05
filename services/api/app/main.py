@@ -33,6 +33,7 @@ from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.training_runtime import TrainingRuntime
+from app.adapters.training_runner import TrainingBusyError, TrainingNotReady, TrainingRunner
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
@@ -74,6 +75,7 @@ from app.domain.models import (
     TrainingProgressLine,
     TrainingRuntimeReport,
     TrainingRun,
+    TrainingRunStart,
     SystemMetrics,
     SystemPaths,
     TrainingCatalog,
@@ -104,6 +106,16 @@ def create_app(
         settings.omnivoice_root,
     )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
+    training_runner = TrainingRunner(
+        projects,
+        dataset_compiler,
+        training_catalogs,
+        training_runs,
+        training_runtime,
+        gpu_lease,
+        settings.omnivoice_root,
+        settings.ffmpeg_path,
+    )
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
@@ -678,6 +690,28 @@ def create_app(
         except DatasetCompilationError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post(
+        "/api/projects/{project_id}/training-runs",
+        response_model=TrainingRun,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def start_training_run(project_id: str, payload: TrainingRunStart) -> TrainingRun:
+        try:
+            return training_runner.start(
+                project_id,
+                payload.manifest_id,
+                payload.config,
+                payload.resume_run_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Dataset manifest hoặc project không tồn tại") from exc
+        except TrainingNotReady as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except TrainingBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get(
         "/api/projects/{project_id}/training-runs", response_model=list[TrainingRun]
     )
@@ -716,15 +750,11 @@ def create_app(
     )
     def cancel_training_run(project_id: str, run_id: str) -> TrainingRun:
         try:
-            run = training_runs.get(project_id, run_id)
+            return training_runner.cancel(project_id, run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Training run not found") from exc
-        if run.status not in {"pending", "running"}:
-            raise HTTPException(status_code=409, detail="Run này không còn đang chạy.")
-        # Checkpoints stay. A cancelled run at step 4,000 is a resumable run.
-        return training_runs.update(
-            project_id, run.model_copy(update={"status": "cancelled", "process_id": None})
-        )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/gpu-lease", response_model=GpuLeaseHolder | None)
     def gpu_lease_holder() -> GpuLeaseHolder | None:

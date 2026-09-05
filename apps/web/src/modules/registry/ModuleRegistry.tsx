@@ -42,6 +42,8 @@ export interface StudioContext {
   datasetBusy: boolean;
   trainingRun: TrainingRun | null;
   trainingProgress: TrainingProgressLine[];
+  trainingManifestId: string | null;
+  trainingRuntime: import("../../domain/types").TrainingRuntimeReport | null;
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -83,6 +85,7 @@ export interface StudioContext {
   onSkipCard: () => void;
   onCompileDataset: () => void;
   onCancelTrainingRun: () => void;
+  onStartTrainingRun: () => void;
 }
 
 interface ModuleRegistryProps {
@@ -138,7 +141,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} speakers={context.trainingCatalog.speakers} />;
+      return <TrainingJob busy={context.datasetBusy} manifestId={context.trainingManifestId} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} runtime={context.trainingRuntime} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":

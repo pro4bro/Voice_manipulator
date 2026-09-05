@@ -343,6 +343,11 @@ export const api = {
     request<DatasetReadiness>(`/api/projects/${projectId}/dataset/readiness`),
   compileDataset: (projectId: string) =>
     request<DatasetManifest>(`/api/projects/${projectId}/dataset/compile`, { method: "POST" }),
+  startTrainingRun: (projectId: string, payload: { manifestId: string; config?: Record<string, unknown>; resumeRunId?: string | null }) =>
+    request<TrainingRun>(`/api/projects/${projectId}/training-runs`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listTrainingRuns: (projectId: string) =>
     request<TrainingRun[]>(`/api/projects/${projectId}/training-runs`),
   getTrainingRunProgress: (projectId: string, runId: string, limit = 400) =>

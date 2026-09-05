@@ -42,12 +42,12 @@
 - Complete: checkpoint backup interval defaults to 1,000 steps; noise profiles accept multiple project media asset IDs and are reusable from Voice Manipulator Control Rack.
 - Complete: synchronized Light/Dark theme surfaces across Project Hub, workspace modules, Recorder, and Timeline.
 - Complete: compact Media Pool footage rows show summary metadata while file-level speaker/emotion assignment lives in a right-click menu.
-- Remaining: automatic speaker diarization, audio stem isolation, forced alignment, actual environment-profile learning, and project-native fine-tune execution.
+- Remaining: automatic speaker diarization, audio stem isolation, forced alignment, actual environment-profile learning, and Voice Model Set publishing after fine-tune.
 
 ## Next Executable Plan
 
 - `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training. Implementation and contract tests delivered.
-- `03-03`: run the training job. Runtime inspection, run records, dataset export, process parsing, GPU lease, and progress UI are delivered; the live runner, checkpoints, resume, and Voice Model Set publishing remain. Plan written 2026-09-03.
+- `03-03`: run the training job. Runtime inspection, run records, dataset export, process parsing, GPU lease, progress UI, live runner, checkpoints, and resume are delivered; Voice Model Set publishing remains. Plan written 2026-09-03.
 - `03-04`: High Quality Voice Training. Guided reading capture with a live read-along highlight and app-supplied emotion passages. It only adds sources, so it can run alongside 03-02 and 03-03.
 
 ## Planned Phase Sequence

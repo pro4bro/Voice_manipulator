@@ -34,7 +34,7 @@
 | Manifest to OmniVoice JSONL and dev split | `test_omnivoice_dataset_export.py` | Passed |
 | Engine output parsing and process cancellation | `test_training_process.py`, `test_training_log_parser.py` | Passed |
 | Single GPU lease | `test_gpu_lease.py` | Passed |
-| API orchestration starts a real run | Training runner and start route | Pending |
+| API orchestration starts a real run | `TrainingRunner`, start route, runtime-aware UI, and provisioned Python 3.11 CUDA runtime | Passed |
 | Checkpoint publish and Voice Model Set lineage | Publish adapter and integration test | Pending |
 
 ## Explicit Non-Evidence
@@ -42,5 +42,5 @@
 - A saved Training Catalog does not mean a dataset has been compiled.
 - A transcript does not prove that a supplied script matches the recording.
 - Manual speaker labels do not mean diarization or isolation has executed.
-- Training controls do not mean OmniVoice fine-tuning is connected.
-- `/api/training-runtime` reports the missing runtime but does not install packages or start a training process.
+- A provisioned runtime and start route do not prove a real project run has reached a checkpoint.
+- `/api/training-runtime` reports readiness; provisioning is explicit through `scripts/provision-training-runtime.ps1`, and training starts only from a validated manifest.

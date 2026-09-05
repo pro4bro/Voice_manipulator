@@ -30,8 +30,13 @@ class TrainingProcess:
     unreadable blob of every bar state since the last newline.
     """
 
-    def __init__(self, on_progress: Callable[[TrainingProgressLine], None]) -> None:
+    def __init__(
+        self,
+        on_progress: Callable[[TrainingProgressLine], None],
+        on_started: Callable[[int], None] | None = None,
+    ) -> None:
         self.on_progress = on_progress
+        self.on_started = on_started
         self._process: subprocess.Popen[str] | None = None
         self._cancelled = False
 
@@ -60,6 +65,8 @@ class TrainingProcess:
             bufsize=1,
             creationflags=creation,
         )
+        if self.on_started is not None:
+            self.on_started(self._process.pid)
         assert self._process.stdout is not None
         try:
             for chunk in self._process.stdout:

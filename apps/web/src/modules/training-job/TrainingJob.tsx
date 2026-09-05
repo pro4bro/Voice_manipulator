@@ -7,6 +7,7 @@ import type {
   EmotionLabel,
   SpeakerProfile,
   TrainingProgressLine,
+  TrainingRuntimeReport,
   TrainingRun,
 } from "../../domain/types";
 
@@ -19,6 +20,9 @@ interface TrainingJobProps {
   run?: TrainingRun | null;
   runProgress?: TrainingProgressLine[];
   onCancelRun?: () => void;
+  manifestId?: string | null;
+  runtime?: TrainingRuntimeReport | null;
+  onStart?: () => void;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -46,6 +50,9 @@ export function TrainingJob({
   run = null,
   runProgress = [],
   onCancelRun,
+  manifestId = null,
+  runtime = null,
+  onStart,
 }: TrainingJobProps) {
   // A run in flight is the only thing worth this panel's space; dataset
   // readiness is what you look at before there is one and after it finishes.
@@ -142,6 +149,16 @@ export function TrainingJob({
       >
         {busy ? "Đang biên dịch..." : segments ? `Biên dịch ${segments} đoạn` : "Chưa có đoạn nào để biên dịch"}
       </button>
+      {manifestId ? (
+        <button
+          className="button button--quiet button--full"
+          disabled={busy || !runtime?.ready}
+          onClick={() => onStart?.()}
+          type="button"
+        >
+          {busy ? "Đang khởi động..." : runtime?.ready ? "Bắt đầu training" : `Chưa sẵn sàng · thiếu ${(runtime?.packages ?? []).filter((item) => !item.installed).map((item) => item.name).slice(0, 3).join(", ") || "training runtime"}`}
+        </button>
+      ) : null}
     </ModuleFrame>
   );
 }

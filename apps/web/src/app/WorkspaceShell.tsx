@@ -18,6 +18,7 @@ import type {
   DatasetReadiness,
   ProjectMediaAsset,
   TrainingProgressLine,
+  TrainingRuntimeReport,
   TrainingRun,
   ReadingPackSummary,
   RecordingWaveformPreview,
@@ -137,6 +138,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [datasetBusy, setDatasetBusy] = useState(false);
   const [trainingRun, setTrainingRun] = useState<TrainingRun | null>(null);
   const [trainingProgress, setTrainingProgress] = useState<TrainingProgressLine[]>([]);
+  const [trainingManifestId, setTrainingManifestId] = useState<string | null>(null);
+  const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -215,6 +218,13 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     api.getDatasetReadiness(project.id)
       .then((readiness) => { if (!cancelled) setDatasetReadiness(readiness); })
       .catch(() => { /* Training Job shows that it could not read it. */ });
+
+    // Older embedded API mocks may not expose the optional runtime probe yet.
+    if (typeof api.getTrainingRuntime === "function") {
+      api.getTrainingRuntime()
+        .then((report) => { if (!cancelled) setTrainingRuntime(report); })
+        .catch(() => { if (!cancelled) setTrainingRuntime(null); });
+    }
 
     void refreshTrainingRun();
     return () => { cancelled = true; };
@@ -607,6 +617,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       const runs = await api.listTrainingRuns(project.id);
       const newest = runs[0] ?? null;
       setTrainingRun(newest);
+      if (newest) setTrainingManifestId(newest.manifestId);
       setTrainingProgress(
         newest ? await api.getTrainingRunProgress(project.id, newest.id) : [],
       );
@@ -639,6 +650,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setDatasetBusy(true);
     try {
       const manifest = await api.compileDataset(project.id);
+      setTrainingManifestId(manifest.id);
       setNotice(
         `Đã biên dịch ${manifest.stats.segments} đoạn · ` +
         `${manifest.stats.trainSegments} train / ${manifest.stats.devSegments} dev · ` +
@@ -647,6 +659,29 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       await refreshDatasetReadiness();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không biên dịch được dataset");
+    } finally {
+      setDatasetBusy(false);
+    }
+  }
+
+  async function startTrainingRun() {
+    if (!trainingManifestId) return;
+    setDatasetBusy(true);
+    try {
+      const run = await api.startTrainingRun(project.id, {
+        manifestId: trainingManifestId,
+        config: {
+          steps: trainingCatalog.settings.maxSteps,
+          saveSteps: trainingCatalog.settings.checkpointEvery,
+          learningRate: trainingCatalog.settings.learningRate,
+          batchTokens: Math.max(1, trainingCatalog.settings.batchSize) * 2048,
+        },
+      });
+      setTrainingRun(run);
+      setNotice(`Đã khởi động training run ${run.id}.`);
+      await refreshTrainingRun();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không khởi động được training");
     } finally {
       setDatasetBusy(false);
     }
@@ -1072,9 +1107,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     datasetReadiness,
     datasetBusy,
     trainingRun,
+    trainingManifestId,
+    trainingRuntime,
     trainingProgress,
     onCancelTrainingRun: () => void cancelTrainingRun(),
     onCompileDataset: () => void compileDataset(),
+    onStartTrainingRun: () => void startTrainingRun(),
     readingPacks,
     readingSession: readingSession
       ? {

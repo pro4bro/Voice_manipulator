@@ -31,3 +31,22 @@ def test_training_runtime_endpoint_reports_missing_packages_without_installing(t
         "webdataset",
     }
     assert not (tmp_path / "training").exists()
+
+
+def test_start_training_returns_a_clear_conflict_until_runtime_is_ready(tmp_path):
+    settings = replace(
+        Settings.from_env(),
+        data_root=tmp_path / "data",
+        training_runtime_root=tmp_path / "training" / ".venv",
+        training_wheel_cache=tmp_path / "wheels",
+        omnivoice_root=tmp_path / "engine",
+    )
+
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/projects/missing/training-runs",
+            json={"manifestId": "dataset-1"},
+        )
+
+    assert response.status_code == 409
+    assert "training runtime" in response.json()["detail"].lower()

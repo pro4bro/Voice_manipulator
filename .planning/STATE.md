@@ -5,16 +5,16 @@
 - **Status**:
   - Stabilization W0–W4 is merged into `main` (25 commits, fast-forward). R0/R1/R3/R4 done, R7 done, R5 measured and declined, R6 not performed.
   - **R2 accepted by the owner** on 2026-09-03 with two thresholds knowingly unmet — it does what it claims (mark untrusted timing, keep it out of cues) but it never claimed to make timing correct, which is the problem the owner actually has.
-  - Plan 03-01 complete. Plan 03-02 compiler and validation implementation delivered. Plan 03-03 is in progress: run records, runtime inspection, dataset export, process parsing, GPU lease, and progress UI are delivered; the live runner route and model publishing remain.
+  - Plan 03-01 complete. Plan 03-02 compiler and validation implementation delivered. Plan 03-03 is in progress: run records, runtime inspection, dataset export, process parsing, GPU lease, progress UI, and the live runner/start-cancel-resume route are delivered; model publishing remains.
   - Plan 03-04 (High Quality Voice Training) in progress: tasks 1, 2 and 5 delivered.
   - Plan 07-01 written: model delivery and security seams defined, no adapter, no route touched.
 
-- **Last action**: Recording no longer passes through Opus on its way to a dataset — the take is tapped as PCM off the audio graph and uploaded as WAV, with MediaRecorder kept only as a fallback. Added the reading-passage authoring dialog so a moderator writes passages instead of JSON. 125 backend and 179 frontend tests, production build.
+- **Last action**: Connected the validated manifest to an external OmniVoice runner, wired tokenization, accelerate training, progress, cancellation, resume config, GPU leasing, and runtime-aware UI. Provisioned the ignored Python 3.11 training venv with matching CUDA torch/torchaudio and verified the RTX 3090 import path. 216 backend and 197 frontend tests, production build.
 
-  - **Next action**: Finish 03-03 by wiring the validated manifest, runtime report, JSONL exporter, tokenization process, `accelerate` training process, GPU lease, checkpoints, resume, and publish path into one `TrainingRunner`. Keep the Start button disabled until the live route and runtime checks are complete.
+  - **Next action**: Finish 03-03 by publishing the first checkpoint as a Voice Model Set with manifest hash, engine revision, config, and similarity-gate lineage. Then verify one real project run end to end.
 
 - **Blockers**:
-  - Nothing actually trains yet. 03-03 now has the execution ingredients, but the API orchestration from a validated manifest into a real OmniVoice job is still missing. The training runtime currently has torch/torchaudio but lacks `omnivoice`, `accelerate`, `peft`, and `webdataset`.
+  - No project Dataset Manifest is currently selected and ready for a real run in the checked-in sample projects; after selecting and validating footage, the training runtime and runner are ready. Voice Model Set publishing is still not implemented.
   - Guided reading's read-along follows manually; it needs the local streaming recogniser, which now exists in Recorder for the live transcript and has not been wired to the teleprompter.
   - AI review still needs endpoint, model and API key in Windows → Preferences.
 

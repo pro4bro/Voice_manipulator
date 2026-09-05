@@ -104,8 +104,15 @@ class TrainingRuntime:
             site.glob(f"{name}-*.dist-info")
         )
 
-    @staticmethod
-    def _interpreter_tag() -> str:
+    def _interpreter_tag(self) -> str:
+        """Use the training venv's Python, not the API process's Python."""
+        config = self.root / "pyvenv.cfg"
+        if config.is_file():
+            for line in config.read_text(encoding="utf-8").splitlines():
+                if line.lower().startswith("version ="):
+                    version = line.split("=", 1)[1].strip().split(".")
+                    if len(version) >= 2 and version[0].isdigit() and version[1].isdigit():
+                        return f"cp{version[0]}{version[1]}"
         return f"cp{sys.version_info.major}{sys.version_info.minor}"
 
     def _wheel_tag_mismatch(self) -> list[str]:

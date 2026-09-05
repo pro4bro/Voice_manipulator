@@ -128,6 +128,22 @@ class ProjectDatasetCompiler:
         self._persist(project_id, manifest)
         return manifest
 
+    def load(self, project_id: str, manifest_id: str) -> DatasetManifest:
+        """Load the immutable manifest selected by a training run."""
+        path = (
+            Path(self.projects.get(project_id).project_path)
+            / "assets"
+            / "training"
+            / "datasets"
+            / f"{manifest_id}.json"
+        )
+        if not path.is_file():
+            raise KeyError(manifest_id)
+        manifest = DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        if manifest.id != manifest_id:
+            raise ValueError("Dataset manifest id không khớp với tên file.")
+        return manifest
+
     # ---------- collection ----------
 
     def _collect(

@@ -73,8 +73,8 @@ subset.
   review for realtime, accurate, AI-fixed, and user-fixed text.
 - Forced alignment of supplied scripts and Dataset Manifest compilation.
 - Automatic diarization, isolated speaker stems, and actual environment learning.
-- Project-native OmniVoice training jobs, checkpoints, cancellation, and model
-  registration in Voice Vault.
+- Voice Model Set publishing and model registration in Voice Vault after a
+  training checkpoint has passed its validation gates.
 - Final WAV/MP3 render with temporary filters baked in, Voice Patch processing,
   voice over/change/dub/isolation processors, and desktop packaging.
 
