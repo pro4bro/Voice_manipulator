@@ -1,6 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { ReadingMode } from "../../domain/reading-plan";
-import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingEngineId, TrainingEngineOption, TrainingModeId, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
@@ -44,6 +44,7 @@ export interface StudioContext {
   trainingProgress: TrainingProgressLine[];
   trainingManifestId: string | null;
   trainingRuntime: import("../../domain/types").TrainingRuntimeReport | null;
+  trainingEngines: TrainingEngineOption[];
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -85,7 +86,7 @@ export interface StudioContext {
   onSkipCard: () => void;
   onCompileDataset: () => void;
   onCancelTrainingRun: () => void;
-  onStartTrainingRun: () => void;
+  onStartTrainingRun: (engine: TrainingEngineId, mode: TrainingModeId) => void;
 }
 
 interface ModuleRegistryProps {
@@ -141,7 +142,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob busy={context.datasetBusy} manifestId={context.trainingManifestId} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} runtime={context.trainingRuntime} speakers={context.trainingCatalog.speakers} />;
+      return <TrainingJob busy={context.datasetBusy} manifestId={context.trainingManifestId} onCancelRun={context.onCancelTrainingRun} onCompile={context.onCompileDataset} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} run={context.trainingRun} runProgress={context.trainingProgress} runtime={context.trainingRuntime} speakers={context.trainingCatalog.speakers} trainingEngines={context.trainingEngines} />;
     case "speaker-isolation":
       return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":

@@ -50,3 +50,27 @@ def test_start_training_returns_a_clear_conflict_until_runtime_is_ready(tmp_path
 
     assert response.status_code == 409
     assert "training runtime" in response.json()["detail"].lower()
+
+
+def test_training_engines_lists_both_engine_families_and_their_modes(tmp_path):
+    settings = replace(
+        Settings.from_env(),
+        data_root=tmp_path / "data",
+        training_runtime_root=tmp_path / "training" / ".venv",
+        training_wheel_cache=tmp_path / "wheels",
+        omnivoice_root=tmp_path / "engine",
+    )
+
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.get("/api/training-engines")
+
+    assert response.status_code == 200
+    options = {item["id"]: item for item in response.json()}
+    assert set(options) == {"omnivoice", "vibevoice"}
+    assert {mode["id"] for mode in options["omnivoice"]["modes"]} == {
+        "from-scratch", "full-finetune", "lora-finetune"
+    }
+    assert {mode["id"] for mode in options["vibevoice"]["modes"]} == {
+        "tts-single-speaker-lora", "asr-lora"
+    }
+    assert all(not mode["available"] for mode in options["vibevoice"]["modes"])

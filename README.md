@@ -107,6 +107,17 @@ Before the first run, provision the separate training environment from the
 checkout root with `scripts\provision-training-runtime.ps1`. It uses the local
 CUDA torch wheel when available and installs OmniVoice from `engines/OmniVoice`.
 
+The Training Job exposes two engine families and their modes:
+
+| Engine | Modes | Current status |
+|---|---|---|
+| OmniVoice | LoRA fine-tune, Full fine-tune, Training from scratch (Emilia) | LoRA is runnable through the project runner; Full and Emilia are listed for selection but remain gated until their project data/runtime paths are implemented. |
+| VibeVoice | TTS single-speaker LoRA, ASR LoRA | Listed for selection; the VibeVoice checkout and adapters are not installed yet, so both modes remain gated. |
+
+The VibeVoice TTS mode follows the community single-speaker fine-tuning path;
+the ASR mode follows Microsoft's VibeVoice-ASR LoRA path. They are deliberately
+not mixed with the OmniVoice Dataset Manifest because their data contracts differ.
+
 If the speaker follows an existing script exactly, ASR is optional, not the
 audio-text pairing. Paste/review that script on the asset. A later forced
 alignment/validation pass must still detect omitted, repeated, or changed words

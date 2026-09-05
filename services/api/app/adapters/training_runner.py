@@ -72,6 +72,10 @@ class TrainingRunner:
         config: TrainingRunConfig | None = None,
         resume_run_id: str | None = None,
     ) -> TrainingRun:
+        if config and config.engine != "omnivoice":
+            raise ValueError("VibeVoice đã có trong danh sách lựa chọn nhưng chưa được cài adapter chạy thật.")
+        if config and config.mode not in {"lora-finetune", "full-finetune"}:
+            raise ValueError("Mode training này chưa được runner OmniVoice hỗ trợ trên Dataset Manifest hiện tại.")
         report = self.runtime.report()
         if not report.ready:
             missing = ", ".join(report.missing) or "training runtime"

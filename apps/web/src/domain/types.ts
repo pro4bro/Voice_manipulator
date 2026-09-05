@@ -521,7 +521,25 @@ export interface TrainingRun {
   error: string | null;
   createdAt: string;
   updatedAt: string;
-  config: { steps: number; saveSteps: number; learningRate: number; loraR: number };
+  config: { engine?: TrainingEngineId; mode?: TrainingModeId; steps: number; saveSteps: number; learningRate: number; loraR: number };
+}
+
+export type TrainingEngineId = "omnivoice" | "vibevoice";
+export type TrainingModeId = "from-scratch" | "full-finetune" | "lora-finetune" | "tts-single-speaker-lora" | "asr-lora";
+
+export interface TrainingModeOption {
+  id: TrainingModeId;
+  label: string;
+  description: string;
+  available: boolean;
+}
+
+export interface TrainingEngineOption {
+  id: TrainingEngineId;
+  label: string;
+  description: string;
+  installed: boolean;
+  modes: TrainingModeOption[];
 }
 
 export interface TrainingProgressLine {

@@ -32,6 +32,7 @@ import type {
   TrainingCatalog,
   TrainingProgressLine,
   TrainingRuntimeReport,
+  TrainingEngineOption,
   TrainingRun,
   WorkspacePage,
 } from "../domain/types";
@@ -360,6 +361,7 @@ export const api = {
     }),
   getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
   getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
+  getTrainingEngines: () => request<TrainingEngineOption[]>("/api/training-engines"),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>

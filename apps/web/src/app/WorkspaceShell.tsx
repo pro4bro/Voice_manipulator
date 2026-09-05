@@ -19,6 +19,9 @@ import type {
   ProjectMediaAsset,
   TrainingProgressLine,
   TrainingRuntimeReport,
+  TrainingEngineId,
+  TrainingEngineOption,
+  TrainingModeId,
   TrainingRun,
   ReadingPackSummary,
   RecordingWaveformPreview,
@@ -140,6 +143,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingProgress, setTrainingProgress] = useState<TrainingProgressLine[]>([]);
   const [trainingManifestId, setTrainingManifestId] = useState<string | null>(null);
   const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
+  const [trainingEngines, setTrainingEngines] = useState<TrainingEngineOption[]>([]);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -224,6 +228,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       api.getTrainingRuntime()
         .then((report) => { if (!cancelled) setTrainingRuntime(report); })
         .catch(() => { if (!cancelled) setTrainingRuntime(null); });
+    }
+    if (typeof api.getTrainingEngines === "function") {
+      api.getTrainingEngines()
+        .then((options) => { if (!cancelled) setTrainingEngines(options); })
+        .catch(() => { if (!cancelled) setTrainingEngines([]); });
     }
 
     void refreshTrainingRun();
@@ -664,13 +673,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  async function startTrainingRun() {
+  async function startTrainingRun(engine: TrainingEngineId, mode: TrainingModeId) {
     if (!trainingManifestId) return;
     setDatasetBusy(true);
     try {
       const run = await api.startTrainingRun(project.id, {
         manifestId: trainingManifestId,
         config: {
+          engine,
+          mode,
+          useLora: mode === "lora-finetune",
           steps: trainingCatalog.settings.maxSteps,
           saveSteps: trainingCatalog.settings.checkpointEvery,
           learningRate: trainingCatalog.settings.learningRate,
@@ -1109,10 +1121,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     trainingRun,
     trainingManifestId,
     trainingRuntime,
+    trainingEngines,
     trainingProgress,
     onCancelTrainingRun: () => void cancelTrainingRun(),
     onCompileDataset: () => void compileDataset(),
-    onStartTrainingRun: () => void startTrainingRun(),
+    onStartTrainingRun: (engine, mode) => void startTrainingRun(engine, mode),
     readingPacks,
     readingSession: readingSession
       ? {

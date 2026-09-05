@@ -295,6 +295,31 @@ class TrainingCatalog(DomainModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+TrainingEngineId = Literal["omnivoice", "vibevoice"]
+TrainingModeId = Literal[
+    "from-scratch",
+    "full-finetune",
+    "lora-finetune",
+    "tts-single-speaker-lora",
+    "asr-lora",
+]
+
+
+class TrainingModeOption(DomainModel):
+    id: TrainingModeId
+    label: str
+    description: str
+    available: bool = False
+
+
+class TrainingEngineOption(DomainModel):
+    id: TrainingEngineId
+    label: str
+    description: str
+    installed: bool = False
+    modes: list[TrainingModeOption] = Field(default_factory=list)
+
+
 class LocalMediaImport(DomainModel):
     source_path: str = Field(min_length=1, max_length=4096)
     cache_local: bool = True
@@ -696,7 +721,8 @@ TrainingRunStatus = Literal[
 
 
 class TrainingRunConfig(DomainModel):
-    engine: str = "omnivoice"
+    engine: TrainingEngineId = "omnivoice"
+    mode: TrainingModeId = "lora-finetune"
     base_model: str = "k2-fsa/OmniVoice"
     use_lora: bool = True
     lora_r: int = Field(default=16, ge=1)
