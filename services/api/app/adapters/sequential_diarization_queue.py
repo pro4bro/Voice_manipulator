@@ -41,6 +41,24 @@ def _word_bounds(word: dict) -> tuple[float, float] | None:
         return None
 
 
+def span_labels(spans: list[dict]) -> dict[str, str]:
+    """Raw processor speaker names to the stable `speaker-N` labels words carry.
+
+    Numbered by first appearance in time. Shared with the dataset compiler so a
+    span read back from disk resolves to exactly the label its words were given.
+    """
+    ordered = sorted(
+        (span for span in spans if _valid_span(span)),
+        key=lambda span: (float(span["start"]), float(span["end"])),
+    )
+    labels: dict[str, str] = {}
+    for span in ordered:
+        source = str(span.get("speaker") or "unknown")
+        if source not in labels:
+            labels[source] = f"speaker-{len(labels) + 1}"
+    return labels
+
+
 def assign_spans_to_words(words: list[dict], spans: list[dict]) -> list[dict]:
     """Assign a stable Speaker N label by time overlap; retain user profile IDs.
 
@@ -58,11 +76,7 @@ def assign_spans_to_words(words: list[dict], spans: list[dict]) -> list[dict]:
         (span for span in spans if _valid_span(span)),
         key=lambda span: (float(span["start"]), float(span["end"])),
     )
-    labels: dict[str, str] = {}
-    for span in ordered:
-        source = str(span.get("speaker") or "unknown")
-        if source not in labels:
-            labels[source] = f"speaker-{len(labels) + 1}"
+    labels = span_labels(ordered)
 
     result = [dict(word) for word in words]
     if not ordered:
@@ -245,7 +259,13 @@ class SequentialDiarizationQueue:
                     self._scheduled.discard((task.project_id, task.asset_id))
 
     @staticmethod
-    def _store_spans(project_path: str, asset_id: str, spans: list[dict], model: str) -> None:
+    def _store_spans(
+        project_path: str,
+        asset_id: str,
+        spans: list[dict],
+        model: str,
+        overlaps: list[dict] | None = None,
+    ) -> None:
         """Keep the model's raw output beside the asset.
 
         Only the labels applied to words were persisted, so a questionable result
@@ -260,6 +280,9 @@ class SequentialDiarizationQueue:
                 "model": model,
                 "producedAt": datetime.now(timezone.utc).isoformat(),
                 "spans": spans,
+                # Regions where voices overlapped. Training drops them; labelling
+                # never used them, because exclusive spans already settled owners.
+                "overlaps": overlaps or [],
             }
             temporary = directory / "spans.json.tmp"
             temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -295,14 +318,15 @@ class SequentialDiarizationQueue:
                 # second and starved the rest of the API of the library lock.
                 self.media.set_diarization_progress(task.project_id, task.asset_id, value)
 
-            spans = await self.studio.diarize(
+            result = await self.studio.diarize(
                 Path(project.project_path) / str(asset.analysis_path),
                 token=settings.huggingface_token,
                 model=settings.model,
                 expected_speakers=task.expected_speakers,
                 on_progress=report,
             )
-            self._store_spans(project.project_path, task.asset_id, spans, settings.model)
+            spans = result.spans
+            self._store_spans(project.project_path, task.asset_id, spans, settings.model, result.overlaps)
             # Re-read words instead of reusing the snapshot taken before the job.
             # Diarization runs for minutes; Script edits made in the meantime were
             # silently overwritten by the stale copy.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -9,6 +11,14 @@ import asyncio
 import httpx
 
 DiarizationProgressCallback = Callable[[float], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class DiarizationResult:
+    """Exclusive turns for labelling, and the regions where voices overlapped."""
+
+    spans: list[dict[str, Any]] = field(default_factory=list)
+    overlaps: list[dict[str, Any]] = field(default_factory=list)
 
 
 class StudioDiarizationGateway:
@@ -25,7 +35,7 @@ class StudioDiarizationGateway:
         model: str,
         expected_speakers: int | None = None,
         on_progress: DiarizationProgressCallback | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> DiarizationResult:
         if not token:
             raise RuntimeError("Cần Hugging Face token cho Speaker Diarization. Mở Windows → Preferences, chấp nhận model community-1 rồi nhập token.")
         progress_id = uuid4().hex
@@ -70,4 +80,10 @@ class StudioDiarizationGateway:
             raise RuntimeError(str(payload.get("detail") or f"Speaker Diarization thất bại ({response.status_code})."))
         await publish(100)
         spans = payload.get("spans", [])
-        return [dict(span) for span in spans if isinstance(span, dict)]
+        # An older Studio returns no overlaps; that reads as "none measured",
+        # which the compiler treats as nothing to exclude rather than an error.
+        overlaps = payload.get("overlaps", [])
+        return DiarizationResult(
+            spans=[dict(span) for span in spans if isinstance(span, dict)],
+            overlaps=[dict(region) for region in overlaps if isinstance(region, dict)],
+        )

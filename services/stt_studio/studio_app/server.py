@@ -529,7 +529,27 @@ def _load_diarization_waveform(path: Path) -> dict[str, Any]:
         waveform = torchaudio.functional.resample(waveform, sample_rate, target_rate)
     return {"waveform": waveform, "sample_rate": target_rate}
 
-def _diarize(path: Path, progress_id: str, model_name: str, token: str, expected_speakers: int = 0) -> list[dict[str, Any]]:
+def overlap_regions(segments: Any) -> list[dict[str, float]]:
+    """Where two or more voices sound at once, as plain start/end pairs.
+
+    Exclusive diarization is what makes word labels clean - every instant has
+    exactly one owner - and for that same reason it cannot say where people
+    talked over each other: the overlap is resolved away before it reaches us.
+    The regular annotation still holds it, so the regions are read from there
+    and carried alongside, never mixed into the spans the labels come from.
+    """
+    regions: list[dict[str, float]] = []
+    for segment in segments or []:
+        try:
+            start, end = max(0.0, float(segment.start)), max(0.0, float(segment.end))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if end > start:
+            regions.append({"start": round(start, 3), "end": round(end, 3)})
+    return regions
+
+
+def _diarize(path: Path, progress_id: str, model_name: str, token: str, expected_speakers: int = 0) -> dict[str, list[dict[str, Any]]]:
     progress.set(progress_id, 3)
     pipeline = _diarization_model(model_name, token)
     progress.set(progress_id, 15)
@@ -545,8 +565,17 @@ def _diarize(path: Path, progress_id: str, model_name: str, token: str, expected
             continue
         if end > start:
             spans.append({"speaker": str(speaker), "start": round(start, 3), "end": round(end, 3)})
+    overlaps: list[dict[str, float]] = []
+    regular = getattr(output, "speaker_diarization", None)
+    try:
+        if regular is not None and hasattr(regular, "get_overlap"):
+            overlaps = overlap_regions(regular.get_overlap())
+    except Exception:
+        # Overlap is evidence for training, not for labelling. Losing it must
+        # never fail a diarization that already produced good labels.
+        overlaps = []
     progress.set(progress_id, 100)
-    return spans
+    return {"spans": spans, "overlaps": overlaps}
 
 
 @app.get("/api/audio/diarize/{progress_id}/progress")
@@ -567,12 +596,12 @@ async def diarize_audio(file: UploadFile = File(...), progress_id: str = Form(""
             while chunk := await file.read(1024 * 1024):
                 output.write(chunk)
         try:
-            spans = await asyncio.to_thread(_diarize, destination, progress_id, model, huggingface_token, max(0, min(8, expected_speakers)))
+            result = await asyncio.to_thread(_diarize, destination, progress_id, model, huggingface_token, max(0, min(8, expected_speakers)))
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Speaker Diarization thất bại: {exc}") from exc
-    return {"spans": spans, "elapsed": round(time.perf_counter() - started, 2)}
+    return {"spans": result["spans"], "overlaps": result["overlaps"], "elapsed": round(time.perf_counter() - started, 2)}
 
 @app.post("/api/audio/live/chunk")
 async def live_chunk(

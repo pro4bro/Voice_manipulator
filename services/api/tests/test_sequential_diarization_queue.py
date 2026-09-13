@@ -160,3 +160,36 @@ def test_a_short_turn_with_silence_around_it_is_preserved() -> None:
     assigned = assign_spans_to_words(words, spans)
 
     assert [word["diarizationSpeakerId"] for word in assigned] == ["speaker-1", "speaker-2", "speaker-1"]
+
+
+def test_overlap_regions_are_stored_beside_the_spans_for_training_to_drop(tmp_path):
+    import json
+
+    from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
+
+    SequentialDiarizationQueue._store_spans(
+        str(tmp_path),
+        "asset-1",
+        [{"speaker": "SPEAKER_00", "start": 0.0, "end": 4.0}],
+        "pyannote/speaker-diarization-community-1",
+        [{"start": 1.5, "end": 2.25}],
+    )
+    stored = json.loads(
+        (tmp_path / "assets" / "media" / "asset-1" / "diarization" / "spans.json").read_text(encoding="utf-8")
+    )
+
+    assert stored["overlaps"] == [{"start": 1.5, "end": 2.25}]
+    assert stored["spans"][0]["speaker"] == "SPEAKER_00"
+
+
+def test_span_labels_number_voices_by_first_appearance():
+    from app.adapters.sequential_diarization_queue import span_labels
+
+    labels = span_labels(
+        [
+            {"speaker": "SPEAKER_01", "start": 5.0, "end": 6.0},
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0},
+        ]
+    )
+
+    assert labels == {"SPEAKER_00": "speaker-1", "SPEAKER_01": "speaker-2"}

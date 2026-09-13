@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -150,20 +151,216 @@ def test_a_segment_never_crosses_a_speaker_change(tmp_path):
         assert segment.speaker_profile_id is not None
 
 
-def test_mixed_speaker_footage_is_refused_while_any_word_is_unowned(tmp_path):
-    fixture = Fixture(tmp_path)
+def timed_words(labels, seconds=0.5, gap=0.0, **overrides):
+    """Consecutive words, one per entry, each carrying the given diarization label."""
+    out = []
+    at = 0.0
+    for index, label in enumerate(labels):
+        extra = {"diarizationSpeakerId": label} if label else {}
+        out.append(word(f"w{index}", round(at, 3), round(at + seconds, 3), **extra, **overrides))
+        at += seconds + gap
+    return out
+
+
+def write_diarization(fixture, asset_id, spans, overlaps=None):
+    folder = Path(fixture.project.project_path) / "assets" / "media" / asset_id / "diarization"
+    folder.mkdir(parents=True, exist_ok=True)
+    payload = {"model": "pyannote/speaker-diarization-community-1", "spans": spans}
+    if overlaps is not None:
+        payload["overlaps"] = overlaps
+    (folder / "spans.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def two_profiles(fixture):
     other = SpeakerProfile(name="Người thứ hai")
-    fixture.catalogs.save(
-        fixture.project.id, TrainingCatalog(speakers=[fixture.speaker, other])
-    )
-    words = steady_words(8, speakerId=fixture.speaker.id) + steady_words(4)
+    fixture.catalogs.save(fixture.project.id, TrainingCatalog(speakers=[fixture.speaker, other]))
+    return other
+
+
+def texts(manifest):
+    return " ".join(segment.text for segment in manifest.segments)
+
+
+def test_the_owned_part_of_multi_speaker_footage_trains_and_the_rest_is_dropped(tmp_path):
+    """Owner's rule, 2026-09-14: an unassigned stretch leaves, the footage stays."""
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    words = steady_words(8, speakerId=fixture.speaker.id) + [
+        word(f"ai{i}", round(4.0 + i * 0.5, 3), round(4.5 + i * 0.5, 3)) for i in range(8)
+    ]
     fixture.add("asset-mixed", words=words, speaker_profile_ids=[fixture.speaker.id, other.id])
 
-    with pytest.raises(DatasetCompilationError):
-        fixture.compiler.compile(fixture.project.id)
+    manifest = fixture.compiler.compile(fixture.project.id)
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    assert {segment.speaker_profile_id for segment in manifest.segments} == {fixture.speaker.id}
+    assert "ai" not in texts(manifest)
+    assert readiness.rejections == []
+    assert readiness.seconds_dropped_unassigned == pytest.approx(4.0)
+
+
+def test_footage_where_nobody_is_assigned_is_refused_and_says_so(tmp_path):
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    fixture.add(
+        "asset-nobody",
+        words=timed_words(["speaker-1"] * 8 + ["speaker-2"] * 8),
+        speaker_profile_ids=[fixture.speaker.id, other.id],
+    )
 
     readiness = fixture.compiler.readiness(fixture.project.id)
+
     assert [rejection.reason for rejection in readiness.rejections] == ["mixed-speaker-unresolved"]
+
+
+def test_a_diarization_label_mapped_to_a_profile_owns_its_words(tmp_path):
+    """The compiler reads the label map itself, not only speakerId on each word."""
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    fixture.add(
+        "asset-mapped",
+        words=timed_words(["speaker-1"] * 8 + ["speaker-2"] * 8, gap=0.0),
+        speaker_profile_ids=[fixture.speaker.id, other.id],
+        diarization_speaker_assignments={"speaker-1": fixture.speaker.id, "speaker-2": other.id},
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    owners = {segment.speaker_profile_id for segment in manifest.segments}
+    assert owners == {fixture.speaker.id, other.id}
+    for segment in manifest.segments:
+        mine = [w for w in ["w0", "w7"] if w in segment.text]
+        theirs = [w for w in ["w8", "w15"] if w in segment.text]
+        assert not (mine and theirs), "a segment crossed the speaker change"
+
+
+def test_a_label_mapped_to_nobody_is_dropped(tmp_path):
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    fixture.add(
+        "asset-ignored",
+        words=timed_words(["speaker-1"] * 8 + ["speaker-2"] * 8),
+        speaker_profile_ids=[fixture.speaker.id, other.id],
+        diarization_speaker_assignments={"speaker-1": fixture.speaker.id, "speaker-2": None},
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    assert {segment.speaker_profile_id for segment in manifest.segments} == {fixture.speaker.id}
+    assert "w12" not in texts(manifest)
+
+
+def test_one_profile_does_not_claim_a_second_voice_diarization_found(tmp_path):
+    """An interviewer must not end up inside the guest's model."""
+    fixture = Fixture(tmp_path)
+    fixture.add(
+        "asset-interview",
+        words=timed_words(["speaker-1"] * 8 + ["speaker-2"] * 8),
+        speaker_profile_ids=[fixture.speaker.id],
+        diarization_speaker_assignments={"speaker-1": fixture.speaker.id},
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    assert "w10" not in texts(manifest)
+    assert "w3" in texts(manifest)
+
+
+def test_a_manual_row_move_outranks_the_diarization_label(tmp_path):
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    words = timed_words(["speaker-1"] * 8)
+    for moved in words:
+        moved["manualDiarizationSpeakerId"] = "speaker-2"
+    fixture.add(
+        "asset-moved",
+        words=words,
+        speaker_profile_ids=[fixture.speaker.id, other.id],
+        diarization_speaker_assignments={"speaker-1": fixture.speaker.id, "speaker-2": other.id},
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    assert {segment.speaker_profile_id for segment in manifest.segments} == {other.id}
+
+
+def test_words_under_talk_over_leave_the_dataset_with_their_audio(tmp_path):
+    fixture = Fixture(tmp_path)
+    fixture.add("asset-overlap", words=steady_words(24))
+    write_diarization(
+        fixture,
+        "asset-overlap",
+        spans=[{"speaker": "SPEAKER_00", "start": 0.0, "end": 12.0}],
+        overlaps=[{"start": 5.0, "end": 6.0}],
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    assert "tu10" not in texts(manifest) and "tu11" not in texts(manifest)
+    for segment in manifest.segments:
+        assert segment.end <= 5.0 or segment.start >= 6.0, "a segment still spans the overlap"
+    assert readiness.seconds_dropped_overlap == pytest.approx(1.0)
+
+
+def test_an_untranscribed_voice_between_two_words_breaks_the_segment(tmp_path):
+    """Silence in the transcript is not silence in the audio."""
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    words = steady_words(8, speakerId=fixture.speaker.id) + [
+        word(f"late{i}", round(5.0 + i * 0.5, 3), round(5.5 + i * 0.5, 3), speakerId=fixture.speaker.id)
+        for i in range(8)
+    ]
+    fixture.add(
+        "asset-backchannel",
+        words=words,
+        speaker_profile_ids=[fixture.speaker.id, other.id],
+        diarization_speaker_assignments={"speaker-2": other.id},
+    )
+    write_diarization(
+        fixture,
+        "asset-backchannel",
+        spans=[
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 4.0},
+            {"speaker": "SPEAKER_01", "start": 4.1, "end": 4.9},
+            {"speaker": "SPEAKER_00", "start": 5.0, "end": 9.0},
+        ],
+    )
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    for segment in manifest.segments:
+        assert not (segment.start < 4.1 and segment.end > 4.9)
+
+
+def test_short_groups_never_merge_across_audio_that_was_dropped(tmp_path):
+    """Adjacent in the list is not adjacent in the audio."""
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    words = (
+        [word(f"a{i}", round(i * 0.5, 3), round(0.5 + i * 0.5, 3), speakerId=fixture.speaker.id) for i in range(3)]
+        + [word(f"x{i}", round(1.5 + i * 0.5, 3), round(2.0 + i * 0.5, 3)) for i in range(2)]
+        + [word(f"b{i}", round(2.5 + i * 0.5, 3), round(3.0 + i * 0.5, 3), speakerId=fixture.speaker.id) for i in range(6)]
+    )
+    fixture.add("asset-walled", words=words, speaker_profile_ids=[fixture.speaker.id, other.id])
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    for segment in manifest.segments:
+        assert not (segment.start < 1.5 and segment.end > 2.5), "merged across dropped audio"
+
+
+def test_spans_stored_before_overlaps_existed_are_read_without_error(tmp_path):
+    fixture = Fixture(tmp_path)
+    fixture.add("asset-legacy-spans", words=steady_words(16))
+    write_diarization(
+        fixture, "asset-legacy-spans", spans=[{"speaker": "SPEAKER_00", "start": 0.0, "end": 8.0}]
+    )
+
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    assert readiness.segments > 0
+    assert readiness.seconds_dropped_overlap == 0
 
 
 def test_untrusted_word_timing_never_becomes_a_cut_point(tmp_path):

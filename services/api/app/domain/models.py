@@ -645,6 +645,10 @@ class DatasetStats(DomainModel):
     seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
     segments_by_tier: dict[str, int] = Field(default_factory=dict)
     seconds_by_speaker: dict[str, float] = Field(default_factory=dict)
+    # Speech that existed but was kept out: nobody owned it, or two voices
+    # overlapped. Shown so a thin dataset explains itself instead of looking lost.
+    seconds_dropped_unassigned: float = 0
+    seconds_dropped_overlap: float = 0
 
 
 class DatasetManifest(DomainModel):
@@ -672,6 +676,8 @@ class DatasetReadiness(DomainModel):
     # merely because it compiled; it is ready when what was read matches what
     # was written, and this is where that shows.
     script_validations: list["ScriptValidation"] = Field(default_factory=list)
+    seconds_dropped_unassigned: float = 0
+    seconds_dropped_overlap: float = 0
 
 
 class ScriptValidation(DomainModel):
