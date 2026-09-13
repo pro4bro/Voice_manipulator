@@ -712,6 +712,7 @@ def create_app(
                 payload.manifest_id,
                 training_models.resolve(payload.config),
                 payload.resume_run_id,
+                payload.speaker_profile_ids,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Dataset manifest hoặc project không tồn tại") from exc

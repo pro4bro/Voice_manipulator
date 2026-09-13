@@ -6,6 +6,7 @@ import os
 import subprocess
 import threading
 from pathlib import Path
+from uuid import uuid4
 
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
@@ -24,6 +25,7 @@ from app.adapters.training_process import (
 )
 from app.adapters.training_runtime import TrainingRuntime
 from app.domain.models import (
+    DatasetManifest,
     TrainingCheckpoint,
     TrainingProgressLine,
     TrainingRun,
@@ -71,7 +73,14 @@ class TrainingRunner:
         manifest_id: str,
         config: TrainingRunConfig | None = None,
         resume_run_id: str | None = None,
+        speaker_profile_ids: list[str] | None = None,
     ) -> TrainingRun:
+        """Start one run, resume one, or start one run per voice target.
+
+        With voice targets, each Speaker Profile becomes its own run trained on
+        that person's segments only, queued behind the one before it. The first
+        run of the batch is returned; the rest are listed with it.
+        """
         if config and config.engine != "omnivoice":
             raise ValueError("VibeVoice đã có trong danh sách lựa chọn nhưng chưa được cài adapter chạy thật.")
         if config and config.mode not in {"lora-finetune", "full-finetune"}:
@@ -86,6 +95,10 @@ class TrainingRunner:
         live = [run for run in self.runs.list(project_id) if run.status in {"pending", "running"}]
         if live:
             raise TrainingBusyError("Project này đã có một training run đang chạy.")
+
+        targets = list(dict.fromkeys(speaker_profile_ids or []))
+        if targets and not resume_run_id:
+            return self._start_batch(project_id, manifest, config, targets)
 
         if resume_run_id:
             run = self.runs.get(project_id, resume_run_id)
@@ -112,7 +125,61 @@ class TrainingRunner:
         spawn_in_thread(lambda: self._execute(run))
         return self.runs.get(project_id, run.id)
 
+    def _start_batch(
+        self,
+        project_id: str,
+        manifest: DatasetManifest,
+        config: TrainingRunConfig | None,
+        targets: list[str],
+    ) -> TrainingRun:
+        catalog = self.catalogs.get(project_id)
+        names = {speaker.id: speaker.name for speaker in catalog.speakers}
+        problems: list[str] = []
+        for target in targets:
+            if target not in names:
+                problems.append(f"Speaker Profile '{target}' không tồn tại")
+                continue
+            mine = [segment for segment in manifest.segments if segment.speaker_profile_id == target]
+            splits = {segment.split for segment in mine}
+            if not {"train", "dev"} <= splits:
+                problems.append(f"{names[target]} chỉ có {len(mine)} đoạn, cần ít nhất 1 train và 1 dev")
+        # Refused before any run exists: a batch that fails on its third voice
+        # after two hours spent on the first two is worse than no batch.
+        if problems:
+            raise ValueError("Không bắt đầu được: " + "; ".join(problems) + ".")
+
+        batch_id = f"batch-{uuid4().hex[:12]}"
+        manifest_hash = self._manifest_hash(project_id, manifest.id)
+        revision = self._engine_revision()
+        runs: list[TrainingRun] = []
+        for index, target in enumerate(targets):
+            run = self.runs.create(
+                project_id,
+                manifest.id,
+                manifest_hash=manifest_hash,
+                config=config,
+                engine_revision=revision,
+                speaker_profile_id=target,
+                batch_id=batch_id,
+                batch_index=index,
+                batch_size=len(targets),
+            )
+            # Queued runs are owned by the API process until their turn: a poll
+            # does not reconcile them as interrupted while they wait, and does
+            # if the app stops before reaching them.
+            runs.append(self.runs.update(project_id, run.model_copy(update={"process_id": os.getpid()})))
+        spawn_in_thread(lambda: self._execute_batch(runs))
+        return self.runs.get(project_id, runs[0].id)
+
+    def _execute_batch(self, runs: list[TrainingRun]) -> None:
+        for queued in runs:
+            current = self.runs.get(queued.project_id, queued.id)
+            if current.status != "pending":
+                continue
+            self._execute(current)
+
     def cancel(self, project_id: str, run_id: str) -> TrainingRun:
+        """Cancel a run, and with it every voice still queued behind it."""
         run = self.runs.get(project_id, run_id)
         if run.status not in {"pending", "running"}:
             raise ValueError("Run này không còn đang chạy.")
@@ -120,6 +187,13 @@ class TrainingRunner:
             process = self._active.get(run_id)
         if process is not None:
             process.cancel()
+        if run.batch_id:
+            for sibling in self.runs.list(project_id):
+                if sibling.batch_id == run.batch_id and sibling.id != run.id and sibling.status == "pending":
+                    self.runs.update(
+                        project_id,
+                        sibling.model_copy(update={"status": "cancelled", "process_id": None}),
+                    )
         return self.runs.update(
             project_id,
             run.model_copy(update={"status": "cancelled", "process_id": None}),
@@ -142,6 +216,19 @@ class TrainingRunner:
             catalog = self.catalogs.get(run.project_id)
 
             self._append(run, "read-manifest", f"Đã đọc Dataset Manifest {manifest.id}.")
+            if run.speaker_profile_id:
+                name = next(
+                    (speaker.name for speaker in catalog.speakers if speaker.id == run.speaker_profile_id),
+                    run.speaker_profile_id,
+                )
+                mine = [segment for segment in manifest.segments if segment.speaker_profile_id == run.speaker_profile_id]
+                manifest = manifest.model_copy(update={"segments": mine})
+                minutes = sum(segment.duration for segment in mine) / 60
+                self._append(
+                    run,
+                    "read-manifest",
+                    f"Voice target {run.batch_index + 1}/{run.batch_size}: {name} · {len(mine)} đoạn · {minutes:.1f} phút.",
+                )
             run = self._set_run(run, step_id="write-jsonl")
             export = self.exporter.export(
                 manifest,
@@ -159,7 +246,9 @@ class TrainingRunner:
                 run = self._set_run(run, step_id="tokenize")
                 commands = OmniVoiceTrainingCommands(self.runtime.python, self.engine_root)
                 process = self._process_for(run)
-                code = run_tokenize(process, commands.tokenize(Path(export.train_jsonl), token_dir))
+                command = commands.tokenize(Path(export.train_jsonl), token_dir)
+                self._append_command(run, "tokenize", command)
+                code = run_tokenize(process, command)
                 if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
@@ -167,7 +256,9 @@ class TrainingRunner:
 
                 dev_dir = run_dir / "data" / "dev-tokens"
                 dev_process = self._process_for(run)
-                code = run_tokenize(dev_process, commands.tokenize(Path(export.dev_jsonl), dev_dir))
+                command = commands.tokenize(Path(export.dev_jsonl), dev_dir)
+                self._append_command(run, "tokenize", command)
+                code = run_tokenize(dev_process, command)
                 if dev_process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
@@ -179,10 +270,9 @@ class TrainingRunner:
             train_config = self._write_train_config(run, run_dir)
             commands = OmniVoiceTrainingCommands(self.runtime.python, self.engine_root)
             process = self._process_for(run)
-            code = run_training(
-                process,
-                commands.train(train_config, data_config, run_dir / "checkpoints"),
-            )
+            command = commands.train(train_config, data_config, run_dir / "checkpoints")
+            self._append_command(run, "load-model", command)
+            code = run_training(process, command)
             if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                 return
             if code != 0:
@@ -226,6 +316,26 @@ class TrainingRunner:
 
     def _append(self, run: TrainingRun, step_id: str, message: str) -> None:
         self.runs.append_progress(run.project_id, run.id, TrainingProgressLine(step_id=step_id, message=message))
+
+    def _append_command(self, run: TrainingRun, step_id: str, command: list[str]) -> None:
+        """The command a step runs, as a line in the run's log.
+
+        The journal lives inside the project, which moves between machines, so
+        machine paths are written as placeholders rather than as they are here.
+        """
+        replacements = [
+            (str(self.runs.run_dir(run.project_id, run.id)), "<run>"),
+            (str(self.engine_root), "<omnivoice>"),
+            (str(self.runtime.python), "python"),
+        ]
+        shown: list[str] = []
+        for argument in command:
+            for original, placeholder in replacements:
+                if original and argument.startswith(original):
+                    argument = placeholder + argument[len(original):].replace("\\", "/")
+                    break
+            shown.append(f'"{argument}"' if " " in argument else argument)
+        self._append(run, step_id, "$ " + " ".join(shown))
 
     def _set_run(self, run: TrainingRun, **updates: object) -> TrainingRun:
         current = self.runs.get(run.project_id, run.id)

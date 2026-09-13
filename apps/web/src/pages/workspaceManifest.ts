@@ -1,6 +1,20 @@
 import type { WorkspaceManifest, WorkspacePage } from "../domain/types";
 
 const manifests: Record<WorkspacePage, WorkspaceManifest> = {
+  dashboard: {
+    page: "dashboard",
+    label: "Dashboard",
+    eyebrow: "PIPELINE / FOOTAGE / DATASET",
+    modules: ["library-panel", "pipeline-dashboard", "dataset-readiness"],
+    columns: {
+      left: ["library-panel"],
+      center: ["pipeline-dashboard"],
+      right: ["dataset-readiness"],
+      bottom: [],
+    },
+    modes: [],
+    plannedModes: [],
+  },
   "speech-to-text": {
     page: "speech-to-text",
     label: "Speech to Text",

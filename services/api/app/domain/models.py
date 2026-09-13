@@ -17,7 +17,7 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
 
 
-WorkspacePage = Literal["speech-to-text", "voice-training", "voice-manipulator"]
+WorkspacePage = Literal["dashboard", "speech-to-text", "voice-training", "voice-manipulator"]
 
 
 class ProjectCreate(DomainModel):
@@ -758,6 +758,8 @@ class DatasetReadiness(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list)
     segments_by_tier: dict[str, int] = Field(default_factory=dict)
     seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
+    # Per Speaker Profile, so each voice target shows how much of itself it has.
+    seconds_by_speaker: dict[str, float] = Field(default_factory=dict)
     rejections: list[DatasetRejection] = Field(default_factory=list)
     # Only for sources read from a supplied script. A source is not "ready"
     # merely because it compiled; it is ready when what was read matches what
@@ -837,6 +839,9 @@ class TrainingRunStart(DomainModel):
     manifest_id: str = Field(min_length=1, max_length=160)
     config: TrainingRunConfig = Field(default_factory=TrainingRunConfig)
     resume_run_id: str | None = Field(default=None, max_length=160)
+    # One voice per ticked Speaker Profile: each becomes its own run, trained on
+    # that person's segments only, one after another on the one GPU.
+    speaker_profile_ids: list[str] = Field(default_factory=list, max_length=64)
 
 
 class TrainingCheckpoint(DomainModel):
@@ -861,6 +866,11 @@ class TrainingRun(DomainModel):
     manifest_hash: str = ""
     engine_revision: str = ""
     speaker_profile_id: str | None = None
+    # Runs started together for several voice targets share a batch. A run
+    # recorded before batches existed is a batch of one.
+    batch_id: str | None = None
+    batch_index: int = Field(default=0, ge=0)
+    batch_size: int = Field(default=1, ge=1)
     emotion: EmotionLabel = "normal"
     config: TrainingRunConfig = Field(default_factory=TrainingRunConfig)
     status: TrainingRunStatus = "pending"

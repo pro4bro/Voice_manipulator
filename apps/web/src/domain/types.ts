@@ -1,4 +1,4 @@
-export type WorkspacePage = "speech-to-text" | "voice-training" | "voice-manipulator";
+export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator";
 export type ThemeMode = "light" | "dark";
 export type RuntimeAction = "start" | "stop" | "restart";
 
@@ -67,7 +67,9 @@ export type ModuleId =
   | "speaker-isolation"
   | "speaker-emotion"
   | "train"
-  | "voice-generator";
+  | "voice-generator"
+  | "pipeline-dashboard"
+  | "dataset-readiness";
 
 export interface Project {
   id: string;
@@ -474,6 +476,9 @@ export interface DatasetReadiness {
   speakerProfileIds: string[];
   segmentsByTier: Record<string, number>;
   secondsByEmotion: Record<string, number>;
+  secondsBySpeaker?: Record<string, number>;
+  secondsDroppedUnassigned?: number;
+  secondsDroppedOverlap?: number;
   rejections: DatasetRejection[];
   scriptValidations: ScriptValidation[];
 }
@@ -521,6 +526,10 @@ export interface TrainingRun {
   globalStep: number;
   emotion: EmotionLabel;
   speakerProfileId: string | null;
+  /** Runs started together for several voice targets share a batch. */
+  batchId?: string | null;
+  batchIndex?: number;
+  batchSize?: number;
   checkpoints: TrainingCheckpoint[];
   error: string | null;
   createdAt: string;

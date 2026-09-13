@@ -58,6 +58,9 @@ class FileTrainingRuns:
         speaker_profile_id: str | None = None,
         emotion: str = "normal",
         engine_revision: str = "",
+        batch_id: str | None = None,
+        batch_index: int = 0,
+        batch_size: int = 1,
     ) -> TrainingRun:
         run = TrainingRun(
             id=f"run-{uuid4().hex[:12]}",
@@ -66,6 +69,9 @@ class FileTrainingRuns:
             manifest_hash=manifest_hash,
             engine_revision=engine_revision,
             speaker_profile_id=speaker_profile_id,
+            batch_id=batch_id,
+            batch_index=batch_index,
+            batch_size=batch_size,
             emotion=emotion,  # type: ignore[arg-type]
             config=config or TrainingRunConfig(),
         )

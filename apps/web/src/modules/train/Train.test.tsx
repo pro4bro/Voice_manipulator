@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TrainingCatalog, TrainingModelOption, TrainingParameterSpec } from "../../domain/types";
+import type { DatasetReadiness, TrainingCatalog, TrainingModelOption, TrainingParameterSpec } from "../../domain/types";
 import { Train } from "./Train";
 
 const catalog: TrainingCatalog = {
@@ -45,6 +45,10 @@ const vibevoice = model({
 });
 
 const models = [omnivoice, vibevoice];
+
+const AN = { id: "speaker-an", name: "An", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#888", createdAt: "2026-08-23T00:00:00Z" };
+const ticked: TrainingCatalog = { ...catalog, speakers: [AN], settings: { ...catalog.settings, targetSpeakerIds: ["speaker-an"] } };
+const readiness = { selectedAssets: 1, readyAssets: 1, segments: 30, totalSeconds: 90, speakerProfileIds: ["speaker-an"], segmentsByTier: {}, secondsByEmotion: {}, secondsBySpeaker: { "speaker-an": 90 }, rejections: [], scriptValidations: [] } as DatasetReadiness;
 
 describe("Train", () => {
   it("does not claim training is runnable before any model is known", () => {
@@ -102,20 +106,31 @@ describe("Train", () => {
   });
 
   it("refuses to start with a value outside the descriptor's range", () => {
-    const withOverride = { ...catalog, settings: { ...catalog.settings, modelParameters: { "omnivoice-lora": { lora_r: 0 } } } };
-    render(<Train assets={[]} catalog={withOverride} onCatalogChange={vi.fn()} trainingManifestId="dataset-1" trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+    const withOverride = { ...ticked, settings: { ...ticked.settings, modelParameters: { "omnivoice-lora": { lora_r: 0 } } } };
+    render(<Train assets={[]} catalog={withOverride} onCatalogChange={vi.fn()} readiness={readiness} trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
 
     expect(screen.getByText("Tối thiểu 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tham số chưa hợp lệ" })).toBeDisabled();
   });
 
-  it("starts the chosen model once dataset and runtime are ready", () => {
+  it("starts one voice per ticked target once each has data and the runtime is ready", () => {
     const onStart = vi.fn();
-    render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} onStart={onStart} trainingManifestId="dataset-1" trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+    render(<Train assets={[]} catalog={ticked} onCatalogChange={vi.fn()} onStart={onStart} readiness={readiness} trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu OmniVoice · LoRA fine-tune" }));
+    expect(screen.getByText("1m 30s")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu OmniVoice · LoRA fine-tune · 1 voice" }));
     expect(onStart).toHaveBeenCalled();
     expect(screen.getByText("ADAPTER READY")).toBeInTheDocument();
+  });
+
+  it("will not start without a target, or with a target the dataset has nothing for", () => {
+    const runtime = { root: "runtime", ready: true } as never;
+    const { rerender } = render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} readiness={readiness} trainingModels={models} trainingRuntime={runtime} />);
+    expect(screen.getByRole("button", { name: "Tick ít nhất một voice target" })).toBeDisabled();
+
+    rerender(<Train assets={[]} catalog={ticked} onCatalogChange={vi.fn()} readiness={{ ...readiness, secondsBySpeaker: {} }} trainingModels={models} trainingRuntime={runtime} />);
+    expect(screen.getByRole("button", { name: "An chưa có đoạn nào trong dataset" })).toBeDisabled();
+    expect(screen.getByText("chưa có đoạn")).toBeInTheDocument();
   });
 
   it("lets a number be typed through states that do not parse yet", () => {

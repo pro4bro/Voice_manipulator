@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import type { EnvironmentNoiseProfile, ProjectMediaAsset, TrainingCatalog, TrainingModelOption, TrainingParameterSpec, TrainingParameterValue, TrainingRuntimeReport } from "../../domain/types";
+import { formatDuration } from "../../domain/reading-plan";
+import type { DatasetReadiness, EnvironmentNoiseProfile, ProjectMediaAsset, TrainingCatalog, TrainingModelOption, TrainingParameterSpec, TrainingParameterValue, TrainingRuntimeReport } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { formatParameterValue, parameterOverrides, parameterProblem, parameterValue, selectedTrainingModel } from "./trainingModels";
@@ -10,13 +11,14 @@ interface TrainProps {
   catalog: TrainingCatalog;
   onCatalogChange: (catalog: TrainingCatalog) => void;
   trainingModels?: TrainingModelOption[];
-  trainingManifestId?: string | null;
+  /** How much of each Speaker Profile the dataset holds; starting compiles it fresh. */
+  readiness?: DatasetReadiness | null;
   trainingRuntime?: TrainingRuntimeReport | null;
   busy?: boolean;
   onStart?: () => void;
 }
 
-export function Train({ assets, catalog, onCatalogChange, trainingModels = [], trainingManifestId = null, trainingRuntime = null, busy = false, onStart }: TrainProps) {
+export function Train({ assets, catalog, onCatalogChange, trainingModels = [], readiness = null, trainingRuntime = null, busy = false, onStart }: TrainProps) {
   const [noiseName, setNoiseName] = useState("");
   const [noiseAssetIds, setNoiseAssetIds] = useState<string[]>([]);
   // What is typed into a number field while it has focus. "0." and "1e-" are
@@ -172,7 +174,12 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], t
   const changedCount = Object.keys(overrides).length;
   const families = trainingModels.reduce<string[]>((list, option) => list.includes(option.family) ? list : [...list, option.family], []);
 
-  const trainingReady = Boolean(model?.available && trainingManifestId && trainingRuntime?.ready && !problems.length);
+  const targets = catalog.speakers.filter((speaker) => settings.targetSpeakerIds.includes(speaker.id));
+  const secondsOf = (speakerId: string) => readiness?.secondsBySpeaker?.[speakerId] ?? 0;
+  // Only judged once readiness is known; before that the start compiles and the
+  // API refuses a target with nothing to train on.
+  const emptyTargets = readiness ? targets.filter((speaker) => secondsOf(speaker.id) <= 0) : [];
+  const trainingReady = Boolean(model?.available && targets.length && !emptyTargets.length && trainingRuntime?.ready && !problems.length);
   const startLabel = !model
     ? "Bắt đầu training · adapter chưa kết nối"
     : busy
@@ -183,11 +190,13 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], t
           ? "Model này chưa có adapter chạy"
           : problems.length
             ? "Tham số chưa hợp lệ"
-            : !trainingManifestId
-              ? "Biên dịch dataset trước"
-              : !trainingRuntime?.ready
-                ? "Runtime chưa sẵn sàng"
-                : `Bắt đầu ${model.label}`;
+            : !targets.length
+              ? "Tick ít nhất một voice target"
+              : emptyTargets.length
+                ? `${emptyTargets.map((speaker) => speaker.name).join(", ")} chưa có đoạn nào trong dataset`
+                : !trainingRuntime?.ready
+                  ? "Runtime chưa sẵn sàng"
+                  : `Bắt đầu ${model.label} · ${targets.length} voice`;
 
   return (
     <ModuleFrame className="train-module" eyebrow="FINE-TUNE CONTROL" title="Train" action={<span className={`train-engine-state ${model?.available ? "is-ready" : ""}`}>{model?.available ? "ADAPTER READY" : "ADAPTER PENDING"}</span>}>
@@ -235,12 +244,13 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], t
         </section>
       ) : null}
       <div className="train-speaker-targets">
-        <span>VOICE TARGETS · MULTI-SPEAKER</span>
+        <span>VOICE TARGETS · MỖI PROFILE MỘT VOICE</span>
         <div>
           {catalog.speakers.map((speaker) => (
             <label key={speaker.id}>
               <input checked={settings.targetSpeakerIds.includes(speaker.id)} onChange={(event) => updateSettings({ targetSpeakerIds: event.target.checked ? [...settings.targetSpeakerIds, speaker.id] : settings.targetSpeakerIds.filter((id) => id !== speaker.id) })} type="checkbox" />
               <i style={{ background: speaker.color }} />{speaker.name}
+              {readiness ? <small>{secondsOf(speaker.id) > 0 ? formatDuration(secondsOf(speaker.id)) : "chưa có đoạn"}</small> : null}
             </label>
           ))}
           {!catalog.speakers.length ? <small>Tạo Speaker Profile trong Sound Library.</small> : null}

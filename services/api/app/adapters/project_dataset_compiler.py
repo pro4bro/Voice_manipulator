@@ -294,6 +294,12 @@ class ProjectDatasetCompiler:
             if checked is not None:
                 validations.append(checked)
         speakers = sorted({s.speaker_profile_id for s in segments if s.speaker_profile_id})
+        by_speaker: dict[str, float] = {}
+        for segment in segments:
+            if segment.speaker_profile_id:
+                by_speaker[segment.speaker_profile_id] = round(
+                    by_speaker.get(segment.speaker_profile_id, 0) + segment.duration, 2
+                )
         by_tier: dict[str, int] = {}
         by_emotion: dict[str, float] = {}
         for segment in segments:
@@ -310,6 +316,7 @@ class ProjectDatasetCompiler:
             speaker_profile_ids=speakers,
             segments_by_tier=by_tier,
             seconds_by_emotion=by_emotion,
+            seconds_by_speaker=by_speaker,
             rejections=rejections,
             script_validations=validations,
             seconds_dropped_unassigned=round(drops.unassigned, 2),
@@ -650,16 +657,29 @@ class ProjectDatasetCompiler:
         assigned = [
             segment.model_copy(update={"split": _split_for(segment.id)}) for segment in segments
         ]
-        # OmniVoice's data config requires a dev list, and a small project can
-        # hash entirely into train. Promote one deterministically rather than
-        # letting the run fail at launch.
-        if len(assigned) > 1 and not any(segment.split == "dev" for segment in assigned):
-            chosen = max(assigned, key=lambda segment: hashlib.sha256(segment.id.encode()).hexdigest())
-            assigned = [
-                segment.model_copy(update={"split": "dev"}) if segment.id == chosen.id else segment
-                for segment in assigned
-            ]
-        return assigned
+        # Each voice target trains on its own segments, and OmniVoice's data
+        # config requires a dev list and a train list. A person with a handful of
+        # segments can hash entirely into one side, so the guarantee is kept per
+        # speaker, moving one segment deterministically rather than letting that
+        # person's run fail at launch.
+        by_speaker: dict[str | None, list[DatasetSegment]] = {}
+        for segment in assigned:
+            by_speaker.setdefault(segment.speaker_profile_id, []).append(segment)
+        moved: dict[str, str] = {}
+        for group in by_speaker.values():
+            if len(group) < 2:
+                continue
+            for missing, other in (("dev", "train"), ("train", "dev")):
+                if not any(segment.split == missing for segment in group):
+                    chosen = max(
+                        (segment for segment in group if segment.split == other),
+                        key=lambda segment: hashlib.sha256(segment.id.encode()).hexdigest(),
+                    )
+                    moved[chosen.id] = missing
+        return [
+            segment.model_copy(update={"split": moved[segment.id]}) if segment.id in moved else segment
+            for segment in assigned
+        ]
 
     @staticmethod
     def _stats(segments: list[DatasetSegment]) -> DatasetStats:

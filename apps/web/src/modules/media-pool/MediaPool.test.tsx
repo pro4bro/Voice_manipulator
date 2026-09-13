@@ -41,6 +41,17 @@ describe("MediaPool", () => {
     expect(onImport).toHaveBeenCalledWith([{ file: files[0], transcribe: true }, { file: files[1], transcribe: false }]);
   });
 
+  it("marks footage that has not finished data preparation with what is left", () => {
+    const words = [{ text: "xin", start: 0, end: 0.4, diarizationSpeakerId: "speaker-1" }];
+    const prepared = { ...asset, id: "asset-2", name: "done.mov", words, diarizationStatus: "complete" as const, speakerProfileIds: ["speaker-1"] };
+    render(<MediaPool {...props({ assets: [asset, prepared] })} />);
+
+    const warnings = screen.getAllByRole("img", { name: /Chưa xong/ });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toHaveAccessibleName("Chưa xong: Speech to Text, Nhận diện speaker, Gán Speaker Profile");
+    expect(warnings[0]).toHaveTextContent("!");
+  });
+
   it("selects only chosen footage for Voice Training", () => {
     const onToggleTraining = vi.fn();
     render(<MediaPool {...props({ onToggleTraining })} />);

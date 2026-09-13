@@ -442,6 +442,23 @@ def test_a_tiny_project_still_gets_a_dev_segment(tmp_path):
     assert manifest.stats.dev_segments == 1
 
 
+def test_every_speaker_gets_its_own_train_and_dev_segment(tmp_path):
+    """Each voice target is trained alone, so each needs both lists."""
+    fixture = Fixture(tmp_path)
+    other = two_profiles(fixture)
+    for index in range(3):
+        fixture.add(f"asset-a{index}", capture_tier="guided", duration=3.0, words=[], speaker_profile_ids=[fixture.speaker.id])
+        fixture.add(f"asset-b{index}", capture_tier="guided", duration=3.0, words=[], speaker_profile_ids=[other.id])
+
+    manifest = fixture.compiler.compile(fixture.project.id)
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    for speaker in (fixture.speaker.id, other.id):
+        splits = {segment.split for segment in manifest.segments if segment.speaker_profile_id == speaker}
+        assert splits == {"train", "dev"}, speaker
+    assert readiness.seconds_by_speaker == {fixture.speaker.id: 9.0, other.id: 9.0}
+
+
 def test_emotion_becomes_an_instruct_string_except_when_it_is_neutral(tmp_path):
     fixture = Fixture(tmp_path)
     fixture.add("asset-angry", capture_tier="guided", duration=3.0, words=[], emotion="angry")

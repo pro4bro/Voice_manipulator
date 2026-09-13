@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "
 import { createPortal } from "react-dom";
 
 import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
+import { missingPreparation } from "../../domain/footagePipeline";
 import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -201,12 +202,13 @@ export function MediaPool({
     const codec = asset.audioCodec ?? asset.videoCodec ?? asset.sourceExtension.slice(1).toUpperCase();
     const assignedNames = speakers.filter((speaker) => asset.speakerProfileIds.includes(speaker.id)).map((speaker) => speaker.name);
     const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
+    const missing = recycled ? [] : missingPreparation(asset);
     return (
       <div className={`media-pool-item ${selected ? "is-active" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""}`} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)}>
         <button aria-pressed={selected} className="media-pool-item__main" onClick={() => onSelect(asset.id)} type="button">
           <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
           <span className="media-item-copy">
-            <strong>{asset.name}</strong>
+            <strong>{missing.length ? <span aria-label={`Chưa xong: ${missing.join(", ")}`} className="media-prep-warning" role="img" title={`Chưa xong: ${missing.join(", ")}`}>!</span> : null}{asset.name}</strong>
             <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}</small>
             <em>{transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? " · " + environmentNames.join(", ") : ""}{asset.hasExternalSource ? asset.localCacheEnabled ? " · CACHE ✓ " + (asset.localCacheUpdatedAt ? new Date(asset.localCacheUpdatedAt).toLocaleString("vi-VN") : "") : " · ORIGINAL FILE" : ""}</em>
             {["queued", "processing", "reviewing", "paused"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${transcriptionProgressLabel(asset.transcriptionProgress)}%`} className={`media-transcription-progress ${asset.transcriptionStatus === "paused" ? "is-paused" : ""}`}><i style={{ width: `${asset.transcriptionProgress ?? 0}%` }} /><b>{asset.transcriptionStatus === "paused" ? "TẠM DỪNG" : asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {transcriptionProgressLabel(asset.transcriptionProgress)}%</b></span> : null}

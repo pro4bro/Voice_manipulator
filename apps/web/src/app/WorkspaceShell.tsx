@@ -36,6 +36,7 @@ import type {
 } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
 import { parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
+import { isLive, newestBatch } from "../domain/trainingBatch";
 import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusBar";
 import type { CapturedAudio } from "../modules/recorder/Recorder";
 import type { ActiveTake } from "../modules/timeline/Timeline";
@@ -54,6 +55,7 @@ interface WorkspaceShellProps {
   onToggleTheme: () => void;
 }
 const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: IconName }> = [
+  { id: "dashboard", label: "Dashboard", short: "DASH", icon: "grid" },
   { id: "speech-to-text", label: "Speech to Text", short: "STT", icon: "mic" },
   { id: "voice-training", label: "Voice Training", short: "TRAIN", icon: "training" },
   { id: "voice-manipulator", label: "Voice Manipulator", short: "VOICE", icon: "wrench" },
@@ -140,9 +142,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [preferences, setPreferences] = useState<AppPreferences>(defaultPreferences);
   const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
   const [datasetBusy, setDatasetBusy] = useState(false);
-  const [trainingRun, setTrainingRun] = useState<TrainingRun | null>(null);
-  const [trainingProgress, setTrainingProgress] = useState<TrainingProgressLine[]>([]);
-  const [trainingManifestId, setTrainingManifestId] = useState<string | null>(null);
+  const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
+  const [trainingProgressByRun, setTrainingProgressByRun] = useState<Record<string, TrainingProgressLine[]>>({});
   const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
   const [trainingModels, setTrainingModels] = useState<TrainingModelOption[]>([]);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
@@ -239,6 +240,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     void refreshTrainingRun();
     return () => { cancelled = true; };
   }, [project.id]);
+
+  const trainingBatch = useMemo(() => newestBatch(trainingRuns), [trainingRuns]);
+  const trainingLive = trainingBatch.some(isLive);
+  useEffect(() => {
+    if (!trainingLive) return;
+    // A run lasts hours and reports through its journal; without polling the
+    // flow, log and progress bar would show the moment the run started, forever.
+    const timer = window.setInterval(() => void refreshTrainingRun(), 2000);
+    return () => window.clearInterval(timer);
+  }, [project.id, trainingLive]);
 
   const hasBackgroundTranscription = mediaAssets.some(isBackgroundTranscribing);
   const hasBackgroundDiarization = mediaAssets.some((asset) => ["queued", "processing"].includes(asset.diarizationStatus ?? "idle"));
@@ -424,6 +435,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   async function selectPage(page: WorkspacePage) {
     setActivePage(page);
+    // The Dashboard is a reading of the current footage; a count from before
+    // the last STT or assignment would be the one number on it that is wrong.
+    if (page === "dashboard") void refreshDatasetReadiness();
     try { await onPageChange(page); } catch { setNotice("Không lưu được trang đang mở. Nội dung Script vẫn được giữ cục bộ."); }
   }
 
@@ -625,23 +639,22 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   async function refreshTrainingRun() {
     try {
       const runs = await api.listTrainingRuns(project.id);
-      const newest = runs[0] ?? null;
-      setTrainingRun(newest);
-      if (newest) setTrainingManifestId(newest.manifestId);
-      setTrainingProgress(
-        newest ? await api.getTrainingRunProgress(project.id, newest.id) : [],
+      const batch = newestBatch(runs);
+      const progress = await Promise.all(
+        batch.map(async (run) => [run.id, await api.getTrainingRunProgress(project.id, run.id)] as const),
       );
+      setTrainingRuns(runs);
+      setTrainingProgressByRun(Object.fromEntries(progress));
     } catch {
-      setTrainingRun(null);
-      setTrainingProgress([]);
+      setTrainingRuns([]);
+      setTrainingProgressByRun({});
     }
   }
 
-  async function cancelTrainingRun() {
-    if (!trainingRun) return;
+  async function cancelTrainingRun(runId: string) {
     try {
-      await api.cancelTrainingRun(project.id, trainingRun.id);
-      setNotice("Đã huỷ run. Checkpoint vẫn còn, chạy tiếp được từ mốc cuối.");
+      await api.cancelTrainingRun(project.id, runId);
+      setNotice("Đã huỷ voice đang train và các voice đang chờ. Checkpoint vẫn còn.");
       await refreshTrainingRun();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không huỷ được run");
@@ -660,7 +673,6 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setDatasetBusy(true);
     try {
       const manifest = await api.compileDataset(project.id);
-      setTrainingManifestId(manifest.id);
       setNotice(
         `Đã biên dịch ${manifest.stats.segments} đoạn · ` +
         `${manifest.stats.trainSegments} train / ${manifest.stats.devSegments} dev · ` +
@@ -676,17 +688,22 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   async function startTrainingRun() {
     const model = selectedTrainingModel(trainingModels, trainingCatalog.settings);
-    if (!trainingManifestId || !model) return;
+    const targets = trainingCatalog.settings.targetSpeakerIds;
+    if (!model || !targets.length) return;
     setDatasetBusy(true);
     try {
+      // Compiled at the moment of starting, so the run trains on the footage
+      // and assignments as they are now rather than as they were last compiled.
+      const manifest = await api.compileDataset(project.id);
+      void refreshDatasetReadiness();
       // Only the model and the values the user changed travel; the API fills
       // the rest from the same descriptor and refuses what it does not allow.
-      const run = await api.startTrainingRun(project.id, {
-        manifestId: trainingManifestId,
+      await api.startTrainingRun(project.id, {
+        manifestId: manifest.id,
         config: { modelId: model.id, parameters: parameterOverrides(model, trainingCatalog.settings) },
+        speakerProfileIds: targets,
       });
-      setTrainingRun(run);
-      setNotice(`Đã khởi động training run ${run.id}.`);
+      setNotice(`Đã xếp ${targets.length} voice target vào hàng train · ${manifest.stats.segments} đoạn.`);
       await refreshTrainingRun();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không khởi động được training");
@@ -1114,12 +1131,13 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     profileSchema,
     datasetReadiness,
     datasetBusy,
-    trainingRun,
-    trainingManifestId,
+    trainingRuns,
+    trainingBatch,
+    trainingProgressByRun,
     trainingRuntime,
     trainingModels,
-    trainingProgress,
-    onCancelTrainingRun: () => void cancelTrainingRun(),
+    onCancelTrainingRun: (runId) => void cancelTrainingRun(runId),
+    onSelectPage: (page) => void selectPage(page),
     onCompileDataset: () => void compileDataset(),
     onStartTrainingRun: () => void startTrainingRun(),
     readingPacks,
@@ -1176,13 +1194,13 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingModels, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">
       <header className="workspace-topbar">
 <div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
-        <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index + 1).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
+        <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
           <div className="workspace-windows-menu"><button aria-expanded={windowsMenuOpen} className="workspace-windows-button" onClick={() => setWindowsMenuOpen((open) => !open)} type="button"><Icon name="window" />WINDOWS</button>{windowsMenuOpen ? <div role="menu"><button onClick={() => { setWindowsMenuOpen(false); setPreferencesOpen(true); }} role="menuitem" type="button"><Icon name="settings" />Preferences</button><RuntimeMenuItems onAction={runRuntimeAction} runtime={runtime} /></div> : null}</div>
