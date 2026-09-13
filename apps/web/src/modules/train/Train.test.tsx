@@ -1,52 +1,133 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TrainingCatalog, TrainingEngineOption } from "../../domain/types";
+import type { TrainingCatalog, TrainingModelOption, TrainingParameterSpec } from "../../domain/types";
 import { Train } from "./Train";
 
 const catalog: TrainingCatalog = {
   speakers: [],
   environmentProfiles: [],
-  settings: { targetSpeakerIds: [], maxSteps: 10000, checkpointEvery: 1000, batchSize: 4, learningRate: 0.00002, denoiseBeforeTraining: true, learnEnvironmentNoise: false, environmentProfileId: null },
+  settings: { targetSpeakerIds: [], maxSteps: 10000, checkpointEvery: 1000, batchSize: 4, learningRate: 0.00002, denoiseBeforeTraining: true, learnEnvironmentNoise: false, environmentProfileId: null, modelId: null, modelParameters: {} },
   updatedAt: "2026-08-23T00:00:00Z",
 };
 
-const engines: TrainingEngineOption[] = [
-  { id: "omnivoice", label: "OmniVoice", description: "OmniVoice fine-tuning", installed: true, modes: [
-    { id: "lora-finetune", label: "LoRA", description: "LoRA adapter", available: true },
-    { id: "full-finetune", label: "Full", description: "Full fine-tune", available: false },
-    { id: "from-scratch", label: "Scratch", description: "From scratch", available: false },
-  ] },
-  { id: "vibevoice", label: "VibeVoice", description: "VibeVoice family", installed: false, modes: [
-    { id: "tts-single-speaker-lora", label: "TTS LoRA", description: "Single speaker", available: false },
-    { id: "asr-lora", label: "ASR LoRA", description: "ASR adapter", available: false },
-  ] },
-];
+function spec(overrides: Partial<TrainingParameterSpec> & Pick<TrainingParameterSpec, "key" | "label" | "kind" | "default">): TrainingParameterSpec {
+  return { group: "Huấn luyện", options: [], nullable: false, editable: true, advanced: false, ...overrides };
+}
+
+function model(overrides: Partial<TrainingModelOption> & Pick<TrainingModelOption, "id" | "label" | "family">): TrainingModelOption {
+  return {
+    engine: "demo", mode: "lora", description: "", order: 10, runnable: false,
+    repository: { root: "demo", path: ".", entrypoint: "train.py" },
+    notes: [], parameters: [], origin: "shipped", installed: false, available: false, status: "",
+    ...overrides,
+  };
+}
+
+const omnivoice = model({
+  id: "omnivoice-lora", label: "OmniVoice · LoRA fine-tune", family: "OmniVoice", runnable: true, installed: true, available: true, status: "Sẵn sàng.",
+  parameters: [
+    spec({ key: "use_lora", label: "Dùng LoRA", group: "LoRA", kind: "bool", default: true, editable: false }),
+    spec({ key: "lora_r", label: "LoRA rank", group: "LoRA", kind: "int", default: 16, min: 1, max: 512 }),
+    spec({ key: "save_steps", label: "Backup checkpoint mỗi", group: "Checkpoint & log", kind: "int", default: 1000, recipe: 500, codeDefault: 10000, min: 1 }),
+    spec({ key: "attn_implementation", label: "Attention", kind: "choice", default: "sdpa", options: [{ value: "sdpa", label: "SDPA" }, { value: "flex_attention", label: "Flex" }] }),
+    spec({ key: "seed", label: "Seed", kind: "int", default: 42, advanced: true }),
+  ],
+});
+
+const vibevoice = model({
+  id: "vibevoice-1.5b-tts-lora", label: "VibeVoice 1.5B · TTS LoRA", family: "VibeVoice", order: 40, status: "Chưa thấy train_vibevoice.py.",
+  parameters: [
+    spec({ key: "ddpm_batch_mul", label: "DDPM batch multiplier", group: "Loss", kind: "int", default: 4, recipe: 4, codeDefault: 1 }),
+    spec({ key: "learning_rate", label: "Learning rate", kind: "float", default: 2.5e-5, min: 1e-8 }),
+    spec({ key: "lora_r", label: "VibeVoice LoRA rank", group: "LoRA", kind: "int", default: 8, recipe: null, codeDefault: 8 }),
+  ],
+});
+
+const models = [omnivoice, vibevoice];
 
 describe("Train", () => {
-  it("defaults checkpoint backups to every 1000 steps and persists changes", () => {
-    const onCatalogChange = vi.fn();
-    render(<Train assets={[]} catalog={catalog} onCatalogChange={onCatalogChange} />);
-
-    expect(screen.getByLabelText("Checkpoint interval")).toHaveValue(1000);
-    fireEvent.change(screen.getByLabelText("Checkpoint interval"), { target: { value: "2000" } });
-    expect(onCatalogChange).toHaveBeenCalledWith({ ...catalog, settings: { ...catalog.settings, checkpointEvery: 2000 } });
-  });
-
-  it("does not claim training is runnable before its processor adapter exists", () => {
+  it("does not claim training is runnable before any model is known", () => {
     render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: /Bắt đầu training/ })).toBeDisabled();
     expect(screen.getByText("ADAPTER PENDING")).toBeInTheDocument();
   });
 
-  it("keeps engine and mode parameters in the Train module", () => {
-    render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} trainingEngines={engines} />);
+  it("offers every model in one Model Training list, grouped by family", () => {
+    render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} trainingModels={models} />);
 
-    expect(screen.getByRole("option", { name: /VibeVoice/ })).toBeInTheDocument();
-    expect(screen.getByLabelText("OmniVoice base model")).toHaveValue("k2-fsa/OmniVoice");
-    expect(screen.getByLabelText("LoRA rank")).toHaveValue(16);
-    fireEvent.change(screen.getByLabelText("Training engine"), { target: { value: "vibevoice" } });
-    expect(screen.getByLabelText("VibeVoice model")).toHaveValue("vibevoice/VibeVoice-1.5B");
-    expect(screen.getByRole("option", { name: /TTS LoRA/ })).toBeDisabled();
+    const select = screen.getByLabelText("Model Training");
+    expect(within(select).getByRole("group", { name: "OmniVoice" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: /VibeVoice 1.5B · TTS LoRA · chưa cài/ })).toBeEnabled();
+    expect(select).toHaveValue("omnivoice-lora");
+    expect(screen.queryByLabelText("Training engine")).not.toBeInTheDocument();
+  });
+
+  it("shows only the chosen model's own parameters", () => {
+    const { rerender } = render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} trainingModels={models} />);
+
+    expect(screen.getByLabelText("LoRA rank")).toHaveValue("16");
+    expect(screen.getByLabelText("Backup checkpoint mỗi")).toHaveValue("1000");
+    expect(screen.getByText("recipe 500 · code 10000")).toBeInTheDocument();
+    expect(screen.queryByLabelText("DDPM batch multiplier")).not.toBeInTheDocument();
+
+    rerender(<Train assets={[]} catalog={{ ...catalog, settings: { ...catalog.settings, modelId: "vibevoice-1.5b-tts-lora" } }} onCatalogChange={vi.fn()} trainingModels={models} />);
+
+    expect(screen.getByLabelText("DDPM batch multiplier")).toHaveValue("4");
+    expect(screen.getByText("code 1")).toBeInTheDocument();
+    expect(screen.queryByText(/recipe —/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("LoRA rank")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chưa cài repo cho model này" })).toBeDisabled();
+  });
+
+  it("stores the chosen model and only the values that differ from its defaults", () => {
+    const onCatalogChange = vi.fn();
+    render(<Train assets={[]} catalog={catalog} onCatalogChange={onCatalogChange} trainingModels={models} />);
+
+    fireEvent.change(screen.getByLabelText("Model Training"), { target: { value: "vibevoice-1.5b-tts-lora" } });
+    expect(onCatalogChange).toHaveBeenLastCalledWith({ ...catalog, settings: { ...catalog.settings, modelId: "vibevoice-1.5b-tts-lora" } });
+
+    fireEvent.change(screen.getByLabelText("LoRA rank"), { target: { value: "32" } });
+    expect(onCatalogChange).toHaveBeenLastCalledWith({ ...catalog, settings: { ...catalog.settings, modelParameters: { "omnivoice-lora": { lora_r: 32 } } } });
+
+    fireEvent.change(screen.getByLabelText("Attention"), { target: { value: "sdpa" } });
+    expect(onCatalogChange).toHaveBeenLastCalledWith({ ...catalog, settings: { ...catalog.settings, modelParameters: {} } });
+  });
+
+  it("keeps a locked parameter locked and hides advanced ones until asked", () => {
+    render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} trainingModels={models} />);
+
+    expect(screen.getByLabelText("Dùng LoRA")).toBeDisabled();
+    expect(screen.getByText("Nâng cao · 1").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("refuses to start with a value outside the descriptor's range", () => {
+    const withOverride = { ...catalog, settings: { ...catalog.settings, modelParameters: { "omnivoice-lora": { lora_r: 0 } } } };
+    render(<Train assets={[]} catalog={withOverride} onCatalogChange={vi.fn()} trainingManifestId="dataset-1" trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+
+    expect(screen.getByText("Tối thiểu 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tham số chưa hợp lệ" })).toBeDisabled();
+  });
+
+  it("starts the chosen model once dataset and runtime are ready", () => {
+    const onStart = vi.fn();
+    render(<Train assets={[]} catalog={catalog} onCatalogChange={vi.fn()} onStart={onStart} trainingManifestId="dataset-1" trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu OmniVoice · LoRA fine-tune" }));
+    expect(onStart).toHaveBeenCalled();
+    expect(screen.getByText("ADAPTER READY")).toBeInTheDocument();
+  });
+
+  it("lets a number be typed through states that do not parse yet", () => {
+    const onCatalogChange = vi.fn();
+    const vibe = { ...catalog, settings: { ...catalog.settings, modelId: "vibevoice-1.5b-tts-lora" } };
+    render(<Train assets={[]} catalog={vibe} onCatalogChange={onCatalogChange} trainingModels={models} />);
+
+    const input = screen.getByLabelText("Learning rate");
+    fireEvent.change(input, { target: { value: "3e-" } });
+    expect(input).toHaveValue("3e-");
+    expect(onCatalogChange).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "3e-5" } });
+    expect(onCatalogChange).toHaveBeenLastCalledWith({ ...vibe, settings: { ...vibe.settings, modelParameters: { "vibevoice-1.5b-tts-lora": { learning_rate: 3e-5 } } } });
   });
 });

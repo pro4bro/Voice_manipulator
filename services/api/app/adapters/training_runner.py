@@ -256,6 +256,12 @@ class TrainingRunner:
                 "attn_implementation": run.config.attn_implementation,
             }
         )
+        # Descriptor values are keyed by OmniVoice's own config names, so they
+        # go in as they are. The catalog already checked them against the
+        # descriptor; OmniVoice itself ignores any key its TrainingConfig lacks.
+        payload.update(
+            {key: value for key, value in run.config.parameters.items() if value is not None}
+        )
         checkpoints = sorted(
             self.runs.run_dir(run.project_id, run.id).joinpath("checkpoints").glob("checkpoint-*"),
             key=lambda path: int(path.name.rsplit("-", 1)[1]) if path.name.rsplit("-", 1)[1].isdigit() else -1,

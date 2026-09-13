@@ -19,10 +19,7 @@ import type {
   ProjectMediaAsset,
   TrainingProgressLine,
   TrainingRuntimeReport,
-  TrainingEngineId,
-  TrainingEngineOption,
-  TrainingModeId,
-  OmniVoiceTrainingParameters,
+  TrainingModelOption,
   TrainingRun,
   ReadingPackSummary,
   RecordingWaveformPreview,
@@ -38,6 +35,7 @@ import type {
   WorkspacePage,
 } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
+import { parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
 import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusBar";
 import type { CapturedAudio } from "../modules/recorder/Recorder";
 import type { ActiveTake } from "../modules/timeline/Timeline";
@@ -97,6 +95,8 @@ function emptyTrainingCatalog(): TrainingCatalog {
       denoiseBeforeTraining: true,
       learnEnvironmentNoise: false,
       environmentProfileId: null,
+      modelId: null,
+      modelParameters: {},
     },
     updatedAt: new Date().toISOString(),
   };
@@ -144,10 +144,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingProgress, setTrainingProgress] = useState<TrainingProgressLine[]>([]);
   const [trainingManifestId, setTrainingManifestId] = useState<string | null>(null);
   const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
-  const [trainingEngines, setTrainingEngines] = useState<TrainingEngineOption[]>([]);
-  const [trainingEngine, setTrainingEngine] = useState<TrainingEngineId>("omnivoice");
-  const [trainingMode, setTrainingMode] = useState<TrainingModeId>("lora-finetune");
-  const [trainingParameters, setTrainingParameters] = useState<OmniVoiceTrainingParameters>({ baseModel: "k2-fsa/OmniVoice", loraR: 16, loraAlpha: 32, batchTokens: 8192, attnImplementation: "sdpa" });
+  const [trainingModels, setTrainingModels] = useState<TrainingModelOption[]>([]);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -233,10 +230,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         .then((report) => { if (!cancelled) setTrainingRuntime(report); })
         .catch(() => { if (!cancelled) setTrainingRuntime(null); });
     }
-    if (typeof api.getTrainingEngines === "function") {
-      api.getTrainingEngines()
-        .then((options) => { if (!cancelled) setTrainingEngines(options); })
-        .catch(() => { if (!cancelled) setTrainingEngines([]); });
+    if (typeof api.getTrainingModels === "function") {
+      api.getTrainingModels()
+        .then((options) => { if (!cancelled) setTrainingModels(options); })
+        .catch(() => { if (!cancelled) setTrainingModels([]); });
     }
 
     void refreshTrainingRun();
@@ -678,24 +675,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   async function startTrainingRun() {
-    if (!trainingManifestId) return;
+    const model = selectedTrainingModel(trainingModels, trainingCatalog.settings);
+    if (!trainingManifestId || !model) return;
     setDatasetBusy(true);
     try {
+      // Only the model and the values the user changed travel; the API fills
+      // the rest from the same descriptor and refuses what it does not allow.
       const run = await api.startTrainingRun(project.id, {
         manifestId: trainingManifestId,
-        config: {
-          engine: trainingEngine,
-          mode: trainingMode,
-          baseModel: trainingParameters.baseModel,
-          useLora: trainingMode === "lora-finetune",
-          loraR: trainingParameters.loraR,
-          loraAlpha: trainingParameters.loraAlpha,
-          steps: trainingCatalog.settings.maxSteps,
-          saveSteps: trainingCatalog.settings.checkpointEvery,
-          learningRate: trainingCatalog.settings.learningRate,
-          batchTokens: trainingParameters.batchTokens,
-          attnImplementation: trainingParameters.attnImplementation,
-        },
+        config: { modelId: model.id, parameters: parameterOverrides(model, trainingCatalog.settings) },
       });
       setTrainingRun(run);
       setNotice(`Đã khởi động training run ${run.id}.`);
@@ -1129,16 +1117,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     trainingRun,
     trainingManifestId,
     trainingRuntime,
-    trainingEngines,
-    trainingEngine,
-    trainingMode,
-    trainingParameters,
+    trainingModels,
     trainingProgress,
     onCancelTrainingRun: () => void cancelTrainingRun(),
     onCompileDataset: () => void compileDataset(),
-    onTrainingEngineChange: (engine) => { setTrainingEngine(engine); setTrainingMode(engine === "omnivoice" ? "lora-finetune" : "tts-single-speaker-lora"); },
-    onTrainingModeChange: setTrainingMode,
-    onTrainingParametersChange: setTrainingParameters,
     onStartTrainingRun: () => void startTrainingRun(),
     readingPacks,
     readingSession: readingSession
@@ -1194,7 +1176,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingEngine, trainingEngines, trainingMode, trainingParameters, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingModels, trainingProgress, trainingRun, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

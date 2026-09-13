@@ -17,6 +17,11 @@ class Settings:
     ffmpeg_path: str | None
     reading_packs_root: Path
     authored_reading_packs_root: Path
+    # The folder holding the VibeVoice checkouts side by side
+    # (VibeVoice, VibeVoice-community, ...). Absent is a normal state.
+    vibevoice_root: Path
+    training_models_root: Path
+    local_training_models_root: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -52,4 +57,17 @@ class Settings:
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
             )
             / "reading-packs",
+            vibevoice_root=Path(
+                os.getenv("PRO4BRO_VIBEVOICE_ROOT", project_root.parent / "VibeVoice")
+            ),
+            training_models_root=Path(
+                os.getenv(
+                    "PRO4BRO_TRAINING_MODELS_ROOT",
+                    Path(__file__).resolve().parent / "resources" / "training-models",
+                )
+            ),
+            local_training_models_root=Path(
+                os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
+            )
+            / "training-models",
         )

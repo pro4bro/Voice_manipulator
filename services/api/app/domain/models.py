@@ -286,6 +286,11 @@ class TrainingSettings(DomainModel):
     denoise_before_training: bool = True
     learn_environment_noise: bool = False
     environment_profile_id: str | None = None
+    # The option chosen in "Model Training", and only the values the user
+    # changed for each option. Unchanged values follow the descriptor, so a
+    # corrected recipe reaches projects that never touched that knob.
+    model_id: str | None = Field(default=None, max_length=80)
+    model_parameters: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class TrainingCatalog(DomainModel):
@@ -295,29 +300,111 @@ class TrainingCatalog(DomainModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-TrainingEngineId = Literal["omnivoice", "vibevoice"]
-TrainingModeId = Literal[
-    "from-scratch",
-    "full-finetune",
-    "lora-finetune",
-    "tts-single-speaker-lora",
-    "asr-lora",
-]
+TrainingParameterKind = Literal["int", "float", "text", "bool", "choice"]
 
 
-class TrainingModeOption(DomainModel):
-    id: TrainingModeId
+class TrainingParameterChoice(DomainModel):
+    value: str | int | float | bool
     label: str
-    description: str
-    available: bool = False
 
 
-class TrainingEngineOption(DomainModel):
-    id: TrainingEngineId
-    label: str
-    description: str
+class TrainingParameterSpec(DomainModel):
+    """One knob of one training model, as that model's own code names it.
+
+    `key` is the upstream name - the config key or CLI flag the trainer reads -
+    so a runner can pass the value through without a translation table. The
+    three values are kept apart on purpose, because they disagree more often
+    than not:
+
+      default       what Pro4Bro fills in;
+      recipe        what the model authors' published command or config uses;
+      code_default  what the trainer does when the flag is left out.
+    """
+
+    key: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_.\-]+$")
+    label: str = Field(min_length=1, max_length=120)
+    group: str = "Chung"
+    kind: TrainingParameterKind
+    default: Any = None
+    recipe: Any = None
+    code_default: Any = None
+    source: str | None = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    options: list[TrainingParameterChoice] = Field(default_factory=list)
+    unit: str | None = None
+    help: str | None = None
+    nullable: bool = False
+    editable: bool = True
+    advanced: bool = False
+    # A field of TrainingRunConfig this value also fills, so run records keep
+    # showing steps, learning rate and the rest whatever model produced them.
+    run_field: str | None = None
+
+    @model_validator(mode="after")
+    def _default_fits(self) -> "TrainingParameterSpec":
+        from app.domain.training_parameters import coerce_parameter
+
+        if self.kind == "choice" and not self.options:
+            raise ValueError(f"Choice parameter '{self.key}' has no options.")
+        coerce_parameter(self, self.default)
+        return self
+
+
+class TrainingModelRepository(DomainModel):
+    # A named root the API knows ("omnivoice", "vibevoice"), so a descriptor
+    # never carries a path that only exists on the machine that wrote it.
+    root: str = Field(min_length=1, max_length=60)
+    path: str = "."
+    entrypoint: str = Field(min_length=1, max_length=400)
+    recipe: str | None = None
+    url: str | None = None
+    revision: str | None = None
+
+
+class TrainingModelDescriptor(DomainModel):
+    """A training option described by a JSON file, not by code.
+
+    Adding a model or a repository is adding one descriptor under
+    `app/resources/training-models` (shipped) or `<data>/training-models`
+    (this machine only). The UI draws its parameters from the descriptor, so
+    nothing in the web app has to change for a new option to show up.
+    """
+
+    schema_version: Literal[1] = 1
+    id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9\-.]*$")
+    label: str = Field(min_length=1, max_length=120)
+    family: str = Field(min_length=1, max_length=60)
+    engine: str = Field(min_length=1, max_length=60)
+    mode: str = Field(min_length=1, max_length=60)
+    description: str = ""
+    order: int = 100
+    # Whether Pro4Bro has an adapter that actually runs this option. A
+    # descriptor may describe a model before its runner exists.
+    runnable: bool = False
+    blocked_reason: str | None = None
+    repository: TrainingModelRepository
+    data_format: str | None = None
+    notes: list[str] = Field(default_factory=list)
+    parameters: list[TrainingParameterSpec] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _unique_keys(self) -> "TrainingModelDescriptor":
+        keys = [parameter.key for parameter in self.parameters]
+        duplicates = sorted({key for key in keys if keys.count(key) > 1})
+        if duplicates:
+            raise ValueError(f"Duplicate parameter keys: {', '.join(duplicates)}")
+        return self
+
+
+class TrainingModelOption(TrainingModelDescriptor):
+    """A descriptor plus what this machine says about it."""
+
+    origin: Literal["shipped", "local"] = "shipped"
     installed: bool = False
-    modes: list[TrainingModeOption] = Field(default_factory=list)
+    available: bool = False
+    status: str = ""
 
 
 class LocalMediaImport(DomainModel):
@@ -727,8 +814,12 @@ TrainingRunStatus = Literal[
 
 
 class TrainingRunConfig(DomainModel):
-    engine: TrainingEngineId = "omnivoice"
-    mode: TrainingModeId = "lora-finetune"
+    # The descriptor this run was configured from, and its values keyed by the
+    # upstream names. Runs recorded before descriptors existed have neither.
+    model_id: str | None = Field(default=None, max_length=80)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    engine: str = "omnivoice"
+    mode: str = "lora-finetune"
     base_model: str = "k2-fsa/OmniVoice"
     use_lora: bool = True
     lora_r: int = Field(default=16, ge=1)

@@ -248,6 +248,10 @@ export interface TrainingSettings {
   denoiseBeforeTraining: boolean;
   learnEnvironmentNoise: boolean;
   environmentProfileId: string | null;
+  /** The option chosen in Model Training. */
+  modelId?: string | null;
+  /** Only the values changed per option; everything else follows its descriptor. */
+  modelParameters?: Record<string, Record<string, TrainingParameterValue>>;
 }
 
 export interface TrainingCatalog {
@@ -521,33 +525,55 @@ export interface TrainingRun {
   error: string | null;
   createdAt: string;
   updatedAt: string;
-  config: { engine?: TrainingEngineId; mode?: TrainingModeId; steps: number; saveSteps: number; learningRate: number; loraR: number };
+  config: { modelId?: string | null; parameters?: Record<string, TrainingParameterValue>; engine?: string; mode?: string; steps: number; saveSteps: number; learningRate: number; loraR: number };
 }
 
-export type TrainingEngineId = "omnivoice" | "vibevoice";
-export type TrainingModeId = "from-scratch" | "full-finetune" | "lora-finetune" | "tts-single-speaker-lora" | "asr-lora";
+export type TrainingParameterValue = string | number | boolean | null;
+export type TrainingParameterKind = "int" | "float" | "text" | "bool" | "choice";
 
-export interface TrainingModeOption {
-  id: TrainingModeId;
+/** One knob of one training model, keyed by the name its own trainer reads. */
+export interface TrainingParameterSpec {
+  key: string;
   label: string;
-  description: string;
-  available: boolean;
+  group: string;
+  kind: TrainingParameterKind;
+  default: TrainingParameterValue;
+  /** Value in the model authors' published command or config, when it sets one. */
+  recipe?: TrainingParameterValue;
+  /** Value the trainer uses when the flag is left out. */
+  codeDefault?: TrainingParameterValue;
+  source?: string | null;
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
+  options: { value: string | number | boolean; label: string }[];
+  unit?: string | null;
+  help?: string | null;
+  nullable: boolean;
+  editable: boolean;
+  advanced: boolean;
+  runField?: string | null;
 }
 
-export interface TrainingEngineOption {
-  id: TrainingEngineId;
+/** A Model Training option, read from a descriptor file by the API. */
+export interface TrainingModelOption {
+  id: string;
   label: string;
+  family: string;
+  engine: string;
+  mode: string;
   description: string;
+  order: number;
+  runnable: boolean;
+  blockedReason?: string | null;
+  repository: { root: string; path: string; entrypoint: string; recipe?: string | null; url?: string | null; revision?: string | null };
+  dataFormat?: string | null;
+  notes: string[];
+  parameters: TrainingParameterSpec[];
+  origin: "shipped" | "local";
   installed: boolean;
-  modes: TrainingModeOption[];
-}
-
-export interface OmniVoiceTrainingParameters {
-  baseModel: string;
-  loraR: number;
-  loraAlpha: number;
-  batchTokens: number;
-  attnImplementation: "sdpa" | "flex_attention";
+  available: boolean;
+  status: string;
 }
 
 export interface TrainingProgressLine {

@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "id": "omnivoice-full",
+  "label": "OmniVoice · Full fine-tune",
+  "family": "OmniVoice",
+  "engine": "omnivoice",
+  "mode": "full-finetune",
+  "order": 20,
+  "description": "Fine-tune toàn bộ trọng số OmniVoice. Cần nhiều VRAM và dung lượng hơn LoRA.",
+  "runnable": false,
+  "repository": {
+    "root": "omnivoice",
+    "path": ".",
+    "entrypoint": "omnivoice/cli/train.py",
+    "url": "https://github.com/k2-fsa/OmniVoice",
+    "revision": "38e992b",
+    "recipe": "examples/config/train_config_finetune_sdpa.json"
+  },
+  "dataFormat": "Dataset Manifest → JSONL {id, audio_path, text, language_id, instruct} → audio tokens (higgs-audio-v2-tokenizer).",
+  "notes": [
+    "Learning rate theo recipe full fine-tune là 1e-5, thấp hơn LoRA mười lần."
+  ],
+  "parameters": [
+    {
+      "key": "init_from_checkpoint",
+      "label": "Base model / checkpoint",
+      "group": "Model",
+      "kind": "text",
+      "default": "k2-fsa/OmniVoice",
+      "recipe": "k2-fsa/OmniVoice",
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "runField": "base_model"
+    },
+    {
+      "key": "use_lora",
+      "label": "Dùng LoRA",
+      "group": "Model",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "source": "omnivoice/training/config.py",
+      "editable": false,
+      "runField": "use_lora"
+    },
+    {
+      "key": "steps",
+      "label": "Max steps",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 5000,
+      "recipe": 5000,
+      "codeDefault": 300000,
+      "source": "examples/config/train_config_finetune_sdpa.json · code omnivoice/training/config.py",
+      "min": 1,
+      "max": 10000000,
+      "runField": "steps"
+    },
+    {
+      "key": "learning_rate",
+      "label": "Learning rate",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 1e-05,
+      "recipe": 1e-05,
+      "codeDefault": 0.0001,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 1e-08,
+      "max": 1,
+      "step": 1e-06,
+      "runField": "learning_rate"
+    },
+    {
+      "key": "lr_scheduler_type",
+      "label": "LR scheduler",
+      "group": "Huấn luyện",
+      "kind": "choice",
+      "default": "cosine",
+      "codeDefault": "cosine",
+      "source": "omnivoice/training/config.py · omnivoice/training/trainer.py",
+      "options": [
+        {
+          "value": "cosine",
+          "label": "Cosine"
+        },
+        {
+          "value": "constant",
+          "label": "Constant"
+        }
+      ],
+      "help": "Trainer chỉ phân biệt 'constant'; mọi giá trị khác chạy cosine.",
+      "advanced": true
+    },
+    {
+      "key": "warmup_ratio",
+      "label": "Warmup ratio",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 0.01,
+      "recipe": 0.01,
+      "codeDefault": 0.03,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "key": "batch_tokens",
+      "label": "Batch tokens",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 8192,
+      "recipe": 8192,
+      "codeDefault": 8192,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 256,
+      "max": 1048576,
+      "unit": "tokens",
+      "runField": "batch_tokens"
+    },
+    {
+      "key": "gradient_accumulation_steps",
+      "label": "Gradient accumulation",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 1,
+      "recipe": 1,
+      "codeDefault": 1,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 1,
+      "max": 1024
+    },
+    {
+      "key": "attn_implementation",
+      "label": "Attention",
+      "group": "Huấn luyện",
+      "kind": "choice",
+      "default": "sdpa",
+      "recipe": "sdpa",
+      "codeDefault": "flex_attention",
+      "source": "examples/config/train_config_finetune_sdpa.json · code omnivoice/training/config.py",
+      "options": [
+        {
+          "value": "sdpa",
+          "label": "SDPA · length-grouped batching"
+        },
+        {
+          "value": "flex_attention",
+          "label": "Flex attention · packing"
+        }
+      ],
+      "runField": "attn_implementation"
+    },
+    {
+      "key": "weight_decay",
+      "label": "Weight decay",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 0.01,
+      "recipe": 0.01,
+      "codeDefault": 0.01,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 1,
+      "step": 0.001,
+      "advanced": true
+    },
+    {
+      "key": "max_grad_norm",
+      "label": "Max grad norm",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 1.0,
+      "recipe": 1.0,
+      "codeDefault": 1.0,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 100,
+      "step": 0.1,
+      "advanced": true
+    },
+    {
+      "key": "mixed_precision",
+      "label": "Precision",
+      "group": "Huấn luyện",
+      "kind": "choice",
+      "default": "bf16",
+      "recipe": "bf16",
+      "codeDefault": "bf16",
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "options": [
+        {
+          "value": "bf16",
+          "label": "BF16"
+        },
+        {
+          "value": "fp16",
+          "label": "FP16"
+        },
+        {
+          "value": "no",
+          "label": "FP32"
+        }
+      ],
+      "advanced": true
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 42,
+      "recipe": 42,
+      "codeDefault": 42,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 2147483647,
+      "advanced": true
+    },
+    {
+      "key": "save_steps",
+      "label": "Backup checkpoint mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 1000,
+      "recipe": 500,
+      "codeDefault": 10000,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 1,
+      "max": 10000000,
+      "unit": "steps",
+      "runField": "save_steps"
+    },
+    {
+      "key": "logging_steps",
+      "label": "Log mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 50,
+      "recipe": 50,
+      "codeDefault": 100,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 1,
+      "max": 100000,
+      "unit": "steps",
+      "advanced": true
+    },
+    {
+      "key": "eval_steps",
+      "label": "Đánh giá dev mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 500,
+      "recipe": 500,
+      "codeDefault": 1000,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 1,
+      "max": 1000000,
+      "unit": "steps",
+      "advanced": true
+    },
+    {
+      "key": "keep_last_n_checkpoints",
+      "label": "Giữ checkpoint gần nhất",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": -1,
+      "recipe": -1,
+      "codeDefault": -1,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": -1,
+      "max": 1000,
+      "help": "-1 = giữ tất cả.",
+      "advanced": true
+    },
+    {
+      "key": "language_ratio",
+      "label": "Language ratio",
+      "group": "Điều kiện",
+      "kind": "float",
+      "default": 0.8,
+      "recipe": 0.8,
+      "codeDefault": 0.8,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "advanced": true
+    },
+    {
+      "key": "instruct_ratio",
+      "label": "Instruct ratio",
+      "group": "Điều kiện",
+      "kind": "float",
+      "default": 0.0,
+      "recipe": 0.0,
+      "codeDefault": 1.0,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "help": "Tỉ lệ mẫu có instruct (emotion/style). Recipe fine-tune để 0.",
+      "advanced": true
+    },
+    {
+      "key": "drop_cond_ratio",
+      "label": "Drop condition ratio",
+      "group": "Điều kiện",
+      "kind": "float",
+      "default": 0.1,
+      "recipe": 0.1,
+      "codeDefault": 0.1,
+      "source": "examples/config/train_config_finetune_sdpa.json",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "advanced": true
+    }
+  ],
+  "blockedReason": "Chưa mở: full fine-tune ghi toàn bộ trọng số ở mỗi checkpoint và chưa được kiểm chứng VRAM/dung lượng trên máy này."
+}

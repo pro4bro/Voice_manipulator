@@ -1,48 +1,75 @@
 import { useState } from "react";
 
-import type { EnvironmentNoiseProfile, OmniVoiceTrainingParameters, ProjectMediaAsset, TrainingCatalog, TrainingEngineId, TrainingEngineOption, TrainingModeId, TrainingRuntimeReport } from "../../domain/types";
+import type { EnvironmentNoiseProfile, ProjectMediaAsset, TrainingCatalog, TrainingModelOption, TrainingParameterSpec, TrainingParameterValue, TrainingRuntimeReport } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { formatParameterValue, parameterOverrides, parameterProblem, parameterValue, selectedTrainingModel } from "./trainingModels";
 
 interface TrainProps {
   assets: ProjectMediaAsset[];
   catalog: TrainingCatalog;
   onCatalogChange: (catalog: TrainingCatalog) => void;
-  trainingEngines?: TrainingEngineOption[];
-  trainingEngine?: TrainingEngineId;
-  trainingMode?: TrainingModeId;
-  trainingParameters?: OmniVoiceTrainingParameters;
+  trainingModels?: TrainingModelOption[];
   trainingManifestId?: string | null;
   trainingRuntime?: TrainingRuntimeReport | null;
   busy?: boolean;
-  onTrainingEngineChange?: (engine: TrainingEngineId) => void;
-  onTrainingModeChange?: (mode: TrainingModeId) => void;
-  onTrainingParametersChange?: (parameters: OmniVoiceTrainingParameters) => void;
   onStart?: () => void;
 }
 
-export function Train({ assets, catalog, onCatalogChange, trainingEngines = [], trainingEngine = "omnivoice", trainingMode = "lora-finetune", trainingParameters, trainingManifestId = null, trainingRuntime = null, busy = false, onTrainingEngineChange, onTrainingModeChange, onTrainingParametersChange, onStart }: TrainProps) {
+export function Train({ assets, catalog, onCatalogChange, trainingModels = [], trainingManifestId = null, trainingRuntime = null, busy = false, onStart }: TrainProps) {
   const [noiseName, setNoiseName] = useState("");
   const [noiseAssetIds, setNoiseAssetIds] = useState<string[]>([]);
-  const [localEngineId, setLocalEngineId] = useState<TrainingEngineId>(trainingEngine);
-  const [localModeId, setLocalModeId] = useState<TrainingModeId>(trainingMode);
+  // What is typed into a number field while it has focus. "0." and "1e-" are
+  // on their way to a number; re-rendering the parsed value would eat them.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const settings = catalog.settings;
   const usableAssets = assets.filter((asset) => asset.status !== "no-audio");
-  const selectedEngineId = onTrainingEngineChange ? trainingEngine : localEngineId;
-  const selectedModeId = onTrainingModeChange ? trainingMode : localModeId;
-  const selectedEngine = trainingEngines.find((engine) => engine.id === selectedEngineId) ?? null;
-  const selectedMode = selectedEngine?.modes.find((mode) => mode.id === selectedModeId) ?? selectedEngine?.modes[0] ?? null;
-  const omniParameters = trainingParameters ?? { baseModel: "k2-fsa/OmniVoice", loraR: 16, loraAlpha: 32, batchTokens: Math.max(1, settings.batchSize) * 2048, attnImplementation: "sdpa" as const };
+  const model = selectedTrainingModel(trainingModels, settings);
+  const overrides = model ? parameterOverrides(model, settings) : {};
+  const problems = model
+    ? model.parameters.flatMap((spec) => {
+      const draft = drafts[draftKey(model.id, spec.key)];
+      const typed = draft === undefined ? parameterValue(spec, overrides) : draftNumber(draft);
+      const problem = typed === undefined ? "Chưa phải số hợp lệ" : parameterProblem(spec, typed);
+      return problem ? [[spec.key, problem] as const] : [];
+    })
+    : [];
+  const problemByKey = Object.fromEntries(problems);
 
   function updateSettings(update: Partial<TrainingCatalog["settings"]>) {
     onCatalogChange({ ...catalog, settings: { ...settings, ...update } });
   }
 
-  function updatePositiveNumber(key: "maxSteps" | "checkpointEvery" | "batchSize" | "learningRate", value: string) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
-    updateSettings({ [key]: parsed });
-    if (key === "batchSize") updateOmniParameters({ batchTokens: parsed * 2048 });
+  function chooseModel(modelId: string) {
+    updateSettings({ modelId });
+  }
+
+  function setParameter(spec: TrainingParameterSpec, value: TrainingParameterValue) {
+    if (!model) return;
+    const next = { ...(settings.modelParameters?.[model.id] ?? {}) };
+    // A value equal to the default is not a change. Keeping it would pin the
+    // project to today's default after a descriptor corrects it.
+    if (value === spec.default) delete next[spec.key];
+    else next[spec.key] = value;
+    const all = { ...(settings.modelParameters ?? {}) };
+    if (Object.keys(next).length) all[model.id] = next;
+    else delete all[model.id];
+    updateSettings({ modelParameters: all });
+  }
+
+  function typeNumber(spec: TrainingParameterSpec, text: string) {
+    if (!model) return;
+    setDrafts((current) => ({ ...current, [draftKey(model.id, spec.key)]: text }));
+    const parsed = draftNumber(text);
+    if (parsed === null ? spec.nullable : parsed !== undefined) setParameter(spec, parsed ?? null);
+  }
+
+  function clearDraft(key: string) {
+    setDrafts((current) => {
+      if (!(key in current)) return current;
+      const { [key]: _dropped, ...rest } = current;
+      return rest;
+    });
   }
 
   function addNoiseProfile() {
@@ -64,72 +91,149 @@ export function Train({ assets, catalog, onCatalogChange, trainingEngines = [], 
     setNoiseAssetIds([]);
   }
 
-  function updateOmniParameters(update: Partial<OmniVoiceTrainingParameters>) {
-    onTrainingParametersChange?.({ ...omniParameters, ...update });
+  function renderField(spec: TrainingParameterSpec) {
+    if (!model) return null;
+    const value = parameterValue(spec, overrides);
+    const changed = spec.editable && spec.key in overrides;
+    const problem = problemByKey[spec.key];
+    const disabled = !spec.editable;
+    // null means the recipe does not set it / the trainer has no default worth
+    // naming, so there is nothing to compare against.
+    const hint = [
+      spec.recipe != null && spec.recipe !== spec.default ? `recipe ${formatParameterValue(spec.recipe)}` : null,
+      spec.codeDefault != null && spec.codeDefault !== spec.default ? `code ${formatParameterValue(spec.codeDefault)}` : null,
+    ].filter(Boolean).join(" · ");
+    const title = [spec.help, spec.source ? `Nguồn: ${spec.source}` : null, `Key: ${spec.key}`].filter(Boolean).join("\n");
+
+    if (spec.kind === "bool") {
+      return (
+        <label className={`train-param train-param--bool ${changed ? "is-changed" : ""}`} key={spec.key} title={title}>
+          <input aria-label={spec.label} checked={value === true} disabled={disabled} onChange={(event) => setParameter(spec, event.target.checked)} type="checkbox" />
+          <span>{spec.label}{disabled ? <i className="train-param-lock">khoá</i> : null}</span>
+          {hint ? <small>{hint}</small> : null}
+        </label>
+      );
+    }
+
+    let control;
+    if (spec.kind === "choice") {
+      control = (
+        <select aria-label={spec.label} disabled={disabled} onChange={(event) => {
+          const option = spec.options.find((item) => String(item.value) === event.target.value);
+          if (option) setParameter(spec, option.value);
+        }} value={String(value)}>
+          {spec.options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+        </select>
+      );
+    } else if (spec.kind === "text") {
+      control = <input aria-label={spec.label} disabled={disabled} onChange={(event) => setParameter(spec, event.target.value)} spellCheck={false} value={value === null ? "" : String(value)} />;
+    } else {
+      const draft = drafts[draftKey(model.id, spec.key)];
+      control = (
+        <input
+          aria-invalid={problem ? true : undefined}
+          aria-label={spec.label}
+          disabled={disabled}
+          inputMode={spec.kind === "int" ? "numeric" : "decimal"}
+          onBlur={() => clearDraft(draftKey(model.id, spec.key))}
+          onChange={(event) => typeNumber(spec, event.target.value)}
+          placeholder={spec.nullable ? "không giới hạn" : undefined}
+          value={draft ?? (value === null ? "" : String(value))}
+        />
+      );
+    }
+
+    return (
+      <label className={`train-param ${spec.kind === "text" ? "train-param--wide" : ""} ${changed ? "is-changed" : ""} ${problem ? "is-invalid" : ""}`} key={spec.key} title={title}>
+        <span>{spec.label}{disabled ? <i className="train-param-lock">khoá</i> : null}{spec.unit ? <em>{spec.unit}</em> : null}</span>
+        {control}
+        <small>{problem ?? hint}</small>
+      </label>
+    );
   }
 
-  const trainingReady = Boolean(trainingManifestId && trainingRuntime?.ready && selectedMode?.available);
-  const startLabel = !trainingEngines.length
+  function renderGroups(specs: TrainingParameterSpec[]) {
+    const groups: [string, TrainingParameterSpec[]][] = [];
+    for (const spec of specs) {
+      const group = groups.find(([name]) => name === spec.group);
+      if (group) group[1].push(spec);
+      else groups.push([spec.group, [spec]]);
+    }
+    return groups.map(([name, items]) => (
+      <fieldset className="train-param-group" key={name}>
+        <legend>{name}</legend>
+        <div className="train-param-grid">{items.map(renderField)}</div>
+      </fieldset>
+    ));
+  }
+
+  const basic = model?.parameters.filter((spec) => !spec.advanced) ?? [];
+  const advanced = model?.parameters.filter((spec) => spec.advanced) ?? [];
+  const changedCount = Object.keys(overrides).length;
+  const families = trainingModels.reduce<string[]>((list, option) => list.includes(option.family) ? list : [...list, option.family], []);
+
+  const trainingReady = Boolean(model?.available && trainingManifestId && trainingRuntime?.ready && !problems.length);
+  const startLabel = !model
     ? "Bắt đầu training · adapter chưa kết nối"
     : busy
       ? "Đang khởi động..."
-      : !trainingManifestId
-        ? "Biên dịch dataset trước"
-        : !selectedMode?.available
-          ? "Mode chưa sẵn sàng"
-          : !trainingRuntime?.ready
-            ? "Runtime chưa sẵn sàng"
-            : `Bắt đầu ${selectedEngine?.label ?? "training"}`;
+      : !model.installed
+        ? "Chưa cài repo cho model này"
+        : !model.available
+          ? "Model này chưa có adapter chạy"
+          : problems.length
+            ? "Tham số chưa hợp lệ"
+            : !trainingManifestId
+              ? "Biên dịch dataset trước"
+              : !trainingRuntime?.ready
+                ? "Runtime chưa sẵn sàng"
+                : `Bắt đầu ${model.label}`;
 
   return (
-    <ModuleFrame className="train-module" eyebrow="FINE-TUNE CONTROL" title="Train" action={<span className={`train-engine-state ${selectedMode?.available ? "is-ready" : ""}`}>{selectedMode?.available ? "ADAPTER READY" : "ADAPTER PENDING"}</span>}>
-      {trainingEngines.length ? (
-        <section className="train-engine-picker" aria-label="Training engine configuration">
-          <div className="train-picker-grid">
-            <label><span>ENGINE</span><select aria-label="Training engine" onChange={(event) => { const next = event.target.value as TrainingEngineId; setLocalEngineId(next); setLocalModeId(next === "omnivoice" ? "lora-finetune" : "tts-single-speaker-lora"); onTrainingEngineChange?.(next); }} value={selectedEngine?.id ?? selectedEngineId}>{trainingEngines.map((engine) => <option key={engine.id} value={engine.id}>{engine.label}{engine.installed ? "" : " · chưa cài"}</option>)}</select></label>
-            <label><span>TRAINING MODE</span><select aria-label="Training mode" onChange={(event) => { const next = event.target.value as TrainingModeId; setLocalModeId(next); onTrainingModeChange?.(next); }} value={selectedMode?.id ?? selectedModeId}>{selectedEngine?.modes.map((mode) => <option disabled={!mode.available} key={mode.id} value={mode.id}>{mode.label}{mode.available ? "" : " · chưa hỗ trợ"}</option>)}</select></label>
+    <ModuleFrame className="train-module" eyebrow="FINE-TUNE CONTROL" title="Train" action={<span className={`train-engine-state ${model?.available ? "is-ready" : ""}`}>{model?.available ? "ADAPTER READY" : "ADAPTER PENDING"}</span>}>
+      {model ? (
+        <section className="train-engine-picker" aria-label="Chọn Model Training">
+          <label>
+            <span>MODEL TRAINING</span>
+            <select aria-label="Model Training" onChange={(event) => chooseModel(event.target.value)} value={model.id}>
+              {families.map((family) => (
+                <optgroup key={family} label={family}>
+                  {trainingModels.filter((option) => option.family === family).map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}{option.available ? "" : option.installed ? " · chưa có adapter" : " · chưa cài"}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <small className="train-engine-description">{model.description}</small>
+          <div className={`train-model-status ${model.available ? "is-ready" : model.installed ? "is-partial" : ""}`}>
+            <b>{model.available ? "SẴN SÀNG" : model.installed ? "ĐÃ CÓ REPO" : "CHƯA CÀI"}</b>
+            <span>{model.status}</span>
           </div>
-          {selectedEngine ? <small className="train-engine-description">{selectedEngine.description}</small> : null}
-          {selectedMode ? <small className="train-engine-description">{selectedMode.description}</small> : null}
+          <dl className="train-model-facts">
+            <dt>Repo</dt><dd title={model.repository.url ?? undefined}>{model.repository.root}/{model.repository.path === "." ? "" : `${model.repository.path}/`}{model.repository.entrypoint}{model.repository.revision ? ` @${model.repository.revision}` : ""}</dd>
+            {model.repository.recipe ? <><dt>Recipe</dt><dd>{model.repository.recipe}</dd></> : null}
+            {model.dataFormat ? <><dt>Dữ liệu</dt><dd>{model.dataFormat}</dd></> : null}
+          </dl>
+          {model.notes.length ? <ul className="train-model-notes">{model.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
         </section>
       ) : null}
-      {selectedEngineId === "omnivoice" ? (
-        <section className="train-engine-parameters">
-          <div className="train-section-label">OMNIVOICE · REAL PARAMETERS</div>
-          <label className="train-field-wide"><span>Base model / checkpoint</span><input aria-label="OmniVoice base model" onChange={(event) => updateOmniParameters({ baseModel: event.target.value })} value={omniParameters.baseModel} /></label>
-          <div className="train-parameter-grid">
-            <label><span>LoRA rank</span><input aria-label="LoRA rank" min="1" onChange={(event) => updateOmniParameters({ loraR: Math.max(1, Number(event.target.value) || 1) })} type="number" value={omniParameters.loraR} /></label>
-            <label><span>LoRA alpha</span><input aria-label="LoRA alpha" min="1" onChange={(event) => updateOmniParameters({ loraAlpha: Math.max(1, Number(event.target.value) || 1) })} type="number" value={omniParameters.loraAlpha} /></label>
-            <label><span>Batch tokens</span><input aria-label="Batch tokens" min="1" onChange={(event) => updateOmniParameters({ batchTokens: Math.max(1, Number(event.target.value) || 1) })} type="number" value={omniParameters.batchTokens} /></label>
-            <label><span>Attention</span><select aria-label="Attention implementation" onChange={(event) => updateOmniParameters({ attnImplementation: event.target.value as OmniVoiceTrainingParameters["attnImplementation"] })} value={omniParameters.attnImplementation}><option value="sdpa">SDPA</option><option value="flex_attention">Flex attention</option></select></label>
+      {model ? (
+        <section className={`train-engine-parameters ${model.available ? "" : "is-gated"}`} aria-label={`Tham số ${model.label}`}>
+          <div className="train-section-label">
+            <span>THAM SỐ · {model.parameters.length}</span>
+            {changedCount ? <button className="train-reset" onClick={() => { const all = { ...(settings.modelParameters ?? {}) }; delete all[model.id]; setDrafts({}); updateSettings({ modelParameters: all }); }} type="button">Về mặc định · {changedCount}</button> : null}
           </div>
-          <small className="train-parameter-note">Mode LoRA dùng checkpoint có sẵn. Full fine-tune và From scratch chỉ mở khi adapter tương ứng được cài.</small>
+          {renderGroups(basic)}
+          {advanced.length ? (
+            <details className="train-param-advanced">
+              <summary>Nâng cao · {advanced.length}</summary>
+              {renderGroups(advanced)}
+            </details>
+          ) : null}
+          <small className="train-parameter-note">Mặc định lấy từ recipe của repo; "recipe"/"code" dưới ô là giá trị gốc khi khác mặc định. Di chuột lên ô để xem nguồn và tên key.</small>
         </section>
-      ) : (
-        <section className="train-engine-parameters is-gated">
-          <div className="train-section-label">VIBEVOICE · REAL PARAMETERS</div>
-          <label className="train-field-wide"><span>Model</span><input aria-label="VibeVoice model" disabled value={trainingMode === "asr-lora" ? "microsoft/VibeVoice-ASR" : "vibevoice/VibeVoice-1.5B"} /></label>
-          <div className="train-parameter-grid">
-            <label><span>Epochs</span><input aria-label="VibeVoice epochs" disabled type="number" value="3" readOnly /></label>
-            <label><span>Device batch</span><input aria-label="VibeVoice device batch" disabled type="number" value="1" readOnly /></label>
-            <label><span>Grad accumulation</span><input aria-label="VibeVoice gradient accumulation" disabled type="number" value="8" readOnly /></label>
-            <label><span>Learning rate</span><input aria-label="VibeVoice learning rate" disabled value="1e-4" readOnly /></label>
-            <label><span>LoRA rank</span><input aria-label="VibeVoice LoRA rank" disabled type="number" value="16" readOnly /></label>
-            <label><span>Precision</span><select aria-label="VibeVoice precision" disabled value="bf16" onChange={() => undefined}><option value="bf16">BF16</option></select></label>
-          </div>
-          {selectedModeId === "tts-single-speaker-lora" ? <div className="train-parameter-grid">
-            <label><span>Voice prompt drop</span><input aria-label="VibeVoice voice prompt drop rate" disabled value="0.1" readOnly /></label>
-            <label><span>Diffusion loss</span><input aria-label="VibeVoice diffusion loss weight" disabled value="1.0" readOnly /></label>
-            <label><span>CE loss</span><input aria-label="VibeVoice CE loss weight" disabled value="1.0" readOnly /></label>
-            <label className="train-checkbox-field"><input aria-label="VibeVoice train diffusion head" checked readOnly type="checkbox" /><span>Train diffusion head</span></label>
-          </div> : null}
-          {selectedModeId === "asr-lora" ? <div className="train-parameter-grid">
-            <label><span>Max audio seconds</span><input aria-label="VibeVoice ASR max audio seconds" disabled type="number" value="30" readOnly /></label>
-            <label><span>Context</span><input aria-label="VibeVoice ASR customized context" disabled value="default" readOnly /></label>
-          </div> : null}
-          <small className="train-parameter-note">VibeVoice đã có schema tham số để giữ đúng UI giữa các engine, nhưng adapter local chưa được cài nên chưa cho chạy.</small>
-        </section>
-      )}
+      ) : null}
       <div className="train-speaker-targets">
         <span>VOICE TARGETS · MULTI-SPEAKER</span>
         <div>
@@ -141,12 +245,6 @@ export function Train({ assets, catalog, onCatalogChange, trainingEngines = [], 
           ))}
           {!catalog.speakers.length ? <small>Tạo Speaker Profile trong Sound Library.</small> : null}
         </div>
-      </div>
-      <div className="train-parameter-grid">
-        <label><span>Max steps</span><input aria-label="Max steps" min="1" onChange={(event) => updatePositiveNumber("maxSteps", event.target.value)} type="number" value={settings.maxSteps} /></label>
-        <label><span>Backup mỗi</span><input aria-label="Checkpoint interval" min="1" onChange={(event) => updatePositiveNumber("checkpointEvery", event.target.value)} type="number" value={settings.checkpointEvery} /><small>steps</small></label>
-        <label><span>Batch size</span><input aria-label="Batch size" min="1" onChange={(event) => updatePositiveNumber("batchSize", event.target.value)} type="number" value={settings.batchSize} /></label>
-        <label><span>Learning rate</span><input aria-label="Learning rate" min="0.000001" onChange={(event) => updatePositiveNumber("learningRate", event.target.value)} step="0.000001" type="number" value={settings.learningRate} /></label>
       </div>
       <div className="train-switches">
         <label><input checked={settings.denoiseBeforeTraining} onChange={(event) => updateSettings({ denoiseBeforeTraining: event.target.checked })} type="checkbox" /><span><b>Khử nhiễu trước khi train</b><small>Filter tạm trên dataset đầu vào</small></span></label>
@@ -167,4 +265,16 @@ export function Train({ assets, catalog, onCatalogChange, trainingEngines = [], 
       <button className="button button--accent button--full" disabled={busy || !trainingReady} onClick={onStart} type="button">{startLabel}</button>
     </ModuleFrame>
   );
+}
+
+function draftKey(modelId: string, key: string) {
+  return `${modelId}:${key}`;
+}
+
+/** null for an empty field, undefined for text that is not a number (yet). */
+function draftNumber(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

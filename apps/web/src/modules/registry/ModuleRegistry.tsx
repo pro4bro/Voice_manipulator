@@ -1,6 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { ReadingMode } from "../../domain/reading-plan";
-import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingEngineId, TrainingEngineOption, TrainingModeId, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingModelOption, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
@@ -44,10 +44,7 @@ export interface StudioContext {
   trainingProgress: TrainingProgressLine[];
   trainingManifestId: string | null;
   trainingRuntime: import("../../domain/types").TrainingRuntimeReport | null;
-  trainingEngines: TrainingEngineOption[];
-  trainingEngine: TrainingEngineId;
-  trainingMode: TrainingModeId;
-  trainingParameters: import("../../domain/types").OmniVoiceTrainingParameters;
+  trainingModels: TrainingModelOption[];
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
@@ -89,9 +86,6 @@ export interface StudioContext {
   onSkipCard: () => void;
   onCompileDataset: () => void;
   onCancelTrainingRun: () => void;
-  onTrainingEngineChange: (engine: TrainingEngineId) => void;
-  onTrainingModeChange: (mode: TrainingModeId) => void;
-  onTrainingParametersChange: (parameters: import("../../domain/types").OmniVoiceTrainingParameters) => void;
   onStartTrainingRun: () => void;
 }
 
@@ -154,7 +148,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "speaker-emotion":
       return <SpeakerEmotion asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":
-      return <Train assets={context.mediaAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} onTrainingEngineChange={context.onTrainingEngineChange} onTrainingModeChange={context.onTrainingModeChange} onTrainingParametersChange={context.onTrainingParametersChange} trainingEngine={context.trainingEngine} trainingEngines={context.trainingEngines} trainingManifestId={context.trainingManifestId} trainingMode={context.trainingMode} trainingParameters={context.trainingParameters} trainingRuntime={context.trainingRuntime} />;
+      return <Train assets={context.mediaAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} trainingManifestId={context.trainingManifestId} trainingModels={context.trainingModels} trainingRuntime={context.trainingRuntime} />;
     case "recent-takes":
       return <RecentTakes />;
     case "voice-generator":

@@ -1,0 +1,364 @@
+{
+  "schemaVersion": 1,
+  "id": "vibevoice-7b-tts-lora",
+  "label": "VibeVoice 7B · TTS LoRA (community)",
+  "family": "VibeVoice",
+  "engine": "vibevoice",
+  "mode": "tts-lora",
+  "order": 41,
+  "description": "Cùng đường train với 1.5B trên model 7B. Cần VRAM lớn hơn nhiều.",
+  "runnable": false,
+  "blockedReason": "Đã có repo community, chưa có adapter Pro4Bro chạy train_vibevoice và xuất JSONL.",
+  "repository": {
+    "root": "vibevoice",
+    "path": "VibeVoice-community",
+    "entrypoint": "vibevoice/finetune/train_vibevoice.py",
+    "recipe": "FINETUNING.md",
+    "url": "https://github.com/vibevoice-community/VibeVoice",
+    "revision": "631804b"
+  },
+  "dataFormat": "JSONL {text: \"Speaker 1: ...\", audio, voice_prompts} qua --train_jsonl; mỗi dòng một đoạn của một Speaker Profile.",
+  "notes": [
+    "Recipe chỉ được công bố cho 1.5B. Các giá trị ở đây mượn từ recipe 1.5B, chưa kiểm chứng trên 7B.",
+    "Microsoft không phát hành code fine-tune TTS; đây là bản của cộng đồng."
+  ],
+  "parameters": [
+    {
+      "key": "model_name_or_path",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "text",
+      "default": "vibevoice/VibeVoice-7B",
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "help": "HF id hoặc thư mục model local (VibeVoice_models/...)."
+    },
+    {
+      "key": "freeze_acoustic_tokenizer",
+      "label": "Đóng băng acoustic tokenizer",
+      "group": "Model",
+      "kind": "bool",
+      "default": true,
+      "codeDefault": true,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "advanced": true
+    },
+    {
+      "key": "freeze_semantic_tokenizer",
+      "label": "Đóng băng semantic tokenizer",
+      "group": "Model",
+      "kind": "bool",
+      "default": true,
+      "codeDefault": true,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "advanced": true
+    },
+    {
+      "key": "lora_r",
+      "label": "LoRA rank",
+      "group": "LoRA",
+      "kind": "int",
+      "default": 8,
+      "codeDefault": 8,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "min": 1,
+      "max": 512,
+      "help": "Recipe không đặt; theo code default."
+    },
+    {
+      "key": "lora_alpha",
+      "label": "LoRA alpha",
+      "group": "LoRA",
+      "kind": "int",
+      "default": 32,
+      "codeDefault": 32,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "min": 1,
+      "max": 1024
+    },
+    {
+      "key": "lora_dropout",
+      "label": "LoRA dropout",
+      "group": "LoRA",
+      "kind": "float",
+      "default": 0.05,
+      "codeDefault": 0.05,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "min": 0,
+      "max": 0.9,
+      "step": 0.01
+    },
+    {
+      "key": "lora_target_modules",
+      "label": "LoRA target modules",
+      "group": "LoRA",
+      "kind": "text",
+      "default": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+      "recipe": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+      "codeDefault": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+      "source": "VibeVoice-community/FINETUNING.md",
+      "advanced": true
+    },
+    {
+      "key": "train_diffusion_head",
+      "label": "Train diffusion head",
+      "group": "LoRA",
+      "kind": "bool",
+      "default": true,
+      "recipe": true,
+      "codeDefault": false,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "help": "Fine-tune toàn bộ diffusion head (không phải LoRA)."
+    },
+    {
+      "key": "lora_wrap_diffusion_head",
+      "label": "LoRA trên diffusion head",
+      "group": "LoRA",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "advanced": true
+    },
+    {
+      "key": "train_connectors",
+      "label": "Train connectors",
+      "group": "LoRA",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "source": "vibevoice/finetune/train_vibevoice.py",
+      "advanced": true
+    },
+    {
+      "key": "num_train_epochs",
+      "label": "Epochs",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 1,
+      "recipe": 1,
+      "codeDefault": 3,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 0.01,
+      "max": 1000,
+      "step": 0.5
+    },
+    {
+      "key": "per_device_train_batch_size",
+      "label": "Batch / GPU",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 8,
+      "recipe": 8,
+      "codeDefault": 8,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1,
+      "max": 512
+    },
+    {
+      "key": "gradient_accumulation_steps",
+      "label": "Gradient accumulation",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 16,
+      "recipe": 16,
+      "codeDefault": 1,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1,
+      "max": 1024
+    },
+    {
+      "key": "learning_rate",
+      "label": "Learning rate",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 2.5e-05,
+      "recipe": 2.5e-05,
+      "codeDefault": 5e-05,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1e-08,
+      "max": 1,
+      "step": 1e-06
+    },
+    {
+      "key": "lr_scheduler_type",
+      "label": "LR scheduler",
+      "group": "Huấn luyện",
+      "kind": "choice",
+      "default": "cosine",
+      "recipe": "cosine",
+      "codeDefault": "linear",
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "options": [
+        {
+          "value": "cosine",
+          "label": "Cosine"
+        },
+        {
+          "value": "linear",
+          "label": "Linear"
+        },
+        {
+          "value": "constant",
+          "label": "Constant"
+        },
+        {
+          "value": "constant_with_warmup",
+          "label": "Constant with warmup"
+        }
+      ]
+    },
+    {
+      "key": "warmup_ratio",
+      "label": "Warmup ratio",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 0.03,
+      "recipe": 0.03,
+      "codeDefault": 0.0,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "key": "gradient_clipping",
+      "label": "Gradient clipping",
+      "group": "Huấn luyện",
+      "kind": "bool",
+      "default": true,
+      "recipe": true,
+      "codeDefault": false,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "help": "Tắt thì trainer ép max_grad_norm = 0."
+    },
+    {
+      "key": "max_grad_norm",
+      "label": "Max grad norm",
+      "group": "Huấn luyện",
+      "kind": "float",
+      "default": 0.8,
+      "recipe": 0.8,
+      "codeDefault": 1.0,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 0,
+      "max": 100,
+      "step": 0.1
+    },
+    {
+      "key": "bf16",
+      "label": "BF16",
+      "group": "Huấn luyện",
+      "kind": "bool",
+      "default": true,
+      "recipe": true,
+      "codeDefault": false,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "advanced": true
+    },
+    {
+      "key": "gradient_checkpointing",
+      "label": "Gradient checkpointing",
+      "group": "Huấn luyện",
+      "kind": "bool",
+      "default": false,
+      "recipe": false,
+      "codeDefault": false,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "help": "Bật để giảm VRAM, đổi lại chậm hơn.",
+      "advanced": true
+    },
+    {
+      "key": "ddpm_batch_mul",
+      "label": "DDPM batch multiplier",
+      "group": "Loss",
+      "kind": "int",
+      "default": 4,
+      "recipe": 4,
+      "codeDefault": 1,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "diffusion_loss_weight",
+      "label": "Diffusion loss weight",
+      "group": "Loss",
+      "kind": "float",
+      "default": 1.4,
+      "recipe": 1.4,
+      "codeDefault": 1.0,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "min": 0,
+      "max": 100,
+      "step": 0.1
+    },
+    {
+      "key": "ce_loss_weight",
+      "label": "CE loss weight",
+      "group": "Loss",
+      "kind": "float",
+      "default": 0.04,
+      "recipe": 0.04,
+      "codeDefault": 1.0,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "min": 0,
+      "max": 100,
+      "step": 0.01
+    },
+    {
+      "key": "voice_prompt_drop_rate",
+      "label": "Voice prompt drop rate",
+      "group": "Loss",
+      "kind": "float",
+      "default": 0.2,
+      "recipe": 0.2,
+      "codeDefault": 0.0,
+      "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "save_steps",
+      "label": "Backup checkpoint mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 100,
+      "recipe": 100,
+      "codeDefault": 500,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1,
+      "max": 10000000,
+      "unit": "steps",
+      "runField": "save_steps"
+    },
+    {
+      "key": "logging_steps",
+      "label": "Log mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 10,
+      "recipe": 10,
+      "codeDefault": 500,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1,
+      "max": 100000,
+      "unit": "steps",
+      "advanced": true
+    },
+    {
+      "key": "eval_steps",
+      "label": "Đánh giá mỗi",
+      "group": "Checkpoint & log",
+      "kind": "int",
+      "default": 100,
+      "recipe": 100,
+      "source": "VibeVoice-community/FINETUNING.md · transformers TrainingArguments",
+      "min": 1,
+      "max": 1000000,
+      "unit": "steps",
+      "advanced": true,
+      "help": "HF mặc định theo logging_steps."
+    }
+  ]
+}

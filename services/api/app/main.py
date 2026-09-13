@@ -33,7 +33,10 @@ from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.training_runtime import TrainingRuntime
-from app.adapters.training_engine_catalog import TrainingEngineCatalog
+from app.adapters.training_model_catalog import (
+    FileTrainingModelCatalog,
+    TrainingModelUnavailable,
+)
 from app.adapters.training_runner import TrainingBusyError, TrainingNotReady, TrainingRunner
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
@@ -75,7 +78,7 @@ from app.domain.models import (
     SystemLog,
     TrainingProgressLine,
     TrainingRuntimeReport,
-    TrainingEngineOption,
+    TrainingModelOption,
     TrainingRun,
     TrainingRunStart,
     SystemMetrics,
@@ -107,7 +110,11 @@ def create_app(
         settings.training_wheel_cache,
         settings.omnivoice_root,
     )
-    training_engines = TrainingEngineCatalog(settings.omnivoice_root)
+    training_models = FileTrainingModelCatalog(
+        settings.training_models_root,
+        {"omnivoice": settings.omnivoice_root, "vibevoice": settings.vibevoice_root},
+        settings.local_training_models_root,
+    )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     training_runner = TrainingRunner(
         projects,
@@ -703,14 +710,14 @@ def create_app(
             return training_runner.start(
                 project_id,
                 payload.manifest_id,
-                payload.config,
+                training_models.resolve(payload.config),
                 payload.resume_run_id,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Dataset manifest hoặc project không tồn tại") from exc
         except TrainingNotReady as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except TrainingBusyError as exc:
+        except (TrainingBusyError, TrainingModelUnavailable) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -767,9 +774,9 @@ def create_app(
     def training_runtime_report() -> TrainingRuntimeReport:
         return training_runtime.report()
 
-    @app.get("/api/training-engines", response_model=list[TrainingEngineOption])
-    def training_engine_options() -> list[TrainingEngineOption]:
-        return training_engines.options()
+    @app.get("/api/training-models", response_model=list[TrainingModelOption])
+    def training_model_options() -> list[TrainingModelOption]:
+        return training_models.options()
 
     @app.get(
         "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog
