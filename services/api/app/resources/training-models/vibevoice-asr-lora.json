@@ -7,8 +7,7 @@
   "mode": "asr-lora",
   "order": 50,
   "description": "Fine-tune bộ nhận dạng giọng nói VibeVoice-ASR. Cải thiện transcript, không tạo voice.",
-  "runnable": false,
-  "blockedReason": "Đã có repo Microsoft, chưa có adapter Pro4Bro xuất nhãn {segments, customized_context} và chạy lora_finetune.",
+  "runnable": true,
   "repository": {
     "root": "vibevoice",
     "path": "VibeVoice",
@@ -17,9 +16,26 @@
     "url": "https://github.com/microsoft/VibeVoice",
     "revision": "c766f12"
   },
+  "requires": [
+    {
+      "root": "vibevoice-models",
+      "path": "microsoft/VibeVoice-ASR",
+      "label": "weights microsoft/VibeVoice-ASR"
+    },
+    {
+      "root": "vibevoice-models",
+      "path": "Qwen/Qwen2.5-7B",
+      "label": "tokenizer Qwen/Qwen2.5-7B"
+    }
+  ],
   "dataFormat": "Audio + JSON {audio_duration, audio_path, segments[{speaker, text, start, end}], customized_context}.",
   "notes": [
-    "Mặc định theo lệnh torchrun trong README; bảng 'Key Parameters' của README ghi default của HF (batch 8, lr 5e-5), không phải recipe."
+    "Mặc định theo lệnh torchrun trong README; bảng 'Key Parameters' của README ghi default của HF (batch 8, lr 5e-5), không phải recipe.",
+    "Kết quả là một adapter xuất hiện thêm trong lựa chọn Speech to Text, không phải một giọng nói.",
+    "Chạy script gốc lora_finetune.py qua lớp bọc của Pro4Bro: đổi flash_attention_2 sang sdpa (Windows chưa có flash-attn) và nạp tokenizer local.",
+    "Model 7B cần khoảng 17 GB VRAM chỉ để nạp; train LoRA trên card 24 GB là sát giới hạn, chưa kiểm chứng.",
+    "Nhãn lấy từ transcript trong dataset. Chỉ nên train sau khi đã sửa transcript, nếu không model học lại chính lỗi của STT.",
+    "Cần thêm peft trong Python .venv của repo VibeVoice."
   ],
   "parameters": [
     {
@@ -30,7 +46,8 @@
       "default": "microsoft/VibeVoice-ASR",
       "recipe": "microsoft/VibeVoice-ASR",
       "codeDefault": "microsoft/VibeVoice-ASR",
-      "source": "VibeVoice/finetuning-asr/README.md · code finetuning-asr/lora_finetune.py"
+      "source": "VibeVoice/finetuning-asr/README.md · code finetuning-asr/lora_finetune.py",
+      "help": "Tên thư mục trong VibeVoice_models (hoặc đường dẫn tuyệt đối)."
     },
     {
       "key": "lora_r",

@@ -365,6 +365,14 @@ class TrainingModelRepository(DomainModel):
     revision: str | None = None
 
 
+class TrainingModelRequirement(DomainModel):
+    """A file or folder an option cannot run without, such as downloaded weights."""
+
+    root: str = Field(min_length=1, max_length=60)
+    path: str = Field(min_length=1, max_length=400)
+    label: str | None = None
+
+
 class TrainingModelDescriptor(DomainModel):
     """A training option described by a JSON file, not by code.
 
@@ -390,6 +398,7 @@ class TrainingModelDescriptor(DomainModel):
     runnable: bool = False
     blocked_reason: str | None = None
     repository: TrainingModelRepository
+    requires: list[TrainingModelRequirement] = Field(default_factory=list)
     data_format: str | None = None
     notes: list[str] = Field(default_factory=list)
     parameters: list[TrainingParameterSpec] = Field(default_factory=list)
@@ -876,6 +885,19 @@ class ProjectVoice(DomainModel):
     # `base_model` when set. LoRA voices keep the base and add `adapter_path`.
     model_path: str | None = None
     language: str | None = None
+    source_run_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ProjectAsrAdapter(DomainModel):
+    """A speech-recognition adapter trained in this project."""
+
+    id: str = Field(default_factory=lambda: f"asr-{uuid4().hex[:12]}")
+    name: str
+    engine: str = "vibevoice-asr"
+    base_model: str
+    adapter_path: str
+    speaker_profile_id: str | None = None
     source_run_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

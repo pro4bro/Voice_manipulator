@@ -17,6 +17,7 @@ from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
+from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
@@ -30,7 +31,14 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
-from app.adapters.omnivoice_generator import VoiceGenerationError, VoiceGenerator, omnivoice_worker
+from app.adapters.omnivoice_generator import (
+    VibeVoiceSpeech,
+    VoiceGenerationError,
+    VoiceGenerator,
+    omnivoice_worker,
+    vibevoice_worker,
+)
+from app.adapters.vibevoice_training import ASR_PACKAGES, TTS_PACKAGES, VibeVoicePaths, VibeVoiceRuntime
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
@@ -74,6 +82,7 @@ from app.domain.models import (
     MediaTranscriptionSelection,
     ProjectCreate,
     ProjectMediaAsset,
+    ProjectAsrAdapter,
     ProjectVoice,
     VoiceGenerateRequest,
     VoiceOutput,
@@ -118,10 +127,35 @@ def create_app(
         settings.training_wheel_cache,
         settings.omnivoice_root,
     )
+    vibevoice_paths = VibeVoicePaths(settings.vibevoice_root) if settings.vibevoice_root else None
+    vibevoice_runtime = VibeVoiceRuntime(vibevoice_paths) if vibevoice_paths else None
+    asr_adapters = FileAsrAdapters(projects)
+    engine_roots = {
+        "omnivoice": settings.omnivoice_root,
+        "vibevoice": settings.vibevoice_root,
+        "vibevoice-models": vibevoice_paths.models if vibevoice_paths else None,
+        "hub": settings.model_hub_cache,
+    }
+
+    def vibevoice_readiness(descriptor) -> str | None:
+        """Why the VibeVoice Python cannot run this option yet, or None."""
+        if vibevoice_paths is None or vibevoice_runtime is None:
+            return "Chưa cấu hình thư mục VibeVoice."
+        if descriptor.mode == "zero-shot-clone":
+            return None
+        if descriptor.mode == "tts-lora":
+            missing = vibevoice_runtime.missing(TTS_PACKAGES, vibevoice_paths.community)
+        elif descriptor.mode == "asr-lora":
+            missing = vibevoice_runtime.missing(ASR_PACKAGES, vibevoice_paths.microsoft)
+        else:
+            missing = vibevoice_runtime.missing(("diffusers", "transformers"), vibevoice_paths.community)
+        return f"Python của VibeVoice còn thiếu: {', '.join(missing)}." if missing else None
+
     training_models = FileTrainingModelCatalog(
         settings.training_models_root,
-        {"omnivoice": settings.omnivoice_root, "vibevoice": settings.vibevoice_root},
+        engine_roots,
         settings.local_training_models_root,
+        readiness={"vibevoice": vibevoice_readiness},
     )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     engine_env = (
@@ -137,12 +171,33 @@ def create_app(
     project_voices = FileProjectVoices(projects, OmniVoiceDatasetExporter(settings.ffmpeg_path)._slice)
     voice_generators = FileTrainingModelCatalog(
         settings.voice_generators_root,
-        {"omnivoice": settings.omnivoice_root, "vibevoice": settings.vibevoice_root},
+        engine_roots,
         settings.local_voice_generators_root,
+        readiness={"vibevoice": vibevoice_readiness},
     )
     generation_worker = omnivoice_worker(training_runtime.python, engine_env)
+    vibevoice_speech_worker = vibevoice_worker(vibevoice_paths) if vibevoice_paths else None
+
+    def free_gpu() -> None:
+        """Stop every warm speech worker before something needs the whole GPU."""
+        generation_worker.shutdown()
+        if vibevoice_speech_worker is not None:
+            vibevoice_speech_worker.shutdown()
+
     voice_outputs = FileVoiceOutputs(projects)
-    voice_generator = VoiceGenerator(projects, project_voices, voice_outputs, generation_worker, gpu_lease, voice_generators)
+    voice_generator = VoiceGenerator(
+        projects,
+        project_voices,
+        voice_outputs,
+        generation_worker,
+        gpu_lease,
+        voice_generators,
+        engines={
+            "vibevoice": VibeVoiceSpeech(vibevoice_speech_worker, vibevoice_paths, settings.data_root / "runtime" / "vibevoice-processors")
+        }
+        if vibevoice_paths and vibevoice_speech_worker
+        else None,
+    )
     training_runner = TrainingRunner(
         projects,
         dataset_compiler,
@@ -154,13 +209,21 @@ def create_app(
         settings.ffmpeg_path,
         voices=project_voices,
         engine_env=engine_env,
-        before_gpu_work=generation_worker.shutdown,
+        before_gpu_work=free_gpu,
+        vibevoice_paths=vibevoice_paths,
+        vibevoice_runtime=vibevoice_runtime,
+        asr_adapters=asr_adapters,
     )
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
     runtime_status = RuntimeStatus(settings.data_root)
-    vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=generation_worker.shutdown)
+    vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu)
+
+    def vibevoice_stt(path: Path, duration: float, variant: str | None = None, project_id: str | None = None) -> dict:
+        adapter = asr_adapters.weights(project_id, variant) if variant and project_id else None
+        return vibevoice_asr.transcribe(path, duration, adapter=adapter)
+
     stt_engines = FileTrainingModelCatalog(
         settings.stt_engines_root,
         {
@@ -172,7 +235,7 @@ def create_app(
         settings.legacy_studio_url,
         media,
         settings.ffmpeg_path,
-        other_stt={"vibevoice-asr": vibevoice_asr.transcribe},
+        other_stt={"vibevoice-asr": vibevoice_stt},
     )
     engine = voice_engine or OmniVoiceEngine(settings.omnivoice_root)
     folders = folder_picker or NativeFolderPicker()
@@ -828,6 +891,13 @@ def create_app(
             else option
             for option in options
         ]
+
+    @app.get("/api/projects/{project_id}/asr-adapters", response_model=list[ProjectAsrAdapter])
+    def list_asr_adapters(project_id: str) -> list[ProjectAsrAdapter]:
+        try:
+            return asr_adapters.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
 
     @app.get("/api/voice-generators", response_model=list[TrainingModelOption])
     def voice_generator_options() -> list[TrainingModelOption]:

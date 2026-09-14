@@ -144,5 +144,8 @@ class TestCommands:
         command = self.commands.train(Path("t.json"), Path("d.json"), Path("exp"))
 
         assert "accelerate.commands.launch" in command
-        assert command[command.index("-m", 3) + 1] == "omnivoice.cli.train"
+        # The launcher runs omnivoice.cli.train with the Windows dataloader fix.
+        launcher = Path(command[command.index("--num_processes") + 2])
+        assert launcher.name == "omnivoice_train.py" and launcher.is_file()
+        assert "omnivoice.cli.train" in launcher.read_text(encoding="utf-8")
         assert "--output_dir" in command

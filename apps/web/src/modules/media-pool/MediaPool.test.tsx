@@ -74,6 +74,8 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Speech to text/ }));
     expect(onQueueTranscriptions).toHaveBeenCalledWith("vibevoice-asr");
     expect(sttChoices([]).map((choice) => choice.value)).toContain("large-v3");
+    const adapter = { id: "asr-1", name: "An · VibeVoice-ASR LoRA", engine: "vibevoice-asr", baseModel: "microsoft/VibeVoice-ASR", adapterPath: "jobs/training/run-1/checkpoints", speakerProfileId: "speaker-an", sourceRunId: "run-1", createdAt: "" };
+    expect(sttChoices(engines, [adapter]).find((choice) => choice.value === "vibevoice-asr@asr-1")?.label).toBe("+ An · VibeVoice-ASR LoRA");
   });
 
   it("selects only chosen footage for Voice Training", () => {

@@ -63,12 +63,15 @@ class FileProjectVoices:
         model_id: str | None = None,
         base_model: str = "k2-fsa/OmniVoice",
         adapter_dir: Path | None = None,
+        model_dir: Path | None = None,
+        engine: str = "omnivoice",
         source_run_id: str | None = None,
     ) -> ProjectVoice:
         project_root = Path(self.projects.get(project_id).project_path)
         voice = ProjectVoice(
             name=name,
             speaker_profile_id=speaker_profile_id,
+            engine=engine,
             kind=kind,
             model_id=model_id,
             base_model=base_model,
@@ -88,6 +91,9 @@ class FileProjectVoices:
                 "reference_audio": clip.relative_to(project_root).as_posix(),
                 "adapter_path": adapter_dir.resolve().relative_to(project_root.resolve()).as_posix()
                 if adapter_dir
+                else None,
+                "model_path": model_dir.resolve().relative_to(project_root.resolve()).as_posix()
+                if model_dir
                 else None,
             }
         )

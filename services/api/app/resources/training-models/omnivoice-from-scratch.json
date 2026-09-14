@@ -6,8 +6,8 @@
   "engine": "omnivoice",
   "mode": "from-scratch",
   "order": 30,
-  "description": "Huấn luyện model mới từ LLM nền theo recipe Emilia.",
-  "runnable": false,
+  "description": "Huấn luyện model mới từ LLM nền theo recipe Emilia. Cần dữ liệu hàng nghìn giờ; một project nhỏ sẽ không ra giọng dùng được.",
+  "runnable": true,
   "repository": {
     "root": "omnivoice",
     "path": ".",
@@ -17,7 +17,10 @@
     "recipe": "examples/config/train_config_emilia.json"
   },
   "dataFormat": "Dataset Manifest → JSONL {id, audio_path, text, language_id, instruct} → audio tokens (higgs-audio-v2-tokenizer).",
-  "notes": [],
+  "notes": [
+    "Recipe gốc train 300.000 steps trên tập Emilia. Dữ liệu của một project chỉ đủ để thử đường chạy, không đủ tạo model mới.",
+    "Cần LLM nền Qwen/Qwen3-0.6B có sẵn trong model cache vì app chạy offline."
+  ],
   "parameters": [
     {
       "key": "llm_name_or_path",
@@ -315,5 +318,11 @@
       "advanced": true
     }
   ],
-  "blockedReason": "Chưa mở: cần dataset quy mô Emilia; dữ liệu của một project không đủ để huấn luyện từ đầu."
+  "requires": [
+    {
+      "root": "hub",
+      "path": "models--Qwen--Qwen3-0.6B",
+      "label": "Qwen/Qwen3-0.6B trong model cache"
+    }
+  ]
 }

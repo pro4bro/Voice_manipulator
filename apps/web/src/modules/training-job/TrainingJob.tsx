@@ -38,8 +38,27 @@ const CLONE_FLOW: FlowStep[] = [
   { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Manipulation", icon: "spark" },
 ];
 
+/** VibeVoice trainers read audio directly: no tokenize step, and an ASR run publishes an STT choice. */
+const VIBEVOICE_TTS_FLOW: FlowStep[] = [
+  { id: "read-manifest", label: "Dataset manifest", detail: "Lọc đoạn của voice target", icon: "file" },
+  { id: "write-jsonl", label: "Viết dữ liệu", detail: "JSONL + voice prompt", icon: "list" },
+  { id: "load-model", label: "Nạp model", detail: "VibeVoice + LoRA", icon: "settings" },
+  { id: "train", label: "Train", detail: "Loss theo epoch", icon: "training" },
+  { id: "checkpoint", label: "Checkpoint", detail: "Lưu adapter", icon: "folder" },
+  { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Manipulation", icon: "spark" },
+];
+
+const VIBEVOICE_ASR_FLOW: FlowStep[] = VIBEVOICE_TTS_FLOW.map((step) =>
+  step.id === "write-jsonl" ? { ...step, detail: "Audio + nhãn JSON" }
+    : step.id === "publish" ? { ...step, label: "Publish adapter", detail: "Thêm vào Speech to Text" }
+      : step,
+);
+
 export function flowForMode(mode: string | null | undefined): FlowStep[] {
-  return mode === "zero-shot-clone" ? CLONE_FLOW : TRAINING_FLOW;
+  if (mode === "zero-shot-clone") return CLONE_FLOW;
+  if (mode === "tts-lora") return VIBEVOICE_TTS_FLOW;
+  if (mode === "asr-lora") return VIBEVOICE_ASR_FLOW;
+  return TRAINING_FLOW;
 }
 
 const STEP_LABELS: Record<TrainingStepId, string> = {

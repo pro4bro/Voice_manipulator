@@ -14,6 +14,7 @@ import type {
   ProjectCreate,
   ProjectMediaAsset,
   ProjectMediaImportResult,
+  ProjectAsrAdapter,
   ProjectVoice,
   VoiceOutput,
   ReadingAudienceVocabulary,
@@ -367,6 +368,7 @@ export const api = {
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
+  listAsrAdapters: (projectId: string) => request<ProjectAsrAdapter[]>(`/api/projects/${projectId}/asr-adapters`),
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   deleteVoiceOutput: (projectId: string, outputId: string) =>
     request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),

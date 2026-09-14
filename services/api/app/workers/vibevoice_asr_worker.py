@@ -29,7 +29,7 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = None
     processor = None
-    loaded_key: tuple[str, str] | None = None
+    loaded_key: tuple[str, str, str | None] | None = None
 
     def reply(payload: dict) -> None:
         replies.write(REPLY_PREFIX + json.dumps(payload, ensure_ascii=False) + "\n")
@@ -49,7 +49,7 @@ def main() -> None:
                 reply({"id": request_id, "ok": True})
                 return
             started = time.perf_counter()
-            key = (request["model"], request["tokenizer"])
+            key = (request["model"], request["tokenizer"], request.get("lora_adapter"))
             loaded = False
             if model is None or key != loaded_key:
                 model = None
@@ -62,6 +62,11 @@ def main() -> None:
                     attn_implementation=request.get("attn_implementation") or "sdpa",
                     trust_remote_code=True,
                 ).to(device)
+                if request.get("lora_adapter"):
+                    # An adapter trained in the project, applied on top of the base.
+                    from peft import PeftModel
+
+                    model = PeftModel.from_pretrained(model, request["lora_adapter"])
                 model.eval()
                 loaded_key = key
                 loaded = True

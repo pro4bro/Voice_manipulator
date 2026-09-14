@@ -51,6 +51,7 @@ export interface StudioContext {
   onOpenVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
   onDeleteVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
   sttEngines: TrainingModelOption[];
+  asrAdapters: import("../../domain/types").ProjectAsrAdapter[];
   projectVoices: import("../../domain/types").ProjectVoice[];
   voiceGenerators: TrainingModelOption[];
   generatorId: string | null;
@@ -137,6 +138,7 @@ function mediaPoolProps(context: StudioContext) {
     selectedAssetId: context.selectedAssetId,
     workflow: context.workflow,
     sttEngines: context.sttEngines,
+    asrAdapters: context.asrAdapters,
     speakers: context.trainingCatalog.speakers,
     onUpdateAnnotations: context.onUpdateAnnotations,
   };

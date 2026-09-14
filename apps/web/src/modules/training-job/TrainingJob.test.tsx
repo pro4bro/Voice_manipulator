@@ -81,6 +81,15 @@ describe("TrainingJob", () => {
     expect(screen.getByRole("progressbar", { name: "Tiến trình An" })).toHaveAttribute("aria-valuenow", "100");
   });
 
+  it("shows VibeVoice runs without a tokenize step, and an ASR run publishing an STT adapter", () => {
+    const { rerender } = render(<TrainingJob selectedMode="tts-lora" speakers={[AN]} />);
+    expect(screen.queryByText("Tokenize audio")).not.toBeInTheDocument();
+    expect(screen.getByText("JSONL + voice prompt")).toBeInTheDocument();
+
+    rerender(<TrainingJob selectedMode="asr-lora" speakers={[AN]} />);
+    expect(screen.getByText("Thêm vào Speech to Text")).toBeInTheDocument();
+  });
+
   it("shows the flow of the kind chosen in Train while nothing is running", () => {
     const finishedTraining = [run({ status: "complete", stepId: "checkpoint" })];
     const { rerender, container } = render(<TrainingJob batch={finishedTraining} selectedMode="zero-shot-clone" speakers={[AN]} />);

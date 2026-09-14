@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -38,10 +39,14 @@ class FileTrainingModelCatalog:
         shipped_root: Path,
         roots: dict[str, Path | None],
         local_root: Path | None = None,
+        readiness: dict[str, Callable[[TrainingModelDescriptor], str | None]] | None = None,
     ) -> None:
         self.shipped_root = shipped_root
         self.local_root = local_root
         self.roots = roots
+        # Per-engine checks only the engine's own adapter can make: whether its
+        # Python imports what this option needs. Returns why not, or None.
+        self.readiness = readiness or {}
 
     def options(self) -> list[TrainingModelOption]:
         found: dict[str, TrainingModelOption] = {}
@@ -91,16 +96,28 @@ class FileTrainingModelCatalog:
         repository = descriptor.repository
         root = self.roots.get(repository.root)
         entrypoint = (root / repository.path / repository.entrypoint) if root else None
-        installed = bool(entrypoint and entrypoint.is_file())
+        missing = [
+            requirement.label or requirement.path
+            for requirement in descriptor.requires
+            if not (self.roots.get(requirement.root) and (self.roots[requirement.root] / requirement.path).exists())
+        ]
+        installed = bool(entrypoint and entrypoint.is_file()) and not missing
         available = installed and descriptor.runnable
         if not root:
             status = f"Chưa cấu hình thư mục '{repository.root}'."
-        elif not installed:
+        elif not (entrypoint and entrypoint.is_file()):
             status = f"Chưa thấy {repository.path}/{repository.entrypoint} trong thư mục '{repository.root}'."
+        elif missing:
+            status = "Chưa có " + ", ".join(missing) + "."
         elif not descriptor.runnable:
             status = descriptor.blocked_reason or "Đã có repo, chưa có adapter chạy thật trong Pro4Bro."
         else:
             status = "Sẵn sàng."
+            check = self.readiness.get(descriptor.engine)
+            reason = check(descriptor) if check else None
+            if reason:
+                available = False
+                status = reason
         return TrainingModelOption(
             **descriptor.model_dump(),
             origin=origin,

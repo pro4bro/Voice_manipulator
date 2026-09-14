@@ -104,7 +104,7 @@ class VibeVoiceAsrTranscriber:
             return "Chưa thấy tokenizer VibeVoice_models/Qwen/Qwen2.5-7B."
         return None
 
-    def transcribe(self, audio: Path, duration: float, context_info: str = "") -> dict[str, Any]:
+    def transcribe(self, audio: Path, duration: float, context_info: str = "", adapter: Path | None = None) -> dict[str, Any]:
         reason = self.unavailable_reason()
         if reason:
             raise VibeVoiceAsrError(reason)
@@ -119,6 +119,7 @@ class VibeVoiceAsrTranscriber:
                     "audio": str(audio),
                     "context_info": context_info,
                     "max_new_tokens": self.max_new_tokens,
+                    "lora_adapter": str(adapter) if adapter else None,
                 }
             )
         except EngineWorkerError as exc:

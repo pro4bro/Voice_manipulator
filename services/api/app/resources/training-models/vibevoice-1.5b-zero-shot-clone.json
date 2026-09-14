@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "vibevoice-1.5b-zero-shot-clone",
+  "label": "VibeVoice 1.5B · Nhái giọng (không train)",
+  "family": "VibeVoice",
+  "engine": "vibevoice",
+  "mode": "zero-shot-clone",
+  "order": 6,
+  "category": "clone",
+  "description": "Không train. Chọn một đoạn mẫu của từng Speaker Profile để VibeVoice bắt chước. Hợp với text tiếng Anh hoặc tiếng Trung.",
+  "runnable": true,
+  "repository": {
+    "root": "vibevoice",
+    "path": "VibeVoice-community",
+    "entrypoint": "vibevoice/modular/modeling_vibevoice_inference.py",
+    "url": "https://github.com/vibevoice-community/VibeVoice",
+    "revision": "631804b"
+  },
+  "requires": [
+    {
+      "root": "vibevoice-models",
+      "path": "microsoft/VibeVoice-1.5B",
+      "label": "weights microsoft/VibeVoice-1.5B"
+    },
+    {
+      "root": "vibevoice-models",
+      "path": "Qwen/Qwen2.5-1.5B",
+      "label": "tokenizer Qwen/Qwen2.5-1.5B"
+    }
+  ],
+  "dataFormat": "Một đoạn 3-10 giây trong Dataset Manifest của voice target làm voice prompt.",
+  "notes": [
+    "Đo trên máy này với giọng mẫu tiếng Việt: câu tiếng Anh Whisper nghe rõ; câu tiếng Việt Whisper chỉ nghe ra \"Xin chào!\". Với tiếng Việt nên dùng OmniVoice.",
+    "Lần đầu nạp model khoảng 1,5 phút; sau đó khoảng 15 giây cho 7 giây audio."
+  ],
+  "parameters": [
+    {
+      "key": "model_name_or_path",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "text",
+      "default": "microsoft/VibeVoice-1.5B",
+      "source": "demo/inference_from_file.py",
+      "runField": "base_model"
+    },
+    {
+      "key": "reference_min_seconds",
+      "label": "Đoạn mẫu ngắn nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 3.0,
+      "recipe": 3.0,
+      "source": "README.md (tip: 3-10 seconds reference)",
+      "min": 1,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây",
+      "help": "Tham số của Pro4Bro, theo gợi ý trong README."
+    },
+    {
+      "key": "reference_max_seconds",
+      "label": "Đoạn mẫu dài nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 10.0,
+      "recipe": 10.0,
+      "source": "README.md (tip: 3-10 seconds reference)",
+      "min": 2,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây"
+    }
+  ]
+}

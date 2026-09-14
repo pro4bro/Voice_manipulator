@@ -7,8 +7,7 @@
   "mode": "tts-lora",
   "order": 40,
   "description": "Fine-tune giọng đọc VibeVoice 1.5B bằng LoRA + diffusion head, theo repo community. Thử nghiệm.",
-  "runnable": false,
-  "blockedReason": "Đã có repo community, chưa có adapter Pro4Bro chạy train_vibevoice và xuất JSONL.",
+  "runnable": true,
   "repository": {
     "root": "vibevoice",
     "path": "VibeVoice-community",
@@ -17,11 +16,25 @@
     "url": "https://github.com/vibevoice-community/VibeVoice",
     "revision": "631804b"
   },
+  "requires": [
+    {
+      "root": "vibevoice-models",
+      "path": "microsoft/VibeVoice-1.5B",
+      "label": "weights microsoft/VibeVoice-1.5B"
+    },
+    {
+      "root": "vibevoice-models",
+      "path": "Qwen/Qwen2.5-1.5B",
+      "label": "tokenizer Qwen"
+    }
+  ],
   "dataFormat": "JSONL {text: \"Speaker 1: ...\", audio, voice_prompts} qua --train_jsonl; mỗi dòng một đoạn của một Speaker Profile.",
   "notes": [
     "Mặc định theo lệnh mẫu trong FINETUNING.md; tham số recipe không đặt thì theo code default của train_vibevoice.py.",
-    "Recipe gốc dùng dataset HF (--dataset_name); Pro4Bro sẽ đưa dữ liệu local qua --train_jsonl.",
-    "Microsoft không phát hành code fine-tune TTS; đây là bản của cộng đồng."
+    "Microsoft không phát hành code fine-tune TTS; đây là bản của cộng đồng.",
+    "Pro4Bro đưa dữ liệu local qua --train_jsonl: mỗi dòng 'Speaker 1: ...', audio cắt theo đoạn, voice prompt là đoạn mẫu của chính người đó.",
+    "Model gốc chỉ được train tiếng Anh và tiếng Trung. Đo trên máy này: VibeVoice nhái giọng đọc tiếng Việt, Whisper chỉ nghe ra \"Xin chào!\". Fine-tune là cách duy nhất để thử dạy tiếng Việt.",
+    "Chạy bằng Python .venv của repo VibeVoice; cần thêm peft và datasets."
   ],
   "parameters": [
     {
@@ -29,10 +42,11 @@
       "label": "Base model",
       "group": "Model",
       "kind": "text",
-      "default": "vibevoice/VibeVoice-1.5B",
+      "default": "microsoft/VibeVoice-1.5B",
       "recipe": "vibevoice/VibeVoice-1.5B",
       "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
-      "help": "HF id hoặc thư mục model local (VibeVoice_models/...)."
+      "help": "Tên thư mục trong VibeVoice_models (hoặc đường dẫn tuyệt đối).",
+      "runField": "base_model"
     },
     {
       "key": "freeze_acoustic_tokenizer",

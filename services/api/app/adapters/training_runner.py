@@ -12,7 +12,9 @@ from uuid import uuid4
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
+from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.gpu_lease import GpuBusy, GpuLease
+from app.adapters.hf_trainer_log_parser import parse_hf_trainer_line
 from app.adapters.omnivoice_dataset_export import (
     DatasetExportError,
     OmniVoiceDatasetExporter,
@@ -26,8 +28,20 @@ from app.adapters.training_process import (
     spawn_in_thread,
 )
 from app.adapters.training_runtime import TrainingRuntime
+from app.adapters.vibevoice_training import (
+    ASR_PACKAGES,
+    TTS_PACKAGES,
+    VibeVoicePaths,
+    VibeVoiceRuntime,
+    asr_command,
+    export_asr_dataset,
+    export_tts_jsonl,
+    tts_command,
+    write_processor_dir,
+)
 from app.domain.models import (
     DatasetManifest,
+    ProjectAsrAdapter,
     TrainingCheckpoint,
     TrainingProgressLine,
     TrainingRun,
@@ -35,6 +49,26 @@ from app.domain.models import (
 )
 from app.domain.ports import ProjectRepository
 from app.domain.voice_reference import NoReferenceSegment, choose_reference
+
+
+ASR_LORA_WRAPPER = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_asr_lora_train.py"
+
+# What each engine's runner can do. A mode missing here is refused before any
+# run exists, whatever a descriptor claims.
+SUPPORTED_MODES: dict[str, set[str]] = {
+    "omnivoice": {"lora-finetune", "full-finetune", "from-scratch", "zero-shot-clone"},
+    "vibevoice": {"tts-lora", "asr-lora", "zero-shot-clone"},
+}
+
+WINDOWS_GOPEN_REWRITE = ";".join(
+    f"{letter}:=file:{letter}:" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
+
+OMNIVOICE_TEMPLATES = {
+    "lora-finetune": "train_config_finetune_lora.json",
+    "full-finetune": "train_config_finetune_sdpa.json",
+    "from-scratch": "train_config_emilia.json",
+}
 
 
 class TrainingNotReady(RuntimeError):
@@ -61,6 +95,9 @@ class TrainingRunner:
         voices: FileProjectVoices | None = None,
         engine_env: dict[str, str] | None = None,
         before_gpu_work: Callable[[], None] | None = None,
+        vibevoice_paths: VibeVoicePaths | None = None,
+        vibevoice_runtime: VibeVoiceRuntime | None = None,
+        asr_adapters: FileAsrAdapters | None = None,
     ) -> None:
         self.projects = projects
         self.compiler = compiler
@@ -76,6 +113,9 @@ class TrainingRunner:
         # Frees whatever else holds the GPU (a warm generation worker) before a
         # run needs all of it.
         self.before_gpu_work = before_gpu_work
+        self.vibevoice_paths = vibevoice_paths
+        self.vibevoice_runtime = vibevoice_runtime
+        self.asr_adapters = asr_adapters
         self._active: dict[str, TrainingProcess] = {}
         self._lock = threading.Lock()
 
@@ -93,14 +133,13 @@ class TrainingRunner:
         that person's segments only, queued behind the one before it. The first
         run of the batch is returned; the rest are listed with it.
         """
-        if config and config.engine != "omnivoice":
-            raise ValueError("VibeVoice đã có trong danh sách lựa chọn nhưng chưa được cài adapter chạy thật.")
-        if config and config.mode not in {"lora-finetune", "full-finetune", "zero-shot-clone"}:
-            raise ValueError("Mode training này chưa được runner OmniVoice hỗ trợ trên Dataset Manifest hiện tại.")
-        report = self.runtime.report()
-        if not report.ready:
-            missing = ", ".join(report.missing) or "training runtime"
-            raise TrainingNotReady(f"Training runtime chưa sẵn sàng; còn thiếu: {missing}.")
+        if config:
+            modes = SUPPORTED_MODES.get(config.engine)
+            if modes is None:
+                raise ValueError(f"Engine {config.engine} chưa có runner trong Pro4Bro.")
+            if config.mode not in modes:
+                raise ValueError(f"Mode {config.mode} chưa được runner {config.engine} hỗ trợ.")
+        self._check_ready(config)
 
         manifest = self.compiler.load(project_id, manifest_id)
         self.runs.reconcile(project_id)
@@ -136,6 +175,32 @@ class TrainingRunner:
         )
         spawn_in_thread(lambda: self._execute(run))
         return self.runs.get(project_id, run.id)
+
+    def vibevoice_missing(self, mode: str) -> list[str]:
+        """What the VibeVoice Python still lacks for a mode; empty when ready."""
+        if mode == "zero-shot-clone":
+            return []
+        if self.vibevoice_paths is None or self.vibevoice_runtime is None:
+            return ["thư mục VibeVoice"]
+        if mode == "tts-lora":
+            return self.vibevoice_runtime.missing(TTS_PACKAGES, self.vibevoice_paths.community)
+        return self.vibevoice_runtime.missing(ASR_PACKAGES, self.vibevoice_paths.microsoft)
+
+    def _check_ready(self, config: TrainingRunConfig | None) -> None:
+        engine = config.engine if config else "omnivoice"
+        mode = config.mode if config else "lora-finetune"
+        if mode == "zero-shot-clone":
+            # Picking a reference clip needs no training environment.
+            return
+        if engine == "vibevoice":
+            missing = self.vibevoice_missing(mode)
+            if missing:
+                raise TrainingNotReady(f"Môi trường VibeVoice chưa sẵn sàng; còn thiếu: {', '.join(missing)}.")
+            return
+        report = self.runtime.report()
+        if not report.ready:
+            missing = ", ".join(report.missing) or "training runtime"
+            raise TrainingNotReady(f"Training runtime chưa sẵn sàng; còn thiếu: {missing}.")
 
     def _start_batch(
         self,
@@ -220,6 +285,9 @@ class TrainingRunner:
             if run.config.mode == "zero-shot-clone":
                 self._build_clone_voice(run)
                 return
+            if run.config.engine == "vibevoice":
+                self._execute_vibevoice(run)
+                return
             if self.before_gpu_work is not None:
                 self.before_gpu_work()
             lease = self.gpu_lease.acquire(f"training:{run.id}")
@@ -299,7 +367,12 @@ class TrainingRunner:
             if not latest:
                 raise RuntimeError("Training kết thúc nhưng không tạo checkpoint nào.")
             self._append(run, "checkpoint", f"Đã tạo checkpoint tại {latest.path}.")
-            self._publish_voice(run, manifest, kind="lora", adapter_dir=Path(project.project_path) / latest.path)
+            checkpoint_dir = Path(project.project_path) / latest.path
+            if run.config.mode == "lora-finetune":
+                self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir)
+            else:
+                # Full and from-scratch checkpoints are whole models.
+                self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir)
             self._set_run(run, status="complete", step_id="checkpoint", process_id=None)
         except GpuBusy as exc:
             self._fail(run, str(exc))
@@ -330,7 +403,149 @@ class TrainingRunner:
         update: dict[str, object] = {"step_id": line.step_id}
         if line.global_step is not None:
             update["global_step"] = line.global_step
+        # Epoch-based trainers only learn their step count once the loop starts;
+        # the bar's total is that count, and the progress bar needs it.
+        if line.step_id == "train" and line.total and current.config.steps != line.total:
+            update["config"] = current.config.model_copy(update={"steps": line.total})
         self.runs.update(run.project_id, current.model_copy(update=update))
+
+    def _execute_vibevoice(self, initial: TrainingRun) -> None:
+        """Train a VibeVoice adapter: TTS LoRA (community fork) or ASR LoRA (Microsoft).
+
+        Same steps and journal as an OmniVoice run. VibeVoice trainers read audio
+        directly, so there is no tokenize step: manifest, export, load and
+        train, then publish what the run made where the app can use it.
+        """
+        run = initial
+        lease_token: str | None = None
+        paths = self.vibevoice_paths
+        try:
+            if paths is None:
+                raise RuntimeError("Chưa cấu hình thư mục VibeVoice.")
+            if self.before_gpu_work is not None:
+                self.before_gpu_work()
+            lease_token = self.gpu_lease.acquire(f"training:{run.id}").token
+            if self.runs.get(run.project_id, run.id).status == "cancelled":
+                return
+            run = self._set_run(run, status="running", step_id="read-manifest")
+            manifest = self._target_manifest(run)
+            project_root = Path(self.projects.get(run.project_id).project_path)
+            run_dir = self.runs.run_dir(run.project_id, run.id)
+            data_dir = run_dir / "data"
+            output_dir = run_dir / "checkpoints"
+            parameters = dict(run.config.parameters)
+
+            run = self._set_run(run, step_id="write-jsonl")
+            if run.config.mode == "tts-lora":
+                model_dir = paths.resolve_model(str(parameters.get("model_name_or_path") or run.config.base_model))
+                tokenizer = paths.tokenizer_for(model_dir, "Qwen/Qwen2.5-1.5B")
+                processor_dir = write_processor_dir(model_dir, tokenizer, data_dir / "processor")
+                prompt = self._voice_prompt_clip(run, manifest, project_root, data_dir)
+                train_jsonl, dev_jsonl, counts = export_tts_jsonl(
+                    manifest.segments, project_root, data_dir, self.exporter._slice, prompt
+                )
+                self._append(run, "write-jsonl", f"Đã ghi {counts.train} train và {counts.dev} dev mẫu cho VibeVoice.")
+                command = tts_command(
+                    paths, model_dir, processor_dir, train_jsonl, dev_jsonl if counts.dev else None, output_dir,
+                    {key: value for key, value in parameters.items() if key != "model_name_or_path"},
+                )
+                repository = paths.community
+                env = {**os.environ, **paths.environment(repository)}
+            elif run.config.mode == "asr-lora":
+                model_dir = paths.resolve_model(str(parameters.get("model_path") or "microsoft/VibeVoice-ASR"))
+                tokenizer = paths.resolve_model("Qwen/Qwen2.5-7B")
+                asr_dir, count = export_asr_dataset(manifest.segments, project_root, data_dir, self.exporter._slice)
+                self._append(run, "write-jsonl", f"Đã ghi {count} mẫu audio + nhãn JSON cho VibeVoice-ASR.")
+                command = asr_command(
+                    paths, ASR_LORA_WRAPPER, model_dir, asr_dir, output_dir,
+                    {key: value for key, value in parameters.items() if key != "model_path"},
+                )
+                repository = paths.microsoft
+                env = {
+                    **os.environ,
+                    **paths.environment(repository),
+                    "PRO4BRO_ASR_FINETUNE_DIR": str(paths.microsoft / "finetuning-asr"),
+                    "PRO4BRO_ASR_TOKENIZER": str(tokenizer),
+                }
+            else:
+                raise ValueError(f"Mode {run.config.mode} chưa có runner VibeVoice.")
+
+            run = self._set_run(run, step_id="load-model")
+            process = self._process_for(run)
+            self._append_command(run, "load-model", command, extra=[(str(paths.root), "<vibevoice>")])
+            code = process.run(command, parse_hf_trainer_line, repository, env)
+            if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
+                return
+            if code != 0:
+                raise RuntimeError(f"VibeVoice training thất bại với mã {code}.")
+
+            latest = self._refresh_checkpoints(run)
+            finished = output_dir / "lora" if run.config.mode == "tts-lora" else output_dir
+            finished_ok = (finished / "adapter_config.json").is_file() or (finished / "diffusion_head_full.bin").is_file()
+            if not latest and not finished_ok:
+                raise RuntimeError("Training kết thúc nhưng không thấy adapter nào được lưu.")
+            self._append(run, "checkpoint", f"Adapter lưu tại {output_dir.relative_to(project_root).as_posix()}.")
+
+            run = self._set_run(run, step_id="publish")
+            adapter_root = output_dir if finished_ok else project_root / latest.path
+            if run.config.mode == "tts-lora":
+                self._publish_voice(run, manifest, kind="lora", adapter_dir=adapter_root, base_model=str(model_dir.relative_to(paths.models).as_posix()))
+            else:
+                self._publish_asr_adapter(run, model_dir, adapter_root, project_root, paths)
+            self._set_run(run, status="complete", step_id="publish", process_id=None)
+        except GpuBusy as exc:
+            self._fail(run, str(exc))
+        except (DatasetExportError, FileNotFoundError, KeyError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+            self._fail(run, str(exc))
+        finally:
+            if lease_token:
+                self.gpu_lease.release(lease_token)
+            with self._lock:
+                self._active.pop(run.id, None)
+
+    def _target_manifest(self, run: TrainingRun) -> DatasetManifest:
+        manifest = self.compiler.load(run.project_id, run.manifest_id)
+        self._append(run, "read-manifest", f"Đã đọc Dataset Manifest {manifest.id}.")
+        if not run.speaker_profile_id:
+            return manifest
+        catalog = self.catalogs.get(run.project_id)
+        name = next((speaker.name for speaker in catalog.speakers if speaker.id == run.speaker_profile_id), run.speaker_profile_id)
+        mine = [segment for segment in manifest.segments if segment.speaker_profile_id == run.speaker_profile_id]
+        minutes = sum(segment.duration for segment in mine) / 60
+        self._append(
+            run,
+            "read-manifest",
+            f"Voice target {run.batch_index + 1}/{run.batch_size}: {name} · {len(mine)} đoạn · {minutes:.1f} phút.",
+        )
+        return manifest.model_copy(update={"segments": mine})
+
+    def _voice_prompt_clip(self, run: TrainingRun, manifest: DatasetManifest, project_root: Path, data_dir: Path) -> Path | None:
+        """The reference clip every training row uses as its voice prompt."""
+        try:
+            reference = choose_reference(manifest.segments)
+        except NoReferenceSegment as exc:
+            self._append(run, "write-jsonl", f"Không có đoạn mẫu, train không kèm voice prompt: {exc}")
+            return None
+        clip = data_dir / "voice_prompt.wav"
+        self.exporter._slice((project_root / reference.audio_path).resolve(), clip, reference.start, reference.end)
+        return clip
+
+    def _publish_asr_adapter(self, run: TrainingRun, model_dir: Path, adapter_dir: Path, project_root: Path, paths: VibeVoicePaths) -> None:
+        if self.asr_adapters is None:
+            return
+        catalog = self.catalogs.get(run.project_id)
+        speaker = next((item for item in catalog.speakers if item.id == run.speaker_profile_id), None)
+        adapter = self.asr_adapters.publish(
+            run.project_id,
+            ProjectAsrAdapter(
+                name=f"{speaker.name if speaker else 'Dataset'} · VibeVoice-ASR LoRA",
+                base_model=model_dir.relative_to(paths.models).as_posix(),
+                adapter_path=adapter_dir.resolve().relative_to(project_root.resolve()).as_posix(),
+                speaker_profile_id=run.speaker_profile_id,
+                source_run_id=run.id,
+            ),
+        )
+        self._append(run, "publish", f"Đã thêm {adapter.name} vào lựa chọn Speech to Text.")
 
     def _append(self, run: TrainingRun, step_id: str, message: str) -> None:
         self.runs.append_progress(run.project_id, run.id, TrainingProgressLine(step_id=step_id, message=message))
@@ -366,6 +581,8 @@ class TrainingRunner:
         kind: str,
         adapter_dir: Path | None,
         required: bool = False,
+        model_dir: Path | None = None,
+        base_model: str | None = None,
     ):
         """Make the run usable in Voice Manipulation. A trained run that cannot
         find a reference clip still completes; its checkpoint is the result."""
@@ -394,20 +611,26 @@ class TrainingRunner:
             "write-jsonl" if kind == "clone" else "publish",
             f"Giọng mẫu: {reference.duration:.1f}s · \u201c{reference.text.strip()}\u201d",
         )
+        engine_label = "VibeVoice " if run.config.engine == "vibevoice" else ""
+        kind_label = {"clone": "nhái giọng", "lora": "LoRA", "full": "full fine-tune"}.get(kind, kind)
         return self.voices.publish(
             run.project_id,
-            name=f"{name} · {'nhái giọng' if kind == 'clone' else 'LoRA'}",
+            name=f"{name} · {engine_label}{kind_label}",
             speaker_profile_id=run.speaker_profile_id,
             kind=kind,  # type: ignore[arg-type]
             reference=reference,
             language=(speaker.language_id if speaker else None) or reference.language_id or project.language,
             model_id=run.config.model_id,
-            base_model=run.config.base_model,
+            base_model=base_model or run.config.base_model,
             adapter_dir=adapter_dir,
+            model_dir=model_dir,
+            engine=run.config.engine,
             source_run_id=run.id,
         )
 
-    def _append_command(self, run: TrainingRun, step_id: str, command: list[str]) -> None:
+    def _append_command(
+        self, run: TrainingRun, step_id: str, command: list[str], extra: list[tuple[str, str]] | None = None
+    ) -> None:
         """The command a step runs, as a line in the run's log.
 
         The journal lives inside the project, which moves between machines, so
@@ -417,6 +640,7 @@ class TrainingRunner:
             (str(self.runs.run_dir(run.project_id, run.id)), "<run>"),
             (str(self.engine_root), "<omnivoice>"),
             (str(self.runtime.python), "python"),
+            *(extra or []),
         ]
         shown: list[str] = []
         for argument in command:
@@ -428,9 +652,15 @@ class TrainingRunner:
         self._append(run, step_id, "$ " + " ".join(shown))
 
     def _engine_environment(self) -> dict[str, str] | None:
-        if not self.engine_env:
+        extra = dict(self.engine_env)
+        if os.name == "nt":
+            # webdataset reads `C:\...` as a URL with scheme "c" and refuses to
+            # open it, so OmniVoice's tokenizer could not write a single shard on
+            # Windows. Its own rewrite hook turns drive paths into file: URLs.
+            extra.setdefault("GOPEN_REWRITE", WINDOWS_GOPEN_REWRITE)
+        if not extra:
             return None
-        return {**os.environ, **self.engine_env}
+        return {**os.environ, **extra}
 
     def _set_run(self, run: TrainingRun, **updates: object) -> TrainingRun:
         current = self.runs.get(run.project_id, run.id)
@@ -443,17 +673,26 @@ class TrainingRunner:
         self.runs.update(run.project_id, current.model_copy(update={"status": "failed", "process_id": None, "error": message}))
 
     def _write_train_config(self, run: TrainingRun, run_dir: Path) -> Path:
-        template_name = "train_config_finetune_lora.json" if run.config.use_lora else "train_config_finetune_sdpa.json"
+        template_name = OMNIVOICE_TEMPLATES.get(run.config.mode)
+        if template_name is None:
+            template_name = "train_config_finetune_lora.json" if run.config.use_lora else "train_config_finetune_sdpa.json"
         template = self.engine_root / "examples" / "config" / template_name
         if not template.is_file():
             raise FileNotFoundError(f"Không tìm thấy config OmniVoice: {template_name}")
         payload = json.loads(template.read_text(encoding="utf-8"))
+        if run.config.mode != "from-scratch":
+            # Training from scratch starts from the language model the recipe
+            # names, not from an OmniVoice checkpoint, and has no LoRA.
+            payload.update(
+                {
+                    "init_from_checkpoint": run.config.base_model,
+                    "use_lora": run.config.use_lora and run.config.mode == "lora-finetune",
+                    "lora_r": run.config.lora_r,
+                    "lora_alpha": run.config.lora_alpha,
+                }
+            )
         payload.update(
             {
-                "init_from_checkpoint": run.config.base_model,
-                "use_lora": run.config.use_lora,
-                "lora_r": run.config.lora_r,
-                "lora_alpha": run.config.lora_alpha,
                 "learning_rate": run.config.learning_rate,
                 "steps": run.config.steps,
                 "save_steps": run.config.save_steps,

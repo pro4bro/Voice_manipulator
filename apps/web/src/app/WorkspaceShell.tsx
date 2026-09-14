@@ -20,6 +20,7 @@ import type {
   TrainingProgressLine,
   TrainingRuntimeReport,
   TrainingModelOption,
+  ProjectAsrAdapter,
   ProjectVoice,
   VoiceOutput,
   TrainingParameterValue,
@@ -150,6 +151,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingModels, setTrainingModels] = useState<TrainingModelOption[]>([]);
   const [voiceGenerators, setVoiceGenerators] = useState<TrainingModelOption[]>([]);
   const [sttEngines, setSttEngines] = useState<TrainingModelOption[]>([]);
+  const [asrAdapters, setAsrAdapters] = useState<ProjectAsrAdapter[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
   const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
   const [generatorId, setGeneratorId] = useState<string | null>(null);
@@ -665,6 +667,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   async function refreshProjectVoices() {
+    if (typeof api.listAsrAdapters === "function") {
+      // Published by the same runs that publish voices, so refreshed with them.
+      api.listAsrAdapters(project.id).then(setAsrAdapters).catch(() => setAsrAdapters([]));
+    }
     if (typeof api.listProjectVoices !== "function") return;
     try {
       setProjectVoices(await api.listProjectVoices(project.id));
@@ -1208,6 +1214,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     onOpenVoiceOutput: openVoiceOutput,
     onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
     sttEngines,
+    asrAdapters,
     projectVoices,
     voiceGenerators,
     generatorId,
@@ -1285,7 +1292,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

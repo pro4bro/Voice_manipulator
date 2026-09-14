@@ -54,11 +54,12 @@ class MediaImportProcessor:
         library: MediaLibrary,
         ffmpeg_path: str | None = None,
         local_sources: LocalMediaSourceRegistry | None = None,
-        other_stt: dict[str, Callable[[Path, float], dict[str, Any]]] | None = None,
+        other_stt: dict[str, Callable[..., dict[str, Any]]] | None = None,
     ) -> None:
         self.studio_url = studio_url.rstrip("/")
         # Speech-to-text engines other than the Studio sidecar, keyed by the
-        # model value the queue carries. Each returns the same item shape.
+        # model value the queue carries. Each returns the same item shape. A
+        # value `engine@variant` names a project-trained adapter for the engine.
         self.other_stt = other_stt or {}
         self.library = library
         self.ffmpeg_path = ffmpeg_path or shutil.which("ffmpeg")
@@ -297,13 +298,17 @@ class MediaImportProcessor:
         if not analysis_path.is_file():
             raise FileNotFoundError("Analysis audio không còn trong project.")
         processing_path, kept_ranges = await asyncio.to_thread(self._prepare_processing_audio, analysis_path, asset)
-        engine = self.other_stt.get(model)
+        engine_name, _, variant = model.partition("@")
+        engine = self.other_stt.get(engine_name)
         if engine is not None:
             if on_progress is not None:
                 await on_progress(1)
             started = time.perf_counter()
             duration = await asyncio.to_thread(self._audio_duration, processing_path)
-            item = await asyncio.to_thread(engine, processing_path, duration)
+            if variant:
+                item = await asyncio.to_thread(engine, processing_path, duration, variant=variant, project_id=project.id)
+            else:
+                item = await asyncio.to_thread(engine, processing_path, duration)
             elapsed = round(time.perf_counter() - started, 2)
             if on_progress is not None:
                 await on_progress(99)

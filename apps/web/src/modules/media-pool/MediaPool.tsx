@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
 import { missingPreparation } from "../../domain/footagePipeline";
-import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectAsrAdapter, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -29,7 +29,7 @@ interface SttChoice {
  * entry under its own id. With no descriptors (an older API) the built-in
  * Whisper list still works.
  */
-export function sttChoices(engines: TrainingModelOption[]): SttChoice[] {
+export function sttChoices(engines: TrainingModelOption[], adapters: ProjectAsrAdapter[] = []): SttChoice[] {
   if (!engines.length) {
     return STT_MODELS.map((model) => ({ value: model.id, label: model.label, group: "faster-whisper", available: true, engine: null }));
   }
@@ -38,7 +38,11 @@ export function sttChoices(engines: TrainingModelOption[]): SttChoice[] {
     if (models) {
       return models.options.map((option) => ({ value: String(option.value), label: option.label, group: engine.label, available: engine.available, engine }));
     }
-    return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, engine }];
+    // Adapters this project trained for the engine follow it, as `engine@adapter`.
+    const trained = adapters
+      .filter((adapter) => adapter.engine === engine.id)
+      .map((adapter) => ({ value: `${engine.id}@${adapter.id}`, label: `+ ${adapter.name}`, group: engine.label, available: engine.available, engine }));
+    return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, engine }, ...trained];
   });
 }
 const MEDIA_ACCEPT = [
@@ -54,6 +58,8 @@ interface MediaPoolProps {
   workflow: WorkspacePage;
   /** Speech-to-text engines from their descriptors; the select is built from these. */
   sttEngines?: TrainingModelOption[];
+  /** Speech-recognition adapters this project trained. */
+  asrAdapters?: ProjectAsrAdapter[];
   speakers: SpeakerProfile[];
   environments: EnvironmentNoiseProfile[];
   onImport: (choices: MediaImportChoice[]) => void;
@@ -131,6 +137,7 @@ export function MediaPool({
   busy,
   workflow,
   sttEngines = [],
+  asrAdapters = [],
   speakers,
   environments,
   onImport,
@@ -152,7 +159,7 @@ export function MediaPool({
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
   const [sttModel, setSttModel] = useState<string>("large-v3");
-  const choices = sttChoices(sttEngines);
+  const choices = sttChoices(sttEngines, asrAdapters);
   const chosen = choices.find((choice) => choice.value === sttModel) ?? null;
   const choiceGroups = choices.reduce<string[]>((groups, choice) => groups.includes(choice.group) ? groups : [...groups, choice.group], []);
   const contextMenuRef = useRef<HTMLDivElement>(null);

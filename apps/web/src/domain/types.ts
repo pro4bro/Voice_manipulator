@@ -609,6 +609,18 @@ export interface ProjectVoice {
   createdAt: string;
 }
 
+/** A speech-recognition adapter trained in this project; offered as an STT choice. */
+export interface ProjectAsrAdapter {
+  id: string;
+  name: string;
+  engine: string;
+  baseModel: string;
+  adapterPath: string;
+  speakerProfileId: string | null;
+  sourceRunId: string | null;
+  createdAt: string;
+}
+
 /** Generated speech, kept in its own store rather than in Media Pool. */
 export interface VoiceOutput {
   id: string;

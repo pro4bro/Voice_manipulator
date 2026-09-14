@@ -18,17 +18,29 @@ SETTINGS = Settings.from_env()
 SHIPPED = SETTINGS.training_models_root
 
 
-def catalog(tmp_path, *, omnivoice=True, vibevoice=False, local=None):
-    roots = {"omnivoice": tmp_path / "omnivoice", "vibevoice": tmp_path / "vibevoice"}
+def catalog(tmp_path, *, omnivoice=True, vibevoice=False, local=None, readiness=None):
+    roots = {
+        "omnivoice": tmp_path / "omnivoice",
+        "vibevoice": tmp_path / "vibevoice",
+        "vibevoice-models": tmp_path / "vibevoice" / "VibeVoice_models",
+        "hub": tmp_path / "hub",
+    }
     if omnivoice:
         entry = roots["omnivoice"] / "omnivoice" / "cli" / "train.py"
         entry.parent.mkdir(parents=True)
         entry.write_text("", encoding="utf-8")
     if vibevoice:
-        entry = roots["vibevoice"] / "VibeVoice-community" / "vibevoice" / "finetune" / "train_vibevoice.py"
-        entry.parent.mkdir(parents=True)
-        entry.write_text("", encoding="utf-8")
-    return FileTrainingModelCatalog(SHIPPED, roots, local)
+        for relative in (
+            "VibeVoice-community/vibevoice/finetune/train_vibevoice.py",
+            "VibeVoice-community/vibevoice/modular/modeling_vibevoice_inference.py",
+            "VibeVoice/finetuning-asr/lora_finetune.py",
+        ):
+            entry = roots["vibevoice"] / relative
+            entry.parent.mkdir(parents=True, exist_ok=True)
+            entry.write_text("", encoding="utf-8")
+        for weights in ("microsoft/VibeVoice-1.5B", "Qwen/Qwen2.5-1.5B"):
+            (roots["vibevoice-models"] / weights).mkdir(parents=True)
+    return FileTrainingModelCatalog(SHIPPED, roots, local, readiness=readiness)
 
 
 def descriptor(**overrides):
@@ -68,19 +80,28 @@ def test_only_an_installed_option_with_a_runner_is_available(tmp_path):
     options = {option.id: option for option in catalog(tmp_path).options()}
 
     assert options["omnivoice-lora"].available
-    assert options["omnivoice-full"].installed and not options["omnivoice-full"].available
-    assert "Chưa mở" in options["omnivoice-full"].status
+    assert options["omnivoice-full"].available
+    scratch = options["omnivoice-from-scratch"]
+    assert not scratch.installed and "Qwen3-0.6B" in scratch.status
     vibe = options["vibevoice-1.5b-tts-lora"]
     assert not vibe.installed and not vibe.available
     assert "train_vibevoice.py" in vibe.status
 
 
-def test_a_vibevoice_checkout_is_seen_but_not_claimed_runnable(tmp_path):
-    options = {option.id: option for option in catalog(tmp_path, vibevoice=True).options()}
+def test_a_vibevoice_option_needs_its_weights_and_what_its_python_lacks(tmp_path):
+    missing_packages = catalog(
+        tmp_path / "a", vibevoice=True, readiness={"vibevoice": lambda d: "Python của VibeVoice còn thiếu: peft, datasets." if d.mode != "zero-shot-clone" else None}
+    ).options()
+    options = {option.id: option for option in missing_packages}
 
-    assert options["vibevoice-1.5b-tts-lora"].installed
-    assert not options["vibevoice-1.5b-tts-lora"].available
+    small = options["vibevoice-1.5b-tts-lora"]
+    assert small.installed and not small.available and "peft" in small.status
+    assert options["vibevoice-1.5b-zero-shot-clone"].available
+    assert not options["vibevoice-7b-tts-lora"].installed and "VibeVoice-7B" in options["vibevoice-7b-tts-lora"].status
     assert not options["vibevoice-asr-lora"].installed
+
+    ready = {option.id: option for option in catalog(tmp_path / "b", vibevoice=True).options()}
+    assert ready["vibevoice-1.5b-tts-lora"].available
 
 
 def test_a_local_descriptor_adds_an_option_and_can_replace_a_shipped_one(tmp_path):

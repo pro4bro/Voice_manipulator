@@ -7,8 +7,7 @@
   "mode": "tts-lora",
   "order": 41,
   "description": "Cùng đường train với 1.5B trên model 7B. Cần VRAM lớn hơn nhiều.",
-  "runnable": false,
-  "blockedReason": "Đã có repo community, chưa có adapter Pro4Bro chạy train_vibevoice và xuất JSONL.",
+  "runnable": true,
   "repository": {
     "root": "vibevoice",
     "path": "VibeVoice-community",
@@ -17,10 +16,25 @@
     "url": "https://github.com/vibevoice-community/VibeVoice",
     "revision": "631804b"
   },
+  "requires": [
+    {
+      "root": "vibevoice-models",
+      "path": "vibevoice/VibeVoice-7B",
+      "label": "weights vibevoice/VibeVoice-7B"
+    },
+    {
+      "root": "vibevoice-models",
+      "path": "Qwen/Qwen2.5-7B",
+      "label": "tokenizer Qwen"
+    }
+  ],
   "dataFormat": "JSONL {text: \"Speaker 1: ...\", audio, voice_prompts} qua --train_jsonl; mỗi dòng một đoạn của một Speaker Profile.",
   "notes": [
     "Recipe chỉ được công bố cho 1.5B. Các giá trị ở đây mượn từ recipe 1.5B, chưa kiểm chứng trên 7B.",
-    "Microsoft không phát hành code fine-tune TTS; đây là bản của cộng đồng."
+    "Microsoft không phát hành code fine-tune TTS; đây là bản của cộng đồng.",
+    "Pro4Bro đưa dữ liệu local qua --train_jsonl: mỗi dòng 'Speaker 1: ...', audio cắt theo đoạn, voice prompt là đoạn mẫu của chính người đó.",
+    "Model gốc chỉ được train tiếng Anh và tiếng Trung. Đo trên máy này: VibeVoice nhái giọng đọc tiếng Việt, Whisper chỉ nghe ra \"Xin chào!\". Fine-tune là cách duy nhất để thử dạy tiếng Việt.",
+    "Chạy bằng Python .venv của repo VibeVoice; cần thêm peft và datasets."
   ],
   "parameters": [
     {
@@ -30,7 +44,8 @@
       "kind": "text",
       "default": "vibevoice/VibeVoice-7B",
       "source": "VibeVoice-community/FINETUNING.md · code vibevoice/finetune/train_vibevoice.py",
-      "help": "HF id hoặc thư mục model local (VibeVoice_models/...)."
+      "help": "Tên thư mục trong VibeVoice_models (hoặc đường dẫn tuyệt đối).",
+      "runField": "base_model"
     },
     {
       "key": "freeze_acoustic_tokenizer",

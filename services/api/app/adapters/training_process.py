@@ -13,6 +13,8 @@ from app.adapters.training_log_parser import (
 )
 from app.domain.models import TrainingProgressLine
 
+TRAIN_LAUNCHER = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_train.py"
+
 # Windows only: lets the runner signal or kill a whole tree rather than the one
 # process it started. `accelerate` spawns a worker per GPU and each worker spawns
 # dataloader workers, so the thing to stop is never the process we hold.
@@ -144,7 +146,9 @@ class OmniVoiceTrainingCommands:
             str(self.python), "-m", "accelerate.commands.launch",
             "--gpu_ids", gpu_ids,
             "--num_processes", str(processes),
-            "-m", "omnivoice.cli.train",
+            # Through Pro4Bro's launcher, which runs omnivoice.cli.train with the
+            # Windows dataloader fix applied; see app/workers/omnivoice_train.py.
+            str(TRAIN_LAUNCHER),
             "--train_config", str(train_config),
             "--data_config", str(data_config),
             "--output_dir", str(output_dir),
