@@ -29,7 +29,7 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
-from app.adapters.omnivoice_generator import OmniVoiceWorkerProcess, VoiceGenerationError, VoiceGenerator
+from app.adapters.omnivoice_generator import VoiceGenerationError, VoiceGenerator, omnivoice_worker
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
@@ -41,6 +41,7 @@ from app.adapters.training_model_catalog import (
     TrainingModelUnavailable,
 )
 from app.adapters.training_runner import TrainingBusyError, TrainingNotReady, TrainingRunner
+from app.adapters.vibevoice_asr_transcriber import VibeVoiceAsrTranscriber
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
@@ -137,7 +138,7 @@ def create_app(
         {"omnivoice": settings.omnivoice_root, "vibevoice": settings.vibevoice_root},
         settings.local_voice_generators_root,
     )
-    generation_worker = OmniVoiceWorkerProcess(training_runtime.python, engine_env)
+    generation_worker = omnivoice_worker(training_runtime.python, engine_env)
     voice_generator = VoiceGenerator(projects, project_voices, media, generation_worker, gpu_lease, voice_generators)
     training_runner = TrainingRunner(
         projects,
@@ -156,8 +157,19 @@ def create_app(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
     runtime_status = RuntimeStatus(settings.data_root)
+    vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=generation_worker.shutdown)
+    stt_engines = FileTrainingModelCatalog(
+        settings.stt_engines_root,
+        {
+            "studio": settings.project_root / "services" / "stt_studio",
+            "vibevoice": settings.vibevoice_root,
+        },
+    )
     media_importer = MediaImportProcessor(
-        settings.legacy_studio_url, media, settings.ffmpeg_path
+        settings.legacy_studio_url,
+        media,
+        settings.ffmpeg_path,
+        other_stt={"vibevoice-asr": vibevoice_asr.transcribe},
     )
     engine = voice_engine or OmniVoiceEngine(settings.omnivoice_root)
     folders = folder_picker or NativeFolderPicker()
@@ -800,6 +812,19 @@ def create_app(
     @app.get("/api/training-runtime", response_model=TrainingRuntimeReport)
     def training_runtime_report() -> TrainingRuntimeReport:
         return training_runtime.report()
+
+    @app.get("/api/stt-engines", response_model=list[TrainingModelOption])
+    def stt_engine_options() -> list[TrainingModelOption]:
+        options = stt_engines.options()
+        reason = vibevoice_asr.unavailable_reason()
+        # The entrypoint check cannot see weights or the engine's Python; the
+        # transcriber can, and says exactly which is missing.
+        return [
+            option.model_copy(update={"available": False, "status": reason})
+            if option.engine == "vibevoice-asr" and reason and option.available
+            else option
+            for option in options
+        ]
 
     @app.get("/api/voice-generators", response_model=list[TrainingModelOption])
     def voice_generator_options() -> list[TrainingModelOption]:

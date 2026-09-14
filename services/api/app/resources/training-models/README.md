@@ -1,8 +1,21 @@
-# Training Models
+# Training Models (and every other engine capability)
 
 Each JSON file here is one option in the Train module's **Model Training** list.
 The web app draws that option's parameters from the file, so adding a model or a
 repository is adding a descriptor, not editing the UI.
+
+The same descriptor format describes each capability a repository brings, one
+folder per capability, so a repo is used for whatever it can actually do:
+
+| Folder | Where it shows up | Examples |
+|--------|-------------------|----------|
+| `training-models/` | Voice Training · Model Training list | OmniVoice LoRA, OmniVoice zero-shot clone, VibeVoice TTS LoRA |
+| `voice-generators/` | Voice Manipulator · Tạo giọng | OmniVoice speaking with a project voice |
+| `stt-engines/` | Speech to Text · model select | faster-whisper models, VibeVoice-ASR |
+
+An STT descriptor with a `model` choice parameter contributes one entry per
+model; otherwise the descriptor id itself is the value the transcription queue
+receives, and the API routes that value to its engine adapter.
 
 - Shipped descriptors live here.
 - Descriptors for this machine only go in `<PRO4BRO_DATA_ROOT>/training-models/`.

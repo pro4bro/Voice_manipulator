@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
-import { MediaPool } from "./MediaPool";
+import type { ProjectMediaAsset, SpeakerProfile, TrainingModelOption } from "../../domain/types";
+import { MediaPool, sttChoices } from "./MediaPool";
 
 const asset: ProjectMediaAsset = {
   id: "asset-1", name: "interview.mov", sourceExtension: ".mov", mediaKind: "video", sourcePath: "assets/media/asset-1/source.mov",
@@ -50,6 +50,30 @@ describe("MediaPool", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toHaveAccessibleName("Chưa xong: Speech to Text, Nhận diện speaker, Gán Speaker Profile");
     expect(warnings[0]).toHaveTextContent("!");
+  });
+
+  it("offers every speech-to-text engine the API describes and queues the chosen one", () => {
+    const engine = (overrides: Partial<TrainingModelOption>): TrainingModelOption => ({
+      id: "x", label: "x", family: "x", engine: "x", mode: "stt", description: "", order: 10, runnable: true,
+      repository: { root: "x", path: ".", entrypoint: "x.py" }, notes: [], parameters: [], origin: "shipped", installed: true, available: true, status: "", ...overrides,
+    });
+    const engines = [
+      engine({ id: "faster-whisper", label: "faster-whisper (Studio)", engine: "faster-whisper", parameters: [{ key: "model", label: "Model", group: "Model", kind: "choice", default: "large-v3", nullable: false, editable: true, advanced: false, options: [{ value: "small", label: "Small" }, { value: "large-v3", label: "Large v3" }] }] }),
+      engine({ id: "vibevoice-asr", label: "VibeVoice-ASR (Microsoft)", engine: "vibevoice-asr", description: "Chậm, không có word timing." }),
+      engine({ id: "future-asr", label: "Future ASR", engine: "future", available: false }),
+    ];
+    const onQueueTranscriptions = vi.fn();
+    const queued = { ...asset, transcriptionSelected: true };
+    render(<MediaPool {...props({ assets: [queued], onQueueTranscriptions, sttEngines: engines })} />);
+
+    const select = screen.getByLabelText("Model Speech to Text");
+    expect(select).toHaveValue("large-v3");
+    expect(screen.getByRole("option", { name: /Future ASR · chưa sẵn sàng/ })).toBeDisabled();
+    fireEvent.change(select, { target: { value: "vibevoice-asr" } });
+    expect(screen.getByText("Chậm, không có word timing.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Speech to text/ }));
+    expect(onQueueTranscriptions).toHaveBeenCalledWith("vibevoice-asr");
+    expect(sttChoices([]).map((choice) => choice.value)).toContain("large-v3");
   });
 
   it("selects only chosen footage for Voice Training", () => {

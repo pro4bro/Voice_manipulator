@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "vibevoice-asr",
+  "label": "VibeVoice-ASR (Microsoft)",
+  "family": "VibeVoice",
+  "engine": "vibevoice-asr",
+  "mode": "stt",
+  "order": 20,
+  "description": "Nhận dạng dài tới 60 phút một lượt, ghi sát lời nói (giữ cả ừm, ờ, lặp từ) và tách người nói. Chỉ có mốc thời gian theo đoạn, không có word timing.",
+  "runnable": true,
+  "repository": {
+    "root": "vibevoice",
+    "path": "VibeVoice",
+    "entrypoint": "vibevoice/modular/modeling_vibevoice_asr.py",
+    "url": "https://github.com/microsoft/VibeVoice",
+    "revision": "c766f12"
+  },
+  "notes": [
+    "Model card: hơn 50 ngôn ngữ, có tiếng Việt.",
+    "Đo trên máy này: nạp model khoảng 7 phút lần đầu, 6 giây audio mất 44 giây khi đã nạp. Model chiếm khoảng 17 GB VRAM.",
+    "Footage chạy bằng VibeVoice-ASR chưa dùng để train được vì word timing không đủ tin cậy."
+  ],
+  "parameters": []
+}

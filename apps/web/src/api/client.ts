@@ -365,6 +365,7 @@ export const api = {
   getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
+  getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
   listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
     request<ProjectMediaAsset>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {

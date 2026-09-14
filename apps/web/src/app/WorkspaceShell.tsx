@@ -148,6 +148,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [trainingRuntime, setTrainingRuntime] = useState<TrainingRuntimeReport | null>(null);
   const [trainingModels, setTrainingModels] = useState<TrainingModelOption[]>([]);
   const [voiceGenerators, setVoiceGenerators] = useState<TrainingModelOption[]>([]);
+  const [sttEngines, setSttEngines] = useState<TrainingModelOption[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
   const [generatorId, setGeneratorId] = useState<string | null>(null);
   const [projectVoiceId, setProjectVoiceId] = useState<string | null>(null);
@@ -242,6 +243,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       api.getTrainingModels()
         .then((options) => { if (!cancelled) setTrainingModels(options); })
         .catch(() => { if (!cancelled) setTrainingModels([]); });
+    }
+    if (typeof api.getSttEngines === "function") {
+      api.getSttEngines()
+        .then((options) => { if (!cancelled) setSttEngines(options); })
+        .catch(() => { if (!cancelled) setSttEngines([]); });
     }
     if (typeof api.getVoiceGenerators === "function") {
       api.getVoiceGenerators()
@@ -1169,6 +1175,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     datasetReadiness,
     datasetBusy,
     projectId: project.id,
+    sttEngines,
     projectVoices,
     voiceGenerators,
     generatorId,
@@ -1246,7 +1253,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, sttEngines, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

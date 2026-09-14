@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "faster-whisper",
+  "label": "faster-whisper (Studio)",
+  "family": "Whisper",
+  "engine": "faster-whisper",
+  "mode": "stt",
+  "order": 10,
+  "description": "Speech to Text mặc định: có word timing DTW đủ tin cậy để cắt dữ liệu train.",
+  "runnable": true,
+  "repository": {
+    "root": "studio",
+    "path": ".",
+    "entrypoint": "studio_app/server.py",
+    "url": "https://github.com/SYSTRAN/faster-whisper"
+  },
+  "notes": [
+    "Chạy trong Studio sidecar (cổng 18081)."
+  ],
+  "parameters": [
+    {
+      "key": "model",
+      "label": "Model",
+      "group": "Model",
+      "kind": "choice",
+      "default": "large-v3",
+      "codeDefault": "large-v3",
+      "source": "studio_app/server.py (SUPPORTED_STT_MODELS)",
+      "options": [
+        {
+          "value": "tiny",
+          "label": "Tiny · nhanh nhất / yếu nhất"
+        },
+        {
+          "value": "base",
+          "label": "Base · nhẹ"
+        },
+        {
+          "value": "small",
+          "label": "Small · cân bằng nhẹ"
+        },
+        {
+          "value": "medium",
+          "label": "Medium · chính xác hơn"
+        },
+        {
+          "value": "large-v3",
+          "label": "Large v3 · mạnh nhất / mặc định"
+        }
+      ]
+    }
+  ]
+}

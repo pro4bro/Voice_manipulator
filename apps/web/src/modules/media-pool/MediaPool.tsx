@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { EMOTION_OPTIONS, emotionLabel } from "../../domain/emotions";
 import { missingPreparation } from "../../domain/footagePipeline";
-import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -14,6 +14,33 @@ const STT_MODELS = [
   { id: "medium", label: "Medium · chính xác hơn" },
   { id: "large-v3", label: "Large v3 · mạnh nhất / mặc định" },
 ] as const;
+
+interface SttChoice {
+  value: string;
+  label: string;
+  group: string;
+  available: boolean;
+  engine: TrainingModelOption | null;
+}
+
+/**
+ * What the STT select offers, read from the engine descriptors. An engine with
+ * a `model` choice contributes one entry per model; any other engine is one
+ * entry under its own id. With no descriptors (an older API) the built-in
+ * Whisper list still works.
+ */
+export function sttChoices(engines: TrainingModelOption[]): SttChoice[] {
+  if (!engines.length) {
+    return STT_MODELS.map((model) => ({ value: model.id, label: model.label, group: "faster-whisper", available: true, engine: null }));
+  }
+  return engines.flatMap((engine) => {
+    const models = engine.parameters.find((spec) => spec.key === "model" && spec.kind === "choice");
+    if (models) {
+      return models.options.map((option) => ({ value: String(option.value), label: option.label, group: engine.label, available: engine.available, engine }));
+    }
+    return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, engine }];
+  });
+}
 const MEDIA_ACCEPT = [
   "audio/*", "video/*", ".mov", ".mp4", ".mkv", ".avi", ".webm", ".mxf",
   ".h264", ".h265", ".hevc", ".av1", ".prores", ".mp3", ".wav", ".aac",
@@ -25,6 +52,8 @@ interface MediaPoolProps {
   selectedAssetId: string | null;
   busy: boolean;
   workflow: WorkspacePage;
+  /** Speech-to-text engines from their descriptors; the select is built from these. */
+  sttEngines?: TrainingModelOption[];
   speakers: SpeakerProfile[];
   environments: EnvironmentNoiseProfile[];
   onImport: (choices: MediaImportChoice[]) => void;
@@ -101,6 +130,7 @@ export function MediaPool({
   selectedAssetId,
   busy,
   workflow,
+  sttEngines = [],
   speakers,
   environments,
   onImport,
@@ -122,6 +152,9 @@ export function MediaPool({
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
   const [sttModel, setSttModel] = useState<string>("large-v3");
+  const choices = sttChoices(sttEngines);
+  const chosen = choices.find((choice) => choice.value === sttModel) ?? null;
+  const choiceGroups = choices.reduce<string[]>((groups, choice) => groups.includes(choice.group) ? groups : [...groups, choice.group], []);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const liveAssets = assets.filter((asset) => !asset.deletedAt);
@@ -261,7 +294,7 @@ export function MediaPool({
         </section> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><button className="button button--quiet media-stt-stop" onClick={() => onControlTranscriptions("stop")} type="button">Stop</button></> : <button className="button button--accent media-send-training" disabled={!transcriptionCount} onClick={() => onQueueTranscriptions(sttModel)} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{STT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</select></div> : null}
+        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><button className="button button--quiet media-stt-stop" onClick={() => onControlTranscriptions("stop")} type="button">Stop</button></> : <button className="button button--accent media-send-training" disabled={!transcriptionCount || (chosen !== null && !chosen.available)} onClick={() => onQueueTranscriptions(sttModel)} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}</small> : null}</div> : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>

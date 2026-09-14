@@ -23,6 +23,7 @@ class Settings:
     training_models_root: Path
     local_training_models_root: Path
     voice_generators_root: Path
+    stt_engines_root: Path
     local_voice_generators_root: Path
     # A Hugging Face hub cache that already holds the engine weights. When set,
     # engine processes run offline against it: nothing is fetched, and a
@@ -77,6 +78,7 @@ class Settings:
             )
             / "training-models",
             voice_generators_root=Path(__file__).resolve().parent / "resources" / "voice-generators",
+            stt_engines_root=Path(__file__).resolve().parent / "resources" / "stt-engines",
             local_voice_generators_root=Path(
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
             )

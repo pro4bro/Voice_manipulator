@@ -44,6 +44,7 @@ export interface StudioContext {
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
   projectId: string;
+  sttEngines: TrainingModelOption[];
   projectVoices: import("../../domain/types").ProjectVoice[];
   voiceGenerators: TrainingModelOption[];
   generatorId: string | null;
@@ -129,6 +130,7 @@ function mediaPoolProps(context: StudioContext) {
     onToggleTranscription: context.onToggleTranscription,
     selectedAssetId: context.selectedAssetId,
     workflow: context.workflow,
+    sttEngines: context.sttEngines,
     speakers: context.trainingCatalog.speakers,
     onUpdateAnnotations: context.onUpdateAnnotations,
   };

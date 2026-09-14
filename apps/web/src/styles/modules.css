@@ -1214,3 +1214,4 @@
 .voice-generator-empty .button { min-height: 28px; font-size: calc(9px * var(--font-scale)); }
 .voice-generator-parameters { padding: 6px; }
 .voice-generator-module .button--accent { min-height: 36px; gap: 6px; font-size: calc(10px * var(--font-scale)); }
+.media-stt-engine-note { grid-column: 1 / -1; margin-top: 4px; padding: 4px 6px; color: var(--text-muted); border-left: 2px solid var(--gold); background: var(--soft-fill); font-size: calc(8px * var(--font-scale)); line-height: 1.4; }

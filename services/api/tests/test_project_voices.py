@@ -14,7 +14,8 @@ from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.gpu_lease import GpuBusy, GpuLease
-from app.adapters.omnivoice_generator import OmniVoiceWorkerProcess, VoiceGenerationError, VoiceGenerator
+from app.adapters.engine_worker import REPLY_PREFIX, EngineWorkerError, EngineWorkerProcess
+from app.adapters.omnivoice_generator import VoiceGenerationError, VoiceGenerator
 from app.adapters.training_model_catalog import FileTrainingModelCatalog
 from app.adapters.training_runner import TrainingRunner
 from app.domain.models import (
@@ -29,7 +30,7 @@ from app.domain.models import (
 )
 from app.domain.voice_reference import NoReferenceSegment, choose_reference
 from app.settings import Settings
-from app.workers.omnivoice_worker import REPLY_PREFIX
+from app.workers import omnivoice_worker, vibevoice_asr_worker
 
 SETTINGS = Settings.from_env()
 
@@ -181,7 +182,7 @@ FAKE_WORKER = textwrap.dedent(f"""
 def fake_worker(tmp_path):
     script = tmp_path / "fake_worker.py"
     script.write_text(FAKE_WORKER, encoding="utf-8")
-    return OmniVoiceWorkerProcess(Path(sys.executable), script=script, idle_seconds=0, request_timeout=20)
+    return EngineWorkerProcess(Path(sys.executable), script, idle_seconds=0, request_timeout=20)
 
 
 def test_the_worker_protocol_ignores_chatter_and_survives_a_failed_request(tmp_path):
@@ -197,10 +198,14 @@ def test_the_worker_protocol_ignores_chatter_and_survives_a_failed_request(tmp_p
     assert not worker.running
 
 
-def test_a_missing_runtime_python_is_a_generation_error(tmp_path):
-    worker = OmniVoiceWorkerProcess(tmp_path / "missing" / "python.exe", idle_seconds=0)
+def test_every_worker_script_uses_the_reply_prefix_the_api_reads():
+    assert omnivoice_worker.REPLY_PREFIX == vibevoice_asr_worker.REPLY_PREFIX == REPLY_PREFIX
 
-    with pytest.raises(VoiceGenerationError, match="Không thấy Python"):
+
+def test_a_missing_runtime_python_is_a_worker_error(tmp_path):
+    worker = EngineWorkerProcess(tmp_path / "missing" / "python.exe", tmp_path / "worker.py", idle_seconds=0)
+
+    with pytest.raises(EngineWorkerError, match="Không thấy Python"):
         worker.request({"text": "x"})
 
 
