@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, SpeakerProfile, TrainingCatalog, VoiceOutput, WorkspacePage } from "../../domain/types";
 import { MediaPool } from "../media-pool/MediaPool";
+import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 import { Icon } from "../../ui/Icon";
 
@@ -40,6 +41,40 @@ export function LibraryPanel(props: LibraryPanelProps) {
         <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
       </div>
       {tab === "media" ? <MediaPool {...props} /> : <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} />}
+    </section>
+  );
+}
+
+interface ManipulatorLibraryProps {
+  assets: ProjectMediaAsset[];
+  speakers: SpeakerProfile[];
+  environments: EnvironmentNoiseProfile[];
+  catalog: TrainingCatalog;
+  profileSchema: EngineProfileSchema | null;
+  selectedVoice: string;
+  onCatalogChange: (catalog: TrainingCatalog) => void;
+  onSelectVoice: (voiceId: string) => void;
+  outputs: VoiceOutput[];
+  activeOutputId: string | null;
+  onOpenOutput: (output: VoiceOutput) => void;
+  onDeleteOutput: (output: VoiceOutput) => void;
+}
+
+/**
+ * Voice Manipulator's library: who can speak, and what has been spoken.
+ * Media Pool is source footage for STT and training and has no place here.
+ */
+export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
+  const [tab, setTab] = useState<"sound" | "output">("output");
+  return (
+    <section className="library-panel">
+      <div className="library-panel-tabs" role="tablist" aria-label="Thư viện Voice Manipulator">
+        <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
+        <button aria-selected={tab === "output"} className={tab === "output" ? "is-active" : ""} onClick={() => setTab("output")} role="tab" type="button"><Icon name="file" />Voice Output <b>{props.outputs.length}</b></button>
+      </div>
+      {tab === "sound"
+        ? <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} />
+        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>
   );
 }

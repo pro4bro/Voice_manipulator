@@ -4,7 +4,7 @@ import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaI
 import { ControlRack } from "../control-rack/ControlRack";
 import { DatasetReadinessPanel } from "../dashboard/DatasetReadinessPanel";
 import { PipelineDashboard } from "../dashboard/PipelineDashboard";
-import { LibraryPanel } from "../library-panel/LibraryPanel";
+import { LibraryPanel, ManipulatorLibrary } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
@@ -12,6 +12,8 @@ import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
 import { ScriptEditor } from "../script/ScriptEditor";
+import { VoiceScript } from "../script/VoiceScript";
+import { voicesInCategory, type VoiceCategory } from "../../domain/voiceScript";
 import { SpeakerEmotion } from "../speaker-emotion/SpeakerEmotion";
 import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
 import { Timeline, type ActiveTake } from "../timeline/Timeline";
@@ -54,13 +56,17 @@ export interface StudioContext {
   asrAdapters: import("../../domain/types").ProjectAsrAdapter[];
   projectVoices: import("../../domain/types").ProjectVoice[];
   voiceGenerators: TrainingModelOption[];
-  generatorId: string | null;
-  projectVoiceId: string | null;
-  generatorParameters: Record<string, import("../../domain/types").TrainingParameterValue>;
+  /** Generation values keyed by generator id. */
+  generatorParameters: Record<string, Record<string, import("../../domain/types").TrainingParameterValue>>;
   generating: boolean;
-  onGeneratorChange: (generatorId: string) => void;
-  onProjectVoiceChange: (voiceId: string) => void;
-  onGeneratorParametersChange: (parameters: Record<string, import("../../domain/types").TrainingParameterValue>) => void;
+  onGeneratorParametersChange: (generatorId: string, parameters: Record<string, import("../../domain/types").TrainingParameterValue>) => void;
+  /** The typed Script of Voice Manipulator, one row per turn. */
+  voiceScriptRows: import("../../domain/types").VoiceScriptRow[];
+  onVoiceScriptRowsChange: (rows: import("../../domain/types").VoiceScriptRow[]) => void;
+  /** Follows the kind chosen in Voice Training. */
+  voiceCategory: VoiceCategory;
+  voiceScriptJob: import("../../domain/types").VoiceScriptJob | null;
+  onExportVoiceOutput: (mode: "sentence" | "word" | "table") => void;
   trainingRuns: TrainingRun[];
   /** The newest batch, in the order its voices train. */
   trainingBatch: TrainingRun[];
@@ -183,6 +189,12 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-output":
       return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
-      return <VoiceGenerator busy={context.generating} generatorId={context.generatorId} generators={context.voiceGenerators} onGenerate={context.onGenerate} onGeneratorChange={context.onGeneratorChange} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onVoiceChange={context.onProjectVoiceChange} parameters={context.generatorParameters} projectId={context.projectId} scriptLength={context.script.trim().length} speakers={context.trainingCatalog.speakers} voiceId={context.projectVoiceId} voices={context.projectVoices} />;
+      return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
+    case "voice-script": {
+      const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
+      return <VoiceScript busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={context.onExportVoiceOutput} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+    }
+    case "manipulator-library":
+      return <ManipulatorLibrary activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
   }
 }

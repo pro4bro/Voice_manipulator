@@ -3,7 +3,8 @@
 Executed with the VibeVoice checkout's Python. The upstream script hardcodes
 two things this machine cannot satisfy: `flash_attention_2`, which has no
 Windows build here, and the tokenizer's Hub id, which cannot load offline.
-Rather than edit someone else's checkout, both calls are wrapped before the
+It also passes the model dtype under a name this transformers does not read.
+Rather than edit someone else's checkout, these calls are wrapped before the
 script's own `main()` runs; every flag on the command line reaches it as-is.
 
 Environment:
@@ -39,6 +40,11 @@ def main() -> None:
     has_flash = importlib.util.find_spec("flash_attn") is not None
 
     def model_from_pretrained(cls, path, *args, **kwargs):
+        # The script passes `dtype=`, the name transformers adopted after 4.51;
+        # 4.51 ignores it and loads float32, which fails at the first step when
+        # bf16 speech features meet float32 text embeddings.
+        if "dtype" in kwargs and "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = kwargs.pop("dtype")
         if kwargs.get("attn_implementation") == "flash_attention_2" and not has_flash:
             print("[pro4bro] flash_attn is not installed; using sdpa", flush=True)
             kwargs["attn_implementation"] = "sdpa"

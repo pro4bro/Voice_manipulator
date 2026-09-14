@@ -36,7 +36,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
                 <i style={{ background: colorOf(output.speakerProfileId) }} />
                 <span>
                   <strong>{output.text}</strong>
-                  <small>{output.voiceName} · {clock(output.duration)} · {new Date(output.createdAt).toLocaleTimeString("vi-VN", { hour12: false })}</small>
+                  <small>{output.segments && output.segments.length > 1 ? `${output.segments.length} đoạn · ${output.voiceName}` : output.voiceName} · {clock(output.duration)} · {new Date(output.createdAt).toLocaleTimeString("vi-VN", { hour12: false })}</small>
                 </span>
               </button>
               {confirming === output.id ? (
@@ -51,7 +51,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
         <div className="voice-output-empty">
           <Icon name="waveform" />
           <b>Chưa có giọng nào được tạo</b>
-          <span>Nhập Script và bấm đọc ở panel Tạo giọng. Kết quả nằm ở đây, không lẫn vào Media Pool.</span>
+          <span>Nhập Script, chọn voice cho từng dòng rồi bấm Tạo voice. Kết quả nằm ở đây, không lẫn vào Media Pool.</span>
         </div>
       )}
     </ModuleFrame>

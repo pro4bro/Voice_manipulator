@@ -902,6 +902,23 @@ class ProjectAsrAdapter(DomainModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class VoiceOutputSegment(DomainModel):
+    """One Script row inside a Voice Output: who read it, and where it sits."""
+
+    row_id: str
+    voice_id: str
+    voice_name: str
+    speaker_profile_id: str
+    engine: str
+    generator_id: str
+    text: str
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    # The cached clip this row was cut from; a later read of the same row with
+    # the same voice and settings reuses it instead of speaking it again.
+    clip: str | None = None
+
+
 class VoiceOutput(DomainModel):
     """One piece of generated speech in the project's Voice Output store."""
 
@@ -917,7 +934,44 @@ class VoiceOutput(DomainModel):
     duration: float = Field(default=0, ge=0)
     sample_rate: int = 24000
     audio_path: str
+    # Word timing measured on the generated audio, in the same shape Speech to
+    # Text gives footage, so Script and Timeline follow speech the same way.
+    words: list[dict[str, Any]] = Field(default_factory=list)
+    word_timing_quality: str | None = None
+    word_timing_note: str | None = None
+    segments: list[VoiceOutputSegment] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VoiceScriptRow(DomainModel):
+    id: str = Field(min_length=1, max_length=80)
+    voice_id: str = Field(min_length=1, max_length=120)
+    text: str = Field(min_length=1, max_length=5000)
+
+
+class VoiceScriptRequest(DomainModel):
+    """A typed Script, row by row, each row read by the voice picked for it."""
+
+    rows: list[VoiceScriptRow] = Field(min_length=1, max_length=400)
+    # Generation values per generator id, as the Voice Generator panel holds them.
+    parameters: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # Silence between two rows, so a change of speaker does not land on a breath.
+    gap_seconds: float = Field(default=0.35, ge=0, le=5)
+
+
+class VoiceScriptJob(DomainModel):
+    id: str
+    project_id: str
+    status: Literal["running", "complete", "failed"] = "running"
+    total: int = Field(ge=0)
+    done: int = Field(default=0, ge=0)
+    reused: int = Field(default=0, ge=0)
+    current_row_id: str | None = None
+    message: str | None = None
+    output: VoiceOutput | None = None
+    error: str | None = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
 
 
 class VoiceGenerateRequest(DomainModel):

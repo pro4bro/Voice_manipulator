@@ -15,13 +15,13 @@ describe("workspaceManifest", () => {
   });
 
   it("keeps editing modules in source workflows and training controls in Train", () => {
-    const editingPages = ["speech-to-text", "voice-manipulator"] as const;
-    for (const page of editingPages) {
-      const manifest = workspaceManifest(page);
-      expect(manifest.modules).toContain("library-panel");
-      expect(manifest.modules).toContain("script");
-      expect(manifest.modules).toContain("timeline");
-    }
+    const stt = workspaceManifest("speech-to-text");
+    expect(stt.modules).toContain("library-panel");
+    expect(stt.modules).toContain("script");
+    expect(stt.modules).toContain("timeline");
+    const manipulator = workspaceManifest("voice-manipulator");
+    expect(manipulator.modules).toContain("voice-script");
+    expect(manipulator.modules).toContain("timeline");
     const training = workspaceManifest("voice-training");
     expect(training.modules).toEqual(["library-panel", "train", "training-job"]);
     expect(training.columns.left).toEqual(["library-panel"]);
@@ -40,9 +40,12 @@ describe("workspaceManifest", () => {
     expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-changer", "voice-dubber"]);
   });
 
-  it("keeps generated speech in Voice Output, beside Media Pool rather than inside it", () => {
+  it("gives Voice Manipulator Sound Library and Voice Output, and no Media Pool", () => {
     const manifest = workspaceManifest("voice-manipulator");
-    expect(manifest.columns.left).toEqual(["library-panel", "voice-output"]);
+    expect(manifest.columns.left).toEqual(["manipulator-library"]);
+    expect(manifest.modules).not.toContain("library-panel");
+    expect(manifest.modules).not.toContain("script");
+    expect(manifest.columns.center).toEqual(["voice-script"]);
     expect(manifest.modules).not.toContain("recent-takes");
     expect(workspaceManifest("speech-to-text").modules).not.toContain("voice-output");
   });

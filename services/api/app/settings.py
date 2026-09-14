@@ -20,6 +20,8 @@ class Settings:
     # The folder holding the VibeVoice checkouts side by side
     # (VibeVoice, VibeVoice-community, ...). Absent is a normal state.
     vibevoice_root: Path
+    # Pro4Bro's own Python for VibeVoice training and inference; see VibeVoicePaths.
+    vibevoice_runtime_root: Path
     training_models_root: Path
     local_training_models_root: Path
     voice_generators_root: Path
@@ -66,6 +68,12 @@ class Settings:
             / "reading-packs",
             vibevoice_root=Path(
                 os.getenv("PRO4BRO_VIBEVOICE_ROOT", project_root.parent / "VibeVoice")
+            ),
+            vibevoice_runtime_root=Path(
+                os.getenv(
+                    "PRO4BRO_VIBEVOICE_RUNTIME_ROOT",
+                    project_root / ".runtime" / "vibevoice-training" / ".venv",
+                )
             ),
             training_models_root=Path(
                 os.getenv(

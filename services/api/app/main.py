@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-
+import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 
 import httpx
@@ -31,6 +32,7 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
+from app.adapters.voice_script_speaker import StudioWordRecognizer, VoiceScriptBusy, VoiceScriptSpeaker
 from app.adapters.omnivoice_generator import (
     VibeVoiceSpeech,
     VoiceGenerationError,
@@ -86,6 +88,8 @@ from app.domain.models import (
     ProjectVoice,
     VoiceGenerateRequest,
     VoiceOutput,
+    VoiceScriptJob,
+    VoiceScriptRequest,
     ProjectOpen,
     ProjectRecord,
     ReadingAudienceVocabulary,
@@ -127,7 +131,8 @@ def create_app(
         settings.training_wheel_cache,
         settings.omnivoice_root,
     )
-    vibevoice_paths = VibeVoicePaths(settings.vibevoice_root) if settings.vibevoice_root else None
+    vibevoice_python = settings.vibevoice_runtime_root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    vibevoice_paths = VibeVoicePaths(settings.vibevoice_root, runtime_python=vibevoice_python) if settings.vibevoice_root else None
     vibevoice_runtime = VibeVoiceRuntime(vibevoice_paths) if vibevoice_paths else None
     asr_adapters = FileAsrAdapters(projects)
     engine_roots = {
@@ -198,6 +203,14 @@ def create_app(
         if vibevoice_paths and vibevoice_speech_worker
         else None,
     )
+    voice_script_speaker = VoiceScriptSpeaker(
+        projects,
+        voice_outputs,
+        voice_generator,
+        gpu_lease,
+        recognizer=StudioWordRecognizer(settings.legacy_studio_url),
+        ffmpeg_path=settings.ffmpeg_path,
+    )
     training_runner = TrainingRunner(
         projects,
         dataset_compiler,
@@ -218,7 +231,7 @@ def create_app(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
     runtime_status = RuntimeStatus(settings.data_root)
-    vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu)
+    vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu, python=vibevoice_python)
 
     def vibevoice_stt(path: Path, duration: float, variant: str | None = None, project_id: str | None = None) -> dict:
         adapter = asr_adapters.weights(project_id, variant) if variant and project_id else None
@@ -927,6 +940,54 @@ def create_app(
             raise HTTPException(status_code=404, detail="Thiếu file audio")
         return FileResponse(path, media_type="audio/wav")
 
+    @app.get("/api/projects/{project_id}/voice-outputs/{output_id}/waveform")
+    async def voice_output_waveform(
+        project_id: str,
+        output_id: str,
+        start: float | None = None,
+        end: float | None = None,
+        points: int | None = None,
+    ) -> dict:
+        # The Timeline asks every take for its envelope next to its audio URL.
+        try:
+            project = projects.get(project_id)
+            audio_path = voice_outputs.audio_path(project_id, output_id)
+            cache_path = Path(project.project_path) / "cache" / "waveforms" / f"{output_id}.json"
+            if start is None and end is None and points is None:
+                return await asyncio.to_thread(waveform_envelopes.read, audio_path, cache_path)
+            if start is None or end is None or points is None:
+                raise ValueError("Waveform chi tiết cần start, end và points.")
+            return await asyncio.to_thread(waveform_envelopes.read_detail, audio_path, cache_path, start, end, points)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc) or "Invalid waveform range") from exc
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="Voice Output không tồn tại") from exc
+
+    @app.get("/api/projects/{project_id}/voice-outputs/{output_id}/subtitles")
+    def export_voice_output_subtitles(
+        project_id: str,
+        output_id: str,
+        mode: Literal["sentence", "word", "table"] = "sentence",
+    ) -> FileResponse:
+        try:
+            project = projects.get(project_id)
+            output = voice_outputs.get(project_id, output_id)
+            if not output.words:
+                raise ValueError("Voice Output này chưa có word timing; đọc Script lại để có subtitle.")
+            # The exporter reads footage; generated speech has the same words,
+            # duration and name, and nothing cut from its timeline.
+            speech = SimpleNamespace(id=output.id, name=output.id, words=output.words, duration=output.duration, removed_ranges=[])
+            subtitle_path = subtitle_exporter.export(project, speech, mode, training_catalogs.get(project_id).speakers)  # type: ignore[arg-type]
+            return FileResponse(
+                subtitle_path,
+                media_type="text/csv; charset=utf-8" if mode == "table" else "application/x-subrip",
+                filename=subtitle_path.name,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Output không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.delete("/api/projects/{project_id}/voice-outputs/{output_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_voice_output(project_id: str, output_id: str) -> Response:
         try:
@@ -964,6 +1025,30 @@ def create_app(
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/voice-script/read",
+        response_model=VoiceScriptJob,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def read_voice_script(project_id: str, payload: VoiceScriptRequest) -> VoiceScriptJob:
+        try:
+            # Planning checks every row's voice and generator before the GPU is
+            # taken; the rows are then read in the background and polled.
+            return await asyncio.to_thread(voice_script_speaker.start, project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except (GpuBusy, TrainingModelUnavailable, VoiceScriptBusy) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/voice-script/jobs/{job_id}", response_model=VoiceScriptJob)
+    def voice_script_job(project_id: str, job_id: str) -> VoiceScriptJob:
+        try:
+            return voice_script_speaker.job(project_id, job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Không có lượt đọc Script này") from exc
 
     @app.get("/api/training-models", response_model=list[TrainingModelOption])
     def training_model_options() -> list[TrainingModelOption]:

@@ -23,6 +23,8 @@ import type {
   ProjectAsrAdapter,
   ProjectVoice,
   VoiceOutput,
+  VoiceScriptJob,
+  VoiceScriptRow,
   TrainingParameterValue,
   TrainingRun,
   ReadingPackSummary,
@@ -38,7 +40,9 @@ import type {
   WorkspacePage,
 } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
-import { parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
+import { categoryOf, parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
+import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
+import { resolveRowVoice, rowsFromOutput, scriptReadiness, voicesInCategory } from "../domain/voiceScript";
 import { isLive, newestBatch } from "../domain/trainingBatch";
 import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusBar";
 import type { CapturedAudio } from "../modules/recorder/Recorder";
@@ -154,10 +158,18 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [asrAdapters, setAsrAdapters] = useState<ProjectAsrAdapter[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
   const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
-  const [generatorId, setGeneratorId] = useState<string | null>(null);
-  const [projectVoiceId, setProjectVoiceId] = useState<string | null>(null);
-  const [generatorParameters, setGeneratorParameters] = useState<Record<string, TrainingParameterValue>>({});
+  const [generatorParameters, setGeneratorParameters] = useState<Record<string, Record<string, TrainingParameterValue>>>({});
   const [generating, setGenerating] = useState(false);
+  const voiceScriptStorageKey = `pro4bro:${project.id}:voice-script`;
+  const [voiceScriptRows, setVoiceScriptRows] = useState<VoiceScriptRow[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(voiceScriptStorageKey) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((row) => row && typeof row.id === "string" && typeof row.text === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -200,6 +212,36 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   useEffect(() => {
     if (!selectedAssetId) localStorage.setItem(scratchStorageKey, script);
   }, [script, scratchStorageKey, selectedAssetId]);
+
+  useEffect(() => {
+    try { localStorage.setItem(voiceScriptStorageKey, JSON.stringify(voiceScriptRows)); } catch { /* the Script stays in memory */ }
+  }, [voiceScriptRows, voiceScriptStorageKey]);
+
+  const voiceScriptRunning = voiceScriptJob?.status === "running";
+  useEffect(() => {
+    if (!voiceScriptRunning || !voiceScriptJob) return;
+    const jobId = voiceScriptJob.id;
+    let cancelled = false;
+    // Rows are read one by one in the background; the Script shows which row is
+    // being read and the panel how many are done.
+    const timer = window.setInterval(() => {
+      void api.getVoiceScriptJob(project.id, jobId).then((job) => {
+        if (cancelled) return;
+        setVoiceScriptJob(job);
+        if (job.status === "complete" && job.output) {
+          const output = job.output;
+          setGenerating(false);
+          setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
+          openVoiceOutput(output, false);
+          setNotice(`Đã đọc ${job.total} đoạn${job.reused ? ` (${job.reused} đoạn dùng lại)` : ""} · ${output.duration.toFixed(1)} giây; file nằm trong Voice Output.`);
+        } else if (job.status === "failed") {
+          setGenerating(false);
+          setNotice(job.error ?? "Đọc Script thất bại");
+        }
+      }).catch(() => undefined);
+    }, 800);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [project.id, voiceScriptRunning, voiceScriptJob?.id]);
 
   // Selections are word positions, so they mean nothing once another asset's
   // words are loaded - carrying them over would highlight unrelated words.
@@ -1101,43 +1143,58 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
   async function generateVoice() {
-    const text = script.trim();
-    if (!text) {
-      setNotice("Hãy nhập Script trước khi tạo voice.");
+    const offered = voicesInCategory(projectVoices, voiceCategory);
+    const readiness = scriptReadiness(voiceScriptRows, offered);
+    if (readiness.problem) {
+      setNotice(readiness.problem);
       return;
     }
-    const generator = voiceGenerators.find((item) => item.id === generatorId) ?? voiceGenerators.find((item) => item.available) ?? null;
-    const usable = generator ? projectVoices.filter((item) => item.engine === generator.engine) : [];
-    const voice = usable.find((item) => item.id === projectVoiceId) ?? usable[0] ?? null;
-    if (!generator || !voice) {
-      setNotice("Chưa có voice. Tạo voice ở Voice Training trước (nhái giọng không cần train).");
-      return;
+    // One generator per engine among the voices the rows use, each with the
+    // values set in the panel, and reading speed from Control Rack where the
+    // generator has such a setting.
+    const parameters: Record<string, Record<string, TrainingParameterValue>> = {};
+    for (const row of voiceScriptRows) {
+      const voice = row.text.trim() ? resolveRowVoice(row, offered) : null;
+      const generator = voice ? generatorForEngine(voiceGenerators, voice.engine) : null;
+      if (!generator || parameters[generator.id]) continue;
+      parameters[generator.id] = {
+        ...(generatorParameters[generator.id] ?? {}),
+        ...(generator.parameters.some((spec) => spec.key === "speed") ? { speed } : {}),
+      };
     }
+    // No blocking overlay: the Script marks the row being read and the Voice
+    // Generator panel shows how many are done.
     setGenerating(true);
-    setJob(`${voice.name} đang đọc... lần đầu cần nạp model, có thể mất khoảng một phút.`);
     try {
-      const output = await api.generateWithVoice(project.id, voice.id, {
-        text,
-        generatorId: generator.id,
-        parameters: { ...generatorParameters, speed },
-      });
-      setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
-      openVoiceOutput(output);
-      setNotice(`Đã tạo ${output.duration.toFixed(1)} giây audio bằng ${voice.name}; file nằm trong Voice Output.`);
+      setVoiceScriptJob(await api.readVoiceScript(project.id, { rows: readiness.rows, parameters }));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Tạo giọng thất bại");
-    } finally {
       setGenerating(false);
-      setJob(null);
+      setNotice(error instanceof Error ? error.message : "Không bắt đầu đọc Script được");
     }
   }
 
-  function openVoiceOutput(output: VoiceOutput) {
+  function openVoiceOutput(output: VoiceOutput, loadScript = true) {
     // Opened for listening and editing on the Timeline, detached from any
-    // footage: the Script keeps the text that is being worked on.
+    // footage. An output read from a Script brings that Script back with it,
+    // so rows, timestamps and subtitles all describe the audio being played.
     setSelectedAssetId(null);
     setScriptDirty(false);
-    setTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: [] });
+    setTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: output.words ?? [], wordTimingQuality: output.wordTimingQuality ?? undefined, wordTimingNote: output.wordTimingNote ?? null });
+    if (loadScript && output.segments?.length) setVoiceScriptRows(rowsFromOutput(output));
+  }
+
+  async function exportVoiceOutputSubtitles(mode: "sentence" | "word" | "table") {
+    const output = voiceOutputs.find((item) => item.id === take?.id);
+    if (!output?.words?.length) {
+      setNotice("Mở một Voice Output đã có word timing trước khi xuất.");
+      return;
+    }
+    try {
+      await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
+      setNotice(mode === "table" ? "Đã xuất bảng Script CSV của Voice Output." : "Đã xuất SRT theo giọng đã tạo.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không thể xuất SRT.");
+    }
   }
 
   async function deleteVoiceOutput(output: VoiceOutput) {
@@ -1185,6 +1242,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
   const latestAiRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
   const latestLiveRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "record") ?? null;
+  // Voice Manipulator offers the kind of voice chosen in Voice Training.
+  const voiceCategory = categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
   const canRunAiReview = Boolean(selectedMediaAsset?.text.trim() && selectedMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
   const context = useMemo<StudioContext>(() => ({
     workflow: activePage,
@@ -1217,13 +1276,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     asrAdapters,
     projectVoices,
     voiceGenerators,
-    generatorId,
-    projectVoiceId,
     generatorParameters,
     generating,
-    onGeneratorChange: (id) => { setGeneratorId(id); setGeneratorParameters({}); },
-    onProjectVoiceChange: setProjectVoiceId,
-    onGeneratorParametersChange: setGeneratorParameters,
+    onGeneratorParametersChange: (generatorId, parameters) => setGeneratorParameters((current) => ({ ...current, [generatorId]: parameters })),
+    voiceScriptRows,
+    onVoiceScriptRowsChange: setVoiceScriptRows,
+    voiceCategory,
+    voiceScriptJob,
+    onExportVoiceOutput: (mode) => void exportVoiceOutputSubtitles(mode),
     trainingRuns,
     trainingBatch,
     trainingProgressByRun,
@@ -1252,12 +1312,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     wordSelection,
     onWordSelectionChange: setWordSelection,
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
-    onVoiceChange: (speakerId) => {
-      setSelectedVoice(speakerId);
-      // Picking a person in Sound Library picks their newest voice to speak with.
-      const newest = projectVoices.find((voice) => voice.speakerProfileId === speakerId);
-      if (newest) setProjectVoiceId(newest.id);
-    },
+    // Picking a person in Sound Library makes them who reads a new Script row.
+    onVoiceChange: setSelectedVoice,
     onSpeedChange: setSpeed,
     onGainChange: (value) => setGain(Math.max(-96, Math.min(96, value))),
     onTakeChange: (captured) => void processCapturedAudio(captured),
@@ -1292,7 +1348,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

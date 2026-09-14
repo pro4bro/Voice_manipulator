@@ -2,7 +2,8 @@
 
 VibeVoice is not Pro4Bro's engine and its checkouts stay untouched: the TTS
 trainer comes from the community fork, the ASR trainer from Microsoft's repo,
-and both run in the Microsoft checkout's own Python. What this module owns is
+and both run in Pro4Bro's own VibeVoice runtime (`.runtime/vibevoice-training`)
+when it exists, else in the Microsoft checkout's Python. What this module owns is
 the boundary - where things are, whether they are importable, how a Dataset
 Manifest becomes each trainer's input, and which command runs it.
 """
@@ -29,6 +30,10 @@ ASR_PACKAGES = ("peft", "transformers")
 @dataclass(frozen=True)
 class VibeVoicePaths:
     root: Path
+    # Pro4Bro's own environment for VibeVoice. The checkout's `.venv` has no
+    # `peft` or `datasets`, and installing into it would change the owner's
+    # environment; this one is ours to add to.
+    runtime_python: Path | None = None
 
     @property
     def microsoft(self) -> Path:
@@ -44,6 +49,8 @@ class VibeVoicePaths:
 
     @property
     def python(self) -> Path:
+        if self.runtime_python is not None and self.runtime_python.is_file():
+            return self.runtime_python
         scripts = "Scripts/python.exe" if os.name == "nt" else "bin/python"
         return self.microsoft / ".venv" / scripts
 
@@ -106,7 +113,7 @@ class VibeVoiceRuntime:
         if not repository.is_dir():
             return [f"repo {repository.name}"]
         if not self.paths.python.is_file():
-            return ["Python .venv của repo VibeVoice"]
+            return ["Python cho VibeVoice (.runtime/vibevoice-training hoặc .venv của repo)"]
         key = (str(repository), *packages)
         cached = self._cache.get(key)
         if cached and time.monotonic() - cached[0] < self.ttl_seconds:

@@ -64,6 +64,8 @@ export type ModuleId =
   | "voice-patch"
   | "recent-takes"
   | "voice-output"
+  | "voice-script"
+  | "manipulator-library"
   | "training-job"
   | "speaker-isolation"
   | "speaker-emotion"
@@ -635,7 +637,49 @@ export interface VoiceOutput {
   duration: number;
   sampleRate: number;
   audioPath: string;
+  /** Timed on the generated audio, in the same shape as footage words. */
+  words?: StudioWord[];
+  wordTimingQuality?: WordTimingQuality | null;
+  wordTimingNote?: string | null;
+  /** One per Script row that was read, in order. */
+  segments?: VoiceOutputSegment[];
   createdAt: string;
+}
+
+export interface VoiceOutputSegment {
+  rowId: string;
+  voiceId: string;
+  voiceName: string;
+  speakerProfileId: string;
+  engine: string;
+  generatorId: string;
+  text: string;
+  start: number;
+  end: number;
+  clip?: string | null;
+}
+
+/** A row of the typed Script in Voice Manipulator. */
+export interface VoiceScriptRow {
+  id: string;
+  speakerProfileId: string | null;
+  voiceId: string | null;
+  text: string;
+}
+
+export interface VoiceScriptJob {
+  id: string;
+  projectId: string;
+  status: "running" | "complete" | "failed";
+  total: number;
+  done: number;
+  reused: number;
+  currentRowId: string | null;
+  message: string | null;
+  output: VoiceOutput | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 export interface TrainingProgressLine {

@@ -17,6 +17,7 @@ import type {
   ProjectAsrAdapter,
   ProjectVoice,
   VoiceOutput,
+  VoiceScriptJob,
   ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
@@ -372,6 +373,18 @@ export const api = {
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   deleteVoiceOutput: (projectId: string, outputId: string) =>
     request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),
+  exportVoiceOutputSubtitles: (projectId: string, outputId: string, mode: "sentence" | "word" | "table") =>
+    downloadSrt(
+      `/api/projects/${projectId}/voice-outputs/${outputId}/subtitles?mode=${mode}`,
+      `voice-output--${mode}.${mode === "table" ? "csv" : "srt"}`,
+    ),
+  readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number }) =>
+    request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/read`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getVoiceScriptJob: (projectId: string, jobId: string) =>
+    request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/jobs/${jobId}`),
   listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
     request<VoiceOutput>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {

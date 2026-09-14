@@ -75,6 +75,13 @@ class TrainingNotReady(RuntimeError):
     """The machine must be provisioned before a run can consume the GPU."""
 
 
+
+def _failed(message: str, process: TrainingProcess) -> str:
+    """A failure message with the process's own last word on why."""
+    detail = process.failure_detail() if hasattr(process, "failure_detail") else None
+    return f"{message} {detail}" if detail else message
+
+
 class TrainingRunner:
     """Orchestrates the project-owned part of an OmniVoice training run.
 
@@ -337,7 +344,7 @@ class TrainingRunner:
                 if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
-                    raise RuntimeError(f"OmniVoice tokenizer thất bại với mã {code}.")
+                    raise RuntimeError(_failed(f"OmniVoice tokenizer thất bại với mã {code}.", process))
 
                 dev_dir = run_dir / "data" / "dev-tokens"
                 dev_process = self._process_for(run)
@@ -347,7 +354,7 @@ class TrainingRunner:
                 if dev_process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
-                    raise RuntimeError(f"OmniVoice tokenizer cho dev thất bại với mã {code}.")
+                    raise RuntimeError(_failed(f"OmniVoice tokenizer cho dev thất bại với mã {code}.", dev_process))
                 dev_lst = dev_dir / "data.lst"
             data_config = self.exporter.write_data_config(run_dir, train_lst, dev_lst)
 
@@ -361,7 +368,7 @@ class TrainingRunner:
             if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                 return
             if code != 0:
-                raise RuntimeError(f"OmniVoice training thất bại với mã {code}.")
+                raise RuntimeError(_failed(f"OmniVoice training thất bại với mã {code}.", process))
 
             latest = self._refresh_checkpoints(run)
             if not latest:
@@ -389,6 +396,10 @@ class TrainingRunner:
             lambda line: self._on_progress(run, line),
             lambda pid: self._on_started(run, pid),
         )
+        try:
+            process.log_path = self.runs.run_dir(run.project_id, run.id) / "process.log"
+        except (AttributeError, KeyError):
+            process.log_path = None
         with self._lock:
             self._active[run.id] = process
         return process
@@ -477,7 +488,7 @@ class TrainingRunner:
             if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                 return
             if code != 0:
-                raise RuntimeError(f"VibeVoice training thất bại với mã {code}.")
+                raise RuntimeError(_failed(f"VibeVoice training thất bại với mã {code}.", process))
 
             latest = self._refresh_checkpoints(run)
             finished = output_dir / "lora" if run.config.mode == "tts-lora" else output_dir

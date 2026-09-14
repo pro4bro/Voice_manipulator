@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import threading
+from collections import deque
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
@@ -19,6 +21,8 @@ TRAIN_LAUNCHER = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_tr
 # process it started. `accelerate` spawns a worker per GPU and each worker spawns
 # dataloader workers, so the thing to stop is never the process we hold.
 _NEW_PROCESS_GROUP = 0x00000200
+
+_ERROR_LINE = re.compile(r"\w*(Error|Exception)|^error:|CUDA out of memory|Traceback", re.IGNORECASE)
 
 
 class TrainingProcess:
@@ -41,6 +45,18 @@ class TrainingProcess:
         self.on_started = on_started
         self._process: subprocess.Popen[str] | None = None
         self._cancelled = False
+        # Every line the command printed, kept where a failed run can be read
+        # afterwards; progress lines alone never say why a process died.
+        self.log_path: Path | None = None
+        self.tail: deque[str] = deque(maxlen=120)
+
+    def failure_detail(self) -> str | None:
+        """The line that says why the command failed, when it printed one."""
+        lines = [line for line in self.tail if line.strip()]
+        for line in reversed(lines):
+            if _ERROR_LINE.search(line):
+                return line.strip()[:400]
+        return lines[-1].strip()[:400] if lines else None
 
     @property
     def pid(self) -> int | None:
@@ -70,15 +86,25 @@ class TrainingProcess:
         if self.on_started is not None:
             self.on_started(self._process.pid)
         assert self._process.stdout is not None
+        log = None
+        if self.log_path is not None:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            log = self.log_path.open("a", encoding="utf-8")
         try:
             for chunk in self._process.stdout:
+                if log is not None:
+                    log.write(chunk)
                 for line in split_carriage_returns(chunk):
+                    if line.strip():
+                        self.tail.append(line)
                     parsed = parse(line)
                     if parsed is not None:
                         self.on_progress(parsed)
         finally:
             code = self._process.wait()
             self._process = None
+            if log is not None:
+                log.close()
         return code
 
     def cancel(self) -> bool:

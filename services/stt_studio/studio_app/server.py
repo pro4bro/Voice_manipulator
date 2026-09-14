@@ -425,18 +425,20 @@ def _live_words(audio: Any, model_name: str, language: str | None) -> tuple[list
     return found, str(_value(info, "language", "") or "").strip()
 
 
-def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME) -> dict[str, Any]:
+def _transcribe(path: Path, progress_id: str, model_name: str = MODEL_NAME, language: str | None = None) -> dict[str, Any]:
     progress.set(progress_id, 4)
     duration, sample_rate = _audio_duration(path)
     if _is_near_silent(path):
         progress.set(progress_id, 100)
-        return {"id": f"stt-{uuid.uuid4().hex[:12]}", "duration": duration, "sample_rate": sample_rate, "text": "", "words": [], "language": LANGUAGE or "", "model": model_name}
+        return {"id": f"stt-{uuid.uuid4().hex[:12]}", "duration": duration, "sample_rate": sample_rate, "text": "", "words": [], "language": language or LANGUAGE or "", "model": model_name}
     model, _device = _model(model_name)
     progress.set(progress_id, 16)
     audio = _decode_recognition_audio(path)
     segments, info = model.transcribe(
         audio,
-        language=LANGUAGE,
+        # A caller that knows the language says so: detection on a few seconds
+        # of speech is unreliable, and generated speech arrives in short rows.
+        language=language or LANGUAGE,
         task="transcribe",
         beam_size=5,
         patience=1,
@@ -714,7 +716,7 @@ def _resolve_local_source(value: str) -> Path:
 
 
 @app.post("/api/audio/import")
-async def import_audio(file: UploadFile | None = File(None), origin: str = Form("import"), realtime_text: str = Form(""), progress_id: str = Form(""), model: str = Form(MODEL_NAME), source_path: str = Form("")) -> dict[str, Any]:
+async def import_audio(file: UploadFile | None = File(None), origin: str = Form("import"), realtime_text: str = Form(""), progress_id: str = Form(""), model: str = Form(MODEL_NAME), source_path: str = Form(""), language: str = Form("")) -> dict[str, Any]:
     del origin, realtime_text
     if model not in SUPPORTED_STT_MODELS:
         raise HTTPException(status_code=400, detail="Model STT không được hỗ trợ.")
@@ -723,7 +725,7 @@ async def import_audio(file: UploadFile | None = File(None), origin: str = Form(
 
     async def run(path: Path) -> dict[str, Any]:
         try:
-            return await asyncio.to_thread(_transcribe, path, progress_id, model)
+            return await asyncio.to_thread(_transcribe, path, progress_id, model, language.strip() or None)
         except HTTPException:
             raise
         except RuntimeError as exc:

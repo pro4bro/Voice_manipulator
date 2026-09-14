@@ -47,10 +47,12 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     page: "voice-manipulator",
     label: "Voice Manipulator",
     eyebrow: "GENERATE / TRANSFORM / PATCH",
-    modules: ["library-panel", "script", "control-rack", "recorder", "timeline", "voice-patch", "voice-output", "voice-generator"],
+    modules: ["manipulator-library", "voice-script", "control-rack", "recorder", "timeline", "voice-patch", "voice-generator"],
     columns: {
-      left: ["library-panel", "voice-output"],
-      center: ["script"],
+      // Sound Library and Voice Output only: Media Pool is source footage for
+      // STT and training, and the Script here is typed, not transcribed.
+      left: ["manipulator-library"],
+      center: ["voice-script"],
       right: ["voice-generator", "recorder", "control-rack", "voice-patch"],
       bottom: ["timeline"],
     },

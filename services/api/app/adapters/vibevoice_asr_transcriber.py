@@ -83,8 +83,12 @@ class VibeVoiceAsrTranscriber:
         before_gpu_work: Callable[[], None] | None = None,
         worker: EngineWorkerProcess | None = None,
         max_new_tokens: int = 32768,
+        python: Path | None = None,
     ) -> None:
         self.repo = (vibevoice_root / "VibeVoice") if vibevoice_root else None
+        checkout_python = (self.repo / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")) if self.repo else None
+        # A trained ASR adapter needs `peft`, which only Pro4Bro's runtime has.
+        self.python = python if python is not None and python.is_file() else checkout_python
         models = (vibevoice_root / "VibeVoice_models") if vibevoice_root else None
         self.model_dir = models / "microsoft" / "VibeVoice-ASR" if models else None
         self.tokenizer_dir = models / "Qwen" / "Qwen2.5-7B" if models else None
@@ -96,8 +100,8 @@ class VibeVoiceAsrTranscriber:
     def unavailable_reason(self) -> str | None:
         if not self.repo or not (self.repo / "vibevoice" / "modular" / "modeling_vibevoice_asr.py").is_file():
             return "Chưa thấy repo VibeVoice (VibeVoice/vibevoice)."
-        if not (self.repo / ".venv" / "Scripts" / "python.exe").is_file() and not (self.repo / ".venv" / "bin" / "python").is_file():
-            return "Chưa thấy môi trường Python .venv của repo VibeVoice."
+        if not self.python or not self.python.is_file():
+            return "Chưa thấy Python cho VibeVoice (.runtime/vibevoice-training hoặc .venv của repo)."
         if not self.model_dir or not (self.model_dir / "config.json").is_file():
             return "Chưa thấy weights VibeVoice_models/microsoft/VibeVoice-ASR."
         if not self.tokenizer_dir or not (self.tokenizer_dir / "tokenizer_config.json").is_file():
@@ -132,7 +136,7 @@ class VibeVoiceAsrTranscriber:
 
     def _default_worker(self, models: Path | None) -> EngineWorkerProcess:
         repo = self.repo or Path(".")
-        python = repo / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        python = self.python or repo / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         env = {
             # The checkout's editable install still points at the folder it was
             # installed from; putting the checkout first makes it importable
