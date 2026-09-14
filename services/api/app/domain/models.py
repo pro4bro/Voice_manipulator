@@ -55,7 +55,9 @@ class ProjectRecord(ProjectCreate):
 
 
 MediaKind = Literal["audio", "video"]
-MediaOrigin = Literal["import", "record"]
+# `generate`: audio a voice engine produced in this project, kept in Media Pool
+# like any other take so it can be reviewed, cut and reused.
+MediaOrigin = Literal["import", "record", "generate"]
 # How an asset's audio and transcript came to exist. Provenance, not a quality score.
 CaptureTier = Literal["guided", "record", "import"]
 MediaStatus = Literal["ready", "no-audio", "error"]
@@ -842,6 +844,44 @@ class TrainingRunStart(DomainModel):
     # One voice per ticked Speaker Profile: each becomes its own run, trained on
     # that person's segments only, one after another on the one GPU.
     speaker_profile_ids: list[str] = Field(default_factory=list, max_length=64)
+
+
+VoiceKind = Literal["clone", "lora"]
+
+
+class ProjectVoice(DomainModel):
+    """A voice a Speaker Profile can speak with, made by Voice Training.
+
+    `clone` needs no training: a short reference clip and its transcript are
+    the whole voice. `lora` adds a trained adapter on top of the same kind of
+    reference. Paths are project-relative, so the voice moves with the project.
+    """
+
+    id: str = Field(default_factory=lambda: f"voice-{uuid4().hex[:12]}")
+    name: str = Field(min_length=1, max_length=160)
+    speaker_profile_id: str
+    engine: str = "omnivoice"
+    kind: VoiceKind = "clone"
+    model_id: str | None = None
+    base_model: str = "k2-fsa/OmniVoice"
+    reference_audio: str
+    reference_text: str = Field(min_length=1)
+    reference_seconds: float = Field(default=0, ge=0)
+    reference_segment_id: str | None = None
+    adapter_path: str | None = None
+    language: str | None = None
+    source_run_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VoiceGenerateRequest(DomainModel):
+    text: str = Field(min_length=1, max_length=5000)
+    generator_id: str = Field(default="omnivoice-generate", max_length=80)
+    # Values keyed by the engine's own generation names, checked against the
+    # generator descriptor before anything runs.
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    # Fixed output length, for replacing a region of known duration.
+    duration: float | None = Field(default=None, gt=0, le=600)
 
 
 class TrainingCheckpoint(DomainModel):

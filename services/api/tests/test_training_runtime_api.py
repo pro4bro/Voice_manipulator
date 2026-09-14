@@ -95,3 +95,21 @@ def test_starting_a_model_that_cannot_run_here_is_a_conflict(tmp_path):
 
     assert response.status_code == 409
     assert "VibeVoice ASR" in response.json()["detail"]
+
+
+def test_voice_generators_are_listed_from_their_own_descriptors(tmp_path):
+    settings = replace(
+        Settings.from_env(),
+        data_root=tmp_path / "data",
+        training_runtime_root=tmp_path / "training" / ".venv",
+        training_wheel_cache=tmp_path / "wheels",
+        local_voice_generators_root=tmp_path / "data" / "voice-generators",
+    )
+
+    with TestClient(create_app(settings=settings)) as client:
+        generators = client.get("/api/voice-generators").json()
+        models = {item["id"]: item for item in client.get("/api/training-models").json()}
+
+    assert "omnivoice-generate" in {item["id"] for item in generators}
+    assert models["omnivoice-zero-shot-clone"]["mode"] == "zero-shot-clone"
+

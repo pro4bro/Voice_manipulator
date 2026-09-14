@@ -5,9 +5,11 @@ import json
 import os
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
+from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.gpu_lease import GpuBusy, GpuLease
@@ -32,6 +34,7 @@ from app.domain.models import (
     TrainingRunConfig,
 )
 from app.domain.ports import ProjectRepository
+from app.domain.voice_reference import NoReferenceSegment, choose_reference
 
 
 class TrainingNotReady(RuntimeError):
@@ -55,6 +58,9 @@ class TrainingRunner:
         gpu_lease: GpuLease,
         engine_root: Path,
         ffmpeg_path: str | None = None,
+        voices: FileProjectVoices | None = None,
+        engine_env: dict[str, str] | None = None,
+        before_gpu_work: Callable[[], None] | None = None,
     ) -> None:
         self.projects = projects
         self.compiler = compiler
@@ -64,6 +70,12 @@ class TrainingRunner:
         self.gpu_lease = gpu_lease
         self.engine_root = engine_root
         self.exporter = OmniVoiceDatasetExporter(ffmpeg_path)
+        self.voices = voices
+        # Environment for engine processes, such as an offline model cache.
+        self.engine_env = engine_env or {}
+        # Frees whatever else holds the GPU (a warm generation worker) before a
+        # run needs all of it.
+        self.before_gpu_work = before_gpu_work
         self._active: dict[str, TrainingProcess] = {}
         self._lock = threading.Lock()
 
@@ -83,7 +95,7 @@ class TrainingRunner:
         """
         if config and config.engine != "omnivoice":
             raise ValueError("VibeVoice đã có trong danh sách lựa chọn nhưng chưa được cài adapter chạy thật.")
-        if config and config.mode not in {"lora-finetune", "full-finetune"}:
+        if config and config.mode not in {"lora-finetune", "full-finetune", "zero-shot-clone"}:
             raise ValueError("Mode training này chưa được runner OmniVoice hỗ trợ trên Dataset Manifest hiện tại.")
         report = self.runtime.report()
         if not report.ready:
@@ -205,6 +217,11 @@ class TrainingRunner:
         try:
             if self.runs.get(run.project_id, run.id).status == "cancelled":
                 return
+            if run.config.mode == "zero-shot-clone":
+                self._build_clone_voice(run)
+                return
+            if self.before_gpu_work is not None:
+                self.before_gpu_work()
             lease = self.gpu_lease.acquire(f"training:{run.id}")
             lease_token = lease.token
             if self.runs.get(run.project_id, run.id).status == "cancelled":
@@ -248,7 +265,7 @@ class TrainingRunner:
                 process = self._process_for(run)
                 command = commands.tokenize(Path(export.train_jsonl), token_dir)
                 self._append_command(run, "tokenize", command)
-                code = run_tokenize(process, command)
+                code = run_tokenize(process, command, env=self._engine_environment())
                 if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
@@ -258,7 +275,7 @@ class TrainingRunner:
                 dev_process = self._process_for(run)
                 command = commands.tokenize(Path(export.dev_jsonl), dev_dir)
                 self._append_command(run, "tokenize", command)
-                code = run_tokenize(dev_process, command)
+                code = run_tokenize(dev_process, command, env=self._engine_environment())
                 if dev_process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                     return
                 if code != 0:
@@ -272,7 +289,7 @@ class TrainingRunner:
             process = self._process_for(run)
             command = commands.train(train_config, data_config, run_dir / "checkpoints")
             self._append_command(run, "load-model", command)
-            code = run_training(process, command)
+            code = run_training(process, command, env=self._engine_environment())
             if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
                 return
             if code != 0:
@@ -281,8 +298,9 @@ class TrainingRunner:
             latest = self._refresh_checkpoints(run)
             if not latest:
                 raise RuntimeError("Training kết thúc nhưng không tạo checkpoint nào.")
-            self._set_run(run, status="complete", step_id="checkpoint", process_id=None)
             self._append(run, "checkpoint", f"Đã tạo checkpoint tại {latest.path}.")
+            self._publish_voice(run, manifest, kind="lora", adapter_dir=Path(project.project_path) / latest.path)
+            self._set_run(run, status="complete", step_id="checkpoint", process_id=None)
         except GpuBusy as exc:
             self._fail(run, str(exc))
         except (DatasetExportError, KeyError, OSError, RuntimeError, ValueError) as exc:
@@ -317,6 +335,78 @@ class TrainingRunner:
     def _append(self, run: TrainingRun, step_id: str, message: str) -> None:
         self.runs.append_progress(run.project_id, run.id, TrainingProgressLine(step_id=step_id, message=message))
 
+    def _build_clone_voice(self, run: TrainingRun) -> None:
+        """A voice with no training: pick the reference clip and publish it.
+
+        The same steps as a run, minus the GPU. The flow still reads manifest,
+        chooses from this target's own segments and publishes, so a cloned voice
+        is found and used exactly where a trained one is.
+        """
+        try:
+            run = self._set_run(run, status="running", step_id="read-manifest", process_id=None)
+            manifest = self.compiler.load(run.project_id, run.manifest_id)
+            if run.speaker_profile_id:
+                manifest = manifest.model_copy(
+                    update={"segments": [s for s in manifest.segments if s.speaker_profile_id == run.speaker_profile_id]}
+                )
+            self._append(run, "read-manifest", f"Đã đọc {len(manifest.segments)} đoạn của voice target.")
+            run = self._set_run(run, step_id="write-jsonl")
+            voice = self._publish_voice(run, manifest, kind="clone", adapter_dir=None, required=True)
+            run = self._set_run(run, step_id="publish")
+            self._append(run, "publish", f"Đã tạo voice nhái giọng {voice.name} ({voice.id}). Không cần train.")
+            self._set_run(run, status="complete", step_id="publish", process_id=None)
+        except (DatasetExportError, KeyError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+            self._fail(run, str(exc))
+
+    def _publish_voice(
+        self,
+        run: TrainingRun,
+        manifest: DatasetManifest,
+        *,
+        kind: str,
+        adapter_dir: Path | None,
+        required: bool = False,
+    ):
+        """Make the run usable in Voice Manipulation. A trained run that cannot
+        find a reference clip still completes; its checkpoint is the result."""
+        if self.voices is None or not run.speaker_profile_id:
+            if required:
+                raise RuntimeError("Chưa cấu hình kho voice của project.")
+            return None
+        parameters = run.config.parameters
+        try:
+            reference = choose_reference(
+                manifest.segments,
+                float(parameters.get("reference_min_seconds", 3.0)),
+                float(parameters.get("reference_max_seconds", 10.0)),
+            )
+        except NoReferenceSegment as exc:
+            if required:
+                raise
+            self._append(run, "publish", f"Chưa tạo voice: {exc}")
+            return None
+        catalog = self.catalogs.get(run.project_id)
+        speaker = next((item for item in catalog.speakers if item.id == run.speaker_profile_id), None)
+        project = self.projects.get(run.project_id)
+        name = speaker.name if speaker else run.speaker_profile_id
+        self._append(
+            run,
+            "write-jsonl" if kind == "clone" else "publish",
+            f"Giọng mẫu: {reference.duration:.1f}s · \u201c{reference.text.strip()}\u201d",
+        )
+        return self.voices.publish(
+            run.project_id,
+            name=f"{name} · {'nhái giọng' if kind == 'clone' else 'LoRA'}",
+            speaker_profile_id=run.speaker_profile_id,
+            kind=kind,  # type: ignore[arg-type]
+            reference=reference,
+            language=(speaker.language_id if speaker else None) or reference.language_id or project.language,
+            model_id=run.config.model_id,
+            base_model=run.config.base_model,
+            adapter_dir=adapter_dir,
+            source_run_id=run.id,
+        )
+
     def _append_command(self, run: TrainingRun, step_id: str, command: list[str]) -> None:
         """The command a step runs, as a line in the run's log.
 
@@ -336,6 +426,11 @@ class TrainingRunner:
                     break
             shown.append(f'"{argument}"' if " " in argument else argument)
         self._append(run, step_id, "$ " + " ".join(shown))
+
+    def _engine_environment(self) -> dict[str, str] | None:
+        if not self.engine_env:
+            return None
+        return {**os.environ, **self.engine_env}
 
     def _set_run(self, run: TrainingRun, **updates: object) -> TrainingRun:
         current = self.runs.get(run.project_id, run.id)

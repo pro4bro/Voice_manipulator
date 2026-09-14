@@ -151,12 +151,16 @@ class OmniVoiceTrainingCommands:
         ]
 
 
-def run_tokenize(process: TrainingProcess, command: list[str], cwd: Path | None = None) -> int:
-    return process.run(command, parse_tokenize_line, cwd)
+def run_tokenize(
+    process: TrainingProcess, command: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
+) -> int:
+    return process.run(command, parse_tokenize_line, cwd, env)
 
 
-def run_training(process: TrainingProcess, command: list[str], cwd: Path | None = None) -> int:
-    return process.run(command, parse_train_line, cwd)
+def run_training(
+    process: TrainingProcess, command: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
+) -> int:
+    return process.run(command, parse_train_line, cwd, env)
 
 
 def collect(lines: Iterable[TrainingProgressLine]) -> list[TrainingProgressLine]:

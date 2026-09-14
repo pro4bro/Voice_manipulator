@@ -22,6 +22,12 @@ class Settings:
     vibevoice_root: Path
     training_models_root: Path
     local_training_models_root: Path
+    voice_generators_root: Path
+    local_voice_generators_root: Path
+    # A Hugging Face hub cache that already holds the engine weights. When set,
+    # engine processes run offline against it: nothing is fetched, and a
+    # missing model fails loudly instead of quietly downloading gigabytes.
+    model_hub_cache: Path | None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -70,4 +76,20 @@ class Settings:
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
             )
             / "training-models",
+            voice_generators_root=Path(__file__).resolve().parent / "resources" / "voice-generators",
+            local_voice_generators_root=Path(
+                os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
+            )
+            / "voice-generators",
+            model_hub_cache=_model_hub_cache(project_root),
         )
+
+
+def _model_hub_cache(project_root: Path) -> Path | None:
+    configured = os.getenv("PRO4BRO_HF_HUB_CACHE")
+    if configured:
+        return Path(configured)
+    # The cache the original OmniVoice checkout filled beside this project,
+    # which already holds k2-fsa/OmniVoice and its audio tokenizer.
+    legacy = project_root.parent / "OmniVoice" / "OmniVoice" / ".cache" / "huggingface" / "hub"
+    return legacy if legacy.is_dir() else None

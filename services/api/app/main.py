@@ -17,7 +17,8 @@ from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
-from app.adapters.gpu_lease import GpuLease
+from app.adapters.file_project_voices import FileProjectVoices
+from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
 from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
@@ -26,7 +27,9 @@ from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
+from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
+from app.adapters.omnivoice_generator import OmniVoiceWorkerProcess, VoiceGenerationError, VoiceGenerator
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
@@ -69,6 +72,8 @@ from app.domain.models import (
     MediaTranscriptionSelection,
     ProjectCreate,
     ProjectMediaAsset,
+    ProjectVoice,
+    VoiceGenerateRequest,
     ProjectOpen,
     ProjectRecord,
     ReadingAudienceVocabulary,
@@ -116,6 +121,24 @@ def create_app(
         settings.local_training_models_root,
     )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
+    engine_env = (
+        {
+            "HF_HUB_CACHE": str(settings.model_hub_cache),
+            "HF_HUB_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
+            "HF_HUB_DISABLE_TELEMETRY": "1",
+        }
+        if settings.model_hub_cache
+        else {}
+    )
+    project_voices = FileProjectVoices(projects, OmniVoiceDatasetExporter(settings.ffmpeg_path)._slice)
+    voice_generators = FileTrainingModelCatalog(
+        settings.voice_generators_root,
+        {"omnivoice": settings.omnivoice_root, "vibevoice": settings.vibevoice_root},
+        settings.local_voice_generators_root,
+    )
+    generation_worker = OmniVoiceWorkerProcess(training_runtime.python, engine_env)
+    voice_generator = VoiceGenerator(projects, project_voices, media, generation_worker, gpu_lease, voice_generators)
     training_runner = TrainingRunner(
         projects,
         dataset_compiler,
@@ -125,6 +148,9 @@ def create_app(
         gpu_lease,
         settings.omnivoice_root,
         settings.ffmpeg_path,
+        voices=project_voices,
+        engine_env=engine_env,
+        before_gpu_work=generation_worker.shutdown,
     )
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
@@ -774,6 +800,36 @@ def create_app(
     @app.get("/api/training-runtime", response_model=TrainingRuntimeReport)
     def training_runtime_report() -> TrainingRuntimeReport:
         return training_runtime.report()
+
+    @app.get("/api/voice-generators", response_model=list[TrainingModelOption])
+    def voice_generator_options() -> list[TrainingModelOption]:
+        return voice_generators.options()
+
+    @app.get("/api/projects/{project_id}/voices", response_model=list[ProjectVoice])
+    def list_project_voices(project_id: str) -> list[ProjectVoice]:
+        try:
+            return project_voices.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/voices/{voice_id}/generate",
+        response_model=ProjectMediaAsset,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def generate_with_voice(project_id: str, voice_id: str, payload: VoiceGenerateRequest) -> ProjectMediaAsset:
+        try:
+            # The engine call blocks for seconds, or a minute on a cold start;
+            # it must not hold the event loop every other request runs on.
+            return await asyncio.to_thread(voice_generator.generate, project_id, voice_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice hoặc project không tồn tại") from exc
+        except (GpuBusy, TrainingModelUnavailable) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except VoiceGenerationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/training-models", response_model=list[TrainingModelOption])
     def training_model_options() -> list[TrainingModelOption]:

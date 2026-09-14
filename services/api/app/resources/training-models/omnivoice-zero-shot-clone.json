@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "omnivoice-zero-shot-clone",
+  "label": "OmniVoice · Nhái giọng (không train)",
+  "family": "OmniVoice",
+  "engine": "omnivoice",
+  "mode": "zero-shot-clone",
+  "order": 5,
+  "description": "Không train. Chọn một đoạn mẫu 3-10 giây của từng Speaker Profile làm giọng để OmniVoice bắt chước trong Voice Manipulation.",
+  "runnable": true,
+  "repository": {
+    "root": "omnivoice",
+    "path": ".",
+    "entrypoint": "omnivoice/cli/infer.py",
+    "recipe": "README.md",
+    "url": "https://github.com/k2-fsa/OmniVoice",
+    "revision": "38e992b"
+  },
+  "dataFormat": "Một đoạn trong Dataset Manifest của voice target: audio cắt thành reference.wav + đúng transcript của đoạn đó.",
+  "notes": [
+    "README OmniVoice khuyên đoạn mẫu 3-10 giây, cùng ngôn ngữ với câu cần đọc; dài hơn làm chậm và có thể giảm chất lượng.",
+    "Transcript của đoạn mẫu lấy từ Speech to Text của app, nên OmniVoice không phải tự chạy Whisper để đoán lại."
+  ],
+  "parameters": [
+    {
+      "key": "model",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "text",
+      "default": "k2-fsa/OmniVoice",
+      "codeDefault": "k2-fsa/OmniVoice",
+      "source": "omnivoice/cli/infer.py",
+      "runField": "base_model"
+    },
+    {
+      "key": "reference_min_seconds",
+      "label": "Đoạn mẫu ngắn nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 3.0,
+      "recipe": 3.0,
+      "source": "README.md (tip: 3-10 seconds reference)",
+      "min": 1,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây",
+      "help": "Tham số của Pro4Bro, theo gợi ý trong README."
+    },
+    {
+      "key": "reference_max_seconds",
+      "label": "Đoạn mẫu dài nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 10.0,
+      "recipe": 10.0,
+      "source": "README.md (tip: 3-10 seconds reference)",
+      "min": 2,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây"
+    }
+  ]
+}

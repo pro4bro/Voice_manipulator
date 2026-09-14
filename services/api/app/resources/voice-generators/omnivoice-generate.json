@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "id": "omnivoice-generate",
+  "label": "OmniVoice · Đọc bằng voice của project",
+  "family": "OmniVoice",
+  "engine": "omnivoice",
+  "mode": "generate",
+  "order": 10,
+  "description": "Đọc text bằng một voice đã tạo ở Voice Training: nhái giọng từ đoạn mẫu, hoặc thêm adapter LoRA nếu voice đã được train.",
+  "runnable": true,
+  "repository": {
+    "root": "omnivoice",
+    "path": ".",
+    "entrypoint": "omnivoice/cli/infer.py",
+    "recipe": "docs/generation-parameters.md",
+    "url": "https://github.com/k2-fsa/OmniVoice",
+    "revision": "38e992b"
+  },
+  "notes": [
+    "Lần đầu cần khoảng một phút để nạp model; các lần sau model được giữ sẵn 5 phút."
+  ],
+  "parameters": [
+    {
+      "key": "language",
+      "label": "Ngôn ngữ",
+      "group": "Đọc",
+      "kind": "text",
+      "default": null,
+      "nullable": true,
+      "source": "omnivoice/cli/infer.py",
+      "help": "Để trống = theo ngôn ngữ của Speaker Profile."
+    },
+    {
+      "key": "speed",
+      "label": "Tốc độ",
+      "group": "Đọc",
+      "kind": "float",
+      "default": 1.0,
+      "codeDefault": 1.0,
+      "source": "docs/generation-parameters.md",
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05,
+      "help": "Bị bỏ qua khi đặt độ dài cố định."
+    },
+    {
+      "key": "num_step",
+      "label": "Số bước giải mã",
+      "group": "Chất lượng",
+      "kind": "int",
+      "default": 32,
+      "codeDefault": 32,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 4,
+      "max": 128,
+      "help": "16 nhanh hơn, 32 là mặc định."
+    },
+    {
+      "key": "guidance_scale",
+      "label": "Guidance scale",
+      "group": "Chất lượng",
+      "kind": "float",
+      "default": 2.0,
+      "codeDefault": 2.0,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 0,
+      "max": 10,
+      "step": 0.1
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise",
+      "group": "Chất lượng",
+      "kind": "bool",
+      "default": true,
+      "codeDefault": true,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "help": "Tắt thì giọng có xu hướng giữ đặc tính môi trường của đoạn mẫu (chưa kiểm chứng)."
+    },
+    {
+      "key": "t_shift",
+      "label": "t_shift",
+      "group": "Nâng cao",
+      "kind": "float",
+      "default": 0.1,
+      "codeDefault": 0.1,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "advanced": true
+    },
+    {
+      "key": "position_temperature",
+      "label": "Position temperature",
+      "group": "Nâng cao",
+      "kind": "float",
+      "default": 5.0,
+      "codeDefault": 5.0,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 0,
+      "max": 20,
+      "step": 0.5,
+      "advanced": true
+    },
+    {
+      "key": "class_temperature",
+      "label": "Class temperature",
+      "group": "Nâng cao",
+      "kind": "float",
+      "default": 0.0,
+      "codeDefault": 0.0,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 0,
+      "max": 5,
+      "step": 0.1,
+      "advanced": true
+    },
+    {
+      "key": "layer_penalty_factor",
+      "label": "Layer penalty",
+      "group": "Nâng cao",
+      "kind": "float",
+      "default": 5.0,
+      "codeDefault": 5.0,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "min": 0,
+      "max": 20,
+      "step": 0.5,
+      "advanced": true
+    },
+    {
+      "key": "preprocess_prompt",
+      "label": "Tiền xử lý đoạn mẫu",
+      "group": "Nâng cao",
+      "kind": "bool",
+      "default": true,
+      "codeDefault": true,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "advanced": true
+    },
+    {
+      "key": "postprocess_output",
+      "label": "Cắt khoảng lặng đầu ra",
+      "group": "Nâng cao",
+      "kind": "bool",
+      "default": true,
+      "codeDefault": true,
+      "source": "omnivoice/models/omnivoice.py (OmniVoiceGenerationConfig) · docs/generation-parameters.md",
+      "help": "Tắt khi cần độ dài khớp chính xác vùng cần thay.",
+      "advanced": true
+    }
+  ]
+}
