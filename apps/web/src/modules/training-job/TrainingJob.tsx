@@ -13,6 +13,8 @@ interface TrainingJobProps {
   /** The newest batch, in training order. */
   batch?: TrainingRun[];
   progressByRun?: Record<string, TrainingProgressLine[]>;
+  /** The option chosen in Train. While nothing runs, the flow shows its steps. */
+  selectedMode?: string | null;
   busy?: boolean;
   onCancelRun?: (runId: string) => void;
 }
@@ -36,8 +38,8 @@ const CLONE_FLOW: FlowStep[] = [
   { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Manipulation", icon: "spark" },
 ];
 
-export function flowFor(run: TrainingRun | null): FlowStep[] {
-  return run?.config.mode === "zero-shot-clone" ? CLONE_FLOW : TRAINING_FLOW;
+export function flowForMode(mode: string | null | undefined): FlowStep[] {
+  return mode === "zero-shot-clone" ? CLONE_FLOW : TRAINING_FLOW;
 }
 
 const STEP_LABELS: Record<TrainingStepId, string> = {
@@ -112,7 +114,7 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, busy = false, onCancelRun }: TrainingJobProps) {
+export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun }: TrainingJobProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const [follow, setFollow] = useState(true);
   const current = activeRun(batch);
@@ -148,17 +150,22 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
     if (follow && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [lines.length, follow]);
 
-  const FLOW = flowFor(current);
-  const reached = current ? FLOW.findIndex((step) => step.id === current.stepId) : -1;
+  // A running batch owns the flow. Otherwise the flow follows the choice in
+  // Train, and shows the last batch's progress only if it was that same kind.
+  const shownMode = live ? live.config.mode : selectedMode ?? current?.config.mode;
+  const FLOW = flowForMode(shownMode);
+  const category = shownMode === "zero-shot-clone" ? "clone" : "train";
+  const flowRun = current && flowForMode(current.config.mode) === FLOW ? current : null;
+  const reached = flowRun ? FLOW.findIndex((step) => step.id === flowRun.stepId) : -1;
   const shards = [...currentProgress].reverse().find((line) => line.stepId === "tokenize" && line.total);
 
   function stepState(index: number) {
-    if (!current) return "";
-    if (current.status === "complete") return "is-done";
+    if (!flowRun) return "";
+    if (flowRun.status === "complete") return "is-done";
     if (index < reached) return "is-done";
     if (index === reached) {
-      if (current.status === "running") return "is-active";
-      if (current.status === "failed" || current.status === "interrupted") return "is-failed";
+      if (flowRun.status === "running") return "is-active";
+      if (flowRun.status === "failed" || flowRun.status === "interrupted") return "is-failed";
       return "is-current";
     }
     return "";
@@ -167,14 +174,14 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
   return (
     <ModuleFrame
       action={current ? <span className={`run-status run-status--${current.status}`}>{STATUS_LABELS[current.status]}</span> : null}
-      className="training-job-module training-console"
+      className={`training-job-module training-console is-${category}`}
       eyebrow="TRAINING JOB"
       title="Voice Training"
       tone="warm"
     >
       <section aria-label="Flow Voice Training" className="training-flow">
         <header>
-          <span>FLOW</span>
+          <span>FLOW · {category === "clone" ? "NHÁI GIỌNG" : "TRAIN GIỌNG"}</span>
           {current ? (
             <b><i style={{ background: colorOf(current.speakerProfileId) }} />{nameOf(current.speakerProfileId)}{(current.batchSize ?? 1) > 1 ? ` · voice ${(current.batchIndex ?? 0) + 1}/${current.batchSize}` : ""}</b>
           ) : <b>Chưa có run</b>}

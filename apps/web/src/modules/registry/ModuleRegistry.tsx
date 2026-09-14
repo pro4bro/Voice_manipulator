@@ -7,6 +7,8 @@ import { PipelineDashboard } from "../dashboard/PipelineDashboard";
 import { LibraryPanel } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
+import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
+import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
 import { ScriptEditor } from "../script/ScriptEditor";
@@ -44,6 +46,10 @@ export interface StudioContext {
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
   projectId: string;
+  voiceOutputs: import("../../domain/types").VoiceOutput[];
+  activeOutputId: string | null;
+  onOpenVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
+  onDeleteVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
   sttEngines: TrainingModelOption[];
   projectVoices: import("../../domain/types").ProjectVoice[];
   voiceGenerators: TrainingModelOption[];
@@ -159,7 +165,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} progressByRun={context.trainingProgressByRun} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
+      return <TrainingJob batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":
       return <PipelineDashboard assets={context.mediaAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
     case "dataset-readiness":
@@ -172,6 +178,8 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <Train assets={context.mediaAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} trainingModels={context.trainingModels} trainingRuntime={context.trainingRuntime} />;
     case "recent-takes":
       return <RecentTakes />;
+    case "voice-output":
+      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator busy={context.generating} generatorId={context.generatorId} generators={context.voiceGenerators} onGenerate={context.onGenerate} onGeneratorChange={context.onGeneratorChange} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onVoiceChange={context.onProjectVoiceChange} parameters={context.generatorParameters} projectId={context.projectId} scriptLength={context.script.trim().length} speakers={context.trainingCatalog.speakers} voiceId={context.projectVoiceId} voices={context.projectVoices} />;
   }

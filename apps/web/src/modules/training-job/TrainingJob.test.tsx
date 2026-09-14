@@ -81,6 +81,20 @@ describe("TrainingJob", () => {
     expect(screen.getByRole("progressbar", { name: "Tiến trình An" })).toHaveAttribute("aria-valuenow", "100");
   });
 
+  it("shows the flow of the kind chosen in Train while nothing is running", () => {
+    const finishedTraining = [run({ status: "complete", stepId: "checkpoint" })];
+    const { rerender, container } = render(<TrainingJob batch={finishedTraining} selectedMode="zero-shot-clone" speakers={[AN]} />);
+
+    const flow = screen.getByRole("region", { name: "Flow Voice Training" });
+    expect(within(flow).getByText("Chọn đoạn mẫu")).toBeInTheDocument();
+    expect(within(flow).getByText(/FLOW · NHÁI GIỌNG/)).toBeInTheDocument();
+    expect(within(flow).queryAllByRole("listitem").some((item) => item.classList.contains("is-done"))).toBe(false);
+    expect(container.querySelector(".training-console")).toHaveClass("is-clone");
+
+    rerender(<TrainingJob batch={BATCH} selectedMode="zero-shot-clone" speakers={[AN, BINH]} />);
+    expect(within(screen.getByRole("region", { name: "Flow Voice Training" })).getByText("Tokenize audio")).toBeInTheDocument();
+  });
+
   it("logs every step and the command it ran, across all voices in time order", () => {
     const progress = {
       "run-an": [

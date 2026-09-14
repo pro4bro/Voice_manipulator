@@ -18,6 +18,7 @@ from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_project_voices import FileProjectVoices
+from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
 from app.adapters.reading_audience import audience_vocabulary
@@ -75,6 +76,7 @@ from app.domain.models import (
     ProjectMediaAsset,
     ProjectVoice,
     VoiceGenerateRequest,
+    VoiceOutput,
     ProjectOpen,
     ProjectRecord,
     ReadingAudienceVocabulary,
@@ -139,7 +141,8 @@ def create_app(
         settings.local_voice_generators_root,
     )
     generation_worker = omnivoice_worker(training_runtime.python, engine_env)
-    voice_generator = VoiceGenerator(projects, project_voices, media, generation_worker, gpu_lease, voice_generators)
+    voice_outputs = FileVoiceOutputs(projects)
+    voice_generator = VoiceGenerator(projects, project_voices, voice_outputs, generation_worker, gpu_lease, voice_generators)
     training_runner = TrainingRunner(
         projects,
         dataset_compiler,
@@ -837,6 +840,31 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
+    @app.get("/api/projects/{project_id}/voice-outputs", response_model=list[VoiceOutput])
+    def list_voice_outputs(project_id: str) -> list[VoiceOutput]:
+        try:
+            return voice_outputs.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get("/api/projects/{project_id}/voice-outputs/{output_id}/audio")
+    def voice_output_audio(project_id: str, output_id: str) -> Response:
+        try:
+            path = voice_outputs.audio_path(project_id, output_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Output không tồn tại") from exc
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Thiếu file audio")
+        return FileResponse(path, media_type="audio/wav")
+
+    @app.delete("/api/projects/{project_id}/voice-outputs/{output_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_voice_output(project_id: str, output_id: str) -> Response:
+        try:
+            voice_outputs.delete(project_id, output_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Output không tồn tại") from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @app.get("/api/projects/{project_id}/voices/{voice_id}/reference")
     def project_voice_reference(project_id: str, voice_id: str) -> Response:
         try:
@@ -850,10 +878,10 @@ def create_app(
 
     @app.post(
         "/api/projects/{project_id}/voices/{voice_id}/generate",
-        response_model=ProjectMediaAsset,
+        response_model=VoiceOutput,
         status_code=status.HTTP_201_CREATED,
     )
-    async def generate_with_voice(project_id: str, voice_id: str, payload: VoiceGenerateRequest) -> ProjectMediaAsset:
+    async def generate_with_voice(project_id: str, voice_id: str, payload: VoiceGenerateRequest) -> VoiceOutput:
         try:
             # The engine call blocks for seconds, or a minute on a cold start;
             # it must not hold the event loop every other request runs on.

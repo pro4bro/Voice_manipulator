@@ -63,6 +63,7 @@ export type ModuleId =
   | "timeline"
   | "voice-patch"
   | "recent-takes"
+  | "voice-output"
   | "training-job"
   | "speaker-isolation"
   | "speaker-emotion"
@@ -573,6 +574,8 @@ export interface TrainingModelOption {
   mode: string;
   description: string;
   order: number;
+  /** clone: imitates a reference clip, no training. train: changes weights. */
+  category?: "clone" | "train";
   runnable: boolean;
   blockedReason?: string | null;
   repository: { root: string; path: string; entrypoint: string; recipe?: string | null; url?: string | null; revision?: string | null };
@@ -592,7 +595,7 @@ export interface ProjectVoice {
   speakerProfileId: string;
   engine: string;
   /** clone: a reference clip only, no training. lora: a trained adapter on top. */
-  kind: "clone" | "lora";
+  kind: "clone" | "lora" | "full";
   modelId: string | null;
   baseModel: string;
   referenceAudio: string;
@@ -600,8 +603,26 @@ export interface ProjectVoice {
   referenceSeconds: number;
   referenceSegmentId: string | null;
   adapterPath: string | null;
+  modelPath?: string | null;
   language: string | null;
   sourceRunId: string | null;
+  createdAt: string;
+}
+
+/** Generated speech, kept in its own store rather than in Media Pool. */
+export interface VoiceOutput {
+  id: string;
+  name: string;
+  text: string;
+  voiceId: string;
+  voiceName: string;
+  speakerProfileId: string;
+  engine: string;
+  generatorId: string;
+  parameters: Record<string, TrainingParameterValue>;
+  duration: number;
+  sampleRate: number;
+  audioPath: string;
   createdAt: string;
 }
 

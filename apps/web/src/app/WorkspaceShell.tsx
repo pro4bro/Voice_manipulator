@@ -21,6 +21,7 @@ import type {
   TrainingRuntimeReport,
   TrainingModelOption,
   ProjectVoice,
+  VoiceOutput,
   TrainingParameterValue,
   TrainingRun,
   ReadingPackSummary,
@@ -150,6 +151,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [voiceGenerators, setVoiceGenerators] = useState<TrainingModelOption[]>([]);
   const [sttEngines, setSttEngines] = useState<TrainingModelOption[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
+  const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
   const [generatorId, setGeneratorId] = useState<string | null>(null);
   const [projectVoiceId, setProjectVoiceId] = useState<string | null>(null);
   const [generatorParameters, setGeneratorParameters] = useState<Record<string, TrainingParameterValue>>({});
@@ -255,6 +257,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         .catch(() => { if (!cancelled) setVoiceGenerators([]); });
     }
     void refreshProjectVoices();
+    if (typeof api.listVoiceOutputs === "function") {
+      api.listVoiceOutputs(project.id)
+        .then((outputs) => { if (!cancelled) setVoiceOutputs(outputs); })
+        .catch(() => { if (!cancelled) setVoiceOutputs([]); });
+    }
 
     void refreshTrainingRun();
     return () => { cancelled = true; };
@@ -520,7 +527,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   function changeScript(value: string) {
     setScript(value);
-    if (!selectedAssetId || liveTranscriptActive) return;
+    // In Voice Manipulator the Script is text to speak, not the transcript of
+    // whatever footage happens to be selected; typing there must not rewrite it.
+    if (!selectedAssetId || liveTranscriptActive || activePage === "voice-manipulator") return;
     setMediaAssets((current) => current.map((asset) => asset.id === selectedAssetId ? { ...asset, text: value } : asset));
     setScriptDirty(true);
   }
@@ -1101,19 +1110,38 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setGenerating(true);
     setJob(`${voice.name} đang đọc... lần đầu cần nạp model, có thể mất khoảng một phút.`);
     try {
-      const asset = await api.generateWithVoice(project.id, voice.id, {
+      const output = await api.generateWithVoice(project.id, voice.id, {
         text,
         generatorId: generator.id,
         parameters: { ...generatorParameters, speed },
       });
-      storeMediaAsset(asset);
-      applyMediaAsset(asset);
-      setNotice(`Đã tạo ${asset.duration.toFixed(1)} giây audio bằng ${voice.name}; file nằm trong Media Pool.`);
+      setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
+      openVoiceOutput(output);
+      setNotice(`Đã tạo ${output.duration.toFixed(1)} giây audio bằng ${voice.name}; file nằm trong Voice Output.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Tạo giọng thất bại");
     } finally {
       setGenerating(false);
       setJob(null);
+    }
+  }
+
+  function openVoiceOutput(output: VoiceOutput) {
+    // Opened for listening and editing on the Timeline, detached from any
+    // footage: the Script keeps the text that is being worked on.
+    setSelectedAssetId(null);
+    setScriptDirty(false);
+    setTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: [] });
+  }
+
+  async function deleteVoiceOutput(output: VoiceOutput) {
+    try {
+      await api.deleteVoiceOutput(project.id, output.id);
+      setVoiceOutputs((current) => current.filter((item) => item.id !== output.id));
+      if (take?.id === output.id) setTake(null);
+      setNotice(`Đã xoá ${output.name}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không xoá được Voice Output");
     }
   }
 
@@ -1175,6 +1203,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     datasetReadiness,
     datasetBusy,
     projectId: project.id,
+    voiceOutputs,
+    activeOutputId: voiceOutputs.some((output) => output.id === take?.id) ? take?.id ?? null : null,
+    onOpenVoiceOutput: openVoiceOutput,
+    onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
     sttEngines,
     projectVoices,
     voiceGenerators,
@@ -1253,7 +1285,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, sttEngines, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, voiceGenerators, generatorId, projectVoiceId, generatorParameters, generating, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

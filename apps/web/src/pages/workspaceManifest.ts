@@ -47,9 +47,9 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     page: "voice-manipulator",
     label: "Voice Manipulator",
     eyebrow: "GENERATE / TRANSFORM / PATCH",
-    modules: ["library-panel", "script", "control-rack", "recorder", "timeline", "voice-patch", "recent-takes", "voice-generator"],
+    modules: ["library-panel", "script", "control-rack", "recorder", "timeline", "voice-patch", "voice-output", "voice-generator"],
     columns: {
-      left: ["library-panel", "recent-takes"],
+      left: ["library-panel", "voice-output"],
       center: ["script"],
       right: ["voice-generator", "recorder", "control-rack", "voice-patch"],
       bottom: ["timeline"],

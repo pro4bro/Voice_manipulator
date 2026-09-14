@@ -26,6 +26,7 @@ const OWNED_ELSEWHERE = new Set(["speed"]);
 const KIND_LABELS: Record<ProjectVoice["kind"], string> = {
   clone: "Nhái giọng",
   lora: "LoRA đã train",
+  full: "Full fine-tune",
 };
 
 export function VoiceGenerator({

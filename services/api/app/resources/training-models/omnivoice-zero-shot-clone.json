@@ -6,6 +6,7 @@
   "engine": "omnivoice",
   "mode": "zero-shot-clone",
   "order": 5,
+  "category": "clone",
   "description": "Không train. Chọn một đoạn mẫu 3-10 giây của từng Speaker Profile làm giọng để OmniVoice bắt chước trong Voice Manipulation.",
   "runnable": true,
   "repository": {

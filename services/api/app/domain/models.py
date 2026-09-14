@@ -382,6 +382,9 @@ class TrainingModelDescriptor(DomainModel):
     mode: str = Field(min_length=1, max_length=60)
     description: str = ""
     order: int = 100
+    # How the option makes a voice: `clone` imitates a reference clip with no
+    # training, `train` changes weights. The Train page separates the two.
+    category: Literal["clone", "train"] = "train"
     # Whether Pro4Bro has an adapter that actually runs this option. A
     # descriptor may describe a model before its runner exists.
     runnable: bool = False
@@ -846,7 +849,7 @@ class TrainingRunStart(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list, max_length=64)
 
 
-VoiceKind = Literal["clone", "lora"]
+VoiceKind = Literal["clone", "lora", "full"]
 
 
 class ProjectVoice(DomainModel):
@@ -869,8 +872,29 @@ class ProjectVoice(DomainModel):
     reference_seconds: float = Field(default=0, ge=0)
     reference_segment_id: str | None = None
     adapter_path: str | None = None
+    # A fully fine-tuned checkpoint inside the project, used instead of
+    # `base_model` when set. LoRA voices keep the base and add `adapter_path`.
+    model_path: str | None = None
     language: str | None = None
     source_run_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VoiceOutput(DomainModel):
+    """One piece of generated speech in the project's Voice Output store."""
+
+    id: str
+    name: str
+    text: str
+    voice_id: str
+    voice_name: str
+    speaker_profile_id: str
+    engine: str
+    generator_id: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    duration: float = Field(default=0, ge=0)
+    sample_rate: int = 24000
+    audio_path: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

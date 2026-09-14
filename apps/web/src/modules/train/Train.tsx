@@ -5,7 +5,7 @@ import type { DatasetReadiness, EnvironmentNoiseProfile, ProjectMediaAsset, Trai
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useParameterForm } from "../../ui/ParameterForm";
-import { parameterOverrides, selectedTrainingModel } from "./trainingModels";
+import { CATEGORY_LABELS, categoryOf, parameterOverrides, selectedTrainingModel, type TrainingCategory } from "./trainingModels";
 
 interface TrainProps {
   assets: ProjectMediaAsset[];
@@ -33,6 +33,13 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
 
   function chooseModel(modelId: string) {
     updateSettings({ modelId });
+  }
+
+  function chooseCategory(next: TrainingCategory) {
+    if (next === category) return;
+    const inCategory = trainingModels.filter((option) => categoryOf(option) === next);
+    const pick = inCategory.find((option) => option.available) ?? inCategory[0];
+    if (pick) chooseModel(pick.id);
   }
 
   function setParameter(spec: TrainingParameterSpec, value: TrainingParameterValue) {
@@ -70,7 +77,10 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
   const form = useParameterForm({ scope: model?.id ?? "none", specs: model?.parameters ?? [], overrides, onChange: setParameter });
   const problems = form.problems;
   const changedCount = Object.keys(overrides).length;
-  const families = trainingModels.reduce<string[]>((list, option) => list.includes(option.family) ? list : [...list, option.family], []);
+  const category = categoryOf(model);
+  const listed = trainingModels.filter((option) => categoryOf(option) === category);
+  const families = listed.reduce<string[]>((list, option) => list.includes(option.family) ? list : [...list, option.family], []);
+  const counts = { clone: trainingModels.filter((option) => categoryOf(option) === "clone").length, train: trainingModels.filter((option) => categoryOf(option) === "train").length };
 
   const targets = catalog.speakers.filter((speaker) => settings.targetSpeakerIds.includes(speaker.id));
   const secondsOf = (speakerId: string) => readiness?.secondsBySpeaker?.[speakerId] ?? 0;
@@ -94,18 +104,30 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
                 ? `${emptyTargets.map((speaker) => speaker.name).join(", ")} chưa có đoạn nào trong dataset`
                 : !trainingRuntime?.ready
                   ? "Runtime chưa sẵn sàng"
-                  : `Bắt đầu ${model.label} · ${targets.length} voice`;
+                  : category === "clone"
+                    ? `Tạo ${targets.length} voice nhái giọng`
+                    : `Bắt đầu train ${model.label} · ${targets.length} voice`;
 
   return (
-    <ModuleFrame className="train-module" eyebrow="FINE-TUNE CONTROL" title="Train" action={<span className={`train-engine-state ${model?.available ? "is-ready" : ""}`}>{model?.available ? "ADAPTER READY" : "ADAPTER PENDING"}</span>}>
+    <ModuleFrame className={`train-module is-${category}`} eyebrow="FINE-TUNE CONTROL" title="Train" action={<span className={`train-engine-state ${model?.available ? "is-ready" : ""}`}>{model?.available ? "ADAPTER READY" : "ADAPTER PENDING"}</span>}>
+      {model ? (
+        <div aria-label="Dạng tạo voice" className="train-category" role="radiogroup">
+          {(["clone", "train"] as const).map((option) => (
+            <button aria-checked={category === option} className={`train-category__option is-${option} ${category === option ? "is-active" : ""}`} disabled={!counts[option]} key={option} onClick={() => chooseCategory(option)} role="radio" type="button">
+              <b>{CATEGORY_LABELS[option]}</b>
+              <small>{option === "clone" ? "Không train · dùng đoạn mẫu" : "Đổi trọng số model"} · {counts[option]}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {model ? (
         <section className="train-engine-picker" aria-label="Chọn Model Training">
           <label>
-            <span>MODEL TRAINING</span>
+            <span>{category === "clone" ? "CÔNG CỤ NHÁI GIỌNG" : "MODEL TRAINING"}</span>
             <select aria-label="Model Training" onChange={(event) => chooseModel(event.target.value)} value={model.id}>
               {families.map((family) => (
                 <optgroup key={family} label={family}>
-                  {trainingModels.filter((option) => option.family === family).map((option) => (
+                  {listed.filter((option) => option.family === family).map((option) => (
                     <option key={option.id} value={option.id}>{option.label}{option.available ? "" : option.installed ? " · chưa có adapter" : " · chưa cài"}</option>
                   ))}
                 </optgroup>
@@ -137,7 +159,7 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
         </section>
       ) : null}
       <div className="train-speaker-targets">
-        <span>VOICE TARGETS · MỖI PROFILE MỘT VOICE</span>
+        <span>VOICE TARGETS · MỖI PROFILE {category === "clone" ? "MỘT GIỌNG NHÁI" : "MỘT VOICE TRAIN"}</span>
         <div>
           {catalog.speakers.map((speaker) => (
             <label key={speaker.id}>
@@ -149,10 +171,10 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
           {!catalog.speakers.length ? <small>Tạo Speaker Profile trong Sound Library.</small> : null}
         </div>
       </div>
-      <div className="train-switches">
+      {category === "train" ? <div className="train-switches">
         <label><input checked={settings.denoiseBeforeTraining} onChange={(event) => updateSettings({ denoiseBeforeTraining: event.target.checked })} type="checkbox" /><span><b>Khử nhiễu trước khi train</b><small>Filter tạm trên dataset đầu vào</small></span></label>
         <label><input checked={settings.learnEnvironmentNoise} onChange={(event) => updateSettings({ learnEnvironmentNoise: event.target.checked })} type="checkbox" /><span><b>Học Environment Noise Profile</b><small>Giữ lại đặc tính môi trường để tái tạo sau này</small></span></label>
-      </div>
+      </div> : null}
       <details className="noise-profile-editor">
         <summary><span>ENVIRONMENT NOISE PROFILES</span><b>{catalog.environmentProfiles.length}</b></summary>
         <select aria-label="Environment noise profile" onChange={(event) => updateSettings({ environmentProfileId: event.target.value || null })} value={settings.environmentProfileId ?? ""}>
@@ -165,7 +187,7 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
         </div>
         <button className="button button--quiet button--full" disabled={!noiseName.trim() || !noiseAssetIds.length} onClick={addNoiseProfile} type="button"><Icon name="plus" />Lưu noise profile</button>
       </details>
-      <button className="button button--accent button--full" disabled={busy || !trainingReady} onClick={onStart} type="button">{startLabel}</button>
+      <button className={`button button--full train-start is-${category}`} disabled={busy || !trainingReady} onClick={onStart} type="button">{startLabel}</button>
     </ModuleFrame>
   );
 }

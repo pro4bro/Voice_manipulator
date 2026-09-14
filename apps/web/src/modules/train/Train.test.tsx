@@ -44,6 +44,12 @@ const vibevoice = model({
   ],
 });
 
+const clone = model({
+  id: "omnivoice-zero-shot-clone", label: "OmniVoice · Nhái giọng (không train)", family: "OmniVoice", mode: "zero-shot-clone", category: "clone", order: 5,
+  runnable: true, installed: true, available: true, status: "Sẵn sàng.",
+  parameters: [spec({ key: "reference_max_seconds", label: "Đoạn mẫu dài nhất", group: "Giọng mẫu", kind: "float", default: 10 })],
+});
+
 const models = [omnivoice, vibevoice];
 
 const AN = { id: "speaker-an", name: "An", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#888", createdAt: "2026-08-23T00:00:00Z" };
@@ -118,7 +124,7 @@ describe("Train", () => {
     render(<Train assets={[]} catalog={ticked} onCatalogChange={vi.fn()} onStart={onStart} readiness={readiness} trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
 
     expect(screen.getByText("1m 30s")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu OmniVoice · LoRA fine-tune · 1 voice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu train OmniVoice · LoRA fine-tune · 1 voice" }));
     expect(onStart).toHaveBeenCalled();
     expect(screen.getByText("ADAPTER READY")).toBeInTheDocument();
   });
@@ -131,6 +137,28 @@ describe("Train", () => {
     rerender(<Train assets={[]} catalog={ticked} onCatalogChange={vi.fn()} readiness={{ ...readiness, secondsBySpeaker: {} }} trainingModels={models} trainingRuntime={runtime} />);
     expect(screen.getByRole("button", { name: "An chưa có đoạn nào trong dataset" })).toBeDisabled();
     expect(screen.getByText("chưa có đoạn")).toBeInTheDocument();
+  });
+
+  it("separates imitating a voice from training one, and lists only the chosen kind", () => {
+    const onCatalogChange = vi.fn();
+    const { container } = render(<Train assets={[]} catalog={{ ...catalog, settings: { ...catalog.settings, modelId: "omnivoice-lora" } }} onCatalogChange={onCatalogChange} trainingModels={[clone, ...models]} />);
+
+    expect(screen.getByRole("radio", { name: /Train giọng/ })).toHaveAttribute("aria-checked", "true");
+    expect(within(screen.getByLabelText("Model Training")).queryByRole("option", { name: /Nhái giọng/ })).not.toBeInTheDocument();
+    expect(container.querySelector(".train-module")).toHaveClass("is-train");
+
+    fireEvent.click(screen.getByRole("radio", { name: /Nhái giọng/ }));
+    expect(onCatalogChange).toHaveBeenLastCalledWith({ ...catalog, settings: { ...catalog.settings, modelId: "omnivoice-zero-shot-clone" } });
+  });
+
+  it("speaks of making cloned voices, not training, when the clone kind is chosen", () => {
+    const chosen = { ...ticked, settings: { ...ticked.settings, modelId: "omnivoice-zero-shot-clone" } };
+    const { container } = render(<Train assets={[]} catalog={chosen} onCatalogChange={vi.fn()} readiness={readiness} trainingModels={[clone, ...models]} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+
+    expect(container.querySelector(".train-module")).toHaveClass("is-clone");
+    expect(screen.getByRole("button", { name: "Tạo 1 voice nhái giọng" })).toBeEnabled();
+    expect(within(screen.getByLabelText("Model Training")).getAllByRole("option")).toHaveLength(1);
+    expect(screen.queryByText("Khử nhiễu trước khi train")).not.toBeInTheDocument();
   });
 
   it("lets a number be typed through states that do not parse yet", () => {

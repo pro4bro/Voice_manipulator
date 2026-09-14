@@ -39,4 +39,11 @@ describe("workspaceManifest", () => {
     expect(manifest.modes).toEqual(["voice-over", "voice-isolator", "voice-changer", "voice-dubber", "voice-patch"]);
     expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-changer", "voice-dubber"]);
   });
+
+  it("keeps generated speech in Voice Output, beside Media Pool rather than inside it", () => {
+    const manifest = workspaceManifest("voice-manipulator");
+    expect(manifest.columns.left).toEqual(["library-panel", "voice-output"]);
+    expect(manifest.modules).not.toContain("recent-takes");
+    expect(workspaceManifest("speech-to-text").modules).not.toContain("voice-output");
+  });
 });

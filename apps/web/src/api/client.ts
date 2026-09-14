@@ -15,6 +15,7 @@ import type {
   ProjectMediaAsset,
   ProjectMediaImportResult,
   ProjectVoice,
+  VoiceOutput,
   ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
@@ -366,9 +367,12 @@ export const api = {
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
+  listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
+  deleteVoiceOutput: (projectId: string, outputId: string) =>
+    request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),
   listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
-    request<ProjectMediaAsset>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {
+    request<VoiceOutput>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

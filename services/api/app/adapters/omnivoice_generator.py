@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
-from uuid import uuid4
 
 from app.adapters.engine_worker import EngineWorkerError, EngineWorkerProcess
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.gpu_lease import GpuLease
 from app.adapters.training_model_catalog import FileTrainingModelCatalog, TrainingModelUnavailable
-from app.domain.models import MediaAssetCreate, ProjectMediaAsset, VoiceGenerateRequest
-from app.domain.ports import MediaLibrary, ProjectRepository
+from app.adapters.file_voice_outputs import FileVoiceOutputs
+from app.domain.models import VoiceGenerateRequest, VoiceOutput
+from app.domain.ports import ProjectRepository
 from app.domain.training_parameters import resolve_parameters
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_worker.py"
@@ -24,25 +23,25 @@ def omnivoice_worker(python: Path, env: dict[str, str] | None = None, idle_secon
 
 
 class VoiceGenerator:
-    """Speaks text with a project voice and files the result in Media Pool."""
+    """Speaks text with a project voice and files the result in Voice Output."""
 
     def __init__(
         self,
         projects: ProjectRepository,
         voices: FileProjectVoices,
-        media: MediaLibrary,
+        outputs: FileVoiceOutputs,
         worker: EngineWorkerProcess,
         gpu_lease: GpuLease,
         generators: FileTrainingModelCatalog,
     ) -> None:
         self.projects = projects
         self.voices = voices
-        self.media = media
+        self.outputs = outputs
         self.worker = worker
         self.gpu_lease = gpu_lease
         self.generators = generators
 
-    def generate(self, project_id: str, voice_id: str, request: VoiceGenerateRequest) -> ProjectMediaAsset:
+    def generate(self, project_id: str, voice_id: str, request: VoiceGenerateRequest) -> VoiceOutput:
         voice = self.voices.get(project_id, voice_id)
         try:
             option = self.generators.get(request.generator_id)
@@ -64,15 +63,14 @@ class VoiceGenerator:
         if adapter is not None and not adapter.is_dir():
             raise ValueError(f"Thiếu adapter LoRA của voice {voice.name}.")
 
-        asset_id = f"asset-{uuid4().hex[:12]}"
-        asset_dir = project_root / "assets" / "media" / asset_id
-        asset_dir.mkdir(parents=True, exist_ok=False)
-        source = asset_dir / "source.wav"
-        lease = self.gpu_lease.acquire(f"voice-generate:{asset_id}")
+        # The lease first: a busy GPU must not leave an empty output folder behind.
+        lease = self.gpu_lease.acquire(f"voice-generate:{voice.id}")
+        output_id: str | None = None
         try:
+            output_id, audio = self.outputs.reserve(project_id)
             reply = self._request(
                 {
-                    "model": voice.base_model,
+                    "model": str(self.voices.absolute(project_id, voice.model_path)) if voice.model_path else voice.base_model,
                     "lora_adapter": str(adapter) if adapter else None,
                     "ref_audio": str(reference),
                     "ref_text": voice.reference_text,
@@ -81,41 +79,35 @@ class VoiceGenerator:
                     "duration": request.duration,
                     "speed": speed,
                     "generation": generation,
-                    "output": str(source),
+                    "output": str(audio),
                 }
             )
         except Exception:
-            shutil.rmtree(asset_dir, ignore_errors=True)
+            if output_id:
+                self.outputs.discard(project_id, output_id)
             raise
         finally:
             self.gpu_lease.release(lease.token)
-        if not reply.get("ok") or not source.is_file():
-            shutil.rmtree(asset_dir, ignore_errors=True)
+        if not reply.get("ok") or not audio.is_file():
+            self.outputs.discard(project_id, output_id)
             raise VoiceGenerationError(reply.get("error") or "OmniVoice không tạo được audio.")
 
-        analysis = asset_dir / "analysis.wav"
-        shutil.copyfile(source, analysis)
         preview = " ".join(request.text.split()[:6])
-        return self.media.create(
+        return self.outputs.save(
             project_id,
-            MediaAssetCreate(
-                name=f"{voice.name} · {preview}.wav",
-                source_extension=".wav",
-                media_kind="audio",
-                source_path=source.relative_to(project_root).as_posix(),
-                analysis_path=analysis.relative_to(project_root).as_posix(),
-                url=f"/api/projects/{project_id}/media/{asset_id}/audio",
-                duration=float(reply.get("seconds") or 0),
-                sample_rate=24000,
-                audio_codec="pcm_s16le",
-                origin="generate",
-                capture_tier="import",
-                status="ready",
+            VoiceOutput(
+                id=output_id,
+                name=f"{voice.name} · {preview}",
                 text=request.text,
-                transcription_status="skipped",
-                speaker_profile_ids=[voice.speaker_profile_id],
+                voice_id=voice.id,
+                voice_name=voice.name,
+                speaker_profile_id=voice.speaker_profile_id,
+                engine=option.engine,
+                generator_id=option.id,
+                parameters={**generation, "language": language, "speed": speed, "duration": request.duration},
+                duration=float(reply.get("seconds") or 0),
+                audio_path=audio.relative_to(project_root).as_posix(),
             ),
-            asset_id,
         )
 
     def _request(self, payload: dict) -> dict:

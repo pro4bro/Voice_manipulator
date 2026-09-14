@@ -1,5 +1,17 @@
 import type { TrainingModelOption, TrainingParameterSpec, TrainingParameterValue, TrainingSettings } from "../../domain/types";
 
+export type TrainingCategory = "clone" | "train";
+
+export const CATEGORY_LABELS: Record<TrainingCategory, string> = {
+  clone: "Nhái giọng",
+  train: "Train giọng",
+};
+
+export function categoryOf(model: Pick<TrainingModelOption, "category" | "mode"> | null | undefined): TrainingCategory {
+  if (model?.category) return model.category;
+  return model?.mode === "zero-shot-clone" ? "clone" : "train";
+}
+
 /** The chosen option, or the first one that can run, or simply the first. */
 export function selectedTrainingModel(models: TrainingModelOption[], settings: TrainingSettings): TrainingModelOption | null {
   return models.find((model) => model.id === settings.modelId)

@@ -13,6 +13,7 @@ from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
+from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.engine_worker import REPLY_PREFIX, EngineWorkerError, EngineWorkerProcess
 from app.adapters.omnivoice_generator import VoiceGenerationError, VoiceGenerator
@@ -221,25 +222,30 @@ def generator_fixture(tmp_path, worker):
     engine.mkdir(parents=True)
     (engine / "infer.py").write_text("", encoding="utf-8")
     generators = FileTrainingModelCatalog(SETTINGS.voice_generators_root, {"omnivoice": tmp_path / "engine"})
-    media = FileMediaLibrary(projects)
+    outputs = FileVoiceOutputs(projects)
     lease = GpuLease(tmp_path / "gpu.json")
-    return project, voice, media, lease, VoiceGenerator(projects, voices, media, worker, lease, generators)
+    return project, voice, outputs, lease, VoiceGenerator(projects, voices, outputs, worker, lease, generators)
 
 
-def test_generated_speech_lands_in_media_pool_with_its_voice(tmp_path):
+def test_generated_speech_lands_in_voice_output_not_media_pool(tmp_path):
     worker = fake_worker(tmp_path)
-    project, voice, media, lease, generator = generator_fixture(tmp_path, worker)
+    project, voice, outputs, lease, generator = generator_fixture(tmp_path, worker)
     try:
-        asset = generator.generate(project.id, voice.id, VoiceGenerateRequest(text="Xin chào mọi người", parameters={"num_step": 16}))
+        output = generator.generate(project.id, voice.id, VoiceGenerateRequest(text="Xin chào mọi người", parameters={"num_step": 16}))
     finally:
         worker.shutdown()
 
-    assert asset.origin == "generate"
-    assert asset.speaker_profile_ids == ["speaker-an"]
-    assert asset.text == "Xin chào mọi người"
-    assert (Path(project.project_path) / asset.analysis_path).read_bytes() == b"RIFF-generated"
-    assert media.get(project.id, asset.id).duration == 1.5
+    assert output.speaker_profile_id == "speaker-an" and output.voice_id == voice.id
+    assert output.text == "Xin chào mọi người" and output.duration == 1.5
+    assert output.parameters["num_step"] == 16 and output.parameters["language"] == "vi"
+    assert output.audio_path == f"assets/voice-output/{output.id}/audio.wav"
+    assert outputs.audio_path(project.id, output.id).read_bytes() == b"RIFF-generated"
+    assert outputs.list(project.id) == [output]
+    assert FileMediaLibrary(FileProjectRepository(tmp_path / "registry")).list(project.id) == []
     assert lease.holder() is None
+
+    outputs.delete(project.id, output.id)
+    assert outputs.list(project.id) == []
 
 
 def test_generation_refuses_unknown_parameters_and_a_busy_gpu(tmp_path):
@@ -247,7 +253,7 @@ def test_generation_refuses_unknown_parameters_and_a_busy_gpu(tmp_path):
         def request(self, payload):
             raise AssertionError("the worker must not run")
 
-    project, voice, _media, lease, generator = generator_fixture(tmp_path, NeverCalled())
+    project, voice, outputs, lease, generator = generator_fixture(tmp_path, NeverCalled())
 
     with pytest.raises(ValueError, match="không có tham số"):
         generator.generate(project.id, voice.id, VoiceGenerateRequest(text="x", parameters={"steps": 3}))
@@ -255,19 +261,19 @@ def test_generation_refuses_unknown_parameters_and_a_busy_gpu(tmp_path):
     with pytest.raises(GpuBusy):
         generator.generate(project.id, voice.id, VoiceGenerateRequest(text="x"))
     lease.release(holder.token)
-    assert not list((Path(project.project_path) / "assets" / "media").glob("asset-*/source.wav"))
+    assert not outputs.root(project.id).exists() or not list(outputs.root(project.id).iterdir())
 
 
 def test_a_failed_generation_leaves_no_half_made_asset(tmp_path):
     worker = fake_worker(tmp_path)
-    project, voice, media, _lease, generator = generator_fixture(tmp_path, worker)
+    project, voice, outputs, _lease, generator = generator_fixture(tmp_path, worker)
     try:
         with pytest.raises(VoiceGenerationError, match="boom"):
             generator.generate(project.id, voice.id, VoiceGenerateRequest(text="boom"))
     finally:
         worker.shutdown()
 
-    assert [path.name for path in (Path(project.project_path) / "assets" / "media").iterdir()] == ["asset-1"]
+    assert list(outputs.root(project.id).iterdir()) == []
 
 
 # ---------------------------------------------------------------- descriptor values
