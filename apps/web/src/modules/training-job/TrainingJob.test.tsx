@@ -71,6 +71,16 @@ describe("TrainingJob", () => {
     expect(within(flow).getByText(/An · voice 1\/2/)).toBeInTheDocument();
   });
 
+  it("shows the short flow for a cloned voice, which has no training steps", () => {
+    render(<TrainingJob batch={[run({ status: "complete", stepId: "publish", globalStep: 0, config: { ...run().config, modelId: "omnivoice-zero-shot-clone", mode: "zero-shot-clone" } })]} speakers={[AN]} />);
+
+    const flow = screen.getByRole("region", { name: "Flow Voice Training" });
+    expect(within(flow).getByText("Chọn đoạn mẫu")).toBeInTheDocument();
+    expect(within(flow).queryByText("Tokenize audio")).not.toBeInTheDocument();
+    expect(within(flow).getAllByRole("listitem").every((item) => item.classList.contains("is-done"))).toBe(true);
+    expect(screen.getByRole("progressbar", { name: "Tiến trình An" })).toHaveAttribute("aria-valuenow", "100");
+  });
+
   it("logs every step and the command it ran, across all voices in time order", () => {
     const progress = {
       "run-an": [

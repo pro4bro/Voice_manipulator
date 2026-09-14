@@ -4,7 +4,8 @@ import { formatDuration } from "../../domain/reading-plan";
 import type { DatasetReadiness, EnvironmentNoiseProfile, ProjectMediaAsset, TrainingCatalog, TrainingModelOption, TrainingParameterSpec, TrainingParameterValue, TrainingRuntimeReport } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import { formatParameterValue, parameterOverrides, parameterProblem, parameterValue, selectedTrainingModel } from "./trainingModels";
+import { useParameterForm } from "../../ui/ParameterForm";
+import { parameterOverrides, selectedTrainingModel } from "./trainingModels";
 
 interface TrainProps {
   assets: ProjectMediaAsset[];
@@ -21,22 +22,10 @@ interface TrainProps {
 export function Train({ assets, catalog, onCatalogChange, trainingModels = [], readiness = null, trainingRuntime = null, busy = false, onStart }: TrainProps) {
   const [noiseName, setNoiseName] = useState("");
   const [noiseAssetIds, setNoiseAssetIds] = useState<string[]>([]);
-  // What is typed into a number field while it has focus. "0." and "1e-" are
-  // on their way to a number; re-rendering the parsed value would eat them.
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const settings = catalog.settings;
   const usableAssets = assets.filter((asset) => asset.status !== "no-audio");
   const model = selectedTrainingModel(trainingModels, settings);
   const overrides = model ? parameterOverrides(model, settings) : {};
-  const problems = model
-    ? model.parameters.flatMap((spec) => {
-      const draft = drafts[draftKey(model.id, spec.key)];
-      const typed = draft === undefined ? parameterValue(spec, overrides) : draftNumber(draft);
-      const problem = typed === undefined ? "Chưa phải số hợp lệ" : parameterProblem(spec, typed);
-      return problem ? [[spec.key, problem] as const] : [];
-    })
-    : [];
-  const problemByKey = Object.fromEntries(problems);
 
   function updateSettings(update: Partial<TrainingCatalog["settings"]>) {
     onCatalogChange({ ...catalog, settings: { ...settings, ...update } });
@@ -59,21 +48,6 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
     updateSettings({ modelParameters: all });
   }
 
-  function typeNumber(spec: TrainingParameterSpec, text: string) {
-    if (!model) return;
-    setDrafts((current) => ({ ...current, [draftKey(model.id, spec.key)]: text }));
-    const parsed = draftNumber(text);
-    if (parsed === null ? spec.nullable : parsed !== undefined) setParameter(spec, parsed ?? null);
-  }
-
-  function clearDraft(key: string) {
-    setDrafts((current) => {
-      if (!(key in current)) return current;
-      const { [key]: _dropped, ...rest } = current;
-      return rest;
-    });
-  }
-
   function addNoiseProfile() {
     const name = noiseName.trim();
     if (!name || !noiseAssetIds.length) return;
@@ -93,84 +67,8 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
     setNoiseAssetIds([]);
   }
 
-  function renderField(spec: TrainingParameterSpec) {
-    if (!model) return null;
-    const value = parameterValue(spec, overrides);
-    const changed = spec.editable && spec.key in overrides;
-    const problem = problemByKey[spec.key];
-    const disabled = !spec.editable;
-    // null means the recipe does not set it / the trainer has no default worth
-    // naming, so there is nothing to compare against.
-    const hint = [
-      spec.recipe != null && spec.recipe !== spec.default ? `recipe ${formatParameterValue(spec.recipe)}` : null,
-      spec.codeDefault != null && spec.codeDefault !== spec.default ? `code ${formatParameterValue(spec.codeDefault)}` : null,
-    ].filter(Boolean).join(" · ");
-    const title = [spec.help, spec.source ? `Nguồn: ${spec.source}` : null, `Key: ${spec.key}`].filter(Boolean).join("\n");
-
-    if (spec.kind === "bool") {
-      return (
-        <label className={`train-param train-param--bool ${changed ? "is-changed" : ""}`} key={spec.key} title={title}>
-          <input aria-label={spec.label} checked={value === true} disabled={disabled} onChange={(event) => setParameter(spec, event.target.checked)} type="checkbox" />
-          <span>{spec.label}{disabled ? <i className="train-param-lock">khoá</i> : null}</span>
-          {hint ? <small>{hint}</small> : null}
-        </label>
-      );
-    }
-
-    let control;
-    if (spec.kind === "choice") {
-      control = (
-        <select aria-label={spec.label} disabled={disabled} onChange={(event) => {
-          const option = spec.options.find((item) => String(item.value) === event.target.value);
-          if (option) setParameter(spec, option.value);
-        }} value={String(value)}>
-          {spec.options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
-        </select>
-      );
-    } else if (spec.kind === "text") {
-      control = <input aria-label={spec.label} disabled={disabled} onChange={(event) => setParameter(spec, event.target.value)} spellCheck={false} value={value === null ? "" : String(value)} />;
-    } else {
-      const draft = drafts[draftKey(model.id, spec.key)];
-      control = (
-        <input
-          aria-invalid={problem ? true : undefined}
-          aria-label={spec.label}
-          disabled={disabled}
-          inputMode={spec.kind === "int" ? "numeric" : "decimal"}
-          onBlur={() => clearDraft(draftKey(model.id, spec.key))}
-          onChange={(event) => typeNumber(spec, event.target.value)}
-          placeholder={spec.nullable ? "không giới hạn" : undefined}
-          value={draft ?? (value === null ? "" : String(value))}
-        />
-      );
-    }
-
-    return (
-      <label className={`train-param ${spec.kind === "text" ? "train-param--wide" : ""} ${changed ? "is-changed" : ""} ${problem ? "is-invalid" : ""}`} key={spec.key} title={title}>
-        <span>{spec.label}{disabled ? <i className="train-param-lock">khoá</i> : null}{spec.unit ? <em>{spec.unit}</em> : null}</span>
-        {control}
-        <small>{problem ?? hint}</small>
-      </label>
-    );
-  }
-
-  function renderGroups(specs: TrainingParameterSpec[]) {
-    const groups: [string, TrainingParameterSpec[]][] = [];
-    for (const spec of specs) {
-      const group = groups.find(([name]) => name === spec.group);
-      if (group) group[1].push(spec);
-      else groups.push([spec.group, [spec]]);
-    }
-    return groups.map(([name, items]) => (
-      <fieldset className="train-param-group" key={name}>
-        <legend>{name}</legend>
-        <div className="train-param-grid">{items.map(renderField)}</div>
-      </fieldset>
-    ));
-  }
-
-  const basic = model?.parameters.filter((spec) => !spec.advanced) ?? [];
-  const advanced = model?.parameters.filter((spec) => spec.advanced) ?? [];
+  const form = useParameterForm({ scope: model?.id ?? "none", specs: model?.parameters ?? [], overrides, onChange: setParameter });
+  const problems = form.problems;
   const changedCount = Object.keys(overrides).length;
   const families = trainingModels.reduce<string[]>((list, option) => list.includes(option.family) ? list : [...list, option.family], []);
 
@@ -231,15 +129,10 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
         <section className={`train-engine-parameters ${model.available ? "" : "is-gated"}`} aria-label={`Tham số ${model.label}`}>
           <div className="train-section-label">
             <span>THAM SỐ · {model.parameters.length}</span>
-            {changedCount ? <button className="train-reset" onClick={() => { const all = { ...(settings.modelParameters ?? {}) }; delete all[model.id]; setDrafts({}); updateSettings({ modelParameters: all }); }} type="button">Về mặc định · {changedCount}</button> : null}
+            {changedCount ? <button className="train-reset" onClick={() => { const all = { ...(settings.modelParameters ?? {}) }; delete all[model.id]; form.clearDrafts(); updateSettings({ modelParameters: all }); }} type="button">Về mặc định · {changedCount}</button> : null}
           </div>
-          {renderGroups(basic)}
-          {advanced.length ? (
-            <details className="train-param-advanced">
-              <summary>Nâng cao · {advanced.length}</summary>
-              {renderGroups(advanced)}
-            </details>
-          ) : null}
+          {form.basic}
+          {form.advanced}
           <small className="train-parameter-note">Mặc định lấy từ recipe của repo; "recipe"/"code" dưới ô là giá trị gốc khi khác mặc định. Di chuột lên ô để xem nguồn và tên key.</small>
         </section>
       ) : null}
@@ -275,16 +168,4 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
       <button className="button button--accent button--full" disabled={busy || !trainingReady} onClick={onStart} type="button">{startLabel}</button>
     </ModuleFrame>
   );
-}
-
-function draftKey(modelId: string, key: string) {
-  return `${modelId}:${key}`;
-}
-
-/** null for an empty field, undefined for text that is not a number (yet). */
-function draftNumber(text: string): number | null | undefined {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }

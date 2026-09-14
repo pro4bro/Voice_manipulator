@@ -37,9 +37,13 @@ export interface PipelineStage {
   waiting: FootageProgress[];
 }
 
-/** Footage the pipeline counts: in the pool, switched on, and with audio. */
+/**
+ * Footage the pipeline counts: in the pool, switched on, with audio, and
+ * recorded rather than generated. Speech a voice engine produced is an output,
+ * not training material, so it neither waits on preparation nor counts toward it.
+ */
 export function countsForPipeline(asset: ProjectMediaAsset) {
-  return !asset.deletedAt && !asset.disabled && asset.status !== "no-audio" && asset.transcriptionStatus !== "not-applicable";
+  return !asset.deletedAt && !asset.disabled && asset.origin !== "generate" && asset.status !== "no-audio" && asset.transcriptionStatus !== "not-applicable";
 }
 
 function voiceLabels(asset: ProjectMediaAsset) {

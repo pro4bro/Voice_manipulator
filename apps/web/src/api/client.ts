@@ -14,6 +14,7 @@ import type {
   ProjectCreate,
   ProjectMediaAsset,
   ProjectMediaImportResult,
+  ProjectVoice,
   ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
@@ -33,6 +34,7 @@ import type {
   TrainingProgressLine,
   TrainingRuntimeReport,
   TrainingModelOption,
+  TrainingParameterValue,
   TrainingRun,
   WorkspacePage,
 } from "../domain/types";
@@ -362,6 +364,13 @@ export const api = {
   getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
   getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
+  getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
+  listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
+  generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
+    request<ProjectMediaAsset>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getTrainingCatalog: (projectId: string) =>
     request<TrainingCatalog>(`/api/projects/${projectId}/training-catalog`),
   saveTrainingCatalog: (projectId: string, catalog: TrainingCatalog) =>
@@ -381,20 +390,6 @@ export const api = {
     const result = await request<StudioJobResult>("/api/studio/transcribe", {
       method: "POST",
       body: JSON.stringify({ source_id: sourceId, realtime_text: realtimeText, known_text: knownText, contextual: true }),
-    });
-    return { ...result, item: normalizeStudioItem(result.item) };
-  },
-  generateVoice: async (payload: { text: string; voiceId: string; speed: number; emotion: string; preview?: boolean }) => {
-    const result = await request<StudioJobResult>("/api/studio/generate", {
-      method: "POST",
-      body: JSON.stringify({
-        text: payload.text,
-        voice_id: payload.voiceId,
-        speed: payload.speed,
-        emotion: payload.emotion,
-        quality: payload.preview ? "quick" : "studio",
-        preview: Boolean(payload.preview),
-      }),
     });
     return { ...result, item: normalizeStudioItem(result.item) };
   },

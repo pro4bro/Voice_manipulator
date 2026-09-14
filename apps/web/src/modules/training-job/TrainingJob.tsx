@@ -17,15 +17,28 @@ interface TrainingJobProps {
   onCancelRun?: (runId: string) => void;
 }
 
-const FLOW: Array<{ id: TrainingStepId; label: string; detail: string; icon: IconName }> = [
+type FlowStep = { id: TrainingStepId; label: string; detail: string; icon: IconName };
+
+const TRAINING_FLOW: FlowStep[] = [
   { id: "read-manifest", label: "Dataset manifest", detail: "Lọc đoạn của voice target", icon: "file" },
   { id: "write-jsonl", label: "Viết JSONL", detail: "Cắt audio theo từng đoạn", icon: "list" },
   { id: "tokenize", label: "Tokenize audio", detail: "Train + dev shard", icon: "waveform" },
   { id: "load-model", label: "Nạp model", detail: "Base model + LoRA", icon: "settings" },
   { id: "train", label: "Train", detail: "Loss train / dev", icon: "training" },
   { id: "checkpoint", label: "Checkpoint", detail: "Lưu adapter", icon: "folder" },
-  { id: "publish", label: "Publish voice", detail: "Chưa có trong runner", icon: "spark" },
+  { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Manipulation", icon: "spark" },
 ];
+
+/** Zero-shot cloning: the same batch, the same steps where they apply, no training. */
+const CLONE_FLOW: FlowStep[] = [
+  { id: "read-manifest", label: "Dataset manifest", detail: "Lọc đoạn của voice target", icon: "file" },
+  { id: "write-jsonl", label: "Chọn đoạn mẫu", detail: "3-10 giây, đúng transcript", icon: "waveform" },
+  { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Manipulation", icon: "spark" },
+];
+
+export function flowFor(run: TrainingRun | null): FlowStep[] {
+  return run?.config.mode === "zero-shot-clone" ? CLONE_FLOW : TRAINING_FLOW;
+}
 
 const STEP_LABELS: Record<TrainingStepId, string> = {
   provision: "MÔI TRƯỜNG",
@@ -135,19 +148,20 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
     if (follow && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [lines.length, follow]);
 
+  const FLOW = flowFor(current);
   const reached = current ? FLOW.findIndex((step) => step.id === current.stepId) : -1;
   const shards = [...currentProgress].reverse().find((line) => line.stepId === "tokenize" && line.total);
 
   function stepState(index: number) {
     if (!current) return "";
-    if (current.status === "complete") return FLOW[index].id === "publish" ? "is-planned" : "is-done";
+    if (current.status === "complete") return "is-done";
     if (index < reached) return "is-done";
     if (index === reached) {
       if (current.status === "running") return "is-active";
       if (current.status === "failed" || current.status === "interrupted") return "is-failed";
       return "is-current";
     }
-    return FLOW[index].id === "publish" ? "is-planned" : "";
+    return "";
   }
 
   return (

@@ -51,7 +51,7 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     columns: {
       left: ["library-panel", "recent-takes"],
       center: ["script"],
-      right: ["recorder", "control-rack", "voice-patch"],
+      right: ["voice-generator", "recorder", "control-rack", "voice-patch"],
       bottom: ["timeline"],
     },
     modes: ["voice-over", "voice-isolator", "voice-changer", "voice-dubber", "voice-patch"],

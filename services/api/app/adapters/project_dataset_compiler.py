@@ -370,10 +370,14 @@ class ProjectDatasetCompiler:
     ) -> tuple[list[DatasetSegment], list[DatasetRejection], list[ProjectMediaAsset], "_Drops"]:
         catalog = self.catalogs.get(project_id)
         known_speakers = {speaker.id for speaker in catalog.speakers}
+        # Speech a voice engine generated is never training material: a voice
+        # trained on its own output drifts further from the person each round.
         selected = [
             asset
             for asset in self.library.list(project_id)
-            if asset.training_selected and not getattr(asset, "deleted_at", None)
+            if asset.training_selected
+            and not getattr(asset, "deleted_at", None)
+            and asset.origin != "generate"
         ]
 
         segments: list[DatasetSegment] = []

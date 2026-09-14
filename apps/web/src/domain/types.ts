@@ -199,7 +199,7 @@ export interface ProjectMediaAsset {
   wordTimingQuality?: WordTimingQuality;
   wordTimingNote?: string | null;
   wordTimingTrustVersion?: number;
-  origin: "import" | "record";
+  origin: "import" | "record" | "generate";
   status?: "ready" | "no-audio" | "error";
   transcriptionStatus: MediaTranscriptionStatus;
   transcriptionSelected: boolean;
@@ -583,6 +583,26 @@ export interface TrainingModelOption {
   installed: boolean;
   available: boolean;
   status: string;
+}
+
+/** A voice a Speaker Profile can speak with, made by Voice Training. */
+export interface ProjectVoice {
+  id: string;
+  name: string;
+  speakerProfileId: string;
+  engine: string;
+  /** clone: a reference clip only, no training. lora: a trained adapter on top. */
+  kind: "clone" | "lora";
+  modelId: string | null;
+  baseModel: string;
+  referenceAudio: string;
+  referenceText: string;
+  referenceSeconds: number;
+  referenceSegmentId: string | null;
+  adapterPath: string | null;
+  language: string | null;
+  sourceRunId: string | null;
+  createdAt: string;
 }
 
 export interface TrainingProgressLine {

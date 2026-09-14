@@ -63,6 +63,7 @@ describe("footage pipeline", () => {
     ]);
     expect(missingPreparation(asset("silent", { status: "no-audio" }))).toEqual([]);
     expect(missingPreparation(asset("binned", { deletedAt: "2026-09-01T00:00:00Z" }))).toEqual([]);
+    expect(missingPreparation(asset("spoken", { origin: "generate", transcriptionStatus: "skipped" }))).toEqual([]);
   });
 
   it("does not claim a footage reached the dataset before readiness is known or when rejected", () => {

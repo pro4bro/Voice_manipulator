@@ -442,6 +442,15 @@ def test_a_tiny_project_still_gets_a_dev_segment(tmp_path):
     assert manifest.stats.dev_segments == 1
 
 
+def test_generated_speech_never_becomes_training_data(tmp_path):
+    fixture = Fixture(tmp_path)
+    fixture.add("asset-generated", capture_tier="guided", duration=3.0, words=[], origin="generate")
+
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    assert readiness.selected_assets == 0 and readiness.segments == 0
+
+
 def test_every_speaker_gets_its_own_train_and_dev_segment(tmp_path):
     """Each voice target is trained alone, so each needs both lists."""
     fixture = Fixture(tmp_path)

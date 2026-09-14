@@ -15,6 +15,7 @@ import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
 import { Timeline, type ActiveTake } from "../timeline/Timeline";
 import { Train } from "../train/Train";
 import { TrainingJob } from "../training-job/TrainingJob";
+import { VoiceGenerator } from "../voice-generator/VoiceGenerator";
 import { VoicePatch } from "../voice-patch/VoicePatch";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 
@@ -42,6 +43,16 @@ export interface StudioContext {
   wordSelection: WordSelection;
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
+  projectId: string;
+  projectVoices: import("../../domain/types").ProjectVoice[];
+  voiceGenerators: TrainingModelOption[];
+  generatorId: string | null;
+  projectVoiceId: string | null;
+  generatorParameters: Record<string, import("../../domain/types").TrainingParameterValue>;
+  generating: boolean;
+  onGeneratorChange: (generatorId: string) => void;
+  onProjectVoiceChange: (voiceId: string) => void;
+  onGeneratorParametersChange: (parameters: Record<string, import("../../domain/types").TrainingParameterValue>) => void;
   trainingRuns: TrainingRun[];
   /** The newest batch, in the order its voices train. */
   trainingBatch: TrainingRun[];
@@ -160,6 +171,6 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "recent-takes":
       return <RecentTakes />;
     case "voice-generator":
-      return null;
+      return <VoiceGenerator busy={context.generating} generatorId={context.generatorId} generators={context.voiceGenerators} onGenerate={context.onGenerate} onGeneratorChange={context.onGeneratorChange} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onVoiceChange={context.onProjectVoiceChange} parameters={context.generatorParameters} projectId={context.projectId} scriptLength={context.script.trim().length} speakers={context.trainingCatalog.speakers} voiceId={context.projectVoiceId} voices={context.projectVoices} />;
   }
 }

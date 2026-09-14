@@ -812,6 +812,17 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
+    @app.get("/api/projects/{project_id}/voices/{voice_id}/reference")
+    def project_voice_reference(project_id: str, voice_id: str) -> Response:
+        try:
+            voice = project_voices.get(project_id, voice_id)
+            path = project_voices.absolute(project_id, voice.reference_audio)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice không tồn tại") from exc
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Thiếu file giọng mẫu")
+        return FileResponse(path, media_type="audio/wav")
+
     @app.post(
         "/api/projects/{project_id}/voices/{voice_id}/generate",
         response_model=ProjectMediaAsset,
