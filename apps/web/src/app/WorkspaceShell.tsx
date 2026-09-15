@@ -1547,7 +1547,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
           </div>
         </section>
       </div>
-      <WorkspaceStatusBar assets={mediaAssets} metrics={systemMetrics} />
+      <WorkspaceStatusBar assets={mediaAssets} metrics={systemMetrics} training={{ batch: trainingBatch, progressByRun: trainingProgressByRun, speakers: trainingCatalog.speakers }} />
       {notice ? <div className="studio-notice" role="status"><i />{notice}</div> : null}
       {job ? <div className="studio-job" role="status"><span><i /><i /><i /></span><b>{job}</b><small>Không đóng app trong khi model đang xử lý.</small></div> : null}
       {preferencesOpen ? <PreferencesDialog preferences={preferences} saving={preferencesSaving} onClose={() => setPreferencesOpen(false)} onSave={(next) => void savePreferences(next)} /> : null}

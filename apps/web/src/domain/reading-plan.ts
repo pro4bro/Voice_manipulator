@@ -131,6 +131,8 @@ export function planTotalSeconds(plan: ReadingPlan): number {
 
 export function formatDuration(seconds: number): string {
   const safe = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(safe / 3600);
+  if (hours) return `${hours}h ${String(Math.floor((safe % 3600) / 60)).padStart(2, "0")}m`;
   const minutes = Math.floor(safe / 60);
   return minutes ? `${minutes}m ${String(safe % 60).padStart(2, "0")}s` : `${safe}s`;
 }

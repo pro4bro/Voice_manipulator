@@ -138,6 +138,7 @@ describe("presentation helpers", () => {
   it("formats durations the way a session panel reads them", () => {
     expect(formatDuration(45)).toBe("45s");
     expect(formatDuration(605)).toBe("10m 05s");
+    expect(formatDuration(5 * 3600 + 4 * 60 + 9)).toBe("5h 04m");
   });
 
   it("calls for a break before fatigue starts changing the voice", () => {

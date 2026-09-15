@@ -62,11 +62,44 @@ class TestTrainLines:
             "Some warning from a library nobody asked about",
             "Loaded Config: TrainingConfig(steps=5000)",
             "Step but not really",
+            "Loading checkpoint shards: 100%|##########| 2/2 [00:01<00:00,  1.9it/s]",
         ],
     )
     def test_an_unrecognised_line_reports_nothing_rather_than_a_guess(self, noise):
         """A plausible wrong number on the deciding screen is worse than silence."""
         assert parse_train_line(noise) is None
+
+
+    def test_a_step_line_written_after_a_bar_redraw_is_still_read(self):
+        """tqdm.write lands on the bar's line when output is a pipe, as in the app."""
+        line = parse_train_line(
+            "Training:   1%|1         | 50/5000 [03:20<5:13:39,  3.80s/it, loss=4.8113, lr=1.00e-04]" + STEP_LINE
+        )
+
+        assert line.global_step == 1500
+        assert line.loss == pytest.approx(2.3145)
+        assert line.message == STEP_LINE
+
+    def test_the_training_bar_reports_the_step_between_logged_steps(self):
+        line = parse_train_line(
+            "Training:  20%|##        | 1005/5000 [1:03:08<4:53:41,  4.41s/it, loss=0.1019, lr=9.11e-05]"
+        )
+
+        assert (line.global_step, line.done, line.total) == (1005, 1005, 5000)
+        assert line.steps_per_second == pytest.approx(1 / 4.41)
+        # One step's loss is not the logged average the chart is drawn from.
+        assert line.loss is None and not line.message
+
+    def test_a_bar_that_has_not_measured_a_rate_yet_reports_no_rate(self):
+        line = parse_train_line("Training:   0%|          | 0/5000 [00:00<?, ?it/s]")
+
+        assert (line.global_step, line.total) == (0, 5000)
+        assert line.steps_per_second is None
+
+    def test_a_fast_bar_reads_its_rate_in_steps_per_second(self):
+        line = parse_train_line("Training:  40%|####      | 2000/5000 [13:20<20:00,  2.50it/s, loss=1.2, lr=5e-05]")
+
+        assert line.steps_per_second == pytest.approx(2.5)
 
 
 class TestTokenizeLines:

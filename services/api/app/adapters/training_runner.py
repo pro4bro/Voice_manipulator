@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
@@ -64,6 +65,24 @@ SUPPORTED_MODES: dict[str, set[str]] = {
     "vibevoice": {"tts-lora", "asr-lora", "zero-shot-clone"},
     "rvc": {"vc-train"},
 }
+
+# A trainer's bar redraws every step. The run's step follows it closely; the
+# journal keeps one of them now and then, so the last few hundred lines the page
+# reads still reach back over the loss curve instead of being all bar redraws.
+COUNTER_UPDATE_SECONDS = 1.0
+COUNTER_JOURNAL_SECONDS = 30.0
+
+
+def is_counter(line: TrainingProgressLine) -> bool:
+    """A position in the loop and nothing else: no message, loss or rate schedule."""
+    return (
+        line.step_id == "train"
+        and not line.message
+        and line.loss is None
+        and line.dev_loss is None
+        and line.learning_rate is None
+    )
+
 
 WINDOWS_GOPEN_REWRITE = ";".join(
     f"{letter}:=file:{letter}:" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -131,6 +150,8 @@ class TrainingRunner:
         self.rvc_paths = rvc_paths
         self._active: dict[str, TrainingProcess] = {}
         self._lock = threading.Lock()
+        # run id -> [last journalled counter, last applied counter], monotonic seconds
+        self._counter_marks: dict[str, list[float]] = {}
 
     def start(
         self,
@@ -423,7 +444,18 @@ class TrainingRunner:
         self.runs.update(run.project_id, current.model_copy(update={"process_id": pid, "status": "running"}))
 
     def _on_progress(self, run: TrainingRun, line: TrainingProgressLine) -> None:
-        self.runs.append_progress(run.project_id, run.id, line)
+        if is_counter(line):
+            now = time.monotonic()
+            marks = self._counter_marks.setdefault(run.id, [float("-inf"), float("-inf")])
+            final = line.total is not None and line.done == line.total
+            if not final and now - marks[1] < COUNTER_UPDATE_SECONDS:
+                return
+            marks[1] = now
+            if final or now - marks[0] >= COUNTER_JOURNAL_SECONDS:
+                marks[0] = now
+                self.runs.append_progress(run.project_id, run.id, line)
+        else:
+            self.runs.append_progress(run.project_id, run.id, line)
         current = self.runs.get(run.project_id, run.id)
         update: dict[str, object] = {"step_id": line.step_id}
         if line.global_step is not None:

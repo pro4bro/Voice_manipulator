@@ -1,12 +1,15 @@
 import { useState } from "react";
 
 import { api } from "../../api/client";
-import type { ProjectMediaAsset, SystemLog, SystemMetrics } from "../../domain/types";
+import { trainingActivity } from "../../domain/trainingBatch";
+import type { ProjectMediaAsset, SpeakerProfile, SystemLog, SystemMetrics, TrainingProgressLine, TrainingRun } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 
 interface WorkspaceStatusBarProps {
   assets: ProjectMediaAsset[];
   metrics: SystemMetrics | null;
+  /** The newest training batch; a run goes on for hours and is a background task too. */
+  training?: { batch: TrainingRun[]; progressByRun: Record<string, TrainingProgressLine[]>; speakers: SpeakerProfile[] };
 }
 
 function transcriptionBackground(asset: ProjectMediaAsset) {
@@ -17,7 +20,7 @@ function diarizationBackground(asset: ProjectMediaAsset) {
   return ["queued", "processing"].includes(asset.diarizationStatus ?? "idle");
 }
 
-export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps) {
+export function WorkspaceStatusBar({ assets, metrics, training }: WorkspaceStatusBarProps) {
   const [log, setLog] = useState<SystemLog | null>(null);
   const [loadingLog, setLoadingLog] = useState(false);
   const tracked = assets.filter((asset) => asset.transcriptionSelected && !["not-applicable", "skipped"].includes(asset.transcriptionStatus));
@@ -32,6 +35,7 @@ export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps)
     ? tracked.reduce((total, asset) => total + Math.max(0, asset.duration) * transcriptionProgressOf(asset), 0) / totalDuration
     : transcription && tracked.length ? tracked.reduce((total, asset) => total + transcriptionProgressOf(asset), 0) / tracked.length
       : diarization?.diarizationProgress ?? 0;
+  const train = training ? trainingActivity(training.batch, training.progressByRun, training.speakers) : null;
   const currentStage = transcription?.transcriptionStatus === "reviewing" ? "AI CHECK" : transcription?.transcriptionStatus === "queued" ? "WAITING STT" : transcription ? "STT KỸ" : diarization?.diarizationStatus === "queued" ? "WAITING DIARIZATION" : "SPEAKER DIARIZATION";
 
   async function openLog() {
@@ -44,8 +48,10 @@ export function WorkspaceStatusBar({ assets, metrics }: WorkspaceStatusBarProps)
     <>
       <footer className="workspace-status-bar" aria-live="polite">
         <div className="workspace-status-bar__activity">
-          <i className={current ? "is-busy" : ""} />
-          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{transcription ? `${completed}/${tracked.length} FOOTAGE · ` : ""}{progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} /></> : <><b>READY</b><span>Không có background task đang chạy</span></>}
+          <i className={current || train ? "is-busy" : ""} />
+          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{transcription ? `${completed}/${tracked.length} FOOTAGE · ` : ""}{progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} />{train ? <b>· {train.stage} {train.percent.toFixed(0)}%</b> : null}</>
+            : train ? <><b>{train.stage}</b><span>{train.name}</span><strong>{train.detail ? `${train.detail} · ` : ""}{train.percent.toFixed(1)}% TOTAL</strong><progress max="100" value={train.percent} /></>
+              : <><b>READY</b><span>Không có background task đang chạy</span></>}
         </div>
         <div className="workspace-status-bar__metrics">
           <span>CPU <b>{metrics ? `${metrics.cpuPercent.toFixed(0)}%` : "—"}</b></span>

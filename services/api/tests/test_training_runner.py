@@ -208,3 +208,29 @@ def test_commands_in_the_log_carry_no_machine_paths(tmp_path, monkeypatch):
     assert "<run>/data/train.jsonl" in message
     assert '"<omnivoice>/tok dir"' in message
     assert str(tmp_path) not in message
+
+
+def test_a_redrawn_training_bar_moves_the_run_without_filling_the_journal(tmp_path, monkeypatch):
+    """Two redraws a step for thousands of steps would push the loss lines out of the page's window."""
+    from app.adapters import training_runner as module
+    from app.domain.models import TrainingProgressLine
+
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    run = runs.create(project.id, "dataset-1", config=TrainingRunConfig(steps=5000))
+    clock = [100.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+
+    def bar(step):
+        return TrainingProgressLine(step_id="train", global_step=step, done=step, total=5000, steps_per_second=2.5)
+
+    runner._on_progress(run, bar(1))
+    for step in range(2, 40):
+        clock[0] += 0.4
+        runner._on_progress(run, bar(step))
+    runner._on_progress(run, TrainingProgressLine(step_id="train", message="Step 50 | train/loss: 3.1", global_step=50, loss=3.1))
+    clock[0] += 31
+    runner._on_progress(run, bar(51))
+
+    journal = runs.progress(project.id, run.id)
+    assert [line.global_step for line in journal] == [1, 50, 51]
+    assert runs.get(project.id, run.id).global_step == 51

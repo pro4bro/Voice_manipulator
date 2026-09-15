@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activeRun, newestBatch, runFraction } from "./trainingBatch";
+import { activeRun, newestBatch, runFraction, trainingActivity } from "./trainingBatch";
 import type { TrainingRun } from "./types";
 
 function run(overrides: Partial<TrainingRun> = {}): TrainingRun {
@@ -14,6 +14,19 @@ function run(overrides: Partial<TrainingRun> = {}): TrainingRun {
 }
 
 describe("training batch", () => {
+  it("tells the status bar which voice trains, where it is and how long is left", () => {
+    const line = { at: "", stepId: "train" as const, message: "", loss: null, devLoss: null, learningRate: null, vramMb: null, done: null, total: null };
+    const live = run({ id: "r1", status: "running", stepId: "train", globalStep: 1000, speakerProfileId: "speaker-an" });
+    const activity = trainingActivity([live], { r1: [{ ...line, globalStep: 1000, stepsPerSecond: 2 }] }, [{ id: "speaker-an", name: "Anh Vũ" } as never]);
+
+    expect(activity?.stage).toBe("TRAINING");
+    expect(activity?.name).toBe("Anh Vũ");
+    expect(activity?.detail).toContain(`STEP 1000/${live.config.steps}`);
+    expect(activity?.detail).toContain("2.00 step/s");
+    expect(activity?.percent).toBeGreaterThan(15);
+    expect(trainingActivity([run({ status: "complete" })], {})).toBeNull();
+  });
+
   it("moves with global step through training, which is most of the bar", () => {
     expect(runFraction(run({ status: "pending", stepId: "provision" }))).toBe(0);
     expect(runFraction(run({ stepId: "read-manifest" }))).toBeGreaterThan(0);

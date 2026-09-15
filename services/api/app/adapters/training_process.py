@@ -89,7 +89,8 @@ class TrainingProcess:
         log = None
         if self.log_path is not None:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
-            log = self.log_path.open("a", encoding="utf-8")
+            # Line-buffered, so the file follows the run instead of lagging 8 KB behind it.
+            log = self.log_path.open("a", encoding="utf-8", buffering=1)
         try:
             for chunk in self._process.stdout:
                 if log is not None:

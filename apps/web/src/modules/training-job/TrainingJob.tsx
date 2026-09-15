@@ -131,12 +131,12 @@ function LossChart({ train, dev }: { train: Point[]; dev: Point[] }) {
 export function logMessage(line: TrainingProgressLine): string {
   if (line.message) return line.message;
   const parts: string[] = [];
-  if (line.globalStep !== null) parts.push(`step ${line.globalStep}`);
+  if (line.globalStep !== null && !line.total) parts.push(`step ${line.globalStep}`);
   if (line.loss !== null) parts.push(`loss ${line.loss.toFixed(4)}`);
   if (line.devLoss !== null) parts.push(`dev loss ${line.devLoss.toFixed(4)}`);
   if (line.learningRate !== null) parts.push(`lr ${line.learningRate.toExponential(2)}`);
   if (line.stepsPerSecond !== null) parts.push(`${line.stepsPerSecond.toFixed(2)} step/s`);
-  if (line.total) parts.push(`${line.done ?? 0}/${line.total} shard`);
+  if (line.total) parts.push(line.stepId === "tokenize" ? `${line.done ?? 0}/${line.total} shard` : `step ${line.done ?? 0}/${line.total}`);
   return parts.join(" · ");
 }
 

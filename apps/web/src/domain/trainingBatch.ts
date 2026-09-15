@@ -1,4 +1,5 @@
-import type { TrainingProgressLine, TrainingRun, TrainingStepId } from "./types";
+import { formatDuration } from "./reading-plan";
+import type { SpeakerProfile, TrainingProgressLine, TrainingRun, TrainingStepId } from "./types";
 
 /**
  * How far a run has come, as one number for a progress bar.
@@ -61,4 +62,53 @@ export function activeRun(batch: TrainingRun[]): TrainingRun | null {
     ?? [...batch].reverse().find((run) => run.status !== "pending")
     ?? batch[0]
     ?? null;
+}
+
+const ACTIVITY_STAGES: Partial<Record<TrainingStepId, string>> = {
+  provision: "TRAIN · MÔI TRƯỜNG",
+  "resolve-model": "TRAIN · MODEL",
+  "read-manifest": "TRAIN · DATASET",
+  "write-jsonl": "TRAIN · DATASET",
+  tokenize: "TRAIN · TOKENIZE",
+  "load-model": "TRAIN · LOAD MODEL",
+  train: "TRAINING",
+  checkpoint: "TRAIN · CHECKPOINT",
+  publish: "TRAIN · PUBLISH",
+};
+
+export interface TrainingActivity {
+  stage: string;
+  name: string;
+  detail: string;
+  /** 0-100, over the whole batch. */
+  percent: number;
+}
+
+/** What the status bar says while a batch trains, or null when none does. */
+export function trainingActivity(
+  batch: TrainingRun[],
+  progressByRun: Record<string, TrainingProgressLine[]>,
+  speakers: SpeakerProfile[] = [],
+): TrainingActivity | null {
+  const run = batch.find((item) => item.status === "running") ?? batch.find((item) => item.status === "pending");
+  if (!run) return null;
+  const progress = progressByRun[run.id] ?? [];
+  const speaker = speakers.find((item) => item.id === run.speakerProfileId)?.name ?? "Toàn bộ dataset";
+  const done = batch.filter((item) => item.status === "complete").length;
+  const parts: string[] = [];
+  if (batch.length > 1) parts.push(`${done}/${batch.length} VOICE`);
+  if (run.stepId === "train" || run.globalStep > 0) {
+    parts.push(`STEP ${run.globalStep}/${run.config.steps}`);
+    const rate = [...progress].reverse().find((line) => line.stepsPerSecond)?.stepsPerSecond;
+    if (rate && run.status === "running") {
+      parts.push(`${rate.toFixed(2)} step/s · còn ~${formatDuration(Math.max(0, run.config.steps - run.globalStep) / rate)}`);
+    }
+  }
+  const overall = batch.reduce((sum, item) => sum + runFraction(item, progressByRun[item.id]), 0) / Math.max(1, batch.length);
+  return {
+    stage: run.status === "pending" ? "TRAIN · CHỜ GPU" : ACTIVITY_STAGES[run.stepId] ?? "TRAINING",
+    name: speaker,
+    detail: parts.join(" · "),
+    percent: overall * 100,
+  };
 }
