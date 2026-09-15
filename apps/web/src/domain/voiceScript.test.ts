@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptRow } from "./types";
-import { resolveRowVoice, rowTimings, rowsFromOutput, rowsToText, scriptReadiness, textToRows, voicesInCategory } from "./voiceScript";
+import { clipboardToRows, lineBreakWords, parseDelimited, resolveRowVoice, rowTimings, rowsFromOutput, rowsToText, scriptReadiness, textToRows, voicesInCategory } from "./voiceScript";
 
 const AN: SpeakerProfile = { id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#f00", createdAt: "" };
 const KHOA: SpeakerProfile = { ...AN, id: "speaker-khoa", name: "Khoa Trịnh", color: "#0f0" };
@@ -51,6 +51,46 @@ describe("voice script", () => {
     ]);
     expect(parsed[0].id).toBe("r1");
     expect(parsed[1].id).toBe("r2");
+  });
+
+  it("reads cells the way Excel and Google Sheets copy them, quoted line breaks included", () => {
+    const copied = 'Anh Vũ\tThì trong lúc mà\r\nKhoa Trịnh\t"Được không sao\nEm thì ""không"" sợ"\r\n';
+    expect(parseDelimited(copied)).toEqual([["Anh Vũ", "Thì trong lúc mà"], ["Khoa Trịnh", 'Được không sao\nEm thì "không" sợ']]);
+  });
+
+  it("turns a copied sheet into turns, finding the speaker column by its names and skipping a header", () => {
+    const offered = voicesInCategory(VOICES, "clone");
+    const sheet = "STT\tSPEAKER\tNỘI DUNG\tTIMESTAMP\n1\tanh vu\tXin chào\t00:01\n2\tKhoa Trịnh\t\"Chào anh\nkhỏe không\"\t00:03\n3\tAi đó\tTiếp tục\t00:05";
+    const rows = clipboardToRows(sheet, "", [AN, KHOA], offered, null) ?? [];
+    expect(rows.map((row) => [row.speakerProfileId, row.voiceId, row.text])).toEqual([
+      ["speaker-an", "an-clone", "Xin chào"],
+      ["speaker-khoa", "khoa-clone", "Chào anh\nkhỏe không"],
+      ["speaker-khoa", "khoa-clone", "Tiếp tục"],
+    ]);
+
+    const headless = clipboardToRows("Khoa Trịnh\tMột câu dài hơn tên\nAnh Vũ\tCâu thứ hai", "", [AN, KHOA], offered, null) ?? [];
+    expect(headless.map((row) => [row.speakerProfileId, row.text])).toEqual([["speaker-khoa", "Một câu dài hơn tên"], ["speaker-an", "Câu thứ hai"]]);
+  });
+
+  it("turns a Word table or paragraphs into turns, and leaves a single line alone", () => {
+    const offered = voicesInCategory(VOICES, "clone");
+    const html = "<table><tr><td><p>Anh Vũ</p></td><td><p>Dòng một</p><p>dòng hai</p></td></tr><tr><td>Khoa Trịnh</td><td>Chào</td></tr></table>";
+    const fromTable = clipboardToRows("Anh Vũ\nDòng một\ndòng hai\nKhoa Trịnh\nChào", html, [AN, KHOA], offered, null) ?? [];
+    expect(fromTable.map((row) => [row.speakerProfileId, row.text])).toEqual([["speaker-an", "Dòng một\ndòng hai"], ["speaker-khoa", "Chào"]]);
+
+    const context = { id: "r0", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "" };
+    const paragraphs = clipboardToRows("Anh Vũ: Mở đầu\r\n\r\nNói tiếp đoạn hai\r\nKhoa Trịnh: Kết", "", [AN, KHOA], offered, context) ?? [];
+    expect(paragraphs.map((row) => [row.speakerProfileId, row.text])).toEqual([["speaker-an", "Mở đầu"], ["speaker-an", "Nói tiếp đoạn hai"], ["speaker-khoa", "Kết"]]);
+    expect(clipboardToRows("chỉ một dòng", "", [AN, KHOA], offered, context)).toBeNull();
+  });
+
+  it("keeps a line break inside a row through Text Edit and knows which word ends each line", () => {
+    const offered = voicesInCategory(VOICES, "clone");
+    const rows: VoiceScriptRow[] = [{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Dòng một ,\ndòng hai" }];
+    const text = rowsToText(rows, [AN]);
+    expect(text).toBe("Anh Vũ: Dòng một , ↵ dòng hai");
+    expect(textToRows(text, [AN], offered, rows)[0].text).toBe("Dòng một ,\ndòng hai");
+    expect([...lineBreakWords("Dòng một ,\ndòng hai")]).toEqual([1]);
   });
 
   it("says which row stops the Script from being read", () => {

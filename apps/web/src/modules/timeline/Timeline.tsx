@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type UIEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
@@ -53,6 +53,10 @@ interface TimelineProps {
   onWordsChange?: (words: StudioWord[]) => void;
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
+  /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
+  leadingActions?: ReactNode;
+  /** Replaces the take name above the waveform while something live is happening. */
+  liveCaption?: string | null;
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8];
@@ -221,6 +225,8 @@ export function Timeline({
   onWordsChange,
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
+  leadingActions = null,
+  liveCaption = null,
 }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1081,13 +1087,14 @@ export function Timeline({
 
   return (
     <ModuleFrame
-      eyebrow={isRecording ? "REC LIVE · WAVEFORM" : take?.name ?? "CHƯA CÓ AUDIO"}
+      eyebrow={liveCaption ?? (isRecording ? "REC LIVE · WAVEFORM" : take?.name ?? "CHƯA CÓ AUDIO")}
       title="Timeline"
       index="A1"
       tone="dark"
       className="timeline-module"
       action={
         <div className="timeline-header-actions">
+          {leadingActions}
           <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>

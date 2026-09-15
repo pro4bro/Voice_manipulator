@@ -13,6 +13,9 @@ import { Recorder } from "../recorder/Recorder";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
 import { ScriptEditor } from "../script/ScriptEditor";
 import { VoiceScript } from "../script/VoiceScript";
+import { ChangerRecordControls } from "../voice-changer/ChangerRecordControls";
+import { SoundReactor } from "../voice-changer/SoundReactor";
+import { VoiceInput } from "../voice-changer/VoiceInput";
 import { voicesInCategory, type VoiceCategory } from "../../domain/voiceScript";
 import { SpeakerEmotion } from "../speaker-emotion/SpeakerEmotion";
 import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
@@ -67,6 +70,20 @@ export interface StudioContext {
   voiceCategory: VoiceCategory;
   voiceScriptJob: import("../../domain/types").VoiceScriptJob | null;
   onExportVoiceOutput: (mode: "sentence" | "word" | "table") => void;
+  voiceChangers: TrainingModelOption[];
+  changerPreflight: import("../../domain/types").VoiceChangerPreflight | null;
+  changerSettings: import("../../domain/types").VoiceChangerSettings;
+  onChangerSettingsChange: (settings: import("../../domain/types").VoiceChangerSettings) => void;
+  changerStatus: import("../../domain/types").VoiceChangerStatus | null;
+  changerBusy: boolean;
+  changerRecordings: import("../../domain/types").VoiceChangerRecording[];
+  onStartChanger: () => void;
+  onStopChanger: () => void;
+  onRefreshChanger: () => void;
+  onStartChangerRecording: () => void;
+  onStopChangerRecording: () => void;
+  onOpenChangerRecording: (recording: import("../../domain/types").VoiceChangerRecording) => void;
+  onDeleteChangerRecording: (recording: import("../../domain/types").VoiceChangerRecording) => void;
   trainingRuns: TrainingRun[];
   /** The newest batch, in the order its voices train. */
   trainingBatch: TrainingRun[];
@@ -193,6 +210,22 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-script": {
       const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
       return <VoiceScript busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={context.onExportVoiceOutput} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+    }
+    case "sound-reactor-input":
+    case "sound-reactor-output": {
+      const status = context.changerStatus;
+      const running = status?.state === "running";
+      const input = id === "sound-reactor-input";
+      const engine = context.voiceChangers.find((item) => item.id === status?.engineId);
+      const voice = context.projectVoices.find((item) => item.id === status?.voiceId);
+      return <SoundReactor active={running} caption={running ? input ? `Micro thật · ${status?.sampleRate ?? "—"} Hz` : `${engine?.label ?? "Engine"}${voice ? ` · ${voice.name}` : ""}` : undefined} eyebrow={input ? "GIỌNG GỐC" : "SAU KHI ĐỔI GIỌNG"} levelDb={input ? status?.inputLevelDb ?? -120 : status?.outputLevelDb ?? -120} peakDb={input ? status?.inputPeakDb ?? -120 : status?.outputPeakDb ?? -120} spectrum={input ? status?.inputSpectrum ?? [] : status?.outputSpectrum ?? []} title={input ? "Sound Reactor · gốc" : "Sound Reactor · đã đổi"} tone={input ? "input" : "output"} />;
+    }
+    case "voice-input":
+      return <VoiceInput busy={context.changerBusy} engines={context.voiceChangers} onRefresh={context.onRefreshChanger} onSettingsChange={context.onChangerSettingsChange} onStart={context.onStartChanger} onStop={context.onStopChanger} preflight={context.changerPreflight} settings={context.changerSettings} speakerId={context.selectedVoice || null} speakers={context.trainingCatalog.speakers} status={context.changerStatus} voices={context.projectVoices} />;
+    case "changer-timeline": {
+      const recording = context.changerRecordings.find((item) => item.id === context.take?.id) ?? null;
+      const status = context.changerStatus;
+      return <Timeline gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
     }
     case "manipulator-library":
       return <ManipulatorLibrary activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;

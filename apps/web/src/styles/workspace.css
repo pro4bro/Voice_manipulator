@@ -205,6 +205,17 @@
 .workspace-project-context b { min-width: 0; max-width: 140px; overflow: hidden; color: var(--text); font-size: calc(9px * var(--font-scale)); text-overflow: ellipsis; }
 .workspace-project-context i { width: 18px; height: 1px; flex: 0 0 auto; background: var(--line); }
 .workspace-stage.is-compact-heading { grid-template-rows: minmax(0, 1fr); }
+/* Five pages share the bar; each tab sizes to its label instead of a fixed width. */
+.workspace-topbar nav button { min-width: 0; padding: 0 14px; white-space: nowrap; }
+@media (max-width: 1500px) {
+  .workspace-topbar nav button { gap: 6px; padding: 0 10px; }
+  .workspace-topbar nav button span { display: none; }
+  .workspace-topbar nav button b { font-size: calc(12px * var(--font-scale)); }
+  .workspace-project-context b { max-width: 96px; }
+}
+@media (max-width: 1320px) {
+  .workspace-topbar nav button svg { display: none; }
+}
 
 @media (max-width: 1180px) {
   .workspace-topbar { grid-template-columns: minmax(0, 1fr) 85px; }

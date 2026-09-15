@@ -1331,3 +1331,64 @@
 .voice-generator-progress.is-failed small { color: var(--red); }
 .voice-generator-progress.is-failed .training-target__bar i { background: var(--red); }
 
+/* ---------- Voice Changer ---------- */
+.studio-board--voice-changer .module-column--right { overflow-y: auto; }
+.sound-reactor-module { flex: 1 1 0; min-height: 150px; display: flex; flex-direction: column; --reactor-color: #6baee2; --reactor-dim: color-mix(in srgb, var(--text) 6%, transparent); }
+.sound-reactor-module.is-output { --reactor-color: var(--accent); }
+.sound-reactor-module .module-frame__body { flex: 1 1 auto; min-height: 0; display: flex; }
+.sound-reactor { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(60px, 1fr) auto auto; gap: 6px; }
+.sound-reactor__canvas { width: 100%; height: 100%; min-height: 60px; border: 1px solid var(--line); background: var(--surface-sunken); }
+.sound-reactor-module:not(.is-active) .sound-reactor__canvas { opacity: .55; }
+.sound-reactor__meter { position: relative; height: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-sunken); }
+.sound-reactor__meter i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--lime-dark), var(--reactor-color) 70%, var(--red)); transition: width 90ms linear; }
+.sound-reactor__meter b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); transition: left 90ms linear; }
+.sound-reactor__caption { color: var(--text-muted); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.sound-reactor__db { color: var(--text); font-family: var(--mono); font-size: calc(12px * var(--font-scale)); font-weight: 800; }
+.sound-reactor__db small { color: var(--text-muted); font-size: calc(8px * var(--font-scale)); }
+
+.voice-input-module .module-frame__body { display: grid; gap: 9px; }
+.voice-input-module.is-running { border-color: var(--accent); }
+.voice-input__refresh { min-height: 26px; padding: 0 6px; }
+.voice-input__refresh svg { width: 13px; }
+.voice-input__label { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .05em; }
+.voice-input__section { display: grid; gap: 6px; padding-top: 7px; border-top: 1px solid var(--line); }
+.voice-input__field { display: grid; gap: 3px; }
+.voice-input__field > span:not(.voice-input__label) { color: var(--text); font-size: calc(9.5px * var(--font-scale)); font-weight: 700; }
+.voice-input__field select,
+.voice-input__target select { width: 100%; min-width: 0; height: 30px; padding: 0 7px; color: var(--text); border: 1px solid var(--line); background: var(--surface-field); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.voice-input__hint { color: var(--text-muted); font-size: calc(8.5px * var(--font-scale)); line-height: 1.45; }
+.voice-input__hint.is-warning { color: var(--gold); }
+.voice-input__target { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 4px 8px; }
+.voice-input__target i { width: 8px; height: 8px; border-radius: 50%; }
+.voice-input__target select, .voice-input__target small { grid-column: 1 / -1; }
+.voice-input__target small { color: var(--gold); font-size: calc(8.5px * var(--font-scale)); }
+.voice-input__meter { height: 6px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-sunken); }
+.voice-input__meter i { display: block; height: 100%; background: var(--lime-dark); transition: width 90ms linear; }
+.voice-input__switch { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 7px; }
+.voice-input__switch span { display: grid; gap: 2px; }
+.voice-input__switch b { font-size: calc(9.5px * var(--font-scale)); }
+.voice-input__switch small { color: var(--text-muted); font-size: calc(8px * var(--font-scale)); line-height: 1.4; }
+.voice-input__notice { display: grid; gap: 3px; padding: 7px 8px; border: 1px solid var(--line); border-left-width: 3px; font-size: calc(8.5px * var(--font-scale)); line-height: 1.45; }
+.voice-input__notice b { font-size: calc(9.5px * var(--font-scale)); }
+.voice-input__notice.is-warning { border-left-color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.voice-input__notice.is-error { color: var(--red); border-left-color: var(--red); }
+.voice-input__parameters { padding: 6px; }
+.voice-input__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.voice-input__stats div { padding: 5px 6px; border: 1px solid var(--line); background: var(--soft-fill); }
+.voice-input__stats dt { color: var(--text-muted); font-family: var(--mono); font-size: calc(7.5px * var(--font-scale)); }
+.voice-input__stats dd { margin: 0; font-family: var(--mono); font-size: calc(11px * var(--font-scale)); font-weight: 800; }
+.voice-input__stats dd.is-warning { color: var(--gold); }
+.voice-input__stop { min-height: 36px; color: #fff; border-color: var(--red); background: var(--red); }
+
+.changer-record { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.changer-record__button { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; color: var(--audio-text, #eee); border: 1px solid var(--red); border-radius: 3px; background: transparent; font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); font-weight: 900; cursor: pointer; }
+.changer-record__button i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.changer-record__button:disabled { opacity: .4; cursor: not-allowed; }
+.changer-record__button.is-recording { color: #fff; background: var(--red); }
+.changer-record__button.is-recording i { background: #fff; animation: changer-record-blink 1s steps(2) infinite; }
+@keyframes changer-record-blink { 50% { opacity: .2; } }
+.changer-record select { max-width: 190px; height: 24px; color: inherit; border: 1px solid var(--audio-line, var(--line)); background: transparent; font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); }
+.changer-record__sync { color: var(--audio-muted, var(--text-muted)); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
+.changer-record__delete { min-height: 22px; padding: 0 6px; color: inherit; border: 1px solid transparent; background: transparent; cursor: pointer; }
+.changer-record__delete.is-confirming { color: #fff; border-color: var(--red); background: var(--red); font-size: calc(8.5px * var(--font-scale)); }
+

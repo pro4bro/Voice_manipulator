@@ -81,6 +81,23 @@ describe("VoiceScript", () => {
     expect(screen.getByRole("button", { name: "Tạo voice" })).toHaveTextContent("Tạo voice");
   });
 
+  it("breaks a line inside the row with Alt+Enter and pastes a copied sheet as turns", () => {
+    const onRows = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
+
+    const field = screen.getByLabelText("Lời thoại đoạn 1") as HTMLTextAreaElement;
+    field.setSelectionRange(3, 3);
+    fireEvent.keyDown(field, { key: "Enter", altKey: true });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => row.text)).toEqual(["Xin\n chào"]);
+
+    const second = screen.getByLabelText("Lời thoại đoạn 1") as HTMLTextAreaElement;
+    second.setSelectionRange(second.value.length, second.value.length);
+    fireEvent.paste(second, { clipboardData: { getData: (type: string) => type === "text/plain" ? "Khoa Trịnh\tĐược không sao\nAnh Vũ\tVậy thì" : "" } });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.voiceId, row.text])).toEqual([
+      ["an-clone", "Xin\n chào"], ["khoa-clone", "Được không sao"], ["an-clone", "Vậy thì"],
+    ]);
+  });
+
   it("will not read before every row has a voice", () => {
     const onRead = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: null, voiceId: null, text: "Ai đọc?" }]} onRead={onRead} />);

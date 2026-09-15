@@ -56,7 +56,9 @@ ASR_LORA_WRAPPER = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_
 # What each engine's runner can do. A mode missing here is refused before any
 # run exists, whatever a descriptor claims.
 SUPPORTED_MODES: dict[str, set[str]] = {
-    "omnivoice": {"lora-finetune", "full-finetune", "from-scratch", "zero-shot-clone"},
+    # Fine-tuning only: the product makes voice profiles on top of a base model
+    # and has no need to train a base model again.
+    "omnivoice": {"lora-finetune", "full-finetune", "zero-shot-clone"},
     "vibevoice": {"tts-lora", "asr-lora", "zero-shot-clone"},
 }
 
@@ -67,7 +69,6 @@ WINDOWS_GOPEN_REWRITE = ";".join(
 OMNIVOICE_TEMPLATES = {
     "lora-finetune": "train_config_finetune_lora.json",
     "full-finetune": "train_config_finetune_sdpa.json",
-    "from-scratch": "train_config_emilia.json",
 }
 
 
@@ -378,7 +379,7 @@ class TrainingRunner:
             if run.config.mode == "lora-finetune":
                 self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir)
             else:
-                # Full and from-scratch checkpoints are whole models.
+                # A full fine-tune checkpoint is a whole model.
                 self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir)
             self._set_run(run, status="complete", step_id="checkpoint", process_id=None)
         except GpuBusy as exc:
@@ -691,17 +692,14 @@ class TrainingRunner:
         if not template.is_file():
             raise FileNotFoundError(f"Không tìm thấy config OmniVoice: {template_name}")
         payload = json.loads(template.read_text(encoding="utf-8"))
-        if run.config.mode != "from-scratch":
-            # Training from scratch starts from the language model the recipe
-            # names, not from an OmniVoice checkpoint, and has no LoRA.
-            payload.update(
-                {
-                    "init_from_checkpoint": run.config.base_model,
-                    "use_lora": run.config.use_lora and run.config.mode == "lora-finetune",
-                    "lora_r": run.config.lora_r,
-                    "lora_alpha": run.config.lora_alpha,
-                }
-            )
+        payload.update(
+            {
+                "init_from_checkpoint": run.config.base_model,
+                "use_lora": run.config.use_lora and run.config.mode == "lora-finetune",
+                "lora_r": run.config.lora_r,
+                "lora_alpha": run.config.lora_alpha,
+            }
+        )
         payload.update(
             {
                 "learning_rate": run.config.learning_rate,

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "meanvc2-live",
+  "label": "MeanVC2 · nhái giọng từ đoạn mẫu",
+  "family": "MeanVC2",
+  "engine": "meanvc2",
+  "mode": "live-convert",
+  "order": 20,
+  "runnable": false,
+  "category": "clone",
+  "blocked_reason": "Chưa tải MeanVC2; repo chưa có file LICENSE và cần qua bài test tiếng Việt của kế hoạch 05-01.",
+  "description": "Đổi giọng không cần train, dùng đoạn mẫu của Speaker Profile. Trễ thấp, chạy được trên CPU; rủi ro tiếng Việt cao nhất.",
+  "repository": {
+    "root": "research",
+    "path": "MeanVC2",
+    "entrypoint": "README.md",
+    "url": "https://github.com/ASLP-lab/MeanVC2"
+  },
+  "notes": [
+    "README ghi Apache-2.0 nhưng repo chưa có file LICENSE."
+  ],
+  "parameters": [
+    {
+      "key": "block_ms",
+      "label": "Độ dài mỗi khối",
+      "group": "Luồng",
+      "kind": "int",
+      "default": 40,
+      "min": 10,
+      "max": 200,
+      "step": 10,
+      "unit": "ms",
+      "help": "Khối ngắn trễ ít hơn nhưng dễ hụt âm khi máy bận."
+    },
+    {
+      "key": "silence_gate_db",
+      "label": "Ngưỡng im lặng",
+      "group": "Luồng",
+      "kind": "float",
+      "default": -60,
+      "min": -90,
+      "max": -20,
+      "step": 1,
+      "unit": "dB",
+      "help": "Dưới ngưỡng này đầu ra là im lặng thật, không để engine tạo tiếng xì."
+    }
+  ]
+}

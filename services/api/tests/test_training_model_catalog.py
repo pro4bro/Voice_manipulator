@@ -69,7 +69,6 @@ def test_every_shipped_descriptor_loads():
     assert {option.id for option in options} >= {
         "omnivoice-lora",
         "omnivoice-full",
-        "omnivoice-from-scratch",
         "vibevoice-1.5b-tts-lora",
         "vibevoice-7b-tts-lora",
         "vibevoice-asr-lora",
@@ -81,8 +80,7 @@ def test_only_an_installed_option_with_a_runner_is_available(tmp_path):
 
     assert options["omnivoice-lora"].available
     assert options["omnivoice-full"].available
-    scratch = options["omnivoice-from-scratch"]
-    assert not scratch.installed and "Qwen3-0.6B" in scratch.status
+    assert "omnivoice-from-scratch" not in options
     vibe = options["vibevoice-1.5b-tts-lora"]
     assert not vibe.installed and not vibe.available
     assert "train_vibevoice.py" in vibe.status
@@ -272,7 +270,7 @@ OMNIVOICE = SETTINGS.omnivoice_root
 @pytest.mark.skipif(not (OMNIVOICE / "omnivoice" / "training" / "config.py").is_file(), reason="OmniVoice checkout absent")
 @pytest.mark.parametrize(
     "model_id",
-    ["omnivoice-lora", "omnivoice-full", "omnivoice-from-scratch"],
+    ["omnivoice-lora", "omnivoice-full"],
 )
 def test_omnivoice_descriptors_match_the_engine(model_id):
     data = shipped(model_id)

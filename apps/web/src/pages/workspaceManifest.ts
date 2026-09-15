@@ -47,17 +47,34 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     page: "voice-manipulator",
     label: "Voice Manipulator",
     eyebrow: "GENERATE / TRANSFORM / PATCH",
-    modules: ["manipulator-library", "voice-script", "control-rack", "recorder", "timeline", "voice-patch", "voice-generator"],
+    modules: ["manipulator-library", "voice-script", "control-rack", "timeline", "voice-patch", "voice-generator"],
     columns: {
       // Sound Library and Voice Output only: Media Pool is source footage for
       // STT and training, and the Script here is typed, not transcribed.
       left: ["manipulator-library"],
       center: ["voice-script"],
-      right: ["voice-generator", "recorder", "control-rack", "voice-patch"],
+      right: ["voice-generator", "control-rack", "voice-patch"],
       bottom: ["timeline"],
     },
-    modes: ["voice-over", "voice-isolator", "voice-changer", "voice-dubber", "voice-patch"],
-    plannedModes: ["voice-isolator", "voice-changer", "voice-dubber"],
+    // Voice Changer has its own page now.
+    modes: ["voice-over", "voice-isolator", "voice-dubber", "voice-patch"],
+    plannedModes: ["voice-isolator", "voice-dubber"],
+  },
+  "voice-changer": {
+    page: "voice-changer",
+    label: "Voice Changer",
+    eyebrow: "SPEAK / CONVERT / ROUTE",
+    modules: ["voice-vault", "sound-reactor-input", "sound-reactor-output", "voice-input", "changer-timeline"],
+    columns: {
+      // Sound Library picks whose voice to wear; the centre shows the voice
+      // going in and coming out; the Timeline records both as two channels.
+      left: ["voice-vault"],
+      center: ["sound-reactor-input", "sound-reactor-output"],
+      right: ["voice-input"],
+      bottom: ["changer-timeline"],
+    },
+    modes: [],
+    plannedModes: [],
   },
 };
 

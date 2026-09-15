@@ -36,8 +36,19 @@ describe("workspaceManifest", () => {
 
   it("declares every manipulator mode without claiming unavailable processors are ready", () => {
     const manifest = workspaceManifest("voice-manipulator");
-    expect(manifest.modes).toEqual(["voice-over", "voice-isolator", "voice-changer", "voice-dubber", "voice-patch"]);
-    expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-changer", "voice-dubber"]);
+    expect(manifest.modes).toEqual(["voice-over", "voice-isolator", "voice-dubber", "voice-patch"]);
+    expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-dubber"]);
+  });
+
+  it("lays Voice Changer out as Sound Library, two Sound Reactors, Voice Input and a recording Timeline", () => {
+    const manifest = workspaceManifest("voice-changer");
+    expect(manifest.columns).toEqual({
+      left: ["voice-vault"],
+      center: ["sound-reactor-input", "sound-reactor-output"],
+      right: ["voice-input"],
+      bottom: ["changer-timeline"],
+    });
+    expect(workspaceManifest("voice-manipulator").modules).not.toContain("recorder");
   });
 
   it("gives Voice Manipulator Sound Library and Voice Output, and no Media Pool", () => {

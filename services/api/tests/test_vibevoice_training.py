@@ -274,7 +274,7 @@ def test_vibevoice_training_is_refused_until_its_python_has_the_packages(tmp_pat
     assert runs.list(project.id) == []
 
 
-def test_omnivoice_full_and_from_scratch_use_their_own_recipes(tmp_path):
+def test_omnivoice_full_finetune_uses_its_own_recipe_and_from_scratch_is_refused(tmp_path):
     projects = FileProjectRepository(tmp_path / "registry")
     project = projects.create(ProjectCreate(name="Omni"))
     runs = FileTrainingRuns(projects)
@@ -283,7 +283,6 @@ def test_omnivoice_full_and_from_scratch_use_their_own_recipes(tmp_path):
     for name, body in {
         "train_config_finetune_lora.json": {"use_lora": True},
         "train_config_finetune_sdpa.json": {"learning_rate": 1e-5, "init_from_checkpoint": "k2-fsa/OmniVoice"},
-        "train_config_emilia.json": {"llm_name_or_path": "Qwen/Qwen3-0.6B", "init_from_checkpoint": None},
     }.items():
         (engine / "examples" / "config" / name).write_text(json.dumps(body), encoding="utf-8")
     runner = TrainingRunner(projects, StoredManifest(DatasetManifest(id="d")), FileTrainingCatalog(projects), runs, ReadyRuntime(), GpuLease(tmp_path / "gpu.json"), engine)  # type: ignore[arg-type]
@@ -294,11 +293,10 @@ def test_omnivoice_full_and_from_scratch_use_their_own_recipes(tmp_path):
         return json.loads(runner._write_train_config(run, run_dir).read_text(encoding="utf-8"))
 
     full = written(TrainingRunConfig(mode="full-finetune", use_lora=False, learning_rate=1e-5))
-    scratch = written(TrainingRunConfig(mode="from-scratch", use_lora=False, parameters={"llm_name_or_path": "Qwen/Qwen3-0.6B"}))
 
     assert full["use_lora"] is False and full["init_from_checkpoint"] == "k2-fsa/OmniVoice"
-    assert scratch["init_from_checkpoint"] is None and scratch["llm_name_or_path"] == "Qwen/Qwen3-0.6B"
-    assert "lora_r" not in scratch
+    with pytest.raises(ValueError, match="chưa được runner"):
+        runner.start(project.id, "d", TrainingRunConfig(mode="from-scratch", use_lora=False), speaker_profile_ids=["speaker-an"])
 
 
 # ---------------------------------------------------------------- generation and STT

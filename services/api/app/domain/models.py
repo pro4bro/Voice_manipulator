@@ -17,7 +17,7 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
 
 
-WorkspacePage = Literal["dashboard", "speech-to-text", "voice-training", "voice-manipulator"]
+WorkspacePage = Literal["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer"]
 
 
 class ProjectCreate(DomainModel):
@@ -886,6 +886,92 @@ class ProjectVoice(DomainModel):
     model_path: str | None = None
     language: str | None = None
     source_run_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AudioDeviceInfo(DomainModel):
+    """One PortAudio device as the Voice Changer runtime sees it."""
+
+    index: int
+    name: str
+    host_api: str
+    max_input_channels: int = 0
+    max_output_channels: int = 0
+    default_sample_rate: float = 0
+    # A virtual audio cable: sending audio into it makes a microphone other
+    # applications can pick.
+    virtual_cable: bool = False
+
+
+class VoiceChangerPreflight(DomainModel):
+    """What live conversion needs on this machine, and what it found."""
+
+    runtime_ready: bool
+    runtime_python: str | None = None
+    missing: list[str] = Field(default_factory=list)
+    devices: list[AudioDeviceInfo] = Field(default_factory=list)
+    device_error: str | None = None
+    # Windows audio endpoints, read without the runtime, so a missing virtual
+    # cable is reported even before anything is installed.
+    endpoints: list[str] = Field(default_factory=list)
+    virtual_cable: str | None = None
+    gpu_holder: str | None = None
+
+
+class VoiceChangerStartRequest(DomainModel):
+    engine_id: str = Field(min_length=1, max_length=80)
+    voice_id: str | None = None
+    input_device: int = Field(ge=0)
+    # The virtual microphone: audio sent into a virtual cable other apps record from.
+    virtual_device: int | None = Field(default=None, ge=0)
+    speaker_device: int | None = Field(default=None, ge=0)
+    # Hearing your own converted voice with a delay disturbs speaking, so it is off unless asked for.
+    monitor: bool = False
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class VoiceChangerStatus(DomainModel):
+    state: Literal["idle", "running", "error"] = "idle"
+    project_id: str | None = None
+    engine_id: str | None = None
+    voice_id: str | None = None
+    sample_rate: int | None = None
+    block_ms: float | None = None
+    algorithmic_latency_ms: float | None = None
+    device_latency_ms: float | None = None
+    input_level_db: float = -120
+    input_peak_db: float = -120
+    output_level_db: float = -120
+    output_peak_db: float = -120
+    input_spectrum: list[float] = Field(default_factory=list)
+    output_spectrum: list[float] = Field(default_factory=list)
+    underruns: int = 0
+    overruns: int = 0
+    recording: bool = False
+    recording_seconds: float = 0
+    outputs: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
+    started_at: datetime | None = None
+
+
+class VoiceChangerRecording(DomainModel):
+    """A live session recorded as two channels: left the spoken voice, right the converted one."""
+
+    id: str
+    name: str
+    engine_id: str
+    voice_id: str | None = None
+    voice_name: str | None = None
+    speaker_profile_id: str | None = None
+    duration: float = Field(default=0, ge=0)
+    sample_rate: int
+    channels: int = 2
+    # The pipeline's own delay removed from the converted channel, and what the
+    # audio itself said on top of that.
+    delay_ms: float = 0
+    refined_delay_ms: float | None = None
+    audio_path: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

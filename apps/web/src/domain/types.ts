@@ -1,4 +1,4 @@
-export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator";
+export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator" | "voice-changer";
 export type ThemeMode = "light" | "dark";
 export type RuntimeAction = "start" | "stop" | "restart";
 
@@ -66,6 +66,10 @@ export type ModuleId =
   | "voice-output"
   | "voice-script"
   | "manipulator-library"
+  | "sound-reactor-input"
+  | "sound-reactor-output"
+  | "voice-input"
+  | "changer-timeline"
   | "training-job"
   | "speaker-isolation"
   | "speaker-emotion"
@@ -657,6 +661,79 @@ export interface VoiceOutputSegment {
   start: number;
   end: number;
   clip?: string | null;
+}
+
+export interface AudioDeviceInfo {
+  index: number;
+  name: string;
+  hostApi: string;
+  maxInputChannels: number;
+  maxOutputChannels: number;
+  defaultSampleRate: number;
+  virtualCable: boolean;
+}
+
+export interface VoiceChangerPreflight {
+  runtimeReady: boolean;
+  runtimePython: string | null;
+  missing: string[];
+  devices: AudioDeviceInfo[];
+  deviceError: string | null;
+  endpoints: string[];
+  virtualCable: string | null;
+  gpuHolder: string | null;
+}
+
+export interface VoiceChangerStatus {
+  state: "idle" | "running" | "error";
+  projectId: string | null;
+  engineId: string | null;
+  voiceId: string | null;
+  sampleRate: number | null;
+  blockMs: number | null;
+  algorithmicLatencyMs: number | null;
+  deviceLatencyMs: number | null;
+  inputLevelDb: number;
+  inputPeakDb: number;
+  outputLevelDb: number;
+  outputPeakDb: number;
+  inputSpectrum: number[];
+  outputSpectrum: number[];
+  underruns: number;
+  overruns: number;
+  recording: boolean;
+  recordingSeconds: number;
+  outputs: Array<{ role: "virtual" | "speaker"; device: number; sampleRate: number }>;
+  error: string | null;
+  startedAt: string | null;
+}
+
+export interface VoiceChangerRecording {
+  id: string;
+  name: string;
+  engineId: string;
+  voiceId: string | null;
+  voiceName: string | null;
+  speakerProfileId: string | null;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  delayMs: number;
+  refinedDelayMs: number | null;
+  audioPath: string;
+  parameters: Record<string, TrainingParameterValue>;
+  createdAt: string;
+}
+
+/** What the Voice Input module is set to; devices belong to this machine, not a project. */
+export interface VoiceChangerSettings {
+  engineId: string | null;
+  voiceId: string | null;
+  inputDevice: number | null;
+  virtualDevice: number | null;
+  speakerDevice: number | null;
+  monitor: boolean;
+  parameters: Record<string, Record<string, TrainingParameterValue>>;
 }
 
 /** A row of the typed Script in Voice Manipulator. */

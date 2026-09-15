@@ -32,6 +32,7 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
+from app.adapters.voice_changer import FileChangerRecordings, VoiceChanger, VoiceChangerError, VoiceChangerRuntime
 from app.adapters.voice_script_speaker import StudioWordRecognizer, VoiceScriptBusy, VoiceScriptSpeaker
 from app.adapters.omnivoice_generator import (
     VibeVoiceSpeech,
@@ -90,6 +91,10 @@ from app.domain.models import (
     VoiceOutput,
     VoiceScriptJob,
     VoiceScriptRequest,
+    VoiceChangerPreflight,
+    VoiceChangerRecording,
+    VoiceChangerStartRequest,
+    VoiceChangerStatus,
     ProjectOpen,
     ProjectRecord,
     ReadingAudienceVocabulary,
@@ -210,6 +215,20 @@ def create_app(
         gpu_lease,
         recognizer=StudioWordRecognizer(settings.legacy_studio_url),
         ffmpeg_path=settings.ffmpeg_path,
+    )
+    voice_changer_engines = FileTrainingModelCatalog(
+        settings.voice_changers_root,
+        {"pro4bro": Path(__file__).resolve().parent.parent, "research": settings.project_root.parent / "research-engines"},
+    )
+    changer_recordings = FileChangerRecordings(projects)
+    voice_changer = VoiceChanger(
+        projects,
+        VoiceChangerRuntime(settings.voice_changer_runtime_root),
+        voice_changer_engines,
+        project_voices,
+        changer_recordings,
+        gpu_lease,
+        before_gpu_work=free_gpu,
     )
     training_runner = TrainingRunner(
         projects,
@@ -1049,6 +1068,94 @@ def create_app(
             return voice_script_speaker.job(project_id, job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Không có lượt đọc Script này") from exc
+
+    @app.get("/api/voice-changers", response_model=list[TrainingModelOption])
+    def voice_changer_options() -> list[TrainingModelOption]:
+        return voice_changer_engines.options()
+
+    @app.get("/api/voice-changer/preflight", response_model=VoiceChangerPreflight)
+    async def voice_changer_preflight() -> VoiceChangerPreflight:
+        return await asyncio.to_thread(voice_changer.preflight)
+
+    @app.post("/api/projects/{project_id}/voice-changer/start", response_model=VoiceChangerStatus)
+    async def voice_changer_start(project_id: str, payload: VoiceChangerStartRequest) -> VoiceChangerStatus:
+        try:
+            return await asyncio.to_thread(voice_changer.start, project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except (GpuBusy, TrainingModelUnavailable) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except VoiceChangerError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/voice-changer/status", response_model=VoiceChangerStatus)
+    async def voice_changer_status() -> VoiceChangerStatus:
+        return await asyncio.to_thread(voice_changer.status)
+
+    @app.post("/api/voice-changer/stop")
+    async def voice_changer_stop() -> dict:
+        status_now, recording = await asyncio.to_thread(voice_changer.stop)
+        return {
+            "status": status_now.model_dump(mode="json", by_alias=True),
+            "recording": recording.model_dump(mode="json", by_alias=True) if recording else None,
+        }
+
+    @app.post("/api/projects/{project_id}/voice-changer/record/start", response_model=VoiceChangerStatus)
+    async def voice_changer_record_start(project_id: str) -> VoiceChangerStatus:
+        try:
+            return await asyncio.to_thread(voice_changer.record_start, project_id)
+        except VoiceChangerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-changer/record/stop", response_model=VoiceChangerRecording)
+    async def voice_changer_record_stop(project_id: str) -> VoiceChangerRecording:
+        try:
+            return await asyncio.to_thread(voice_changer.record_stop, project_id)
+        except VoiceChangerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/voice-changer/recordings", response_model=list[VoiceChangerRecording])
+    def voice_changer_recordings(project_id: str) -> list[VoiceChangerRecording]:
+        try:
+            return changer_recordings.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.get("/api/projects/{project_id}/voice-changer/recordings/{recording_id}/audio")
+    def voice_changer_recording_audio(project_id: str, recording_id: str) -> Response:
+        try:
+            path = changer_recordings.audio_path(project_id, recording_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Bản ghi không tồn tại") from exc
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Thiếu file audio")
+        return FileResponse(path, media_type="audio/wav")
+
+    @app.get("/api/projects/{project_id}/voice-changer/recordings/{recording_id}/waveform")
+    async def voice_changer_recording_waveform(project_id: str, recording_id: str, start: float | None = None, end: float | None = None, points: int | None = None) -> dict:
+        try:
+            project = projects.get(project_id)
+            audio_path = changer_recordings.audio_path(project_id, recording_id)
+            cache_path = Path(project.project_path) / "cache" / "waveforms" / f"{recording_id}.json"
+            if start is None and end is None and points is None:
+                return await asyncio.to_thread(waveform_envelopes.read, audio_path, cache_path)
+            if start is None or end is None or points is None:
+                raise ValueError("Waveform chi tiết cần start, end và points.")
+            return await asyncio.to_thread(waveform_envelopes.read_detail, audio_path, cache_path, start, end, points)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc) or "Invalid waveform range") from exc
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="Bản ghi không tồn tại") from exc
+
+    @app.delete("/api/projects/{project_id}/voice-changer/recordings/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_voice_changer_recording(project_id: str, recording_id: str) -> Response:
+        try:
+            changer_recordings.delete(project_id, recording_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Bản ghi không tồn tại") from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/training-models", response_model=list[TrainingModelOption])
     def training_model_options() -> list[TrainingModelOption]:

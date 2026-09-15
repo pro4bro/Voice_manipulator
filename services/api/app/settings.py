@@ -25,6 +25,10 @@ class Settings:
     training_models_root: Path
     local_training_models_root: Path
     voice_generators_root: Path
+    voice_changers_root: Path
+    # A Python with numpy and sounddevice, which opens the audio devices for
+    # live conversion; engines that pass the Vietnamese gate add their own.
+    voice_changer_runtime_root: Path
     stt_engines_root: Path
     local_voice_generators_root: Path
     # A Hugging Face hub cache that already holds the engine weights. When set,
@@ -86,6 +90,10 @@ class Settings:
             )
             / "training-models",
             voice_generators_root=Path(__file__).resolve().parent / "resources" / "voice-generators",
+            voice_changers_root=Path(__file__).resolve().parent / "resources" / "voice-changers",
+            voice_changer_runtime_root=Path(
+                os.getenv("PRO4BRO_VOICE_CHANGER_RUNTIME_ROOT", project_root / ".runtime" / "voice-changer" / ".venv")
+            ),
             stt_engines_root=Path(__file__).resolve().parent / "resources" / "stt-engines",
             local_voice_generators_root=Path(
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")

@@ -18,6 +18,9 @@ import type {
   ProjectVoice,
   VoiceOutput,
   VoiceScriptJob,
+  VoiceChangerPreflight,
+  VoiceChangerRecording,
+  VoiceChangerStatus,
   ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
@@ -385,6 +388,17 @@ export const api = {
     }),
   getVoiceScriptJob: (projectId: string, jobId: string) =>
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/jobs/${jobId}`),
+  getVoiceChangers: () => request<TrainingModelOption[]>("/api/voice-changers"),
+  getVoiceChangerPreflight: () => request<VoiceChangerPreflight>("/api/voice-changer/preflight"),
+  startVoiceChanger: (projectId: string, payload: { engineId: string; voiceId: string | null; inputDevice: number; virtualDevice: number | null; speakerDevice: number | null; monitor: boolean; parameters: Record<string, TrainingParameterValue> }) =>
+    request<VoiceChangerStatus>(`/api/projects/${projectId}/voice-changer/start`, { method: "POST", body: JSON.stringify(payload) }),
+  getVoiceChangerStatus: () => request<VoiceChangerStatus>("/api/voice-changer/status"),
+  stopVoiceChanger: () => request<{ status: VoiceChangerStatus; recording: VoiceChangerRecording | null }>("/api/voice-changer/stop", { method: "POST" }),
+  startChangerRecording: (projectId: string) => request<VoiceChangerStatus>(`/api/projects/${projectId}/voice-changer/record/start`, { method: "POST" }),
+  stopChangerRecording: (projectId: string) => request<VoiceChangerRecording>(`/api/projects/${projectId}/voice-changer/record/stop`, { method: "POST" }),
+  listChangerRecordings: (projectId: string) => request<VoiceChangerRecording[]>(`/api/projects/${projectId}/voice-changer/recordings`),
+  deleteChangerRecording: (projectId: string, recordingId: string) =>
+    request<void>(`/api/projects/${projectId}/voice-changer/recordings/${recordingId}`, { method: "DELETE" }),
   listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
     request<VoiceOutput>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {

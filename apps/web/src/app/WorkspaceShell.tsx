@@ -25,6 +25,10 @@ import type {
   VoiceOutput,
   VoiceScriptJob,
   VoiceScriptRow,
+  VoiceChangerPreflight,
+  VoiceChangerRecording,
+  VoiceChangerSettings,
+  VoiceChangerStatus,
   TrainingParameterValue,
   TrainingRun,
   ReadingPackSummary,
@@ -66,7 +70,10 @@ const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: Icon
   { id: "speech-to-text", label: "Speech to Text", short: "STT", icon: "mic" },
   { id: "voice-training", label: "Voice Training", short: "TRAIN", icon: "training" },
   { id: "voice-manipulator", label: "Voice Manipulator", short: "VOICE", icon: "wrench" },
+  { id: "voice-changer", label: "Voice Changer", short: "LIVE", icon: "waveform" },
 ];
+
+const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
 
 const modeLabels: Record<ManipulatorMode, string> = {
   "voice-over": "Voice Over",
@@ -170,6 +177,19 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   });
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
+  const [voiceChangers, setVoiceChangers] = useState<TrainingModelOption[]>([]);
+  const [changerPreflight, setChangerPreflight] = useState<VoiceChangerPreflight | null>(null);
+  const [changerStatus, setChangerStatus] = useState<VoiceChangerStatus | null>(null);
+  const [changerBusy, setChangerBusy] = useState(false);
+  const [changerRecordings, setChangerRecordings] = useState<VoiceChangerRecording[]>([]);
+  const [changerSettings, setChangerSettings] = useState<VoiceChangerSettings>(() => {
+    const fallback: VoiceChangerSettings = { engineId: null, voiceId: null, inputDevice: null, virtualDevice: null, speakerDevice: null, monitor: false, parameters: {} };
+    try {
+      return { ...fallback, ...JSON.parse(localStorage.getItem(CHANGER_SETTINGS_KEY) ?? "{}"), monitor: false };
+    } catch {
+      return fallback;
+    }
+  });
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
   const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
@@ -216,6 +236,33 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   useEffect(() => {
     try { localStorage.setItem(voiceScriptStorageKey, JSON.stringify(voiceScriptRows)); } catch { /* the Script stays in memory */ }
   }, [voiceScriptRows, voiceScriptStorageKey]);
+
+  useEffect(() => {
+    // Devices belong to the machine, so the choice is remembered across projects;
+    // monitoring is never remembered on, it has to be asked for each time.
+    try { localStorage.setItem(CHANGER_SETTINGS_KEY, JSON.stringify({ ...changerSettings, monitor: false })); } catch { /* kept in memory */ }
+  }, [changerSettings]);
+
+  const changerPageOpen = activePage === "voice-changer";
+  const changerRunning = changerStatus?.state === "running";
+  useEffect(() => {
+    if (!changerPageOpen) return;
+    void refreshChanger();
+    if (typeof api.listChangerRecordings === "function") api.listChangerRecordings(project.id).then(setChangerRecordings).catch(() => setChangerRecordings([]));
+  }, [changerPageOpen, project.id]);
+  useEffect(() => {
+    if (!changerPageOpen && !changerRunning) return;
+    let cancelled = false;
+    let inFlight = false;
+    // Meters and spectra while running; a slow check otherwise, so a session
+    // started elsewhere still shows up.
+    const timer = window.setInterval(() => {
+      if (inFlight || typeof api.getVoiceChangerStatus !== "function") return;
+      inFlight = true;
+      void api.getVoiceChangerStatus().then((next) => { if (!cancelled) setChangerStatus(next); }).catch(() => undefined).finally(() => { inFlight = false; });
+    }, changerRunning ? 110 : 2500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [changerPageOpen, changerRunning]);
 
   const voiceScriptRunning = voiceScriptJob?.status === "running";
   useEffect(() => {
@@ -1183,6 +1230,107 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     if (loadScript && output.segments?.length) setVoiceScriptRows(rowsFromOutput(output));
   }
 
+  async function refreshChanger() {
+    if (typeof api.getVoiceChangers !== "function") return;
+    try {
+      const [engines, preflight, status] = await Promise.all([api.getVoiceChangers(), api.getVoiceChangerPreflight(), api.getVoiceChangerStatus()]);
+      setVoiceChangers(engines);
+      setChangerPreflight(preflight);
+      setChangerStatus(status);
+      setChangerSettings((current) => {
+        const inputs = preflight.devices.filter((device) => device.maxInputChannels > 0);
+        const outputs = preflight.devices.filter((device) => device.maxOutputChannels > 0);
+        const known = (index: number | null, list: typeof inputs) => index !== null && list.some((device) => device.index === index) ? index : null;
+        return {
+          ...current,
+          engineId: engines.some((engine) => engine.id === current.engineId) ? current.engineId : engines.find((engine) => engine.available)?.id ?? null,
+          inputDevice: known(current.inputDevice, inputs),
+          virtualDevice: known(current.virtualDevice, outputs) ?? outputs.find((device) => device.virtualCable && /cable input/iu.test(device.name))?.index ?? null,
+          speakerDevice: known(current.speakerDevice, outputs),
+        };
+      });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không kiểm tra được thiết bị Voice Changer");
+    }
+  }
+
+  async function startChanger() {
+    const engine = voiceChangers.find((item) => item.id === changerSettings.engineId);
+    if (!engine || changerSettings.inputDevice === null) return;
+    const speakerVoices = projectVoices.filter((voice) => voice.speakerProfileId === selectedVoice);
+    const voice = speakerVoices.find((item) => item.id === changerSettings.voiceId) ?? speakerVoices[0] ?? null;
+    setChangerBusy(true);
+    try {
+      setChangerStatus(await api.startVoiceChanger(project.id, {
+        engineId: engine.id,
+        voiceId: voice?.id ?? null,
+        inputDevice: changerSettings.inputDevice,
+        virtualDevice: changerSettings.virtualDevice,
+        speakerDevice: changerSettings.speakerDevice,
+        monitor: changerSettings.monitor,
+        parameters: changerSettings.parameters[engine.id] ?? {},
+      }));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không bắt đầu đổi giọng được");
+    } finally {
+      setChangerBusy(false);
+    }
+  }
+
+  async function stopChanger() {
+    setChangerBusy(true);
+    try {
+      const { status, recording } = await api.stopVoiceChanger();
+      setChangerStatus(status);
+      if (recording) adoptChangerRecording(recording);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không dừng được Voice Changer");
+    } finally {
+      setChangerBusy(false);
+    }
+  }
+
+  async function startChangerRecording() {
+    try {
+      setChangerStatus(await api.startChangerRecording(project.id));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không bắt đầu ghi được");
+    }
+  }
+
+  async function stopChangerRecording() {
+    setChangerBusy(true);
+    try {
+      adoptChangerRecording(await api.stopChangerRecording(project.id));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không lưu được bản ghi");
+    } finally {
+      setChangerBusy(false);
+    }
+  }
+
+  function adoptChangerRecording(recording: VoiceChangerRecording) {
+    setChangerRecordings((current) => [recording, ...current.filter((item) => item.id !== recording.id)]);
+    openChangerRecording(recording);
+    setNotice(`Đã lưu ${recording.duration.toFixed(1)} giây · 2 kênh · đã bù ${Math.round(recording.delayMs + (recording.refinedDelayMs ?? 0))} ms trễ.`);
+  }
+
+  function openChangerRecording(recording: VoiceChangerRecording) {
+    setSelectedAssetId(null);
+    setScriptDirty(false);
+    setTake({ id: recording.id, name: recording.name, url: `/api/projects/${project.id}/voice-changer/recordings/${recording.id}/audio`, duration: recording.duration, words: [] });
+  }
+
+  async function deleteChangerRecording(recording: VoiceChangerRecording) {
+    try {
+      await api.deleteChangerRecording(project.id, recording.id);
+      setChangerRecordings((current) => current.filter((item) => item.id !== recording.id));
+      if (take?.id === recording.id) setTake(null);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không xoá được bản ghi");
+    }
+  }
+
   async function exportVoiceOutputSubtitles(mode: "sentence" | "word" | "table") {
     const output = voiceOutputs.find((item) => item.id === take?.id);
     if (!output?.words?.length) {
@@ -1284,6 +1432,20 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     voiceCategory,
     voiceScriptJob,
     onExportVoiceOutput: (mode) => void exportVoiceOutputSubtitles(mode),
+    voiceChangers,
+    changerPreflight,
+    changerSettings,
+    onChangerSettingsChange: setChangerSettings,
+    changerStatus,
+    changerBusy,
+    changerRecordings,
+    onStartChanger: () => void startChanger(),
+    onStopChanger: () => void stopChanger(),
+    onRefreshChanger: () => void refreshChanger(),
+    onStartChangerRecording: () => void startChangerRecording(),
+    onStopChangerRecording: () => void stopChangerRecording(),
+    onOpenChangerRecording: openChangerRecording,
+    onDeleteChangerRecording: (recording) => void deleteChangerRecording(recording),
     trainingRuns,
     trainingBatch,
     trainingProgressByRun,
@@ -1348,7 +1510,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">

@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 
 import { usePlaybackWord } from "../../domain/playback-sync";
 import type { ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/word-selection";
-import { VOICE_KIND_LABELS, emptyRow, estimatedSeconds, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
+import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { keepWordInView } from "./script-table";
@@ -127,6 +127,15 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
 
   function handleRowKey(event: ReactKeyboardEvent<HTMLTextAreaElement>, row: VoiceScriptRow) {
     const field = event.currentTarget;
+    if (event.key === "Enter" && event.altKey) {
+      // Alt+Enter breaks the line inside the same turn, as in a spreadsheet cell.
+      event.preventDefault();
+      const start = field.selectionStart;
+      const next = `${row.text.slice(0, start)}\n${row.text.slice(field.selectionEnd)}`;
+      focusRef.current = { rowId: row.id, start: start + 1, end: start + 1 };
+      updateRow(row.id, { text: next });
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey) {
       // Enter starts the next turn, the way a line break does in a script.
       event.preventDefault();
@@ -151,6 +160,44 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       setEditingRowId(previous.id);
       commit(rows.flatMap((item, itemIndex) => itemIndex === index ? [] : itemIndex === index - 1 ? [{ ...item, text: joined }] : [item]));
     }
+  }
+
+  // A table copied from Excel, Google Sheets or Word, or several paragraphs,
+  // arrives as turns: one row each, read by the speaker named in it.
+  function handleRowPaste(event: ReactClipboardEvent<HTMLTextAreaElement>, row: VoiceScriptRow) {
+    const plain = event.clipboardData.getData("text/plain");
+    const html = event.clipboardData.getData("text/html");
+    const base = rows.length ? rows : shownRows.map(withDefaults);
+    const index = base.findIndex((item) => item.id === row.id);
+    const current = base[index] ?? withDefaults(row);
+    const pasted = clipboardToRows(plain, html, speakers, voices, current, base);
+    if (!pasted?.length) return;
+    event.preventDefault();
+    const field = event.currentTarget;
+    const before = current.text.slice(0, field.selectionStart).trimEnd();
+    const after = current.text.slice(field.selectionEnd).trimStart();
+    const leading = before ? [{ ...current, text: before }] : [];
+    // An empty row, or one whose text was all selected, is replaced by what came in.
+    const first = before ? pasted : [{ ...pasted[0], id: current.id }, ...pasted.slice(1)];
+    const trailing = after ? [emptyRow(pasted[pasted.length - 1], after)] : [];
+    const last = first[first.length - 1];
+    focusRef.current = { rowId: last.id, start: last.text.length, end: last.text.length };
+    setEditingRowId(last.id);
+    commit([...base.slice(0, index), ...leading, ...first, ...trailing, ...base.slice(index + 1)]);
+  }
+
+  function handleTextPaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
+    const plain = event.clipboardData.getData("text/plain");
+    const html = event.clipboardData.getData("text/html");
+    if (!plain.includes("\t") && !/<table[\s>]/iu.test(html)) return;
+    const pasted = clipboardToRows(plain, html, speakers, voices, rows[rows.length - 1] ?? null, rows);
+    if (!pasted?.length) return;
+    event.preventDefault();
+    const field = event.currentTarget;
+    const insert = rowsToText(pasted, speakers);
+    const head = textDraft.slice(0, field.selectionStart);
+    const tail = textDraft.slice(field.selectionEnd);
+    changeText(`${head}${head && !head.endsWith("\n") ? "\n" : ""}${insert}${tail && !tail.startsWith("\n") ? "\n" : ""}${tail}`);
   }
 
   useLayoutEffect(() => {
@@ -308,16 +355,23 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     const showWords = Boolean(timing?.fresh && timing.lastWord > timing.firstWord && editingRowId !== row.id);
     if (showWords && timing) {
       return <div className="script-table__content voice-script__words" onDoubleClick={() => { focusRef.current = { rowId: row.id, start: row.text.length, end: row.text.length }; setEditingRowId(row.id); }} role="gridcell" style={textStyle} title="Bấm để chọn từ · Ctrl/Shift để chọn nhiều · double-click để sửa lời thoại">
-        {words.slice(timing.firstWord, timing.lastWord).map((word, offset) => {
-          const index = timing.firstWord + offset;
-          return <span className="script-table__word-wrap" key={`${index}-${word.start}`}>
-            <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""}`} data-script-word-index={index} onClick={(event) => onWordSelectionChange?.(selectWord(wordSelection, index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }))} type="button">{word.text}</button>{" "}
-          </span>;
-        })}
+        {(() => {
+          // Alt+Enter line breaks inside the turn stay visible once it is read.
+          const breaks = lineBreakWords(row.text);
+          return words.slice(timing.firstWord, timing.lastWord).map((word, offset) => {
+            const index = timing.firstWord + offset;
+            return <Fragment key={`${index}-${word.start}`}>
+              <span className="script-table__word-wrap">
+                <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""}`} data-script-word-index={index} onClick={(event) => onWordSelectionChange?.(selectWord(wordSelection, index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }))} type="button">{word.text}</button>{" "}
+              </span>
+              {breaks.has(offset) ? <br /> : null}
+            </Fragment>;
+          });
+        })()}
       </div>;
     }
     return <div className="script-table__content voice-script__edit" role="gridcell" style={textStyle}>
-      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => updateRow(row.id, { text: event.target.value })} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter để sang đoạn mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} />
+      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => updateRow(row.id, { text: event.target.value })} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} />
     </div>;
   }
 
@@ -393,7 +447,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
         </div>
       </div>
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
-      <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} placeholder={"Anh Vũ: Xin chào mọi người\nKhoa Trịnh: Chào anh"} ref={textRef} spellCheck value={textDraft} />
+      <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} onPaste={handleTextPaste} placeholder={"Anh Vũ: Xin chào mọi người\nKhoa Trịnh: Chào anh"} ref={textRef} spellCheck value={textDraft} />
     </div>}
 
     {voiceMenu ? <div className="script-table__word-menu voice-script__menu" onPointerDown={(event) => event.stopPropagation()} role="menu" style={{ left: voiceMenu.x, top: voiceMenu.y }}>

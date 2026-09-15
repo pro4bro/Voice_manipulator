@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "rvc-live",
+  "label": "RVC · đổi giọng đã train",
+  "family": "RVC",
+  "engine": "rvc",
+  "mode": "live-convert",
+  "order": 10,
+  "runnable": false,
+  "blocked_reason": "Chưa tải RVC; cần qua bài test tiếng Việt của kế hoạch 05-01 trước khi thành chức năng.",
+  "description": "Đổi giọng bằng model RVC train riêng cho từng Speaker Profile. Giữ đường cao độ của người nói nên ít rủi ro sai thanh điệu tiếng Việt.",
+  "repository": {
+    "root": "research",
+    "path": "Retrieval-based-Voice-Conversion-WebUI",
+    "entrypoint": "infer-web.py",
+    "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI"
+  },
+  "notes": [
+    "MIT.",
+    "Cần train một model RVC cho mỗi giọng muốn giả (khoảng 10 phút audio)."
+  ],
+  "parameters": [
+    {
+      "key": "block_ms",
+      "label": "Độ dài mỗi khối",
+      "group": "Luồng",
+      "kind": "int",
+      "default": 40,
+      "min": 10,
+      "max": 200,
+      "step": 10,
+      "unit": "ms",
+      "help": "Khối ngắn trễ ít hơn nhưng dễ hụt âm khi máy bận."
+    },
+    {
+      "key": "silence_gate_db",
+      "label": "Ngưỡng im lặng",
+      "group": "Luồng",
+      "kind": "float",
+      "default": -60,
+      "min": -90,
+      "max": -20,
+      "step": 1,
+      "unit": "dB",
+      "help": "Dưới ngưỡng này đầu ra là im lặng thật, không để engine tạo tiếng xì."
+    },
+    {
+      "key": "pitch_shift",
+      "label": "Dịch cao độ",
+      "group": "Giọng",
+      "kind": "int",
+      "default": 0,
+      "min": -24,
+      "max": 24,
+      "step": 1,
+      "unit": "bán cung"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "passthrough-check",
+  "label": "Kiểm tra luồng · giữ nguyên giọng",
+  "family": "Pro4Bro",
+  "engine": "passthrough",
+  "mode": "live-convert",
+  "order": 1,
+  "runnable": true,
+  "description": "Không đổi giọng. Dùng để kiểm tra micro, micro ảo, loa, độ trễ và file ghi 2 kênh trước khi có engine đổi giọng.",
+  "repository": {
+    "root": "pro4bro",
+    "path": "app",
+    "entrypoint": "workers/voice_changer_worker.py"
+  },
+  "notes": [
+    "Giọng ra giống hệt giọng vào; chỉ có độ trễ của thiết bị và khối xử lý."
+  ],
+  "parameters": [
+    {
+      "key": "block_ms",
+      "label": "Độ dài mỗi khối",
+      "group": "Luồng",
+      "kind": "int",
+      "default": 40,
+      "min": 10,
+      "max": 200,
+      "step": 10,
+      "unit": "ms",
+      "help": "Khối ngắn trễ ít hơn nhưng dễ hụt âm khi máy bận."
+    },
+    {
+      "key": "silence_gate_db",
+      "label": "Ngưỡng im lặng",
+      "group": "Luồng",
+      "kind": "float",
+      "default": -60,
+      "min": -90,
+      "max": -20,
+      "step": 1,
+      "unit": "dB",
+      "help": "Dưới ngưỡng này đầu ra là im lặng thật, không để engine tạo tiếng xì."
+    },
+    {
+      "key": "input_gain_db",
+      "label": "Gain đầu vào",
+      "group": "Luồng",
+      "kind": "float",
+      "default": 0,
+      "min": -24,
+      "max": 24,
+      "step": 1,
+      "unit": "dB"
+    }
+  ]
+}
