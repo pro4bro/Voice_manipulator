@@ -32,7 +32,7 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
-from app.adapters.voice_changer import FileChangerRecordings, VoiceChanger, VoiceChangerError, VoiceChangerRuntime
+from app.adapters.voice_changer import FileChangerRecordings, VoiceChanger, VoiceChangerError, VoiceChangerRuntime, VoiceConsentRequired
 from app.adapters.voice_script_speaker import StudioWordRecognizer, VoiceScriptBusy, VoiceScriptSpeaker
 from app.adapters.omnivoice_generator import (
     VibeVoiceSpeech,
@@ -229,6 +229,7 @@ def create_app(
         changer_recordings,
         gpu_lease,
         before_gpu_work=free_gpu,
+        catalogs=training_catalogs,
     )
     training_runner = TrainingRunner(
         projects,
@@ -1083,6 +1084,8 @@ def create_app(
             return await asyncio.to_thread(voice_changer.start, project_id, payload)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except VoiceConsentRequired as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         except (GpuBusy, TrainingModelUnavailable) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except VoiceChangerError as exc:

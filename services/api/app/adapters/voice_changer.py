@@ -35,9 +35,23 @@ class VoiceChangerError(RuntimeError):
     """Live conversion could not start or answer."""
 
 
+class VoiceConsentRequired(ValueError):
+    """The target voice's owner has not been recorded as agreeing to its use."""
+
+
 def is_virtual_cable(name: str) -> bool:
     lowered = name.lower()
     return any(marker in lowered for marker in VIRTUAL_CABLE_MARKERS)
+
+
+def preferred_cable(devices: list[AudioDeviceInfo]) -> AudioDeviceInfo | None:
+    """The playback side of a virtual cable to send the converted voice into.
+
+    WASAPI first, for its latency; the 16-channel variant last, since a mono
+    voice sent there reaches only the cable's first pair of channels.
+    """
+    cables = [device for device in devices if device.virtual_cable and device.max_output_channels]
+    return min(cables, key=lambda device: (device.host_api != "Windows WASAPI", "16 ch" in device.name.lower(), device.index), default=None)
 
 
 class VoiceChangerRuntime:
@@ -169,7 +183,9 @@ class VoiceChanger:
         worker: EngineWorkerProcess | None = None,
         endpoints: Callable[[], list[str]] = windows_audio_endpoints,
         before_gpu_work: Callable[[], None] | None = None,
+        catalogs: Any = None,
     ) -> None:
+        self.catalogs = catalogs
         self.projects = projects
         self.runtime = runtime
         self.engines = engines
@@ -198,8 +214,8 @@ class VoiceChanger:
                     device_error = reply.get("error")
             except EngineWorkerError as exc:
                 device_error = str(exc)
-        cable = next((device.name for device in devices if device.virtual_cable and device.max_output_channels), None)
-        cable = cable or next((name for name in endpoints if is_virtual_cable(name)), None)
+        chosen = preferred_cable(devices)
+        cable = chosen.name if chosen else next((name for name in endpoints if is_virtual_cable(name)), None)
         holder = self.gpu_lease.holder()
         return VoiceChangerPreflight(
             runtime_ready=not missing,
@@ -228,11 +244,16 @@ class VoiceChanger:
         parameters = resolve_parameters(option, request.parameters)
         target: dict[str, Any] | None = None
         voice = None
+        converts = option.engine != "passthrough"
+        if converts and not request.voice_id:
+            raise ValueError("Chọn giọng giả trong Sound Library trước khi đổi giọng.")
         if request.voice_id:
             try:
                 voice = self.voices.get(project_id, request.voice_id)
             except KeyError as exc:
                 raise ValueError("Voice được chọn không còn trong project.") from exc
+            if converts:
+                self._require_consent(project_id, voice.speaker_profile_id)
             target = {
                 "referenceAudio": str(self.voices.absolute(project_id, voice.reference_audio)),
                 "referenceText": voice.reference_text,
@@ -316,6 +337,17 @@ class VoiceChanger:
                 self.worker.shutdown()
 
     # ---------- inside ----------
+
+    def _require_consent(self, project_id: str, speaker_profile_id: str) -> None:
+        speakers = self.catalogs.get(project_id).speakers if self.catalogs is not None else []
+        speaker = next((item for item in speakers if item.id == speaker_profile_id), None)
+        if speaker is None:
+            raise VoiceConsentRequired("Giọng giả phải thuộc một Speaker Profile của project.")
+        if speaker.voice_consent is None:
+            raise VoiceConsentRequired(
+                f"Speaker Profile {speaker.name} chưa có xác nhận đồng ý của chủ giọng. "
+                "Mở Properties của profile trong Sound Library để ghi nhận trước khi đổi giọng."
+            )
 
     def _require(self, project_id: str) -> None:
         if self._session is None:

@@ -258,6 +258,18 @@ class MediaAnnotationUpdate(DomainModel):
     emotion: EmotionLabel = "normal"
 
 
+class VoiceConsent(DomainModel):
+    """The voice owner's permission to wear their voice, as recorded in the app.
+
+    Pro4Bro cannot verify it; what it can do is refuse to convert into a voice
+    nobody has vouched for, and keep who vouched, when, and on what basis.
+    """
+
+    granted_by: str = Field(min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+    confirmed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class SpeakerProfile(DomainModel):
     id: str = Field(default_factory=lambda: f"speaker-{uuid4().hex[:12]}")
     name: str = Field(min_length=1, max_length=120)
@@ -268,6 +280,8 @@ class SpeakerProfile(DomainModel):
     gender: str = Field(default="unspecified", max_length=80)
     attributes: dict[str, str] = Field(default_factory=dict)
     color: str = Field(default="#ff6745", pattern=r"^#[0-9a-fA-F]{6}$")
+    # Required before this person's voice can be a Voice Changer target.
+    voice_consent: VoiceConsent | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

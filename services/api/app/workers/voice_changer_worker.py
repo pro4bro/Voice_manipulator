@@ -103,7 +103,8 @@ def main() -> None:
             except Exception:
                 rate = int(info["default_samplerate"])
             ring = RingBuffer(rate * 2)
-            ring.write(np.zeros(int(rate * self.block / self.sample_rate), dtype=np.float32))
+            # Two blocks of silence up front, so the first callbacks do not find the buffer empty.
+            ring.write(np.zeros(2 * int(rate * self.block / self.sample_rate), dtype=np.float32))
             channels = min(2, max(1, int(info["max_output_channels"])))
 
             def on_output(outdata, frames, _time, _status):

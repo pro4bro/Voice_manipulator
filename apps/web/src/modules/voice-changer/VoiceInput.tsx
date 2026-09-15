@@ -27,13 +27,18 @@ function ms(value: number | null | undefined) {
 }
 
 /** What stops a start, in order; null when everything is set. */
-export function startProblem(props: Pick<VoiceInputProps, "engines" | "preflight" | "settings">): string | null {
-  const { engines, preflight, settings } = props;
+export function startProblem(props: Pick<VoiceInputProps, "engines" | "preflight" | "settings"> & { speaker?: SpeakerProfile | null; hasVoice?: boolean }): string | null {
+  const { engines, preflight, settings, speaker = null, hasVoice = false } = props;
   const engine = engines.find((item) => item.id === settings.engineId);
   if (!preflight) return "Đang kiểm tra thiết bị…";
   if (!preflight.runtimeReady) return "Chưa có runtime Voice Changer";
   if (!engine) return "Chọn engine đổi giọng";
   if (!engine.available) return `${engine.label} chưa sẵn sàng`;
+  if (engine.engine !== "passthrough") {
+    // Converting into someone's voice needs that person's recorded permission.
+    if (!speaker || !hasVoice) return "Chọn giọng giả trong Sound Library";
+    if (!speaker.voiceConsent) return `${speaker.name} chưa xác nhận đồng ý dùng giọng`;
+  }
   if (settings.inputDevice === null) return "Chọn micro đầu vào";
   if (settings.virtualDevice === null && !(settings.monitor && settings.speakerDevice !== null)) return "Chọn micro ảo hoặc bật nghe qua loa";
   const overrides = settings.parameters[engine.id] ?? {};
@@ -52,11 +57,14 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
   const speaker = speakers.find((item) => item.id === speakerId) ?? null;
   const speakerVoices = voices.filter((voice) => voice.speakerProfileId === speakerId);
   const voice = speakerVoices.find((item) => item.id === settings.voiceId) ?? speakerVoices[0] ?? null;
-  const inputs = (preflight?.devices ?? []).filter((device) => device.maxInputChannels > 0);
-  const outputs = (preflight?.devices ?? []).filter((device) => device.maxOutputChannels > 0);
+  const hostApis = [...new Set((preflight?.devices ?? []).map((device) => device.hostApi))];
+  const hostApi = settings.hostApi && hostApis.includes(settings.hostApi) ? settings.hostApi : hostApis.includes("Windows WASAPI") ? "Windows WASAPI" : hostApis[0] ?? null;
+  const listed = (preflight?.devices ?? []).filter((device) => !hostApi || device.hostApi === hostApi);
+  const inputs = listed.filter((device) => device.maxInputChannels > 0);
+  const outputs = listed.filter((device) => device.maxOutputChannels > 0);
   const virtualOutputs = [...outputs].sort((left, right) => Number(right.virtualCable) - Number(left.virtualCable));
   const overrides = engine ? settings.parameters[engine.id] ?? {} : {};
-  const problem = running ? null : startProblem({ engines, preflight, settings });
+  const problem = running ? null : startProblem({ engines, preflight, settings, speaker, hasVoice: Boolean(voice) });
 
   function update(change: Partial<VoiceChangerSettings>) {
     onSettingsChange({ ...settings, ...change });
@@ -71,7 +79,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
   }
 
   const form = useParameterForm({ scope: engine?.id ?? "none", specs: engine?.parameters ?? [], overrides, onChange: setParameter });
-  const deviceLabel = (name: string, hostApi: string) => `${name} · ${hostApi}`;
+  const deviceLabel = (name: string, _hostApi: string) => name;
 
   return (
     <ModuleFrame className={`voice-input-module ${running ? "is-running" : ""}`} eyebrow="LIVE · NATIVE AUDIO" index="VI" title="Voice Input"
@@ -89,7 +97,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
         {speaker ? (
           <div className="voice-input__target">
             <i style={{ background: speaker.color }} />
-            <b>{speaker.name}</b>
+            <b>{speaker.name} <small className={speaker.voiceConsent ? "voice-input__consent is-ok" : "voice-input__consent"}>{speaker.voiceConsent ? `✓ ${speaker.voiceConsent.grantedBy} đã đồng ý` : "chưa xác nhận đồng ý"}</small></b>
             {speakerVoices.length ? (
               <select aria-label="Mẫu giọng" disabled={running} onChange={(event) => update({ voiceId: event.target.value })} value={voice?.id ?? ""}>
                 {speakerVoices.map((item) => <option key={item.id} value={item.id}>{VOICE_KIND_LABELS[item.kind]} · {item.referenceSeconds.toFixed(1)}s mẫu</option>)}
@@ -107,6 +115,15 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
         </select>
         {engine ? <small className={engine.available ? "voice-input__hint" : "voice-input__hint is-warning"}>{engine.available ? engine.description : engine.blockedReason ?? engine.status}</small> : null}
       </label>
+
+      {hostApis.length > 1 ? (
+        <label className="voice-input__field">
+          <span className="voice-input__label">KIỂU THIẾT BỊ</span>
+          <select aria-label="Kiểu thiết bị" disabled={running} onChange={(event) => update({ hostApi: event.target.value, inputDevice: null, virtualDevice: null, speakerDevice: null })} value={hostApi ?? ""}>
+            {hostApis.map((name) => <option key={name} value={name}>{name}{name === "Windows WASAPI" ? " · trễ thấp nhất" : ""}</option>)}
+          </select>
+        </label>
+      ) : null}
 
       <label className="voice-input__field">
         <span className="voice-input__label">VOICE INPUT · MICRO THẬT</span>
@@ -126,7 +143,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
             {virtualOutputs.map((device) => <option key={device.index} value={device.index}>{device.virtualCable ? "★ " : ""}{deviceLabel(device.name, device.hostApi)}</option>)}
           </select>
           <small className="voice-input__hint">{preflight?.virtualCable
-            ? "Đã có VB-Audio Virtual Cable: gửi vào “CABLE Input”, rồi trong Zoom, Discord, OBS chọn micro “CABLE Output”."
+            ? "Đã có VB-Audio Virtual Cable: gửi vào loa của cáp (“Speakers (VB-Audio Virtual Cable)”), rồi trong Zoom, Discord, OBS chọn micro “CABLE Output”."
             : "Chưa thấy cáp âm thanh ảo. Cần cài VB-CABLE (driver, anh tự cài) để có micro ảo."}</small>
         </label>
         <label className="voice-input__field">

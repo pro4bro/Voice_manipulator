@@ -59,6 +59,16 @@ describe("Voice Changer modules", () => {
     expect(startProblem({ engines: [PASSTHROUGH], preflight: PREFLIGHT, settings: { ...SETTINGS, parameters: { "passthrough-check": { block_ms: 5 } } } })).toBe("Tham số chưa hợp lệ");
   });
 
+  it("will not convert into a voice whose owner has not agreed", () => {
+    const converter = { ...PASSTHROUGH, id: "rvc-live", engine: "rvc" };
+    expect(startProblem({ engines: [converter], preflight: PREFLIGHT, settings: { ...SETTINGS, engineId: "rvc-live" }, speaker: null, hasVoice: false })).toBe("Chọn giọng giả trong Sound Library");
+    expect(startProblem({ engines: [converter], preflight: PREFLIGHT, settings: { ...SETTINGS, engineId: "rvc-live" }, speaker: KHOA, hasVoice: true })).toBe("Khoa Trịnh chưa xác nhận đồng ý dùng giọng");
+    const agreed = { ...KHOA, voiceConsent: { grantedBy: "Khoa Trịnh", note: null, confirmedAt: "2026-09-15T00:00:00Z" } };
+    expect(startProblem({ engines: [converter], preflight: PREFLIGHT, settings: { ...SETTINGS, engineId: "rvc-live" }, speaker: agreed, hasVoice: true })).toBeNull();
+    render(<VoiceInput {...props({ speakers: [agreed] })} />);
+    expect(screen.getByText("✓ Khoa Trịnh đã đồng ý")).toBeInTheDocument();
+  });
+
   it("explains a missing runtime and keeps monitoring off unless asked", () => {
     const onSettingsChange = vi.fn();
     render(<VoiceInput {...props({ preflight: { ...PREFLIGHT, runtimeReady: false, missing: ["numpy", "sounddevice"], devices: [] }, onSettingsChange })} />);

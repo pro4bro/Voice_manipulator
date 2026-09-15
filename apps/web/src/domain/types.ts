@@ -237,7 +237,15 @@ export interface SpeakerProfile {
   gender: string;
   attributes: Record<string, string>;
   color: string;
+  /** The voice owner's recorded permission; required to be a Voice Changer target. */
+  voiceConsent?: VoiceConsent | null;
   createdAt: string;
+}
+
+export interface VoiceConsent {
+  grantedBy: string;
+  note: string | null;
+  confirmedAt: string;
 }
 
 export interface EnvironmentNoiseProfile {
@@ -733,6 +741,8 @@ export interface VoiceChangerSettings {
   virtualDevice: number | null;
   speakerDevice: number | null;
   monitor: boolean;
+  /** Which PortAudio host API the device lists show; WASAPI has the lowest latency. */
+  hostApi?: string | null;
   parameters: Record<string, Record<string, TrainingParameterValue>>;
 }
 

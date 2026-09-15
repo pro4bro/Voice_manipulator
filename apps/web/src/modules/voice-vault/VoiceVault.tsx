@@ -146,7 +146,16 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
               {isChinese ? speakerFacet("dialect", "Phương ngữ tiếng Trung", "Chỉ dùng khi profile nói tiếng Trung.") : null}
             </div>
           </details>
-          <div className="speaker-profile-actions"><button className="button button--quiet" onClick={() => setEditingSpeaker(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingSpeaker.name.trim()} type="submit">Xác nhận & lưu profile</button></div>
+          <fieldset className="profile-consent is-wide">
+            <legend>Đồng ý dùng giọng</legend>
+            <label className="profile-consent__check"><input checked={Boolean(editingSpeaker.voiceConsent)} onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: event.target.checked ? { grantedBy: editingSpeaker.name.trim(), note: null, confirmedAt: new Date().toISOString() } : null })} type="checkbox" /><span>Chủ giọng đã đồng ý cho dùng giọng này để đổi giọng trong project</span></label>
+            {editingSpeaker.voiceConsent ? <>
+              <label><span>Người đồng ý</span><input aria-label="Người đồng ý" onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: { ...editingSpeaker.voiceConsent!, grantedBy: event.target.value } })} value={editingSpeaker.voiceConsent.grantedBy} /></label>
+              <label><span>Căn cứ</span><input aria-label="Căn cứ đồng ý" onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: { ...editingSpeaker.voiceConsent!, note: event.target.value || null } })} placeholder="Ví dụ: hợp đồng, tin nhắn ngày…" value={editingSpeaker.voiceConsent.note ?? ""} /></label>
+              <small>Ghi nhận lúc {new Date(editingSpeaker.voiceConsent.confirmedAt).toLocaleString("vi-VN")}. Voice Changer chỉ đổi sang giọng của profile có xác nhận này.</small>
+            </> : <small>Chưa có xác nhận: profile vẫn dùng được cho STT và training, nhưng không làm giọng giả trong Voice Changer.</small>}
+          </fieldset>
+          <div className="speaker-profile-actions"><button className="button button--quiet" onClick={() => setEditingSpeaker(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingSpeaker.name.trim() || Boolean(editingSpeaker.voiceConsent && !editingSpeaker.voiceConsent.grantedBy.trim())} type="submit">Xác nhận & lưu profile</button></div>
         </form>
       ) : null}
       {editingEnvironment ? (
@@ -162,7 +171,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
         <div className="voice-vault__list sound-library-list">
           {activeType === "speaker" ? catalog.speakers.map((speaker) => (
             <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} key={speaker.id} onClick={() => onSelectVoice(speaker.id)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "speaker", id: speaker.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
-              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small>Double click / right click · Properties</small></span><i aria-hidden="true" />
+              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · Properties</small></span><i aria-hidden="true" />
             </button>
           )) : catalog.environmentProfiles.map((profile) => (
             <button className="voice-card environment-card" key={profile.id} onClick={() => editEnvironment(profile)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "environment", id: profile.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editEnvironment(profile)} title="Double click hoặc right click để mở Properties" type="button">

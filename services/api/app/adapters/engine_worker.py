@@ -69,6 +69,11 @@ class EngineWorkerProcess:
                     reply = self._next_reply()
                     if reply.get("id") == request_id:
                         return reply
+            except EngineWorkerError:
+                # A worker that did not answer in time is in an unknown state and
+                # may be holding the GPU or an audio device; it does not get reused.
+                self._stop_locked()
+                raise
             except (OSError, ValueError) as exc:
                 self._stop_locked()
                 raise EngineWorkerError(f"Worker {self.label} dừng giữa chừng: {exc}") from exc

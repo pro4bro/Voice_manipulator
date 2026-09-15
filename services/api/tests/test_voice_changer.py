@@ -182,12 +182,50 @@ def test_the_worker_scripts_share_the_reply_prefix():
     assert voice_changer_worker.REPLY_PREFIX == REPLY_PREFIX
 
 
+def test_a_converter_only_wears_the_voice_of_a_profile_whose_owner_agreed(tmp_path, monkeypatch):
+    from app.adapters.file_training_catalog import FileTrainingCatalog
+    from app.domain.models import SpeakerProfile, TrainingCatalog, VoiceConsent
+    from app.adapters.voice_changer import VoiceConsentRequired
+
+    project, voice, worker, _lease, _recordings, changer = fixture(tmp_path)
+    catalogs = FileTrainingCatalog(changer.projects)
+    catalogs.save(project.id, TrainingCatalog(speakers=[SpeakerProfile(id="speaker-khoa", name="Khoa")]))
+    changer.catalogs = catalogs
+    option = changer.engines.get("passthrough-check")
+    monkeypatch.setattr(changer.engines, "get", lambda _id: option.model_copy(update={"engine": "rvc"}))
+    monkeypatch.setattr(changer.gpu_lease, "acquire", lambda label: type("Holder", (), {"token": "t"})())
+    monkeypatch.setattr(changer.gpu_lease, "release", lambda token: True)
+    request = VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=voice.id, input_device=0, virtual_device=5)
+
+    with pytest.raises(ValueError, match="Chọn giọng giả"):
+        changer.start(project.id, request.model_copy(update={"voice_id": None}))
+    with pytest.raises(VoiceConsentRequired, match="chưa có xác nhận đồng ý"):
+        changer.start(project.id, request)
+    assert not any(item["command"] == "start" for item in worker.requests)
+
+    catalogs.save(project.id, TrainingCatalog(speakers=[SpeakerProfile(id="speaker-khoa", name="Khoa", voice_consent=VoiceConsent(granted_by="Khoa Trịnh", note="Tin nhắn 15/09"))]))
+    assert changer.start(project.id, request).state == "running"
+
+
+def test_the_wasapi_cable_is_preferred_over_the_sixteen_channel_one():
+    from app.adapters.voice_changer import preferred_cable
+    from app.domain.models import AudioDeviceInfo
+
+    devices = [
+        AudioDeviceInfo(index=9, name="CABLE In 16 Ch (VB-Audio Virtua", host_api="MME", max_output_channels=16, virtual_cable=True),
+        AudioDeviceInfo(index=29, name="CABLE In 16 Ch (VB-Audio Virtual Cable)", host_api="Windows WASAPI", max_output_channels=2, virtual_cable=True),
+        AudioDeviceInfo(index=30, name="Speakers (VB-Audio Virtual Cable)", host_api="Windows WASAPI", max_output_channels=2, virtual_cable=True),
+    ]
+    assert preferred_cable(devices).index == 30
+
+
 def test_gpu_busy_is_refused_for_an_engine_that_needs_the_card(tmp_path, monkeypatch):
     project, _voice, _worker, lease, _recordings, changer = fixture(tmp_path)
     option = changer.engines.get("passthrough-check")
     monkeypatch.setattr(changer.engines, "get", lambda _id: option.model_copy(update={"engine": "meanvc2"}))
+    monkeypatch.setattr(changer, "_require_consent", lambda *_args: None)
     holder = lease.acquire("training:run-1")
 
     with pytest.raises(GpuBusy):
-        changer.start(project.id, VoiceChangerStartRequest(engine_id="passthrough-check", input_device=0, virtual_device=5))
+        changer.start(project.id, VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=_voice.id, input_device=0, virtual_device=5))
     lease.release(holder.token)
