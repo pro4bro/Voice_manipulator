@@ -1373,7 +1373,7 @@
 .voice-input__notice.is-warning { border-left-color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); }
 .voice-input__notice.is-error { color: var(--red); border-left-color: var(--red); }
 .voice-input__parameters { padding: 6px; }
-.voice-input__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.voice-input__stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 0; }
 .voice-input__stats div { padding: 5px 6px; border: 1px solid var(--line); background: var(--soft-fill); }
 .voice-input__stats dt { color: var(--text-muted); font-family: var(--mono); font-size: calc(7.5px * var(--font-scale)); }
 .voice-input__stats dd { margin: 0; font-family: var(--mono); font-size: calc(11px * var(--font-scale)); font-weight: 800; }

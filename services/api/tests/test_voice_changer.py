@@ -137,7 +137,7 @@ def test_a_session_runs_to_the_virtual_mic_and_records_two_aligned_channels(tmp_
     status = changer.start(project.id, VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=voice.id, input_device=0, virtual_device=5, speaker_device=1, parameters={"block_ms": 20}))
 
     start = next(request for request in worker.requests if request["command"] == "start")
-    assert start["outputs"] == [{"role": "virtual", "device": 5}]  # the speaker stays silent until monitoring is asked for
+    assert [(output["role"], output["device"]) for output in start["outputs"]] == [("virtual", 5)]  # the speaker stays silent until monitoring is asked for
     assert start["parameters"]["block_ms"] == 20 and start["target"]["referenceAudio"].endswith("reference.wav")
     assert status.state == "running" and status.voice_id == voice.id and status.underruns == 2
     assert lease.holder() is None  # the flow check needs no GPU

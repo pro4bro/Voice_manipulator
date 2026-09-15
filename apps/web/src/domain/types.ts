@@ -702,6 +702,7 @@ export interface VoiceChangerStatus {
   blockMs: number | null;
   algorithmicLatencyMs: number | null;
   deviceLatencyMs: number | null;
+  processingMs?: number | null;
   inputLevelDb: number;
   inputPeakDb: number;
   outputLevelDb: number;
@@ -744,6 +745,10 @@ export interface VoiceChangerSettings {
   monitor: boolean;
   /** Which PortAudio host API the device lists show; WASAPI has the lowest latency. */
   hostApi?: string | null;
+  /** Names alongside indices: PortAudio renumbers devices as they come and go. */
+  inputDeviceName?: string | null;
+  virtualDeviceName?: string | null;
+  speakerDeviceName?: string | null;
   parameters: Record<string, Record<string, TrainingParameterValue>>;
 }
 

@@ -1242,14 +1242,16 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         const listed = preflight.devices.filter((device) => !hostApi || device.hostApi === hostApi);
         const inputs = listed.filter((device) => device.maxInputChannels > 0);
         const outputs = listed.filter((device) => device.maxOutputChannels > 0);
-        const known = (index: number | null, list: typeof inputs) => index !== null && list.some((device) => device.index === index) ? index : null;
+        // Found again by name first: device numbers shift when a device is plugged in or removed.
+        const known = (index: number | null, list: typeof inputs, name?: string | null) => (name ? list.find((device) => device.name === name)?.index : undefined)
+          ?? (index !== null && !name && list.some((device) => device.index === index) ? index : null);
         return {
           ...current,
           hostApi,
           engineId: engines.some((engine) => engine.id === current.engineId) ? current.engineId : engines.find((engine) => engine.available)?.id ?? null,
-          inputDevice: known(current.inputDevice, inputs),
-          virtualDevice: known(current.virtualDevice, outputs) ?? outputs.filter((device) => device.virtualCable).sort((left, right) => Number(/16 ch/iu.test(left.name)) - Number(/16 ch/iu.test(right.name)))[0]?.index ?? null,
-          speakerDevice: known(current.speakerDevice, outputs),
+          inputDevice: known(current.inputDevice, inputs, current.inputDeviceName),
+          virtualDevice: known(current.virtualDevice, outputs, current.virtualDeviceName) ?? outputs.filter((device) => device.virtualCable).sort((left, right) => Number(/16 ch/iu.test(left.name)) - Number(/16 ch/iu.test(right.name)))[0]?.index ?? null,
+          speakerDevice: known(current.speakerDevice, outputs, current.speakerDeviceName),
         };
       });
     } catch (error) {
@@ -1270,6 +1272,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         inputDevice: changerSettings.inputDevice,
         virtualDevice: changerSettings.virtualDevice,
         speakerDevice: changerSettings.speakerDevice,
+        inputDeviceName: changerSettings.inputDeviceName ?? null,
+        virtualDeviceName: changerSettings.virtualDeviceName ?? null,
+        speakerDeviceName: changerSettings.speakerDeviceName ?? null,
+        hostApi: changerSettings.hostApi ?? null,
         monitor: changerSettings.monitor,
         parameters: changerSettings.parameters[engine.id] ?? {},
       }));

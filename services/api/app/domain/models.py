@@ -941,6 +941,12 @@ class VoiceChangerStartRequest(DomainModel):
     # The virtual microphone: audio sent into a virtual cable other apps record from.
     virtual_device: int | None = Field(default=None, ge=0)
     speaker_device: int | None = Field(default=None, ge=0)
+    # PortAudio renumbers devices whenever one appears or disappears, so the
+    # worker finds each device again by name and host API when it has them.
+    input_device_name: str | None = Field(default=None, max_length=300)
+    virtual_device_name: str | None = Field(default=None, max_length=300)
+    speaker_device_name: str | None = Field(default=None, max_length=300)
+    host_api: str | None = Field(default=None, max_length=80)
     # Hearing your own converted voice with a delay disturbs speaking, so it is off unless asked for.
     monitor: bool = False
     parameters: dict[str, Any] = Field(default_factory=dict)
@@ -955,6 +961,8 @@ class VoiceChangerStatus(DomainModel):
     block_ms: float | None = None
     algorithmic_latency_ms: float | None = None
     device_latency_ms: float | None = None
+    # Engine time per block as measured by the worker.
+    processing_ms: float | None = None
     input_level_db: float = -120
     input_peak_db: float = -120
     output_level_db: float = -120

@@ -272,9 +272,9 @@ class VoiceChanger:
             }
         outputs = []
         if request.virtual_device is not None:
-            outputs.append({"role": "virtual", "device": request.virtual_device})
+            outputs.append({"role": "virtual", "device": request.virtual_device, "name": request.virtual_device_name, "hostApi": request.host_api})
         if request.monitor and request.speaker_device is not None:
-            outputs.append({"role": "speaker", "device": request.speaker_device})
+            outputs.append({"role": "speaker", "device": request.speaker_device, "name": request.speaker_device_name, "hostApi": request.host_api})
         if not outputs:
             raise ValueError("Chọn ít nhất một đầu ra: micro ảo, hoặc bật nghe lại qua loa.")
 
@@ -292,6 +292,8 @@ class VoiceChanger:
                     "command": "start",
                     "engine": option.engine,
                     "inputDevice": request.input_device,
+                    "inputDeviceName": request.input_device_name,
+                    "hostApi": request.host_api,
                     "outputs": outputs,
                     "parameters": parameters,
                     "target": target,

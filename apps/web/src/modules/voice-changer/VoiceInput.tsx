@@ -128,7 +128,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
 
       <label className="voice-input__field">
         <span className="voice-input__label">VOICE INPUT · MICRO THẬT</span>
-        <select aria-label="Micro đầu vào" disabled={running || !inputs.length} onChange={(event) => update({ inputDevice: event.target.value === "" ? null : Number(event.target.value) })} value={settings.inputDevice ?? ""}>
+        <select aria-label="Micro đầu vào" disabled={running || !inputs.length} onChange={(event) => { const index = event.target.value === "" ? null : Number(event.target.value); update({ inputDevice: index, inputDeviceName: inputs.find((device) => device.index === index)?.name ?? null }); }} value={settings.inputDevice ?? ""}>
           <option value="">{inputs.length ? "Chọn micro" : "Chưa đọc được thiết bị"}</option>
           {inputs.map((device) => <option key={device.index} value={device.index}>{deviceLabel(device.name, device.hostApi)}</option>)}
         </select>
@@ -139,7 +139,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
         <span className="voice-input__label">ĐẦU RA</span>
         <label className="voice-input__field">
           <span>Micro ảo · cho ứng dụng khác</span>
-          <select aria-label="Micro ảo" disabled={running || !outputs.length} onChange={(event) => update({ virtualDevice: event.target.value === "" ? null : Number(event.target.value) })} value={settings.virtualDevice ?? ""}>
+          <select aria-label="Micro ảo" disabled={running || !outputs.length} onChange={(event) => { const index = event.target.value === "" ? null : Number(event.target.value); update({ virtualDevice: index, virtualDeviceName: outputs.find((device) => device.index === index)?.name ?? null }); }} value={settings.virtualDevice ?? ""}>
             <option value="">Không dùng</option>
             {virtualOutputs.map((device) => <option key={device.index} value={device.index}>{device.virtualCable ? "★ " : ""}{deviceLabel(device.name, device.hostApi)}</option>)}
           </select>
@@ -149,7 +149,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
         </label>
         <label className="voice-input__field">
           <span>Speaker out · nghe lại</span>
-          <select aria-label="Loa nghe lại" disabled={running || !outputs.length} onChange={(event) => update({ speakerDevice: event.target.value === "" ? null : Number(event.target.value) })} value={settings.speakerDevice ?? ""}>
+          <select aria-label="Loa nghe lại" disabled={running || !outputs.length} onChange={(event) => { const index = event.target.value === "" ? null : Number(event.target.value); update({ speakerDevice: index, speakerDeviceName: outputs.find((device) => device.index === index)?.name ?? null }); }} value={settings.speakerDevice ?? ""}>
             <option value="">Chọn loa / tai nghe</option>
             {outputs.filter((device) => !device.virtualCable).map((device) => <option key={device.index} value={device.index}>{deviceLabel(device.name, device.hostApi)}</option>)}
           </select>
@@ -168,7 +168,8 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
       ) : null}
 
       <dl className="voice-input__stats" aria-label="Độ trễ và hụt âm">
-        <div><dt>Xử lý</dt><dd>{ms(status?.algorithmicLatencyMs)}</dd></div>
+        <div><dt>Khối + đệm</dt><dd>{ms(status?.algorithmicLatencyMs)}</dd></div>
+        <div><dt>Engine</dt><dd className={status?.processingMs && status.blockMs && status.processingMs > status.blockMs * 0.8 ? "is-warning" : ""}>{ms(status?.processingMs)}</dd></div>
         <div><dt>Thiết bị</dt><dd>{ms(status?.deviceLatencyMs)}</dd></div>
         <div><dt>Hụt âm</dt><dd className={(status?.underruns ?? 0) > 0 ? "is-warning" : ""}>{status?.underruns ?? 0}</dd></div>
       </dl>

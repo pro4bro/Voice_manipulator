@@ -55,6 +55,16 @@ def main() -> None:
             })
         return found
 
+    def resolve(index: int, name: str | None, host_api: str | None, kind: str) -> int:
+        """The device's current index: PortAudio renumbers devices as they come and go."""
+        if not name:
+            return index
+        found = [device for device in devices() if device["name"] == name and (not host_api or device["hostApi"] == host_api)
+                 and (device["maxInputChannels"] if kind == "input" else device["maxOutputChannels"]) > 0]
+        if not found:
+            raise ValueError(f"Không thấy thiết bị “{name}”{f' ({host_api})' if host_api else ''}. Bấm kiểm tra lại thiết bị.")
+        return next((device["index"] for device in found if device["index"] == index), found[0]["index"])
+
     class Session:
         def __init__(self, request: dict) -> None:
             parameters = request.get("parameters") or {}
@@ -65,6 +75,7 @@ def main() -> None:
                 engine_class = RvcLive
             if engine_class is None:
                 raise ValueError(f"Worker chưa có engine {request['engine']}.")
+            request["inputDevice"] = resolve(request["inputDevice"], request.get("inputDeviceName"), request.get("hostApi"), "input")
             info = sd.query_devices(request["inputDevice"], "input")
             self.sample_rate = int(request.get("sampleRate") or info["default_samplerate"])
             self.block = max(64, int(self.sample_rate * float(parameters.get("block_ms") or 40) / 1000))
@@ -72,6 +83,8 @@ def main() -> None:
             self.engine = engine_class(self.sample_rate, parameters, request.get("target"))
             self.inbox: queue.Queue = queue.Queue(maxsize=64)
             self.dropped = 0
+            # Engine time per block, smoothed; a block that takes longer than itself cannot keep up.
+            self.process_ms = 0.0
             self.outputs: list[dict] = []
             self.recorder: TwoChannelRecorder | None = None
             self.meters = {"in": (-120.0, -120.0), "out": (-120.0, -120.0)}
@@ -99,7 +112,7 @@ def main() -> None:
             self.input.start()
 
         def _open_output(self, output: dict) -> None:
-            device = output["device"]
+            device = resolve(output["device"], output.get("name"), output.get("hostApi"), "output")
             info = sd.query_devices(device, "output")
             rate = self.sample_rate
             try:
@@ -129,7 +142,10 @@ def main() -> None:
                     # An engine with its own history (RVC) sees every block and gates itself;
                     # skipping its silent blocks would break its context.
                     if getattr(self.engine, "handles_silence", False) or not gate(block, self.gate_db):
+                        began = time.perf_counter()
                         converted = self.engine.process(block)
+                        spent = (time.perf_counter() - began) * 1000
+                        self.process_ms = spent if self.process_ms == 0 else self.process_ms * 0.8 + spent * 0.2
                     else:
                         converted = np.zeros_like(block)
                     for output in self.outputs:
@@ -155,6 +171,7 @@ def main() -> None:
                 "blockMs": round(self.block / self.sample_rate * 1000, 1),
                 "algorithmicLatencyMs": round((self.block + self.engine.delay_samples) / self.sample_rate * 1000, 1),
                 "deviceLatencyMs": round(device_ms, 1),
+                "processingMs": round(self.process_ms, 1),
                 "inputLevelDb": meters["in"][0], "inputPeakDb": meters["in"][1],
                 "outputLevelDb": meters["out"][0], "outputPeakDb": meters["out"][1],
                 "inputSpectrum": spectrum_bands(recent_in, self.sample_rate),

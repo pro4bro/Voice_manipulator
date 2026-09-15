@@ -390,7 +390,7 @@ export const api = {
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/jobs/${jobId}`),
   getVoiceChangers: () => request<TrainingModelOption[]>("/api/voice-changers"),
   getVoiceChangerPreflight: () => request<VoiceChangerPreflight>("/api/voice-changer/preflight"),
-  startVoiceChanger: (projectId: string, payload: { engineId: string; voiceId: string | null; inputDevice: number; virtualDevice: number | null; speakerDevice: number | null; monitor: boolean; parameters: Record<string, TrainingParameterValue> }) =>
+  startVoiceChanger: (projectId: string, payload: { engineId: string; voiceId: string | null; inputDevice: number; virtualDevice: number | null; speakerDevice: number | null; inputDeviceName?: string | null; virtualDeviceName?: string | null; speakerDeviceName?: string | null; hostApi?: string | null; monitor: boolean; parameters: Record<string, TrainingParameterValue> }) =>
     request<VoiceChangerStatus>(`/api/projects/${projectId}/voice-changer/start`, { method: "POST", body: JSON.stringify(payload) }),
   getVoiceChangerStatus: () => request<VoiceChangerStatus>("/api/voice-changer/status"),
   stopVoiceChanger: () => request<{ status: VoiceChangerStatus; recording: VoiceChangerRecording | null }>("/api/voice-changer/stop", { method: "POST" }),
