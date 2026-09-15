@@ -60,6 +60,8 @@ def test_training_models_lists_every_descriptor_with_its_own_parameters(tmp_path
         training_wheel_cache=tmp_path / "wheels",
         omnivoice_root=tmp_path / "engine",
         vibevoice_root=tmp_path / "vibevoice",
+        research_engines_root=tmp_path / "research",
+        applio_root=tmp_path / "research" / "Applio",
         local_training_models_root=tmp_path / "data" / "training-models",
     )
 

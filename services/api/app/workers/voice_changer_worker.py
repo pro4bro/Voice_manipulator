@@ -59,6 +59,10 @@ def main() -> None:
         def __init__(self, request: dict) -> None:
             parameters = request.get("parameters") or {}
             engine_class = ENGINES.get(request["engine"])
+            if request["engine"] == "rvc":
+                from rvc_live import RvcLive
+
+                engine_class = RvcLive
             if engine_class is None:
                 raise ValueError(f"Worker chưa có engine {request['engine']}.")
             info = sd.query_devices(request["inputDevice"], "input")
@@ -122,7 +126,12 @@ def main() -> None:
                 except queue.Empty:
                     continue
                 try:
-                    converted = np.zeros_like(block) if gate(block, self.gate_db) else self.engine.process(block)
+                    # An engine with its own history (RVC) sees every block and gates itself;
+                    # skipping its silent blocks would break its context.
+                    if getattr(self.engine, "handles_silence", False) or not gate(block, self.gate_db):
+                        converted = self.engine.process(block)
+                    else:
+                        converted = np.zeros_like(block)
                     for output in self.outputs:
                         output["ring"].write(resample_linear(converted, self.sample_rate, output["rate"]))
                     recorder = self.recorder

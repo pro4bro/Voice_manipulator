@@ -192,7 +192,7 @@ def test_a_converter_only_wears_the_voice_of_a_profile_whose_owner_agreed(tmp_pa
     catalogs.save(project.id, TrainingCatalog(speakers=[SpeakerProfile(id="speaker-khoa", name="Khoa")]))
     changer.catalogs = catalogs
     option = changer.engines.get("passthrough-check")
-    monkeypatch.setattr(changer.engines, "get", lambda _id: option.model_copy(update={"engine": "rvc"}))
+    monkeypatch.setattr(changer.engines, "get", lambda _id: option.model_copy(update={"engine": "meanvc2"}))
     monkeypatch.setattr(changer.gpu_lease, "acquire", lambda label: type("Holder", (), {"token": "t"})())
     monkeypatch.setattr(changer.gpu_lease, "release", lambda token: True)
     request = VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=voice.id, input_device=0, virtual_device=5)
@@ -205,6 +205,27 @@ def test_a_converter_only_wears_the_voice_of_a_profile_whose_owner_agreed(tmp_pa
 
     catalogs.save(project.id, TrainingCatalog(speakers=[SpeakerProfile(id="speaker-khoa", name="Khoa", voice_consent=VoiceConsent(granted_by="Khoa Trịnh", note="Tin nhắn 15/09"))]))
     assert changer.start(project.id, request).state == "running"
+
+
+def test_the_rvc_engine_only_takes_a_trained_rvc_voice(tmp_path, monkeypatch):
+    project, voice, worker, _lease, _recordings, changer = fixture(tmp_path)
+    option = changer.engines.get("passthrough-check")
+    monkeypatch.setattr(changer.engines, "get", lambda _id: option.model_copy(update={"engine": "rvc"}))
+    monkeypatch.setattr(changer, "_require_consent", lambda *_args: None)
+    monkeypatch.setattr(changer.gpu_lease, "acquire", lambda label: type("Holder", (), {"token": "t"})())
+    monkeypatch.setattr(changer.gpu_lease, "release", lambda token: True)
+    request = VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=voice.id, input_device=0, virtual_device=5)
+
+    with pytest.raises(ValueError, match="không phải model RVC"):
+        changer.start(project.id, request)
+
+    record = Path(changer.voices.root(project.id)) / voice.id / "voice.json"
+    trained = voice.model_copy(update={"engine": "rvc", "kind": "vc", "model_path": "jobs/training/run-1/rvc/an.pth", "adapter_path": "jobs/training/run-1/rvc/an.index"})
+    record.write_text(trained.model_dump_json(by_alias=True), encoding="utf-8")
+    changer.start(project.id, request)
+
+    start = next(item for item in worker.requests if item["command"] == "start")
+    assert start["engine"] == "rvc" and start["target"]["model"].endswith("an.pth") and start["target"]["index"].endswith("an.index")
 
 
 def test_the_wasapi_cable_is_preferred_over_the_sixteen_channel_one():

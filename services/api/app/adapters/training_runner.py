@@ -51,6 +51,8 @@ from app.domain.ports import ProjectRepository
 from app.domain.voice_reference import NoReferenceSegment, choose_reference
 
 
+from app.adapters.rvc_training import RvcPaths, export_rvc_dataset, finished_model, link_experiment, rvc_commands, rvc_line_parser, unlink_experiment
+
 ASR_LORA_WRAPPER = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_asr_lora_train.py"
 
 # What each engine's runner can do. A mode missing here is refused before any
@@ -60,6 +62,7 @@ SUPPORTED_MODES: dict[str, set[str]] = {
     # and has no need to train a base model again.
     "omnivoice": {"lora-finetune", "full-finetune", "zero-shot-clone"},
     "vibevoice": {"tts-lora", "asr-lora", "zero-shot-clone"},
+    "rvc": {"vc-train"},
 }
 
 WINDOWS_GOPEN_REWRITE = ";".join(
@@ -106,6 +109,7 @@ class TrainingRunner:
         vibevoice_paths: VibeVoicePaths | None = None,
         vibevoice_runtime: VibeVoiceRuntime | None = None,
         asr_adapters: FileAsrAdapters | None = None,
+        rvc_paths: RvcPaths | None = None,
     ) -> None:
         self.projects = projects
         self.compiler = compiler
@@ -124,6 +128,7 @@ class TrainingRunner:
         self.vibevoice_paths = vibevoice_paths
         self.vibevoice_runtime = vibevoice_runtime
         self.asr_adapters = asr_adapters
+        self.rvc_paths = rvc_paths
         self._active: dict[str, TrainingProcess] = {}
         self._lock = threading.Lock()
 
@@ -199,6 +204,11 @@ class TrainingRunner:
         mode = config.mode if config else "lora-finetune"
         if mode == "zero-shot-clone":
             # Picking a reference clip needs no training environment.
+            return
+        if engine == "rvc":
+            missing = self.rvc_paths.missing() if self.rvc_paths else ["repo Applio"]
+            if missing:
+                raise TrainingNotReady(f"RVC chưa sẵn sàng; còn thiếu: {', '.join(missing)}.")
             return
         if engine == "vibevoice":
             missing = self.vibevoice_missing(mode)
@@ -295,6 +305,9 @@ class TrainingRunner:
                 return
             if run.config.engine == "vibevoice":
                 self._execute_vibevoice(run)
+                return
+            if run.config.engine == "rvc":
+                self._execute_rvc(run)
                 return
             if self.before_gpu_work is not None:
                 self.before_gpu_work()
@@ -515,6 +528,79 @@ class TrainingRunner:
             with self._lock:
                 self._active.pop(run.id, None)
 
+    def _execute_rvc(self, initial: TrainingRun) -> None:
+        """Train an RVC voice-conversion model with Applio and publish it as a `vc` voice.
+
+        Applio's experiment folder is linked into the run directory for the
+        run's lifetime, so preprocessing, features, checkpoints, the model and
+        its index are all written inside the project.
+        """
+        run = initial
+        lease_token: str | None = None
+        paths = self.rvc_paths
+        link: Path | None = None
+        try:
+            if paths is None:
+                raise RuntimeError("Chưa cấu hình Applio (RVC).")
+            if self.before_gpu_work is not None:
+                self.before_gpu_work()
+            lease_token = self.gpu_lease.acquire(f"training:{run.id}").token
+            if self.runs.get(run.project_id, run.id).status == "cancelled":
+                return
+            run = self._set_run(run, status="running", step_id="read-manifest")
+            manifest = self._target_manifest(run)
+            project_root = Path(self.projects.get(run.project_id).project_path)
+            run_dir = self.runs.run_dir(run.project_id, run.id)
+            parameters = dict(run.config.parameters)
+            total_epoch = int(parameters.get("total_epoch") or 200)
+
+            run = self._set_run(run, step_id="write-jsonl")
+            count, seconds = export_rvc_dataset(manifest.segments, project_root, run_dir / "data" / "rvc-dataset", self.exporter._slice)
+            self._append(run, "write-jsonl", f"Đã xuất {count} đoạn · {seconds / 60:.1f} phút audio cho RVC.")
+
+            paths.ensure_config()
+            name = f"pro4bro-{run.id}"
+            model_folder = run_dir / "rvc"
+            link = link_experiment(paths, name, model_folder)
+            env = {**os.environ, **paths.environment()}
+            parser = rvc_line_parser(total_epoch)
+            for step_id, command in rvc_commands(paths, name, run_dir / "data" / "rvc-dataset", parameters):
+                run = self._set_run(run, step_id=step_id)
+                process = self._process_for(run)
+                self._append_command(run, step_id, command, extra=[(str(paths.applio), "<applio>")])
+                code = process.run(command, parser, paths.applio, env)
+                if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
+                    return
+                if code != 0:
+                    raise RuntimeError(_failed(f"RVC {step_id} thất bại với mã {code}.", process))
+                if step_id == "train" and finished_model(model_folder)[0] is None:
+                    # The trainer's parent exits 0 even when its worker died.
+                    raise RuntimeError(_failed("RVC train kết thúc nhưng không có model nào được lưu.", process))
+
+            model, index = finished_model(model_folder)
+            if model is None:
+                raise RuntimeError("RVC không tạo ra model.")
+            current = self.runs.get(run.project_id, run.id)
+            self.runs.update(run.project_id, current.model_copy(update={"checkpoints": [TrainingCheckpoint(
+                step=current.global_step, path=str(model.relative_to(project_root)), bytes=model.stat().st_size,
+            )]}))
+            self._append(run, "checkpoint", f"Model {model.name}" + (f" · index {index.name}" if index else " · không có index"))
+
+            run = self._set_run(run, step_id="publish")
+            self._publish_voice(run, manifest, kind="vc", adapter_dir=index, model_dir=model, base_model="rvc-hifigan-40k", required=True)
+            self._set_run(run, status="complete", step_id="publish", process_id=None)
+        except GpuBusy as exc:
+            self._fail(run, str(exc))
+        except (DatasetExportError, FileNotFoundError, KeyError, OSError, RuntimeError, ValueError, NoReferenceSegment, subprocess.CalledProcessError) as exc:
+            self._fail(run, str(exc))
+        finally:
+            if link is not None:
+                unlink_experiment(link)
+            if lease_token:
+                self.gpu_lease.release(lease_token)
+            with self._lock:
+                self._active.pop(run.id, None)
+
     def _target_manifest(self, run: TrainingRun) -> DatasetManifest:
         manifest = self.compiler.load(run.project_id, run.manifest_id)
         self._append(run, "read-manifest", f"Đã đọc Dataset Manifest {manifest.id}.")
@@ -623,8 +709,8 @@ class TrainingRunner:
             "write-jsonl" if kind == "clone" else "publish",
             f"Giọng mẫu: {reference.duration:.1f}s · \u201c{reference.text.strip()}\u201d",
         )
-        engine_label = "VibeVoice " if run.config.engine == "vibevoice" else ""
-        kind_label = {"clone": "nhái giọng", "lora": "LoRA", "full": "full fine-tune"}.get(kind, kind)
+        engine_label = {"vibevoice": "VibeVoice ", "rvc": "RVC "}.get(run.config.engine, "")
+        kind_label = {"clone": "nhái giọng", "lora": "LoRA", "full": "full fine-tune", "vc": "đổi giọng"}.get(kind, kind)
         return self.voices.publish(
             run.project_id,
             name=f"{name} · {engine_label}{kind_label}",

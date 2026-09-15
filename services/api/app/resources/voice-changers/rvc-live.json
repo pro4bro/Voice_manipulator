@@ -1,23 +1,24 @@
 {
   "schemaVersion": 1,
   "id": "rvc-live",
-  "label": "RVC · đổi giọng đã train",
+  "label": "RVC · đổi giọng (model đã train)",
   "family": "RVC",
   "engine": "rvc",
   "mode": "live-convert",
   "order": 10,
-  "runnable": false,
-  "blocked_reason": "Chưa tải RVC; cần qua bài test tiếng Việt của kế hoạch 05-01 trước khi thành chức năng.",
-  "description": "Đổi giọng bằng model RVC train riêng cho từng Speaker Profile. Giữ đường cao độ của người nói nên ít rủi ro sai thanh điệu tiếng Việt.",
+  "runnable": true,
+  "blocked_reason": null,
+  "description": "Đổi giọng người nói thành giọng của Speaker Profile đã train model RVC. Giữ đường cao độ của người nói nên ít rủi ro sai thanh điệu tiếng Việt.",
   "repository": {
     "root": "research",
-    "path": "Retrieval-based-Voice-Conversion-WebUI",
-    "entrypoint": "infer-web.py",
-    "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI"
+    "path": "Applio",
+    "entrypoint": "rvc/realtime/core.py",
+    "url": "https://github.com/IAHispano/Applio",
+    "revision": "aeb69bf"
   },
   "notes": [
-    "MIT.",
-    "Cần train một model RVC cho mỗi giọng muốn giả (khoảng 10 phút audio)."
+    "MIT (Applio). Cần một voice RVC: train “RVC · model đổi giọng” ở Voice Training.",
+    "Trễ tổng ≈ độ dài khối + crossfade + thời gian xử lý + thiết bị; đo được hiện ở Voice Input."
   ],
   "parameters": [
     {
@@ -25,12 +26,13 @@
       "label": "Độ dài mỗi khối",
       "group": "Luồng",
       "kind": "int",
-      "default": 40,
-      "min": 10,
-      "max": 200,
+      "default": 250,
+      "min": 60,
+      "max": 1000,
       "step": 10,
       "unit": "ms",
-      "help": "Khối ngắn trễ ít hơn nhưng dễ hụt âm khi máy bận."
+      "source": "Applio tabs/realtime/realtime.py (Chunk Size 250 ms)",
+      "help": "Khối ngắn trễ ít hơn nhưng GPU phải kịp xử lý mỗi khối."
     },
     {
       "key": "silence_gate_db",
@@ -42,7 +44,7 @@
       "max": -20,
       "step": 1,
       "unit": "dB",
-      "help": "Dưới ngưỡng này đầu ra là im lặng thật, không để engine tạo tiếng xì."
+      "source": "Applio tabs/realtime/realtime.py (Silence Threshold -60 dB)"
     },
     {
       "key": "pitch_shift",
@@ -53,7 +55,70 @@
       "min": -24,
       "max": 24,
       "step": 1,
-      "unit": "bán cung"
+      "unit": "bán cung",
+      "help": "Nam sang nữ thường +12, nữ sang nam -12."
+    },
+    {
+      "key": "index_rate",
+      "label": "Mức dùng index",
+      "group": "Giọng",
+      "kind": "float",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "source": "Applio rvc/realtime/core.py",
+      "help": "Cao giống giọng đích hơn, thấp rõ chữ hơn và nhanh hơn."
+    },
+    {
+      "key": "protect",
+      "label": "Bảo vệ phụ âm",
+      "group": "Giọng",
+      "kind": "float",
+      "default": 0.5,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.05,
+      "source": "Applio rvc/realtime/core.py",
+      "advanced": true
+    },
+    {
+      "key": "crossfade_s",
+      "label": "Crossfade",
+      "group": "Luồng",
+      "kind": "float",
+      "default": 0.05,
+      "min": 0.05,
+      "max": 0.2,
+      "step": 0.01,
+      "unit": "s",
+      "source": "Applio tabs/realtime/realtime.py",
+      "advanced": true
+    },
+    {
+      "key": "extra_convert_s",
+      "label": "Ngữ cảnh thêm",
+      "group": "Luồng",
+      "kind": "float",
+      "default": 2.5,
+      "min": 0.1,
+      "max": 5,
+      "step": 0.1,
+      "unit": "s",
+      "source": "Applio tabs/realtime/realtime.py",
+      "advanced": true
+    }
+  ],
+  "requires": [
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/predictors/rmvpe.pt",
+      "label": "RMVPE"
+    },
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/embedders/contentvec/pytorch_model.bin",
+      "label": "ContentVec"
     }
   ]
 }

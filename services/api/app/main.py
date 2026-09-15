@@ -32,6 +32,7 @@ from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
 from app.adapters.omnivoice_dataset_export import OmniVoiceDatasetExporter
 from app.adapters.omnivoice_engine import OmniVoiceEngine
+from app.adapters.rvc_training import RvcPaths
 from app.adapters.voice_changer import FileChangerRecordings, VoiceChanger, VoiceChangerError, VoiceChangerRuntime, VoiceConsentRequired
 from app.adapters.voice_script_speaker import StudioWordRecognizer, VoiceScriptBusy, VoiceScriptSpeaker
 from app.adapters.omnivoice_generator import (
@@ -145,7 +146,13 @@ def create_app(
         "vibevoice": settings.vibevoice_root,
         "vibevoice-models": vibevoice_paths.models if vibevoice_paths else None,
         "hub": settings.model_hub_cache,
+        "research": settings.research_engines_root,
     }
+    rvc_paths = RvcPaths(settings.applio_root, settings.rvc_runtime_root)
+
+    def rvc_readiness(descriptor) -> str | None:
+        missing = rvc_paths.missing()
+        return ("RVC còn thiếu: " + ", ".join(missing) + ".") if missing else None
 
     def vibevoice_readiness(descriptor) -> str | None:
         """Why the VibeVoice Python cannot run this option yet, or None."""
@@ -165,7 +172,7 @@ def create_app(
         settings.training_models_root,
         engine_roots,
         settings.local_training_models_root,
-        readiness={"vibevoice": vibevoice_readiness},
+        readiness={"vibevoice": vibevoice_readiness, "rvc": rvc_readiness},
     )
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     engine_env = (
@@ -218,7 +225,8 @@ def create_app(
     )
     voice_changer_engines = FileTrainingModelCatalog(
         settings.voice_changers_root,
-        {"pro4bro": Path(__file__).resolve().parent.parent, "research": settings.project_root.parent / "research-engines"},
+        {"pro4bro": Path(__file__).resolve().parent.parent, "research": settings.research_engines_root},
+        readiness={"rvc": rvc_readiness},
     )
     changer_recordings = FileChangerRecordings(projects)
     voice_changer = VoiceChanger(
@@ -230,6 +238,7 @@ def create_app(
         gpu_lease,
         before_gpu_work=free_gpu,
         catalogs=training_catalogs,
+        engine_runtimes={"rvc": (VoiceChangerRuntime(settings.rvc_runtime_root), {"PRO4BRO_APPLIO_ROOT": str(settings.applio_root), **rvc_paths.environment()})},
     )
     training_runner = TrainingRunner(
         projects,
@@ -246,6 +255,7 @@ def create_app(
         vibevoice_paths=vibevoice_paths,
         vibevoice_runtime=vibevoice_runtime,
         asr_adapters=asr_adapters,
+        rvc_paths=rvc_paths,
     )
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root

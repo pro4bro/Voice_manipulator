@@ -54,8 +54,19 @@ const VIBEVOICE_ASR_FLOW: FlowStep[] = VIBEVOICE_TTS_FLOW.map((step) =>
       : step,
 );
 
+/** RVC through Applio: audio in, pitch and content features, then the model and its retrieval index. */
+const RVC_FLOW: FlowStep[] = [
+  { id: "read-manifest", label: "Dataset manifest", detail: "Lọc đoạn của voice target", icon: "file" },
+  { id: "write-jsonl", label: "Xuất audio", detail: "Một WAV mỗi đoạn", icon: "list" },
+  { id: "tokenize", label: "Đặc trưng", detail: "Cắt 40 kHz · RMVPE + ContentVec", icon: "waveform" },
+  { id: "train", label: "Train RVC", detail: "Theo epoch", icon: "training" },
+  { id: "checkpoint", label: "Model + index", detail: "Lưu .pth và index", icon: "folder" },
+  { id: "publish", label: "Publish voice", detail: "Dùng ở Voice Changer", icon: "spark" },
+];
+
 export function flowForMode(mode: string | null | undefined): FlowStep[] {
   if (mode === "zero-shot-clone") return CLONE_FLOW;
+  if (mode === "vc-train") return RVC_FLOW;
   if (mode === "tts-lora") return VIBEVOICE_TTS_FLOW;
   if (mode === "asr-lora") return VIBEVOICE_ASR_FLOW;
   return TRAINING_FLOW;

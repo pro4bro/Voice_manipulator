@@ -609,7 +609,8 @@ export interface ProjectVoice {
   speakerProfileId: string;
   engine: string;
   /** clone: a reference clip only, no training. lora: a trained adapter on top. */
-  kind: "clone" | "lora" | "full";
+  /** vc: an RVC voice-conversion model for Voice Changer; modelPath is its weights, adapterPath its index. */
+  kind: "clone" | "lora" | "full" | "vc";
   modelId: string | null;
   baseModel: string;
   referenceAudio: string;

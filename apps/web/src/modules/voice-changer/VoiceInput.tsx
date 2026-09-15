@@ -55,7 +55,8 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
   const running = status?.state === "running";
   const engine = engines.find((item) => item.id === settings.engineId) ?? null;
   const speaker = speakers.find((item) => item.id === speakerId) ?? null;
-  const speakerVoices = voices.filter((voice) => voice.speakerProfileId === speakerId);
+  // RVC wears a trained RVC model; the other engines imitate a reference clip.
+  const speakerVoices = voices.filter((voice) => voice.speakerProfileId === speakerId && (engine?.engine === "rvc" ? voice.kind === "vc" : voice.kind !== "vc"));
   const voice = speakerVoices.find((item) => item.id === settings.voiceId) ?? speakerVoices[0] ?? null;
   const hostApis = [...new Set((preflight?.devices ?? []).map((device) => device.hostApi))];
   const hostApi = settings.hostApi && hostApis.includes(settings.hostApi) ? settings.hostApi : hostApis.includes("Windows WASAPI") ? "Windows WASAPI" : hostApis[0] ?? null;
@@ -102,7 +103,7 @@ export function VoiceInput({ engines, preflight, settings, onSettingsChange, spe
               <select aria-label="Mẫu giọng" disabled={running} onChange={(event) => update({ voiceId: event.target.value })} value={voice?.id ?? ""}>
                 {speakerVoices.map((item) => <option key={item.id} value={item.id}>{VOICE_KIND_LABELS[item.kind]} · {item.referenceSeconds.toFixed(1)}s mẫu</option>)}
               </select>
-            ) : <small>Chưa có mẫu giọng; tạo ở Voice Training (nhái giọng).</small>}
+            ) : <small>{engine?.engine === "rvc" ? "Chưa có model RVC; train “RVC · model đổi giọng” ở Voice Training." : "Chưa có mẫu giọng; tạo ở Voice Training (nhái giọng)."}</small>}
           </div>
         ) : <small className="voice-input__hint">Chọn một Speaker Profile trong Sound Library bên trái.</small>}
       </section>

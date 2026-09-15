@@ -29,6 +29,11 @@ class Settings:
     # A Python with numpy and sounddevice, which opens the audio devices for
     # live conversion; engines that pass the Vietnamese gate add their own.
     voice_changer_runtime_root: Path
+    # Applio (RVC) checkout and its own Python, for RVC training and live conversion.
+    # Engine checkouts kept beside the project (Applio, demucs, ...).
+    research_engines_root: Path
+    applio_root: Path
+    rvc_runtime_root: Path
     stt_engines_root: Path
     local_voice_generators_root: Path
     # A Hugging Face hub cache that already holds the engine weights. When set,
@@ -94,6 +99,9 @@ class Settings:
             voice_changer_runtime_root=Path(
                 os.getenv("PRO4BRO_VOICE_CHANGER_RUNTIME_ROOT", project_root / ".runtime" / "voice-changer" / ".venv")
             ),
+            research_engines_root=Path(os.getenv("PRO4BRO_RESEARCH_ENGINES_ROOT", project_root.parent / "research-engines")),
+            applio_root=Path(os.getenv("PRO4BRO_APPLIO_ROOT", project_root.parent / "research-engines" / "Applio")),
+            rvc_runtime_root=Path(os.getenv("PRO4BRO_RVC_RUNTIME_ROOT", project_root / ".runtime" / "rvc" / ".venv")),
             stt_engines_root=Path(__file__).resolve().parent / "resources" / "stt-engines",
             local_voice_generators_root=Path(
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")

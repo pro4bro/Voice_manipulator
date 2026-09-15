@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "id": "rvc-voice",
+  "label": "RVC · model đổi giọng (Voice Changer)",
+  "family": "RVC",
+  "engine": "rvc",
+  "mode": "vc-train",
+  "order": 60,
+  "category": "train",
+  "description": "Train một model RVC cho từng Speaker Profile để đổi giọng người nói thành giọng đó trong Voice Changer. Giữ đường cao độ của người nói nên ít sai thanh điệu tiếng Việt.",
+  "runnable": true,
+  "repository": {
+    "root": "research",
+    "path": "Applio",
+    "entrypoint": "rvc/train/train.py",
+    "url": "https://github.com/IAHispano/Applio",
+    "revision": "aeb69bf"
+  },
+  "requires": [
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/pretraineds/hifi-gan/f0G40k.pth",
+      "label": "pretrained f0G40k"
+    },
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/pretraineds/hifi-gan/f0D40k.pth",
+      "label": "pretrained f0D40k"
+    },
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/predictors/rmvpe.pt",
+      "label": "RMVPE"
+    },
+    {
+      "root": "research",
+      "path": "Applio/rvc/models/embedders/contentvec/pytorch_model.bin",
+      "label": "ContentVec"
+    }
+  ],
+  "dataFormat": "Dataset Manifest → một WAV mỗi đoạn → Applio preprocess (40 kHz) → RMVPE + ContentVec → HiFi-GAN v2.",
+  "notes": [
+    "Dùng cả đoạn train và dev: RVC không có tập kiểm tra riêng.",
+    "Khoảng 10–30 phút giọng sạch là đủ; trên RTX 3090, 27 phút audio mất khoảng 1 phút mỗi epoch.",
+    "Model RVC chỉ dùng ở Voice Changer, không đọc được text ở Voice Manipulator."
+  ],
+  "parameters": [
+    {
+      "key": "total_epoch",
+      "label": "Số epoch",
+      "group": "Train",
+      "kind": "int",
+      "default": 200,
+      "min": 10,
+      "max": 2000,
+      "step": 10,
+      "source": "Applio rvc/train/train.py argv · tabs/train/train.py",
+      "help": "Nhiều epoch hơn chưa chắc tốt hơn; quá nhiều sẽ học cả tạp âm của bản ghi."
+    },
+    {
+      "key": "save_every_epoch",
+      "label": "Lưu model mỗi",
+      "group": "Train",
+      "kind": "int",
+      "default": 25,
+      "min": 1,
+      "max": 500,
+      "unit": "epoch",
+      "source": "Applio rvc/train/train.py argv · tabs/train/train.py"
+    },
+    {
+      "key": "batch_size",
+      "label": "Batch size",
+      "group": "Train",
+      "kind": "int",
+      "default": 8,
+      "min": 1,
+      "max": 64,
+      "source": "Applio rvc/train/train.py argv · tabs/train/train.py"
+    },
+    {
+      "key": "f0_method",
+      "label": "Bộ đo cao độ",
+      "group": "Dữ liệu",
+      "kind": "choice",
+      "default": "rmvpe",
+      "source": "Applio rvc/train/extract/extract.py",
+      "options": [
+        {
+          "value": "rmvpe",
+          "label": "RMVPE"
+        }
+      ]
+    },
+    {
+      "key": "cut_preprocess",
+      "label": "Cắt audio",
+      "group": "Dữ liệu",
+      "kind": "choice",
+      "default": "Automatic",
+      "source": "Applio rvc/train/preprocess/preprocess.py",
+      "options": [
+        {
+          "value": "Automatic",
+          "label": "Tự động"
+        },
+        {
+          "value": "Simple",
+          "label": "Đơn giản"
+        },
+        {
+          "value": "Skip",
+          "label": "Không cắt"
+        }
+      ],
+      "advanced": true
+    },
+    {
+      "key": "noise_reduction",
+      "label": "Giảm nhiễu khi chuẩn bị",
+      "group": "Dữ liệu",
+      "kind": "bool",
+      "default": false,
+      "advanced": true
+    },
+    {
+      "key": "index_algorithm",
+      "label": "Thuật toán index",
+      "group": "Dữ liệu",
+      "kind": "choice",
+      "default": "Auto",
+      "options": [
+        {
+          "value": "Auto",
+          "label": "Tự động"
+        },
+        {
+          "value": "Faiss",
+          "label": "Faiss"
+        },
+        {
+          "value": "KMeans",
+          "label": "KMeans"
+        }
+      ],
+      "advanced": true
+    }
+  ]
+}

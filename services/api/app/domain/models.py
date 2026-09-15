@@ -872,7 +872,9 @@ class TrainingRunStart(DomainModel):
     speaker_profile_ids: list[str] = Field(default_factory=list, max_length=64)
 
 
-VoiceKind = Literal["clone", "lora", "full"]
+# vc: a voice-conversion model (RVC) that changes a performer's voice live;
+# `model_path` holds its weights and `adapter_path` its retrieval index.
+VoiceKind = Literal["clone", "lora", "full", "vc"]
 
 
 class ProjectVoice(DomainModel):

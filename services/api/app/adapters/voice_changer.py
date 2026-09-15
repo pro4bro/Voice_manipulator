@@ -184,8 +184,13 @@ class VoiceChanger:
         endpoints: Callable[[], list[str]] = windows_audio_endpoints,
         before_gpu_work: Callable[[], None] | None = None,
         catalogs: Any = None,
+        engine_runtimes: dict[str, tuple[VoiceChangerRuntime, dict[str, str]]] | None = None,
     ) -> None:
         self.catalogs = catalogs
+        # An engine that needs its own Python (RVC, with torch) runs the same
+        # worker under that runtime; the flow check uses the light default one.
+        self.engine_runtimes = engine_runtimes or {}
+        self._engine_workers: dict[str, EngineWorkerProcess] = {}
         self.projects = projects
         self.runtime = runtime
         self.engines = engines
@@ -238,7 +243,8 @@ class VoiceChanger:
             raise ValueError(f"Không có engine đổi giọng '{request.engine_id}'.") from exc
         if not option.available:
             raise TrainingModelUnavailable(f"{option.label}: {option.status}")
-        missing = self.runtime.missing()
+        runtime = self.engine_runtimes.get(option.engine, (self.runtime, {}))[0]
+        missing = runtime.missing()
         if missing:
             raise VoiceChangerError("Runtime Voice Changer còn thiếu: " + ", ".join(missing) + ".")
         parameters = resolve_parameters(option, request.parameters)
@@ -254,10 +260,14 @@ class VoiceChanger:
                 raise ValueError("Voice được chọn không còn trong project.") from exc
             if converts:
                 self._require_consent(project_id, voice.speaker_profile_id)
+            if option.engine == "rvc" and (voice.engine != "rvc" or not voice.model_path):
+                raise ValueError(f"{voice.name} không phải model RVC. Train “RVC · model đổi giọng” cho Speaker Profile này ở Voice Training.")
             target = {
                 "referenceAudio": str(self.voices.absolute(project_id, voice.reference_audio)),
                 "referenceText": voice.reference_text,
                 "adapter": str(self.voices.absolute(project_id, voice.adapter_path)) if voice.adapter_path else None,
+                "model": str(self.voices.absolute(project_id, voice.model_path)) if voice.model_path else None,
+                "index": str(self.voices.absolute(project_id, voice.adapter_path)) if voice.adapter_path else None,
                 "language": voice.language,
             }
         outputs = []
@@ -270,6 +280,7 @@ class VoiceChanger:
 
         with self._lock:
             self._stop_locked(project_id=None)
+            worker = self._worker_for(option.engine)
             lease_token = None
             if option.engine != "passthrough":
                 # A converter model wants the card for as long as the session runs.
@@ -277,7 +288,7 @@ class VoiceChanger:
                 if self.before_gpu_work is not None:
                     self.before_gpu_work()
             try:
-                reply = self.worker.request({
+                reply = worker.request({
                     "command": "start",
                     "engine": option.engine,
                     "inputDevice": request.input_device,
@@ -292,6 +303,7 @@ class VoiceChanger:
                 self._release(lease_token)
                 raise VoiceChangerError(reply.get("error") or "Không mở được thiết bị âm thanh.")
             self._session = {
+                "worker": worker,
                 "project_id": project_id,
                 "engine_id": option.id,
                 "voice": voice,
@@ -306,7 +318,7 @@ class VoiceChanger:
             if self._session is None:
                 return VoiceChangerStatus()
             try:
-                reply = self.worker.request({"command": "status"})
+                reply = self._session["worker"].request({"command": "status"})
             except EngineWorkerError as exc:
                 self._release(self._session.get("lease_token"))
                 session, self._session = self._session, None
@@ -335,6 +347,8 @@ class VoiceChanger:
                 self._stop_locked(project_id=None)
             finally:
                 self.worker.shutdown()
+                for worker in self._engine_workers.values():
+                    worker.shutdown()
 
     # ---------- inside ----------
 
@@ -355,9 +369,18 @@ class VoiceChanger:
         if self._session["project_id"] != project_id:
             raise VoiceChangerError("Voice Changer đang chạy cho project khác.")
 
+    def _worker_for(self, engine: str) -> EngineWorkerProcess:
+        if engine not in self.engine_runtimes:
+            return self.worker
+        if engine not in self._engine_workers:
+            runtime, env = self.engine_runtimes[engine]
+            self._engine_workers[engine] = EngineWorkerProcess(runtime.python, WORKER_SCRIPT, env, label=f"Voice Changer {engine}", idle_seconds=120.0, request_timeout=180.0)
+        return self._engine_workers[engine]
+
     def _request(self, payload: dict) -> dict:
+        worker = self._session["worker"] if self._session else self.worker
         try:
-            reply = self.worker.request(payload)
+            reply = worker.request(payload)
         except EngineWorkerError as exc:
             raise VoiceChangerError(str(exc)) from exc
         if not reply.get("ok"):
@@ -398,12 +421,13 @@ class VoiceChanger:
         if session is None:
             return None
         recording = None
+        worker = session.get("worker") or self.worker
         try:
-            status = self.worker.request({"command": "status"}).get("status") or {}
+            status = worker.request({"command": "status"}).get("status") or {}
             if status.get("recording"):
                 recording = self._finish_recording(session["project_id"], stop_session=True)
             else:
-                self.worker.request({"command": "stop"})
+                worker.request({"command": "stop"})
         except (EngineWorkerError, VoiceChangerError):
             pass
         finally:

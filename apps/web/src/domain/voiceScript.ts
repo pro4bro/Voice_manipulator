@@ -7,6 +7,7 @@ export const VOICE_KIND_LABELS: Record<ProjectVoice["kind"], string> = {
   clone: "Nhái giọng",
   lora: "LoRA đã train",
   full: "Full fine-tune",
+  vc: "RVC đổi giọng",
 };
 
 export function voiceCategory(voice: Pick<ProjectVoice, "kind">): VoiceCategory {
@@ -14,7 +15,8 @@ export function voiceCategory(voice: Pick<ProjectVoice, "kind">): VoiceCategory 
 }
 
 export function voicesInCategory(voices: ProjectVoice[], category: VoiceCategory): ProjectVoice[] {
-  return voices.filter((voice) => voiceCategory(voice) === category);
+  // An RVC model changes a performer's voice; it cannot read text, so the Script never offers it.
+  return voices.filter((voice) => voice.kind !== "vc" && voiceCategory(voice) === category);
 }
 
 export function newRowId(): string {
