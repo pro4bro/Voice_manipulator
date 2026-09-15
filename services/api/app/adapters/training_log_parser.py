@@ -23,8 +23,7 @@ _RESUMED = re.compile(r"Resumed from step\s+(?P<step>\d+)")
 #   Training:  20%|##        | 1005/5000 [1:03:08<4:53:41,  4.41s/it, loss=0.1019, lr=9.11e-05]
 # It is the only thing that moves between two logged steps.
 _TRAIN_BAR = re.compile(
-    r"Training:\s*\d+%\|[^|]*\|\s*(?P<done>\d+)\s*/\s*(?P<total>\d+)\s*\[[^\],]*"
-    r"(?:,\s*(?P<rate>[\d.]+)\s*(?P<unit>it/s|s/it))?"
+    r"Training:\s*\d+%\|[^|]*\|\s*(?P<done>\d+)\s*/\s*(?P<total>\d+)\s*\["
 )
 
 # tqdm's bar for `extract_audio_tokens`, whose desc is "Extracting Audio Tokens".
@@ -88,18 +87,15 @@ def parse_train_line(raw: str) -> TrainingProgressLine | None:
 
     bar = _TRAIN_BAR.search(line)
     if bar:
-        rate = float(bar.group("rate")) if bar.group("rate") else None
-        per_second = None
-        if rate:
-            per_second = rate if bar.group("unit") == "it/s" else 1.0 / rate
-        # The bar's loss is one step's, not the logged average; the chart keeps
-        # to the "Step" lines.
+        # Position only. The bar's loss is one step's, not the logged average the
+        # chart is drawn from, and its rate is a short moving average that drops
+        # to a fraction right after an evaluation pause - an ETA of 11 minutes
+        # for 90 seconds of work. The "Step" lines carry the trainer's own rate.
         return TrainingProgressLine(
             step_id="train",
             global_step=int(bar.group("done")),
             done=int(bar.group("done")),
             total=int(bar.group("total")),
-            steps_per_second=per_second,
         )
     return None
 

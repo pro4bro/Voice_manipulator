@@ -86,20 +86,20 @@ class TestTrainLines:
         )
 
         assert (line.global_step, line.done, line.total) == (1005, 1005, 5000)
-        assert line.steps_per_second == pytest.approx(1 / 4.41)
         # One step's loss is not the logged average the chart is drawn from.
         assert line.loss is None and not line.message
 
-    def test_a_bar_that_has_not_measured_a_rate_yet_reports_no_rate(self):
+    def test_the_bar_rate_is_not_reported_because_it_collapses_after_an_evaluation(self):
+        """Measured in the app: 1.96 step/s steady, the bar said 0.27 right after eval."""
+        line = parse_train_line("Training:  34%|###4      | 101/300 [01:02<12:30,  3.77s/it, loss=3.7, lr=1e-04]")
+
+        assert line.global_step == 101
+        assert line.steps_per_second is None
+
+    def test_a_bar_that_has_not_started_still_reports_its_total(self):
         line = parse_train_line("Training:   0%|          | 0/5000 [00:00<?, ?it/s]")
 
         assert (line.global_step, line.total) == (0, 5000)
-        assert line.steps_per_second is None
-
-    def test_a_fast_bar_reads_its_rate_in_steps_per_second(self):
-        line = parse_train_line("Training:  40%|####      | 2000/5000 [13:20<20:00,  2.50it/s, loss=1.2, lr=5e-05]")
-
-        assert line.steps_per_second == pytest.approx(2.5)
 
 
 class TestTokenizeLines:
