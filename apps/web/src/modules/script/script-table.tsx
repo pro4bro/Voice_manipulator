@@ -73,12 +73,19 @@ function loadColumns(storageKey: string) {
   }
 }
 
-export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerProfile[]): SpeakerScriptRow[] {
+/**
+ * `defaultSpeakerId` is the profile assigned to the whole take. A word nobody
+ * has named belongs to that person - the same rule the dataset compiler uses -
+ * so a one-voice file reads as that voice here without diarization or tagging.
+ */
+export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerProfile[], defaultSpeakerId: string | null = null): SpeakerScriptRow[] {
   const profileById = new Map(speakers.map((speaker) => [speaker.id, speaker]));
   const rows: SpeakerScriptRow[] = [];
   for (const [index, word] of words.entries()) {
     const diarizationId = normalizedDiarizationId(word);
-    const profile = word.speakerId ? profileById.get(word.speakerId) ?? null : null;
+    const unnamed = !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId;
+    const owner = word.speakerId || (unnamed ? defaultSpeakerId : null);
+    const profile = owner ? profileById.get(owner) ?? null : null;
     const previous = rows[rows.length - 1];
     if (previous && previous.speakerKey === diarizationId) {
       previous.words.push({ index, word });
@@ -152,6 +159,8 @@ interface ScriptTableProps {
   getEmotionStyle: (emotion: EmotionLabel | null | undefined, preferences: EmotionStylePreferences) => CSSProperties | undefined;
   onAssignWords: (indexes: number[], profileId: string | null) => void;
   onMoveWords: (indexes: number[], row: SpeakerScriptRow) => void;
+  /** The profile the whole take belongs to, for words nobody named. */
+  defaultSpeakerId?: string | null;
   onUpdateWordText: (index: number, text: string) => void;
   onOpenTextEditor: () => void;
   storageKey: string;
@@ -172,6 +181,8 @@ interface ResizeState {
 }
 
 interface SpeakerTextProps {
+  /** The profile the whole take belongs to, for words nobody named. */
+  defaultSpeakerId?: string | null;
   words: StudioWord[];
   speakers: SpeakerProfile[];
   activeWordIndex: number;
@@ -203,8 +214,8 @@ export function keepWordInView(view: HTMLElement, target: HTMLElement): number |
   return next;
 }
 
-export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor, selection, onSelectionChange }: SpeakerTextProps) {
-  const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
+export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor, selection, onSelectionChange, defaultSpeakerId = null }: SpeakerTextProps) {
+  const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const sweepOriginRef = useRef<number | null>(null);
@@ -284,8 +295,8 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenText
     })}
   </div>;
 }
-export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange }: ScriptTableProps) {
-  const rows = useMemo(() => buildSpeakerScriptRows(words, speakers), [speakers, words]);
+export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
+  const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);

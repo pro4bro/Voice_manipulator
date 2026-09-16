@@ -30,6 +30,10 @@ export default defineConfig({
     rolldownOptions: {
       input: workspaceIndex,
     },
+    // One local page loaded from disk: a single chunk is the point, and the
+    // default warning is written to stderr, where the launcher reads any line
+    // as a failed build and refuses to start the app.
+    chunkSizeWarningLimit: 2000,
   },
   test: {
     environment: "jsdom",
