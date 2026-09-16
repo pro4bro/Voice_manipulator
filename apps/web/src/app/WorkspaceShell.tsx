@@ -588,7 +588,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setActivePage(page);
     // The Dashboard is a reading of the current footage; a count from before
     // the last STT or assignment would be the one number on it that is wrong.
-    if (page === "dashboard") void refreshDatasetReadiness();
+    // Both pages are read against the dataset; a count from before the last STT
+    // or speaker assignment is the one number on them that is wrong.
+    if (page === "dashboard" || page === "voice-training") void refreshDatasetReadiness();
     if (page === "voice-manipulator") void refreshProjectVoices();
     try { await onPageChange(page); } catch { setNotice("Không lưu được trang đang mở. Nội dung Script vẫn được giữ cục bộ."); }
   }
@@ -682,6 +684,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     try {
       const updated = await api.updateMediaAnnotations(project.id, assetId, speakerProfileIds, environmentProfileIds, emotion);
       setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+      // Who speaks decides which segments a voice target gets, so the count the
+      // Train panel gates on is stale the moment this changes.
+      void refreshDatasetReadiness();
     } catch (error) {
       if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
       setNotice(error instanceof Error ? error.message : "Không lưu được profile của footage");
@@ -737,6 +742,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       await api.updateMediaScript(project.id, asset.id, nextText, "user", words);
       const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, environmentProfileIds, emotion);
       setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+      void refreshDatasetReadiness();
       setNotice(`Đã gán ${speakerProfileIds.length} speaker · ${environmentProfileIds.length} environment.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không lưu được nhãn theo từ");
@@ -889,6 +895,20 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không huỷ được run");
     }
+  }
+
+  /** Whose voice this footage is. One profile is all the dataset needs. */
+  async function assignAssetSpeaker(assetId: string, speakerProfileId: string | null) {
+    const asset = mediaAssets.find((item) => item.id === assetId);
+    if (!asset) return;
+    await updateMediaAnnotations(
+      assetId,
+      speakerProfileId ? [speakerProfileId] : [],
+      asset.environmentProfileIds ?? [],
+      asset.emotion ?? "normal",
+    );
+    const name = trainingCatalog.speakers.find((speaker) => speaker.id === speakerProfileId)?.name;
+    setNotice(name ? `${asset.name} là giọng của ${name}. Dataset đã tính lại.` : `${asset.name} chưa gán người nói.`);
   }
 
   async function refreshDatasetReadiness() {
@@ -1565,6 +1585,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onDeleteVoice: (voice) => void deleteProjectVoice(voice),
     onDeleteSpeaker: (speaker) => void deleteSpeakerProfile(speaker),
     onDeleteEnvironment: (profile) => deleteEnvironmentProfile(profile),
+    onAssignAssetSpeaker: (assetId, speakerProfileId) => void assignAssetSpeaker(assetId, speakerProfileId),
     onSelectPage: (page) => void selectPage(page),
     onCompileDataset: () => void compileDataset(),
     onStartTrainingRun: () => void startTrainingRun(),

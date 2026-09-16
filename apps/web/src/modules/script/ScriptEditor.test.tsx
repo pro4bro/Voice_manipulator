@@ -16,6 +16,30 @@ function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
 }
 
 describe("ScriptEditor", () => {
+it("assigns the whole take to a Speaker Profile without running diarization", () => {
+    const onSpeakerProfileChange = vi.fn();
+    const speakers = [
+      { id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#f00", createdAt: "" },
+      { id: "speaker-khoa", name: "Khoa Trịnh", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#0f0", createdAt: "" },
+    ];
+
+    render(<ScriptEditor onChange={vi.fn()} onSpeakerProfileChange={onSpeakerProfileChange} speakerProfileId="speaker-an" speakers={speakers} value="Xin chào" workflow="speech-to-text" />);
+
+    const pick = screen.getByLabelText("Người nói của footage này") as HTMLSelectElement;
+    expect(pick.value).toBe("speaker-an");
+    fireEvent.change(pick, { target: { value: "speaker-khoa" } });
+    expect(onSpeakerProfileChange).toHaveBeenCalledWith("speaker-khoa");
+
+    fireEvent.change(pick, { target: { value: "" } });
+    expect(onSpeakerProfileChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("offers no speaker picker when no take is open", () => {
+    render(<ScriptEditor onChange={vi.fn()} value="" workflow="speech-to-text" />);
+
+    expect(screen.queryByLabelText("Người nói của footage này")).not.toBeInTheDocument();
+  });
+
   it("lets the user edit transcript text after recognition", () => {
     const onChange = vi.fn();
     render(<ScriptEditor onChange={onChange} value="Bản nhận diện ban đầu" workflow="speech-to-text" />);

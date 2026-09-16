@@ -16,6 +16,10 @@ export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
 export interface ScriptFormatIntent { kind: ScriptFormatKind; value: string | boolean; selection: { start: number; end: number; text: string }; }
 interface ScriptEditorProps {
   value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; wordTimingQuality?: WordTimingQuality; wordTimingNote?: string | null; activeWordIndex?: number; playbackAssetId?: string | null; footageName?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; liveTranscriptText?: string | null; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; readingCard?: ReadingPlanCard | null; readingCardNumber?: number; readingCardTotal?: number; readingHeard?: string[]; readingSpeaking?: boolean; readingFollowerReady?: boolean; onWordsChange?: (words: StudioWord[], text?: string) => void; onFormatIntent?: (intent: ScriptFormatIntent) => void; wordSelection?: WordSelection; onWordSelectionChange?: (selection: WordSelection) => void;
+  /** The Speaker Profile this whole take belongs to, when one is assigned. */
+  speakerProfileId?: string | null;
+  /** Assign the whole take to a profile. Only offered when a take is open. */
+  onSpeakerProfileChange?: (speakerProfileId: string | null) => void;
 }
 interface ScriptSegment { text: string; wordIndex: number | null; }
 type ReviewChoice = "stt" | "ai" | "manual";
@@ -98,7 +102,7 @@ function scriptSegments(value: string, ranges: ScriptWordRange[]): ScriptSegment
 }
 function reviewText(pieces: ReviewPiece[], resolutions: Record<string, ReviewResolution>) { return pieces.map((piece) => piece.kind === "same" ? piece.text : resolutions[piece.id]?.text ?? piece.stt).join(""); }
 
-export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: ScriptEditorProps) {
+export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange }: ScriptEditorProps) {
   const syncedActiveWordIndex = usePlaybackWord(playbackAssetId);
   const activeWordIndex = explicitActiveWordIndex ?? syncedActiveWordIndex;
   const playbackLayerRef = useRef<HTMLDivElement>(null); const reviewLayerRef = useRef<HTMLDivElement>(null); const textareaRef = useRef<HTMLTextAreaElement>(null); const activePlaybackWordRef = useRef<HTMLSpanElement>(null); const selectionMenuRef = useRef<HTMLDivElement>(null); const scriptScrollbarDragRef = useRef(false); const [tagMode, setTagMode] = useState(false); const [tagSpeakerId, setTagSpeakerId] = useState(""); const [tagEnvironmentId, setTagEnvironmentId] = useState(""); const [tagEmotion, setTagEmotion] = useState<EmotionLabel>("normal"); const [reviewPieces, setReviewPieces] = useState<ReviewPiece[]>([]); const [reviewResolutions, setReviewResolutions] = useState<Record<string, ReviewResolution>>({}); const [showReview, setShowReview] = useState(false); const [hoveredReviewId, setHoveredReviewId] = useState<string | null>(null); const [manualDraft, setManualDraft] = useState(""); const [selectionMenu, setSelectionMenu] = useState<ScriptSelectionMenu | null>(null); const reviewSignature = `${aiReviewKey ?? ""}:${aiReviewText ?? ""}`;
@@ -348,6 +352,21 @@ export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferred
   return <ModuleFrame eyebrow={footageName ? `FOOTAGE · ${footageName}` : "FOOTAGE · chưa chọn"} title="SCRIPT" className="script-module" action={<div className="script-module__duration"><span>{isLiveTranscript ? "LIVE SPEECH" : "EST. DURATION"}</span><strong>{isLiveTranscript ? "REC" : `${String(Math.floor(duration / 60)).padStart(2, "0")}:${String(duration % 60).padStart(2, "0")}`}</strong></div>}>
     <div className="script-toolbars"><div className={`script-review-strip ${isLiveTranscript ? "is-live" : ""}`}><strong>TRANSCRIPT LAYERS</strong><span className="candidate candidate--realtime">Realtime</span><span className="candidate candidate--stt">STT kỹ</span><span className="candidate candidate--ai">AI fix</span><span className="review-status"><i />{isLiveTranscript ? " Live Speech Transcript" : liveComparisonActive ? " Live → STT · kiểm tra thay thế" : reviewActive ? " Chọn phương án nhận diện" : " Direct edit ready"}</span></div>
     <div className="script-edit-toolbar" aria-label="Công cụ văn bản">
+      {onSpeakerProfileChange ? (
+        // One voice on the file is the common case, and Speaker Diarization is a
+        // long GPU job to say what a person already knows. Assigning the profile
+        // here is all the dataset needs to know whose voice this is.
+        <label className="script-speaker-pick">NGƯỜI NÓI
+          <select
+            aria-label="Người nói của footage này"
+            onChange={(event) => onSpeakerProfileChange(event.target.value || null)}
+            value={speakerProfileId ?? ""}
+          >
+            <option value="">Chưa gán</option>
+            {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
+          </select>
+        </label>
+      ) : null}
       <button aria-expanded={findOpen} className={findOpen ? "is-active" : ""} onClick={() => setFindOpen((open) => !open)} type="button">FIND / REPLACE</button>
       <label>SIZE<select aria-label="Cỡ chữ Script" onChange={(event) => { const next = Number(event.target.value); setScriptFontScale(next); emitFormatIntent("font-size", String(next)); }} value={scriptFontScale}><option value="85">85%</option><option value="100">100%</option><option value="115">115%</option><option value="130">130%</option><option value="150">150%</option></select></label>
       <button aria-pressed={scriptBold} className={scriptBold ? "is-active" : ""} onClick={() => { const next = !scriptBold; setScriptBold(next); emitFormatIntent("bold", next); }} type="button"><b>B</b></button>

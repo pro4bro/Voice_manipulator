@@ -1465,3 +1465,10 @@
 
 /* The status bar carries every job, not only the first. */
 .workspace-status-bar__more { min-width: 0; overflow: hidden; color: var(--text-subtle); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Whose voice this take is, chosen in Script instead of through diarization. */
+.script-speaker-pick { display: inline-flex; align-items: center; gap: 5px; }
+.script-speaker-pick select { min-height: 22px; max-width: 150px; padding: 0 4px; color: var(--text); border: 1px solid var(--line); background: var(--surface-field); font: inherit; font-size: calc(9px * var(--font-scale)); }
+
+.train-empty-note { margin: 0; padding: 7px 9px; color: var(--text); border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent); background: color-mix(in srgb, var(--gold) 12%, transparent); font-size: calc(9.5px * var(--font-scale)); line-height: 1.5; }
+.train-empty-note b { font-family: var(--mono); }

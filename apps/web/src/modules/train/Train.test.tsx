@@ -173,4 +173,13 @@ describe("Train", () => {
     fireEvent.change(input, { target: { value: "3e-5" } });
     expect(onCatalogChange).toHaveBeenLastCalledWith({ ...vibe, settings: { ...vibe.settings, modelParameters: { "vibevoice-1.5b-tts-lora": { learning_rate: 3e-5 } } } });
   });
+
+  it("says how to fix a target with nothing in the dataset", () => {
+    render(<Train assets={[]} catalog={ticked} onCatalogChange={vi.fn()} readiness={{ ...readiness, secondsBySpeaker: {} }} trainingModels={models} trainingRuntime={{ root: "runtime", ready: true } as never} />);
+
+    const note = screen.getByText(/Dataset chưa có đoạn nào của/).closest("p");
+    expect(note?.textContent).toContain("An");
+    expect(note?.textContent).toContain("NGƯỜI NÓI");
+    expect(note?.textContent).toContain("không cần chạy Speaker Diarization");
+  });
 });

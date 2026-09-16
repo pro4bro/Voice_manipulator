@@ -187,6 +187,16 @@ export function Train({ assets, catalog, onCatalogChange, trainingModels = [], r
         </div>
         <button className="button button--quiet button--full" disabled={!noiseName.trim() || !noiseAssetIds.length} onClick={addNoiseProfile} type="button"><Icon name="plus" />Lưu noise profile</button>
       </details>
+      {emptyTargets.length ? (
+        // The usual cause is footage nobody is assigned to: the dataset keeps
+        // only words whose speaker is known, and says so here rather than
+        // leaving a disabled button with no way forward.
+        <p className="train-empty-note">
+          Dataset chưa có đoạn nào của {emptyTargets.map((speaker) => speaker.name).join(", ")}.
+          Mở footage ở Speech to Text, chọn người nói ở ô <b>NGƯỜI NÓI</b> trong module Script
+          (không cần chạy Speaker Diarization nếu chỉ có một người), rồi quay lại đây.
+        </p>
+      ) : null}
       <button className={`button button--full train-start is-${category}`} disabled={busy || !trainingReady} onClick={onStart} type="button">{startLabel}</button>
     </ModuleFrame>
   );
