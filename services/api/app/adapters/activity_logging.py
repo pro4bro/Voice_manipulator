@@ -15,8 +15,14 @@ POLLED_ROUTES = (
     "/api/runtime/status",
     "/api/runtime/health",
     "/api/health",
+    "/api/activity",
+    "/api/gpu-lease",
+    "/api/voice-changer/status",
     "/media/transcription-status",
     "/media/diarization-status",
+    "/training-runs",
+    "/voice-script/jobs",
+    "/voice-changer/recordings",
 )
 
 _ACCESS_LINE = re.compile(r'"(?:GET|HEAD) (?P<path>[^ ?]+)[^"]*" (?P<status>\d{3})')

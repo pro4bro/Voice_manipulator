@@ -287,17 +287,30 @@ def level_of(text: str) -> str:
     return "info"
 
 
+# Loggers uvicorn and the app configure with propagate=False: the root handler
+# never sees them, so the handler goes on them as well.
+STANDALONE_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "pro4bro.activity")
+
+
 def install(center: ActivityCenter | None = None) -> ActivityLogHandler:
     """Listen to this process's logging; safe to call twice."""
     target = center or CENTER
     root = logging.getLogger()
-    for handler in root.handlers:
-        if isinstance(handler, ActivityLogHandler) and handler.center is target:
-            return handler
-    handler = ActivityLogHandler(target)
-    root.addHandler(handler)
-    if root.level > logging.INFO or root.level == logging.NOTSET:
-        root.setLevel(logging.INFO)
+    handler = next(
+        (item for item in root.handlers if isinstance(item, ActivityLogHandler) and item.center is target),
+        None,
+    )
+    if handler is None:
+        handler = ActivityLogHandler(target)
+        root.addHandler(handler)
+        if root.level > logging.INFO or root.level == logging.NOTSET:
+            root.setLevel(logging.INFO)
+    for name in STANDALONE_LOGGERS:
+        logger = logging.getLogger(name)
+        if logger.propagate:
+            continue  # it reaches the root handler already
+        if not any(isinstance(item, ActivityLogHandler) and item.center is target for item in logger.handlers):
+            logger.addHandler(handler)
     return handler
 
 

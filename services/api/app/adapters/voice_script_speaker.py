@@ -341,6 +341,9 @@ class VoiceScriptSpeaker:
         try:
             recognized = self.recognizer.recognize(audio, step.plan.language)
         except Exception as exc:
+            # Worth a line: the subtitle for this row is estimated, not measured,
+            # and the reason is usually the recogniser competing for the GPU.
+            logger.warning("Không đo được word timing cho đoạn %s: %s: %s", step.row.id, type(exc).__name__, exc)
             words, quality = align_script_words(step.text, [], seconds)
             return words, quality, f"Không đo được word timing ({type(exc).__name__}); vị trí từ được ước lượng theo độ dài chữ.", False
         words, quality = align_script_words(step.text, recognized, seconds)
