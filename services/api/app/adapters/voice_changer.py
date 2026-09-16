@@ -315,6 +315,13 @@ class VoiceChanger:
             }
             return self._status(reply.get("status") or {})
 
+    def uses_voice(self, project_id: str, voice_id: str) -> bool:
+        """True while a live session converts toward this voice."""
+        with self._lock:
+            session = self._session
+            voice = session.get("voice") if session else None
+            return bool(session and session["project_id"] == project_id and voice is not None and voice.id == voice_id)
+
     def status(self) -> VoiceChangerStatus:
         with self._lock:
             if self._session is None:

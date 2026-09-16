@@ -98,6 +98,18 @@
       "runField": "steps"
     },
     {
+      "key": "max_epochs",
+      "label": "Tối đa số lần đọc lại dữ liệu",
+      "group": "Huấn luyện",
+      "kind": "int",
+      "default": 100,
+      "source": "Pro4Bro · đo bằng dataloader của OmniVoice trước khi train",
+      "min": 0,
+      "max": 100000,
+      "unit": "lần",
+      "help": "Sau khi tokenize, app đo 1 vòng dữ liệu bằng bao nhiêu step. Nếu Max steps khiến mỗi đoạn bị đọc lại nhiều hơn số lần này, app train ít step hơn và ghi rõ trong log. 0 = không giới hạn."
+    },
+    {
       "key": "learning_rate",
       "label": "Learning rate",
       "group": "Huấn luyện",

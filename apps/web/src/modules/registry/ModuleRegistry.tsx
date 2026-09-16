@@ -131,6 +131,10 @@ export interface StudioContext {
   onSkipCard: () => void;
   onCompileDataset: () => void;
   onCancelTrainingRun: (runId: string) => void;
+  onTrainingOutputsChanged: () => void;
+  onDeleteVoice: (voice: import("../../domain/types").ProjectVoice) => void;
+  onDeleteSpeaker: (speaker: import("../../domain/types").SpeakerProfile) => void;
+  onDeleteEnvironment: (profile: import("../../domain/types").EnvironmentNoiseProfile) => void;
   onSelectPage: (page: WorkspacePage) => void;
   onStartTrainingRun: () => void;
 }
@@ -170,11 +174,11 @@ function mediaPoolProps(context: StudioContext) {
 export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
   switch (id) {
     case "library-panel":
-      return <LibraryPanel {...mediaPoolProps(context)} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
+      return <LibraryPanel {...mediaPoolProps(context)} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "media-pool":
       return <MediaPool {...mediaPoolProps(context)} />;
     case "voice-vault":
-      return <VoiceVault assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
+      return <VoiceVault onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
       return <ScriptEditor readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
@@ -190,7 +194,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
+      return <TrainingJob adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":
       return <PipelineDashboard assets={context.mediaAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
     case "dataset-readiness":
@@ -228,6 +232,6 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <Timeline gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
     }
     case "manipulator-library":
-      return <ManipulatorLibrary activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
+      return <ManipulatorLibrary onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
   }
 }

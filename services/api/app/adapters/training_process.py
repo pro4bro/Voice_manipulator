@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from app.adapters.training_log_parser import (
+    engine_notice,
     parse_tokenize_line,
     parse_train_line,
     split_carriage_returns,
@@ -49,6 +50,12 @@ class TrainingProcess:
         # afterwards; progress lines alone never say why a process died.
         self.log_path: Path | None = None
         self.tail: deque[str] = deque(maxlen=120)
+        # The step an engine notice belongs to until a parsed line says otherwise.
+        self.step_id: str = "train"
+        # Machine paths out of what goes into the project's journal.
+        self.rewrite: Callable[[str], str] = lambda text: text
+        self._noticed: set[str] = set()
+        self._notices = 0
 
     def failure_detail(self) -> str | None:
         """The line that says why the command failed, when it printed one."""
@@ -100,13 +107,32 @@ class TrainingProcess:
                         self.tail.append(line)
                     parsed = parse(line)
                     if parsed is not None:
+                        self.step_id = parsed.step_id
                         self.on_progress(parsed)
+                        continue
+                    self._notice(line)
         finally:
             code = self._process.wait()
             self._process = None
             if log is not None:
                 log.close()
         return code
+
+    # A run can print the same warning thousands of times; the journal keeps one.
+    MAX_NOTICES = 300
+
+    def _notice(self, line: str) -> None:
+        notice = engine_notice(line)
+        if notice is None or self._notices >= self.MAX_NOTICES:
+            return
+        level, text = notice
+        text = self.rewrite(text)
+        if level != "info":
+            if text in self._noticed:
+                return
+            self._noticed.add(text)
+        self._notices += 1
+        self.on_progress(TrainingProgressLine(step_id=self.step_id, message=text, level=level))  # type: ignore[arg-type]
 
     def cancel(self) -> bool:
         """Stop the whole tree, not the process this object happens to hold.

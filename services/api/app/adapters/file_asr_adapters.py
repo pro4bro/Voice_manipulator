@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.adapters.safe_delete import child_folder, remove_tree
 from app.domain.models import ProjectAsrAdapter
 from app.domain.ports import ProjectRepository
 
@@ -49,6 +50,27 @@ class FileAsrAdapters:
         if not record.is_file():
             raise KeyError(adapter_id)
         return ProjectAsrAdapter.model_validate_json(record.read_text(encoding="utf-8"))
+
+    def delete(self, project_id: str, adapter_id: str) -> int:
+        """Remove the adapter's record; its weights go when their run is deleted."""
+        folder = child_folder(self.root(project_id), adapter_id)
+        if not (folder / "adapter.json").is_file():
+            raise KeyError(adapter_id)
+        return remove_tree(folder)
+
+    def made_by_run(self, project_id: str, run_id: str, run_dir: Path) -> list[ProjectAsrAdapter]:
+        project_root = Path(self.projects.get(project_id).project_path).resolve()
+        inside = run_dir.resolve()
+        found = []
+        for adapter in self.list(project_id):
+            try:
+                (project_root / adapter.adapter_path).resolve().relative_to(inside)
+                uses = True
+            except ValueError:
+                uses = False
+            if adapter.source_run_id == run_id or uses:
+                found.append(adapter)
+        return found
 
     def weights(self, project_id: str, adapter_id: str) -> Path:
         adapter = self.get(project_id, adapter_id)

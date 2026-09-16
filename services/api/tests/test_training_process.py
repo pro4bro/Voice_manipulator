@@ -74,13 +74,41 @@ def test_stderr_is_read_too_because_tqdm_writes_there(tmp_path):
     captured: list[TrainingProgressLine] = []
     command = script(
         tmp_path,
+        # chr(10) for the newline the child writes: an escape here would become a
+        # real line break inside the generated script's string literal.
         "import sys\n"
-        "sys.stderr.write('Extracting Audio Tokens: | 42/100 [00:01<00:02]\n')\n",
+        "sys.stderr.write('Extracting Audio Tokens: | 42/100 [00:01<00:02]' + chr(10))\n",
     )
 
     run_tokenize(TrainingProcess(captured.append), command)
 
     assert [line.done for line in captured] == [42]
+
+
+def test_engine_errors_and_warnings_reach_the_log_once_each(tmp_path):
+    captured: list[TrainingProgressLine] = []
+    command = script(
+        tmp_path,
+        "import sys\n"
+        "for _ in range(3):\n"
+        "    print('C:/x/dataloader.py:627: UserWarning: This DataLoader will create 24 worker processes', flush=True)\n"
+        "print('09/16/2026 01:10:10 - INFO - omnivoice.training.trainer - Starting Training Loop...', flush=True)\n"
+        "print('09/16/2026 01:10:31 - INFO - omnivoice.training.trainer - Epoch 1 starting. Resetting dataloader...', flush=True)\n"
+        "raise RuntimeError('CUDA error: device-side assert triggered')\n",
+    )
+
+    process = TrainingProcess(captured.append)
+    process.step_id = "load-model"
+    code = run_training(process, command)
+
+    assert code != 0
+    levels = [(line.level, line.message) for line in captured]
+    assert levels[0] == ("warning", "UserWarning: This DataLoader will create 24 worker processes")
+    assert ("info", "trainer: Starting Training Loop...") in levels
+    assert not any("Epoch 1 starting" in message for _, message in levels)
+    assert ("error", "RuntimeError: CUDA error: device-side assert triggered") in levels
+    assert sum(1 for level, _ in levels if level == "warning") == 1
+    assert all(line.step_id == "load-model" for line in captured)
 
 
 def test_a_failing_command_returns_its_code_rather_than_raising(tmp_path):

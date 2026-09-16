@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatDuration } from "../../domain/reading-plan";
 import { activeRun, isLive, runFraction } from "../../domain/trainingBatch";
-import type { SpeakerProfile, TrainingProgressLine, TrainingRun, TrainingStepId } from "../../domain/types";
+import type { ProjectAsrAdapter, SpeakerProfile, TrainingProgressLine, TrainingRun, TrainingStepId } from "../../domain/types";
 import { Icon, type IconName } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { RunLogDialog, TrainingHistoryDialog } from "./TrainingHistory";
 
 interface TrainingJobProps {
   speakers: SpeakerProfile[];
@@ -17,6 +18,12 @@ interface TrainingJobProps {
   selectedMode?: string | null;
   busy?: boolean;
   onCancelRun?: (runId: string) => void;
+  projectId?: string;
+  /** Every run of the project, for the history and its delete. */
+  runs?: TrainingRun[];
+  adapters?: ProjectAsrAdapter[];
+  /** Runs, voices or adapters changed on disk; refresh what shows them. */
+  onRunsChanged?: () => void;
 }
 
 type FlowStep = { id: TrainingStepId; label: string; detail: string; icon: IconName };
@@ -144,9 +151,11 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun }: TrainingJobProps) {
+export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun, projectId, runs = [], adapters = [], onRunsChanged }: TrainingJobProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const [follow, setFollow] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [logRun, setLogRun] = useState<TrainingRun | null>(null);
   const current = activeRun(batch);
   const currentProgress = current ? progressByRun[current.id] ?? [] : [];
   const nameOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id)?.name ?? (id ? id : "Toàn bộ dataset");
@@ -180,6 +189,11 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
     if (follow && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [lines.length, follow]);
 
+  const problems = useMemo(() => ({
+    errors: lines.filter(({ line }) => line.level === "error").length,
+    warnings: lines.filter(({ line }) => line.level === "warning").length,
+  }), [lines]);
+
   // A running batch owns the flow. Otherwise the flow follows the choice in
   // Train, and shows the last batch's progress only if it was that same kind.
   const shownMode = live ? live.config.mode : selectedMode ?? current?.config.mode;
@@ -203,7 +217,10 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
 
   return (
     <ModuleFrame
-      action={current ? <span className={`run-status run-status--${current.status}`}>{STATUS_LABELS[current.status]}</span> : null}
+      action={<span className="training-job-actions">
+        {projectId ? <button className="button button--quiet" onClick={() => setHistoryOpen(true)} title="Mọi run của project, dung lượng và nút xoá" type="button"><Icon name="list" /> Lịch sử · {runs.length}</button> : null}
+        {current ? <span className={`run-status run-status--${current.status}`}>{STATUS_LABELS[current.status]}</span> : null}
+      </span>}
       className={`training-job-module training-console is-${category}`}
       eyebrow="TRAINING JOB"
       title="Voice Training"
@@ -241,7 +258,8 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
 
       <section aria-label="Log training" className="training-log">
         <header>
-          <span>LOG · {lines.length} dòng</span>
+          <span>LOG · {lines.length} dòng{problems.errors ? ` · ${problems.errors} lỗi` : ""}{problems.warnings ? ` · ${problems.warnings} cảnh báo` : ""}</span>
+          {projectId && current ? <button className="training-log__full" onClick={() => setLogRun(current)} title="Mọi dòng log và output engine (process.log) của run này" type="button">Log đầy đủ</button> : null}
           <label><input checked={follow} onChange={(event) => setFollow(event.target.checked)} type="checkbox" />Tự cuộn</label>
         </header>
         <ol onScroll={(event) => {
@@ -252,7 +270,7 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
           {lines.map(({ run, line }, index) => {
             const message = logMessage(line);
             return (
-              <li className={message.startsWith("$ ") ? "is-command" : ""} key={`${run.id}-${index}`}>
+              <li className={[message.startsWith("$ ") ? "is-command" : "", line.level && line.level !== "info" ? `is-${line.level}` : ""].filter(Boolean).join(" ")} key={`${run.id}-${index}`}>
                 <time>{new Date(line.at).toLocaleTimeString("vi-VN", { hour12: false })}</time>
                 {batch.length > 1 ? <em style={{ borderColor: colorOf(run.speakerProfileId) }}>{nameOf(run.speakerProfileId)}</em> : null}
                 <span>{STEP_LABELS[line.stepId] ?? line.stepId}</span>
@@ -285,6 +303,8 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
           ))}
         </div>
       </footer>
+      {historyOpen && projectId ? <TrainingHistoryDialog adapters={adapters} onChanged={() => onRunsChanged?.()} onClose={() => setHistoryOpen(false)} onOpenLog={setLogRun} projectId={projectId} runs={runs} speakers={speakers} /> : null}
+      {logRun && projectId ? <RunLogDialog onClose={() => setLogRun(null)} projectId={projectId} run={runs.find((run) => run.id === logRun.id) ?? logRun} /> : null}
     </ModuleFrame>
   );
 }

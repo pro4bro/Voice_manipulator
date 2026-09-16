@@ -787,6 +787,32 @@ export interface TrainingProgressLine {
   vramMb: number | null;
   done: number | null;
   total: number | null;
+  /** What a person reading the log back should notice first. Older journals have none. */
+  level?: TrainingLogLevel;
+}
+
+export type TrainingLogLevel = "info" | "warning" | "error";
+
+export interface OwnedItem {
+  id: string;
+  name: string;
+}
+
+/** What deleting a run takes with it. */
+export interface TrainingRunFootprint {
+  runId: string;
+  bytes: number;
+  voices: OwnedItem[];
+  asrAdapters: OwnedItem[];
+}
+
+/** Everything a run wrote: its journal and the engine's own output. */
+export interface TrainingRunLog {
+  runId: string;
+  journal: TrainingProgressLine[];
+  processLog: string;
+  processLogBytes: number;
+  truncated: boolean;
 }
 
 export interface TrainingRuntimePackage {

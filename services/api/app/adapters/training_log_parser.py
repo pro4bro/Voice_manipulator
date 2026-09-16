@@ -133,3 +133,63 @@ def parse_tokenize_line(raw: str) -> TrainingProgressLine | None:
 def split_carriage_returns(chunk: str) -> list[str]:
     """tqdm redraws with `\\r`, so a read can hold many bar states at once."""
     return [part for part in re.split(r"[\r\n]+", chunk) if part.strip()]
+
+
+# Python logging as accelerate and the OmniVoice trainer format it, and as the
+# tokenizer script formats it. Either can land after a bar redraw on one line.
+_LOGGING_TRAINER = re.compile(
+    r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2} - (?P<level>INFO|WARNING|ERROR|CRITICAL) - (?P<name>[\w.]+) - (?P<text>.*)$"
+)
+_LOGGING_TOKENIZER = re.compile(
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+ (?P<level>INFO|WARNING|ERROR|CRITICAL) \[(?P<name>[\w.]+):\d+\] (?P<text>.*)$"
+)
+_PY_WARNING = re.compile(r"\b(?P<kind>\w*Warning): (?P<text>.+)$")
+_EXCEPTION = re.compile(r"^(?:[\w.]+\.)?(?P<kind>\w*(?:Error|Exception|Interrupt))(?::\s*(?P<text>.*))?$")
+# Engine INFO lines that repeat every few steps and say nothing new.
+_QUIET_INFO = re.compile(r"Epoch \d+ starting|Eval Loss:|Loaded Config:|Resumed from step")
+NOTICE_MAX_CHARS = 400
+
+
+def engine_notice(raw: str) -> tuple[str, str] | None:
+    """A line of engine output worth a place in the run's log, as (level, text).
+
+    Measurements are the parsers' job; this keeps what a person reads back when
+    something went wrong: errors, warnings, and the trainer's own account of
+    what it is doing ("Starting Training Loop", "Saved checkpoint to ...").
+    Library INFO chatter and per-epoch lines stay in process.log only.
+    """
+    line = raw.strip()
+    if not line:
+        return None
+    for pattern in (_LOGGING_TRAINER, _LOGGING_TOKENIZER):
+        found = pattern.search(line)
+        if not found:
+            continue
+        level, name, text = found.group("level"), found.group("name"), found.group("text").strip()
+        if level in {"ERROR", "CRITICAL"}:
+            return "error", _clip(f"{_short(name)}: {text}")
+        if level == "WARNING":
+            return "warning", _clip(f"{_short(name)}: {text}")
+        engine_info = name.startswith("omnivoice") or name.endswith(".py")
+        if engine_info and not _QUIET_INFO.search(text):
+            return "info", _clip(f"{_short(name)}: {text}")
+        return None
+    if line.startswith("Traceback (most recent call last)"):
+        return "error", "Python traceback - chi tiết từng dòng nằm trong Log đầy đủ."
+    if "CUDA out of memory" in line or "OutOfMemoryError" in line:
+        return "error", _clip(line)
+    exception = _EXCEPTION.match(line)
+    if exception:
+        return "error", _clip(line)
+    warning = _PY_WARNING.search(line)
+    if warning:
+        return "warning", _clip(f"{warning.group('kind')}: {warning.group('text')}")
+    return None
+
+
+def _short(name: str) -> str:
+    return name.rsplit(".", 1)[-1] if not name.endswith(".py") else name[:-3]
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= NOTICE_MAX_CHARS else text[: NOTICE_MAX_CHARS - 1] + "…"

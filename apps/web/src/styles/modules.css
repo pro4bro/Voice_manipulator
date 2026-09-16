@@ -1392,3 +1392,51 @@
 .changer-record__delete { min-height: 22px; padding: 0 6px; color: inherit; border: 1px solid transparent; background: transparent; cursor: pointer; }
 .changer-record__delete.is-confirming { color: #fff; border-color: var(--red); background: var(--red); font-size: calc(8.5px * var(--font-scale)); }
 
+
+/* Training log: what went wrong stands out; the full record opens in a dialog. */
+.training-log li.is-warning code { color: #f2c86b; }
+.training-log li.is-warning span { color: #f2c86b; }
+.training-log li.is-error { background: rgba(214, 84, 64, .16); }
+.training-log li.is-error code, .training-log li.is-error span { color: #ff8d78; }
+.training-log__full { margin-left: auto; margin-right: 10px; padding: 1px 7px; color: #f3f0e7; border: 1px solid rgba(247,244,235,.3); background: transparent; font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; cursor: pointer; }
+.training-log__full:hover { border-color: var(--gold); color: var(--gold); }
+.training-job-actions { display: inline-flex; align-items: center; gap: 6px; }
+.training-job-actions .button { min-height: 22px; padding: 0 7px; font-size: calc(9px * var(--font-scale)); }
+.training-job-actions .button svg { width: 11px; }
+.run-log-dialog { width: min(1100px, 100%); grid-template-rows: auto auto auto minmax(0, 1fr); }
+.run-log-dialog__tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.run-log-dialog__tabs button { padding: 4px 9px; color: var(--text-muted); border: 1px solid var(--line); background: var(--soft-fill); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 800; cursor: pointer; }
+.run-log-dialog__tabs button.is-active { color: var(--text); border-color: var(--accent); }
+.training-history-dialog { width: min(900px, 100%); grid-template-rows: auto auto auto minmax(0, 1fr); }
+.training-history { min-height: 0; overflow: auto; margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; align-content: start; }
+.training-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-field); }
+.training-history li.is-failed { border-left: 3px solid #d65440; }
+.training-history li.is-complete { border-left: 3px solid var(--lime-dark); }
+.training-history li.is-running, .training-history li.is-pending { border-left: 3px solid var(--accent); }
+.training-history__copy { min-width: 0; display: grid; gap: 2px; }
+.training-history__copy b { color: var(--text); font-size: calc(11px * var(--font-scale)); }
+.training-history__copy span, .training-history__copy small { overflow: hidden; color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.training-history__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.training-history__empty { color: var(--text-muted); }
+.button.is-danger { color: #d65440; border-color: color-mix(in srgb, #d65440 45%, transparent); }
+.button.is-danger:disabled { opacity: .45; }
+
+/* Voices a Speaker Profile has, each removable, under its card. */
+.voice-card-group { display: grid; gap: 2px; }
+.voice-card__voices { display: grid; gap: 2px; margin: 0 0 0 47px; padding: 0; list-style: none; }
+.voice-card__voices li { display: grid; grid-template-columns: minmax(0,1fr) auto 20px; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border-left: 2px solid var(--line); }
+.voice-card__voices li span { overflow: hidden; color: var(--text); font-size: calc(10px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.voice-card__voices li small { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
+.voice-card__voices li button { width: 20px; height: 20px; padding: 0; color: var(--text-muted); border: 1px solid transparent; background: transparent; font-size: calc(13px * var(--font-scale)); line-height: 1; cursor: pointer; }
+.voice-card__voices li button:hover { color: #d65440; border-color: color-mix(in srgb, #d65440 45%, transparent); }
+
+/* Authored reading passages, with the way back out. */
+.authoring-authored { display: grid; gap: 5px; padding: 8px; border: 1px solid var(--line); background: var(--surface-sunken); }
+.authoring-authored header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.authoring-authored header small { color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
+.authoring-authored ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.authoring-authored li { display: grid; grid-template-columns: minmax(0,1fr) auto 22px; align-items: center; gap: 8px; }
+.authoring-authored li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authoring-authored li small { color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.authoring-authored li button { width: 22px; height: 22px; color: var(--text-muted); border: 1px solid transparent; background: transparent; font-size: calc(14px * var(--font-scale)); cursor: pointer; }
+.authoring-authored li button:hover { color: #d65440; border-color: color-mix(in srgb, #d65440 45%, transparent); }

@@ -347,6 +347,17 @@ class ProjectDatasetCompiler:
         self._persist(project_id, manifest)
         return manifest
 
+    def manifest_ids(self, project_id: str) -> list[str]:
+        root = Path(self.projects.get(project_id).project_path) / "assets" / "training" / "datasets"
+        return sorted(path.stem for path in root.glob("dataset-*.json")) if root.is_dir() else []
+
+    def delete(self, project_id: str, manifest_id: str) -> None:
+        root = Path(self.projects.get(project_id).project_path) / "assets" / "training" / "datasets"
+        path = root / f"{manifest_id}.json"
+        if path.parent != root or not path.name.startswith("dataset-"):
+            raise ValueError(f"Mã manifest không hợp lệ: {manifest_id!r}")
+        path.unlink(missing_ok=True)
+
     def load(self, project_id: str, manifest_id: str) -> DatasetManifest:
         """Load the immutable manifest selected by a training run."""
         path = (

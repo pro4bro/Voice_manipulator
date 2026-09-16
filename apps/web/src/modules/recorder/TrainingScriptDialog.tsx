@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { api } from "../../api/client";
 import { EMOTION_OPTIONS } from "../../domain/emotions";
 import { splitIntoCards, splitSummary } from "../../domain/script-splitter";
-import type { EmotionLabel, ReadingAudienceVocabulary, ReadingPassageKind } from "../../domain/types";
+import type { EmotionLabel, ReadingAudienceVocabulary, ReadingPassage, ReadingPassageKind } from "../../domain/types";
 
 /**
  * Authoring a reading passage without touching JSON.
@@ -72,11 +72,33 @@ export function TrainingScriptDialog({ onClose, onSaved }: TrainingScriptDialogP
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Passages authored on this machine, so a mistake can be taken back out.
+  const [authored, setAuthored] = useState<ReadingPassage[]>([]);
 
   useEffect(() => {
     if (!unlocked) return;
     api.getReadingAudience().then(setAudience).catch(() => setAudience(null));
   }, [unlocked]);
+
+  const loadAuthored = useCallback(() => {
+    if (!unlocked) return;
+    api.getReadingPack(`${language}-authored`)
+      .then((pack) => setAuthored(pack.passages.filter((passage) => passage.source === "authored")))
+      .catch(() => setAuthored([]));
+  }, [language, unlocked]);
+
+  useEffect(loadAuthored, [loadAuthored]);
+
+  async function removePassage(passage: ReadingPassage) {
+    if (!window.confirm(`Xoá bài đọc "${passage.title}" (${passage.cards.length} thẻ) khỏi thư viện?`)) return;
+    try {
+      await api.deleteReadingPassage(passage.id);
+      onSaved(`Đã xoá bài đọc "${passage.title}".`);
+      loadAuthored();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Không xoá được bài đọc");
+    }
+  }
 
   const cards = useMemo(() => splitIntoCards(body), [body]);
   const summary = useMemo(() => splitSummary(cards), [cards]);
@@ -183,6 +205,19 @@ export function TrainingScriptDialog({ onClose, onSaved }: TrainingScriptDialogP
             <div className="authoring-preview">
               <header><b>{summary.cards} thẻ · {summary.words} từ · ~{summary.seconds}s</b>{summary.warnings ? <em>{summary.warnings} thẻ ngoài khoảng 2–15s</em> : <span>mọi thẻ nằm trong khoảng 2–15s</span>}</header>
               <ol>{cards.map((card, index) => <li className={card.warning ? `is-${card.warning}` : ""} key={index}><i>{index + 1}</i><span>{card.text}</span><small>{card.estimatedSeconds}s</small></li>)}</ol>
+            </div>
+          ) : null}
+
+          {authored.length ? (
+            <div className="authoring-authored">
+              <header><b>Bài tự soạn của ngôn ngữ này · {authored.length}</b><small>Bài có sẵn của app không xoá được.</small></header>
+              <ul>{authored.map((passage) => (
+                <li key={passage.id}>
+                  <span>{passage.title}</span>
+                  <small>{passage.emotion} · {passage.cards.length} thẻ</small>
+                  <button aria-label={`Xoá bài đọc ${passage.title}`} onClick={() => void removePassage(passage)} title="Xoá bài đọc" type="button">×</button>
+                </li>
+              ))}</ul>
             </div>
           ) : null}
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -42,19 +43,50 @@ from app.adapters.vibevoice_training import (
 )
 from app.domain.models import (
     DatasetManifest,
+    OwnedItem,
     ProjectAsrAdapter,
     TrainingCheckpoint,
     TrainingProgressLine,
     TrainingRun,
     TrainingRunConfig,
+    TrainingRunFootprint,
 )
 from app.domain.ports import ProjectRepository
+from app.domain.training_passes import StepPlan, plan_steps
 from app.domain.voice_reference import NoReferenceSegment, choose_reference
 
 
 from app.adapters.rvc_training import RvcPaths, export_rvc_dataset, finished_model, link_experiment, rvc_commands, rvc_line_parser, unlink_experiment
 
 ASR_LORA_WRAPPER = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_asr_lora_train.py"
+EPOCH_SIZE_WORKER = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_epoch_size.py"
+REPLY_PREFIX = "@@PRO4BRO@@"
+
+logger = logging.getLogger("pro4bro.training")
+
+# The step names a person reads in the log; the same words as the page's flow.
+STEP_LABELS = {
+    "provision": "môi trường",
+    "resolve-model": "model",
+    "read-manifest": "đọc dataset",
+    "write-jsonl": "xuất dữ liệu",
+    "tokenize": "tokenize audio",
+    "load-model": "nạp model",
+    "train": "train",
+    "checkpoint": "checkpoint",
+    "publish": "tạo voice",
+}
+
+
+def format_seconds(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours} giờ {minutes:02d} phút"
+    if minutes:
+        return f"{minutes} phút {secs:02d} giây"
+    return f"{secs} giây"
 
 # What each engine's runner can do. A mode missing here is refused before any
 # run exists, whatever a descriptor claims.
@@ -71,12 +103,13 @@ SUPPORTED_MODES: dict[str, set[str]] = {
 # reads still reach back over the loss curve instead of being all bar redraws.
 COUNTER_UPDATE_SECONDS = 1.0
 COUNTER_JOURNAL_SECONDS = 30.0
+COUNTER_JOURNAL_SECONDS_BY_STEP = {"tokenize": 5.0}
 
 
 def is_counter(line: TrainingProgressLine) -> bool:
     """A position in the loop and nothing else: no message, loss or rate schedule."""
     return (
-        line.step_id == "train"
+        line.step_id in {"train", "tokenize"}
         and not line.message
         and line.loss is None
         and line.dev_loss is None
@@ -152,6 +185,8 @@ class TrainingRunner:
         self._lock = threading.Lock()
         # run id -> [last journalled counter, last applied counter], monotonic seconds
         self._counter_marks: dict[str, list[float]] = {}
+        # run id -> (step id, monotonic seconds it started), for "done in" lines
+        self._step_marks: dict[str, tuple[str, float]] = {}
 
     def start(
         self,
@@ -287,6 +322,72 @@ class TrainingRunner:
         spawn_in_thread(lambda: self._execute_batch(runs))
         return self.runs.get(project_id, runs[0].id)
 
+    # ---------- delete ----------
+
+    def footprint(self, project_id: str, run_id: str) -> TrainingRunFootprint:
+        """What deleting a run removes: its folder's bytes and what it published."""
+        run = self.runs.get(project_id, run_id)
+        run_dir = self.runs.run_dir(project_id, run.id)
+        voices = self.voices.made_by_run(project_id, run.id, run_dir) if self.voices is not None else []
+        adapters = self.asr_adapters.made_by_run(project_id, run.id, run_dir) if self.asr_adapters is not None else []
+        return TrainingRunFootprint(
+            run_id=run.id,
+            bytes=self.runs.size(project_id, run.id),
+            voices=[OwnedItem(id=voice.id, name=voice.name) for voice in voices],
+            asr_adapters=[OwnedItem(id=adapter.id, name=adapter.name) for adapter in adapters],
+        )
+
+    def delete_run(self, project_id: str, run_id: str, with_outputs: bool = False) -> TrainingRunFootprint:
+        """Delete a finished run's folder, and the voices and adapters it made when asked.
+
+        A live run is refused: its process still writes into the folder. A run
+        that published something is refused unless `with_outputs`, because those
+        voices read weights from inside the run folder.
+        """
+        run = self.runs.get(project_id, run_id)
+        self.runs.reconcile(project_id)
+        run = self.runs.get(project_id, run_id)
+        if run.status in {"pending", "running"}:
+            raise ValueError("Run đang chạy. Huỷ run trước rồi mới xoá.")
+        footprint = self.footprint(project_id, run_id)
+        if (footprint.voices or footprint.asr_adapters) and not with_outputs:
+            raise RunHasOutputs(footprint)
+        for voice in footprint.voices:
+            self.voices.delete(project_id, voice.id)  # type: ignore[union-attr]
+        for adapter in footprint.asr_adapters:
+            self.asr_adapters.delete(project_id, adapter.id)  # type: ignore[union-attr]
+        self.runs.delete(project_id, run_id)
+        with self._lock:
+            self._counter_marks.pop(run_id, None)
+        self.prune_manifests(project_id)
+        return footprint
+
+    def prune_manifests(self, project_id: str, keep: str | None = None) -> list[str]:
+        """Delete dataset manifests no run uses, except the newest (or `keep`).
+
+        Compiling writes a new manifest every time; without this the old ones
+        piled up with nothing pointing at them.
+        """
+        ids = self.compiler.manifest_ids(project_id)
+        if not ids:
+            return []
+        used = {run.manifest_id for run in self.runs.list(project_id)}
+        newest = keep or max(ids, key=lambda manifest_id: self._manifest_time(project_id, manifest_id))
+        removed = []
+        for manifest_id in ids:
+            if manifest_id == newest or manifest_id in used:
+                continue
+            self.compiler.delete(project_id, manifest_id)
+            removed.append(manifest_id)
+        return removed
+
+    def _manifest_time(self, project_id: str, manifest_id: str) -> float:
+        path = Path(self.projects.get(project_id).project_path) / "assets" / "training" / "datasets" / f"{manifest_id}.json"
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
     def _execute_batch(self, runs: list[TrainingRun]) -> None:
         for queued in runs:
             current = self.runs.get(queued.project_id, queued.id)
@@ -310,26 +411,43 @@ class TrainingRunner:
                         project_id,
                         sibling.model_copy(update={"status": "cancelled", "process_id": None}),
                     )
+        self._append(run, run.step_id, f"Người dùng bấm huỷ ở step {run.global_step}.", level="warning")
         return self.runs.update(
             project_id,
             run.model_copy(update={"status": "cancelled", "process_id": None}),
         )
 
     def _execute(self, initial: TrainingRun) -> None:
+        """Run one voice, and say in its log how it began and how it ended.
+
+        Any exception is caught here: a bug in a runner must end as a failed run
+        with its reason in the log, never as a run that says "running" forever.
+        """
+        run = initial
+        began = time.monotonic()
+        if self.runs.get(run.project_id, run.id).status == "cancelled":
+            return
+        try:
+            self._announce(run)
+            if run.config.mode == "zero-shot-clone":
+                self._build_clone_voice(run)
+            elif run.config.engine == "vibevoice":
+                self._execute_vibevoice(run)
+            elif run.config.engine == "rvc":
+                self._execute_rvc(run)
+            else:
+                self._execute_omnivoice(run)
+        except Exception as exc:  # noqa: BLE001 - the log is the place for it
+            logger.exception("Training run %s stopped on an unexpected error", run.id)
+            self._fail(run, f"Lỗi không lường trước trong Pro4Bro: {type(exc).__name__}: {exc}")
+        finally:
+            self._summarize(run, began)
+            self._step_marks.pop(run.id, None)
+
+    def _execute_omnivoice(self, initial: TrainingRun) -> None:
         run = initial
         lease_token: str | None = None
         try:
-            if self.runs.get(run.project_id, run.id).status == "cancelled":
-                return
-            if run.config.mode == "zero-shot-clone":
-                self._build_clone_voice(run)
-                return
-            if run.config.engine == "vibevoice":
-                self._execute_vibevoice(run)
-                return
-            if run.config.engine == "rvc":
-                self._execute_rvc(run)
-                return
             if self.before_gpu_work is not None:
                 self.before_gpu_work()
             lease = self.gpu_lease.acquire(f"training:{run.id}")
@@ -371,8 +489,9 @@ class TrainingRunner:
             dev_lst = token_dir / "dev" / "data.lst"
             if not train_lst.is_file() or not dev_lst.is_file():
                 run = self._set_run(run, step_id="tokenize")
+                self._append(run, "tokenize", "Chuyển audio thành audio token bằng higgs-audio-v2 (chạy trên GPU).")
                 commands = OmniVoiceTrainingCommands(self.runtime.python, self.engine_root)
-                process = self._process_for(run)
+                process = self._process_for(run, "tokenize")
                 command = commands.tokenize(Path(export.train_jsonl), token_dir)
                 self._append_command(run, "tokenize", command)
                 code = run_tokenize(process, command, env=self._engine_environment())
@@ -382,7 +501,7 @@ class TrainingRunner:
                     raise RuntimeError(_failed(f"OmniVoice tokenizer thất bại với mã {code}.", process))
 
                 dev_dir = run_dir / "data" / "dev-tokens"
-                dev_process = self._process_for(run)
+                dev_process = self._process_for(run, "tokenize")
                 command = commands.tokenize(Path(export.dev_jsonl), dev_dir)
                 self._append_command(run, "tokenize", command)
                 code = run_tokenize(dev_process, command, env=self._engine_environment())
@@ -391,13 +510,17 @@ class TrainingRunner:
                 if code != 0:
                     raise RuntimeError(_failed(f"OmniVoice tokenizer cho dev thất bại với mã {code}.", dev_process))
                 dev_lst = dev_dir / "data.lst"
+            else:
+                self._append(run, "tokenize", "Đã có audio token từ lần chạy trước, bỏ qua tokenize.")
             data_config = self.exporter.write_data_config(run_dir, train_lst, dev_lst)
 
             run = self._set_run(run, step_id="load-model")
             train_config = self._write_train_config(run, run_dir)
+            run = self._plan_passes(run, train_config, data_config, export.train_samples)
             commands = OmniVoiceTrainingCommands(self.runtime.python, self.engine_root)
-            process = self._process_for(run)
+            process = self._process_for(run, "load-model")
             command = commands.train(train_config, data_config, run_dir / "checkpoints")
+            self._append(run, "load-model", "Nạp OmniVoice và gắn adapter; lần đầu có thể mất 1-2 phút trước step đầu tiên.")
             self._append_command(run, "load-model", command)
             code = run_training(process, command, env=self._engine_environment())
             if process.cancelled or self.runs.get(run.project_id, run.id).status == "cancelled":
@@ -408,14 +531,17 @@ class TrainingRunner:
             latest = self._refresh_checkpoints(run)
             if not latest:
                 raise RuntimeError("Training kết thúc nhưng không tạo checkpoint nào.")
-            self._append(run, "checkpoint", f"Đã tạo checkpoint tại {latest.path}.")
+            self._append(run, "checkpoint", f"Đã tạo checkpoint step {latest.step} · {latest.bytes / 1024 / 1024:.0f} MB · {self._portable(run, latest.path)}.")
             checkpoint_dir = Path(project.project_path) / latest.path
+            run = self._set_run(run, step_id="publish")
             if run.config.mode == "lora-finetune":
-                self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir)
+                voice = self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir)
             else:
                 # A full fine-tune checkpoint is a whole model.
-                self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir)
-            self._set_run(run, status="complete", step_id="checkpoint", process_id=None)
+                voice = self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir)
+            if voice is not None:
+                self._append(run, "publish", f"Đã tạo voice {voice.name} ({voice.id}); dùng được ở Voice Manipulator.")
+            self._set_run(run, status="complete", step_id="publish", process_id=None)
         except GpuBusy as exc:
             self._fail(run, str(exc))
         except (DatasetExportError, KeyError, OSError, RuntimeError, ValueError) as exc:
@@ -426,11 +552,13 @@ class TrainingRunner:
             with self._lock:
                 self._active.pop(run.id, None)
 
-    def _process_for(self, run: TrainingRun) -> TrainingProcess:
+    def _process_for(self, run: TrainingRun, step_id: str | None = None) -> TrainingProcess:
         process = TrainingProcess(
             lambda line: self._on_progress(run, line),
             lambda pid: self._on_started(run, pid),
         )
+        process.step_id = step_id or run.step_id
+        process.rewrite = lambda text: self._portable(run, text)
         try:
             process.log_path = self.runs.run_dir(run.project_id, run.id) / "process.log"
         except (AttributeError, KeyError):
@@ -451,12 +579,13 @@ class TrainingRunner:
             if not final and now - marks[1] < COUNTER_UPDATE_SECONDS:
                 return
             marks[1] = now
-            if final or now - marks[0] >= COUNTER_JOURNAL_SECONDS:
+            interval = COUNTER_JOURNAL_SECONDS_BY_STEP.get(line.step_id, COUNTER_JOURNAL_SECONDS)
+            if final or now - marks[0] >= interval:
                 marks[0] = now
                 self.runs.append_progress(run.project_id, run.id, line)
         else:
             self.runs.append_progress(run.project_id, run.id, line)
-        current = self.runs.get(run.project_id, run.id)
+        current = self._mark_step(run, line.step_id)
         update: dict[str, object] = {"step_id": line.step_id}
         if line.global_step is not None:
             update["global_step"] = line.global_step
@@ -677,8 +806,22 @@ class TrainingRunner:
         )
         self._append(run, "publish", f"Đã thêm {adapter.name} vào lựa chọn Speech to Text.")
 
-    def _append(self, run: TrainingRun, step_id: str, message: str) -> None:
-        self.runs.append_progress(run.project_id, run.id, TrainingProgressLine(step_id=step_id, message=message))
+    def _append(self, run: TrainingRun, step_id: str, message: str, level: str = "info") -> None:
+        """One line in the run's journal, and the same line in its process.log.
+
+        process.log then reads as the whole story in order - Pro4Bro's steps
+        between the engine's own output - for whoever opens it after a failure.
+        """
+        line = TrainingProgressLine(step_id=step_id, message=message, level=level)  # type: ignore[arg-type]
+        self.runs.append_progress(run.project_id, run.id, line)
+        try:
+            path = self.runs.run_dir(run.project_id, run.id) / "process.log"
+            if path.parent.is_dir():
+                stamp = line.at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(f"\n[{stamp}] [PRO4BRO] [{level.upper()}] [{step_id}] {message}\n")
+        except (OSError, AttributeError, KeyError):
+            pass
 
     def _build_clone_voice(self, run: TrainingRun) -> None:
         """A voice with no training: pick the reference clip and publish it.
@@ -766,12 +909,7 @@ class TrainingRunner:
         The journal lives inside the project, which moves between machines, so
         machine paths are written as placeholders rather than as they are here.
         """
-        replacements = [
-            (str(self.runs.run_dir(run.project_id, run.id)), "<run>"),
-            (str(self.engine_root), "<omnivoice>"),
-            (str(self.runtime.python), "python"),
-            *(extra or []),
-        ]
+        replacements = self._replacements(run, extra)
         shown: list[str] = []
         for argument in command:
             for original, placeholder in replacements:
@@ -793,6 +931,8 @@ class TrainingRunner:
         return {**os.environ, **extra}
 
     def _set_run(self, run: TrainingRun, **updates: object) -> TrainingRun:
+        if isinstance(updates.get("step_id"), str):
+            self._mark_step(run, updates["step_id"])  # type: ignore[arg-type]
         current = self.runs.get(run.project_id, run.id)
         return self.runs.update(run.project_id, current.model_copy(update=updates))
 
@@ -800,7 +940,139 @@ class TrainingRunner:
         current = self.runs.get(run.project_id, run.id)
         if current.status == "cancelled":
             return
+        message = self._portable(run, message)
         self.runs.update(run.project_id, current.model_copy(update={"status": "failed", "process_id": None, "error": message}))
+        label = STEP_LABELS.get(current.step_id, current.step_id)
+        self._append(run, current.step_id, f"Thất bại ở bước {label}: {message}", level="error")
+
+    def _announce(self, run: TrainingRun) -> None:
+        """The run's first lines: what trains, on what, with which settings."""
+        config = run.config
+        target = f" · voice {run.batch_index + 1}/{run.batch_size}" if run.batch_size > 1 else ""
+        self._append(run, "provision", f"Bắt đầu run {run.id}: {config.model_id or config.engine} ({config.engine} · {config.mode}){target}.")
+        if config.parameters:
+            shown = " · ".join(f"{key}={value}" for key, value in sorted(config.parameters.items()) if value is not None)
+            self._append(run, "provision", f"Tham số: {shown}")
+        logger.info("Training run %s started: %s %s", run.id, config.engine, config.mode)
+
+    def _summarize(self, run: TrainingRun, began: float) -> None:
+        """The run's last line: how it ended and how long it took."""
+        try:
+            current = self.runs.get(run.project_id, run.id)
+        except KeyError:
+            return
+        elapsed = format_seconds(time.monotonic() - began)
+        label = STEP_LABELS.get(current.step_id, current.step_id)
+        if current.status == "complete":
+            self._append(run, current.step_id, f"Hoàn tất sau {elapsed}.")
+        elif current.status == "cancelled":
+            self._append(run, current.step_id, f"Đã huỷ ở bước {label} sau {elapsed}. Checkpoint đã lưu vẫn còn.", level="warning")
+        elif current.status == "failed":
+            self._append(run, current.step_id, f"Dừng sau {elapsed}. Toàn bộ output của engine nằm trong process.log (nút Log đầy đủ).", level="error")
+        logger.info("Training run %s ended %s after %s", run.id, current.status, elapsed)
+
+    def _mark_step(self, run: TrainingRun, step_id: str) -> TrainingRun:
+        """Note when the run moves to another step, with how long the last one took."""
+        current = self.runs.get(run.project_id, run.id)
+        now = time.monotonic()
+        previous = self._step_marks.get(run.id)
+        if previous is None:
+            self._step_marks[run.id] = (step_id, now)
+        elif previous[0] != step_id:
+            self._step_marks[run.id] = (step_id, now)
+            if previous[0] != "provision":
+                label = STEP_LABELS.get(previous[0], previous[0])
+                self._append(run, previous[0], f"Xong {label} sau {format_seconds(now - previous[1])}.")
+        return current
+
+    def _plan_passes(self, run: TrainingRun, train_config: Path, data_config: Path, train_samples: int) -> TrainingRun:
+        """Measure one pass over the data, then cap the steps at the allowed passes."""
+        parameters = dict(run.config.parameters)
+        max_epochs = int(parameters.get("max_epochs") or 0)
+        requested = int(parameters.get("steps") or run.config.steps)
+        self._append(run, "load-model", f"Đo xem 1 vòng dữ liệu ({train_samples} đoạn train) bằng bao nhiêu step, bằng đúng dataloader của training (không dùng GPU).")
+        measured: dict = {}
+
+        def read_reply(raw: str) -> None:
+            if raw.startswith(REPLY_PREFIX):
+                measured.update(json.loads(raw[len(REPLY_PREFIX):]))
+            return None
+
+        process = self._process_for(run, "load-model")
+        command = [str(self.runtime.python), str(EPOCH_SIZE_WORKER), "--train_config", str(train_config), "--data_config", str(data_config)]
+        try:
+            code = process.run(command, read_reply, env=self._engine_environment())
+        except OSError as exc:
+            code, measured = -1, {}
+            self._append(run, "load-model", f"Không chạy được bước đo vòng dữ liệu: {exc}", level="warning")
+        if process.cancelled:
+            return self.runs.get(run.project_id, run.id)
+        steps_per_epoch = float(measured.get("stepsPerEpoch") or 0)
+        if code != 0 or steps_per_epoch <= 0:
+            detail = process.failure_detail() if code != 0 else "không có kết quả"
+            self._append(run, "load-model", f"Không đo được 1 vòng dữ liệu ({self._portable(run, detail or '')}); train đúng {requested} step như đã đặt, không giới hạn số lần đọc lại.", level="warning")
+            return self.runs.get(run.project_id, run.id)
+
+        plan = plan_steps(requested, steps_per_epoch, max_epochs)
+        batches = ", ".join(str(count) for count in measured.get("batchesPerEpoch") or [])
+        self._append(run, "load-model", f"1 vòng dữ liệu = {steps_per_epoch:.1f} step (đo {len(measured.get('batchesPerEpoch') or [])} vòng: {batches} batch) · đo mất {measured.get('seconds', 0)} giây.")
+        payload = json.loads(train_config.read_text(encoding="utf-8"))
+        if plan.capped:
+            self._append(
+                run,
+                "load-model",
+                f"Max steps {plan.requested_steps} sẽ đọc lại mỗi đoạn khoảng {plan.requested_epochs:.0f} lần, quá giới hạn {plan.max_epochs} lần. "
+                f"Train {plan.steps} step (khoảng {plan.epochs:.0f} lần). Đổi \u201cTối đa số lần đọc lại dữ liệu\u201d nếu muốn khác.",
+                level="warning",
+            )
+        else:
+            limit = f"giới hạn {plan.max_epochs} lần" if plan.max_epochs else "không đặt giới hạn"
+            self._append(run, "load-model", f"Train {plan.steps} step: mỗi đoạn được đọc lại khoảng {plan.epochs:.1f} lần ({limit}).")
+        changes = self._fit_schedule(payload, plan)
+        for change in changes:
+            self._append(run, "load-model", change)
+        if plan.capped or changes:
+            train_config.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        current = self.runs.get(run.project_id, run.id)
+        parameters.update({key: payload[key] for key in ("steps", "eval_steps") if key in payload})
+        config = current.config.model_copy(update={"steps": plan.steps, "parameters": parameters})
+        return self.runs.update(run.project_id, current.model_copy(update={"config": config}))
+
+    @staticmethod
+    def _fit_schedule(payload: dict, plan: StepPlan) -> list[str]:
+        """Keep evaluation reachable after the steps were capped."""
+        payload["steps"] = plan.steps
+        changes = []
+        eval_steps = int(payload.get("eval_steps") or 0)
+        if eval_steps > plan.steps:
+            payload["eval_steps"] = plan.steps
+            changes.append(f"Đánh giá dev mỗi {eval_steps} step sẽ không bao giờ tới; đánh giá ở step {plan.steps}.")
+        return changes
+
+    def _portable(self, run: TrainingRun, text: str) -> str:
+        """Machine paths as placeholders, as in the command lines of the log."""
+        if not text:
+            return text
+        for original, placeholder in self._replacements(run):
+            if not original:
+                continue
+            for variant in {original, original.replace("\\", "/")}:
+                text = text.replace(variant, placeholder)
+        return text
+
+    def _replacements(self, run: TrainingRun, extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
+        pairs = [
+            (str(self.runs.run_dir(run.project_id, run.id)), "<run>"),
+            (str(self.engine_root), "<omnivoice>"),
+            (str(self.runtime.python), "python"),
+        ]
+        try:
+            pairs.append((str(Path(self.projects.get(run.project_id).project_path)), "<project>"))
+        except (KeyError, AttributeError):
+            pass
+        if self.rvc_paths is not None:
+            pairs.append((str(self.rvc_paths.applio), "<applio>"))
+        return [*(extra or []), *pairs]
 
     def _write_train_config(self, run: TrainingRun, run_dir: Path) -> Path:
         template_name = OMNIVOICE_TEMPLATES.get(run.config.mode)
@@ -885,3 +1157,12 @@ class TrainingRunner:
 
 class TrainingBusyError(RuntimeError):
     pass
+
+
+class RunHasOutputs(RuntimeError):
+    """Deleting the run would take voices or adapters with it; the caller must say so."""
+
+    def __init__(self, footprint: TrainingRunFootprint) -> None:
+        names = [voice.name for voice in footprint.voices] + [adapter.name for adapter in footprint.asr_adapters]
+        super().__init__("Run này đã tạo: " + ", ".join(names) + ". Xoá run sẽ xoá luôn các mục này.")
+        self.footprint = footprint

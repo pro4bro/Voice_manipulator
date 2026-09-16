@@ -235,6 +235,37 @@ class FileReadingPacks:
         self._cache.pop(path, None)
         return pack
 
+    def delete_passage(self, passage_id: str) -> None:
+        """Remove one authored passage. Shipped passages belong to the app and stay.
+
+        A library file left with no passages is removed with it, so an authored
+        pack that was emptied does not linger in the pack list.
+        """
+        if self.authored_root is not None and self.authored_root.is_dir():
+            for path in sorted(self.authored_root.glob("*.json")):
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                passages = raw.get("passages") or []
+                kept = [passage for passage in passages if passage.get("id") != passage_id]
+                if len(kept) == len(passages):
+                    continue
+                if kept:
+                    raw["passages"] = kept
+                    self._build(raw, "authored")
+                    temporary = path.with_suffix(".json.tmp")
+                    temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+                    temporary.replace(path)
+                else:
+                    path.unlink()
+                self._cache.pop(path, None)
+                return
+        for pack in self._load_all():
+            if any(passage.id == passage_id for passage in pack.passages):
+                raise ReadingPackError("Bài đọc có sẵn của app, không xoá được; chỉ xoá được bài tự soạn.")
+        raise KeyError(passage_id)
+
     def _read_authored(self, path: Path, draft: ReadingPassageDraft) -> dict[str, Any]:
         if path.is_file():
             raw = json.loads(path.read_text(encoding="utf-8"))

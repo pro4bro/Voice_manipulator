@@ -42,6 +42,8 @@ import type {
   TrainingModelOption,
   TrainingParameterValue,
   TrainingRun,
+  TrainingRunFootprint,
+  TrainingRunLog,
   WorkspacePage,
 } from "../domain/types";
 
@@ -367,6 +369,18 @@ export const api = {
     request<TrainingRun>(`/api/projects/${projectId}/training-runs/${runId}/cancel`, {
       method: "POST",
     }),
+  getTrainingRunLog: (projectId: string, runId: string) =>
+    request<TrainingRunLog>(`/api/projects/${projectId}/training-runs/${runId}/log`),
+  getTrainingRunFootprint: (projectId: string, runId: string) =>
+    request<TrainingRunFootprint>(`/api/projects/${projectId}/training-runs/${runId}/footprint`),
+  deleteTrainingRun: (projectId: string, runId: string, withOutputs = false) =>
+    request<TrainingRunFootprint>(`/api/projects/${projectId}/training-runs/${runId}?withOutputs=${withOutputs}`, { method: "DELETE" }),
+  deleteProjectVoice: (projectId: string, voiceId: string) =>
+    request<void>(`/api/projects/${projectId}/voices/${voiceId}`, { method: "DELETE" }),
+  deleteAsrAdapter: (projectId: string, adapterId: string) =>
+    request<void>(`/api/projects/${projectId}/asr-adapters/${adapterId}`, { method: "DELETE" }),
+  deleteReadingPassage: (passageId: string) =>
+    request<void>(`/api/reading-packs/passages/${encodeURIComponent(passageId)}`, { method: "DELETE" }),
   getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
   getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -53,7 +53,7 @@ from app.adapters.training_model_catalog import (
     FileTrainingModelCatalog,
     TrainingModelUnavailable,
 )
-from app.adapters.training_runner import TrainingBusyError, TrainingNotReady, TrainingRunner
+from app.adapters.training_runner import RunHasOutputs, TrainingBusyError, TrainingNotReady, TrainingRunner
 from app.adapters.vibevoice_asr_transcriber import VibeVoiceAsrTranscriber
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
@@ -107,6 +107,8 @@ from app.domain.models import (
     TrainingRuntimeReport,
     TrainingModelOption,
     TrainingRun,
+    TrainingRunFootprint,
+    TrainingRunLog,
     TrainingRunStart,
     SystemMetrics,
     SystemPaths,
@@ -841,7 +843,10 @@ def create_app(
     )
     def compile_dataset(project_id: str) -> DatasetManifest:
         try:
-            return dataset_compiler.compile(project_id)
+            manifest = dataset_compiler.compile(project_id)
+            # Older manifests no run trained on are replaced by this one.
+            training_runner.prune_manifests(project_id, keep=manifest.id)
+            return manifest
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except DatasetCompilationError as exc:
@@ -902,6 +907,81 @@ def create_app(
             return training_runs.progress(project_id, run_id, limit=max(1, min(limit, 5000)))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Training run not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/training-runs/{run_id}/log",
+        response_model=TrainingRunLog,
+    )
+    def training_run_log(project_id: str, run_id: str, tail_bytes: int = 2_000_000) -> TrainingRunLog:
+        """Everything a run wrote: the journal in full and the engine output file."""
+        try:
+            journal = training_runs.progress(project_id, run_id)
+            path = training_runs.run_dir(project_id, run_id) / "process.log"
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+        text, size = "", 0
+        if path.is_file():
+            size = path.stat().st_size
+            limit = max(10_000, min(tail_bytes, 20_000_000))
+            with path.open("rb") as handle:
+                if size > limit:
+                    handle.seek(size - limit)
+                text = handle.read().decode("utf-8", errors="replace")
+        return TrainingRunLog(
+            run_id=run_id,
+            journal=journal,
+            process_log=text,
+            process_log_bytes=size,
+            truncated=size > len(text.encode("utf-8")),
+        )
+
+    @app.get(
+        "/api/projects/{project_id}/training-runs/{run_id}/footprint",
+        response_model=TrainingRunFootprint,
+    )
+    def training_run_footprint(project_id: str, run_id: str) -> TrainingRunFootprint:
+        try:
+            return training_runner.footprint(project_id, run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+
+    @app.delete(
+        "/api/projects/{project_id}/training-runs/{run_id}",
+        response_model=TrainingRunFootprint,
+    )
+    def delete_training_run(project_id: str, run_id: str, with_outputs: bool = Query(False, alias="withOutputs")) -> TrainingRunFootprint:
+        try:
+            return training_runner.delete_run(project_id, run_id, with_outputs)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Training run not found") from exc
+        except RunHasOutputs as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Không xoá hết được thư mục run: {exc}") from exc
+
+    @app.delete("/api/projects/{project_id}/voices/{voice_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_project_voice(project_id: str, voice_id: str) -> Response:
+        if voice_changer.uses_voice(project_id, voice_id):
+            raise HTTPException(status_code=409, detail="Voice Changer đang đổi sang giọng này. Dừng Voice Changer trước khi xoá.")
+        try:
+            project_voices.delete(project_id, voice_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.delete("/api/projects/{project_id}/asr-adapters/{adapter_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_asr_adapter(project_id: str, adapter_id: str) -> Response:
+        try:
+            asr_adapters.delete(project_id, adapter_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="ASR adapter không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post(
         "/api/projects/{project_id}/training-runs/{run_id}/cancel", response_model=TrainingRun
@@ -1219,6 +1299,16 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/reading-packs/passages/{passage_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_reading_passage(passage_id: str) -> Response:
+        try:
+            reading_packs.delete_passage(passage_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Bài đọc không tồn tại") from exc
+        except ReadingPackError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/reading-packs/{pack_id}", response_model=ReadingPack)
     def get_reading_pack(pack_id: str) -> ReadingPack:

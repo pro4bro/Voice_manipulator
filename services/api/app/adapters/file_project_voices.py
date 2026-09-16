@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from app.adapters.safe_delete import child_folder, remove_tree
 from app.domain.models import DatasetSegment, ProjectVoice, VoiceKind
 from app.domain.ports import ProjectRepository
 
@@ -47,6 +48,29 @@ class FileProjectVoices:
         if not record.is_file():
             raise KeyError(voice_id)
         return ProjectVoice.model_validate_json(record.read_text(encoding="utf-8"))
+
+    def delete(self, project_id: str, voice_id: str) -> int:
+        """Remove the voice's own folder (record and reference clip); bytes freed.
+
+        Weights a trained voice points at stay with the run that made them, so
+        deleting a voice never breaks a run; deleting the run removes them.
+        """
+        folder = child_folder(self.root(project_id), voice_id)
+        if not (folder / "voice.json").is_file():
+            raise KeyError(voice_id)
+        return remove_tree(folder)
+
+    def made_by_run(self, project_id: str, run_id: str, run_dir: Path) -> list[ProjectVoice]:
+        """Voices that came from a run, or read files inside its folder."""
+        project_root = Path(self.projects.get(project_id).project_path).resolve()
+        inside = run_dir.resolve()
+        found = []
+        for voice in self.list(project_id):
+            paths = [voice.adapter_path, voice.model_path]
+            uses = any(path and _is_within(project_root / path, inside) for path in paths)
+            if voice.source_run_id == run_id or uses:
+                found.append(voice)
+        return found
 
     def absolute(self, project_id: str, relative: str) -> Path:
         return Path(self.projects.get(project_id).project_path) / relative
@@ -101,3 +125,11 @@ class FileProjectVoices:
         temporary.write_text(voice.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
         temporary.replace(folder / "voice.json")
         return voice
+
+
+def _is_within(path: Path, folder: Path) -> bool:
+    try:
+        path.resolve().relative_to(folder)
+        return True
+    except ValueError:
+        return False

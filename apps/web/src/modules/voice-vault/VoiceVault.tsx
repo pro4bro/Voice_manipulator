@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 
-import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, SpeakerProfile, TrainingCatalog } from "../../domain/types";
+import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -12,7 +12,14 @@ interface VoiceVaultProps {
   selectedVoice: string;
   onCatalogChange: (catalog: TrainingCatalog) => void;
   onSelectVoice: (voiceId: string) => void;
+  /** Voices Voice Training made, listed under the profile they speak for. */
+  voices?: ProjectVoice[];
+  onDeleteVoice?: (voice: ProjectVoice) => void;
+  onDeleteSpeaker?: (speaker: SpeakerProfile) => void;
+  onDeleteEnvironment?: (profile: EnvironmentNoiseProfile) => void;
 }
+
+const VOICE_KIND_LABELS: Record<string, string> = { clone: "nhái giọng", lora: "LoRA", full: "full fine-tune", vc: "đổi giọng" };
 
 type ProfileType = "speaker" | "environment";
 const PROFILE_COLORS = ["#ff6745", "#a8d85d", "#eac75f", "#66a9d8", "#d87858"];
@@ -47,7 +54,7 @@ function speakerSummary(speaker: SpeakerProfile) {
   return [speaker.language, speaker.region, speaker.age, speaker.gender === "male" ? "Male" : speaker.gender === "female" ? "Female" : null].filter(Boolean).join(" · ") || "Chưa bổ sung thuộc tính";
 }
 
-export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice }: VoiceVaultProps) {
+export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = [], onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment }: VoiceVaultProps) {
   const [activeType, setActiveType] = useState<ProfileType>("speaker");
   const [profileMenu, setProfileMenu] = useState<{ type: ProfileType; id: string; left: number; top: number } | null>(null);
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
@@ -155,7 +162,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
               <small>Ghi nhận lúc {new Date(editingSpeaker.voiceConsent.confirmedAt).toLocaleString("vi-VN")}. Voice Changer chỉ đổi sang giọng của profile có xác nhận này.</small>
             </> : <small>Chưa có xác nhận: profile vẫn dùng được cho STT và training, nhưng không làm giọng giả trong Voice Changer.</small>}
           </fieldset>
-          <div className="speaker-profile-actions"><button className="button button--quiet" onClick={() => setEditingSpeaker(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingSpeaker.name.trim() || Boolean(editingSpeaker.voiceConsent && !editingSpeaker.voiceConsent.grantedBy.trim())} type="submit">Xác nhận & lưu profile</button></div>
+          <div className="speaker-profile-actions">{onDeleteSpeaker && catalog.speakers.some((speaker) => speaker.id === editingSpeaker.id) ? <button className="button button--quiet is-danger" onClick={() => { const target = catalog.speakers.find((speaker) => speaker.id === editingSpeaker.id); setEditingSpeaker(null); if (target) onDeleteSpeaker(target); }} type="button">Xoá profile</button> : null}<button className="button button--quiet" onClick={() => setEditingSpeaker(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingSpeaker.name.trim() || Boolean(editingSpeaker.voiceConsent && !editingSpeaker.voiceConsent.grantedBy.trim())} type="submit">Xác nhận & lưu profile</button></div>
         </form>
       ) : null}
       {editingEnvironment ? (
@@ -164,16 +171,32 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
           <label className="is-wide"><span>Tên môi trường</span><input autoFocus onChange={(event) => setEditingEnvironment({ ...editingEnvironment, name: event.target.value })} placeholder="Phòng thu yên tĩnh" value={editingEnvironment.name} /></label>
           <label className="is-wide"><span>Loại / ghi chú</span><input onChange={(event) => updateEnvironmentAttribute("description", event.target.value)} placeholder="Indoor, street, rain..." value={editingEnvironment.attributes.description ?? ""} /></label>
           <fieldset className="sound-profile-assets"><legend>Footage tham chiếu</legend>{assets.map((asset) => <label key={asset.id}><input checked={editingEnvironment.assetIds.includes(asset.id)} onChange={(event) => setEditingEnvironment({ ...editingEnvironment, assetIds: event.target.checked ? [...editingEnvironment.assetIds, asset.id] : editingEnvironment.assetIds.filter((id) => id !== asset.id) })} type="checkbox" /><span>{asset.name}</span></label>)}{!assets.length ? <p>Chưa có footage để gán làm mẫu môi trường.</p> : null}</fieldset>
-          <div className="speaker-profile-actions"><button className="button button--quiet" onClick={() => setEditingEnvironment(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingEnvironment.name.trim()} type="submit">Xác nhận & lưu profile</button></div>
+          <div className="speaker-profile-actions">{onDeleteEnvironment && catalog.environmentProfiles.some((profile) => profile.id === editingEnvironment.id) ? <button className="button button--quiet is-danger" onClick={() => { const target = catalog.environmentProfiles.find((profile) => profile.id === editingEnvironment.id); setEditingEnvironment(null); if (target) onDeleteEnvironment(target); }} type="button">Xoá profile</button> : null}<button className="button button--quiet" onClick={() => setEditingEnvironment(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingEnvironment.name.trim()} type="submit">Xác nhận & lưu profile</button></div>
         </form>
       ) : null}
       {!editingSpeaker && !editingEnvironment ? (
         <div className="voice-vault__list sound-library-list">
-          {activeType === "speaker" ? catalog.speakers.map((speaker) => (
-            <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} key={speaker.id} onClick={() => onSelectVoice(speaker.id)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "speaker", id: speaker.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
-              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · Properties</small></span><i aria-hidden="true" />
+          {activeType === "speaker" ? catalog.speakers.map((speaker) => {
+            const own = voices.filter((voice) => voice.speakerProfileId === speaker.id);
+            return (
+            <div className="voice-card-group" key={speaker.id}>
+            <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} onClick={() => onSelectVoice(speaker.id)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "speaker", id: speaker.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
+              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · {own.length} voice · Properties</small></span><i aria-hidden="true" />
             </button>
-          )) : catalog.environmentProfiles.map((profile) => (
+            {own.length ? (
+              <ul aria-label={`Voice của ${speaker.name}`} className="voice-card__voices">
+                {own.map((voice) => (
+                  <li key={voice.id} title={`${voice.id} · tạo ${new Date(voice.createdAt).toLocaleString("vi-VN", { hour12: false })}`}>
+                    <span>{voice.name}</span>
+                    <small>{VOICE_KIND_LABELS[voice.kind] ?? voice.kind} · {new Date(voice.createdAt).toLocaleDateString("vi-VN")}</small>
+                    {onDeleteVoice ? <button aria-label={`Xoá voice ${voice.name}`} onClick={() => onDeleteVoice(voice)} title="Xoá voice" type="button">×</button> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            </div>
+            );
+          }) : catalog.environmentProfiles.map((profile) => (
             <button className="voice-card environment-card" key={profile.id} onClick={() => editEnvironment(profile)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "environment", id: profile.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editEnvironment(profile)} title="Double click hoặc right click để mở Properties" type="button">
               <span className="voice-card__avatar"><Icon name="landscape" /></span><span className="voice-card__copy"><strong>{profile.name}</strong><span>{profile.attributes.description || "Environment profile"}</span><small>{profile.assetIds.length} footage tham chiếu · Properties</small></span><i aria-hidden="true" />
             </button>
@@ -192,6 +215,17 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
             if (profileMenu.type === "speaker" && profile) editSpeaker(profile as SpeakerProfile);
             if (profileMenu.type === "environment" && profile) editEnvironment(profile as EnvironmentNoiseProfile);
           }} role="menuitem" type="button"><Icon name="settings" /> Properties</button>
+          {(profileMenu.type === "speaker" ? onDeleteSpeaker : onDeleteEnvironment) ? <button className="project-context-menu__danger" onClick={() => {
+            const menu = profileMenu;
+            setProfileMenu(null);
+            if (menu.type === "speaker") {
+              const target = catalog.speakers.find((item) => item.id === menu.id);
+              if (target) onDeleteSpeaker?.(target);
+            } else {
+              const target = catalog.environmentProfiles.find((item) => item.id === menu.id);
+              if (target) onDeleteEnvironment?.(target);
+            }
+          }} role="menuitem" type="button">Xoá profile</button> : null}
         </div>,
         document.body,
       ) : null}

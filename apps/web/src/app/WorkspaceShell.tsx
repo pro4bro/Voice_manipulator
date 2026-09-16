@@ -21,7 +21,9 @@ import type {
   TrainingRuntimeReport,
   TrainingModelOption,
   ProjectAsrAdapter,
+  EnvironmentNoiseProfile,
   ProjectVoice,
+  SpeakerProfile,
   VoiceOutput,
   VoiceScriptJob,
   VoiceScriptRow,
@@ -783,6 +785,74 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
+  async function refreshTrainingOutputs() {
+    await Promise.all([refreshTrainingRun(), refreshProjectVoices()]);
+  }
+
+  /** Forget a voice everywhere this page still points at it. */
+  function forgetVoice(voiceId: string) {
+    setVoiceScriptRows((rows) => rows.map((row) => row.voiceId === voiceId ? { ...row, voiceId: null } : row));
+    setChangerSettings((settings) => settings.voiceId === voiceId ? { ...settings, voiceId: null } : settings);
+  }
+
+  async function deleteProjectVoice(voice: ProjectVoice) {
+    const madeByRun = voice.sourceRunId ? ` Weights của nó vẫn nằm trong run ${voice.sourceRunId}; xoá run ở Voice Training → Lịch sử để giải phóng dung lượng.` : "";
+    if (!window.confirm(`Xoá voice "${voice.name}"?
+
+Clip mẫu và thông tin voice bị xoá khỏi project.${madeByRun}
+Voice Output đã tạo bằng voice này vẫn giữ nguyên. Không khôi phục được.`)) return;
+    try {
+      await api.deleteProjectVoice(project.id, voice.id);
+      forgetVoice(voice.id);
+      setNotice(`Đã xoá voice ${voice.name}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không xoá được voice");
+    }
+    await refreshProjectVoices();
+  }
+
+  async function deleteSpeakerProfile(speaker: SpeakerProfile) {
+    const own = projectVoices.filter((voice) => voice.speakerProfileId === speaker.id);
+    const footage = mediaAssets.filter((asset) => !asset.deletedAt && (asset.speakerProfileIds ?? []).includes(speaker.id)).length;
+    const lines = [
+      `Xoá Speaker Profile "${speaker.name}"?`,
+      own.length ? `${own.length} voice của người này bị xoá cùng: ${own.map((voice) => voice.name).join(", ")}.` : "Người này chưa có voice nào.",
+      footage ? `${footage} footage đang gán cho người này sẽ thành chưa gán người nói.` : "",
+      "Training run cũ vẫn còn trong Lịch sử để xoá riêng. Không khôi phục được.",
+    ].filter(Boolean);
+    if (!window.confirm(lines.join("\n\n"))) return;
+    try {
+      for (const voice of own) {
+        await api.deleteProjectVoice(project.id, voice.id);
+        forgetVoice(voice.id);
+      }
+      const settings = trainingCatalog.settings;
+      changeCatalog({
+        ...trainingCatalog,
+        speakers: trainingCatalog.speakers.filter((item) => item.id !== speaker.id),
+        settings: { ...settings, targetSpeakerIds: settings.targetSpeakerIds.filter((id) => id !== speaker.id) },
+      });
+      if (selectedVoice === speaker.id) setSelectedVoice("");
+      setNotice(`Đã xoá Speaker Profile ${speaker.name}${own.length ? ` và ${own.length} voice` : ""}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không xoá được Speaker Profile");
+    }
+    await refreshProjectVoices();
+  }
+
+  function deleteEnvironmentProfile(profile: EnvironmentNoiseProfile) {
+    if (!window.confirm(`Xoá Environment Profile "${profile.name}"?
+
+Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
+    const settings = trainingCatalog.settings;
+    changeCatalog({
+      ...trainingCatalog,
+      environmentProfiles: trainingCatalog.environmentProfiles.filter((item) => item.id !== profile.id),
+      settings: { ...settings, environmentProfileId: settings.environmentProfileId === profile.id ? null : settings.environmentProfileId },
+    });
+    setNotice(`Đã xoá Environment Profile ${profile.name}.`);
+  }
+
   async function cancelTrainingRun(runId: string) {
     try {
       await api.cancelTrainingRun(project.id, runId);
@@ -1461,6 +1531,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     trainingRuntime,
     trainingModels,
     onCancelTrainingRun: (runId) => void cancelTrainingRun(runId),
+    onTrainingOutputsChanged: () => void refreshTrainingOutputs(),
+    onDeleteVoice: (voice) => void deleteProjectVoice(voice),
+    onDeleteSpeaker: (speaker) => void deleteSpeakerProfile(speaker),
+    onDeleteEnvironment: (profile) => deleteEnvironmentProfile(profile),
     onSelectPage: (page) => void selectPage(page),
     onCompileDataset: () => void compileDataset(),
     onStartTrainingRun: () => void startTrainingRun(),

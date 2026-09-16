@@ -1133,6 +1133,20 @@ class TrainingRun(DomainModel):
     process_id: int | None = None
 
 
+class OwnedItem(DomainModel):
+    id: str
+    name: str
+
+
+class TrainingRunFootprint(DomainModel):
+    """What deleting a run takes with it."""
+
+    run_id: str
+    bytes: int = 0
+    voices: list[OwnedItem] = Field(default_factory=list)
+    asr_adapters: list[OwnedItem] = Field(default_factory=list)
+
+
 class TrainingProgressLine(DomainModel):
     """One append-only line. Never rewritten, so a crash cannot corrupt history."""
 
@@ -1151,6 +1165,16 @@ class TrainingProgressLine(DomainModel):
     # of the run.
     done: int | None = None
     total: int | None = None
+    # What a person reading the log back should notice first.
+    level: Literal["info", "warning", "error"] = "info"
+
+
+class TrainingRunLog(DomainModel):
+    run_id: str
+    journal: list[TrainingProgressLine] = Field(default_factory=list)
+    process_log: str = ""
+    process_log_bytes: int = 0
+    truncated: bool = False
 
 
 class TrainingRuntimePackage(DomainModel):

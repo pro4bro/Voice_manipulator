@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from app.adapters.listening_ports import process_is_alive
+from app.adapters.safe_delete import child_folder, folder_bytes, remove_tree
 from app.domain.models import (
     TrainingProgressLine,
     TrainingRun,
@@ -85,7 +87,7 @@ class FileTrainingRuns:
         path = self.run_dir(project_id, run_id) / "run.json"
         if not path.is_file():
             raise KeyError(run_id)
-        return TrainingRun.model_validate_json(path.read_text(encoding="utf-8"))
+        return TrainingRun.model_validate_json(_retry(lambda: path.read_text(encoding="utf-8")))
 
     def list(self, project_id: str) -> list[TrainingRun]:
         root = self.root(project_id)
@@ -97,10 +99,20 @@ class FileTrainingRuns:
             if not record.is_file():
                 continue
             try:
-                runs.append(TrainingRun.model_validate_json(record.read_text(encoding="utf-8")))
-            except ValueError:
+                runs.append(TrainingRun.model_validate_json(_retry(lambda: record.read_text(encoding="utf-8"))))
+            except (ValueError, OSError):
                 continue     # a half-written record is not a reason to hide the rest
         return sorted(runs, key=lambda run: run.created_at, reverse=True)
+
+    def delete(self, project_id: str, run_id: str) -> int:
+        """Remove the run folder: record, journal, data copy and checkpoints."""
+        folder = child_folder(self.root(project_id), run_id)
+        if not (folder / "run.json").is_file():
+            raise KeyError(run_id)
+        return remove_tree(folder)
+
+    def size(self, project_id: str, run_id: str) -> int:
+        return folder_bytes(child_folder(self.root(project_id), run_id))
 
     def update(self, project_id: str, run: TrainingRun) -> TrainingRun:
         updated = run.model_copy(update={"updated_at": datetime.now(timezone.utc)})
@@ -165,6 +177,26 @@ class FileTrainingRuns:
     def _write(self, project_id: str, run: TrainingRun) -> None:
         path = self.run_dir(project_id, run.id) / "run.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".json.tmp")
+        # One temporary name per writer: the runner thread and a request can both
+        # be writing this run at the same moment.
+        temporary = path.with_name(f"run.{uuid4().hex[:8]}.json.tmp")
         temporary.write_text(run.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
-        temporary.replace(path)
+        try:
+            _retry(lambda: temporary.replace(path))
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def _retry(action, attempts: int = 20, delay: float = 0.05):
+    """Windows refuses to replace or read a file another handle has open for a moment.
+
+    The page polls run.json every two seconds while the runner rewrites it every
+    second; without a retry, one unlucky overlap failed a run hours in.
+    """
+    for attempt in range(attempts):
+        try:
+            return action()
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)

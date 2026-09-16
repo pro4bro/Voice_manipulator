@@ -280,7 +280,8 @@ def test_omnivoice_descriptors_match_the_engine(model_id):
     check(model_id, recipe, code)
     # OmniVoice drops keys its TrainingConfig does not declare, so a key outside
     # it would be a knob that silently does nothing.
-    unknown = {spec["key"] for spec in data["parameters"]} - set(code) - {"lora_target_modules"}
+    # max_epochs is read by Pro4Bro's runner, which turns it into a step cap.
+    unknown = {spec["key"] for spec in data["parameters"]} - set(code) - {"lora_target_modules", "max_epochs"}
     assert not unknown
 
 
