@@ -1065,6 +1065,8 @@ class TrainingRunner:
             (str(self.runs.run_dir(run.project_id, run.id)), "<run>"),
             (str(self.engine_root), "<omnivoice>"),
             (str(self.runtime.python), "python"),
+            # Pro4Bro's own workers, which the training command runs through.
+            (str(Path(__file__).resolve().parents[1]), "<pro4bro>"),
         ]
         try:
             pairs.append((str(Path(self.projects.get(run.project_id).project_path)), "<project>"))
