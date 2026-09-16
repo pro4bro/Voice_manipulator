@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.adapters.activity_center import CENTER
 from app.adapters.engine_worker import EngineWorkerError, EngineWorkerProcess
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.gpu_lease import GpuLease
@@ -12,6 +15,8 @@ from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.vibevoice_training import VibeVoicePaths, write_processor_dir
 from app.domain.models import ProjectVoice, VoiceGenerateRequest, VoiceOutput
 from app.domain.ports import ProjectRepository
+
+logger = logging.getLogger("app.adapters.omnivoice_generator")
 from app.domain.training_parameters import resolve_parameters
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_worker.py"
@@ -183,6 +188,14 @@ class VoiceGenerator:
     def generate(self, project_id: str, voice_id: str, request: VoiceGenerateRequest) -> VoiceOutput:
         plan = self.prepare(project_id, voice_id, request.generator_id, request.parameters)
         voice = plan.voice
+        preview_text = " ".join(request.text.split())
+        task = CENTER.start_task(
+            "tts", f"Tạo giọng · {voice.name}",
+            detail=preview_text[:70] + ("…" if len(preview_text) > 70 else ""),
+            project_id=project_id,
+        )
+        began = time.perf_counter()
+        logger.info("Tạo giọng %s · %s chữ", voice.name, len(preview_text.split()))
         project_root = Path(self.projects.get(project_id).project_path)
 
         # The lease first: a busy GPU must not leave an empty output folder behind.
@@ -191,12 +204,17 @@ class VoiceGenerator:
         try:
             output_id, audio = self.outputs.reserve(project_id)
             seconds = self.speak(plan, request.text, audio, request.duration)
-        except Exception:
+        except Exception as exc:
             if output_id:
                 self.outputs.discard(project_id, output_id)
+            CENTER.finish_task(task, status="failed", error=str(exc))
+            logger.error("Tạo giọng %s thất bại: %s", voice.name, exc)
             raise
         finally:
             self.gpu_lease.release(lease.token)
+        spent = time.perf_counter() - began
+        CENTER.finish_task(task, detail=f"{seconds:.1f} giây audio")
+        logger.info("Tạo giọng %s xong: %.1f giây audio trong %.1f giây", voice.name, seconds, spent)
 
         preview = " ".join(request.text.split()[:6])
         return self.outputs.save(

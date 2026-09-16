@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started
+from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
@@ -217,6 +217,7 @@ class SequentialTranscriptionQueue:
                 self.media.set_transcription_progress(
                     task.project_id, task.asset_id, value
                 )
+                job_tick("stt", task.project_id, task.asset_id, value, f"{value:.0f}% · {asset.name}")
                 if value >= milestone:
                     job_progress("stt", task.project_id, task.asset_id, value)
                     milestone = value + 25

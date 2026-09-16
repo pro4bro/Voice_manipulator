@@ -1,4 +1,5 @@
 import type {
+  ActivitySnapshot,
   AppPreferences,
   CaptureTier,
   DatasetManifest,
@@ -139,6 +140,8 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
 }
 
 export const api = {
+  getActivity: (after = 0, limit = 400) =>
+    request<ActivitySnapshot>(`/api/activity?after=${after}&limit=${limit}`),
   getRuntimeStatus: () => request<RuntimeWorkloadState>("/api/runtime/status"),
   controlRuntime: (action: RuntimeAction) =>
     request<RuntimeWorkloadState>("/api/runtime/actions", {

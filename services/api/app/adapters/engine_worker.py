@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from pathlib import Path
 from uuid import uuid4
+
+from app.adapters.activity_center import CENTER
 
 # Every worker script prints this before a reply line. The scripts run under
 # an engine's own interpreter and cannot import `app`, so each repeats it; a
 # test keeps the copies equal.
 REPLY_PREFIX = "@@PRO4BRO@@"
+
+
+logger = logging.getLogger("app.adapters.engine_worker")
 
 
 class EngineWorkerError(RuntimeError):
@@ -92,6 +99,10 @@ class EngineWorkerProcess:
             return
         if not self.python.is_file():
             raise EngineWorkerError(f"Không thấy Python của runtime {self.label}: {self.python}")
+        # Loading a model takes tens of seconds and used to look like a hang.
+        task = CENTER.start_task("model", f"Nạp {self.label}", detail="Khởi động runtime và nạp trọng số")
+        logger.info("Nạp %s: khởi động runtime", self.label)
+        began = time.perf_counter()
         self._replies = queue.Queue()
         self._stderr.clear()
         environment = {**os.environ, "PYTHONIOENCODING": "utf-8", **self.env}
@@ -109,9 +120,18 @@ class EngineWorkerProcess:
         )
         threading.Thread(target=self._read_stdout, args=(self._process,), daemon=True).start()
         threading.Thread(target=self._read_stderr, args=(self._process,), daemon=True).start()
-        ready = self._next_reply()
+        try:
+            ready = self._next_reply()
+        except Exception as exc:
+            CENTER.finish_task(task, status="failed", error=str(exc))
+            logger.error("Nạp %s thất bại: %s", self.label, exc)
+            raise
         if not ready.get("ready"):
+            CENTER.finish_task(task, status="failed", error="worker không báo sẵn sàng")
             raise EngineWorkerError(f"Worker {self.label} không báo sẵn sàng.")
+        seconds = time.perf_counter() - began
+        CENTER.finish_task(task, detail="Model đã nạp")
+        logger.info("%s sẵn sàng sau %.1f giây", self.label, seconds)
 
     def _next_reply(self) -> dict:
         try:

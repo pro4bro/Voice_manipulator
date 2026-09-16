@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.adapters import activity_center
 from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
@@ -58,6 +59,7 @@ from app.adapters.vibevoice_asr_transcriber import VibeVoiceAsrTranscriber
 from app.adapters.subtitle_exporter import SubtitleExporter
 from app.adapters.desktop_reveal import reveal
 from app.domain.models import (
+    ActivitySnapshot,
     AppPreferences,
     DatasetManifest,
     DatasetReadiness,
@@ -176,6 +178,12 @@ def create_app(
         settings.local_training_models_root,
         readiness={"vibevoice": vibevoice_readiness, "rvc": rvc_readiness},
     )
+    activity_center.install()
+    studio_logs = [settings.data_root / "logs" / name for name in ("omnivoice-studio.out.log", "omnivoice-studio.err.log")]
+    if any(path.is_file() for path in studio_logs):
+        # The sidecar is its own process; this is how its model loading and
+        # recognition lines reach the app's log.
+        activity_center.LogFileTail(studio_logs).start()
     gpu_lease = GpuLease(settings.data_root / "runtime" / "gpu-lease.json")
     engine_env = (
         {
@@ -1350,6 +1358,11 @@ def create_app(
     @app.get("/api/system/status", response_model=SystemMetrics)
     def system_status() -> SystemMetrics:
         return runtime_status.snapshot()
+
+    @app.get("/api/activity", response_model=ActivitySnapshot)
+    def activity(after: int = 0, limit: int = 400) -> ActivitySnapshot:
+        """What the app is doing now, and the log lines since `after`."""
+        return activity_center.CENTER.snapshot(after=max(0, after), limit=max(1, min(limit, 2000)))
 
     @app.get("/api/system/logs", response_model=SystemLog)
     def system_logs(lines: int = 240) -> SystemLog:

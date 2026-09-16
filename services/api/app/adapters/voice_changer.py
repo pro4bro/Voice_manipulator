@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.adapters.engine_worker import EngineWorkerError, EngineWorkerProcess
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.gpu_lease import GpuLease
@@ -304,7 +305,13 @@ class VoiceChanger:
             if not reply.get("ok"):
                 self._release(lease_token)
                 raise VoiceChangerError(reply.get("error") or "Không mở được thiết bị âm thanh.")
+            task = CENTER.start_task(
+                "voice-changer", f"Voice Changer · {option.label}",
+                detail=f"Giọng: {voice.name}" if voice else "Không đổi giọng (passthrough)",
+                project_id=project_id,
+            )
             self._session = {
+                "task_id": task,
                 "worker": worker,
                 "project_id": project_id,
                 "engine_id": option.id,
@@ -441,6 +448,8 @@ class VoiceChanger:
             pass
         finally:
             self._release(session.get("lease_token"))
+            if session.get("task_id"):
+                CENTER.finish_task(session["task_id"])
             self._session = None
         return recording
 

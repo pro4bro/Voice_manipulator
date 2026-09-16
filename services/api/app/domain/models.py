@@ -1169,6 +1169,43 @@ class TrainingProgressLine(DomainModel):
     level: Literal["info", "warning", "error"] = "info"
 
 
+class ActivityEvent(DomainModel):
+    """One line of the app's log, from any part of it."""
+
+    seq: int
+    at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    source: str = "app"
+    level: Literal["info", "warning", "error"] = "info"
+    message: str
+    # How many times in a row this same line arrived; 1 means once.
+    repeat: int = 1
+    task_id: str | None = None
+
+
+class ActivityTask(DomainModel):
+    """A piece of work in flight, as the status bar shows it."""
+
+    id: str
+    kind: str
+    label: str
+    detail: str = ""
+    status: Literal["running", "complete", "failed", "cancelled"] = "running"
+    fraction: float | None = None
+    eta_seconds: float | None = None
+    project_id: str | None = None
+    error: str | None = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
+    seconds: float | None = None
+
+
+class ActivitySnapshot(DomainModel):
+    seq: int = 0
+    events: list[ActivityEvent] = Field(default_factory=list)
+    tasks: list[ActivityTask] = Field(default_factory=list)
+
+
 class TrainingRunLog(DomainModel):
     run_id: str
     journal: list[TrainingProgressLine] = Field(default_factory=list)

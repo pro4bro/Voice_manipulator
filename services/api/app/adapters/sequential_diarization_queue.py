@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started
+from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
@@ -317,6 +317,7 @@ class SequentialDiarizationQueue:
                 # asset index rewrote every word in the project several times a
                 # second and starved the rest of the API of the library lock.
                 self.media.set_diarization_progress(task.project_id, task.asset_id, value)
+                job_tick("diarization", task.project_id, task.asset_id, value, f"{value:.0f}% · {asset.name}")
 
             result = await self.studio.diarize(
                 Path(project.project_path) / str(asset.analysis_path),

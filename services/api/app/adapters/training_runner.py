@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
@@ -76,6 +77,24 @@ STEP_LABELS = {
     "checkpoint": "checkpoint",
     "publish": "tạo voice",
 }
+
+
+# Where each step sits on the bar; training is nearly the whole wall clock.
+STEP_START = {
+    "provision": 0.0, "resolve-model": 0.0, "read-manifest": 0.01, "write-jsonl": 0.03,
+    "tokenize": 0.06, "load-model": 0.12, "train": 0.15, "checkpoint": 0.96, "publish": 0.98,
+}
+
+STATUS_WORDS = {"complete": "Xong", "failed": "Lỗi", "cancelled": "Đã huỷ", "interrupted": "Bị ngắt"}
+
+
+def run_fraction(step_id: str, step: int, steps: int, done: int | None = None, total: int | None = None) -> float:
+    """How far a run has come, as one number between 0 and 1."""
+    if step_id == "train" or (step and step_id not in {"checkpoint", "publish"}):
+        return min(1.0, STEP_START["train"] + (STEP_START["checkpoint"] - STEP_START["train"]) * min(1.0, step / max(1, steps)))
+    if step_id == "tokenize" and total:
+        return STEP_START["tokenize"] + (STEP_START["load-model"] - STEP_START["tokenize"]) * min(1.0, (done or 0) / total)
+    return STEP_START.get(step_id, 0.0)
 
 
 def format_seconds(seconds: float) -> str:
@@ -187,6 +206,8 @@ class TrainingRunner:
         self._counter_marks: dict[str, list[float]] = {}
         # run id -> (step id, monotonic seconds it started), for "done in" lines
         self._step_marks: dict[str, tuple[str, float]] = {}
+        # run id -> the last rate the trainer reported, for the time left
+        self._rates: dict[str, float] = {}
 
     def start(
         self,
@@ -586,6 +607,7 @@ class TrainingRunner:
         else:
             self.runs.append_progress(run.project_id, run.id, line)
         current = self._mark_step(run, line.step_id)
+        self._report_task(run, current, line)
         update: dict[str, object] = {"step_id": line.step_id}
         if line.global_step is not None:
             update["global_step"] = line.global_step
@@ -814,6 +836,7 @@ class TrainingRunner:
         """
         line = TrainingProgressLine(step_id=step_id, message=message, level=level)  # type: ignore[arg-type]
         self.runs.append_progress(run.project_id, run.id, line)
+        CENTER.log("training", message, level, task_id=f"training:{run.id}")
         try:
             path = self.runs.run_dir(run.project_id, run.id) / "process.log"
             if path.parent.is_dir():
@@ -948,6 +971,11 @@ class TrainingRunner:
     def _announce(self, run: TrainingRun) -> None:
         """The run's first lines: what trains, on what, with which settings."""
         config = run.config
+        CENTER.start_task(
+            "training", f"Training · {self._speaker_name(run)}",
+            task_id=f"training:{run.id}", detail=f"{config.model_id or config.engine} · chuẩn bị",
+            fraction=0.0, project_id=run.project_id,
+        )
         target = f" · voice {run.batch_index + 1}/{run.batch_size}" if run.batch_size > 1 else ""
         self._append(run, "provision", f"Bắt đầu run {run.id}: {config.model_id or config.engine} ({config.engine} · {config.mode}){target}.")
         if config.parameters:
@@ -963,6 +991,11 @@ class TrainingRunner:
             return
         elapsed = format_seconds(time.monotonic() - began)
         label = STEP_LABELS.get(current.step_id, current.step_id)
+        CENTER.finish_task(
+            f"training:{run.id}",
+            status="complete" if current.status == "complete" else "cancelled" if current.status == "cancelled" else "failed",
+            error=current.error,
+        )
         if current.status == "complete":
             self._append(run, current.step_id, f"Hoàn tất sau {elapsed}.")
         elif current.status == "cancelled":
@@ -970,6 +1003,40 @@ class TrainingRunner:
         elif current.status == "failed":
             self._append(run, current.step_id, f"Dừng sau {elapsed}. Toàn bộ output của engine nằm trong process.log (nút Log đầy đủ).", level="error")
         logger.info("Training run %s ended %s after %s", run.id, current.status, elapsed)
+
+    def _report_task(self, run: TrainingRun, current: TrainingRun, line: TrainingProgressLine) -> None:
+        """Keep the status bar's copy of this run in step with its journal."""
+        if line.steps_per_second:
+            self._rates[run.id] = line.steps_per_second
+        step = line.global_step if line.global_step is not None else current.global_step
+        steps = max(1, current.config.steps or 1)
+        rate = self._rates.get(run.id)
+        left = max(0, steps - step)
+        detail = f"{STEP_LABELS.get(line.step_id, line.step_id)}"
+        eta = None
+        if line.step_id == "train" and step:
+            detail = f"step {step}/{steps}"
+            if rate:
+                eta = left / rate
+                detail += f" · {rate:.2f} step/s · còn ~{format_seconds(eta)}"
+        elif line.total:
+            detail += f" · {line.done or 0}/{line.total}"
+        CENTER.update_task(
+            f"training:{run.id}",
+            detail=f"{self._speaker_name(run)} · {detail}" if run.batch_size > 1 else detail,
+            fraction=run_fraction(line.step_id, step, steps, line.done, line.total),
+            eta_seconds=eta,
+        )
+
+    def _speaker_name(self, run: TrainingRun) -> str:
+        try:
+            catalog = self.catalogs.get(run.project_id)
+        except (KeyError, OSError):
+            return run.speaker_profile_id or "Toàn bộ dataset"
+        return next(
+            (speaker.name for speaker in catalog.speakers if speaker.id == run.speaker_profile_id),
+            run.speaker_profile_id or "Toàn bộ dataset",
+        )
 
     def _mark_step(self, run: TrainingRun, step_id: str) -> TrainingRun:
         """Note when the run moves to another step, with how long the last one took."""

@@ -172,6 +172,51 @@ describe("TrainingJob", () => {
     expect(screen.getByText("2/2 voice xong")).toBeInTheDocument();
   });
 
+it("carries the rest of the app's own log, with a repeated line counted once", () => {
+    const events = [
+      { seq: 1, at: "2026-09-04T01:00:05Z", source: "stt", level: "info" as const, message: "Đang nhận dạng buổi họp", repeat: 1 },
+      { seq: 2, at: "2026-09-04T01:00:06Z", source: "engine", level: "warning" as const, message: "UserWarning: DataLoader", repeat: 129 },
+      { seq: 3, at: "2026-09-04T01:00:07Z", source: "training", level: "info" as const, message: "đã có trong journal", repeat: 1 },
+    ];
+
+    render(<TrainingJob activityEvents={events} batch={BATCH} speakers={[AN, BINH]} />);
+
+    expect(screen.getByText("Đang nhận dạng buổi họp")).toBeInTheDocument();
+    expect(screen.getByText("…129…")).toBeInTheDocument();
+    expect(screen.getByText(/1 cảnh báo/)).toBeInTheDocument();
+    // Training lines are already in the run's journal; showing them twice is worse than not at all.
+    expect(screen.queryByText("đã có trong journal")).not.toBeInTheDocument();
+  });
+
+  it("shows the other jobs of the app under the flow", () => {
+    render(<TrainingJob activityTasks={[{
+      id: "t1", kind: "stt", label: "Speech to Text · buổi họp", detail: "40%", status: "running",
+      fraction: 0.4, etaSeconds: null, startedAt: "2026-09-04T01:00:00Z", updatedAt: "2026-09-04T01:00:00Z",
+      finishedAt: null, seconds: null,
+    }]} batch={BATCH} speakers={[AN, BINH]} />);
+
+    expect(screen.getByText("SPEECH TO TEXT")).toBeInTheDocument();
+    expect(screen.getByText("Speech to Text · buổi họp")).toBeInTheDocument();
+  });
+
+  it("says how long the run has gone and how long is left, then how long it took", () => {
+    const live = run({ status: "running", globalStep: 250, createdAt: new Date(Date.now() - 120_000).toISOString() });
+    const progress = { "run-an": [line({ globalStep: 250, loss: 3, stepsPerSecond: 2 })] };
+    const { rerender } = render(<TrainingJob batch={[live]} progressByRun={progress} speakers={[AN]} />);
+
+    expect(screen.getByText(/Đã chạy 2m 00s/)).toBeInTheDocument();
+    expect(screen.getByText(/còn khoảng/)).toBeInTheDocument();
+
+    const done = { ...live, status: "complete" as const, stepId: "publish" as const };
+    rerender(<TrainingJob batch={[done]} progressByRun={{ "run-an": [
+      { ...line(), message: "Xong train sau 5 phút 31 giây." },
+      { ...line(), message: "Hoàn tất sau 22 phút 28 giây." },
+    ] }} speakers={[AN]} />);
+
+    expect(screen.getByText(/tổng 22 phút 28 giây/)).toBeInTheDocument();
+    expect(screen.getByText(/riêng train 5 phút 31 giây/)).toBeInTheDocument();
+  });
+
   it("surfaces a failure and an interruption instead of a silent stop", () => {
     const { rerender } = render(<TrainingJob batch={[run({ status: "failed", error: "CUDA out of memory" })]} speakers={[AN]} />);
     expect(screen.getByText(/CUDA out of memory/)).toBeInTheDocument();

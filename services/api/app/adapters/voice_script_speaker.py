@@ -3,10 +3,12 @@ from __future__ import annotations
 import audioop
 import hashlib
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import wave
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -17,12 +19,15 @@ from uuid import uuid4
 
 import httpx
 
+from app.adapters.activity_center import CENTER
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuLease
 from app.adapters.omnivoice_generator import SpeechPlan, VoiceGenerator
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.ports import ProjectRepository
 from app.domain.script_word_alignment import align_script_words
+
+logger = logging.getLogger("app.adapters.voice_script_speaker")
 
 SAMPLE_RATE = 24000
 SAMPLE_WIDTH = 2
@@ -240,6 +245,11 @@ class VoiceScriptSpeaker:
 
     def _run(self, job: _Job, steps: list[_Step], gap_seconds: float, lease_token: str) -> None:
         project_id = job.record.project_id
+        task = CENTER.start_task(
+            "tts", f"Đọc Script · {len(steps)} đoạn", detail="Chuẩn bị", fraction=0.0, project_id=project_id,
+        )
+        began = time.perf_counter()
+        logger.info("Đọc Script: %s đoạn", len(steps))
         try:
             if self.before_start is not None:
                 self.before_start()
@@ -247,14 +257,29 @@ class VoiceScriptSpeaker:
             reused = 0
             for index, step in enumerate(steps):
                 self._update(job, current_row_id=step.row.id, message=f"Đoạn {index + 1}/{len(steps)} · {step.plan.voice.name}")
+                CENTER.update_task(
+                    task, detail=f"Đoạn {index + 1}/{len(steps)} · {step.plan.voice.name}",
+                    fraction=index / max(1, len(steps)),
+                )
                 clip = self._clip(project_id, step)
                 reused += int(clip.reused)
                 clips.append((step, clip))
                 self._update(job, done=index + 1, reused=reused)
+                spent = time.perf_counter() - began
+                CENTER.update_task(
+                    task, fraction=(index + 1) / max(1, len(steps)),
+                    eta_seconds=spent / (index + 1) * (len(steps) - index - 1),
+                )
+            CENTER.update_task(task, detail="Ghép các đoạn thành một file", fraction=1.0)
             output = self._assemble(project_id, clips, gap_seconds)
             self._update(job, status="complete", output=output, current_row_id=None, message=None, finished_at=datetime.now(timezone.utc))
+            spent = time.perf_counter() - began
+            CENTER.finish_task(task, detail=f"{len(steps)} đoạn · {reused} dùng lại")
+            logger.info("Đọc Script xong: %s đoạn, %s dùng lại, %.1f giây", len(steps), reused, spent)
         except Exception as exc:  # the job reports it; nothing above this thread would
             self._update(job, status="failed", error=str(exc) or type(exc).__name__, current_row_id=None, finished_at=datetime.now(timezone.utc))
+            CENTER.finish_task(task, status="failed", error=str(exc) or type(exc).__name__)
+            logger.error("Đọc Script thất bại: %s", exc)
         finally:
             self.gpu_lease.release(lease_token)
 

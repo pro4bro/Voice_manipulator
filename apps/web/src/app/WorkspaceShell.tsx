@@ -22,6 +22,8 @@ import type {
   TrainingModelOption,
   ProjectAsrAdapter,
   EnvironmentNoiseProfile,
+  ActivityEvent,
+  ActivityTask,
   ProjectVoice,
   SpeakerProfile,
   VoiceOutput,
@@ -54,6 +56,7 @@ import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusB
 import type { CapturedAudio } from "../modules/recorder/Recorder";
 import type { ActiveTake } from "../modules/timeline/Timeline";
 import { workspaceManifest } from "../pages/workspaceManifest";
+import { mergeEvents } from "../domain/activity";
 import { Icon, type IconName } from "../ui/Icon";
 import { RuntimeMenuItems } from "./RuntimeMenuItems";
 
@@ -203,6 +206,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [notice, setNotice] = useState<string | null>(null);
   const [job, setJob] = useState<string | null>(null);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
+  // What the whole app is doing, and its log: one stream from the API.
+  const [activityTasks, setActivityTasks] = useState<ActivityTask[]>([]);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const activitySeq = useRef(0);
   const [scriptDirty, setScriptDirty] = useState(false);
   const scriptRef = useRef("");
   const scratchStorageKey = `pro4bro:${project.id}:scratch-script`;
@@ -252,6 +259,27 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     void refreshChanger();
     if (typeof api.listChangerRecordings === "function") api.listChangerRecordings(project.id).then(setChangerRecordings).catch(() => setChangerRecordings([]));
   }, [changerPageOpen, project.id]);
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const read = () => {
+      if (inFlight || typeof api.getActivity !== "function") return;
+      inFlight = true;
+      void api.getActivity(activitySeq.current)
+        .then((snapshot) => {
+          if (cancelled) return;
+          activitySeq.current = snapshot.seq;
+          setActivityTasks(snapshot.tasks);
+          if (snapshot.events.length) setActivityEvents((held) => mergeEvents(held, snapshot.events));
+        })
+        .catch(() => undefined)
+        .finally(() => { inFlight = false; });
+    };
+    read();
+    const timer = window.setInterval(read, 1500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
   useEffect(() => {
     if (!changerPageOpen && !changerRunning) return;
     let cancelled = false;
@@ -1526,6 +1554,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onOpenChangerRecording: openChangerRecording,
     onDeleteChangerRecording: (recording) => void deleteChangerRecording(recording),
     trainingRuns,
+    activityTasks,
+    activityEvents,
     trainingBatch,
     trainingProgressByRun,
     trainingRuntime,
@@ -1621,7 +1651,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           </div>
         </section>
       </div>
-      <WorkspaceStatusBar assets={mediaAssets} metrics={systemMetrics} training={{ batch: trainingBatch, progressByRun: trainingProgressByRun, speakers: trainingCatalog.speakers }} />
+      <WorkspaceStatusBar metrics={systemMetrics} tasks={activityTasks} />
       {notice ? <div className="studio-notice" role="status"><i />{notice}</div> : null}
       {job ? <div className="studio-job" role="status"><span><i /><i /><i /></span><b>{job}</b><small>Không đóng app trong khi model đang xử lý.</small></div> : null}
       {preferencesOpen ? <PreferencesDialog preferences={preferences} saving={preferencesSaving} onClose={() => setPreferencesOpen(false)} onSave={(next) => void savePreferences(next)} /> : null}

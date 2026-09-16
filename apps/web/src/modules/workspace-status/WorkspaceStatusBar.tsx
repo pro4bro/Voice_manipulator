@@ -1,42 +1,31 @@
 import { useState } from "react";
 
 import { api } from "../../api/client";
-import { trainingActivity } from "../../domain/trainingBatch";
-import type { ProjectMediaAsset, SpeakerProfile, SystemLog, SystemMetrics, TrainingProgressLine, TrainingRun } from "../../domain/types";
+import { describeTask, isLiveTask, primaryTask, sortTasks } from "../../domain/activity";
+import type { ActivityTask, SystemLog, SystemMetrics } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 
 interface WorkspaceStatusBarProps {
-  assets: ProjectMediaAsset[];
+  /** Everything the app is doing: training, STT, TTS, voice changer, model loading. */
+  tasks: ActivityTask[];
   metrics: SystemMetrics | null;
-  /** The newest training batch; a run goes on for hours and is a background task too. */
-  training?: { batch: TrainingRun[]; progressByRun: Record<string, TrainingProgressLine[]>; speakers: SpeakerProfile[] };
 }
 
-function transcriptionBackground(asset: ProjectMediaAsset) {
-  return ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus);
-}
-
-function diarizationBackground(asset: ProjectMediaAsset) {
-  return ["queued", "processing"].includes(asset.diarizationStatus ?? "idle");
-}
-
-export function WorkspaceStatusBar({ assets, metrics, training }: WorkspaceStatusBarProps) {
+/**
+ * The one line that answers "is the app doing anything?".
+ *
+ * It reads the API's activity stream rather than any one page's state, so a job
+ * started anywhere - a training run, a transcription, reading a Script, a model
+ * being loaded for a single sentence - shows here while it runs and says how
+ * long it took when it ends.
+ */
+export function WorkspaceStatusBar({ tasks, metrics }: WorkspaceStatusBarProps) {
   const [log, setLog] = useState<SystemLog | null>(null);
   const [loadingLog, setLoadingLog] = useState(false);
-  const tracked = assets.filter((asset) => asset.transcriptionSelected && !["not-applicable", "skipped"].includes(asset.transcriptionStatus));
-  const transcription = tracked.find(transcriptionBackground) ?? null;
-  const diarization = assets.find(diarizationBackground) ?? null;
-  const current = transcription ?? diarization;
-  const completed = tracked.filter((asset) => asset.transcriptionStatus === "complete").length;
-  const transcriptionProgressOf = (asset: ProjectMediaAsset) => asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0);
-  const progressOf = (asset: ProjectMediaAsset) => transcription ? transcriptionProgressOf(asset) : asset.diarizationProgress ?? 0;
-  const totalDuration = tracked.reduce((total, asset) => total + Math.max(0, asset.duration), 0);
-  const overallProgress = transcription && totalDuration > 0
-    ? tracked.reduce((total, asset) => total + Math.max(0, asset.duration) * transcriptionProgressOf(asset), 0) / totalDuration
-    : transcription && tracked.length ? tracked.reduce((total, asset) => total + transcriptionProgressOf(asset), 0) / tracked.length
-      : diarization?.diarizationProgress ?? 0;
-  const train = training ? trainingActivity(training.batch, training.progressByRun, training.speakers) : null;
-  const currentStage = transcription?.transcriptionStatus === "reviewing" ? "AI CHECK" : transcription?.transcriptionStatus === "queued" ? "WAITING STT" : transcription ? "STT KỸ" : diarization?.diarizationStatus === "queued" ? "WAITING DIARIZATION" : "SPEAKER DIARIZATION";
+  const live = sortTasks(tasks.filter(isLiveTask));
+  const current = primaryTask(tasks);
+  const line = current ? describeTask(current) : null;
+  const others = live.filter((task) => task.id !== current?.id);
 
   async function openLog() {
     setLoadingLog(true);
@@ -48,10 +37,18 @@ export function WorkspaceStatusBar({ assets, metrics, training }: WorkspaceStatu
     <>
       <footer className="workspace-status-bar" aria-live="polite">
         <div className="workspace-status-bar__activity">
-          <i className={current || train ? "is-busy" : ""} />
-          {current ? <><b>{currentStage}</b><span>{current.name}</span><strong>{transcription ? `${completed}/${tracked.length} FOOTAGE · ` : ""}{progressOf(current).toFixed(1)}% CURRENT · {overallProgress.toFixed(1)}% TOTAL</strong><progress max="100" value={overallProgress} />{train ? <b>· {train.stage} {train.percent.toFixed(0)}%</b> : null}</>
-            : train ? <><b>{train.stage}</b><span>{train.name}</span><strong>{train.detail ? `${train.detail} · ` : ""}{train.percent.toFixed(1)}% TOTAL</strong><progress max="100" value={train.percent} /></>
-              : <><b>READY</b><span>Không có background task đang chạy</span></>}
+          <i className={live.length ? "is-busy" : ""} />
+          {line ? (
+            <>
+              <b>{line.stage}</b>
+              <span>{line.label}</span>
+              <strong>{line.detail}{line.percent !== null ? ` · ${line.percent}%` : ""}</strong>
+              {line.percent !== null ? <progress max="100" value={line.percent} /> : null}
+              {others.length ? <em className="workspace-status-bar__more">+{others.length} việc khác: {others.map((task) => task.label).join(" · ")}</em> : null}
+            </>
+          ) : (
+            <><b>READY</b><span>Không có background task đang chạy</span></>
+          )}
         </div>
         <div className="workspace-status-bar__metrics">
           <span>CPU <b>{metrics ? `${metrics.cpuPercent.toFixed(0)}%` : "—"}</b></span>

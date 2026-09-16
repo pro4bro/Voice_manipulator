@@ -1182,7 +1182,7 @@
 .training-overall__head b { font-family: var(--mono); font-size: calc(15px * var(--font-scale)); }
 .training-overall__head small { color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
 .training-overall__head .button { min-height: 28px; margin-left: auto; padding: 0 10px; font-size: calc(9px * var(--font-scale)); }
-.training-overall__bar { height: 14px; display: flex; gap: 3px; }
+.training-overall__bar { height: 22px; display: flex; gap: 3px; }
 .training-overall__bar span { flex: 1 1 0; overflow: hidden; background: var(--strong-fill); }
 .training-overall__bar i { display: block; height: 100%; background: var(--accent); transition: width 400ms ease; }
 .training-overall__targets { display: grid; gap: 3px; }
@@ -1190,7 +1190,7 @@
 .training-target span { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .training-target span i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-subtle); }
 .training-target b { font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
-.training-target__bar { grid-column: 1 / -1; height: 5px; background: var(--strong-fill); }
+.training-target__bar { grid-column: 1 / -1; height: 6px; background: var(--strong-fill); }
 .training-target__bar i { display: block; height: 100%; background: var(--text-muted); transition: width 400ms ease; }
 .training-target.is-running .training-target__bar i { background: var(--accent); }
 .training-target.is-complete .training-target__bar i { background: var(--lime-dark); }
@@ -1440,3 +1440,28 @@
 .authoring-authored li small { color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
 .authoring-authored li button { width: 22px; height: 22px; color: var(--text-muted); border: 1px solid transparent; background: transparent; font-size: calc(14px * var(--font-scale)); cursor: pointer; }
 .authoring-authored li button:hover { color: #d65440; border-color: color-mix(in srgb, #d65440 45%, transparent); }
+
+/* Time and the other jobs, under the training flow. */
+.training-other-jobs { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.training-other-jobs li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid rgba(255,255,255,.12); background: color-mix(in srgb, var(--surface-sunken) 60%, transparent); }
+.training-other-jobs b { color: var(--gold); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .06em; }
+.training-other-jobs span { overflow: hidden; color: var(--text); font-size: calc(9.5px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.training-other-jobs small { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
+.training-other-jobs i { grid-column: 1 / -1; height: 4px; background: var(--strong-fill); }
+.training-other-jobs i em { display: block; height: 100%; background: var(--accent); transition: width 400ms ease; }
+.training-log__repeat { margin-left: 6px; padding: 0 4px; color: #f2c86b; border: 1px solid rgba(242,200,107,.45); font-size: calc(8px * var(--font-scale)); }
+
+/* What the app is making, under the Script module. */
+.script-progress { display: grid; gap: 4px; margin: 0; padding: 6px 10px; list-style: none; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface-sunken) 55%, transparent); }
+.script-progress li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.script-progress b { color: var(--accent-dark); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .07em; }
+.script-progress span { overflow: hidden; color: var(--text); font-size: calc(10px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.script-progress small { color: var(--text-muted); font-family: var(--mono); font-size: calc(8.5px * var(--font-scale)); white-space: nowrap; }
+.script-progress strong { color: var(--text); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.script-progress i { grid-column: 1 / -1; height: 6px; overflow: hidden; background: var(--strong-fill); }
+.script-progress i em { display: block; height: 100%; background: var(--accent); transition: width 400ms ease; }
+.script-progress i em.is-indeterminate { animation: script-progress-sweep 1.4s ease-in-out infinite; }
+@keyframes script-progress-sweep { 0% { transform: translateX(-70%); } 100% { transform: translateX(70%); } }
+
+/* The status bar carries every job, not only the first. */
+.workspace-status-bar__more { min-width: 0; overflow: hidden; color: var(--text-subtle); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }

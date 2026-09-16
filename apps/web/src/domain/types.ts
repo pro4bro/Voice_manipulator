@@ -793,6 +793,41 @@ export interface TrainingProgressLine {
 
 export type TrainingLogLevel = "info" | "warning" | "error";
 
+/** One line of the app's own log, from any part of it. */
+export interface ActivityEvent {
+  seq: number;
+  at: string;
+  source: string;
+  level: TrainingLogLevel;
+  message: string;
+  /** How many times in a row this same line arrived; 1 means once. */
+  repeat: number;
+  taskId?: string | null;
+}
+
+/** A piece of work in flight, as the status bar shows it. */
+export interface ActivityTask {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string;
+  status: "running" | "complete" | "failed" | "cancelled";
+  fraction: number | null;
+  etaSeconds: number | null;
+  projectId?: string | null;
+  error?: string | null;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string | null;
+  seconds?: number | null;
+}
+
+export interface ActivitySnapshot {
+  seq: number;
+  events: ActivityEvent[];
+  tasks: ActivityTask[];
+}
+
 export interface OwnedItem {
   id: string;
   name: string;

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatDuration } from "../../domain/reading-plan";
-import { activeRun, isLive, runFraction } from "../../domain/trainingBatch";
-import type { ProjectAsrAdapter, SpeakerProfile, TrainingProgressLine, TrainingRun, TrainingStepId } from "../../domain/types";
+import { activeRun, isLive, runFraction, runTimings } from "../../domain/trainingBatch";
+import type { ActivityEvent, ActivityTask, ProjectAsrAdapter, SpeakerProfile, TrainingProgressLine, TrainingRun, TrainingStepId } from "../../domain/types";
+import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
 import { Icon, type IconName } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { RunLogDialog, TrainingHistoryDialog } from "./TrainingHistory";
@@ -22,6 +23,9 @@ interface TrainingJobProps {
   /** Every run of the project, for the history and its delete. */
   runs?: TrainingRun[];
   adapters?: ProjectAsrAdapter[];
+  /** The app's own log and jobs, so this panel shows the whole app, not just training. */
+  activityEvents?: ActivityEvent[];
+  activityTasks?: ActivityTask[];
   /** Runs, voices or adapters changed on disk; refresh what shows them. */
   onRunsChanged?: () => void;
 }
@@ -105,6 +109,17 @@ interface Point {
   value: number;
 }
 
+/** One line of the panel's log, from a run's journal or from the app's stream. */
+interface LogRow {
+  key: string;
+  at: string;
+  source: string;
+  level: "info" | "warning" | "error";
+  text: string;
+  repeat: number;
+  run: TrainingRun | null;
+}
+
 /** A two-line chart, drawn small. No axis furniture the panel has no room for. */
 function LossChart({ train, dev }: { train: Point[]; dev: Point[] }) {
   if (train.length < 2) return null;
@@ -151,7 +166,7 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun, projectId, runs = [], adapters = [], onRunsChanged }: TrainingJobProps) {
+export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun, projectId, runs = [], adapters = [], activityEvents = [], activityTasks = [], onRunsChanged }: TrainingJobProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const [follow, setFollow] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -168,9 +183,31 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
   const overall = targets.length ? targets.reduce((sum, target) => sum + target.fraction, 0) / targets.length : 0;
 
   const lines = useMemo(() => {
-    const merged = batch.flatMap((run) => (progressByRun[run.id] ?? []).map((line) => ({ run, line })));
-    return merged.sort((left, right) => left.line.at.localeCompare(right.line.at));
-  }, [batch, progressByRun]);
+    const merged: LogRow[] = batch.flatMap((run) => (progressByRun[run.id] ?? []).map((line) => ({
+      key: `${run.id}-${line.at}-${line.message}`,
+      at: line.at,
+      source: STEP_LABELS[line.stepId] ?? line.stepId,
+      level: line.level ?? "info",
+      text: logMessage(line),
+      repeat: 1,
+      run,
+    })));
+    // Training's own lines are already here through the journal; everything else
+    // the app did - STT, TTS, model loading, the API - comes from the stream.
+    for (const event of activityEvents) {
+      if (event.source === "training") continue;
+      merged.push({
+        key: `event-${event.seq}`,
+        at: event.at,
+        source: event.source.toUpperCase(),
+        level: event.level,
+        text: event.message,
+        repeat: event.repeat,
+        run: null,
+      });
+    }
+    return merged.sort((left, right) => left.at.localeCompare(right.at));
+  }, [activityEvents, batch, progressByRun]);
 
   const { train, dev, latest } = useMemo(() => {
     const trainPoints: Point[] = [];
@@ -190,9 +227,17 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
   }, [lines.length, follow]);
 
   const problems = useMemo(() => ({
-    errors: lines.filter(({ line }) => line.level === "error").length,
-    warnings: lines.filter(({ line }) => line.level === "warning").length,
+    errors: lines.filter((row) => row.level === "error").length,
+    warnings: lines.filter((row) => row.level === "warning").length,
   }), [lines]);
+
+  // Every other job the app is doing, listed under the flow so this page is
+  // never the only thing that looks busy.
+  const otherJobs = useMemo(
+    () => sortTasks(activityTasks.filter((task) => isLiveTask(task) && task.kind !== "training")),
+    [activityTasks],
+  );
+  const timings = current ? runTimings(current, currentProgress) : null;
 
   // A running batch owns the flow. Otherwise the flow follows the choice in
   // Train, and shows the last batch's progress only if it was that same kind.
@@ -249,8 +294,25 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
           ))}
         </ol>
         <LossChart dev={dev} train={train} />
-        {latest?.stepsPerSecond && current?.status === "running" ? (
-          <p className="training-rate">{latest.stepsPerSecond.toFixed(2)} step/s · còn khoảng {formatDuration((current.config.steps - current.globalStep) / latest.stepsPerSecond)} cho voice này</p>
+        {current && timings ? (
+          <p className="training-rate">
+            {current.status === "running" ? <>
+              Đã chạy {formatDuration(timings.elapsedSeconds)}
+              {latest?.stepsPerSecond ? ` · ${latest.stepsPerSecond.toFixed(2)} step/s` : ""}
+              {timings.remainingSeconds !== null ? ` · còn khoảng ${formatDuration(timings.remainingSeconds)} cho voice này` : " · chưa ước lượng được thời gian còn lại"}
+            </> : <>
+              {STATUS_LABELS[current.status]} · tổng {timings.totalText ?? formatDuration(timings.elapsedSeconds)}
+              {timings.trainText ? ` · riêng train ${timings.trainText}` : ""}
+            </>}
+          </p>
+        ) : null}
+        {otherJobs.length ? (
+          <ul className="training-other-jobs">
+            {otherJobs.map((task) => {
+              const line = describeTask(task);
+              return <li key={task.id}><b>{line.stage}</b><span>{line.label}</span><small>{line.detail}</small>{line.percent !== null ? <i><em style={{ width: `${line.percent}%` }} /></i> : null}</li>;
+            })}
+          </ul>
         ) : null}
         {current?.error ? <p className="training-note is-error">{nameOf(current.speakerProfileId)}: {current.error}</p> : null}
         {current?.status === "interrupted" ? <p className="training-note">Tiến trình dừng cùng app. Checkpoint vẫn còn, chạy tiếp được từ mốc cuối.</p> : null}
@@ -267,17 +329,14 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
           const atBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
           if (atBottom !== follow) setFollow(atBottom);
         }} ref={logRef}>
-          {lines.map(({ run, line }, index) => {
-            const message = logMessage(line);
-            return (
-              <li className={[message.startsWith("$ ") ? "is-command" : "", line.level && line.level !== "info" ? `is-${line.level}` : ""].filter(Boolean).join(" ")} key={`${run.id}-${index}`}>
-                <time>{new Date(line.at).toLocaleTimeString("vi-VN", { hour12: false })}</time>
-                {batch.length > 1 ? <em style={{ borderColor: colorOf(run.speakerProfileId) }}>{nameOf(run.speakerProfileId)}</em> : null}
-                <span>{STEP_LABELS[line.stepId] ?? line.stepId}</span>
-                <code>{message}</code>
-              </li>
-            );
-          })}
+          {lines.map((row, index) => (
+            <li className={[row.text.startsWith("$ ") ? "is-command" : "", row.level !== "info" ? `is-${row.level}` : ""].filter(Boolean).join(" ")} key={`${row.key}-${index}`}>
+              <time>{new Date(row.at).toLocaleTimeString("vi-VN", { hour12: false })}</time>
+              {batch.length > 1 && row.run ? <em style={{ borderColor: colorOf(row.run.speakerProfileId) }}>{nameOf(row.run.speakerProfileId)}</em> : null}
+              <span>{row.source}</span>
+              <code>{row.text}{row.repeat > 1 ? <b className="training-log__repeat" title={`Dòng này lặp ${row.repeat} lần`}>…{row.repeat}…</b> : null}</code>
+            </li>
+          ))}
           {!lines.length ? <li className="training-log__empty">Chưa có dòng log nào. Tick voice target và bấm Bắt đầu ở panel Train; từng bước và lệnh chạy sẽ hiện ở đây.</li> : null}
         </ol>
       </section>

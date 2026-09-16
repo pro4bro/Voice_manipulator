@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 
+import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
 import { usePlaybackWord } from "../../domain/playback-sync";
-import type { ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
+import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/word-selection";
 import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
@@ -26,10 +27,40 @@ interface VoiceScriptProps {
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
   job?: VoiceScriptJob | null;
+  /** Jobs the app has in flight; the ones that make audio show under the Script. */
+  activityTasks?: ActivityTask[];
   busy?: boolean;
   onRead: () => void;
   onExport?: (mode: "sentence" | "word" | "table") => void;
   onOpenTraining?: () => void;
+}
+
+/**
+ * What the app is making right now, under the Script.
+ *
+ * Generating speech happens in several places - reading the whole Script, the
+ * single-sentence Tạo giọng, a model being loaded first - and this strip shows
+ * whichever is running, so the page is never silent while the GPU works.
+ */
+function ScriptProgress({ tasks = [] }: { tasks?: ActivityTask[] }) {
+  const shown = sortTasks(tasks.filter((task) => isLiveTask(task) && (task.kind === "tts" || task.kind === "model")));
+  if (!shown.length) return null;
+  return (
+    <ul aria-label="Tiến trình tạo giọng" className="script-progress">
+      {shown.map((task) => {
+        const line = describeTask(task);
+        return (
+          <li key={task.id}>
+            <b>{line.stage}</b>
+            <span>{line.label}</span>
+            <small>{line.detail}</small>
+            <i><em style={{ width: line.percent === null ? "100%" : `${line.percent}%` }} className={line.percent === null ? "is-indeterminate" : ""} /></i>
+            {line.percent !== null ? <strong>{line.percent}%</strong> : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function timecode(seconds: number) {
@@ -49,7 +80,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -459,6 +490,8 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       {!voices.length ? <div className="voice-script__menu-empty"><span>Chưa có voice dạng {CATEGORY_LABELS[category].toLowerCase()}. Tạo ở Voice Training: chọn dạng, tick Speaker Profile rồi bấm Bắt đầu.</span>{onOpenTraining ? <button onClick={() => { setVoiceMenu(null); onOpenTraining(); }} type="button">Mở Voice Training</button> : null}</div> : null}
       <button className="voice-script__menu-close" onClick={() => setVoiceMenu(null)} type="button">Đóng</button>
     </div> : null}
+
+    <ScriptProgress tasks={activityTasks} />
 
     <div className="script-module__footer">
       <div className="script-stats"><span><b>{rows.filter((row) => normalizedRowText(row.text)).length}</b> đoạn</span><span><b>{usedVoices.size}</b> voice</span><span><b>{wordCount}</b> từ</span></div>

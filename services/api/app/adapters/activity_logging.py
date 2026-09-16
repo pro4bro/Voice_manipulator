@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any
 
+from app.adapters.activity_center import CENTER
+
 # Endpoints the UI polls on a timer. A successful poll says nothing that a later
 # reader needs; 97% of one real log (2,043 of 2,104 lines) was these two routes,
 # which buries the lines that do matter. Failures are always kept - a poll that
@@ -37,9 +39,29 @@ class QuietPollFilter(logging.Filter):
 # job did, how long it took, and why it stopped.
 activity = logging.getLogger("pro4bro.activity")
 
+# What each job is called on screen.
+LABELS = {"stt": "Speech to Text", "diarization": "Tách người nói", "training": "Training"}
+
+
+def task_id_for(kind: str, project_id: str, asset_id: str) -> str:
+    return f"{kind}:{project_id}:{asset_id}"
+
 
 def job_started(kind: str, project_id: str, asset_id: str, **detail: Any) -> None:
     activity.info("%s START  %s/%s%s", kind.upper(), project_id, asset_id, _suffix(detail))
+    CENTER.start_task(
+        kind,
+        f"{LABELS.get(kind, kind.upper())} · {detail.get('name') or asset_id}",
+        task_id=task_id_for(kind, project_id, asset_id),
+        detail=_suffix(detail).strip(),
+        fraction=0.0,
+        project_id=project_id,
+    )
+
+
+def job_tick(kind: str, project_id: str, asset_id: str, percent: float, detail: str | None = None) -> None:
+    """Move the task without writing a line; called as often as progress arrives."""
+    CENTER.update_task(task_id_for(kind, project_id, asset_id), fraction=percent / 100, detail=detail)
 
 
 def job_progress(kind: str, project_id: str, asset_id: str, percent: float, **detail: Any) -> None:
@@ -53,9 +75,13 @@ def job_finished(kind: str, project_id: str, asset_id: str, seconds: float, **de
     activity.info(
         "%s DONE   %s/%s in %.1fs%s", kind.upper(), project_id, asset_id, seconds, _suffix(detail)
     )
+    CENTER.finish_task(task_id_for(kind, project_id, asset_id), detail=_suffix(detail).strip() or None)
 
 
 def job_failed(kind: str, project_id: str, asset_id: str, error: BaseException) -> None:
+    CENTER.finish_task(
+        task_id_for(kind, project_id, asset_id), status="failed", error=f"{type(error).__name__}: {error}"
+    )
     activity.error(
         "%s FAILED %s/%s  %s: %s",
         kind.upper(),

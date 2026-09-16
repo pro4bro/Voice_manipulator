@@ -112,3 +112,39 @@ export function trainingActivity(
     percent: overall * 100,
   };
 }
+
+/** How long a run has taken, and what its own log said about the parts. */
+export interface RunTimings {
+  /** Seconds from the run's first line to now, or to its last line when it ended. */
+  elapsedSeconds: number;
+  /** Seconds left at the last reported rate, when training and a rate is known. */
+  remainingSeconds: number | null;
+  /** What the run wrote when it ended, e.g. "22 phút 28 giây". */
+  totalText: string | null;
+  /** How long the training loop itself took, from the same log. */
+  trainText: string | null;
+}
+
+const ENDED = /^(?:Hoàn tất|Dừng|Đã huỷ ở bước .+?) sau (.+?)\.?$/;
+const TRAIN_DONE = /^Xong train sau (.+?)\.?$/;
+
+export function runTimings(run: TrainingRun, progress: TrainingProgressLine[] = []): RunTimings {
+  const started = new Date(run.createdAt).getTime();
+  const last = run.status === "running" || run.status === "pending" ? Date.now() : new Date(run.updatedAt).getTime();
+  let totalText: string | null = null;
+  let trainText: string | null = null;
+  for (const line of progress) {
+    const ended = ENDED.exec(line.message ?? "");
+    if (ended) totalText = ended[1];
+    const trained = TRAIN_DONE.exec(line.message ?? "");
+    if (trained) trainText = trained[1];
+  }
+  const rate = [...progress].reverse().find((line) => line.stepsPerSecond)?.stepsPerSecond ?? null;
+  const left = Math.max(0, (run.config.steps || 0) - run.globalStep);
+  return {
+    elapsedSeconds: Math.max(0, (last - started) / 1000),
+    remainingSeconds: rate && run.status === "running" && run.stepId === "train" ? left / rate : null,
+    totalText,
+    trainText,
+  };
+}

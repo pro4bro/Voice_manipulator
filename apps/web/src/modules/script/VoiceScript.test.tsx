@@ -106,6 +106,34 @@ describe("VoiceScript", () => {
     expect(screen.getByRole("button", { name: "Tạo voice" })).toHaveTextContent("Đoạn 1 chưa chọn voice");
   });
 
+it("shows what the app is making under the Script, whatever started it", () => {
+    const now = new Date().toISOString();
+    const tasks = [
+      { id: "m1", kind: "model", label: "Nạp OmniVoice", detail: "Khởi động runtime", status: "running" as const, fraction: null, etaSeconds: null, startedAt: now, updatedAt: now, finishedAt: null, seconds: null },
+      { id: "t1", kind: "tts", label: "Đọc Script · 12 đoạn", detail: "Đoạn 3/12", status: "running" as const, fraction: 0.25, etaSeconds: 40, startedAt: now, updatedAt: now, finishedAt: null, seconds: null },
+      { id: "s1", kind: "stt", label: "Speech to Text", detail: "", status: "running" as const, fraction: 0.5, etaSeconds: null, startedAt: now, updatedAt: now, finishedAt: null, seconds: null },
+    ];
+
+    const { rerender } = render(
+      <VoiceScript activityTasks={tasks} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
+        rows={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} speakers={[AN, KHOA]} voices={VOICES} />,
+    );
+
+    const strip = screen.getByLabelText("Tiến trình tạo giọng");
+    expect(within(strip).getByText("Đọc Script · 12 đoạn")).toBeInTheDocument();
+    expect(within(strip).getByText("Nạp OmniVoice")).toBeInTheDocument();
+    expect(within(strip).getByText(/Đoạn 3\/12/)).toBeInTheDocument();
+    expect(within(strip).getByText("25%")).toBeInTheDocument();
+    // Speech to Text is not audio this Script is making; the status bar has it.
+    expect(within(strip).queryByText("Speech to Text")).not.toBeInTheDocument();
+
+    rerender(
+      <VoiceScript activityTasks={[]} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
+        rows={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} speakers={[AN, KHOA]} voices={VOICES} />,
+    );
+    expect(screen.queryByLabelText("Tiến trình tạo giọng")).not.toBeInTheDocument();
+  });
+
   it("edits the whole Script as “Tên: lời thoại” text", () => {
     const onRows = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
