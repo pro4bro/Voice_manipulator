@@ -776,6 +776,30 @@ class DatasetManifest(DomainModel):
     stats: DatasetStats = Field(default_factory=DatasetStats)
 
 
+class DatasetFileSummary(DomainModel):
+    """One footage file as the project overview shows it."""
+
+    asset_id: str
+    name: str
+    extension: str = ""
+    media_kind: str = "audio"
+    audio_codec: str | None = None
+    sample_rate: int | None = None
+    duration: float = 0
+    # Bytes of the source the user imported; 0 when it lives outside the project and is gone.
+    bytes: int = 0
+    origin: str = "import"
+    training_selected: bool = False
+    transcription_status: str = "idle"
+    speaker_profile_ids: list[str] = Field(default_factory=list)
+    emotion: str = "normal"
+    # What this file puts into the dataset, per Speaker Profile and per emotion.
+    segments: int = 0
+    seconds_by_speaker: dict[str, float] = Field(default_factory=dict)
+    seconds_by_emotion: dict[str, float] = Field(default_factory=dict)
+    rejection: str | None = None
+
+
 class DatasetReadiness(DomainModel):
     """What Train and Training Job show before anything is compiled."""
 
@@ -795,6 +819,8 @@ class DatasetReadiness(DomainModel):
     script_validations: list["ScriptValidation"] = Field(default_factory=list)
     seconds_dropped_unassigned: float = 0
     seconds_dropped_overlap: float = 0
+    # Every footage file of the project, selected for training or not.
+    files: list[DatasetFileSummary] = Field(default_factory=list)
 
 
 class ScriptValidation(DomainModel):

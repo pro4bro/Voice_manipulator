@@ -26,6 +26,20 @@ const ICONS: Record<PipelineStageId, IconName> = {
 /** Stages where "still waiting" means something to do. A branch is a fork, not a task. */
 const ACTIONABLE = new Set<PipelineStageId>(["transcript", "diarization", "assigned", "training-selected", "in-dataset"]);
 
+type NodeState = "is-complete" | "is-partial" | "";
+
+function stateOf(done: number, total: number): NodeState {
+  if (total && done === total) return "is-complete";
+  return done ? "is-partial" : "";
+}
+
+/**
+ * Where the project's footage stands, left to right.
+ *
+ * Nodes are small on purpose: a name, an icon and a badge. What each step means
+ * lives in the legend under the flow rather than inside every node, so the whole
+ * pipeline fits one row and reads at a glance.
+ */
 export function PipelineDashboard({ assets, readiness, speakers, runs, onSelectAsset, onOpenTraining }: PipelineDashboardProps) {
   const stages = pipelineStages(assets, readiness);
   const byId = Object.fromEntries(stages.map((stage) => [stage.id, stage])) as Record<PipelineStageId, PipelineStage>;
@@ -36,16 +50,14 @@ export function PipelineDashboard({ assets, readiness, speakers, runs, onSelectA
   const linear = stages.filter((stage) => ACTIONABLE.has(stage.id) || stage.id === "footage").length;
   const trainedSpeakers = speakers.filter((speaker) => runs.some((run) => run.speakerProfileId === speaker.id && run.status === "complete"));
 
-  function node(stage: PipelineStage) {
+  function node(stage: PipelineStage, branch = false) {
     const waiting = ACTIONABLE.has(stage.id) ? stage.waiting : [];
+    const badge = stageBadge(stage.done.length, total);
     return (
-      <article className={`pipeline-node ${total && stage.done.length === total ? "is-complete" : stage.done.length ? "is-partial" : ""}`} data-stage={stage.id}>
-        <span aria-label={`${stage.label}: ${stageBadge(stage.done.length, total)}`} className="pipeline-badge" role="status">{stageBadge(stage.done.length, total)}</span>
+      <article className={`pipeline-node ${branch ? "is-branch" : ""} ${stateOf(stage.done.length, total)}`} data-stage={stage.id} title={stage.detail}>
+        <span aria-label={`${stage.label}: ${badge}`} className="pipeline-badge" role="status">{badge}</span>
         <i className="pipeline-node__icon"><Icon name={ICONS[stage.id]} /></i>
-        <div className="pipeline-node__copy">
-          <b>{stage.label}</b>
-          <small>{stage.detail}</small>
-        </div>
+        <b>{stage.label}</b>
         {waiting.length ? (
           <details className="pipeline-node__waiting">
             <summary>Còn {waiting.length} footage</summary>
@@ -61,6 +73,9 @@ export function PipelineDashboard({ assets, readiness, speakers, runs, onSelectA
     );
   }
 
+  const arrow = <i aria-hidden="true" className="pipeline-arrow">→</i>;
+  const voicesBadge = stageBadge(trainedSpeakers.length, speakers.length);
+
   return (
     <ModuleFrame className="pipeline-dashboard-module" eyebrow="DATA PIPELINE" title="Dashboard">
       <div className="pipeline-summary">
@@ -73,36 +88,58 @@ export function PipelineDashboard({ assets, readiness, speakers, runs, onSelectA
       {total ? (
         <div className="pipeline-flow" aria-label="Flow chuẩn bị dữ liệu">
           {node(byId.footage)}
-          <i aria-hidden="true" className="pipeline-link" />
+          {arrow}
           {node(byId.transcript)}
-          <i aria-hidden="true" className="pipeline-link" />
+          {arrow}
           {node(byId.diarization)}
-          <svg aria-hidden="true" className="pipeline-fork" preserveAspectRatio="none" viewBox="0 0 100 24"><path d="M50 0 V8 M25 8 H75 M25 8 V24 M75 8 V24" /></svg>
-          <div className="pipeline-branch">
-            {node(byId["single-speaker"])}
-            {node(byId["multi-speaker"])}
+          {arrow}
+          <div className="pipeline-branch" aria-label="Một hoặc nhiều người nói">
+            {node(byId["single-speaker"], true)}
+            {node(byId["multi-speaker"], true)}
           </div>
-          <svg aria-hidden="true" className="pipeline-fork" preserveAspectRatio="none" viewBox="0 0 100 24"><path d="M25 0 V16 M75 0 V16 M25 16 H75 M50 16 V24" /></svg>
+          {arrow}
           {node(byId.assigned)}
-          <i aria-hidden="true" className="pipeline-link" />
+          {arrow}
           {node(byId["training-selected"])}
-          <i aria-hidden="true" className="pipeline-link" />
+          {arrow}
           {node(byId["in-dataset"])}
-          <i aria-hidden="true" className="pipeline-link" />
-          <article className={`pipeline-node pipeline-node--voices ${trainedSpeakers.length && trainedSpeakers.length === speakers.length ? "is-complete" : trainedSpeakers.length ? "is-partial" : ""}`}>
-            <span aria-label={`Voice đã train: ${stageBadge(trainedSpeakers.length, speakers.length)}`} className="pipeline-badge" role="status">{stageBadge(trainedSpeakers.length, speakers.length)}</span>
+          {arrow}
+          <article className={`pipeline-node pipeline-node--voices ${stateOf(trainedSpeakers.length, speakers.length)}`} data-stage="voices" title="Speaker Profile có ít nhất một run hoàn tất">
+            <span aria-label={`Voice đã train: ${voicesBadge}`} className="pipeline-badge" role="status">{voicesBadge}</span>
             <i className="pipeline-node__icon"><Icon name="spark" /></i>
-            <div className="pipeline-node__copy">
-              <b>Voice đã train</b>
-              <small>Tính theo Speaker Profile có run hoàn tất{trainedSpeakers.length ? ` · ${trainedSpeakers.map((speaker) => speaker.name).join(", ")}` : ""}</small>
-            </div>
-            {onOpenTraining ? <button className="button button--quiet" onClick={onOpenTraining} type="button">Mở Voice Training</button> : null}
+            <b>Voice đã train</b>
+            {onOpenTraining ? <button className="pipeline-node__action" onClick={onOpenTraining} type="button">Mở Training</button> : null}
           </article>
         </div>
       ) : (
         <div className="pipeline-empty"><Icon name="folder" /><b>Chưa có footage nào để thống kê</b><span>Import footage ở Media Pool, chạy Speech to Text rồi quay lại đây.</span></div>
       )}
-      <p className="pipeline-note">Phần trăm tính trên toàn bộ footage được tính. Nhánh 1 speaker / nhiều speaker chỉ gồm footage đã nhận diện speaker.</p>
+
+      <section aria-label="Chú thích flow" className="pipeline-legend">
+        <header>CHÚ THÍCH</header>
+        <div className="pipeline-legend__badges">
+          <p>
+            <span className="pipeline-badge is-sample">50% · 1</span>
+            Số ở góc mỗi node: <b>phần trăm footage đã qua bước đó</b> · <b>số footage</b>. Ví dụ “50% · 1” là 1 trong 2 footage đã xong bước này.
+            Riêng node <b>Voice đã train</b> đếm theo Speaker Profile.
+          </p>
+          <ul>
+            <li><i className="is-complete" />Xanh: mọi footage đã xong</li>
+            <li><i className="is-partial" />Vàng: mới xong một phần</li>
+            <li><i />Xám: chưa footage nào qua</li>
+          </ul>
+        </div>
+        <dl>
+          {stages.map((stage) => (
+            <div key={stage.id}><dt>{stage.label}</dt><dd>{stage.detail}</dd></div>
+          ))}
+          <div><dt>Voice đã train</dt><dd>Speaker Profile có ít nhất một run hoàn tất{trainedSpeakers.length ? `: ${trainedSpeakers.map((speaker) => speaker.name).join(", ")}` : ""}</dd></div>
+        </dl>
+        <p className="pipeline-note">
+          Hai node giữa là một ngã rẽ: <b>1 speaker</b> và <b>Nhiều speaker</b> chỉ tính footage đã biết người nói, nên cộng lại có thể nhỏ hơn tổng.
+          Footage chỉ có một người thì gán thẳng ở ô NGƯỜI NÓI trong Script, không cần chạy nhận diện speaker. Bấm “Còn N footage” dưới node để mở footage còn thiếu.
+        </p>
+      </section>
     </ModuleFrame>
   );
 }

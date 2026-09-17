@@ -31,12 +31,12 @@ describe("PipelineDashboard", () => {
     ];
     render(<PipelineDashboard assets={assets} readiness={null} runs={[]} speakers={[AN]} />);
 
-    expect(screen.getByRole("status", { name: "Footage: 100%-4" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Nhận diện speaker: 50%-2" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "1 speaker: 25%-1" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Nhiều speaker: 25%-1" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Gán Speaker Profile: 25%-1" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Voice đã train: 0%-0" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Footage: 100% · 4" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Nhận diện speaker: 50% · 2" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "1 speaker: 25% · 1" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Nhiều speaker: 25% · 1" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Gán Speaker Profile: 25% · 1" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Voice đã train: 0% · 0" })).toBeInTheDocument();
   });
 
   it("lists the footage a stage is waiting on and selects it when clicked", () => {
@@ -52,7 +52,7 @@ describe("PipelineDashboard", () => {
     const done = { id: "r", speakerProfileId: "p1", status: "complete" } as TrainingRun;
     render(<PipelineDashboard assets={[asset("solo")]} readiness={null} runs={[done]} speakers={[AN, { ...AN, id: "p2", name: "Bình" }]} />);
 
-    expect(screen.getByRole("status", { name: "Voice đã train: 50%-1" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Voice đã train: 50% · 1" })).toBeInTheDocument();
   });
 
   it("says there is nothing to count rather than drawing an empty flow", () => {

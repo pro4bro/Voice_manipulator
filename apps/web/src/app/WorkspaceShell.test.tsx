@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, ProjectMediaAsset } from "../domain/types";
@@ -21,9 +21,22 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
-  ModuleRegistry: ({ id, context }: { id: string; context: { script: string } }) =>
-    id === "script" ? <output data-testid="script-value">{context.script}</output> : null,
+  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; onOpenVoiceOutput: (output: unknown) => void } }) => {
+    if (id === "script") return <output data-testid="script-value">{context.script}</output>;
+    if (id === "timeline") return <output data-testid="timeline-take">{context.take?.name ?? "trống"}</output>;
+    if (id === "manipulator-library") {
+      return <button onClick={() => context.onOpenVoiceOutput(GENERATED)} type="button">mở voice output</button>;
+    }
+    return null;
+  },
 }));
+
+const GENERATED = {
+  id: "output-1", name: "Script · 35 đoạn", text: "xin chào", voiceId: "voice-1", voiceName: "Anh Vũ",
+  speakerProfileId: "speaker-1", engine: "omnivoice", generatorId: "omnivoice-generate", parameters: {},
+  duration: 208, audioPath: "assets/voice-output/output-1/audio.wav", words: [], segments: [],
+  createdAt: "2026-09-17T00:00:00Z",
+};
 vi.mock("../modules/workspace-status/WorkspaceStatusBar", () => ({ WorkspaceStatusBar: () => null }));
 
 const project: Project = {
@@ -106,6 +119,37 @@ describe("WorkspaceShell STT synchronization", () => {
       },
     });
     apiMocks.getSystemStatus.mockResolvedValue(null);
+  });
+
+it("keeps what each page has open: footage in Speech to Text, the generated voice in Voice Manipulator", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([mediaAsset("complete", "Transcript của footage", "2026-08-30T00:00:02Z")]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+
+    render(<WorkspaceShell
+      engine={null}
+      onBack={vi.fn()}
+      onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)}
+      onToggleTheme={vi.fn()}
+      project={project}
+      runtime={null}
+      theme="dark"
+    />);
+
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("speech.wav"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Voice Manipulator/ }));
+    // Nothing generated is open yet: the Manipulator timeline does not borrow the footage.
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("trống"));
+    fireEvent.click(screen.getByRole("button", { name: "mở voice output" }));
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("Script · 35 đoạn"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Speech to Text/ }));
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("speech.wav"));
+    expect(screen.getByTestId("script-value")).toHaveTextContent("Transcript của footage");
+
+    fireEvent.click(screen.getByRole("button", { name: /Voice Manipulator/ }));
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("Script · 35 đoạn"));
   });
 
   it("waits for the authoritative asset before stopping terminal STT polling", async () => {

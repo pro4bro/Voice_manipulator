@@ -71,6 +71,7 @@ export type ModuleId =
   | "voice-input"
   | "changer-timeline"
   | "training-job"
+  | "project-overview"
   | "speaker-isolation"
   | "speaker-emotion"
   | "train"
@@ -483,6 +484,27 @@ export interface ScriptValidation {
   matchRatio: number;
 }
 
+/** One footage file as the project overview shows it. */
+export interface DatasetFileSummary {
+  assetId: string;
+  name: string;
+  extension: string;
+  mediaKind: string;
+  audioCodec: string | null;
+  sampleRate: number | null;
+  duration: number;
+  bytes: number;
+  origin: string;
+  trainingSelected: boolean;
+  transcriptionStatus: string;
+  speakerProfileIds: string[];
+  emotion: string;
+  segments: number;
+  secondsBySpeaker: Record<string, number>;
+  secondsByEmotion: Record<string, number>;
+  rejection: string | null;
+}
+
 export interface DatasetReadiness {
   selectedAssets: number;
   readyAssets: number;
@@ -496,6 +518,8 @@ export interface DatasetReadiness {
   secondsDroppedOverlap?: number;
   rejections: DatasetRejection[];
   scriptValidations: ScriptValidation[];
+  /** Every footage file of the project; older APIs send none. */
+  files?: DatasetFileSummary[];
 }
 
 export interface DatasetStats {

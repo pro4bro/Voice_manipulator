@@ -40,9 +40,9 @@ describe("footage pipeline", () => {
       "training-selected": 1,
       "in-dataset": 1,
     });
-    expect(stageBadge(1, 3)).toBe("33%-1");
-    expect(stageBadge(20, 50)).toBe("40%-20");
-    expect(stageBadge(0, 0)).toBe("0%-0");
+    expect(stageBadge(1, 3)).toBe("33% · 1");
+    expect(stageBadge(20, 50)).toBe("40% · 20");
+    expect(stageBadge(0, 0)).toBe("0% · 0");
   });
 
   it("calls a multi-speaker footage assigned only when every voice is decided", () => {

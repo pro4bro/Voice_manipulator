@@ -523,3 +523,24 @@ def test_readiness_reports_coverage_without_compiling_anything(tmp_path):
     assert set(readiness.segments_by_tier) == {"import", "guided"}
     assert "sad" in readiness.seconds_by_emotion
     assert not list((Path(fixture.project.project_path) / "assets" / "training").glob("datasets/*"))
+
+
+def test_readiness_describes_every_file_of_the_project_for_the_overview(tmp_path):
+    fixture = Fixture(tmp_path)
+    fixture.add("asset-in", words=steady_words(40))
+    fixture.add("asset-out", training_selected=False, speaker_profile_ids=[])
+    source = Path(fixture.project.project_path) / "assets" / "media" / "asset-in" / "source.wav"
+    source.write_bytes(b"x" * 4096)
+
+    readiness = fixture.compiler.readiness(fixture.project.id)
+
+    files = {item.asset_id: item for item in readiness.files}
+    assert set(files) == {"asset-in", "asset-out"}
+    used = files["asset-in"]
+    assert (used.extension, used.bytes, used.training_selected) == ("wav", 4096, True)
+    assert used.segments == readiness.segments
+    assert used.seconds_by_speaker == {fixture.speaker.id: readiness.seconds_by_speaker[fixture.speaker.id]}
+    assert sum(used.seconds_by_emotion.values()) == pytest.approx(readiness.total_seconds)
+    idle = files["asset-out"]
+    # Not selected for training: listed with what it is, contributing nothing, and no rejection.
+    assert (idle.bytes, idle.segments, idle.rejection, idle.speaker_profile_ids) == (0, 0, None, [])

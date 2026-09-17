@@ -4,6 +4,7 @@ import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaI
 import { ControlRack } from "../control-rack/ControlRack";
 import { DatasetReadinessPanel } from "../dashboard/DatasetReadinessPanel";
 import { PipelineDashboard } from "../dashboard/PipelineDashboard";
+import { ProjectOverview } from "../dashboard/ProjectOverview";
 import { LibraryPanel, ManipulatorLibrary } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
@@ -193,13 +194,13 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "recorder":
       return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "timeline": {
-      const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      // Voice Manipulator is about what the app generated: footage from Speech
-      // to Text has no place on its timeline, so an empty one means "nothing
-      // generated yet" rather than "here is some other audio".
+      // Voice Manipulator shows only what the app generated, and none of the
+      // footage's own cuts, gain or word edits: those belong to the file open in
+      // Speech to Text, and applied here they changed the wrong audio.
       const generatedOnly = context.workflow === "voice-manipulator";
-      const take = generatedOnly && !context.activeOutputId ? null : context.take;
-      return <Timeline wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={(keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={context.onTimelineEditsChange} onWordsChange={context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={take} />;
+      const selectedAsset = generatedOnly ? undefined : context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
+      const noop = () => undefined;
+      return <Timeline wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={context.take} />;
     }
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
@@ -207,6 +208,8 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":
       return <PipelineDashboard assets={context.mediaAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
+    case "project-overview":
+      return <ProjectOverview assets={context.mediaAssets} model={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)} onSelectAsset={(assetId) => { context.onSelectAsset(assetId); context.onSelectPage("speech-to-text"); }} readiness={context.datasetReadiness} runs={context.trainingRuns} settings={context.trainingCatalog.settings} speakers={context.trainingCatalog.speakers} />;
     case "dataset-readiness":
       return <DatasetReadinessPanel busy={context.datasetBusy} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":

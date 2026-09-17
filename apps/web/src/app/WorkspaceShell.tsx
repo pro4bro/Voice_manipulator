@@ -11,7 +11,6 @@ import type {
   EmotionLabel,
   EngineProfileSchema,
   EngineStatus,
-  ManipulatorMode,
   MediaImportChoice,
   MediaTranscriptionProgress,
   Project,
@@ -80,13 +79,10 @@ const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: Icon
 
 const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
 
-const modeLabels: Record<ManipulatorMode, string> = {
-  "voice-over": "Voice Over",
-  "voice-isolator": "Voice Isolator",
-  "voice-changer": "Voice Changer",
-  "voice-dubber": "Voice Dubber",
-  "voice-patch": "Voice Patch",
-};
+// Pages that open straight onto their modules. The heading row repeated the
+// page name the top navigation already shows, and the Manipulator's mode tabs
+// switched nothing (Voice Patch sits in the right column; the rest are planned).
+const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-manipulator"]);
 
 /**
  * A guided reading run, held for as long as the workspace is open.
@@ -136,13 +132,19 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
 
 export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
-  const [activeMode, setActiveMode] = useState<ManipulatorMode>("voice-over");
   const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(340);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [speed, setSpeed] = useState(1);
   const [gain, setGain] = useState(0);
+  // What each page has open. Speech to Text works on footage, Voice
+  // Manipulator on what it generated, Voice Changer on its recordings; one
+  // shared take showed a generated output in the Speech to Text Script and a
+  // footage waveform on the Manipulator timeline.
   const [take, setTake] = useState<ActiveTake | null>(null);
+  const [outputTake, setOutputTake] = useState<ActiveTake | null>(null);
+  const [recordingTake, setRecordingTake] = useState<ActiveTake | null>(null);
+  const pageTake = activePageTake();
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -586,6 +588,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   async function selectPage(page: WorkspacePage) {
     setActivePage(page);
+    // Word indexes point into one take's words; carried to another page they
+    // would highlight unrelated words.
+    if (page !== activePage) setWordSelection(EMPTY_SELECTION);
     // The Dashboard is a reading of the current footage; a count from before
     // the last STT or assignment would be the one number on it that is wrong.
     // Both pages are read against the dataset; a count from before the last STT
@@ -593,6 +598,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     if (page === "dashboard" || page === "voice-training") void refreshDatasetReadiness();
     if (page === "voice-manipulator") void refreshProjectVoices();
     try { await onPageChange(page); } catch { setNotice("Không lưu được trang đang mở. Nội dung Script vẫn được giữ cục bộ."); }
+  }
+
+  function activePageTake(): ActiveTake | null {
+    if (activePage === "voice-manipulator") return outputTake;
+    if (activePage === "voice-changer") return recordingTake;
+    return take;
   }
 
   function beginResize(side: "left" | "right", event: PointerEvent<HTMLDivElement>) {
@@ -1339,12 +1350,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   function openVoiceOutput(output: VoiceOutput, loadScript = true) {
-    // Opened for listening and editing on the Timeline, detached from any
-    // footage. An output read from a Script brings that Script back with it,
-    // so rows, timestamps and subtitles all describe the audio being played.
-    setSelectedAssetId(null);
-    setScriptDirty(false);
-    setTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: output.words ?? [], wordTimingQuality: output.wordTimingQuality ?? undefined, wordTimingNote: output.wordTimingNote ?? null });
+    // Opened for listening on the Manipulator's own timeline. The footage open
+    // in Speech to Text stays open there. An output read from a Script brings
+    // that Script back with it, so rows, timestamps and subtitles all describe
+    // the audio being played.
+    setOutputTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: output.words ?? [], wordTimingQuality: output.wordTimingQuality ?? undefined, wordTimingNote: output.wordTimingNote ?? null });
     if (loadScript && output.segments?.length) setVoiceScriptRows(rowsFromOutput(output));
   }
 
@@ -1443,23 +1453,21 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   function openChangerRecording(recording: VoiceChangerRecording) {
-    setSelectedAssetId(null);
-    setScriptDirty(false);
-    setTake({ id: recording.id, name: recording.name, url: `/api/projects/${project.id}/voice-changer/recordings/${recording.id}/audio`, duration: recording.duration, words: [] });
+    setRecordingTake({ id: recording.id, name: recording.name, url: `/api/projects/${project.id}/voice-changer/recordings/${recording.id}/audio`, duration: recording.duration, words: [] });
   }
 
   async function deleteChangerRecording(recording: VoiceChangerRecording) {
     try {
       await api.deleteChangerRecording(project.id, recording.id);
       setChangerRecordings((current) => current.filter((item) => item.id !== recording.id));
-      if (take?.id === recording.id) setTake(null);
+      if (recordingTake?.id === recording.id) setRecordingTake(null);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không xoá được bản ghi");
     }
   }
 
   async function exportVoiceOutputSubtitles(mode: "sentence" | "word" | "table") {
-    const output = voiceOutputs.find((item) => item.id === take?.id);
+    const output = voiceOutputs.find((item) => item.id === outputTake?.id);
     if (!output?.words?.length) {
       setNotice("Mở một Voice Output đã có word timing trước khi xuất.");
       return;
@@ -1476,7 +1484,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     try {
       await api.deleteVoiceOutput(project.id, output.id);
       setVoiceOutputs((current) => current.filter((item) => item.id !== output.id));
-      if (take?.id === output.id) setTake(null);
+      if (outputTake?.id === output.id) setOutputTake(null);
       setNotice(`Đã xoá ${output.name}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không xoá được Voice Output");
@@ -1526,7 +1534,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     selectedVoice,
     speed,
     gain,
-    take,
+    take: pageTake,
     mediaAssets,
     selectedAssetId,
     mediaBusy,
@@ -1544,7 +1552,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     datasetBusy,
     projectId: project.id,
     voiceOutputs,
-    activeOutputId: voiceOutputs.some((output) => output.id === take?.id) ? take?.id ?? null : null,
+    activeOutputId: voiceOutputs.some((output) => output.id === outputTake?.id) ? outputTake?.id ?? null : null,
     onOpenVoiceOutput: openVoiceOutput,
     onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
     sttEngines,
@@ -1644,7 +1652,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, take, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">
@@ -1659,9 +1667,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       </header>
       <div className="workspace-body">
         <aside className="project-rail"><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div><div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
-        <section className={`workspace-stage ${activePage === "voice-manipulator" ? "has-modes" : ""} ${activePage === "speech-to-text" ? "is-compact-heading" : ""}`}>
-          {activePage !== "speech-to-text" ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{take?.name ?? "Chưa chọn"}</b></div></header> : null}
-          {activePage === "voice-manipulator" ? <div className="mode-area"><div className="mode-switcher" role="tablist" aria-label="Chế độ Voice Manipulator">{manifest.modes.map((mode) => { const planned = manifest.plannedModes.includes(mode); return <button aria-selected={activeMode === mode} className={activeMode === mode ? "is-active" : ""} key={mode} onClick={() => setActiveMode(mode)} role="tab" type="button"><span>{modeLabels[mode]}</span>{planned ? <small>PLANNED</small> : null}</button>; })}</div>{manifest.plannedModes.includes(activeMode) ? <div className="processor-banner" role="status"><b>{modeLabels[activeMode]}</b><span>Workspace contract đã sẵn sàng · processor adapter chưa được cài</span></div> : null}</div> : null}
+        <section className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
+          {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
           <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>

@@ -70,10 +70,13 @@ export function footageProgress(asset: ProjectMediaAsset, readiness: DatasetRead
     assigned = asset.speakerProfileIds.length > 0 || mapped.some((label) => assignments[label]);
   }
   const rejected = new Set((readiness?.rejections ?? []).map((item) => item.assetId));
+  // One profile named for the whole take is a speaker decision in its own right:
+  // Script's NGƯỜI NÓI exists so a one-voice file never needs diarization.
+  const namedByHand = !diarization && labels.size <= 1 && asset.speakerProfileIds.length === 1;
   return {
     asset,
     transcript,
-    diarization,
+    diarization: diarization || namedByHand,
     voices: labels.size,
     assigned,
     trainingSelected: asset.trainingSelected,
@@ -105,8 +108,8 @@ export function pipelineStages(assets: ProjectMediaAsset[], readiness: DatasetRe
   return [
     split("footage", "Footage", "Đã import vào Media Pool", () => true),
     split("transcript", "Speech to Text", "Có transcript và word timing", (item) => item.transcript),
-    split("diarization", "Nhận diện speaker", "Đã chạy diarization", (item) => item.diarization),
-    split("single-speaker", "1 speaker", "Diarization thấy một giọng", (item) => item.voices <= 1, diarized),
+    split("diarization", "Nhận diện speaker", "Đã chạy diarization, hoặc đã gán thẳng một người nói ở Script", (item) => item.diarization),
+    split("single-speaker", "1 speaker", "Một giọng: diarization thấy một người, hoặc gán tay một người", (item) => item.voices <= 1, diarized),
     split("multi-speaker", "Nhiều speaker", "Tách theo lượt nói, bỏ đoạn chồng tiếng", (item) => item.voices > 1, diarized),
     split("assigned", "Gán Speaker Profile", "Mọi giọng đã được gán hoặc bỏ", (item) => item.assigned),
     split("training-selected", "Chọn để train", "Đã tick TRAIN trong Media Pool", (item) => item.trainingSelected),
@@ -114,8 +117,8 @@ export function pipelineStages(assets: ProjectMediaAsset[], readiness: DatasetRe
   ];
 }
 
-/** "40%-20": share of all counted footage, then the count itself. */
+/** "40% · 20": share of all counted footage, then the count itself. */
 export function stageBadge(done: number, total: number) {
   const percent = total ? Math.round((done / total) * 100) : 0;
-  return `${percent}%-${done}`;
+  return `${percent}% · ${done}`;
 }

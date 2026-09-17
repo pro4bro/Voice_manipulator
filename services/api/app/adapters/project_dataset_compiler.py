@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.domain.models import (
     DATASET_MANIFEST_VERSION,
     CaptureTier,
+    DatasetFileSummary,
     DatasetManifest,
     DatasetReadiness,
     DatasetRejection,
@@ -321,7 +322,46 @@ class ProjectDatasetCompiler:
             script_validations=validations,
             seconds_dropped_unassigned=round(drops.unassigned, 2),
             seconds_dropped_overlap=round(drops.overlap, 2),
+            files=self._files(project_id, segments, rejections),
         )
+
+    def _files(
+        self, project_id: str, segments: list[DatasetSegment], rejections: list[DatasetRejection]
+    ) -> list[DatasetFileSummary]:
+        """Every footage file with what it holds and what it gives the dataset."""
+        project_root = Path(self.projects.get(project_id).project_path)
+        rejected = {item.asset_id: item.reason for item in rejections}
+        files: list[DatasetFileSummary] = []
+        for asset in self.library.list(project_id):
+            if getattr(asset, "deleted_at", None) or asset.origin == "generate":
+                continue
+            mine = [segment for segment in segments if segment.asset_id == asset.id]
+            by_speaker: dict[str, float] = {}
+            by_emotion: dict[str, float] = {}
+            for segment in mine:
+                if segment.speaker_profile_id:
+                    by_speaker[segment.speaker_profile_id] = round(by_speaker.get(segment.speaker_profile_id, 0) + segment.duration, 2)
+                by_emotion[segment.emotion] = round(by_emotion.get(segment.emotion, 0) + segment.duration, 2)
+            files.append(DatasetFileSummary(
+                asset_id=asset.id,
+                name=asset.name,
+                extension=(asset.source_extension or "").lstrip(".").lower(),
+                media_kind=asset.media_kind,
+                audio_codec=asset.audio_codec,
+                sample_rate=asset.sample_rate,
+                duration=round(asset.duration or 0, 2),
+                bytes=_file_bytes(project_root, asset.source_path),
+                origin=asset.origin,
+                training_selected=asset.training_selected,
+                transcription_status=asset.transcription_status,
+                speaker_profile_ids=list(asset.speaker_profile_ids),
+                emotion=asset.emotion,
+                segments=len(mine),
+                seconds_by_speaker=by_speaker,
+                seconds_by_emotion=by_emotion,
+                rejection=rejected.get(asset.id),
+            ))
+        return files
 
     def compile(self, project_id: str) -> DatasetManifest:
         segments, rejections, selected, drops = self._collect(project_id)
@@ -730,3 +770,16 @@ class ProjectDatasetCompiler:
         )
         temporary.replace(path)
         return path
+
+
+def _file_bytes(project_root: Path, source_path: str | None) -> int:
+    """The source's size on disk; a relative path is read from the project."""
+    if not source_path:
+        return 0
+    path = Path(source_path)
+    if not path.is_absolute():
+        path = project_root / path
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0

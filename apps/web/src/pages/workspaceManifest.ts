@@ -5,11 +5,13 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     page: "dashboard",
     label: "Dashboard",
     eyebrow: "PIPELINE / FOOTAGE / DATASET",
-    modules: ["library-panel", "pipeline-dashboard", "dataset-readiness"],
+    modules: ["pipeline-dashboard", "project-overview", "dataset-readiness"],
     columns: {
-      left: ["library-panel"],
+      // No Media Pool: the overview on the right lists every file with what it
+      // holds, and clicking one opens it in Speech to Text.
+      left: [],
       center: ["pipeline-dashboard"],
-      right: ["dataset-readiness"],
+      right: ["project-overview", "dataset-readiness"],
       bottom: [],
     },
     modes: [],
