@@ -12,3 +12,12 @@ Every pipeline request requires an explicit source asset, transcript/cue selecti
 | Engine adapters | Isolate upstream/community engines and report precise capability/error states |
 | Asset lineage service | Preserves derived-artifact ancestry and approval status |
 | Timeline / review modules | Present real project-owned outputs, never external temporary paths |
+
+## Voice Changer
+
+Plan `05-01` covers same-language voice conversion, from a file into a Take and
+live from a microphone into a device. Its engine candidates — RVC, MeanVC2, and
+Seed-VC as a benchmark only — are surveyed in
+`.planning/research/VOICE-CONVERSION-ENGINES.md`, and none becomes a product
+feature before passing a Vietnamese intelligibility, similarity and latency gate
+measured on this machine.

@@ -52,3 +52,16 @@ Voice Vault is presented as Sound Library, with separate Speaker and Environment
 profile types. The OmniVoice adapter supplies all 646 supported languages and
 voice-design facets; the profile model keeps arbitrary attributes for future
 engines. Both profile types are assignable to footage and timed words.
+
+## 2026-09-13 - Voice Changer Engines
+
+User direction asked for realtime same-language voice conversion options to be
+planned into Voice Manipulator. A survey of open-source engines went into
+`research/VOICE-CONVERSION-ENGINES.md` and became plan `05-01`.
+
+A changer's target is a Voice Model — a reference clip or a conversion
+checkpoint — not a Voice Model Set, because emotion comes from the performer.
+RVC is the quality path for owned speakers, MeanVC2 the live/CPU candidate, and
+Seed-VC a benchmark only (GPL-3.0, archived). Live audio runs through a native
+device loop in a sidecar rather than through the browser. No engine is adopted
+before a Vietnamese gate measured here; the mode stays planned until then.
