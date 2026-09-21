@@ -123,7 +123,7 @@ R1 vì cùng một đợt và không còn ai chạy song song để tranh chấp
 | R1 | W1.1 storage split + W1.2 diarization progress + W1.5a audioop | **ĐÃ XONG** |
 | R3 | W1.3 + W1.4 frontend | **ĐÃ XONG** (làm sớm cùng R1) |
 | R4 | W1.5b + W1.5c sidecar | **ĐÃ XONG** (làm sớm cùng R1) |
-| R2 | W2 timing trust theo từ | **ĐÃ CODE — CHỜ NGHIỆM THU; 2 NGƯỠNG CHƯA ĐẠT** |
+| R2 | W2 timing trust theo từ | **ĐÃ NGHIỆM THU CÓ ĐIỀU KIỆN** — chủ dự án chấp nhận 2026-09-03; 2 ngưỡng dữ liệu thật vẫn chưa đạt |
 | R5 | W3 probe forced alignment | **ĐÃ XONG — KHÔNG ĐẠT NGƯỠNG** (2/3 trượt) |
 | R6 | W3 tích hợp | **KHÔNG THỰC HIỆN** — điều kiện R5 không thoả |
 | R7 | W4 diarization | **ĐÃ XONG** — cả 3 tiêu chí đạt |

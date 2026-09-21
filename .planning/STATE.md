@@ -1,25 +1,90 @@
-# State
+---
+current_phase: 3
+current_phase_name: Voice Training
+total_phases: 7
+current_plan: 3
+total_plans_in_phase: 4
+status: In progress
+progress: 60%
+last_activity: 2026-09-22 — Reconciled planning with code and accepted ADR 0011.
+last_activity_desc: Planning now distinguishes implemented slices from accepted plan contracts.
+paused_at: null
+---
 
-- **Current phase**: 03 Voice Training, with Phase 02 Speech to Text still open beside it. They overlap on purpose: 02 owns what was heard, 03 owns what can be taught, and both read the same Media Pool, Script and word timing.
+# Project State
 
-- **Status**:
-  - Stabilization W0–W4 is merged into `main` (25 commits, fast-forward). R0/R1/R3/R4 done, R7 done, R5 measured and declined, R6 not performed.
-  - **R2 accepted by the owner** on 2026-09-03 with two thresholds knowingly unmet — it does what it claims (mark untrusted timing, keep it out of cues) but it never claimed to make timing correct, which is the problem the owner actually has.
-  - Plan 03-01 complete. Plan 03-02 compiler and validation implementation delivered. Plan 03-03 is in progress: run records, runtime inspection, dataset export, process parsing, GPU lease, progress UI, and the live runner/start-cancel-resume route are delivered; model publishing remains.
-  - Plan 03-04 (High Quality Voice Training) in progress: tasks 1, 2 and 5 delivered.
-  - Plan 07-01 written: model delivery and security seams defined, no adapter, no route touched.
+## Project Reference
 
-- **Last action**: Connected the validated manifest to an external OmniVoice runner, wired tokenization, accelerate training, progress, cancellation, resume config, GPU leasing, and runtime-aware UI. Provisioned the ignored Python 3.11 training venv with matching CUDA torch/torchaudio and verified the RTX 3090 import path. 216 backend and 197 frontend tests, production build.
+See: `.planning/PROJECT.md` (status reconciled 2026-09-22)
 
-  - **Next action**: Finish 03-03 by publishing the first checkpoint as a Voice Model Set with manifest hash, engine revision, config, and similarity-gate lineage. Then verify one real project run end to end.
+**Core value:** One portable project carries audio through transcription,
+training, generation, conversion, and later LipSync with honest lineage.
+**Current focus:** Phase 03 Voice Training — gated publication.
 
-- **Blockers**:
-  - No project Dataset Manifest is currently selected and ready for a real run in the checked-in sample projects; after selecting and validating footage, the training runtime and runner are ready. Voice Model Set publishing is still not implemented.
-  - Guided reading's read-along follows manually; it needs the local streaming recogniser, which now exists in Recorder for the live transcript and has not been wired to the teleprompter.
-  - AI review still needs endpoint, model and API key in Windows → Preferences.
+Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
 
-  - **Environment**: The working tree is the active checkout repository root, confirmed with `git rev-parse --show-toplevel`. Other copies are backups only. Project paths remain relative; runtime and model paths are machine-local and ignored.
+## Current Position
 
-- **Branches**: `main` at the stabilization tip. `feat/03-04-high-quality-training` is main plus the 03-04 work. `docs/remote-access` is main plus one doc commit and merges independently.
+Phase: 3 of 7 (Voice Training)
+Plan: 3 of 4 in current phase
+Status: In progress
+Last activity: 2026-09-22 — Reconciled planning with code and accepted ADR 0011.
 
-- **Decisions**: The folder containing project.json is the portable project aggregate; app registry and runtime preferences are machine-local. Media Pool and Sound Library are tabs in one left panel. OmniVoice remains untouched; its language/facet schema is exposed through the application adapter. Finalized STT trusts only processor-provenanced word timing; Vietnamese uses non-batched Faster-Whisper DTW plus an unpadded acoustic-boundary pass because VAD padding shifted whole phrases early. A terminal STT progress snapshot is not the Script payload. A tiny control plane must remain alive when workloads are off. Speech processing stays local — no cloud recogniser, not even as a fallback. Guided reading is a capture mode, not a project type or a second pipeline (ADR 0010). Emotion travels through reference audio; one LoRA adapter per emotion, anchored to a shared neutral slice and published only as a Voice Model Set.
+Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
+
+The 60% figure is GSD's 6/10 plan-summary artifact count. It is not product
+completion: historical Phase 02 summaries and a seam-only Phase 07 plan count,
+while user-visible success criteria in Phases 2-7 remain open.
+
+## Verification Baseline
+
+- Backend: 348 passed, 1 skipped.
+- Frontend: 288 passed.
+- TypeScript/Vite production build: passed.
+- `git diff --check`: passed.
+- `engines/OmniVoice`: no tracked modification.
+
+## Accumulated Context
+
+## Decisions Made
+
+| Phase | Summary | Rationale |
+| --- | --- | --- |
+| 03 | Keep `ProjectVoice` and Voice Model Set distinct | One usable artifact cannot carry a coordinated set's identity, lineage, and gate guarantees. |
+| 03 | Dataset Manifest remains engine-free | Exporters may change engine shape without changing portable project truth. |
+| 05 | RVC gate remains failed/partial | Speed and pitch evidence cannot override failed cross-speaker CER or missing measurements. |
+
+## Completed Contracts
+
+- Stabilization W0-W4; R5 declined and R6 intentionally skipped.
+- Phase 01, plans 03-01 and 03-02, and seam-only plan 07-01.
+- 03-03 runtime/run/export/process/GPU/progress/cancel/resume foundation.
+- Individual project voices, generation/output, and an RVC live-conversion slice.
+
+## Pending Todos
+
+No GSD todo files. Planned work remains in ROADMAP and PROJECT-STATUS.
+
+## Blockers
+
+- 03-03 still lacks Voice Model Set persistence/lineage, `SpeakerEmbedder`, and one real gated publish run.
+- 03-04 lacks durable sessions, measured capture/QC, finalization, tier policy, and identity lock.
+- No checked-in sample project supplies consented, ready audio for the real training acceptance run.
+- RVC similarity, cross-gender, loopback latency, and owner blind A/B are unmeasured.
+- `audioop` blocks a clean Python 3.13 upgrade; Starlette test client emits an `httpx` deprecation warning.
+
+## Deferred Items
+
+| Category | Item | Status | Deferred At |
+| --- | --- | --- | --- |
+| STT review | Final per-word candidate reconciliation | Open | Phase 02 |
+| Workspace | Six-zone docking and `WorkspaceSession` | Planned | Phase 04 |
+| Manipulation | Isolation, dubbing, production patch/file workflows | Planned | Phase 05 |
+| Video | LipSync implementation | Planned | Phase 06 |
+| Distribution | Model delivery, security adapters, installer/updater | Planned | Phase 07 |
+
+## Session
+
+**Last Date:** 2026-09-22
+**Stopped At:** Planning reconciliation and ADR 0011 complete; commit/push next.
+**Resume File:** None

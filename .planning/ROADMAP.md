@@ -1,65 +1,156 @@
-# Roadmap
+# Roadmap: Pro4Bro Voice Manipulator
 
-| Phase | Goal | Status |
-| --- | --- | --- |
-| 01 Foundation | Runnable project shell, project persistence, reusable modules, upstream engine adapter | Complete |
-| 02 Speech to Text | Real recording/import, source-provenanced word timing, merged Script review, timeline sync | In progress |
-| 03 Voice Training | Dataset preparation, segmentation review, train jobs, checkpoints, validation | In progress |
-| 04 Dockable Workspace | Six-zone docking, location-independent modules, session seam, fourth-page shell | Planned |
-| 05 Manipulator Pipeline | Voice over, isolation, changing, dubbing, patching, asset lineage | Planned |
-| 06 LipSync | Video/audio selection, face-shot review, adapter render, QC and lineage | Planned |
-| 07 Desktop Release | Tauri shell, isolated runtimes, model manager, updater, installer | Planned |
+## Overview
 
-## Phase 01 Success Criteria
+Build one portable, local-first production workspace that carries project audio
+from capture and transcription through dataset preparation, voice creation,
+voice manipulation, LipSync, and a distributable Windows desktop release.
 
-- Project Hub creates and reopens persisted projects.
-- Three pages share the same module implementations.
-- Workspace columns resize without page overflow.
-- Speech to Text obeys its reduced module set.
-- OmniVoice status is read through an adapter and upstream source remains clean.
-- Frontend tests, backend tests, TypeScript checks, and production build pass.
+This roadmap distinguishes three states that older snapshots blurred:
 
-## Phase 02 Current Slice
+- **Complete**: implemented and backed by the plan's required evidence.
+- **In progress**: usable slices exist, but at least one plan contract or
+  end-to-end acceptance gate remains open.
+- **Planned**: a contract may exist, but no product slice is claimed complete.
 
-- Complete: microphone/output selection, optional live monitor, browser-authorized tab/window/system capture, real recorder meter/peak, and finalized-record upload.
-- Complete: shared project Media Pool, common audio/video ingest through local FFmpeg, per-asset Script/timings/revisions, non-batched Faster-Whisper DTW word timing with unpadded acoustic phrase-edge refinement, real waveform, scrub, zoom, source gain, and playback to 8x.
-- Complete: portable project manifests/media paths, moved-project reconnection, project-owned playback URL, and project-contained activity/handoff notes.
-- Complete: Speech to Text contains Media Pool on the left, Script in the center, Recorder plus Speaker & Emotion plus Speaker Isolation in the internally scrollable right column, and Timeline below. Voice Vault and Control Rack remain absent and the page stays viewport-bound.
-- Complete: per-file `Transcript`/`Skip STT` import decisions, persisted footage selection for Voice Training, live recording waveform, continuous PCM waveform, decoded-duration subtitle sync, and Timeline/Script current-word highlighting.
-- Remaining: forced alignment/validation for supplied scripts, chunked live transcript while recording, per-word realtime/accurate/AI review choices in Script, and project-native training execution from the selected subset.
-- Complete: persistent local runtime controller with Windows-menu Turn on,
-  Restart, and Turn off controls for API, Studio, model workers, and background
-  processing workloads.
-- Complete: terminal STT polling waits for the full persisted media asset before
-  leaving the background state, so delayed final responses cannot make a
-  completed transcript intermittently disappear from Script.
+## Phases
 
-## Phase 03 Current Slice
+- [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
+- [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.
+- [ ] **Phase 3: Voice Training** - Deterministic datasets, real training runs, and gated voice publication.
+- [ ] **Phase 4: Dockable Workspace** - Six-zone docking and lifecycle-independent workspace sessions.
+- [ ] **Phase 5: Manipulator Pipeline** - Generation and voice conversion with honest lineage and runtime state.
+- [ ] **Phase 6: LipSync** - Reviewed video/audio inputs, adapter-backed rendering, and QC.
+- [ ] **Phase 7: Desktop Release** - Model delivery, security boundaries, packaging, updates, and installation.
 
-- Complete: project-owned `assets/training/catalog.json` with Speaker Profiles, Environment Noise Profiles, and Training Settings.
-- Complete: asset-level multi-speaker/emotion annotation and word-level speaker/emotion tagging in Script; mixed word emotions roll up to `mix`.
-- Complete: Voice Training no longer contains Recorder or Control Rack; Train owns multi-speaker targets, max steps, batch size, learning rate, checkpoint interval, denoise, and environment-learning settings.
-- Complete: checkpoint backup interval defaults to 1,000 steps; noise profiles accept multiple project media asset IDs and are reusable from Voice Manipulator Control Rack.
-- Complete: synchronized Light/Dark theme surfaces across Project Hub, workspace modules, Recorder, and Timeline.
-- Complete: compact Media Pool footage rows show summary metadata while file-level speaker/emotion assignment lives in a right-click menu.
-- Remaining: automatic speaker diarization, audio stem isolation, forced alignment, actual environment-profile learning, and Voice Model Set publishing after fine-tune.
+## Phase Details
 
-## Next Executable Plan
+### Phase 1: Foundation
+**Goal**: Run a portable project-based React/FastAPI workstation whose modules do not import engine implementations.
+**Depends on**: Nothing
+**Requirements**: ENG-01, ENG-02, ENG-03, MOD-01, MOD-02, PRJ-01 through PRJ-07, UI-01 through UI-05
+**Success Criteria**:
+  1. A user can create, reopen, move, and reconnect a project without absolute project-internal paths.
+  2. Shared modules compose multiple pages without page-specific copies.
+  3. OmniVoice remains read-only and is reached only through product-owned adapters.
+**Plans**: 1 plan
 
-- `03-02`: compile the user-selected subset into a portable, deterministic Dataset Manifest and validate supplied scripts with forced alignment before training. Implementation and contract tests delivered.
-- `03-03`: run the training job. Runtime inspection, run records, dataset export, process parsing, GPU lease, progress UI, live runner, checkpoints, and resume are delivered; Voice Model Set publishing remains. Plan written 2026-09-03.
-- `03-04`: High Quality Voice Training. Guided reading capture with a live read-along highlight and app-supplied emotion passages. It only adds sources, so it can run alongside 03-02 and 03-03.
+Plans:
+- [x] 01-01: Application shell, persistence, shared modules, and upstream engine boundary.
 
-## Planned Phase Sequence
+### Phase 2: Speech to Text
+**Goal**: Turn imported or recorded speech into a reviewable Script with source-provenanced timing, waveform playback, diarization, and honest processor state.
+**Depends on**: Phase 1
+**Requirements**: STT-01 through STT-13, WF-01, WF-03, WF-04, WF-05
+**Success Criteria**:
+  1. Finalized local STT persists text, revisions, word timing, and synchronized Script/Timeline playback.
+  2. Untrusted timings remain visible for review but cannot silently enter subtitle cues.
+  3. Diarization assigns reviewable speaker labels without claiming voice isolation occurred.
+  4. Realtime, accurate, AI, and user candidates can be reconciled per word.
+**Plans**: 1 written plan plus remaining unplanned review work
 
-- **04 Dockable Workspace**: establish bounded six-zone docking, a stable module contract, and `WorkspaceSession`; its compatibility migration protects current pages while the fourth page is introduced.
-- **05 Manipulator Pipeline**: turn voice over, isolation, changing, dubbing, and patching into real adapter-backed jobs with complete asset lineage.
-- **06 LipSync**: make the fourth page render approved dubbed/replaced takes to project-owned video through an interchangeable adapter and human QC.
-- **07 Desktop Release**: package the proven React/FastAPI core as a Windows-first Tauri application; browser development mode stays supported.
+Plans:
+- [x] 02-01: Capture, finalized STT, Media Pool, transcript review, timing stabilization, and diarization.
 
-## Governing Rules For These Phases
+Remaining outside the completed plan artifact: chunked realtime transcript
+handoff and the final per-word candidate confirmation UX. Phase 2 therefore
+remains open even though its written plan and stabilization rounds completed.
 
-- Complete active Phase 03 execution before starting the Phase 04 implementation slice.
-- Every module stays reusable and location-independent; dock position never changes its service or data contract.
-- Engines and models stay behind backend adapters and a machine-local model registry; `engines/OmniVoice` remains read-only.
-- Project and Media Pool indexes retain only project-relative paths, including rendered LipSync derivatives.
+### Phase 3: Voice Training
+**Goal**: Compile selected, attributed audio into deterministic manifests; execute real model jobs; publish identity-safe project voices with reproducible lineage.
+**Depends on**: Phase 2's finalized-audio and word-timing contracts
+**Requirements**: TRN-01 through TRN-09
+**Success Criteria**:
+  1. Only selected, validated, speaker-owned segments enter a deterministic portable Dataset Manifest.
+  2. A real run can start, cancel, resume, retain checkpoints, and report engine-derived progress.
+  3. Published voice artifacts record their dataset, engine, configuration, and identity-gate evidence.
+  4. Guided capture can resume after restart and produces QC-reviewed, tiered training material.
+**Plans**: 4 plans
+
+Plans:
+- [x] 03-01: Training Catalog, Speaker Profiles, annotations, and Train UI.
+- [x] 03-02: Dataset compiler, supplied-script validation, portability, and readiness UI.
+- [ ] 03-03: Training runtime and run lifecycle are implemented; Voice Model Set lineage, `SpeakerEmbedder`, and a verified real publish remain.
+- [ ] 03-04: Reading packs, capture tier, HQ Recorder, and teleprompter exist; durable sessions, capture/QC/finalize, tier policy, and identity lock remain.
+
+### Phase 4: Dockable Workspace
+**Goal**: Make module placement configurable without changing module behavior or stopping active work.
+**Depends on**: Phase 3
+**Requirements**: MOD-01, MOD-02, UI-01 through UI-04
+**Success Criteria**:
+  1. Six zones support persisted, keyboard-accessible docking and resizing.
+  2. `WorkspaceSession` owns recording, playback, streams, and jobs independently of panel placement.
+  3. Existing fixed manifests migrate without breaking current projects.
+**Plans**: 1 plan
+
+Plans:
+- [ ] 04-01: Dock contract, migration, maintained-library spike, and WorkspaceSession.
+
+Current page manifests, Dashboard, and module reuse are useful pre-work, not
+evidence that the dock contract or lifecycle migration is complete.
+
+### Phase 5: Manipulator Pipeline
+**Goal**: Produce and transform project-owned voices and audio through real adapters, with complete lineage and no simulated processor success.
+**Depends on**: Phase 3 publication contracts and Phase 4 session ownership for live streams
+**Requirements**: MAN-01 through MAN-03, WF-01 through WF-04
+**Success Criteria**:
+  1. Text/script generation creates project-owned playable outputs through selected project voices.
+  2. File and live voice conversion preserve lineage and pass a frozen Vietnamese quality/latency gate.
+  3. Isolation, dubbing, and patching expose real adapter-backed jobs before being presented as available.
+**Plans**: 1 written plan; additional processor plans remain
+
+Plans:
+- [ ] 05-01: Voice Changer evaluation, RVC training, file/live conversion, device loop, and verification.
+
+Generation, Voice Output, RVC training, consent, and live device conversion are
+implemented slices. The Vietnamese gate is partial and currently fails its
+cross-speaker CER target; file-conversion workflow evidence, loopback latency,
+speaker similarity, cross-gender coverage, owner A/B, and the other Manipulator
+processors remain open.
+
+### Phase 6: LipSync
+**Goal**: Render approved project audio onto reviewed video through an interchangeable engine adapter and human QC.
+**Depends on**: Phases 4 and 5
+**Requirements**: WF-01 through WF-03; LipSync requirements to be assigned
+**Success Criteria**:
+  1. The user can approve eligible video, audio, and face-shot inputs before rendering.
+  2. A persisted adapter-backed job reports real progress, diagnostics, cancellation, and retry state.
+  3. Accepted derivatives return to the project with portable lineage.
+**Plans**: 1 plan
+
+Plans:
+- [ ] 06-01: LipSync page, adapter contract, render lifecycle, engine gate, and QC.
+
+### Phase 7: Desktop Release
+**Goal**: Deliver the proven workstation as an installable, updateable, secure Windows application with explicit model/runtime management.
+**Depends on**: Proven core workflows from Phases 1 through 6
+**Requirements**: Packaging and model-management requirements to be assigned
+**Success Criteria**:
+  1. Base models/runtimes install, verify, update, report disk use, and remain machine-local.
+  2. Project adapters and voice artifacts remain portable without duplicating shared base models.
+  3. Credentials leave plaintext preferences before distribution, and authorization exists before a second user or remote exposure.
+  4. A signed installer, updater, rollback path, and offline behavior are verified.
+**Plans**: 1 current architecture plan plus future packaging plans
+
+Plans:
+- [x] 07-01: Define model-delivery and identity/security seams without pretending adapters exist.
+
+The domain models and ports from 07-01 exist as designed. No `ModelStore`,
+authentication, authorization, or secret-store adapter is wired; packaging,
+installer, updater, signing, and release verification are not started.
+
+## Progress
+
+| Phase | Written plans complete | Status | Evidence boundary |
+| --- | --- | --- | --- |
+| 1. Foundation | 1/1 | Complete | Project, module, portability, and adapter tests |
+| 2. Speech to Text | 1/1 | In progress | Finalized path works; realtime candidate UX remains |
+| 3. Voice Training | 2/4 | In progress | Compiler and large run/runtime slice pass; gated set publication remains |
+| 4. Dockable Workspace | 0/1 | Planned | Fixed manifests only; no dock/session contract |
+| 5. Manipulator Pipeline | 0/1 | In progress | Generation and RVC live slices exist; plan gate remains incomplete |
+| 6. LipSync | 0/1 | Planned | Plan only |
+| 7. Desktop Release | 1/1 | In progress | Architecture seams complete; release implementation absent |
+
+The GSD plan counter is only an artifact counter. Phase status above is the
+product truth: a phase stays open when its user-visible success criteria remain
+unmet even if every currently written plan has a summary.

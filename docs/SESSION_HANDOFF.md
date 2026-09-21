@@ -1,5 +1,10 @@
 # Session Handoff
 
+> **Status refresh (2026-09-22):** This historical handoff contains useful
+> topology and portability context, but its counts and “next plan” statements
+> are superseded by `docs/PROJECT-STATUS.md`, `.planning/STATE.md`, and the
+> structured `.planning/ROADMAP.md`.
+
 ## Read First
 
 Pro4Bro Voice Manipulator is a local-first React/FastAPI audio workstation. The

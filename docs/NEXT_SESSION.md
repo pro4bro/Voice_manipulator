@@ -1,5 +1,10 @@
 # Next Session Start Here
 
+> **Superseded on 2026-09-22:** Stabilization and plan 03-02 described below
+> have already been executed. Read `docs/PROJECT-STATUS.md` and
+> `.planning/STATE.md` for the current continuation point. The active gate is
+> plan 03-03 Voice Model Set lineage and identity validation, not stabilization.
+
 ## Objective
 
 Execute `docs/STABILIZATION-PLAN.md` before continuing Phase 03. A measured audit
