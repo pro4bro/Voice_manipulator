@@ -23,6 +23,8 @@ from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
+from app.adapters.speaker_embedders import default_speaker_embedders
+from app.adapters.speaker_similarity_gate import SpeakerSimilarityGate
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
 from app.adapters.reading_audience import audience_vocabulary
@@ -91,7 +93,9 @@ from app.domain.models import (
     ProjectMediaAsset,
     ProjectAsrAdapter,
     ProjectVoice,
+    SpeakerEmbedderInfo,
     VoiceModelSet,
+    VoiceModelSetGateRequest,
     VoiceGenerateRequest,
     VoiceOutput,
     VoiceScriptJob,
@@ -119,7 +123,7 @@ from app.domain.models import (
     TrainingCatalog,
     WorkspacePage,
 )
-from app.domain.ports import FolderPicker, ProjectRepository, VoiceEngine
+from app.domain.ports import FolderPicker, ProjectRepository, SpeakerEmbedder, VoiceEngine
 from app.settings import Settings
 
 
@@ -128,6 +132,7 @@ def create_app(
     voice_engine: VoiceEngine | None = None,
     folder_picker: FolderPicker | None = None,
     settings: Settings | None = None,
+    speaker_embedders: dict[str, SpeakerEmbedder] | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     projects = project_repository or FileProjectRepository(settings.data_root / "projects")
@@ -215,6 +220,15 @@ def create_app(
             vibevoice_speech_worker.shutdown()
 
     voice_outputs = FileVoiceOutputs(projects)
+    resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
+    speaker_similarity_gate = SpeakerSimilarityGate(
+        projects,
+        project_voices,
+        voice_outputs,
+        voice_model_sets,
+        resolved_speaker_embedders,
+        gpu_lease,
+    )
     voice_generator = VoiceGenerator(
         projects,
         project_voices,
@@ -1059,6 +1073,34 @@ def create_app(
             return voice_model_sets.get(project_id, set_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Voice Model Set not found") from exc
+
+    @app.get("/api/speaker-embedders", response_model=list[SpeakerEmbedderInfo])
+    def list_speaker_embedders() -> list[SpeakerEmbedderInfo]:
+        return [embedder.info for embedder in resolved_speaker_embedders.values()]
+
+    @app.post(
+        "/api/projects/{project_id}/voice-model-sets/{set_id}/gate",
+        response_model=VoiceModelSet,
+    )
+    def evaluate_voice_model_set(
+        project_id: str,
+        set_id: str,
+        payload: VoiceModelSetGateRequest,
+    ) -> VoiceModelSet:
+        try:
+            if payload.embedder_id is None:
+                payload = payload.model_copy(update={
+                    "embedder_id": preferences.speaker_similarity().embedder_id,
+                })
+            return speaker_similarity_gate.evaluate(project_id, set_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Model Set, embedder, voice, or output not found") from exc
+        except GpuBusy as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}/voice-outputs", response_model=list[VoiceOutput])
     def list_voice_outputs(project_id: str) -> list[VoiceOutput]:

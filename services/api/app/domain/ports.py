@@ -24,6 +24,7 @@ from .models import (
     ProjectRecord,
     ReadingPack,
     SpeakerProfile,
+    SpeakerEmbedderInfo,
     ReadingPackSummary,
     TrainingCatalog,
     WorkspacePage,
@@ -205,3 +206,11 @@ class DatasetExporter(Protocol):
         speakers: list[SpeakerProfile] | None = None,
         default_language: str | None = None,
     ) -> DatasetExportReport: ...
+
+
+class SpeakerEmbedder(Protocol):
+    """Scores generated single-speaker clips against one trusted reference."""
+
+    info: SpeakerEmbedderInfo
+
+    def compare(self, reference: Path, candidates: dict[str, Path]) -> dict[str, float]: ...

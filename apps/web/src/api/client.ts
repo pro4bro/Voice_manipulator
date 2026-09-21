@@ -17,6 +17,7 @@ import type {
   ProjectMediaImportResult,
   ProjectAsrAdapter,
   ProjectVoice,
+  SpeakerEmbedderInfo,
   VoiceModelSet,
   VoiceOutput,
   VoiceScriptJob,
@@ -421,6 +422,15 @@ export const api = {
   listVoiceModelSets: (projectId: string) => request<VoiceModelSet[]>(`/api/projects/${projectId}/voice-model-sets`),
   getVoiceModelSet: (projectId: string, setId: string) =>
     request<VoiceModelSet>(`/api/projects/${projectId}/voice-model-sets/${setId}`),
+  listSpeakerEmbedders: () => request<SpeakerEmbedderInfo[]>("/api/speaker-embedders"),
+  evaluateVoiceModelSet: (
+    projectId: string,
+    setId: string,
+    payload: { embedderId?: string; outputIdsByVoiceId: Record<string, string> },
+  ) => request<VoiceModelSet>(`/api/projects/${projectId}/voice-model-sets/${setId}/gate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
     request<VoiceOutput>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {
       method: "POST",

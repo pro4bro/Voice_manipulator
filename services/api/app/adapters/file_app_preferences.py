@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.domain.models import AIReviewPreferences, AppPreferences, DiarizationPreferences, EmotionStylePreferences
+from app.domain.models import (
+    AIReviewPreferences,
+    AppPreferences,
+    DiarizationPreferences,
+    EmotionStylePreferences,
+    SpeakerSimilarityPreferences,
+)
 
 
 class FileAppPreferences:
@@ -21,7 +27,12 @@ class FileAppPreferences:
         public_diarization = private_diarization.model_copy(
             update={"huggingface_token": None, "huggingface_token_configured": bool(private_diarization.huggingface_token)}
         )
-        return AppPreferences(ai_review=public, diarization=public_diarization, emotion_style=self.emotion_style())
+        return AppPreferences(
+            ai_review=public,
+            diarization=public_diarization,
+            speaker_similarity=self.speaker_similarity(),
+            emotion_style=self.emotion_style(),
+        )
 
     def save(self, incoming: AppPreferences) -> AppPreferences:
         previous = self.private_ai_review()
@@ -47,6 +58,7 @@ class FileAppPreferences:
                 {
                     "aiReview": private.model_dump(by_alias=True),
                     "diarization": private_diarization.model_dump(by_alias=True),
+                    "speakerSimilarity": incoming.speaker_similarity.model_dump(by_alias=True),
                     "emotionStyle": incoming.emotion_style.model_dump(by_alias=True),
                 },
                 ensure_ascii=False,
@@ -77,6 +89,13 @@ class FileAppPreferences:
             return DiarizationPreferences.model_validate(raw.get("diarization", {}))
         except (TypeError, ValueError):
             return DiarizationPreferences()
+
+    def speaker_similarity(self) -> SpeakerSimilarityPreferences:
+        raw = self._read()
+        try:
+            return SpeakerSimilarityPreferences.model_validate(raw.get("speakerSimilarity", {}))
+        except (TypeError, ValueError):
+            return SpeakerSimilarityPreferences()
 
     def _read(self) -> dict[str, object]:
         if not self.path.is_file():

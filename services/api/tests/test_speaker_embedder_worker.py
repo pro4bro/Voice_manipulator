@@ -5,7 +5,7 @@ import wave
 
 import pytest
 
-from app.workers.speaker_embedder import _audio_input
+from app.workers.speaker_embedder import _read_pcm16
 
 
 def test_worker_preloads_pcm_wav_for_pyannote_without_torchcodec(tmp_path):
@@ -16,9 +16,9 @@ def test_worker_preloads_pcm_wav_for_pyannote_without_torchcodec(tmp_path):
         audio.setframerate(16000)
         audio.writeframes(struct.pack("<hhhh", 1000, -1000, 2000, 0))
 
-    loaded = _audio_input(audio_path)
+    waveform, sample_rate = _read_pcm16(audio_path)
 
-    assert loaded["sample_rate"] == 16000
-    assert tuple(loaded["waveform"].shape) == (1, 2)
-    assert loaded["waveform"].tolist()[0][0] == pytest.approx(0.0)
-    assert loaded["waveform"].tolist()[0][1] == pytest.approx(1000 / 32768)
+    assert sample_rate == 16000
+    assert waveform.shape == (2,)
+    assert waveform.tolist()[0] == pytest.approx(0.0)
+    assert waveform.tolist()[1] == pytest.approx(1000 / 32768)

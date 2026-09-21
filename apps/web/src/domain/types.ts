@@ -316,6 +316,10 @@ export interface DiarizationPreferences {
   huggingfaceTokenConfigured: boolean;
 }
 
+export interface SpeakerSimilarityPreferences {
+  embedderId: "pyannote-community-1" | "wespeaker-resnet34-lm";
+}
+
 export interface EmotionStylePreferences {
   colorMode: EmotionColorMode;
   gradientStart: string;
@@ -329,6 +333,7 @@ export interface EmotionStylePreferences {
 export interface AppPreferences {
   aiReview: AIReviewPreferences;
   diarization: DiarizationPreferences;
+  speakerSimilarity: SpeakerSimilarityPreferences;
   emotionStyle: EmotionStylePreferences;
 }
 
@@ -662,9 +667,26 @@ export interface SpeakerSimilarityGateEvidence {
   embedderId: string;
   embedderRevision: string;
   threshold: number;
+  calibrated: boolean;
+  metric: "cosine-similarity";
+  protocol: string;
   scoresByVoiceId: Record<string, number>;
+  candidateOutputIdsByVoiceId: Record<string, string>;
+  scorePassed: boolean;
   passed: boolean;
+  decisionReason: "passed" | "below-threshold" | "threshold-unmeasured";
   measuredAt: string;
+}
+
+export interface SpeakerEmbedderInfo {
+  id: string;
+  label: string;
+  modelId: string;
+  revision: string;
+  threshold: number;
+  calibrated: boolean;
+  available: boolean;
+  status: string;
 }
 
 export interface VoiceModelSet {

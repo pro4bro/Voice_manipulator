@@ -485,6 +485,10 @@ class DiarizationPreferences(DomainModel):
     huggingface_token_configured: bool = False
 
 
+class SpeakerSimilarityPreferences(DomainModel):
+    embedder_id: Literal["pyannote-community-1", "wespeaker-resnet34-lm"] = "pyannote-community-1"
+
+
 class EmotionStylePreferences(DomainModel):
     color_mode: Literal["gradient", "per-emotion"] = "gradient"
     gradient_start: str = Field(default="#18d9ff", max_length=32)
@@ -504,6 +508,7 @@ class EmotionStylePreferences(DomainModel):
 class AppPreferences(DomainModel):
     ai_review: AIReviewPreferences = Field(default_factory=AIReviewPreferences)
     diarization: DiarizationPreferences = Field(default_factory=DiarizationPreferences)
+    speaker_similarity: SpeakerSimilarityPreferences = Field(default_factory=SpeakerSimilarityPreferences)
     emotion_style: EmotionStylePreferences = Field(default_factory=EmotionStylePreferences)
 
 
@@ -947,15 +952,37 @@ class VoiceModelSetMember(DomainModel):
 
 
 class SpeakerSimilarityGateEvidence(DomainModel):
-    """Frozen evidence for the identity gate; absent until Round 03-03B."""
+    """Frozen evidence for one identity-gate decision."""
 
     protocol_version: int = 1
     embedder_id: str
     embedder_revision: str = ""
     threshold: float = Field(ge=-1, le=1)
+    calibrated: bool = False
+    metric: Literal["cosine-similarity"] = "cosine-similarity"
+    protocol: str = "mono-16khz-whole-window-v1"
     scores_by_voice_id: dict[str, float] = Field(default_factory=dict)
+    candidate_output_ids_by_voice_id: dict[str, str] = Field(default_factory=dict)
+    score_passed: bool = False
     passed: bool
+    decision_reason: Literal["passed", "below-threshold", "threshold-unmeasured"]
     measured_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SpeakerEmbedderInfo(DomainModel):
+    id: str
+    label: str
+    model_id: str
+    revision: str
+    threshold: float = Field(ge=-1, le=1)
+    calibrated: bool = False
+    available: bool = False
+    status: str
+
+
+class VoiceModelSetGateRequest(DomainModel):
+    embedder_id: str | None = Field(default=None, min_length=1, max_length=120)
+    output_ids_by_voice_id: dict[str, str] = Field(min_length=1, max_length=32)
 
 
 class VoiceModelSetLineage(DomainModel):

@@ -34,7 +34,7 @@ class FixedEmbedder:
     def __init__(self, score: float, *, calibrated: bool = True) -> None:
         self.score = score
         self.info = SpeakerEmbedderInfo(
-            id="test-embedder",
+            id="pyannote-community-1",
             label="Test embedder",
             model_id="test/model",
             revision="revision-1",
@@ -171,7 +171,7 @@ def test_gate_api_lists_backends_and_evaluates_with_injected_embedder(tmp_path):
         backends = client.get("/api/speaker-embedders")
         response = client.post(
             f"/api/projects/{project.id}/voice-model-sets/set-an/gate",
-            json={"embedderId": embedder.info.id, "outputIdsByVoiceId": {voice.id: output_id}},
+            json={"outputIdsByVoiceId": {voice.id: output_id}},
         )
 
     assert backends.status_code == 200

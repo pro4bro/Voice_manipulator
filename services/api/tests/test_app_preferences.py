@@ -45,3 +45,14 @@ def test_preferences_keep_huggingface_token_local_and_hide_it_from_api_shape(tmp
     assert public.diarization.huggingface_token is None
     assert public.diarization.huggingface_token_configured is True
     assert "hf-secret" in (tmp_path / "runtime" / "preferences.json").read_text(encoding="utf-8")
+
+
+def test_preferences_persist_the_selected_speaker_embedder(tmp_path):
+    from app.domain.models import SpeakerSimilarityPreferences
+
+    preferences = FileAppPreferences(tmp_path / "runtime")
+    preferences.save(AppPreferences(
+        speaker_similarity=SpeakerSimilarityPreferences(embedder_id="wespeaker-resnet34-lm")
+    ))
+
+    assert preferences.get().speaker_similarity.embedder_id == "wespeaker-resnet34-lm"

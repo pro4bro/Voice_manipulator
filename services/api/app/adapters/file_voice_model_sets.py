@@ -8,6 +8,7 @@ from app.domain.models import (
     DatasetManifest,
     ProjectVoice,
     TrainingRun,
+    SpeakerSimilarityGateEvidence,
     VoiceModelSet,
     VoiceModelSetLineage,
     VoiceModelSetMember,
@@ -102,6 +103,26 @@ class FileVoiceModelSets:
             remove_tree(child_folder(self.root(project_id), model_set.id))
             removed.append(model_set)
         return removed
+
+    def record_gate(
+        self,
+        project_id: str,
+        set_id: str,
+        evidence: SpeakerSimilarityGateEvidence,
+    ) -> VoiceModelSet:
+        model_set = self.get(project_id, set_id)
+        if model_set.status == "published":
+            return model_set
+        now = datetime.now(timezone.utc)
+        status = "published" if evidence.passed else (
+            "rejected" if evidence.decision_reason == "below-threshold" else "pending-gate"
+        )
+        updated = model_set.model_copy(update={
+            "status": status,
+            "gate": evidence,
+            "published_at": now if status == "published" else None,
+        })
+        return self._write(project_id, updated)
 
     def _write(self, project_id: str, model_set: VoiceModelSet, *, create: bool = False) -> VoiceModelSet:
         folder = child_folder(self.root(project_id), model_set.id)
