@@ -645,7 +645,53 @@ export interface ProjectVoice {
   modelPath?: string | null;
   language: string | null;
   sourceRunId: string | null;
+  /** Aggregate awaiting or carrying the identity-similarity publication gate. */
+  modelSetId?: string | null;
   createdAt: string;
+}
+
+export interface VoiceModelSetMember {
+  voiceId: string;
+  role: "anchor" | "neutral" | "emotion";
+  emotion: EmotionLabel;
+  sourceRunId: string | null;
+}
+
+export interface SpeakerSimilarityGateEvidence {
+  protocolVersion: number;
+  embedderId: string;
+  embedderRevision: string;
+  threshold: number;
+  scoresByVoiceId: Record<string, number>;
+  passed: boolean;
+  measuredAt: string;
+}
+
+export interface VoiceModelSet {
+  id: string;
+  name: string;
+  speakerProfileId: string;
+  generationFamily: string;
+  anchorVoiceId: string;
+  anchorSegmentId: string;
+  members: VoiceModelSetMember[];
+  voiceIds: string[];
+  lineage: {
+    manifestId: string;
+    manifestHash: string;
+    engine: string;
+    engineRevision: string;
+    modelId: string | null;
+    baseModel: string;
+    config: TrainingRun["config"];
+    segmentCount: number;
+    sourceRunIds: string[];
+  };
+  status: "pending-gate" | "published" | "rejected";
+  gate: SpeakerSimilarityGateEvidence | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
 }
 
 /** A speech-recognition adapter trained in this project; offered as an STT choice. */

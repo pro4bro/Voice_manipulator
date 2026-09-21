@@ -117,6 +117,8 @@ class StoredManifest:
 
 
 def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path):
+    from app.adapters.file_voice_model_sets import FileVoiceModelSets
+
     projects, project = project_with_audio(tmp_path)
     catalogs = FileTrainingCatalog(projects)
     catalogs.save(project.id, TrainingCatalog(speakers=[
@@ -135,7 +137,8 @@ def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path
     lease = GpuLease(tmp_path / "gpu.json")
     holder = lease.acquire("someone-else")  # clone must not need it
     voices = FileProjectVoices(projects, copy_slicer)
-    runner = TrainingRunner(projects, StoredManifest(manifest), catalogs, runs, ReadyRuntime(), lease, tmp_path / "engine", voices=voices)  # type: ignore[arg-type]
+    model_sets = FileVoiceModelSets(projects)
+    runner = TrainingRunner(projects, StoredManifest(manifest), catalogs, runs, ReadyRuntime(), lease, tmp_path / "engine", voices=voices, model_sets=model_sets)  # type: ignore[arg-type]
     done = threading.Event()
     original = runner._build_clone_voice
 
@@ -155,6 +158,11 @@ def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path
     assert set(published) == {"speaker-an", "speaker-binh"}
     assert published["speaker-an"].reference_segment_id == "an-train"
     assert published["speaker-an"].kind == "clone" and published["speaker-an"].language == "vi"
+    sets = model_sets.list(project.id)
+    assert len(sets) == 2
+    assert {item.speaker_profile_id for item in sets} == {"speaker-an", "speaker-binh"}
+    assert {item.status for item in sets} == {"pending-gate"}
+    assert {voice.model_set_id for voice in published.values()} == {item.id for item in sets}
     lease.release(holder.token)
 
 

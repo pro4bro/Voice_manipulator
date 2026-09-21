@@ -21,6 +21,7 @@ from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
+from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
@@ -90,6 +91,7 @@ from app.domain.models import (
     ProjectMediaAsset,
     ProjectAsrAdapter,
     ProjectVoice,
+    VoiceModelSet,
     VoiceGenerateRequest,
     VoiceOutput,
     VoiceScriptJob,
@@ -196,6 +198,7 @@ def create_app(
         else {}
     )
     project_voices = FileProjectVoices(projects, OmniVoiceDatasetExporter(settings.ffmpeg_path)._slice)
+    voice_model_sets = FileVoiceModelSets(projects)
     voice_generators = FileTrainingModelCatalog(
         settings.voice_generators_root,
         engine_roots,
@@ -260,6 +263,7 @@ def create_app(
         settings.omnivoice_root,
         settings.ffmpeg_path,
         voices=project_voices,
+        model_sets=voice_model_sets,
         engine_env=engine_env,
         before_gpu_work=free_gpu,
         vibevoice_paths=vibevoice_paths,
@@ -974,6 +978,7 @@ def create_app(
         if voice_changer.uses_voice(project_id, voice_id):
             raise HTTPException(status_code=409, detail="Voice Changer đang đổi sang giọng này. Dừng Voice Changer trước khi xoá.")
         try:
+            voice_model_sets.remove_voice(project_id, voice_id)
             project_voices.delete(project_id, voice_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Voice không tồn tại") from exc
@@ -1040,6 +1045,20 @@ def create_app(
             return project_voices.list(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get("/api/projects/{project_id}/voice-model-sets", response_model=list[VoiceModelSet])
+    def list_voice_model_sets(project_id: str) -> list[VoiceModelSet]:
+        try:
+            return voice_model_sets.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get("/api/projects/{project_id}/voice-model-sets/{set_id}", response_model=VoiceModelSet)
+    def get_voice_model_set(project_id: str, set_id: str) -> VoiceModelSet:
+        try:
+            return voice_model_sets.get(project_id, set_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Model Set not found") from exc
 
     @app.get("/api/projects/{project_id}/voice-outputs", response_model=list[VoiceOutput])
     def list_voice_outputs(project_id: str) -> list[VoiceOutput]:

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 def _to_camel(value: str) -> str:
@@ -928,7 +928,73 @@ class ProjectVoice(DomainModel):
     model_path: str | None = None
     language: str | None = None
     source_run_id: str | None = None
+    # Present only for text-generation voices that belong to a coordinated
+    # publication aggregate. RVC voices preserve the performer's emotion and
+    # intentionally remain standalone.
+    model_set_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+VoiceModelSetStatus = Literal["pending-gate", "published", "rejected"]
+VoiceModelSetMemberRole = Literal["anchor", "neutral", "emotion"]
+
+
+class VoiceModelSetMember(DomainModel):
+    voice_id: str
+    role: VoiceModelSetMemberRole = "neutral"
+    emotion: EmotionLabel = "normal"
+    source_run_id: str | None = None
+
+
+class SpeakerSimilarityGateEvidence(DomainModel):
+    """Frozen evidence for the identity gate; absent until Round 03-03B."""
+
+    protocol_version: int = 1
+    embedder_id: str
+    embedder_revision: str = ""
+    threshold: float = Field(ge=-1, le=1)
+    scores_by_voice_id: dict[str, float] = Field(default_factory=dict)
+    passed: bool
+    measured_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VoiceModelSetLineage(DomainModel):
+    manifest_id: str
+    manifest_hash: str
+    engine: str
+    engine_revision: str
+    model_id: str | None = None
+    base_model: str
+    config: TrainingRunConfig
+    segment_count: int = Field(ge=1)
+    source_run_ids: list[str] = Field(min_length=1)
+
+
+class VoiceModelSet(DomainModel):
+    """One identity-safe publication unit for text generation.
+
+    Persistence begins at `pending-gate`. Only the similarity-gate round may
+    move it to `published`; creating a usable ProjectVoice is not sufficient.
+    """
+
+    id: str = Field(default_factory=lambda: f"set-{uuid4().hex[:12]}")
+    name: str = Field(min_length=1, max_length=160)
+    speaker_profile_id: str
+    generation_family: str
+    anchor_voice_id: str
+    anchor_segment_id: str
+    members: list[VoiceModelSetMember] = Field(min_length=1)
+    lineage: VoiceModelSetLineage
+    status: VoiceModelSetStatus = "pending-gate"
+    gate: SpeakerSimilarityGateEvidence | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    published_at: datetime | None = None
+
+    @computed_field
+    @property
+    def voice_ids(self) -> list[str]:
+        return [member.voice_id for member in self.members]
 
 
 class AudioDeviceInfo(DomainModel):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -140,7 +139,7 @@ def test_model_set_api_lists_and_reads_persisted_sets(tmp_path):
     assert missing.status_code == 404
 
 
-def test_deleting_the_only_voice_removes_its_pending_set(tmp_path):
+def test_deleting_the_only_voice_through_api_removes_its_pending_set(tmp_path):
     projects, project, segment, manifest, run = fixture(tmp_path)
     sets = FileVoiceModelSets(projects)
     voices = FileProjectVoices(projects, copy_slice)
@@ -155,9 +154,11 @@ def test_deleting_the_only_voice_removes_its_pending_set(tmp_path):
         model_set_id="set-an",
     )
     sets.create_pending(project.id, "set-an", "An · OmniVoice", voice, run, manifest)
+    settings = replace(Settings.from_env(), data_root=tmp_path / "data")
 
-    removed = sets.remove_voice(project.id, voice.id)
-    voices.delete(project.id, voice.id)
+    with TestClient(create_app(project_repository=projects, settings=settings)) as client:
+        response = client.delete(f"/api/projects/{project.id}/voices/{voice.id}")
 
-    assert [item.id for item in removed] == ["set-an"]
+    assert response.status_code == 204
     assert sets.list(project.id) == []
+    assert voices.list(project.id) == []

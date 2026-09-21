@@ -90,6 +90,7 @@ class FileProjectVoices:
         model_dir: Path | None = None,
         engine: str = "omnivoice",
         source_run_id: str | None = None,
+        model_set_id: str | None = None,
     ) -> ProjectVoice:
         project_root = Path(self.projects.get(project_id).project_path)
         voice = ProjectVoice(
@@ -105,6 +106,7 @@ class FileProjectVoices:
             reference_segment_id=reference.id,
             language=language,
             source_run_id=source_run_id,
+            model_set_id=model_set_id,
         )
         folder = project_root / "assets" / "voices" / voice.id
         folder.mkdir(parents=True, exist_ok=False)

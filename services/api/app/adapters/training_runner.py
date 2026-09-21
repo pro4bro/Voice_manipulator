@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from app.adapters.activity_center import CENTER
 from app.adapters.file_project_voices import FileProjectVoices
+from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_asr_adapters import FileAsrAdapters
@@ -175,6 +176,7 @@ class TrainingRunner:
         engine_root: Path,
         ffmpeg_path: str | None = None,
         voices: FileProjectVoices | None = None,
+        model_sets: FileVoiceModelSets | None = None,
         engine_env: dict[str, str] | None = None,
         before_gpu_work: Callable[[], None] | None = None,
         vibevoice_paths: VibeVoicePaths | None = None,
@@ -191,6 +193,7 @@ class TrainingRunner:
         self.engine_root = engine_root
         self.exporter = OmniVoiceDatasetExporter(ffmpeg_path)
         self.voices = voices
+        self.model_sets = model_sets
         # Environment for engine processes, such as an offline model cache.
         self.engine_env = engine_env or {}
         # Frees whatever else holds the GPU (a warm generation worker) before a
@@ -374,6 +377,8 @@ class TrainingRunner:
         if (footprint.voices or footprint.asr_adapters) and not with_outputs:
             raise RunHasOutputs(footprint)
         for voice in footprint.voices:
+            if self.model_sets is not None:
+                self.model_sets.remove_voice(project_id, voice.id)
             self.voices.delete(project_id, voice.id)  # type: ignore[union-attr]
         for adapter in footprint.asr_adapters:
             self.asr_adapters.delete(project_id, adapter.id)  # type: ignore[union-attr]
@@ -909,7 +914,8 @@ class TrainingRunner:
         )
         engine_label = {"vibevoice": "VibeVoice ", "rvc": "RVC "}.get(run.config.engine, "")
         kind_label = {"clone": "nhái giọng", "lora": "LoRA", "full": "full fine-tune", "vc": "đổi giọng"}.get(kind, kind)
-        return self.voices.publish(
+        model_set_id = f"set-{uuid4().hex[:12]}" if kind != "vc" and self.model_sets is not None else None
+        voice = self.voices.publish(
             run.project_id,
             name=f"{name} · {engine_label}{kind_label}",
             speaker_profile_id=run.speaker_profile_id,
@@ -922,7 +928,22 @@ class TrainingRunner:
             model_dir=model_dir,
             engine=run.config.engine,
             source_run_id=run.id,
+            model_set_id=model_set_id,
         )
+        if model_set_id is not None:
+            try:
+                self.model_sets.create_pending(
+                    run.project_id,
+                    model_set_id,
+                    f"{name} · {engine_label or 'OmniVoice '}model set",
+                    voice,
+                    run,
+                    manifest,
+                )
+            except Exception:
+                self.voices.delete(run.project_id, voice.id)
+                raise
+        return voice
 
     def _append_command(
         self, run: TrainingRun, step_id: str, command: list[str], extra: list[tuple[str, str]] | None = None

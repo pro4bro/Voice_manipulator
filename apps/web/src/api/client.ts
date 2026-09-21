@@ -17,6 +17,7 @@ import type {
   ProjectMediaImportResult,
   ProjectAsrAdapter,
   ProjectVoice,
+  VoiceModelSet,
   VoiceOutput,
   VoiceScriptJob,
   VoiceChangerPreflight,
@@ -417,6 +418,9 @@ export const api = {
   deleteChangerRecording: (projectId: string, recordingId: string) =>
     request<void>(`/api/projects/${projectId}/voice-changer/recordings/${recordingId}`, { method: "DELETE" }),
   listProjectVoices: (projectId: string) => request<ProjectVoice[]>(`/api/projects/${projectId}/voices`),
+  listVoiceModelSets: (projectId: string) => request<VoiceModelSet[]>(`/api/projects/${projectId}/voice-model-sets`),
+  getVoiceModelSet: (projectId: string, setId: string) =>
+    request<VoiceModelSet>(`/api/projects/${projectId}/voice-model-sets/${setId}`),
   generateWithVoice: (projectId: string, voiceId: string, payload: { text: string; generatorId: string; parameters: Record<string, TrainingParameterValue>; duration?: number | null }) =>
     request<VoiceOutput>(`/api/projects/${projectId}/voices/${voiceId}/generate`, {
       method: "POST",
