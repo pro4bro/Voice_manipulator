@@ -8,7 +8,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 
 | Gate | Result | Meaning |
 | --- | --- | --- |
-| Backend | 357 passed | Current Python contracts are green; this is not a real-model quality measurement. |
+| Backend | 364 passed | Current Python contracts are green; this is not a real-model quality measurement. |
 | Frontend | 288 passed | Current UI/domain behavior is green under Vitest. |
 | Production build | Passed | TypeScript and Vite can produce the browser bundle. |
 | Diff hygiene | `git diff --check` passed | No whitespace/error-marker defect in the pending diff. |
@@ -22,7 +22,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 | 02-01 + stabilization | Capture/import, finalized STT, Media Pool, Script/Timeline, timing, diarization | Delivered; timing trust and runtime/storage stabilization are real | Plan complete; Phase 02 still open |
 | 03-01 | Catalog, profiles, annotations, Train UI | Delivered | Complete |
 | 03-02 | Selected deterministic Dataset Manifest and supplied-script validation | Compiler, validator, portability, readiness, exporter inputs, and tests exist | Complete |
-| 03-03 | Real run lifecycle ending in a gated Voice Model Set | Runtime/run/process/GPU/progress/cancel/resume plus portable pending-gate Model Set persistence and lineage exist | In progress |
+| 03-03 | Real run lifecycle ending in a gated Voice Model Set | Runtime/run/process/GPU/progress/cancel/resume, portable lineage, and a fail-closed two-backend identity gate exist | In progress |
 | 03-04 | Durable guided capture, QC, tiering, reference harvesting, identity lock | Packs, capture tier, HQ Recorder, teleprompter, and read-along exist mostly in UI memory | In progress |
 | 04-01 | Six-zone dock plus `WorkspaceSession` | Fixed page manifests and Dashboard exist; no dock state/migration/session ownership | Planned |
 | 05-01 | Evaluate and ship file/live Voice Changer only after Vietnamese gate | RVC/Applio, consent, live device stream, recording, and first gate exist | In progress; gate incomplete/failing |
@@ -45,6 +45,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 | Multiple training/generation adapters | OmniVoice, VibeVoice, RVC descriptors/adapters/tests | The application has real engine seams instead of one hard-coded training path. |
 | Individual project voices | `ProjectVoice` store, reference, model/adapter paths, generation tests | A single cloned/trained/converted voice can be selected and used today. |
 | Voice Model Set persistence and lineage | Project-relative set records, API, cleanup, manifest/config/engine/source-run lineage | Publication candidates are grouped reproducibly and cannot be mistaken for identity-approved sets. |
+| Speaker identity gate contract | `SpeakerEmbedder` port, cached Community-1 and dedicated WeSpeaker adapters, frozen protocol, evidence, preference, API, pass/reject/fail-closed tests | A Model Set cannot become published without complete, model-revision-specific speaker evidence. |
 | Voice Output and Script generation | Project output store and generation/UI tests | Generated speech returns as a managed project artifact instead of an engine-side file. |
 | HQ reading front end | Reading packs, capture tier, Recorder mode, teleprompter/read-along tests | The user can begin guided capture with known text and structured coverage. |
 | Voice Changer live slice | Consent, RVC training, device preflight, native stream/recording | Real microphone-to-device conversion exists behind product-owned adapters. |
@@ -56,7 +57,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 | Missing part | Exact gap | Why it matters |
 | --- | --- | --- |
 | Per-word candidate reconciliation | Realtime/accurate/AI/user variants are not fully merged and confirmed per word | Users cannot resolve competing transcript sources at the smallest reviewable unit. |
-| `SpeakerEmbedder` identity gate | No port/adapters, frozen protocol, measured threshold, or reject-on-fail publish path | A checkpoint can be usable while still sounding like the wrong person. |
+| Calibrated speaker threshold | Gate and provisional thresholds exist, but no positive/negative Vietnamese trial set has selected an operating point | A generic score boundary cannot yet justify accepting a real speaker identity. |
 | Real 03-03 acceptance run | No recorded consented manifest-to-checkpoint-to-gated-publish evidence | Unit tests prove orchestration contracts, not that the whole local model stack produces a usable artifact. |
 | Durable Reading Session | Current session state is largely frontend memory | Closing/restarting the app can lose guided-reading progress and provenance. |
 | Capture Check and post-take QC | No persisted noise/level/clipping preflight or accept/review/retake pipeline | “HQ” currently describes the workflow, not measured recording quality. |
@@ -80,7 +81,7 @@ ADR 0011. This preserves all current APIs while keeping plans 03-03/03-04 honest
 
 ## Recommended Execution Order
 
-1. Finish 03-03 `SpeakerEmbedder` and one real gated publish; persistence and lineage are now complete.
+1. Calibrate the chosen `SpeakerEmbedder` and complete one real gated publish; persistence, lineage, and gate enforcement are now complete.
 2. Finish or explicitly defer the durable 03-04 capture/QC/finalization slice.
 3. Complete the Voice Changer measurement gate; do not broaden engine adoption while it fails.
 4. Build Phase 04 `WorkspaceSession` before expanding live processors.

@@ -37,7 +37,7 @@
 | API orchestration starts a real run | `TrainingRunner`, start route, runtime-aware UI, and provisioned Python 3.11 CUDA runtime | Passed |
 | Individual project-voice publication | `_publish_voice`, `FileProjectVoiceStore`, generation/voice tests | Passed for a single Voice Model |
 | Voice Model Set aggregate and lineage | Portable set persistence plus manifest-hash, engine-revision, config, member-role, source-run, API, publish, and cleanup tests | Passed; remains `pending-gate` by design |
-| Speaker identity gate | `SpeakerEmbedder` port, two adapters, frozen protocol, measured threshold, negative publish test | Pending |
+| Speaker identity gate | `SpeakerEmbedder` port, two adapters, frozen protocol, persisted evidence, preference, negative and uncalibrated publish tests | Passed for enforcement; real threshold calibration remains |
 | Real project checkpoint to gated publish | Consented project run and recorded artifact evidence | Pending |
 
 ## In Progress In Plan 03-04

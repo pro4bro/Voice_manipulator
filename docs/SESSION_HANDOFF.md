@@ -5,10 +5,11 @@
 > are superseded by `docs/PROJECT-STATUS.md`, `.planning/STATE.md`, and the
 > structured `.planning/ROADMAP.md`.
 >
-> **Latest round (2026-09-22):** Round 03-03A added portable Voice Model Set
-> persistence and complete publication lineage. Sets intentionally stop at
-> `pending-gate`; Round 03-03B must implement `SpeakerEmbedder` before any real
-> acceptance publish may be called approved. See `docs/WORK-ROUNDS.md`.
+> **Latest round (2026-09-22):** Round 03-03B added the `SpeakerEmbedder` port,
+> two backend adapters, frozen scoring protocol, evidence persistence, and a
+> fail-closed publish transition. Thresholds intentionally remain uncalibrated;
+> Round 03-03C must measure them during the real acceptance run. See
+> `docs/WORK-ROUNDS.md`.
 
 ## Read First
 

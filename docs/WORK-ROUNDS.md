@@ -10,8 +10,8 @@ that gap matters, and the exact next round.
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
 | 03-03A | Voice Model Set persistence and lineage | Complete | Creates a portable, reproducible publication candidate without falsely claiming identity approval. |
-| 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Next | Prevents a usable checkpoint from being published as the wrong speaker. |
-| 03-03C | One real manifest-to-checkpoint-to-gated-publish acceptance run | Queued | Proves the local runtime and real model artifacts, not only orchestration tests. |
+| 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Complete | Prevents a usable checkpoint from being published as the wrong speaker. |
+| 03-03C | Calibrate the chosen backend and run one real manifest-to-checkpoint-to-gated-publish acceptance | Next | Proves the local runtime, identity operating point, and real model artifacts rather than only orchestration tests. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
 
@@ -43,3 +43,37 @@ Still missing:
 - A real, consented end-to-end publish run (Round 03-03C).
 - The code-gap implementation plan and repository/model license audit, both
   queued explicitly above rather than silently folded into this round.
+
+## Round 03-03B — 2026-09-22
+
+Completed:
+
+- Added the `SpeakerEmbedder` port and two subprocess adapters: cached
+  Community-1 embedding and separately installable WeSpeaker ResNet34-LM.
+- Froze protocol v1: 16-bit PCM, mono 16 kHz, minimum 3 seconds, whole-window
+  embedding, cosine similarity, and all-members-must-pass.
+- Added project-safe gate inputs using Voice Output IDs rather than caller-owned
+  paths; output-to-voice lineage must match exactly.
+- Persisted model revision, threshold/calibration state, scores, candidate IDs,
+  and decision reason; low scores reject, calibrated passes publish, and high
+  scores under an unmeasured threshold remain pending.
+- Added machine-local backend preference, discovery API, gate API, web client
+  types, and GPU lease participation.
+- Reproduced and fixed the Windows TorchCodec failure by preloading PCM WAV as
+  the in-memory waveform shape documented by pyannote.
+
+Evidence:
+
+- Backend suite: 364 passed.
+- Frontend suite: 288 passed; TypeScript/Vite production build passed.
+- Cached Community-1 revision
+  `3533c8cf8e369892e6b79ff1bf80f7b0286a54ee` loaded in the real Studio runtime;
+  same-file smoke score was `1.0`.
+- Dedicated WeSpeaker correctly reports unavailable instead of downloading or
+  pretending success.
+
+Still missing:
+
+- Round 03-03C must create the real positive/negative trial evidence, calibrate
+  one backend-specific threshold, and complete a real gated publish.
+- GAP-PLAN and LIC-01 remain queued after that acceptance round.
