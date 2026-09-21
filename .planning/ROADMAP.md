@@ -70,7 +70,7 @@ remains open even though its written plan and stabilization rounds completed.
 Plans:
 - [x] 03-01: Training Catalog, Speaker Profiles, annotations, and Train UI.
 - [x] 03-02: Dataset compiler, supplied-script validation, portability, and readiness UI.
-- [ ] 03-03: Training runtime and run lifecycle are implemented; Voice Model Set lineage, `SpeakerEmbedder`, and a verified real publish remain.
+- [ ] 03-03: Training runtime, run lifecycle, and Voice Model Set lineage are implemented; `SpeakerEmbedder` and a verified real gated publish remain.
 - [ ] 03-04: Reading packs, capture tier, HQ Recorder, and teleprompter exist; durable sessions, capture/QC/finalize, tier policy, and identity lock remain.
 
 ### Phase 4: Dockable Workspace

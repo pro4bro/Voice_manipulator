@@ -4,6 +4,11 @@
 > topology and portability context, but its counts and “next plan” statements
 > are superseded by `docs/PROJECT-STATUS.md`, `.planning/STATE.md`, and the
 > structured `.planning/ROADMAP.md`.
+>
+> **Latest round (2026-09-22):** Round 03-03A added portable Voice Model Set
+> persistence and complete publication lineage. Sets intentionally stop at
+> `pending-gate`; Round 03-03B must implement `SpeakerEmbedder` before any real
+> acceptance publish may be called approved. See `docs/WORK-ROUNDS.md`.
 
 ## Read First
 

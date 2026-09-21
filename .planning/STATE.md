@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-09-22 — Reconciled planning with code, accepted ADR 0011, and pushed the feature branch.
-last_activity_desc: Planning now distinguishes implemented slices from accepted plan contracts; local and remote feature heads match.
+last_activity: 2026-09-22 — Completed Round 03-03A Voice Model Set persistence and lineage.
+last_activity_desc: Training publication now creates a portable pending-gate aggregate; identity gating and the real acceptance run remain.
 ---
 
 # Project State
@@ -27,7 +27,7 @@ Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-09-22 — Reconciled planning with code, accepted ADR 0011, and pushed the feature branch.
+Last activity: 2026-09-22 — Completed Round 03-03A Voice Model Set persistence and lineage.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 
@@ -37,7 +37,7 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-- Backend: 348 passed, 1 skipped.
+- Backend: 357 passed.
 - Frontend: 288 passed.
 - TypeScript/Vite production build: passed.
 - `git diff --check`: passed.
@@ -66,7 +66,7 @@ No GSD todo files. Planned work remains in ROADMAP and PROJECT-STATUS.
 
 ## Blockers
 
-- 03-03 still lacks Voice Model Set persistence/lineage, `SpeakerEmbedder`, and one real gated publish run.
+- 03-03 still lacks the `SpeakerEmbedder` gate and one real gated publish run.
 - 03-04 lacks durable sessions, measured capture/QC, finalization, tier policy, and identity lock.
 - No checked-in sample project supplies consented, ready audio for the real training acceptance run.
 - RVC similarity, cross-gender, loopback latency, and owner blind A/B are unmeasured.
@@ -85,5 +85,5 @@ No GSD todo files. Planned work remains in ROADMAP and PROJECT-STATUS.
 ## Session
 
 **Last Date:** 2026-09-22
-**Stopped At:** Planning reconciliation and ADR 0011 committed and pushed; 03-03 publication work is next.
+**Stopped At:** Round 03-03A complete; Voice Model Sets persist at `pending-gate`. Round 03-03B (`SpeakerEmbedder`) is next.
 **Resume File:** None

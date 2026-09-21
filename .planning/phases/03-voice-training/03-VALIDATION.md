@@ -36,7 +36,7 @@
 | Single GPU lease | `test_gpu_lease.py` | Passed |
 | API orchestration starts a real run | `TrainingRunner`, start route, runtime-aware UI, and provisioned Python 3.11 CUDA runtime | Passed |
 | Individual project-voice publication | `_publish_voice`, `FileProjectVoiceStore`, generation/voice tests | Passed for a single Voice Model |
-| Voice Model Set aggregate and complete lineage | Set persistence plus manifest-hash, engine-revision, config, adapter-role, and gate integration tests | Pending |
+| Voice Model Set aggregate and lineage | Portable set persistence plus manifest-hash, engine-revision, config, member-role, source-run, API, publish, and cleanup tests | Passed; remains `pending-gate` by design |
 | Speaker identity gate | `SpeakerEmbedder` port, two adapters, frozen protocol, measured threshold, negative publish test | Pending |
 | Real project checkpoint to gated publish | Consented project run and recorded artifact evidence | Pending |
 
@@ -71,5 +71,5 @@
 - Manual speaker labels do not mean diarization or isolation has executed.
 - A provisioned runtime and start route do not prove a real project run has reached a checkpoint.
 - `/api/training-runtime` reports readiness; provisioning is explicit through `scripts/provision-training-runtime.ps1`, and training starts only from a validated manifest.
-- A persisted `ProjectVoice` proves that one Voice Model is usable. It does not prove that a Voice Model Set, lineage record, or identity gate exists.
+- A persisted `ProjectVoice` proves that one Voice Model is usable. A persisted Voice Model Set proves aggregate lineage only; `pending-gate` does not prove identity approval.
 - Passing unit/contract tests for HQ reading UI does not prove that a Reading Session survives restart or produces finalized training blocks.
