@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-import { deleteRunQuestion, formatBytes } from "./TrainingHistory";
-import type { TrainingRun, TrainingRunFootprint } from "../../domain/types";
+import { api } from "../../api/client";
+import { TrainingHistoryDialog, deleteRunQuestion, formatBytes } from "./TrainingHistory";
+import type { ProjectAsrAdapter, TrainingRun, TrainingRunFootprint } from "../../domain/types";
 
 const RUN = {
   version: 1, id: "run-abc", projectId: "p1", manifestId: "dataset-1", status: "complete", stepId: "publish",
@@ -37,5 +39,50 @@ describe("training history", () => {
     expect(formatBytes(2048)).toBe("2 KB");
     expect(formatBytes(5 * 1024 ** 2)).toBe("5 MB");
     expect(formatBytes(3 * 1024 ** 3)).toBe("3.0 GB");
+  });
+
+  it("selects training runs and confirms their batch deletion once", async () => {
+    const runs = [RUN, { ...RUN, id: "run-def" }];
+    const readFootprint = vi.spyOn(api, "getTrainingRunFootprint").mockImplementation(async (_projectId, runId) => ({ ...footprint(), runId }));
+    const deleteRun = vi.spyOn(api, "deleteTrainingRun").mockResolvedValue({ bytes: 0 } as Awaited<ReturnType<typeof api.deleteTrainingRun>>);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onChanged = vi.fn();
+    try {
+      render(<TrainingHistoryDialog adapters={[]} onChanged={onChanged} onClose={vi.fn()} onOpenLog={vi.fn()} projectId="p1" runs={runs} speakers={[]} />);
+      expect(await screen.findAllByText(/2\.5 GB/)).toHaveLength(2);
+      fireEvent.click(screen.getByRole("button", { name: "Chọn run run-abc" }));
+      fireEvent.click(screen.getByRole("button", { name: "Chọn run run-def" }), { shiftKey: true });
+      expect(screen.getByText("2 mục đã chọn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Xoá đã chọn" }));
+      await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(readFootprint).toHaveBeenCalledTimes(2);
+      expect(deleteRun).toHaveBeenCalledTimes(2);
+      expect(deleteRun).toHaveBeenNthCalledWith(1, "p1", "run-abc", false);
+      expect(deleteRun).toHaveBeenNthCalledWith(2, "p1", "run-def", false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("selects all history items without deleting an adapter twice when its run is selected", async () => {
+    const adapter = { id: "adapter-1", name: "ASR", baseModel: "base", createdAt: "2026-09-16T00:00:00Z" } as ProjectAsrAdapter;
+    vi.spyOn(api, "getTrainingRunFootprint").mockResolvedValue(footprint({ asrAdapters: [{ id: adapter.id, name: adapter.name }] }));
+    const deleteRun = vi.spyOn(api, "deleteTrainingRun").mockResolvedValue({ bytes: 0 } as Awaited<ReturnType<typeof api.deleteTrainingRun>>);
+    const deleteAdapter = vi.spyOn(api, "deleteAsrAdapter").mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onChanged = vi.fn();
+    try {
+      render(<TrainingHistoryDialog adapters={[adapter]} onChanged={onChanged} onClose={vi.fn()} onOpenLog={vi.fn()} projectId="p1" runs={[RUN]} speakers={[]} />);
+      fireEvent.keyDown(screen.getByRole("list", { name: "Danh sách lịch sử training" }), { key: "a", ctrlKey: true });
+      expect(screen.getByText("2 mục đã chọn")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Xoá đã chọn" }));
+      await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(deleteRun).toHaveBeenCalledWith("p1", RUN.id, true);
+      expect(deleteAdapter).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

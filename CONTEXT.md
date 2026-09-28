@@ -24,6 +24,13 @@
 - **Workspace Page**: Speech to Text, Voice Training, or Voice Manipulator.
 - **Manipulator Mode**: Voice Over, Voice Isolator, Voice Changer, Voice Dubber, or Voice Patch.
 - **Script**: The time-aware transcript document shown and edited in the Script module.
+- **OBS LiveLink Connection**: One OBS process's machine-local link and control state; it can be active while app recording is idle.
+- **OBS LiveLink Channel**: One stable channel ID paired with an OBS source UUID. Its native source name, relay label, slot, and forwarding state can change without changing identity.
+- **OBS Capture Recording**: One project-owned app audio recording spanning any number of OBS LiveLink channels and zero or more OBS video recording spans.
+- **OBS Video Recording Span**: One observed OBS Start-to-Stop video interval. It remains separate from the app recording and may later link to an imported MKV asset.
+- **Project Target Lease**: A short-lived, machine-local claim by one workspace/project owner to receive new OBS LiveLink recordings.
+- **OBS Source Archive**: The app's audio-only MKA parent asset with one independently addressable FLAC/PCM track per OBS source. Analysis WAV files are rebuildable derivatives for STT.
+- **OBS Overlap Review Interval**: A derived intersection of two or more different LiveLink channels on one recording's OBS time axis. It marks segment-level review and replay, not verified words or speaker identities.
 - **Transcript Candidate**: A realtime, accurate STT, AI-corrected, or user-corrected option for one Script span.
 - **Source Word Timing**: A per-word start/end interval returned by the STT recognizer. It remains the recognizer’s source data and is not a guessed replacement for alignment.
 - **Timing Quality**: The Asset-level summary of word timing trust: `source` means every word is trusted, `partial` means fewer than 5% need individual alignment, `needs-alignment` means at least 5% are unsafe, and `unverified` has not yet been checked.

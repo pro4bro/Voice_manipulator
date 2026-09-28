@@ -1,29 +1,64 @@
 # Agent Guide
 
-## Working Tree
+## Start in the right checkout
 
-The working tree is this checkout's repository root: the directory containing
-both `.git` and `AGENTS.md`. Derive every local path from that root; do not
-record or depend on a drive letter, network share, or another checkout's path.
+- Run `git rev-parse --show-toplevel` before editing or launching. Work from that
+  repository root, derive paths from it, and inspect `git status --short` so
+  existing user work remains intact.
+- For development work, read `docs/WORK-ROUNDS.md` first for the current round,
+  then `docs/PROJECT-STATUS.md`, `.planning/STATE.md`, and `.planning/ROADMAP.md`.
+  `docs/SESSION_HANDOFF.md` provides topology; its older progress statements and
+  `docs/NEXT_SESSION.md` yield to the current ledgers. Read
+  `docs/STABILIZATION-PLAN.md` and `docs/STABILIZATION-LOG.md` when revisiting
+  stabilization work or its feedback.
+- Complete one bounded development round per invocation, verify it, report the
+  evidence and remaining gap, then stop. An explicitly requested instruction or
+  configuration change does not advance a product round.
 
-Before editing or launching, confirm the current directory is the repository
-root with `git rev-parse --show-toplevel`. Work done from another copy is lost,
-and a stack started from one can serve the wrong code while appearing healthy.
+## Product boundaries
 
-A stabilization pass is in progress. Read `docs/STABILIZATION-PLAN.md` and
-`docs/STABILIZATION-LOG.md` first; the log holds the current round pointer and the
-project owner's feedback. Do one round per invocation, then stop.
+- This is a local-first React/TypeScript/Vite UI in `apps/web`, a FastAPI service
+  in `services/api`, and PowerShell-managed local runtimes. Use
+  `docs/PROJECT-STATUS.md` to distinguish implemented slices from planned work.
+- Treat `engines/OmniVoice` as read-only upstream. Product code belongs outside
+  `engines/` and reaches engines through product-owned adapters. Never report a
+  processor as successful before its required artifact exists.
+- Follow `docs/PORTABILITY.md`: persistent project paths are relative to the
+  folder containing `project.json`; project assets stay with that folder. Move
+  and reconnect projects through Open Existing. Keep runtime, base-model, and
+  cache folders out of Git while preserving project-owned media and adapters.
+- Preserve source media; create analysis/processing WAVs deliberately and retain
+  source-to-derivative provenance. Check sample rate, channels, format, timing,
+  clipping, and boundary transitions for affected audio operations.
 
-Read `docs/SESSION_HANDOFF.md`, `.planning/STATE.md`, and `.planning/ROADMAP.md` before implementation. Treat `engines/OmniVoice` as read-only upstream source. Product code belongs outside `engines/` and reaches engines only through adapters.
+## Lead and Worker
 
-Preserve the portability contract in `docs/PORTABILITY.md`: project manifests and Media Pool indexes store project-relative paths, project files remain inside their own folder, and runtime/model folders are never committed. When a project moves, reconnect it through Open Existing instead of writing a new absolute path into `project.json`.
+- The Lead owns requirements, architecture, round scope, delegation, integration,
+  diff and test review, artifact checks, and the final report. The project sets
+  no Lead reasoning effort; the user controls it through the session. Explicit
+  session model selections can override the project model default.
+- Delegate only bounded work that benefits from a separate Worker. Give each
+  Worker the objective, round, relevant context, file ownership, constraints,
+  acceptance criteria, validation, and expected report. Keep overlapping edits,
+  dependent steps, and shared GPU/runtime state serial. Reuse a relevant Worker
+  thread for the same scope and effort; choose an appropriate fresh instance when
+  a different effort is needed and the client cannot change it in place.
+- The Worker inspects relevant files, stays within its assignment, runs relevant
+  checks, and reports changed files, commands, artifacts, failures, and open
+  concerns. Escalate architecture, public API, persistent-format, or product
+  decisions, ownership conflicts, and any need to broaden the round to the Lead.
+- The Lead chooses Luna Worker effort per task: `high` is the default; `medium`
+  suits bounded investigations, `xhigh` difficult integration, and `max` only
+  exceptional risk. Improve task scope and context before merely raising effort.
 
-## Agent skills
+## Validation and project references
 
-### Issue tracker
-
-Issues use local markdown under `.scratch/`. See `docs/agents/issue-tracker.md`.
-
-### Domain docs
-
-This is a single-context repository. See `docs/agents/domain.md` and root `CONTEXT.md`.
+- Run relevant frontend checks from `apps/web`: `npm test`, `npm run typecheck`,
+  and `npm run build`. Run backend checks with an available project Python
+  interpreter and `-m pytest services/api/tests -q` from the repository root;
+  development `.venv` and portable `.runtime/python` serve different purposes.
+  Report actual output and validate real media/model artifacts when tests alone
+  cannot prove quality.
+- Read `CONTEXT.md` before naming domain types; record durable decisions under
+  `docs/adr/`. See `docs/agents/domain.md` for domain documentation and
+  `docs/agents/issue-tracker.md` for local `.scratch/` issues.

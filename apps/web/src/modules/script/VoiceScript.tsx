@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 
 import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { usePlaybackWord } from "../../domain/playback-sync";
 import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/word-selection";
@@ -98,6 +99,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   const [bold, setBold] = useState(false);
   const [italic, setItalic] = useState(false);
   const [underline, setUnderline] = useState(false);
+  const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const scrollRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const focusRef = useRef<{ rowId: string; start: number; end: number } | null>(null);
@@ -106,6 +108,9 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   // is not interrupted by a re-render handing it a new one.
   const placeholderRef = useRef<VoiceScriptRow>(emptyRow(null));
   const shownRows = rows.length ? rows : [placeholderRef.current];
+  const rowIds = rows.map((row) => row.id);
+  const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
+  useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [rows]);
   const held = useMemo(() => new Set(wordSelection.indexes), [wordSelection.indexes]);
   const speakerOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id) ?? null;
   const usedVoices = new Set(readiness.rows.map((row) => row.voiceId));
@@ -354,6 +359,45 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     commit(textToRows(value, speakers, voices, rows));
   }
 
+  function handleRowSelectionKey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) {
+      event.preventDefault();
+      setRowSelection((current) => selectAllListItems(current, rowIds));
+    }
+  }
+
+  function selectRow(event: ReactMouseEvent<HTMLButtonElement>, rowId: string) {
+    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function deleteSelectedRows() {
+    if (!selectedRowIds.length || !window.confirm(`Xoá ${selectedRowIds.length} dòng Script đã chọn?`)) return;
+    const deleting = new Set(selectedRowIds);
+    commit(rows.filter((row) => !deleting.has(row.id)));
+    setRowSelection({ ids: [], anchorId: null });
+  }
+
+  function assignSpeakerToSelected(speakerId: string) {
+    if (!selectedRowIds.length) return;
+    if (speakerId === "__choose__") return;
+    const voice = voices.find((item) => item.speakerProfileId === speakerId);
+    const selected = new Set(selectedRowIds);
+    const assignedId = speakerId === "__none__" ? null : speakerId;
+    commit(rows.map((row) => selected.has(row.id) ? { ...row, speakerProfileId: assignedId, voiceId: assignedId ? voice?.id ?? null : null } : row));
+  }
+
+  function clearScript() {
+    if (!rows.length || busy) return;
+    if (!window.confirm("Clear toàn bộ Script? Các đoạn và lựa chọn voice trong Script sẽ bị xóa. Voice Output đã tạo vẫn được giữ lại.")) return;
+    focusRef.current = null;
+    setEditingRowId(null);
+    setVoiceMenu(null);
+    setExportOpen(false);
+    setTextDraft("");
+    onWordSelectionChange?.(EMPTY_SELECTION);
+    commit([]);
+  }
+
   function toggleView() {
     if (view === "table") {
       setTextDraft(rowsToText(rows, speakers));
@@ -447,7 +491,8 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       {timingNote ? <div className="script-timing-warning" role="status">{timingNote}</div> : null}
       {findOpen ? <div aria-label="Tìm và thay thế" className="script-find-replace"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}
     </div>
-    {view === "table" ? <div className="script-table-shell voice-script">
+    {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey}>
+      {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll" onPointerDown={(event) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
@@ -468,6 +513,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
               <div className="script-table__cell">{renderContent(row, index + 1)}</div>
               <div className="script-table__cell">{renderTimestamp(row)}</div>
               <div className="script-table__cell voice-script__row-actions">
+                <button aria-label={`Chọn đoạn ${index + 1}`} aria-pressed={selectedRowIds.includes(row.id)} className="voice-script__row-select" onClick={(event) => selectRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
                 <button aria-label={`Đưa đoạn ${index + 1} lên`} disabled={index === 0 || !rows.length} onClick={() => moveRow(row.id, -1)} type="button">↑</button>
                 <button aria-label={`Đưa đoạn ${index + 1} xuống`} disabled={index >= rows.length - 1} onClick={() => moveRow(row.id, 1)} type="button">↓</button>
                 <button aria-label={`Xoá đoạn ${index + 1}`} disabled={!rows.length} onClick={() => removeRow(row.id)} type="button">×</button>
@@ -497,6 +543,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       <div className="script-stats"><span><b>{rows.filter((row) => normalizedRowText(row.text)).length}</b> đoạn</span><span><b>{usedVoices.size}</b> voice</span><span><b>{wordCount}</b> từ</span></div>
       <div className="script-actions">
         {output && words.length && onExport ? <span className="script-export"><button aria-expanded={exportOpen} className="button button--quiet" onClick={() => setExportOpen((open) => !open)} type="button">EXPORT ▾</button>{exportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setExportOpen(false); onExport("sentence"); }} role="menuitem" type="button"><b>Theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button onClick={() => { setExportOpen(false); onExport("word"); }} role="menuitem" type="button"><b>Từng từ</b><small>Timestamp theo giọng đã tạo</small></button><button onClick={() => { setExportOpen(false); onExport("table"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}
+        <button className="button button--quiet is-danger" disabled={busy || !rows.length} onClick={clearScript} type="button">Clear Script</button>
         <button aria-label="Tạo voice" className="button button--accent" disabled={busy || Boolean(readiness.problem)} onClick={onRead} type="button"><span><b>{readLabel}</b><small>{readiness.rows.length} đoạn · {usedVoices.size} voice · {CATEGORY_LABELS[category]}</small></span><Icon name="arrow" /></button>
       </div>
     </div>

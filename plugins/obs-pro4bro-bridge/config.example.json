@@ -1,0 +1,10 @@
+{
+  "apiBase": "http://127.0.0.1:18120",
+  "projectId": "replace-with-project-id",
+  "token": "replace-with-pairing-token",
+  "overlayEnabled": true,
+  "sources": [
+    { "uuid": "replace-with-microphone-source-uuid" },
+    { "uuid": "replace-with-application-audio-source-uuid" }
+  ]
+}

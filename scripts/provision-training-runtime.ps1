@@ -66,4 +66,7 @@ if ($LASTEXITCODE -ne 0) { throw "Không cài được OmniVoice từ checkout."
 & $python -c "import accelerate, omnivoice, peft, torch, torchaudio, transformers, webdataset; print('Training runtime ready:', transformers.__version__)"
 if ($LASTEXITCODE -ne 0) { throw "Training runtime chưa import được đầy đủ package." }
 
-Write-Host "Training runtime đã sẵn sàng tại .runtime/omnivoice-training/.venv" -ForegroundColor Green
+& (Join-Path $PSScriptRoot "build-portable-python-runtimes.ps1") -Profiles OmniVoiceTraining
+if ($LASTEXITCODE -ne 0) { throw "Không tạo được portable OmniVoice training runtime." }
+
+Write-Host "Training runtime portable đã sẵn sàng tại .runtime/python/omnivoice-training" -ForegroundColor Green

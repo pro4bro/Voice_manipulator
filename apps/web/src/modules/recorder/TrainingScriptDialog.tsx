@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 
 import { api } from "../../api/client";
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { EMOTION_OPTIONS } from "../../domain/emotions";
 import { splitIntoCards, splitSummary } from "../../domain/script-splitter";
 import type { EmotionLabel, ReadingAudienceVocabulary, ReadingPassage, ReadingPassageKind } from "../../domain/types";
@@ -74,6 +75,9 @@ export function TrainingScriptDialog({ onClose, onSaved }: TrainingScriptDialogP
   const [error, setError] = useState<string | null>(null);
   // Passages authored on this machine, so a mistake can be taken back out.
   const [authored, setAuthored] = useState<ReadingPassage[]>([]);
+  const [passageSelection, setPassageSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const authoredIds = authored.map((passage) => passage.id);
+  const selectedPassageIds = reconcileListSelection(passageSelection, authoredIds).ids;
 
   useEffect(() => {
     if (!unlocked) return;
@@ -88,6 +92,37 @@ export function TrainingScriptDialog({ onClose, onSaved }: TrainingScriptDialogP
   }, [language, unlocked]);
 
   useEffect(loadAuthored, [loadAuthored]);
+  useEffect(() => setPassageSelection({ ids: [], anchorId: null }), [language]);
+
+  function selectPassage(event: MouseEvent<HTMLButtonElement>, id: string) {
+    setPassageSelection((current) => selectListItem(current, authoredIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function selectAllPassages(event: KeyboardEvent<HTMLUListElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setPassageSelection((current) => selectAllListItems(current, authoredIds));
+    }
+  }
+
+  async function removeSelectedPassages() {
+    const targets = authored.filter((passage) => selectedPassageIds.includes(passage.id));
+    if (!targets.length || busy) return;
+    const cards = targets.reduce((total, passage) => total + passage.cards.length, 0);
+    if (!window.confirm(`Xoá ${targets.length} bài đọc tự soạn (${cards} thẻ) khỏi thư viện chung? Không khôi phục được.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(targets.map((passage) => api.deleteReadingPassage(passage.id)));
+      const removedIds = new Set(targets.filter((_, index) => results[index].status === "fulfilled").map((passage) => passage.id));
+      setAuthored((current) => current.filter((passage) => !removedIds.has(passage.id)));
+      setPassageSelection({ ids: [], anchorId: null });
+      onSaved(`Đã xoá ${removedIds.size}/${targets.length} bài đọc tự soạn.`);
+      if (removedIds.size !== targets.length) setError(`Còn ${targets.length - removedIds.size} bài đọc chưa xoá được.`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function removePassage(passage: ReadingPassage) {
     if (!window.confirm(`Xoá bài đọc "${passage.title}" (${passage.cards.length} thẻ) khỏi thư viện?`)) return;
@@ -211,8 +246,10 @@ export function TrainingScriptDialog({ onClose, onSaved }: TrainingScriptDialogP
           {authored.length ? (
             <div className="authoring-authored">
               <header><b>Bài tự soạn của ngôn ngữ này · {authored.length}</b><small>Bài có sẵn của app không xoá được.</small></header>
-              <ul>{authored.map((passage) => (
-                <li key={passage.id}>
+              {selectedPassageIds.length ? <div className="authoring-authored__bulk"><b>{selectedPassageIds.length} bài đã chọn</b><button disabled={busy} onClick={() => void removeSelectedPassages()} type="button">Xoá đã chọn</button><button onClick={() => setPassageSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
+              <ul aria-label="Bài đọc tự soạn" onKeyDown={selectAllPassages} tabIndex={0}>{authored.map((passage) => (
+                <li className={selectedPassageIds.includes(passage.id) ? "is-selected" : ""} key={passage.id}>
+                  <button aria-label={`Chọn bài đọc ${passage.title}`} aria-pressed={selectedPassageIds.includes(passage.id)} className="authoring-authored__select" onClick={(event) => selectPassage(event, passage.id)} type="button">{selectedPassageIds.includes(passage.id) ? "✓" : "□"}</button>
                   <span>{passage.title}</span>
                   <small>{passage.emotion} · {passage.cards.length} thẻ</small>
                   <button aria-label={`Xoá bài đọc ${passage.title}`} onClick={() => void removePassage(passage)} title="Xoá bài đọc" type="button">×</button>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
 import { api } from "../api/client";
+import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
 import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
@@ -47,6 +48,8 @@ import type {
   WorkspacePage,
 } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
+import type { MediaBatchAction } from "../modules/media-pool/MediaPool";
+import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-feed";
 import { categoryOf, parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
 import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
 import { resolveRowVoice, rowsFromOutput, scriptReadiness, voicesInCategory } from "../domain/voiceScript";
@@ -71,7 +74,7 @@ interface WorkspaceShellProps {
 }
 const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: IconName }> = [
   { id: "dashboard", label: "Dashboard", short: "DASH", icon: "grid" },
-  { id: "speech-to-text", label: "Speech to Text", short: "STT", icon: "mic" },
+  { id: "speech-to-text", label: "Input", short: "INPUT", icon: "mic" },
   { id: "voice-training", label: "Voice Training", short: "TRAIN", icon: "training" },
   { id: "voice-manipulator", label: "Voice Manipulator", short: "VOICE", icon: "wrench" },
   { id: "voice-changer", label: "Voice Changer", short: "LIVE", icon: "waveform" },
@@ -82,7 +85,7 @@ const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
 // Pages that open straight onto their modules. The heading row repeated the
 // page name the top navigation already shows, and the Manipulator's mode tabs
 // switched nothing (Voice Patch sits in the right column; the rest are planned).
-const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-manipulator"]);
+const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer"]);
 
 /**
  * A guided reading run, held for as long as the workspace is open.
@@ -133,6 +136,24 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
 
 export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
+
+  useEffect(() => {
+    // The workspace, not the OBS panel, owns the project target. A second tab
+    // cannot take it until this owner leaves or its short lease expires.
+    if (typeof api.claimObsLiveLinkTarget !== "function") return;
+    const ownerId = crypto.randomUUID();
+    let active = true;
+    const renew = () => {
+      if (active) void api.claimObsLiveLinkTarget(project.id, ownerId).catch(() => {});
+    };
+    renew();
+    const timer = window.setInterval(renew, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      void api.releaseObsLiveLinkTarget(ownerId).catch(() => {});
+    };
+  }, [project.id]);
   const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(340);
   const [selectedVoice, setSelectedVoice] = useState("");
@@ -157,6 +178,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const liveTranscriptActiveRef = useRef(false);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
+  const [obsTimelineActive, setObsTimelineActive] = useState(false);
+  const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
+  const [obsPlayheadSeconds, setObsPlayheadSeconds] = useState(0);
+  const [obsSeekRequest, setObsSeekRequest] = useState<{ recordingId: string; channelId: string; seconds: number; serial: number; replayUntilSeconds?: number } | null>(null);
+  const { rows: obsTranscriptRows, error: obsTranscriptError } = useObsLiveLinkTranscript(
+    project.id, obsTimelineRecordingId, obsTimelineActive && activePage === "speech-to-text");
   const [liveTranscriptActive, setLiveTranscriptActive] = useState(false);
   const [aiReviewBusy, setAiReviewBusy] = useState(false);
   const [trainingCatalog, setTrainingCatalog] = useState<TrainingCatalog>(emptyTrainingCatalog);
@@ -660,6 +687,19 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
+  async function openObsAsset(assetId: string) {
+    try {
+      const assets = await api.listProjectMedia(project.id);
+      setMediaAssets(assets);
+      const asset = assets.find((item) => item.id === assetId);
+      if (!asset) throw new Error("Không tìm thấy track OBS trong Media Pool.");
+      flushCurrentMediaDraft();
+      applyMediaAsset(asset);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không mở được track OBS.");
+    }
+  }
+
   function changeScript(value: string) {
     setScript(value);
     // In Voice Manipulator the Script is text to speak, not the transcript of
@@ -857,6 +897,16 @@ Voice Output đã tạo bằng voice này vẫn giữ nguyên. Không khôi ph�
     await refreshProjectVoices();
   }
 
+  async function deleteProjectVoices(voices: ProjectVoice[]) {
+    const results = await Promise.allSettled(voices.map((voice) => api.deleteProjectVoice(project.id, voice.id)));
+    const removed = new Set(voices.filter((_, index) => results[index].status === "fulfilled").map((voice) => voice.id));
+    removed.forEach(forgetVoice);
+    setNotice(results.every((result) => result.status === "fulfilled")
+      ? `Đã xoá ${removed.size} voice.`
+      : `Đã xoá ${removed.size}/${voices.length} voice; các mục lỗi vẫn được giữ lại.`);
+    await refreshProjectVoices();
+  }
+
   async function deleteSpeakerProfile(speaker: SpeakerProfile) {
     const own = projectVoices.filter((voice) => voice.speakerProfileId === speaker.id);
     const footage = mediaAssets.filter((asset) => !asset.deletedAt && (asset.speakerProfileIds ?? []).includes(speaker.id)).length;
@@ -886,6 +936,28 @@ Voice Output đã tạo bằng voice này vẫn giữ nguyên. Không khôi ph�
     await refreshProjectVoices();
   }
 
+  async function deleteSpeakerProfiles(speakers: SpeakerProfile[]) {
+    const selectedIds = new Set(speakers.map((speaker) => speaker.id));
+    const voices = projectVoices.filter((voice) => voice.speakerProfileId !== undefined && selectedIds.has(voice.speakerProfileId));
+    const results = await Promise.allSettled(voices.map((voice) => api.deleteProjectVoice(project.id, voice.id)));
+    const removedVoiceIds = new Set(voices.filter((_, index) => results[index].status === "fulfilled").map((voice) => voice.id));
+    removedVoiceIds.forEach(forgetVoice);
+    const failedSpeakerIds = new Set(voices.filter((voice) => !removedVoiceIds.has(voice.id)).map((voice) => voice.speakerProfileId));
+    const removedSpeakers = speakers.filter((speaker) => !failedSpeakerIds.has(speaker.id));
+    const removedSpeakerIds = new Set(removedSpeakers.map((speaker) => speaker.id));
+    const settings = trainingCatalog.settings;
+    changeCatalog({
+      ...trainingCatalog,
+      speakers: trainingCatalog.speakers.filter((speaker) => !removedSpeakerIds.has(speaker.id)),
+      settings: { ...settings, targetSpeakerIds: settings.targetSpeakerIds.filter((id) => !removedSpeakerIds.has(id)) },
+    });
+    if (selectedVoice && removedSpeakerIds.has(selectedVoice)) setSelectedVoice("");
+    setNotice(removedSpeakers.length === speakers.length
+      ? `Đã xoá ${removedSpeakers.length} Speaker Profile và ${removedVoiceIds.size} voice.`
+      : `Đã xoá ${removedSpeakers.length}/${speakers.length} Speaker Profile và ${removedVoiceIds.size} voice; profile có voice lỗi vẫn được giữ lại.`);
+    await refreshProjectVoices();
+  }
+
   function deleteEnvironmentProfile(profile: EnvironmentNoiseProfile) {
     if (!window.confirm(`Xoá Environment Profile "${profile.name}"?
 
@@ -897,6 +969,17 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       settings: { ...settings, environmentProfileId: settings.environmentProfileId === profile.id ? null : settings.environmentProfileId },
     });
     setNotice(`Đã xoá Environment Profile ${profile.name}.`);
+  }
+
+  function deleteEnvironmentProfiles(profiles: EnvironmentNoiseProfile[]) {
+    const selectedIds = new Set(profiles.map((profile) => profile.id));
+    const settings = trainingCatalog.settings;
+    changeCatalog({
+      ...trainingCatalog,
+      environmentProfiles: trainingCatalog.environmentProfiles.filter((profile) => !selectedIds.has(profile.id)),
+      settings: { ...settings, environmentProfileId: settings.environmentProfileId && selectedIds.has(settings.environmentProfileId) ? null : settings.environmentProfileId },
+    });
+    setNotice(`Đã xoá ${profiles.length} Environment Profile.`);
   }
 
   async function cancelTrainingRun(runId: string) {
@@ -1175,6 +1258,45 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }
       setNotice(message);
     }
+  }
+
+  async function batchMediaAction(action: MediaBatchAction) {
+    const completed: string[] = [];
+    const failures: string[] = [];
+    const changes = action.kind === "annotations" ? action.changes : action.assetIds.map((assetId) => ({ assetId }));
+    for (const change of changes) {
+      try {
+        if (action.kind === "annotations") {
+          const annotation = action.changes.find((item) => item.assetId === change.assetId)!;
+          const updated = await api.updateMediaAnnotations(project.id, annotation.assetId, annotation.speakerProfileIds, annotation.environmentProfileIds, annotation.emotion);
+          setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+        } else if (action.kind === "disabled") {
+          const updated = await api.setMediaDisabled(project.id, change.assetId, action.disabled);
+          setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+        } else if (action.kind === "selection") {
+          const updated = action.target === "stt"
+            ? await api.setMediaTranscriptionSelected(project.id, change.assetId, action.selected)
+            : await api.setMediaTrainingSelected(project.id, change.assetId, action.selected);
+          setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+        } else if (action.kind === "restore") {
+          const restored = await api.restoreProjectMedia(project.id, change.assetId);
+          setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item));
+        } else {
+          const recycled = await api.recycleProjectMedia(project.id, change.assetId);
+          setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item));
+        }
+        completed.push(change.assetId);
+      } catch (error) {
+        failures.push(`${change.assetId}: ${error instanceof Error ? error.message : "Lỗi không xác định"}`);
+      }
+    }
+    if (action.kind === "recycle" && selectedAssetId && completed.includes(selectedAssetId)) {
+      moveOffAsset(mediaAssets.filter((item) => !item.deletedAt && !completed.includes(item.id)));
+    }
+    if ((action.kind === "annotations" || action.kind === "selection" && action.target === "training") && completed.length) void refreshDatasetReadiness();
+    setNotice(failures.length
+      ? `Đã xử lý ${completed.length}/${changes.length} footage. Lỗi: ${failures.join("; ")}`
+      : `Đã ${action.kind === "restore" ? "restore" : action.kind === "recycle" ? "chuyển vào Recycle Bin" : action.kind === "disabled" ? action.disabled ? "tắt" : "bật" : action.kind === "selection" ? action.selected ? `chọn ${action.target.toUpperCase()} cho` : `bỏ ${action.target.toUpperCase()} của` : "cập nhật nhãn cho"} ${completed.length} footage.`);
   }
 
   function moveOffAsset(remaining: ProjectMediaAsset[]) {
@@ -1492,6 +1614,17 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
 
+  async function deleteVoiceOutputs(outputs: VoiceOutput[]) {
+    const results = await Promise.allSettled(outputs.map((output) => api.deleteVoiceOutput(project.id, output.id)));
+    const removed = new Set(outputs.filter((_, index) => results[index].status === "fulfilled").map((output) => output.id));
+    setVoiceOutputs((current) => current.filter((output) => !removed.has(output.id)));
+    const activeOutputId = outputTake?.id;
+    if (activeOutputId && removed.has(activeOutputId)) setOutputTake(null);
+    setNotice(results.every((result) => result.status === "fulfilled")
+      ? `Đã xoá ${removed.size} Voice Output.`
+      : `Đã xoá ${removed.size}/${outputs.length} Voice Output; các mục lỗi vẫn được giữ lại.`);
+  }
+
   function handleLiveTranscript(text: string, active: boolean) {
     setLiveTranscriptActive(active);
     if (active) {
@@ -1540,6 +1673,21 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     selectedAssetId,
     mediaBusy,
     recordingPreview,
+    obsTimelineActive,
+    obsTimelineRecordingId,
+    obsTranscriptRows,
+    obsTranscriptError,
+    obsPlayheadSeconds,
+    obsSeekRequest,
+    onObsTimelineRecordingChange: (recordingId) => setObsTimelineRecordingId(recordingId),
+    onObsTranscriptSeek: (row, seconds, replayUntilSeconds) => setObsSeekRequest((current) => ({
+      recordingId: row.recordingId, channelId: row.channelId, seconds: seconds ?? row.startSeconds,
+      replayUntilSeconds,
+      serial: (current?.serial ?? 0) + 1,
+    })),
+    onObsPlayheadChange: (seconds) => setObsPlayheadSeconds(seconds),
+    onObsTimelineSourceChange: (source) => setObsTimelineActive(source === "obs-livelink"),
+    onOpenObsRecording: (recordingId) => { setObsTimelineRecordingId(recordingId); setObsTimelineActive(true); },
     liveTranscriptActive,
     liveTranscriptText: latestLiveRevision?.text ?? null,
     emotionStyle: preferences.emotionStyle,
@@ -1556,6 +1704,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     activeOutputId: voiceOutputs.some((output) => output.id === outputTake?.id) ? outputTake?.id ?? null : null,
     onOpenVoiceOutput: openVoiceOutput,
     onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
+    onDeleteVoiceOutputs: (outputs) => void deleteVoiceOutputs(outputs),
     sttEngines,
     asrAdapters,
     projectVoices,
@@ -1592,8 +1741,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onCancelTrainingRun: (runId) => void cancelTrainingRun(runId),
     onTrainingOutputsChanged: () => void refreshTrainingOutputs(),
     onDeleteVoice: (voice) => void deleteProjectVoice(voice),
+    onDeleteVoices: (voices) => void deleteProjectVoices(voices),
     onDeleteSpeaker: (speaker) => void deleteSpeakerProfile(speaker),
+    onDeleteSpeakers: (speakers) => void deleteSpeakerProfiles(speakers),
     onDeleteEnvironment: (profile) => deleteEnvironmentProfile(profile),
+    onDeleteEnvironments: (profiles) => deleteEnvironmentProfiles(profiles),
     onAssignAssetSpeaker: (assetId, speakerProfileId) => void assignAssetSpeaker(assetId, speakerProfileId),
     onSelectPage: (page) => void selectPage(page),
     onCompileDataset: () => void compileDataset(),
@@ -1626,6 +1778,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onImportLocalMedia: () => void importLocalMedia(),
     onSetLocalCache: (assetId, enabled) => void setLocalCache(assetId, enabled),
     onSelectAsset: selectMediaAsset,
+    onOpenObsAsset: (assetId) => void openObsAsset(assetId),
+    onObsImportReady: (assetId) => void openObsAsset(assetId),
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
     onTimelineEditsChange: (ranges, gainKeyframes) => { if (!blockedByRecycleBin()) void updateTimelineEdits(ranges, gainKeyframes); },
@@ -1634,6 +1788,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
     onControlTranscriptions: (action, assetIds) => void controlTranscriptions(action, assetIds),
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
+    onBatchMediaAction: (action) => { if (action.kind === "restore" || !blockedByRecycleBin()) void batchMediaAction(action); },
     onRestoreAsset: (asset) => void restoreMediaAsset(asset),
     onRevealAsset: (asset) => void revealMediaAsset(asset),
     onSetAssetDisabled: (asset, disabled) => void setMediaDisabled(asset, disabled),
@@ -1653,12 +1808,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, script, selectedAssetId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, script, selectedAssetId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   return (
     <main className="workspace-shell">
       <header className="workspace-topbar">
-<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><span>P4B</span><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
+<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><img alt="" className="workspace-brand__logo" src="/pro4bro-logo.png" /><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
@@ -1670,7 +1825,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         <aside className="project-rail"><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div><div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
         <section className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
-          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
@@ -1694,7 +1849,8 @@ function PreferencesDialog({ preferences, saving, onClose, onSave }: { preferenc
   return (
     <div className="preferences-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section aria-label="Preferences" aria-modal="true" className="preferences-dialog" role="dialog">
-        <header><div><span>WINDOWS / PREFERENCES</span><h2>Transcript & Emotion Display</h2></div><button aria-label="Đóng Preferences" onClick={onClose} type="button">×</button></header>
+        <header><div><span>WINDOWS / PREFERENCES</span><h2>Preferences</h2></div><button aria-label="Đóng Preferences" onClick={onClose} type="button">×</button></header>
+        <ObsPluginPreferences />
         <section className="preferences-section"><h3>AI Transcript Review</h3><p>STT kỹ chạy local ở background. AI fix chỉ gửi transcript tới API tương thích OpenAI khi bạn bấm nút AI fix trong Script.</p>
           <label className="preferences-switch"><input checked={draft.aiReview.enabled} onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, enabled: event.target.checked } })} type="checkbox" /><span>Bật AI check transcript</span></label>
           <label><span>Base URL</span><input onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, baseUrl: event.target.value } })} placeholder="https://api.openai.com/v1" value={draft.aiReview.baseUrl} /></label>

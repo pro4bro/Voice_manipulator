@@ -24,6 +24,7 @@ from app.domain.models import (
     VoiceChangerStartRequest,
     VoiceChangerStatus,
 )
+from app.runtime_layout import python_executable
 from app.domain.ports import ProjectRepository
 from app.domain.training_parameters import resolve_parameters
 
@@ -69,7 +70,7 @@ class VoiceChangerRuntime:
 
     @property
     def python(self) -> Path:
-        return self.root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        return python_executable(self.root)
 
     def missing(self) -> list[str]:
         if not self.python.is_file():

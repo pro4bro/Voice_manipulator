@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "pro4bro-process-tree.ps1")
 
-$apiPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$apiPython = Join-Path $projectRoot ".runtime\python\core\python.exe"
 $apiRoot = Join-Path $projectRoot "services\api"
 $webRoot = Join-Path $projectRoot "apps\web"
 $webDist = Join-Path $webRoot "dist\index.html"
@@ -21,7 +21,7 @@ $runtimeRoot = Join-Path $dataRoot "runtime"
 $sessionPath = Join-Path $runtimeRoot "pro4bro-services.json"
 $logRoot = Join-Path $dataRoot "logs"
 $studioRuntime = Join-Path $projectRoot ".runtime\omnivoice-studio"
-$studioPython = Join-Path $studioRuntime ".venv\Scripts\python.exe"
+$studioPython = Join-Path $projectRoot ".runtime\python\stt\python.exe"
 $studioSource = Join-Path $projectRoot "services\stt_studio\studio_app"
 $studioDestination = Join-Path $studioRuntime "studio_app"
 
@@ -153,7 +153,7 @@ function Start-Workloads {
     }
 
     if (-not (Test-Path -LiteralPath $apiPython)) {
-        & (Join-Path $PSScriptRoot "setup-pro4bro.ps1")
+        throw "Portable API runtime is missing. Prepare the bundle with scripts\build-portable-python-runtimes.ps1."
     }
     if (-not $SkipWebBuild -and (Test-WebBundleStale)) {
         Invoke-WebBuild

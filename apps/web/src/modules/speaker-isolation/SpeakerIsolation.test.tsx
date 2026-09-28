@@ -19,4 +19,18 @@ describe("SpeakerIsolation", () => {
     expect(onAssign).toHaveBeenCalledWith({ "speaker-1": "profile-lan" });
     expect(screen.getByText("Speaker 2")).toBeInTheDocument();
   });
+
+  it("selects a range of diarization labels and assigns them together", () => {
+    const onAssign = vi.fn();
+    render(<SpeakerIsolation asset={null} onAssign={onAssign} onRun={vi.fn()} speakers={[{ id: "lan", name: "Chị Lan", language: "vi", languageId: "vi", region: null, age: null, gender: "female", attributes: {}, color: "#86b5d8", createdAt: "" }]} words={[
+      { text: "Một", start: 0, end: 0.2, diarizationSpeakerId: "speaker-1" },
+      { text: "Hai", start: 0.2, end: 0.4, diarizationSpeakerId: "speaker-2" },
+      { text: "Ba", start: 0.4, end: 0.6, diarizationSpeakerId: "speaker-3" },
+    ]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Speaker 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Speaker 3" }), { shiftKey: true });
+    expect(screen.getByText("3 nhãn đã chọn")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Gán profile cho nhãn đã chọn" }), { target: { value: "lan" } });
+    expect(onAssign).toHaveBeenCalledWith({ "speaker-1": "lan", "speaker-2": "lan", "speaker-3": "lan" });
+  });
 });

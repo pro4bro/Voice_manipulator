@@ -77,7 +77,8 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
     if ($LASTEXITCODE -ne 0) { throw "Không tạo được Python environment." }
 }
 
-# Python generates absolute activation paths; make copied or moved venvs portable.
+# Keep the build-machine venv activation scripts usable after a local path move.
+# The distributable app uses .runtime/python/core, built below, rather than this venv.
 Repair-VenvActivationScripts
 
 if (-not (Test-Path -LiteralPath $localFfmpeg) -or -not (Test-Path -LiteralPath $localFfprobe)) {
@@ -113,5 +114,8 @@ function Invoke-WebNpm {
 
 Invoke-WebNpm -Arguments "install" -FailureMessage "Không cài được dependency frontend."
 Invoke-WebNpm -Arguments "run build" -FailureMessage "Frontend build thất bại."
+
+& (Join-Path $PSScriptRoot "build-portable-python-runtimes.ps1") -Profiles Core
+if ($LASTEXITCODE -ne 0) { throw "Không tạo được portable API runtime." }
 
 Write-Host "`nSetup hoàn tất. Chạy start-pro4bro.bat để mở app." -ForegroundColor Green

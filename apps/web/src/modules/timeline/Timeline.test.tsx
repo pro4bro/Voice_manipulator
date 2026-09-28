@@ -50,6 +50,72 @@ describe("Timeline", () => {
     expect(screen.getByText(/REC LIVE · waveform đang cập nhật/)).toBeInTheDocument();
   });
 
+  it("keeps a settled PCM window when the server groups peaks below the requested point count", async () => {
+    const fetchWaveform = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        start: 0,
+        end: 10,
+        resolution: 0.001,
+        points: Array.from({ length: 650 }, () => ({ min: -0.25, max: 0.25 })),
+      }),
+    });
+    vi.stubGlobal("fetch", fetchWaveform);
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    try {
+      const { container } = render(<Timeline gain={0} onGainChange={() => undefined} take={{ id: "pcm", name: "pcm.wav", url: "/api/projects/p/media/pcm/audio", duration: 10 }} />);
+      const scroller = container.querySelector(".timeline-scroll") as HTMLDivElement;
+      const canvas = container.querySelector(".timeline-canvas") as HTMLDivElement;
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1000 });
+      Object.defineProperty(canvas, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, top: 0, width: 1000, height: 100, right: 1000, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) });
+      fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
+      await waitFor(() => expect(screen.getByLabelText("PCM waveform at zoom")).toBeInTheDocument());
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fetchWaveform).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Đang đọc PCM waveform theo vùng nhìn…")).not.toBeInTheDocument();
+    } finally {
+      canvasContext.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("loads a new PCM window when the viewport moves beyond the cached range", async () => {
+    const fetchWaveform = vi.fn().mockImplementation(async (input: string) => {
+      const query = new URL(input, window.location.href).searchParams;
+      return {
+        ok: true,
+        json: async () => ({
+          start: Number(query.get("start")),
+          end: Number(query.get("end")),
+          resolution: 0.001,
+          points: Array.from({ length: 650 }, () => ({ min: -0.25, max: 0.25 })),
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchWaveform);
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    try {
+      const { container } = render(<Timeline gain={0} onGainChange={() => undefined} take={{ id: "pcm", name: "pcm.wav", url: "/api/projects/p/media/pcm/audio", duration: 10 }} />);
+      const scroller = container.querySelector(".timeline-scroll") as HTMLDivElement;
+      const canvas = container.querySelector(".timeline-canvas") as HTMLDivElement;
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1000 });
+      Object.defineProperty(canvas, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, top: 0, width: 2000, height: 100, right: 2000, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) });
+      fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
+      await waitFor(() => expect(screen.getByLabelText("PCM waveform at zoom")).toBeInTheDocument());
+      expect(fetchWaveform).toHaveBeenCalledTimes(1);
+
+      scroller.scrollLeft = 1000;
+      fireEvent.scroll(scroller);
+      await waitFor(() => expect(fetchWaveform).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      expect(fetchWaveform).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("Đang đọc PCM waveform theo vùng nhìn…")).not.toBeInTheDocument();
+    } finally {
+      canvasContext.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("preserves each supplied word boundary without stretching it to the next word", () => {
     const timings = normalizeWordTimings([{ text: "một", start: 1, end: 1.01 }, { text: "câu", start: 1.01, end: 1.02 }, { text: "dài", start: 1.02, end: 1.03 }, { text: "tiếp", start: 2, end: 2.2 }], 3);
     expect(timings.map((word) => [word.start, word.end])).toEqual([[1, 1.01], [1.01, 1.02], [1.02, 1.03], [2, 2.2]]);

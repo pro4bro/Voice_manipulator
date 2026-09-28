@@ -101,7 +101,7 @@ class VibeVoiceAsrTranscriber:
         if not self.repo or not (self.repo / "vibevoice" / "modular" / "modeling_vibevoice_asr.py").is_file():
             return "Chưa thấy repo VibeVoice (VibeVoice/vibevoice)."
         if not self.python or not self.python.is_file():
-            return "Chưa thấy Python cho VibeVoice (.runtime/vibevoice-training hoặc .venv của repo)."
+            return "Chưa thấy Python cho VibeVoice (.runtime/python/vibevoice-training)."
         if not self.model_dir or not (self.model_dir / "config.json").is_file():
             return "Chưa thấy weights VibeVoice_models/microsoft/VibeVoice-ASR."
         if not self.tokenizer_dir or not (self.tokenizer_dir / "tokenizer_config.json").is_file():

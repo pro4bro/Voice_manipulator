@@ -19,13 +19,13 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
   },
   "speech-to-text": {
     page: "speech-to-text",
-    label: "Speech to Text",
+    label: "Input",
     eyebrow: "CAPTURE / TRANSCRIBE / REVIEW",
-    modules: ["library-panel", "speaker-isolation", "speaker-emotion", "script", "recorder", "timeline"],
+    modules: ["library-panel", "speaker-isolation", "speaker-emotion", "script", "obs-capture", "recorder", "timeline"],
     columns: {
       left: ["library-panel"],
       center: ["script"],
-      right: ["recorder", "speaker-emotion", "speaker-isolation"],
+      right: ["obs-capture", "recorder", "speaker-emotion", "speaker-isolation"],
       bottom: ["timeline"],
     },
     modes: [],

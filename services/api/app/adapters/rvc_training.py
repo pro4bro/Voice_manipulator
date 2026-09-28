@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.models import DatasetSegment, TrainingProgressLine
+from app.runtime_layout import python_executable
 
 Slicer = Callable[[Path, Path, float, float], None]
 SITE_DIR = Path(__file__).resolve().parents[1] / "workers" / "rvc_site"
@@ -44,7 +45,7 @@ class RvcPaths:
 
     @property
     def python(self) -> Path:
-        return self.runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        return python_executable(self.runtime)
 
     def missing(self) -> list[str]:
         missing = []

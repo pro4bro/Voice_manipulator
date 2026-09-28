@@ -29,6 +29,7 @@ interface WaveformDetail {
   start: number;
   end: number;
   resolution: number;
+  requestedDensity: number;
   points: EnvelopePoint[];
 }
 
@@ -508,8 +509,6 @@ export function Timeline({
     setMediaDuration(0);
     setDetailEnvelope(null);
     setDetailWaveformState("idle");
-    setDetailEnvelope(null);
-    setDetailWaveformState("idle");
     setMarkIn(null);
     setMarkOut(null);
     setStagedCut(null);
@@ -619,13 +618,12 @@ export function Timeline({
       return undefined;
     }
     const requiredDensity = detailRequest.points / Math.max(0.001, detailRequest.end - detailRequest.start);
-    const sourceDensity = detailEnvelope ? 1 / Math.max(0.000001, detailEnvelope.resolution) : 0;
-    const targetDensity = Math.min(requiredDensity, sourceDensity || requiredDensity);
-    const cachedDensity = detailEnvelope ? detailEnvelope.points.length / Math.max(0.001, detailEnvelope.end - detailEnvelope.start) : 0;
     const cacheCoversViewport = detailEnvelope
       && detailEnvelope.start <= detailRequest.viewportStart
       && detailEnvelope.end >= detailRequest.viewportEnd
-      && cachedDensity >= targetDensity * 0.75;
+      // The API groups source peaks in whole blocks, so it can return fewer
+      // points than requested even at its highest available resolution.
+      && detailEnvelope.requestedDensity >= requiredDensity * 0.75;
     if (cacheCoversViewport) {
       setDetailWaveformState("ready");
       return undefined;
@@ -657,7 +655,7 @@ export function Timeline({
             max: Number.isFinite(point.max) ? Number(point.max) : 0,
           }));
           if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !Number.isFinite(resolution) || resolution <= 0 || !points.length) throw new Error("Detailed waveform empty");
-          setDetailEnvelope({ start, end, resolution, points });
+          setDetailEnvelope({ start, end, resolution, requestedDensity: requiredDensity, points });
           setDetailWaveformState("ready");
         } catch {
           if (!controller.signal.aborted) {
@@ -1190,7 +1188,7 @@ export function Timeline({
             >
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
-              {take && !isRecording && detailWaveformState === "loading" ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
+              {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
               {detailWaveformState === "loading" && detailEnvelope?.points.length ? <span className="timeline-waveform-detail-status">PCM PEAK · đang cập nhật vùng nhìn</span> : null}
               {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
               {gainOverflows.map((range, index) => { const start = gainWindowStart + (range.start / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; const end = gainWindowStart + (range.end / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; return <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.08, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }} />; })}

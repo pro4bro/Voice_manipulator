@@ -42,4 +42,6 @@ if (-not $SkipModelPreload) {
     Write-Host "Tải và kiểm tra model WhisperX $Model..." -ForegroundColor Cyan
     Invoke-RuntimePython @("-c", "from studio_app import server; model, device = server._model(); print(f'READY model={server.MODEL_NAME} device={device}')")
 }
+& (Join-Path $PSScriptRoot "build-portable-python-runtimes.ps1") -Profiles STT
+if ($LASTEXITCODE -ne 0) { throw "Không tạo được portable STT runtime." }
 Write-Host "Runtime WhisperX Studio sẵn sàng tại $runtimeRoot" -ForegroundColor Green

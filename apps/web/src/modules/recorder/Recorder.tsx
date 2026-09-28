@@ -9,6 +9,7 @@ import type { EmotionLabel, ReadingPackSummary, RecordingWaveformPreview, Studio
 import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
 import { downsample, encodeWav, int16FrameCount, isSilent, toInt16, wavFromInt16 } from "./pcm-chunk";
+import { ObsCaptureController } from "./ObsCaptureController";
 
 export interface CapturedAudio {
   name: string;
@@ -38,6 +39,10 @@ export interface ReadingSessionView {
 
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
+  projectId?: string;
+  onOpenObsAsset?: (assetId: string) => void;
+  onOpenObsRecording?: (recordingId: string) => void;
+  onCaptureSourceChange?: (source: "microphone" | "display" | "obs-livelink") => void;
   onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript?: (text: string, active: boolean) => void;
   /** The project's language code, so live passes need not guess it. */
@@ -72,7 +77,7 @@ interface SpeechRecognitionEventLike {
 type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 type SinkAudioElement = HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
 type RecorderStatus = "idle" | "recording" | "finalizing" | "error";
-type CaptureSource = "microphone" | "display";
+type CaptureSource = "microphone" | "display" | "obs-livelink";
 
 function friendlyDeviceName(device: MediaDeviceInfo, index: number, kind: "input" | "output") {
   return device.label || `${kind === "input" ? "Microphone" : "Audio output"} ${index + 1}`;
@@ -95,6 +100,10 @@ function speechConstructor(): SpeechRecognitionConstructor | null {
 
 export function Recorder({
   onRecordingReady,
+  projectId,
+  onOpenObsAsset,
+  onOpenObsRecording,
+  onCaptureSourceChange,
   onRecordingPreview,
   onLiveTranscript,
   projectLanguage = null,
@@ -116,6 +125,10 @@ export function Recorder({
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [captureSource, setCaptureSource] = useState<CaptureSource>("microphone");
+  function chooseCaptureSource(source: CaptureSource) {
+    setCaptureSource(source);
+    onCaptureSourceChange?.(source);
+  }
   const [inputDeviceId, setInputDeviceId] = useState("");
   const [outputDeviceId, setOutputDeviceId] = useState("");
   const [monitorEnabled, setMonitorEnabled] = useState(false);
@@ -584,6 +597,17 @@ export function Recorder({
     }
   }
 
+  if (captureMode === "normal" && captureSource === "obs-livelink" && projectId) {
+    return <ModuleFrame eyebrow="RECORDER · OBS LIVELINK" title="Thu âm" index="01" tone="dark" className="recorder-module">
+      <label className="obs-recorder__source"><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" onChange={(event) => chooseCaptureSource(event.target.value as CaptureSource)} value={captureSource}>
+        <option value="microphone">Microphone / audio input</option>
+        <option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option>
+        <option value="obs-livelink">OBS LiveLink</option>
+      </select></label>
+      <ObsCaptureController onOpenAsset={onOpenObsAsset} onOpenRecording={onOpenObsRecording} projectId={projectId} />
+    </ModuleFrame>;
+  }
+
   return (
     <ModuleFrame
       eyebrow={captureMode === "hq" ? "RECORDER · HIGH QUALITY" : "RECORDER"}
@@ -619,7 +643,7 @@ export function Recorder({
         </div>
       ) : null}
       <div className="recorder-device-grid" hidden={Boolean(session)}>
-        <label><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setCaptureSource(event.target.value as CaptureSource)} value={captureSource}><option value="microphone">Microphone / audio input</option><option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option></select></label>
+        <label><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => chooseCaptureSource(event.target.value as CaptureSource)} value={captureSource}><option value="microphone">Microphone / audio input</option><option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option>{projectId ? <option value="obs-livelink">OBS LiveLink</option> : null}</select></label>
         {captureSource === "microphone" ? <label><span>MIC INPUT</span><select aria-label="Micro thu âm" disabled={status === "recording" || status === "finalizing"} onChange={(event) => setInputDeviceId(event.target.value)} value={inputDeviceId}>{inputs.length ? inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "input")}</option>) : <option value="">Microphone mặc định</option>}</select></label> : <div className="capture-source-note"><b>BROWSER SHARE PICKER</b><span>Khi bấm Record, chọn tab/cửa sổ và bật Share audio. Các tab được trình duyệt tự nhóm theo browser.</span><span>Live transcript cho nguồn này chạy bằng chính audio đang bắt, qua OmniVoice Studio (model tiny), nên đúng tiếng tab chứ không phải tiếng phòng. Text hiện chậm hơn lời nói khoảng một nhịp.</span><span>Độ to đầu vào theo volume của chính tab/cửa sổ đó; volume hệ thống không ảnh hưởng.</span></div>}
         <label><span>MONITOR OUTPUT</span><select aria-label="Thiết bị phát monitor" disabled={status === "recording" && monitorEnabled} onChange={(event) => setOutputDeviceId(event.target.value)} value={outputDeviceId}>{outputs.length ? outputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{friendlyDeviceName(device, index, "output")}</option>) : <option value="">Thiết bị mặc định</option>}</select></label>
       </div>

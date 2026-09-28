@@ -11,6 +11,14 @@ import type {
   MediaRevisionSource,
   MediaDiarizationProgress,
   MediaTranscriptionProgress,
+  ObsCaptureSession,
+  ObsSessionSubtitleStatus,
+  ObsLiveSession,
+  ObsLiveCaptionQuality,
+  ObsLiveLinkStatus,
+  ObsPluginInstallationStatus,
+  ObsRecordingInspection,
+  ObsTrackSource,
   Project,
   ProjectCreate,
   ProjectMediaAsset,
@@ -73,7 +81,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 
 async function downloadSrt(path: string, fallbackFilename: string): Promise<void> {
-  const response = await fetch(path);
+  return downloadFile(path, fallbackFilename);
+}
+
+async function downloadFile(path: string, fallbackFilename: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(path, init);
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail ?? `Không thể xuất SRT (${response.status})`);
@@ -160,6 +172,59 @@ export const api = {
   getOmniVoiceStatus: () => request<EngineStatus>("/api/engines/omnivoice"),
   getOmniVoiceProfileSchema: () => request<EngineProfileSchema>("/api/engines/omnivoice/profile-schema"),
   getPreferences: () => request<AppPreferences>("/api/preferences"),
+  getObsPluginInstallation: (obsRoot?: string) =>
+    request<ObsPluginInstallationStatus>(`/api/obs-plugin/installation${obsRoot ? `?obsRoot=${encodeURIComponent(obsRoot)}` : ""}`),
+  changeObsPluginInstallation: (action: "install" | "repair" | "remove" | "open-obs" | "reset-pairing", obsRoot?: string, removePairing = false) =>
+    request<ObsPluginInstallationStatus>("/api/obs-plugin/installation", {
+      method: "POST", body: JSON.stringify({ action, obsRoot: obsRoot || null, removePairing }),
+    }),
+  claimObsLiveLinkTarget: (projectId: string, ownerId: string) =>
+    request<void>("/api/obs-livelink/v3/lease", {
+      method: "PUT", body: JSON.stringify({ projectId, ownerId }),
+    }),
+  releaseObsLiveLinkTarget: (ownerId: string) =>
+    request<void>("/api/obs-livelink/v3/lease/release", {
+      method: "POST", body: JSON.stringify({ ownerId }),
+    }),
+  getObsLiveLinkStatus: () => request<ObsLiveLinkStatus>("/api/obs-livelink/v3/status"),
+  getObsLiveLinkWaveform: (projectId: string, recordingId: string, channelId: string,
+                           startSeconds: number, endSeconds: number, maxPoints = 600,
+                           afterSequence?: number) => {
+    const query = new URLSearchParams({ channelId, startSeconds: String(startSeconds),
+      endSeconds: String(endSeconds), maxPoints: String(maxPoints) });
+    if (afterSequence !== undefined) query.set("afterSequence", String(afterSequence));
+    return request<import("../domain/types").ObsLiveLinkWaveform>(
+      `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/waveform?${query}`);
+  },
+  getObsLiveLinkTranscriptEvents: (projectId: string, recordingId: string, afterRevision = 0) =>
+    request<import("../domain/types").ObsLiveLinkTranscriptSnapshot>(
+      `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/transcript-events?afterRevision=${afterRevision}`),
+  setObsLiveLinkRecordingFolder: (enabled: boolean) =>
+    request<ObsLiveLinkStatus>("/api/obs-livelink/v3/recording-folder", {
+      method: "PUT", body: JSON.stringify({ enabled }),
+    }),
+  importObsLiveLinkVideoSpan: async (projectId: string, spanId: string, sourcePath?: string) =>
+    normalizeMediaAsset(await request<ProjectMediaAsset>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/video-spans/import`, {
+      method: "POST", body: JSON.stringify({ spanId, sourcePath: sourcePath ?? null }),
+    })),
+  setObsLiveLinkForward: (channelId: string, enabled: boolean) =>
+    request<ObsLiveLinkStatus>(`/api/obs-livelink/v3/channels/${encodeURIComponent(channelId)}/forward`, {
+      method: "POST", body: JSON.stringify({ enabled }),
+    }),
+  actOnObsLiveLinkRecording: (action: "start" | "pause" | "resume" | "stop") =>
+    request<ObsLiveLinkStatus>("/api/obs-livelink/v3/recording/actions", {
+      method: "POST", body: JSON.stringify({ action }),
+    }),
+  setObsLiveLinkTriggerPolicy: (projectId: string, policy: import("../domain/types").ObsLiveLinkTriggerPolicy) =>
+    request<ObsLiveLinkStatus>(`/api/obs-livelink/v3/projects/${encodeURIComponent(projectId)}/trigger-policy`, {
+      method: "PUT", body: JSON.stringify(policy),
+    }),
+  listObsLiveLinkRecordings: (projectId: string) =>
+    request<import("../domain/types").ObsLiveLinkRecordingJournal[]>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings`),
+  retryObsLiveLinkArchive: (projectId: string, recordingId: string) =>
+    request<{ artifactReady: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/archive/retry`, {
+      method: "POST",
+    }),
   savePreferences: (preferences: AppPreferences) =>
     request<AppPreferences>("/api/preferences", { method: "PUT", body: JSON.stringify(preferences) }),
   getSystemStatus: () => request<SystemMetrics>("/api/system/status"),
@@ -193,6 +258,28 @@ export const api = {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
     return assets.map(normalizeMediaAsset);
   },
+  inspectObsRecording: (projectId: string, sourcePath: string) =>
+    request<ObsRecordingInspection>(`/api/projects/${projectId}/obs-sessions/inspect`, {
+      method: "POST", body: JSON.stringify({ sourcePath }),
+    }),
+  createObsSession: (projectId: string, sourcePath: string, sources: ObsTrackSource[]) =>
+    request<ObsCaptureSession>(`/api/projects/${projectId}/obs-sessions`, {
+      method: "POST", body: JSON.stringify({ sourcePath, sources }),
+    }),
+  listObsSessions: (projectId: string) =>
+    request<ObsCaptureSession[]>(`/api/projects/${projectId}/obs-sessions`),
+  getObsSessionSubtitleStatus: (projectId: string, sessionId: string) =>
+    request<ObsSessionSubtitleStatus>(`/api/projects/${projectId}/obs-sessions/${sessionId}/subtitles/status`),
+  exportObsSessionSubtitles: (projectId: string, sessionId: string, assetIds: string[]) =>
+    downloadSrt(`/api/projects/${projectId}/obs-sessions/${sessionId}/subtitles?${new URLSearchParams(assetIds.map((id) => ["assetIds", id])).toString()}`, `${sessionId}--session.srt`),
+  renderObsSessionHardSubtitle: (projectId: string, sessionId: string, assetIds: string[]) =>
+    downloadFile(`/api/projects/${projectId}/obs-sessions/${sessionId}/hard-subtitle?${new URLSearchParams(assetIds.map((id) => ["assetIds", id])).toString()}`, `${sessionId}--hard-subtitle.mp4`, { method: "POST" }),
+  getObsLivePairing: (projectId: string) =>
+    request<{ protocolVersion: string; token: string; overlayPath: string }>(`/api/projects/${projectId}/obs-live/pairing`),
+  listObsLiveSessions: (projectId: string) =>
+    request<ObsLiveSession[]>(`/api/projects/${projectId}/obs-live/sessions`),
+  getObsLiveCaptionQuality: (projectId: string, sessionId: string) =>
+    request<ObsLiveCaptionQuality>(`/api/projects/${projectId}/obs-live/sessions/${sessionId}/caption-quality`),
   listProjectMediaTranscriptionStatus: (projectId: string) =>
     request<MediaTranscriptionProgress[]>(`/api/projects/${projectId}/media/transcription-status`),
   // Job snapshots only. Polling the full media list for progress transferred the

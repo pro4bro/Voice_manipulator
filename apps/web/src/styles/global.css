@@ -35,21 +35,12 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 .button--full { width: 100%; }
 
 .brand-mark {
-  position: relative;
   width: 54px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  color: var(--text-inverse);
-  background: var(--surface-inverse);
-  font-family: var(--mono);
-  font-size: calc(12px * var(--font-scale));
-  font-weight: 800;
-  letter-spacing: -.08em;
+  height: 54px;
+  display: block;
+  border-radius: 50%;
+  object-fit: contain;
 }
-.brand-mark::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(255,255,255,.22); }
-.brand-mark i { position: absolute; right: -8px; bottom: -10px; width: 27px; height: 27px; border: 6px solid var(--accent); border-radius: 50%; }
 
 .boot-screen {
   height: 100dvh;

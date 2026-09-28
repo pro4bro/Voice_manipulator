@@ -3,10 +3,24 @@
 ## Application Folder
 
 All launcher paths are derived from the folder containing the repository.
-Python packages live in `.venv`, frontend packages in `apps/web/node_modules`,
-FFmpeg in `.tools/ffmpeg`, caches in `.cache`, and the preferred legacy sidecar
-in `.runtime/omnivoice-studio`. These folders can move with the application but
-are intentionally excluded from Git because they are machine-specific or large.
+Application dependencies live under `.runtime`, FFmpeg lives in
+`.tools/ffmpeg`, caches live in `.cache`, and the built web application lives in
+`apps/web/dist`. These folders are intentionally excluded from Git because they
+are machine-specific or large. VibeVoice and research engines use
+`.runtime/engines` by default; the app no longer silently reads sibling
+checkouts.
+
+A normal Windows `venv` is not a portable runtime. Its `pyvenv.cfg` and console
+entry points can refer to the Python installation that created it. Editing only
+the activation script does not remove that dependency. A folder may be called a
+portable test bundle only after `scripts/test-portable-runtime.ps1 -Profile All`
+passes from the moved folder. See `docs/PORTABLE-RUNTIME.md`.
+
+Runtime processes use isolated CPython 3.11.9 embedded distributions below
+`.runtime/python/<profile>`. Their `python311._pth` files contain only relative
+paths to vendored packages and the product/engine source needed by that profile.
+The build-machine venvs remain dependency sources for preparing a bundle and are
+not launcher dependencies.
 
 The source checkout at `engines/OmniVoice` is a Git submodule. Clone with
 `--recurse-submodules` or run `git submodule update --init --recursive`.

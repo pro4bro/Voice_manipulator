@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceOutput, WorkspacePage } from "../../domain/types";
 import { MediaPool } from "../media-pool/MediaPool";
+import type { MediaBatchAction } from "../media-pool/MediaPool";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 import { Icon } from "../../ui/Icon";
@@ -23,6 +24,7 @@ interface LibraryPanelProps {
   onQueueTranscriptions: (model: string) => void;
   onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemove: (asset: ProjectMediaAsset) => void;
+  onBatchAction: (action: MediaBatchAction) => void;
   onRestore: (asset: ProjectMediaAsset) => void;
   onReveal: (asset: ProjectMediaAsset) => void;
   onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
@@ -32,8 +34,11 @@ interface LibraryPanelProps {
   onSelectVoice: (voiceId: string) => void;
   voices?: ProjectVoice[];
   onDeleteVoice?: (voice: ProjectVoice) => void;
+  onDeleteVoices?: (voices: ProjectVoice[]) => void;
   onDeleteSpeaker?: (speaker: SpeakerProfile) => void;
+  onDeleteSpeakers?: (speakers: SpeakerProfile[]) => void;
   onDeleteEnvironment?: (profile: EnvironmentNoiseProfile) => void;
+  onDeleteEnvironments?: (profiles: EnvironmentNoiseProfile[]) => void;
 }
 
 export function LibraryPanel(props: LibraryPanelProps) {
@@ -44,7 +49,7 @@ export function LibraryPanel(props: LibraryPanelProps) {
         <button aria-selected={tab === "media"} className={tab === "media" ? "is-active" : ""} onClick={() => setTab("media")} role="tab" type="button"><Icon name="folder" />Media Pool <b>{props.assets.length}</b></button>
         <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
       </div>
-      {tab === "media" ? <MediaPool {...props} /> : <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteVoice={props.onDeleteVoice} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />}
+      {tab === "media" ? <MediaPool {...props} /> : <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />}
     </section>
   );
 }
@@ -60,12 +65,16 @@ interface ManipulatorLibraryProps {
   onSelectVoice: (voiceId: string) => void;
   voices?: ProjectVoice[];
   onDeleteVoice?: (voice: ProjectVoice) => void;
+  onDeleteVoices?: (voices: ProjectVoice[]) => void;
   onDeleteSpeaker?: (speaker: SpeakerProfile) => void;
+  onDeleteSpeakers?: (speakers: SpeakerProfile[]) => void;
   onDeleteEnvironment?: (profile: EnvironmentNoiseProfile) => void;
+  onDeleteEnvironments?: (profiles: EnvironmentNoiseProfile[]) => void;
   outputs: VoiceOutput[];
   activeOutputId: string | null;
   onOpenOutput: (output: VoiceOutput) => void;
   onDeleteOutput: (output: VoiceOutput) => void;
+  onDeleteOutputs?: (outputs: VoiceOutput[]) => void;
 }
 
 /**
@@ -81,8 +90,8 @@ export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
         <button aria-selected={tab === "output"} className={tab === "output" ? "is-active" : ""} onClick={() => setTab("output")} role="tab" type="button"><Icon name="file" />Voice Output <b>{props.outputs.length}</b></button>
       </div>
       {tab === "sound"
-        ? <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteVoice={props.onDeleteVoice} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
-        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
+        ? <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
+        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>
   );
 }

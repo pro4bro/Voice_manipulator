@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import type { EngineStatus, Project, ProjectCreate, ThemeMode } from "../domain/types";
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../domain/listSelection";
 import { Icon } from "../ui/Icon";
 
 interface ProjectHubProps {
@@ -17,6 +18,7 @@ interface ProjectHubProps {
   onRevealProject: (project: Project) => void;
   /** `permanent` erases the folder; otherwise the project only leaves the list. */
   onRemoveProject: (project: Project, permanent: boolean) => void;
+  onRemoveProjects?: (projects: Project[]) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
@@ -29,7 +31,7 @@ function projectInitials(name: string) {
   return name.split(/\s+/u).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, onRevealProject, onRemoveProject, theme, onToggleTheme }: ProjectHubProps) {
+export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, onRevealProject, onRemoveProject, onRemoveProjects, theme, onToggleTheme }: ProjectHubProps) {
   const [menu, setMenu] = useState<{ project: Project; left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [showCreate, setShowCreate] = useState(projects.length === 0);
@@ -47,6 +49,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
   const [draft, setDraft] = useState<ProjectCreate>(() => newDraft(defaultLocation));
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const [pickingFolder, setPickingFolder] = useState(false);
 
   useEffect(() => {
@@ -60,6 +63,24 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
       .filter(Boolean)
       .some((value) => String(value).toLocaleLowerCase("vi-VN").includes(needle)));
   }, [projects, query]);
+  const visibleIds = visibleProjects.map((project) => project.id);
+  const selectedIds = reconcileListSelection(selection, visibleIds).ids;
+  const selectedProjects = visibleProjects.filter((project) => selectedIds.includes(project.id));
+
+  useEffect(() => {
+    setSelection((current) => reconcileListSelection(current, visibleIds));
+  }, [visibleProjects]);
+
+  function selectProject(project: Project, shift: boolean, toggle: boolean) {
+    setSelection((current) => selectListItem(current, visibleIds, project.id, { shift, toggle }));
+  }
+
+  function removeSelectedProjects() {
+    if (selectedProjects.length < 2 || !onRemoveProjects) return;
+    if (!window.confirm(`Bỏ ${selectedProjects.length} project khỏi danh sách? Các thư mục project vẫn được giữ trên ổ đĩa.`)) return;
+    onRemoveProjects(selectedProjects);
+    setMenu(null);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -96,7 +117,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
     <main className="project-hub">
       <header className="hub-header">
         <div className="brand-lockup" aria-label="Pro4Bro Voice Manipulator">
-          <span className="brand-mark">P4B<i /></span>
+          <img alt="" className="brand-mark" src="/pro4bro-logo.png" />
           <span><b>PRO4BRO</b><strong>VOICE MANIPULATOR</strong></span>
         </div>
         <div className="hub-header__actions">
@@ -133,14 +154,24 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
             </div>
           </header>
 
+          {selectedProjects.length > 1 ? <div className="project-selection-actions"><span>Đã chọn {selectedProjects.length} project</span><button disabled={!onRemoveProjects} onClick={removeSelectedProjects} type="button">Remove khỏi danh sách ({selectedProjects.length})</button></div> : null}
+
           {error ? <div className="hub-error"><b>Local API chưa sẵn sàng</b><span>{error}</span><button onClick={onRetry} type="button">Thử lại</button></div> : null}
 
-          <div className={`project-grid project-grid--${view}`}>
+          <div className={`project-grid project-grid--${view}`} onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !event.altKey) {
+              event.preventDefault();
+              setSelection((current) => selectAllListItems(current, visibleIds));
+            }
+          }}>
             <button className="project-card project-card--new" onClick={() => setShowCreate(true)} type="button">
               <span className="new-project-icon"><Icon name="plus" /></span><strong>New project</strong><small>Tạo workspace âm thanh mới</small>
             </button>
             {visibleProjects.map((project, index) => (
-              <button className="project-card" key={project.id} onClick={() => onOpen(project)} onContextMenu={(event) => { event.preventDefault(); setMenu({ project, left: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), top: Math.max(8, Math.min(event.clientY, window.innerHeight - 200)) }); }} type="button">
+              <button aria-pressed={selectedIds.includes(project.id)} className={`project-card ${selectedIds.includes(project.id) ? "is-selected" : ""}`} key={project.id} onClick={(event) => {
+                if (event.shiftKey || event.ctrlKey || event.metaKey) { selectProject(project, event.shiftKey, event.ctrlKey || event.metaKey); return; }
+                onOpen(project);
+              }} onContextMenu={(event) => { event.preventDefault(); if (!selectedIds.includes(project.id)) selectProject(project, false, false); setMenu({ project, left: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), top: Math.max(8, Math.min(event.clientY, window.innerHeight - 200)) }); }} type="button">
                 <span className="project-preview">
                   <b>{projectInitials(project.name) || "P4"}</b>
                   <span>{Array.from({ length: 28 }, (_, bar) => <i key={bar} style={{ height: `${18 + Math.abs(Math.sin((bar + index) * .51)) * 64}%` }} />)}</span>
@@ -155,8 +186,8 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
           {menu ? <div className="project-context-menu" ref={menuRef} role="menu" style={{ left: menu.left, top: menu.top }}>
             <header><span>PROJECT</span><b>{menu.project.name}</b></header>
             <button onClick={() => { const target = menu.project; setMenu(null); onRevealProject(target); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button>
-            <button onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, false); }} role="menuitem" type="button"><Icon name="back" /> Remove Project</button>
-            <button className="project-context-menu__danger" onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, true); }} role="menuitem" type="button"><Icon name="trash" /> Delete Project</button>
+            {selectedIds.includes(menu.project.id) && selectedProjects.length > 1 ? <button onClick={removeSelectedProjects} role="menuitem" type="button"><Icon name="back" /> Remove Project ({selectedProjects.length})</button> : <button onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, false); }} role="menuitem" type="button"><Icon name="back" /> Remove Project</button>}
+            {selectedProjects.length <= 1 || !selectedIds.includes(menu.project.id) ? <button className="project-context-menu__danger" onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, true); }} role="menuitem" type="button"><Icon name="trash" /> Delete Project</button> : null}
             <small>Remove chỉ bỏ khỏi danh sách, file vẫn còn trên ổ. Delete xóa cả thư mục project.</small>
           </div> : null}
 

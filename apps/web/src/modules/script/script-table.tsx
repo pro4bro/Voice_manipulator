@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type UIEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type UIEvent } from "react";
 
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
@@ -158,6 +159,7 @@ interface ScriptTableProps {
   emotionStyle: EmotionStylePreferences;
   getEmotionStyle: (emotion: EmotionLabel | null | undefined, preferences: EmotionStylePreferences) => CSSProperties | undefined;
   onAssignWords: (indexes: number[], profileId: string | null) => void;
+  onDeleteWords?: (indexes: number[]) => boolean;
   onMoveWords: (indexes: number[], row: SpeakerScriptRow) => void;
   /** The profile the whole take belongs to, for words nobody named. */
   defaultSpeakerId?: string | null;
@@ -295,7 +297,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenText
     })}
   </div>;
 }
-export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
+export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -304,6 +306,10 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   const draggingRef = useRef(false);
   const resizeRef = useRef<ResizeState | null>(null);
   const selectedWordIndexes = useMemo(() => new Set(selection.indexes), [selection.indexes]);
+  const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const rowIds = rows.map((row) => row.id);
+  const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
   // A sweep is measured from where it began, against the selection as it stood
@@ -323,6 +329,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   const [scroll, setScroll] = useState<ScrollMetrics>({ top: 0, clientHeight: 0, scrollHeight: 0, trackHeight: 0 });
 
   useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
+  useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [words, speakers, defaultSpeakerId]);
   // A selection made in the Timeline has to be reachable here without hunting
   // for it, so the table follows the last word touched either side.
   useLayoutEffect(() => {
@@ -355,7 +362,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     };
   }, []);
 
-  const gridTemplateColumns = useMemo(() => [...columns.map((column) => `${column.width}px`), "30px"].join(" "), [columns]);
+  const gridTemplateColumns = useMemo(() => [...columns.map((column) => `${column.width}px`), "30px", "30px"].join(" "), [columns]);
   const thumb = useMemo(() => {
     const visible = scroll.clientHeight;
     const total = Math.max(visible, scroll.scrollHeight);
@@ -371,6 +378,37 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     setScroll((current) => current.top === element.scrollTop && current.clientHeight === element.clientHeight && current.scrollHeight === element.scrollHeight && current.trackHeight === trackHeight
       ? current
       : { top: element.scrollTop, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, trackHeight });
+  }
+
+  function selectScriptRow(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) {
+      event.preventDefault();
+      setRowSelection((current) => selectAllListItems(current, rowIds));
+    }
+  }
+
+  function toggleScriptRow(event: React.MouseEvent<HTMLButtonElement>, rowId: string) {
+    event.stopPropagation();
+    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function assignProfileToSelectedRows(profileId: string) {
+    if (!selectedRowIds.length || profileId === "__choose__") return;
+    const selected = new Set(selectedRowIds);
+    const indexes = rows.filter((row) => selected.has(row.id)).flatMap((row) => row.words.map(({ index }) => index));
+    if (indexes.length) onAssignWords(indexes, profileId === "__none__" ? null : profileId);
+  }
+
+  function deleteSelectedRows() {
+    if (!onDeleteWords || !selectedRowIds.length || !window.confirm(`Xoá nội dung và word timing của ${selectedRowIds.length} Script row đã chọn?`)) return;
+    const selected = new Set(selectedRowIds);
+    const indexes = rows.filter((row) => selected.has(row.id)).flatMap((row) => row.words.map(({ index }) => index));
+    if (indexes.length && !onDeleteWords(indexes)) {
+      setDeleteMessage("Không xoá được các row này vì word timing không khớp chính xác với text hiện tại.");
+      return;
+    }
+    setDeleteMessage(null);
+    setRowSelection({ ids: [], anchorId: null });
   }
 
   useLayoutEffect(() => {
@@ -617,21 +655,24 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
 
   if (!rows.length) return null;
 
-  return <div className="script-table-shell">
+  return <div className="script-table-shell" onKeyDown={selectScriptRow}>
+    {selectedRowIds.length ? <div aria-label="Thao tác transcript rows đã chọn" className="script-row-bulk-actions"><b>{selectedRowIds.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho transcript rows" onChange={(event) => assignProfileToSelectedRows(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label>{onDeleteWords ? <button className="is-danger" onClick={deleteSelectedRows} type="button">Xoá rows đã chọn</button> : null}<button onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
+    {deleteMessage ? <p role="status">{deleteMessage}</p> : null}
     <div className="script-table-scroll" onPointerDown={(event) => {
       if (event.button !== 0) return;
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
       onSelectionChange(EMPTY_SELECTION);
     }} onScroll={syncScroll} ref={scrollRef}>
-      <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ gridTemplateColumns }}>
+        <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ gridTemplateColumns }}>
         <div className="script-table__header" role="row" style={{ gridTemplateColumns }}>
           {columns.map((column) => <div className="script-table__header-cell" key={column.id} role="columnheader"><b>{column.label}</b><button aria-label={`Kéo rộng cột ${column.label}`} className="script-table__resize" onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, column)} onPointerMove={resizeColumn} onPointerUp={endColumnResize} type="button" />{columns.length > 1 ? <button aria-label={`Xóa cột ${column.label}`} className="script-table__remove" onClick={() => removeColumn(column.id)} type="button">×</button> : null}</div>)}
           <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
         </div>
-        {rows.map((row) => <div className={`script-table__row ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns }}>
-          {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column)}</div>)}
-          <i aria-hidden="true" className="script-table__add-space" />
+          {rows.map((row) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns }}>
+            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column)}</div>)}
+            <i aria-hidden="true" className="script-table__add-space" />
+            <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
         </div>)}
       </div>
     </div>

@@ -71,4 +71,37 @@ describe("Sound Library", () => {
 
     expect(screen.queryByLabelText("Xoá voice An · LoRA")).toBeNull();
   });
+
+  it("selects profiles with Shift and applies a shared speaker color", () => {
+    const second = speaker("speaker-binh", "Bình");
+    const catalog = { ...CATALOG, speakers: [...CATALOG.speakers, second] };
+    const onCatalogChange = vi.fn();
+    show({ catalog, onCatalogChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
+    fireEvent.change(screen.getByLabelText("Màu cho Speaker Profiles đã chọn"), { target: { value: "#112233" } });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng màu" }));
+
+    expect(onCatalogChange).toHaveBeenLastCalledWith(expect.objectContaining({ speakers: [
+      expect.objectContaining({ id: "speaker-an", color: "#112233" }),
+      expect.objectContaining({ id: "speaker-binh", color: "#112233" }),
+    ] }));
+  });
+
+  it("confirms one bulk profile deletion for the selected range", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const second = speaker("speaker-binh", "Bình");
+    const catalog = { ...CATALOG, speakers: [...CATALOG.speakers, second] };
+    const onDeleteSpeakers = vi.fn();
+    show({ catalog, onDeleteSpeakers });
+
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Xoá profiles đã chọn" }));
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onDeleteSpeakers).toHaveBeenCalledWith([speaker("speaker-an", "An"), second]);
+    confirm.mockRestore();
+  });
 });

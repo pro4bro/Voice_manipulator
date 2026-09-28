@@ -49,6 +49,17 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
     }
   }
 
+  async function removeProjects(projectsToForget: Project[]) {
+    const results = await Promise.allSettled(projectsToForget.map((project) => api.forgetProject(project.id)));
+    const forgotten = projectsToForget.filter((_, index) => results[index].status === "fulfilled");
+    const forgottenIds = new Set(forgotten.map((project) => project.id));
+    if (forgottenIds.size) setProjects((current) => current.filter((project) => !forgottenIds.has(project.id)));
+    if (forgotten.length !== projectsToForget.length) {
+      const failedNames = projectsToForget.filter((_, index) => results[index].status === "rejected").map((project) => project.name);
+      setError(`Đã bỏ ${forgotten.length}/${projectsToForget.length} project khỏi danh sách. Không thể bỏ: ${failedNames.join(", ")}.`);
+    }
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -157,7 +168,7 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
   }
 
   if (loading) {
-    return <main className="boot-screen"><span className="brand-mark">P4B<i /></span><b>Đang khởi động local workspace</b><div><i /><i /><i /></div></main>;
+    return <main className="boot-screen"><img alt="Pro4Bro" className="brand-mark" src="/pro4bro-logo.png" /><b>Đang khởi động local workspace</b><div><i /><i /><i /></div></main>;
   }
 
   if (runtime && !runtime.busy && runtime.overall !== "running") {
@@ -181,6 +192,7 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
       onRetry={() => void load()}
       onRevealProject={(project) => void revealProject(project)}
       onRemoveProject={(project, permanent) => void removeProject(project, permanent)}
+      onRemoveProjects={(projectsToForget) => void removeProjects(projectsToForget)}
       projects={projects}
       onToggleTheme={toggleTheme}
       theme={theme}
@@ -198,7 +210,7 @@ function RuntimeOfflineScreen({ runtime, error, theme, onAction, onToggleTheme }
   return (
     <main className="runtime-offline-screen">
       <section>
-        <span className="brand-mark">P4B<i /></span>
+        <img alt="Pro4Bro" className="brand-mark" src="/pro4bro-logo.png" />
         <p>WINDOWS / RUNTIME CONTROL</p>
         <h1>Project workloads are off</h1>
         <p>API, STT engine, model workers và background tasks đã dừng. Runtime controller siêu nhẹ vẫn giữ màn hình này để có thể bật lại toàn bộ hệ thống.</p>

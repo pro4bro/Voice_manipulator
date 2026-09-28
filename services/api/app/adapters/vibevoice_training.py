@@ -2,7 +2,7 @@
 
 VibeVoice is not Pro4Bro's engine and its checkouts stay untouched: the TTS
 trainer comes from the community fork, the ASR trainer from Microsoft's repo,
-and both run in Pro4Bro's own VibeVoice runtime (`.runtime/vibevoice-training`)
+and both run in Pro4Bro's own VibeVoice runtime (`.runtime/python/vibevoice-training`)
 when it exists, else in the Microsoft checkout's Python. What this module owns is
 the boundary - where things are, whether they are importable, how a Dataset
 Manifest becomes each trainer's input, and which command runs it.
@@ -113,7 +113,7 @@ class VibeVoiceRuntime:
         if not repository.is_dir():
             return [f"repo {repository.name}"]
         if not self.paths.python.is_file():
-            return ["Python cho VibeVoice (.runtime/vibevoice-training hoặc .venv của repo)"]
+            return ["Python cho VibeVoice (.runtime/python/vibevoice-training)"]
         key = (str(repository), *packages)
         cached = self._cache.get(key)
         if cached and time.monotonic() - cached[0] < self.ttl_seconds:

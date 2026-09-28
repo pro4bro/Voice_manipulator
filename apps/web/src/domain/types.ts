@@ -60,6 +60,7 @@ export type ModuleId =
   | "script"
   | "control-rack"
   | "recorder"
+  | "obs-capture"
   | "timeline"
   | "voice-patch"
   | "recent-takes"
@@ -191,6 +192,9 @@ export interface ProjectMediaAsset {
   mediaKind: "audio" | "video";
   sourcePath: string;
   analysisPath?: string | null;
+  sourceArchiveAssetId?: string | null;
+  sourceArchiveStreamIndex?: number | null;
+  sourceArchiveTrackUid?: number | null;
   hasExternalSource?: boolean;
   localCacheEnabled?: boolean;
   localCacheUpdatedAt?: string | null;
@@ -314,6 +318,89 @@ export interface DiarizationPreferences {
   model: string;
   huggingfaceToken: string | null;
   huggingfaceTokenConfigured: boolean;
+}
+
+export interface ObsTrackSource {
+  streamIndex: number;
+  sourceLabel: string;
+  sourceId?: string | null;
+}
+
+export interface ObsRecordingInspection {
+  duration: number;
+  tracks: Array<{ streamIndex: number; obsTrack: number; sampleRate: number; codec: string }>;
+}
+
+export interface ObsCaptureSession {
+  id: string;
+  status: "queued" | "processing" | "ready" | "error";
+  createdAt: string;
+  updatedAt: string;
+  recordingAssetId: string | null;
+  recordingPath: string | null;
+  duration: number;
+  tracks: Array<ObsTrackSource & {
+    obsTrack: number;
+    assetId: string;
+    sourcePath: string;
+    analysisPath: string;
+    videoOffsetSeconds: number;
+  }>;
+  error: string | null;
+}
+
+export interface ObsSessionSubtitleStatus {
+  sessionId: string;
+  readyCues: number;
+  skippedCues: number;
+  unsafeWords: number;
+  sources: Array<{
+    assetId: string;
+    sourceId: string | null;
+    sourceLabel: string;
+    transcriptionStatus: string;
+    readyCues: number;
+    skippedCues: number;
+    unsafeWords: number;
+  }>;
+}
+
+export interface ObsLiveGap {
+  firstSequence: number;
+  lastSequence: number;
+  missingFrames: number;
+}
+
+export interface ObsLiveSession {
+  id: string;
+  status: "recording" | "paused" | "stopped";
+  createdAt: string;
+  updatedAt: string;
+  obsVersion: string;
+  captureId: string;
+  sourceId: string;
+  sourceLabel: string;
+  sampleRate: number;
+  channels: number;
+  lastSequence: number;
+  framesReceived: number;
+  bytesReceived: number;
+  gaps: ObsLiveGap[];
+  assetId: string | null;
+  timingComplete: boolean;
+  liveSttStatus: "waiting" | "listening" | "transcribing" | "live" | "paused" | "stopped" | "error";
+  liveText: string;
+  livePending: string;
+  liveSttError: string | null;
+  liveSttLagSeconds: number;
+}
+
+export interface ObsLiveCaptionQuality {
+  sessionId: string;
+  finalAvailable: boolean;
+  mismatchPercent: number | null;
+  liveWords: number;
+  finalWords: number;
 }
 
 export interface SpeakerSimilarityPreferences {
@@ -653,6 +740,165 @@ export interface ProjectVoice {
   /** Aggregate awaiting or carrying the identity-similarity publication gate. */
   modelSetId?: string | null;
   createdAt: string;
+}
+
+export interface ObsLiveLinkChannel {
+  channelId: string;
+  sourceUuid: string;
+  nativeName: string;
+  alias: string;
+  aliasRevision: number;
+  slot: number;
+  missing: boolean;
+  meterPeak: number;
+  sampleRate: number;
+  audioChannels: number;
+  muted: boolean;
+  desiredForward: boolean;
+  appliedForward: boolean;
+  pendingCommandId: string | null;
+  appliedMonotonicNs?: number;
+  appliedSampleIndex?: number | null;
+  lastError?: string;
+  capture?: ObsLiveLinkChannelCapture;
+}
+
+export interface ObsLiveLinkChannelCapture {
+  recordingId: string | null;
+  projectId: string | null;
+  state: "idle" | "disconnected" | "missing" | "forward-pending" | "disabled" | "paused" | "pending" | "receiving" | "stalled";
+  durableChunkCount: number;
+  lastDurableSequence: number | null;
+  lastDurableSampleIndexExclusive: number | null;
+  lastDurableAtUtc: string | null;
+  sampleGapCount: number;
+  sampleGapFrames: number;
+}
+
+/** PCM16 extrema at recording-relative frames; archive zeros may include journaled gap padding. */
+export interface ObsLiveLinkWaveformPoint {
+  startFrame: number;
+  endFrame: number;
+  firstSampleIndex: number | null;
+  lastSampleIndexExclusive: number | null;
+  min: number | null;
+  max: number | null;
+  peak: number | null;
+}
+
+export interface ObsLiveLinkWaveform {
+  recordingId: string;
+  projectId: string;
+  channelId: string;
+  source: "pcm" | "mka";
+  sampleAxis: "channel" | "recording";
+  sampleRate: number | null;
+  startSeconds: number;
+  endSeconds: number;
+  lastDurableSequence: number;
+  lastIncludedSequence: number;
+  hasMore: boolean;
+  points: ObsLiveLinkWaveformPoint[];
+  gaps?: Array<{ startFrame: number; endFrame: number; classification: string }>;
+}
+
+/** Provisional channel-owned STT; segment bounds do not certify word timing. */
+export interface ObsLiveLinkTranscriptEvent {
+  schemaVersion: 1;
+  eventRevision: number;
+  recordingId: string;
+  channelId: string;
+  sourceUuid: string;
+  alias: string;
+  utteranceId: string | null;
+  revision: number;
+  firstSampleIndex: number;
+  lastSampleIndexExclusive: number;
+  sampleRate: number;
+  startSeconds: number;
+  endSeconds: number;
+  status: "listening" | "partial" | "final" | "error" | "paused";
+  text: string;
+  pending: string;
+  timingTrust: "segment" | "none";
+  lagSeconds: number;
+  error: string | null;
+}
+
+export interface ObsLiveLinkTranscriptSnapshot {
+  schemaVersion: 1;
+  recordingId: string;
+  revision: number;
+  events: ObsLiveLinkTranscriptEvent[];
+}
+
+export interface ObsLiveLinkTranscriptRow extends ObsLiveLinkTranscriptEvent {
+  utteranceId: string;
+  firstEventRevision: number;
+}
+
+export interface ObsLiveLinkTriggerPolicy {
+  ignoreStart: boolean;
+  ignorePause: boolean;
+  ignoreStop: boolean;
+}
+
+export interface ObsLiveLinkRecording {
+  recordingId: string;
+  projectId: string;
+  status: "recording" | "paused" | "stopped";
+  archiveStatus: "pending" | "ready" | "error";
+  sourceArchive?: { parentAssetId: string; sourcePath: string; tracks: Array<{ channelId: string; sourceUuid: string; streamIndex: number; trackUid: number; relayLabel: string; aliasRevision: number; analysisPath: string | null }> } | null;
+  startedMonotonicNs: number;
+  startedAtUtc?: string | null;
+  endedMonotonicNs: number | null;
+  pauseCauses: Array<"manual" | "obs-automation">;
+  videoSpanIds: string[];
+  capturePauseIntervals?: Array<{ startMonotonicNs: number; endMonotonicNs: number | null }>;
+  channelIntervals: Array<{ channelId: string; reason: "user-disabled" | "source-missing" | "forward-pending"; startMonotonicNs: number; endMonotonicNs: number | null }>;
+}
+
+export interface ObsLiveLinkRecordingJournal {
+  protocolVersion: 3;
+  recording: ObsLiveLinkRecording;
+  channels?: Array<{ channelId: string; nativeName?: string; relayLabel: string; slot: number | null; forwardApplied: boolean }>;
+  videoSpans?: Array<{ spanId: string; startedMonotonicNs: number; endedMonotonicNs: number | null; importedVideoAssetId: string | null; recordingFileName?: string | null; recordingFolder?: string | null; recordingFileAvailable?: boolean; videoSha256?: string | null }>;
+  sourceStems?: Array<{ channelId: string; sourceUuid: string; alias: string; assetId: string | null; sourcePath: string; analysisPath: string | null; gaps: Array<{ firstSampleIndex: number; lastSampleIndex: number; classification: string }> }>;
+}
+
+export interface ObsLiveLinkStatus {
+  connectionState: "connected" | "disconnected";
+  connectionId: string | null;
+  connectionEpoch: string | null;
+  serverEpoch: string;
+  commandRevision: number;
+  pendingAction?: "start" | "pause" | "resume" | "stop" | null;
+  statusRevision: number;
+  sceneCollection: string;
+  channels: ObsLiveLinkChannel[];
+  obsRecording: "idle" | "recording" | "paused" | "unknown";
+  activeProject: { id: string; name: string } | null;
+  leaseExpiresInSeconds: number;
+  appRecording?: ObsLiveLinkRecording | null;
+  recentRecordings?: ObsLiveLinkRecording[];
+  triggerPolicy?: ObsLiveLinkTriggerPolicy;
+  connectRecordingFolder?: boolean;
+  recordingFolder?: string | null;
+  videoSpans?: Array<{ spanId: string; endedMonotonicNs: number | null; importedVideoAssetId: string | null; recordingFileName: string | null; recordingFolder: string | null; recordingFileAvailable: boolean }>;
+}
+
+export interface ObsPluginInstallationStatus {
+  state: "obs-unavailable" | "package-unavailable" | "not-installed" | "installed" | "update-available" | "damaged";
+  message: string;
+  obsRoot: string | null;
+  layout: "standard" | "portable" | null;
+  obsRunning: boolean;
+  pairingReady: boolean;
+  pluginVersion?: string;
+  obsBuildVersion?: string;
+  detectedObsVersion?: string | null;
+  compatibilityWarning?: boolean;
+  restartObsRequired?: boolean;
 }
 
 export interface VoiceModelSetMember {

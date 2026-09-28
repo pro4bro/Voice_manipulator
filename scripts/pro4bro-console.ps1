@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "pro4bro-process-tree.ps1")
 
-$python = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$python = Join-Path $projectRoot ".runtime\python\core\python.exe"
 $apiRoot = Join-Path $projectRoot "services\api"
 $webDist = Join-Path $projectRoot "apps\web\dist\index.html"
 $controllerUrl = "http://127.0.0.1:18119"

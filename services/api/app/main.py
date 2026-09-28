@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.adapters import activity_center
@@ -31,6 +34,15 @@ from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
 from app.adapters.media_import_processor import MediaImportProcessor
+from app.adapters.obs_capture_sessions import FileObsCaptureSessions
+from app.adapters.obs_live_sessions import FileObsLiveSessions, ObsLiveConflict
+from app.adapters.obs_live_transcription import ObsLiveTranscriber
+from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
+from app.adapters.obs_plugin_installation import ObsPluginInstallation, ObsPluginInstallError
+from app.adapters.obs_livelink_connection import ObsLiveLinkConnection, LiveLinkError
+from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
+from app.adapters.obs_livelink_audio import FileObsLiveLinkAudio, MAX_CHUNK_BYTES
+from app.adapters.obs_session_subtitles import ObsSessionSubtitles
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.adapters.native_folder_picker import NativeFolderPicker
 from app.adapters.native_media_file_picker import NativeMediaFilePicker
@@ -81,6 +93,14 @@ from app.domain.models import (
     HealthStatus,
     MediaAnnotationUpdate,
     MediaImportResult,
+    ObsCaptureSession,
+    ObsLiveLinkVideoImport,
+    ObsRecordingInspect,
+    ObsRecordingInspection,
+    ObsLiveEvent,
+    ObsLiveOpen,
+    ObsLiveSession,
+    ObsSessionCreate,
     MediaScriptUpdate,
     MediaTranscriptReviewResult,
     MediaTimelineEditsUpdate,
@@ -125,6 +145,67 @@ from app.domain.models import (
 )
 from app.domain.ports import FolderPicker, ProjectRepository, SpeakerEmbedder, VoiceEngine
 from app.settings import Settings
+from app.runtime_layout import python_executable
+from app.domain.obs_livelink_state import ObsTriggerPolicy
+from pydantic import BaseModel
+
+
+class ObsPluginActionRequest(BaseModel):
+    action: Literal["install", "repair", "remove", "open-obs", "reset-pairing"]
+    obsRoot: str | None = None
+    removePairing: bool = False
+
+
+class ObsLiveLinkHello(BaseModel):
+    installId: str
+    processInstanceId: str
+    pluginVersion: str
+    obsVersion: str
+    protocolMin: int
+    protocolMax: int
+    recordingActive: bool = False
+    recordingPaused: bool = False
+    sceneCollection: str | None = None
+    channels: list[dict] | None = None
+
+
+class ObsLiveLinkHeartbeat(BaseModel):
+    installId: str
+    connectionId: str
+    connectionEpoch: str
+    recordingActive: bool = False
+    recordingPaused: bool = False
+    sceneCollection: str | None = None
+    channels: list[dict] | None = None
+
+
+class ObsLiveLinkForward(BaseModel):
+    enabled: bool
+
+
+class ObsLiveLinkAck(BaseModel):
+    installId: str
+    connectionId: str
+    connectionEpoch: str
+    commandId: str
+    revision: int
+    appliedState: bool | str | None = None
+    appliedMonotonicNs: int
+    sampleIndex: int | None = None
+    error: str | None = None
+
+
+class ObsLiveLinkLease(BaseModel):
+    projectId: str
+    ownerId: str
+
+
+class ObsLiveLinkRelease(BaseModel):
+    ownerId: str
+
+
+class ObsLiveLinkAction(BaseModel):
+    action: Literal["start", "pause", "resume", "stop"]
 
 
 def create_app(
@@ -148,7 +229,7 @@ def create_app(
         settings.training_wheel_cache,
         settings.omnivoice_root,
     )
-    vibevoice_python = settings.vibevoice_runtime_root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    vibevoice_python = python_executable(settings.vibevoice_runtime_root)
     vibevoice_paths = VibeVoicePaths(settings.vibevoice_root, runtime_python=vibevoice_python) if settings.vibevoice_root else None
     vibevoice_runtime = VibeVoiceRuntime(vibevoice_paths) if vibevoice_paths else None
     asr_adapters = FileAsrAdapters(projects)
@@ -308,17 +389,37 @@ def create_app(
         settings.ffmpeg_path,
         other_stt={"vibevoice-asr": vibevoice_stt},
     )
+    obs_sessions = FileObsCaptureSessions(
+        projects, media, media_importer.ffmpeg_path, media_importer.ffprobe_path
+    )
+    obs_session_subtitles = ObsSessionSubtitles(
+        media, media_importer.ffmpeg_path, media_importer.ffprobe_path
+    )
+    obs_live = FileObsLiveSessions(projects, media, settings.data_root, media_importer.ffmpeg_path)
     engine = voice_engine or OmniVoiceEngine(settings.omnivoice_root)
     folders = folder_picker or NativeFolderPicker()
     media_files = NativeMediaFilePicker()
     studio = LegacyStudioGateway(settings.legacy_studio_url)
     preferences = FileAppPreferences(settings.data_root)
+    obs_plugin_installation = ObsPluginInstallation(settings.project_root, settings.data_root)
+    obs_livelink_connection = ObsLiveLinkConnection(obs_plugin_installation.user_config)
+    obs_livelink_runtime = ObsLiveLinkRuntime(obs_livelink_connection, projects, settings.data_root)
+    obs_livelink_audio = FileObsLiveLinkAudio(
+        obs_livelink_connection, obs_livelink_runtime, projects, media,
+        media_importer.ffmpeg_path, media_importer.ffprobe_path,
+    )
     transcript_reviewer = OpenAICompatibleTranscriptReviewer(preferences)
     transcription_queue = SequentialTranscriptionQueue(
         projects,
         media,
         media_importer,
         transcript_reviewer,
+    )
+    obs_live_stt = ObsLiveTranscriber(
+        obs_live, settings.legacy_studio_url, transcription_queue.status_any_running,
+    )
+    obs_livelink_stt = ObsLiveLinkTranscription(
+        projects, settings.legacy_studio_url, transcription_queue.status_any_running,
     )
     diarization_queue = SequentialDiarizationQueue(
         projects,
@@ -369,6 +470,215 @@ def create_app(
             return media.list(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/obs-sessions/inspect",
+        response_model=ObsRecordingInspection,
+    )
+    def inspect_obs_recording(project_id: str, payload: ObsRecordingInspect) -> ObsRecordingInspection:
+        try:
+            return obs_sessions.inspect(project_id, payload.source_path)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/obs-sessions",
+        response_model=ObsCaptureSession,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_obs_session(
+        project_id: str, payload: ObsSessionCreate, background_tasks: BackgroundTasks
+    ) -> ObsCaptureSession:
+        try:
+            session = obs_sessions.start(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        background_tasks.add_task(obs_sessions.ingest, project_id, session.id, payload)
+        return session
+
+    @app.get(
+        "/api/projects/{project_id}/obs-sessions",
+        response_model=list[ObsCaptureSession],
+    )
+    def list_obs_sessions(project_id: str) -> list[ObsCaptureSession]:
+        try:
+            return obs_sessions.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/obs-sessions/{session_id}",
+        response_model=ObsCaptureSession,
+    )
+    def get_obs_session(project_id: str, session_id: str) -> ObsCaptureSession:
+        try:
+            return obs_sessions.get(project_id, session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS session not found") from exc
+
+    @app.get("/api/projects/{project_id}/obs-sessions/{session_id}/recording")
+    def get_obs_recording(project_id: str, session_id: str) -> Response:
+        try:
+            path = obs_sessions.recording_path(project_id, session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS recording not found") from exc
+        return FileResponse(path, media_type="video/x-matroska", filename=path.name)
+
+    @app.get("/api/projects/{project_id}/obs-sessions/{session_id}/subtitles/status")
+    def obs_session_subtitle_status(project_id: str, session_id: str) -> dict:
+        try:
+            session = obs_sessions.get(project_id, session_id)
+            return obs_session_subtitles.status(project_id, session)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-sessions/{session_id}/subtitles")
+    def export_obs_session_subtitles(
+        project_id: str, session_id: str, assetIds: list[str] | None = Query(default=None),
+    ) -> FileResponse:
+        try:
+            project = projects.get(project_id)
+            session = obs_sessions.get(project_id, session_id)
+            path = obs_session_subtitles.export(project, session, set(assetIds) if assetIds is not None else None)
+            return FileResponse(path, media_type="application/x-subrip", filename=path.name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/obs-sessions/{session_id}/hard-subtitle")
+    def render_obs_session_hard_subtitle(
+        project_id: str, session_id: str, assetIds: list[str] | None = Query(default=None),
+    ) -> FileResponse:
+        try:
+            project = projects.get(project_id)
+            session = obs_sessions.get(project_id, session_id)
+            path = obs_session_subtitles.render(
+                project, session, set(assetIds) if assetIds is not None else None
+            )
+            return FileResponse(path, media_type="video/mp4", filename=path.name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS session not found") from exc
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-live/pairing")
+    def obs_live_pairing(project_id: str) -> dict[str, str]:
+        try:
+            return {"protocolVersion": "2", "token": obs_live.pairing_token(project_id),
+                    "overlayPath": obs_live.overlay_path(project_id).as_posix()}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/obs-live/sessions",
+        response_model=ObsLiveSession,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def open_obs_live(project_id: str, payload: ObsLiveOpen, request: Request) -> ObsLiveSession:
+        try:
+            obs_live.authorize(project_id, request.headers.get("x-pro4bro-obs-token"))
+            return obs_live.open(project_id, payload)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ObsLiveConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.put(
+        "/api/projects/{project_id}/obs-live/sessions/{session_id}/chunks/{sequence}",
+        response_model=ObsLiveSession,
+    )
+    async def put_obs_live_chunk(
+        project_id: str, session_id: str, sequence: int, request: Request,
+        timestampNs: int, frames: int, sha256: str,
+    ) -> ObsLiveSession:
+        try:
+            obs_live.authorize(project_id, request.headers.get("x-pro4bro-obs-token"))
+            declared = int(request.headers.get("content-length", "0"))
+            if declared > 768_000:
+                raise HTTPException(status_code=413, detail="OBS PCM chunk quá lớn.")
+            data = bytearray()
+            async for part in request.stream():
+                data.extend(part)
+                if len(data) > 768_000:
+                    raise HTTPException(status_code=413, detail="OBS PCM chunk quá lớn.")
+            before = await asyncio.to_thread(obs_live.get, project_id, session_id)
+            accepted = await asyncio.to_thread(
+                obs_live.chunk, project_id, session_id, sequence, timestampNs,
+                frames, sha256, bytes(data),
+            )
+            if sequence > before.last_sequence:
+                obs_live_stt.offer(project_id, accepted, bytes(data))
+            return accepted
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ObsLiveConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS live session not found") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/obs-live/sessions/{session_id}/events",
+        response_model=ObsLiveSession,
+    )
+    async def post_obs_live_event(
+        project_id: str, session_id: str, payload: ObsLiveEvent, request: Request,
+    ) -> ObsLiveSession:
+        try:
+            obs_live.authorize(project_id, request.headers.get("x-pro4bro-obs-token"))
+            updated = await asyncio.to_thread(obs_live.event, project_id, session_id, payload)
+            if payload.kind == "stopped":
+                obs_live_stt.finish(project_id, session_id)
+            return updated
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ObsLiveConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS live session not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/obs-live/sessions",
+        response_model=list[ObsLiveSession],
+    )
+    def list_obs_live_sessions(project_id: str) -> list[ObsLiveSession]:
+        try:
+            return obs_live.list(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/obs-live/sessions/{session_id}",
+        response_model=ObsLiveSession,
+    )
+    def get_obs_live_session(project_id: str, session_id: str) -> ObsLiveSession:
+        try:
+            return obs_live.get(project_id, session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS live session not found") from exc
+
+    @app.get("/api/projects/{project_id}/obs-live/sessions/{session_id}/caption-quality")
+    def get_obs_live_caption_quality(project_id: str, session_id: str) -> dict:
+        try:
+            return obs_live.caption_quality(project_id, session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="OBS live session or stem not found") from exc
 
     @app.get("/api/projects/{project_id}/media/{asset_id}/waveform")
     async def project_media_waveform(
@@ -1415,6 +1725,303 @@ def create_app(
     @app.put("/api/preferences", response_model=AppPreferences)
     def save_preferences(payload: AppPreferences) -> AppPreferences:
         return preferences.save(payload)
+
+    @app.get("/api/obs-plugin/installation")
+    def obs_plugin_status(obsRoot: str | None = None) -> dict:
+        return obs_plugin_installation.status(obsRoot)
+
+    @app.get("/api/obs-livelink/v3/status")
+    def obs_livelink_status() -> dict:
+        return obs_livelink_runtime.status()
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/waveform")
+    def obs_livelink_waveform(project_id: str, recording_id: str, channelId: str,
+                              startSeconds: float = 0, endSeconds: float = 120,
+                              maxPoints: int = 600, afterSequence: int | None = None) -> dict:
+        try:
+            return obs_livelink_audio.waveform.snapshot(
+                project_id, recording_id, channelId, start_seconds=startSeconds,
+                end_seconds=endSeconds, max_points=maxPoints, after_sequence=afterSequence,
+            )
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/transcript-events")
+    def obs_livelink_transcript_events(project_id: str, recording_id: str,
+                                       afterRevision: int = 0) -> dict:
+        try:
+            return obs_livelink_stt.snapshot(project_id, recording_id, afterRevision)
+        except (LiveLinkError, KeyError) as exc:
+            raise HTTPException(status_code=exc.status if isinstance(exc, LiveLinkError) else 404,
+                                detail=str(exc)) from exc
+
+    @app.put("/api/obs-livelink/v3/recording-folder")
+    def obs_livelink_recording_folder(payload: dict) -> dict:
+        return obs_livelink_runtime.set_recording_folder_connected(bool(payload.get("enabled")))
+
+    @app.post("/api/projects/{project_id}/obs-livelink/video-spans/import")
+    async def import_obs_video_span(project_id: str, payload: ObsLiveLinkVideoImport) -> dict:
+        try:
+            project = projects.get(project_id)
+            span, locator = obs_livelink_runtime.video_span(payload.span_id)
+            if span.ended_monotonic_ns is None:
+                raise LiveLinkError("OBS video span is still recording.", 409)
+            if obs_livelink_runtime.status().get("obsRecording") in {"recording", "paused"}:
+                raise LiveLinkError("OBS is still recording; wait for Stop before importing an MKV.", 409)
+            if span.imported_video_asset_id:
+                return media.get(project_id, span.imported_video_asset_id).model_dump(mode="json", by_alias=True)
+            source = Path(payload.source_path).expanduser().resolve(strict=True) if payload.source_path else (
+                Path(locator["path"]).resolve(strict=True) if locator else None)
+            if source is None or not source.is_file() or source.suffix.lower() != ".mkv":
+                raise LiveLinkError("Choose a completed MKV recording for this OBS video span.", 400)
+            before = source.stat()
+            if before.st_size <= 0:
+                raise LiveLinkError("OBS MKV is empty or still being written.", 409)
+            await asyncio.sleep(0.3)
+            settled = source.stat()
+            if (before.st_size, before.st_mtime_ns) != (settled.st_size, settled.st_mtime_ns):
+                raise LiveLinkError("OBS MKV is still being written; wait for recording finalization and retry.", 409)
+            digest = hashlib.sha256()
+            with source.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            sha256 = digest.hexdigest()
+            if span.video_sha256 == sha256 and span.imported_video_asset_id:
+                return media.get(project_id, span.imported_video_asset_id).model_dump(mode="json", by_alias=True)
+            for existing in obs_livelink_runtime.status().get("videoSpans", []):
+                if existing.get("videoSha256") == sha256 and existing.get("importedVideoAssetId"):
+                    asset = media.get(project_id, existing["importedVideoAssetId"])
+                    obs_livelink_runtime.link_video_asset(payload.span_id, asset.id, sha256)
+                    return asset.model_dump(mode="json", by_alias=True)
+            result = await media_importer.process_local_path(project, str(source), cache_local=True)
+            after = source.stat()
+            if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                raise LiveLinkError("OBS MKV changed during import; wait for recording finalization and retry.", 409)
+            if result.asset.media_kind != "video":
+                raise LiveLinkError("Selected MKV does not contain a video stream.", 400)
+            obs_livelink_runtime.link_video_asset(payload.span_id, result.asset.id, sha256)
+            return result.asset.model_dump(mode="json", by_alias=True)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail="Selected MKV no longer exists") from exc
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/obs-livelink/v3/events")
+    async def obs_livelink_events(request: Request):
+        async def stream():
+            previous = None
+            while not await request.is_disconnected():
+                snapshot = obs_livelink_runtime.status()
+                serialized = json.dumps(snapshot, ensure_ascii=False)
+                if serialized != previous:
+                    yield f"data: {serialized}\n\n"
+                    previous = serialized
+                await asyncio.sleep(0.25)
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/obs-livelink/v3/hello")
+    def obs_livelink_hello(payload: ObsLiveLinkHello, request: Request) -> dict:
+        try:
+            data = payload.model_dump(exclude_none=True)
+            return obs_livelink_runtime.sync(data, obs_livelink_connection.hello(request.headers.get("authorization", ""), data), for_obs=True)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/heartbeat")
+    def obs_livelink_heartbeat(payload: ObsLiveLinkHeartbeat, request: Request) -> dict:
+        try:
+            data = payload.model_dump(exclude_none=True)
+            return obs_livelink_runtime.sync(data, obs_livelink_connection.heartbeat(request.headers.get("authorization", ""), data), for_obs=True)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/channels/{channel_id}/forward")
+    def obs_livelink_forward(channel_id: str, payload: ObsLiveLinkForward) -> dict:
+        try:
+            return obs_livelink_runtime.status(obs_livelink_connection.set_forward(channel_id, payload.enabled))
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.get("/api/obs-livelink/v3/connections/{connection_id}/commands")
+    def obs_livelink_commands(connection_id: str, request: Request, installId: str,
+                              epoch: str, after: int = 0, waitSeconds: float = 20) -> dict:
+        try:
+            return obs_livelink_connection.commands(request.headers.get("authorization", ""),
+                installId, connection_id, epoch, after, waitSeconds)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/commands/ack")
+    def obs_livelink_ack(payload: ObsLiveLinkAck, request: Request) -> dict:
+        try:
+            data = payload.model_dump()
+            command = obs_livelink_connection.pending_command(data["commandId"])
+            snapshot = obs_livelink_connection.acknowledge(request.headers.get("authorization", ""), data)
+            if command:
+                return obs_livelink_runtime.applied_ack(command, data)
+            return obs_livelink_runtime.status(snapshot)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/lifecycle")
+    def obs_livelink_lifecycle(payload: dict, request: Request) -> dict:
+        try:
+            return obs_livelink_runtime.event(request.headers.get("authorization", ""), payload)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/recording/actions")
+    def obs_livelink_action(payload: ObsLiveLinkAction) -> dict:
+        try:
+            return obs_livelink_runtime.action(payload.action)
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.put("/api/obs-livelink/v3/recordings/{recording_id}/channels/{channel_id}/chunks/{sequence}")
+    async def obs_livelink_chunk(recording_id: str, channel_id: str, sequence: int,
+                                 request: Request, installId: str, connectionId: str,
+                                 epoch: str, sourceUuid: str, firstSampleIndex: int,
+                                 frameCount: int, sampleRate: int, channels: int,
+                                 obsAudioTimestampNs: int, pluginMonotonicNs: int,
+                                 sha256: str) -> dict:
+        try:
+            obs_livelink_connection.require_connection(
+                request.headers.get("authorization", ""), installId, connectionId, epoch,
+            )
+            pcm = bytearray()
+            async for part in request.stream():
+                pcm.extend(part)
+                if len(pcm) > MAX_CHUNK_BYTES:
+                    raise HTTPException(status_code=413, detail="OBS PCM chunk exceeds the upload limit")
+            result = obs_livelink_audio.chunk(
+                request.headers.get("authorization", ""), install_id=installId,
+                connection_id=connectionId, epoch=epoch, recording_id=recording_id,
+                channel_id=channel_id, source_uuid=sourceUuid, sequence=sequence,
+                first_sample_index=firstSampleIndex, frame_count=frameCount,
+                sample_rate=sampleRate, channels=channels,
+                obs_audio_timestamp_ns=obsAudioTimestampNs,
+                plugin_monotonic_ns=pluginMonotonicNs, sha256=sha256,
+                pcm=bytes(pcm),
+            )
+            if not result["duplicate"]:
+                try:
+                    state = obs_livelink_runtime._require_state()
+                    recording = state.recording if state.recording and state.recording.recording_id == recording_id else next(
+                        item for item in state.completed_recordings if item.recording_id == recording_id)
+                    channel = next(item for item in state.channels if item.channel_id == channel_id)
+                    obs_livelink_stt.offer(
+                        project_id=recording.project_id, recording_id=recording_id,
+                        channel_id=channel_id, source_uuid=sourceUuid, alias=channel.relay_label,
+                        sequence=sequence, first_sample=firstSampleIndex,
+                        sample_rate=sampleRate, channels=channels,
+                        plugin_monotonic_ns=pluginMonotonicNs,
+                        recording_started_ns=recording.started_monotonic_ns,
+                        pcm=bytes(pcm),
+                    )
+                except Exception as exc:
+                    # The durable PCM ACK must never depend on provisional STT.
+                    logging.getLogger(__name__).warning(
+                        "LiveLink STT could not accept durable chunk %s/%s/%s: %s",
+                        recording_id, channel_id, sequence, exc,
+                    )
+            return result
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/recordings/{recording_id}/finalize")
+    async def obs_livelink_finalize(recording_id: str, payload: dict, request: Request) -> dict:
+        try:
+            result = await asyncio.to_thread(
+                obs_livelink_audio.finalize,
+                request.headers.get("authorization", ""),
+                install_id=payload.get("installId", ""),
+                connection_id=payload.get("connectionId", ""),
+                epoch=payload.get("connectionEpoch", ""), recording_id=recording_id)
+            try:
+                obs_livelink_stt.finish(recording_id)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "LiveLink STT could not finalize recording %s: %s", recording_id, exc,
+                )
+            return result
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings")
+    def obs_livelink_recordings(project_id: str) -> list[dict]:
+        try:
+            root = Path(projects.get(project_id).project_path).resolve() / "assets" / "obs-livelink"
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        locator_status = {item["spanId"]: item for item in obs_livelink_runtime.status().get("videoSpans", [])}
+        records = [json.loads(path.read_text(encoding="utf-8"))
+                   for path in sorted(root.glob("*/recording.json"),
+                                      key=lambda item: item.stat().st_mtime, reverse=True)]
+        for record in records:
+            record["videoSpans"] = [{
+                **span,
+                **{key: locator_status[span["spanId"]][key]
+                   for key in ("recordingFileName", "recordingFolder", "recordingFileAvailable")
+                   if span.get("spanId") in locator_status},
+            } for span in record.get("videoSpans", [])]
+        return records
+
+    @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/archive/retry")
+    def obs_livelink_archive_retry(project_id: str, recording_id: str) -> dict:
+        try:
+            projects.get(project_id)
+            return obs_livelink_audio.retry(project_id, recording_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.put("/api/obs-livelink/v3/projects/{project_id}/trigger-policy")
+    def obs_livelink_policy(project_id: str, payload: ObsTriggerPolicy) -> dict:
+        try:
+            return obs_livelink_runtime.set_policy(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.put("/api/obs-livelink/v3/lease")
+    def obs_livelink_lease(payload: ObsLiveLinkLease) -> dict:
+        try:
+            project = projects.get(payload.projectId)
+            snapshot = obs_livelink_connection.claim(
+                project_id=project.id, project_name=project.name, owner_id=payload.ownerId,
+            )
+            return obs_livelink_runtime.sync_current(snapshot)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.post("/api/obs-livelink/v3/lease/release")
+    def obs_livelink_release(payload: ObsLiveLinkRelease) -> dict:
+        return obs_livelink_runtime.sync_current(obs_livelink_connection.release(payload.ownerId))
+
+    @app.post("/api/obs-plugin/installation")
+    def obs_plugin_action(payload: ObsPluginActionRequest) -> dict:
+        try:
+            if payload.action == "open-obs":
+                return obs_plugin_installation.open_obs(payload.obsRoot)
+            if payload.action == "reset-pairing":
+                return obs_plugin_installation.reset_pairing(payload.obsRoot)
+            return obs_plugin_installation.apply(
+                payload.action, payload.obsRoot, remove_pairing=payload.removePairing,
+            )
+        except ObsPluginInstallError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail="Windows từ chối ghi thư mục OBS. Hãy chạy app bằng quyền Administrator để cài plugin.") from exc
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail=f"Không thể thay đổi OBS plugin: {exc}") from exc
 
     @app.get("/api/system/status", response_model=SystemMetrics)
     def system_status() -> SystemMetrics:

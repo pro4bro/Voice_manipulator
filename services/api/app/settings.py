@@ -44,6 +44,9 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         project_root = Path(__file__).resolve().parents[3]
+        bundled_engines_root = project_root / ".runtime" / "engines"
+        bundled_vibevoice_root = bundled_engines_root / "vibevoice"
+        bundled_research_root = bundled_engines_root / "research"
         return cls(
             project_root=project_root,
             data_root=Path(os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")),
@@ -54,7 +57,7 @@ class Settings:
             training_runtime_root=Path(
                 os.getenv(
                     "PRO4BRO_TRAINING_RUNTIME_ROOT",
-                    project_root / ".runtime" / "omnivoice-training" / ".venv",
+                    project_root / ".runtime" / "python" / "omnivoice-training",
                 )
             ),
             training_wheel_cache=Path(
@@ -76,12 +79,12 @@ class Settings:
             )
             / "reading-packs",
             vibevoice_root=Path(
-                os.getenv("PRO4BRO_VIBEVOICE_ROOT", project_root.parent / "VibeVoice")
+                os.getenv("PRO4BRO_VIBEVOICE_ROOT", bundled_vibevoice_root)
             ),
             vibevoice_runtime_root=Path(
                 os.getenv(
                     "PRO4BRO_VIBEVOICE_RUNTIME_ROOT",
-                    project_root / ".runtime" / "vibevoice-training" / ".venv",
+                    project_root / ".runtime" / "python" / "vibevoice-training",
                 )
             ),
             training_models_root=Path(
@@ -97,11 +100,15 @@ class Settings:
             voice_generators_root=Path(__file__).resolve().parent / "resources" / "voice-generators",
             voice_changers_root=Path(__file__).resolve().parent / "resources" / "voice-changers",
             voice_changer_runtime_root=Path(
-                os.getenv("PRO4BRO_VOICE_CHANGER_RUNTIME_ROOT", project_root / ".runtime" / "voice-changer" / ".venv")
+                os.getenv("PRO4BRO_VOICE_CHANGER_RUNTIME_ROOT", project_root / ".runtime" / "python" / "voice-changer")
             ),
-            research_engines_root=Path(os.getenv("PRO4BRO_RESEARCH_ENGINES_ROOT", project_root.parent / "research-engines")),
-            applio_root=Path(os.getenv("PRO4BRO_APPLIO_ROOT", project_root.parent / "research-engines" / "Applio")),
-            rvc_runtime_root=Path(os.getenv("PRO4BRO_RVC_RUNTIME_ROOT", project_root / ".runtime" / "rvc" / ".venv")),
+            research_engines_root=Path(
+                os.getenv("PRO4BRO_RESEARCH_ENGINES_ROOT", bundled_research_root)
+            ),
+            applio_root=Path(
+                os.getenv("PRO4BRO_APPLIO_ROOT", bundled_research_root / "Applio")
+            ),
+            rvc_runtime_root=Path(os.getenv("PRO4BRO_RVC_RUNTIME_ROOT", project_root / ".runtime" / "python" / "rvc")),
             stt_engines_root=Path(__file__).resolve().parent / "resources" / "stt-engines",
             local_voice_generators_root=Path(
                 os.getenv("PRO4BRO_DATA_ROOT", project_root / "data")
@@ -115,7 +122,6 @@ def _model_hub_cache(project_root: Path) -> Path | None:
     configured = os.getenv("PRO4BRO_HF_HUB_CACHE")
     if configured:
         return Path(configured)
-    # The cache the original OmniVoice checkout filled beside this project,
-    # which already holds k2-fsa/OmniVoice and its audio tokenizer.
-    legacy = project_root.parent / "OmniVoice" / "OmniVoice" / ".cache" / "huggingface" / "hub"
-    return legacy if legacy.is_dir() else None
+    # A distributable installation must never silently depend on a cache beside
+    # the application folder. Preparation populates this ignored local folder.
+    return project_root / ".cache" / "huggingface" / "hub"

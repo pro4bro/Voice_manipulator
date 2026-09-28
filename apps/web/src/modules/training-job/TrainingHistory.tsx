@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "../../api/client";
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { ProjectAsrAdapter, SpeakerProfile, TrainingRun, TrainingRunFootprint, TrainingRunLog } from "../../domain/types";
 
 const STATUS: Record<TrainingRun["status"], string> = {
@@ -114,8 +115,25 @@ export function TrainingHistoryDialog({ projectId, runs, speakers, adapters = []
   const [footprints, setFootprints] = useState<Record<string, TrainingRunFootprint>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const nameOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id)?.name ?? (id || "Toàn bộ dataset");
   const ids = runs.map((run) => run.id).join(",");
+  const orderedIds = [...runs.map((run) => `run:${run.id}`), ...adapters.map((adapter) => `adapter:${adapter.id}`)];
+  const selectedIds = reconcileListSelection(selection, orderedIds).ids;
+  const selectedRuns = runs.filter((run) => selectedIds.includes(`run:${run.id}`));
+  const selectedAdapters = adapters.filter((adapter) => selectedIds.includes(`adapter:${adapter.id}`));
+  const hasLiveSelection = selectedRuns.some((run) => run.status === "running" || run.status === "pending");
+
+  function selectHistoryItem(event: MouseEvent<HTMLButtonElement>, id: string) {
+    setSelection((current) => selectListItem(current, orderedIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function selectAllHistory(event: KeyboardEvent<HTMLOListElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) {
+      event.preventDefault();
+      setSelection((current) => selectAllListItems(current, orderedIds));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -147,12 +165,62 @@ export function TrainingHistoryDialog({ projectId, runs, speakers, adapters = []
     if (!window.confirm(`Xoá adapter "${adapter.name}" khỏi lựa chọn Speech to Text?
 
 Weights vẫn nằm trong run đã tạo nó; xoá run để giải phóng dung lượng.`)) return;
+    setBusy(`adapter:${adapter.id}`);
     try {
       await api.deleteAsrAdapter(projectId, adapter.id);
       setMessage(`Đã xoá adapter ${adapter.name}.`);
       onChanged();
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Không xoá được adapter");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeSelected() {
+    if (!selectedIds.length || hasLiveSelection || busy) return;
+    setBusy("bulk");
+    setMessage(null);
+    try {
+      const details = await Promise.all(selectedRuns.map(async (run) => footprints[run.id] ?? api.getTrainingRunFootprint(projectId, run.id)));
+      const totalBytes = details.reduce((sum, detail) => sum + detail.bytes, 0);
+      const outputNames = details.flatMap((detail) => [...detail.voices.map((voice) => `voice ${voice.name}`), ...detail.asrAdapters.map((adapter) => `adapter ${adapter.name}`)]);
+      const warning = [
+        `Xoá ${selectedRuns.length} run và ${selectedAdapters.length} adapter đã chọn?`,
+        `Các run chiếm ${formatBytes(totalBytes)} gồm dữ liệu, checkpoint và log.`,
+        outputNames.length ? `Các output sẽ bị xoá cùng run: ${outputNames.join(", ")}.` : "Các run chưa tạo voice/adapter.",
+        "Không khôi phục được. Run đang chạy phải huỷ trước.",
+      ].join("\n\n");
+      if (!window.confirm(warning)) return;
+
+      const failures: string[] = [];
+      const removedAdapterIds = new Set<string>();
+      let removedRuns = 0;
+      let removedAdapters = 0;
+      for (const [index, run] of selectedRuns.entries()) {
+        const footprint = details[index];
+        try {
+          await api.deleteTrainingRun(projectId, run.id, footprint.voices.length + footprint.asrAdapters.length > 0);
+          removedRuns += 1;
+          footprint.asrAdapters.forEach((adapter) => removedAdapterIds.add(adapter.id));
+        } catch { failures.push(`run ${run.id}`); }
+      }
+      for (const adapter of selectedAdapters) {
+        if (removedAdapterIds.has(adapter.id)) continue;
+        try {
+          await api.deleteAsrAdapter(projectId, adapter.id);
+          removedAdapters += 1;
+        } catch { failures.push(`adapter ${adapter.name}`); }
+      }
+      if (removedRuns || removedAdapters || removedAdapterIds.size) onChanged();
+      setSelection({ ids: [], anchorId: null });
+      setMessage(failures.length
+        ? `Đã xoá ${removedRuns} run và ${removedAdapters + selectedAdapters.filter((adapter) => removedAdapterIds.has(adapter.id)).length} adapter; chưa xoá: ${failures.join(", ")}.`
+        : `Đã xoá ${removedRuns} run và ${selectedAdapters.length} adapter đã chọn.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Không đọc được dung lượng run; chưa xoá mục nào.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -165,13 +233,15 @@ Weights vẫn nằm trong run đã tạo nó; xoá run để giải phóng dung 
         </header>
         <small>Xoá run xoá cả thư mục run (dữ liệu, checkpoint, log) và voice/adapter nó đã tạo. Run đang chạy phải huỷ trước.</small>
         {message ? <p className="training-note">{message}</p> : null}
-        <ol className="training-history">
+        {selectedIds.length ? <div className="training-history__bulk"><b>{selectedIds.length} mục đã chọn</b><button className="button button--quiet is-danger" disabled={hasLiveSelection || Boolean(busy)} onClick={() => void removeSelected()} type="button">Xoá đã chọn</button>{hasLiveSelection ? <span>Huỷ run đang chạy trước khi xoá.</span> : null}<button onClick={() => setSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
+        <ol aria-label="Danh sách lịch sử training" className="training-history" onKeyDown={selectAllHistory} tabIndex={0}>
           {runs.map((run) => {
             const footprint = footprints[run.id];
             const live = run.status === "running" || run.status === "pending";
             const outputs = footprint ? [...footprint.voices, ...footprint.asrAdapters].map((item) => item.name) : [];
             return (
-              <li className={`is-${run.status}`} key={run.id}>
+              <li className={`is-${run.status} ${selectedIds.includes(`run:${run.id}`) ? "is-selected" : ""}`} key={run.id}>
+                <button aria-label={`Chọn run ${run.id}`} aria-pressed={selectedIds.includes(`run:${run.id}`)} className="training-history__select" onClick={(event) => selectHistoryItem(event, `run:${run.id}`)} type="button">{selectedIds.includes(`run:${run.id}`) ? "✓" : "□"}</button>
                 <div className="training-history__copy">
                   <b>{nameOf(run.speakerProfileId)} · {run.config.modelId ?? run.config.engine}</b>
                   <span>{new Date(run.createdAt).toLocaleString("vi-VN", { hour12: false })} · {STATUS[run.status]} · step {run.globalStep}/{run.config.steps} · {footprint ? formatBytes(footprint.bytes) : "…"}</span>
@@ -179,21 +249,22 @@ Weights vẫn nằm trong run đã tạo nó; xoá run để giải phóng dung 
                 </div>
                 <div className="training-history__actions">
                   <button className="button button--quiet" onClick={() => onOpenLog(run)} type="button">Log</button>
-                  <button className="button button--quiet is-danger" disabled={live || busy === run.id} onClick={() => void remove(run)} title={live ? "Huỷ run trước khi xoá" : "Xoá run"} type="button">{busy === run.id ? "Đang xoá…" : "Xoá"}</button>
+                  <button className="button button--quiet is-danger" disabled={live || Boolean(busy)} onClick={() => void remove(run)} title={live ? "Huỷ run trước khi xoá" : "Xoá run"} type="button">{busy === run.id ? "Đang xoá…" : "Xoá"}</button>
                 </div>
               </li>
             );
           })}
           {!runs.length ? <li className="training-history__empty">Project chưa có run nào.</li> : null}
           {adapters.map((adapter) => (
-            <li key={adapter.id}>
+            <li className={selectedIds.includes(`adapter:${adapter.id}`) ? "is-selected" : ""} key={adapter.id}>
+              <button aria-label={`Chọn adapter ${adapter.name}`} aria-pressed={selectedIds.includes(`adapter:${adapter.id}`)} className="training-history__select" onClick={(event) => selectHistoryItem(event, `adapter:${adapter.id}`)} type="button">{selectedIds.includes(`adapter:${adapter.id}`) ? "✓" : "□"}</button>
               <div className="training-history__copy">
                 <b>{adapter.name}</b>
                 <span>Adapter Speech to Text · {new Date(adapter.createdAt).toLocaleString("vi-VN", { hour12: false })}</span>
                 <small>{adapter.baseModel}</small>
               </div>
               <div className="training-history__actions">
-                <button className="button button--quiet is-danger" onClick={() => void removeAdapter(adapter)} type="button">Xoá</button>
+                <button className="button button--quiet is-danger" disabled={Boolean(busy)} onClick={() => void removeAdapter(adapter)} type="button">Xoá</button>
               </div>
             </li>
           ))}

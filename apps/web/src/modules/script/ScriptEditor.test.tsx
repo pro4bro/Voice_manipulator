@@ -47,6 +47,51 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     expect(onChange).toHaveBeenCalledWith("Bản đã được người dùng sửa");
   });
 
+  it("clears transcript text and timed words together after confirmation", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onChange = vi.fn();
+    const onWordsChange = vi.fn();
+    render(<ScriptEditor
+      onChange={onChange}
+      onWordsChange={onWordsChange}
+      value="Xin chào"
+      words={[{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.3, end: 0.7 }]}
+      workflow="speech-to-text"
+    />);
+
+    const clearButton = screen.getByRole("button", { name: "Clear Text" });
+    expect(clearButton.closest(".script-actions")).toContainElement(screen.getByRole("button", { name: /EXPORT/ }));
+    fireEvent.click(clearButton);
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onWordsChange).toHaveBeenCalledWith([], "");
+    expect(onChange).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("keeps the Script unchanged when clear is cancelled", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onChange = vi.fn();
+    render(<ScriptEditor onChange={onChange} value="Nội dung cần giữ" workflow="speech-to-text" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Text" }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("keeps the Input clear action out of Voice Manipulator", () => {
+    render(<ScriptEditor
+      onChange={vi.fn()}
+      onWordsChange={vi.fn()}
+      value="Lời thoại cần tạo"
+      words={[{ text: "tham chiếu", start: 0, end: 0.5 }]}
+      workflow="voice-manipulator"
+    />);
+
+    expect(screen.queryByRole("button", { name: "Clear Text" })).not.toBeInTheDocument();
+  });
+
   it("does not expose voice generation in Speech to Text", () => {
     render(<ScriptEditor onChange={() => undefined} value="Nội dung" workflow="speech-to-text" />);
     expect(screen.queryByRole("button", { name: "Tạo voice" })).not.toBeInTheDocument();
@@ -75,6 +120,48 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     fireEvent.contextMenu(second, { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Anh Vũ" }));
     expect(onWordsChange).toHaveBeenCalledWith(words.map((word) => ({ ...word, speakerId: "speaker-profile-1" })));
+  });
+
+  it("selects diarized Script rows with Shift and bulk assigns their timed words", () => {
+    const onWordsChange = vi.fn();
+    const speakers = [
+      { id: "speaker-profile-1", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male" as const, attributes: {}, color: "#ff6745", createdAt: "" },
+      { id: "speaker-profile-2", name: "Chị Lan", language: "vi", languageId: "vi", region: null, age: null, gender: "female" as const, attributes: {}, color: "#86b5d8", createdAt: "" },
+    ];
+    const words = [
+      { text: "Xin", start: 0, end: 0.3, speakerId: "speaker-profile-1" },
+      { text: "chào", start: 0.3, end: 0.7, speakerId: "speaker-profile-1" },
+      { text: "bạn", start: 0.7, end: 1, speakerId: "speaker-profile-2" },
+    ];
+    render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={speakers} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Anh Vũ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Chị Lan" }), { shiftKey: true });
+    expect(screen.getByText("2 row đã chọn")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Gán speaker cho transcript rows" }), { target: { value: "speaker-profile-2" } });
+    expect(onWordsChange).toHaveBeenCalledWith(words.map((word) => ({ ...word, speakerId: "speaker-profile-2" })));
+  });
+
+  it("selects every transcript row with Ctrl+A and removes selected row text and timings together", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onWordsChange = vi.fn();
+    const words = [
+      { text: "Xin", start: 0, end: 0.3, speakerId: "speaker-profile-1" },
+      { text: "chào", start: 0.3, end: 0.7, speakerId: "speaker-profile-1" },
+      { text: "bạn", start: 0.7, end: 1, speakerId: "speaker-profile-2" },
+    ];
+    render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[
+      { id: "speaker-profile-1", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#ff6745", createdAt: "" },
+      { id: "speaker-profile-2", name: "Chị Lan", language: "vi", languageId: "vi", region: null, age: null, gender: "female", attributes: {}, color: "#86b5d8", createdAt: "" },
+    ]} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
+    const grid = screen.getByRole("grid", { name: "Bảng Script theo người nói" });
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+    expect(screen.getByText("2 row đã chọn")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xoá rows đã chọn" }));
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onWordsChange).toHaveBeenLastCalledWith([], "");
+    confirm.mockRestore();
   });
 
   it("assigns one word without changing its diarization provenance", () => {

@@ -45,8 +45,8 @@ class SubprocessSpeakerEmbedder:
 
 
 def default_speaker_embedders(project_root: Path) -> dict[str, SubprocessSpeakerEmbedder]:
-    runtime = project_root / ".runtime" / "omnivoice-studio" / ".venv"
-    python = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    runtime = project_root / ".runtime" / "python" / "stt"
+    python = runtime / ("python.exe" if os.name == "nt" else "bin/python")
     worker = project_root / "services" / "api" / "app" / "workers" / "speaker_embedder.py"
     cache = project_root / ".runtime" / "omnivoice-studio" / "models" / "diarization"
 

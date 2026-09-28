@@ -11,11 +11,12 @@ describe("workspaceManifest", () => {
     expect(manifest.modules).not.toContain("voice-vault");
     expect(manifest.modules).not.toContain("control-rack");
     expect(manifest.columns.left).toEqual(["library-panel"]);
-    expect(manifest.columns.right).toEqual(["recorder", "speaker-emotion", "speaker-isolation"]);
+    expect(manifest.columns.right).toEqual(["obs-capture", "recorder", "speaker-emotion", "speaker-isolation"]);
   });
 
   it("keeps editing modules in source workflows and training controls in Train", () => {
     const stt = workspaceManifest("speech-to-text");
+    expect(stt.label).toBe("Input");
     expect(stt.modules).toContain("library-panel");
     expect(stt.modules).toContain("script");
     expect(stt.modules).toContain("timeline");

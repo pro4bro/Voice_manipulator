@@ -14,7 +14,7 @@ const asset: ProjectMediaAsset = {
 function props(overrides = {}) {
   return {
     assets: [asset], busy: false, environments: [], onImport: vi.fn(), onSelect: vi.fn(), onSendToTraining: vi.fn(),
-    onToggleTraining: vi.fn(), onToggleTranscription: vi.fn(), onQueueTranscriptions: vi.fn(), onRemove: vi.fn(), onUpdateAnnotations: vi.fn(),
+    onToggleTraining: vi.fn(), onToggleTranscription: vi.fn(), onQueueTranscriptions: vi.fn(), onRemove: vi.fn(), onBatchAction: vi.fn(), onUpdateAnnotations: vi.fn(),
     selectedAssetId: null, speakers: [], workflow: "speech-to-text" as const, onControlTranscriptions: vi.fn(), onRestore: vi.fn(), onReveal: vi.fn(), onSetDisabled: vi.fn(), ...overrides,
   };
 }
@@ -179,6 +179,106 @@ describe("MediaPool", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Disable footage/ }));
     expect(onSetDisabled).toHaveBeenCalledWith(asset, true);
+  });
+
+  it("selects recycled footage separately and restores a batch", () => {
+    const second = { ...recycled, id: "asset-binned-2", name: "cu-2.wav" };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [recycled, second], onBatchAction })} />);
+    fireEvent.click(screen.getByRole("button", { name: /RECYCLE BIN/ }));
+    const firstRow = screen.getByRole("button", { name: /cu.wav/ });
+    const secondRow = screen.getByRole("button", { name: /cu-2.wav/ });
+    fireEvent.click(firstRow);
+    fireEvent.click(secondRow, { shiftKey: true });
+    expect([firstRow, secondRow].map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "true"]);
+    fireEvent.click(screen.getByRole("button", { name: "Restore đã chọn" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "restore", assetIds: ["asset-binned", "asset-binned-2"] });
+  });
+
+  it("selects a range, toggles individual footage, and scopes Ctrl+A to live Media Pool rows", () => {
+    const assets = [asset, { ...asset, id: "asset-2", name: "second.wav" }, { ...asset, id: "asset-3", name: "third.wav" }];
+    const onSelect = vi.fn();
+    render(<MediaPool {...props({ assets, onSelect })} />);
+    const first = screen.getByRole("button", { name: /interview.mov/ });
+    const second = screen.getByRole("button", { name: /second.wav/ });
+    const third = screen.getByRole("button", { name: /third.wav/ });
+    fireEvent.click(first);
+    fireEvent.click(third, { shiftKey: true });
+    expect([first, second, third].map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
+    fireEvent.click(second, { ctrlKey: true });
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(first);
+    first.focus();
+    fireEvent.keyDown(first, { key: "a", ctrlKey: true });
+    expect([first, second, third].map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
+    expect(onSelect).toHaveBeenCalledWith("asset-1");
+  });
+
+  it("keeps a multi-selection on right-click and sends batch edits and Remove to all selected footage", () => {
+    const second = { ...asset, id: "asset-2", name: "second.wav", emotion: "sad" as const };
+    const onBatchAction = vi.fn();
+    const onRemove = vi.fn();
+    render(<MediaPool {...props({ assets: [asset, second], onBatchAction, onRemove })} />);
+    const firstRow = screen.getByRole("button", { name: /interview.mov/ });
+    const secondRow = screen.getByRole("button", { name: /second.wav/ });
+    fireEvent.click(firstRow);
+    fireEvent.click(secondRow, { ctrlKey: true });
+    fireEvent.contextMenu(firstRow);
+    expect(firstRow).toHaveAttribute("aria-pressed", "true");
+    expect(secondRow).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exciting" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "annotations", changes: [
+      { assetId: "asset-1", speakerProfileIds: [], environmentProfileIds: [], emotion: "exciting" },
+      { assetId: "asset-2", speakerProfileIds: [], environmentProfileIds: [], emotion: "exciting" },
+    ] });
+    fireEvent.contextMenu(secondRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Remove/ }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "recycle", assetIds: ["asset-1", "asset-2"] });
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("adds a speaker to each selected footage without dropping its other tags", () => {
+    const second = { ...asset, id: "asset-2", name: "second.wav", speakerProfileIds: ["existing"], environmentProfileIds: ["room"] };
+    const speaker: SpeakerProfile = { id: "speaker-1", name: "Anh Vũ", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: "middle-aged", gender: "male", attributes: {}, color: "#ff6745", createdAt: "2026-08-23T00:00:00Z" };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [asset, second], speakers: [speaker], onBatchAction })} />);
+    fireEvent.click(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("button", { name: /second.wav/ }), { ctrlKey: true });
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Anh Vũ" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "annotations", changes: [
+      { assetId: "asset-1", speakerProfileIds: ["speaker-1"], environmentProfileIds: [], emotion: "normal" },
+      { assetId: "asset-2", speakerProfileIds: ["existing", "speaker-1"], environmentProfileIds: ["room"], emotion: "normal" },
+    ] });
+    fireEvent.contextMenu(screen.getByRole("button", { name: /second.wav/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Disable footage/ }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "disabled", assetIds: ["asset-1", "asset-2"], disabled: true });
+  });
+
+  it("batches STT and TRAIN selection only for eligible selected footage", () => {
+    const running = { ...asset, id: "asset-2", name: "running.wav", transcriptionStatus: "processing" as const };
+    const noAudio = { ...asset, id: "asset-3", name: "silent.mov", status: "no-audio" as const };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [asset, running, noAudio], onBatchAction })} />);
+    const first = screen.getByRole("button", { name: /interview.mov/ });
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole("button", { name: /silent.mov/ }), { shiftKey: true });
+    fireEvent.contextMenu(first);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Chọn STT (1)" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "selection", target: "stt", assetIds: ["asset-1"], selected: true });
+    fireEvent.contextMenu(first);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Chọn TRAIN (2)" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "selection", target: "training", assetIds: ["asset-1", "asset-2"], selected: true });
+  });
+
+  it("lists context actions as ordered menu rows", () => {
+    render(<MediaPool {...props()} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    const menu = screen.getByRole("menu");
+    expect(menu.querySelector("footer")?.textContent).not.toContain("RCLICK MENU");
+    expect(Array.from(menu.querySelectorAll("footer button")).map((button) => button.textContent?.trim())).toEqual([
+      "Reveal in Desktop", "Text History", "Disable footage", "Remove",
+    ]);
   });
 
   it("offers to switch a parked footage back on", () => {

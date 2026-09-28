@@ -141,4 +141,39 @@ describe("ProjectHub", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Delete Project/ }));
     expect(onRemoveProject).toHaveBeenCalledWith(project, true);
   });
+
+  it("selects project cards by modifiers and removes a batch from the catalog only", () => {
+    const projects = ["Alpha", "Beta", "Gamma"].map((name, index) => ({
+      id: `project-${index}`, name, projectPath: `projects/${name}`, location: null,
+      language: null, accent: null, sampleRate: null, purpose: null,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", lastPage: "speech-to-text" as const,
+    }));
+    const onOpen = vi.fn();
+    const onRemoveProjects = vi.fn();
+    const onRemoveProject = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<ProjectHub busy={false} defaultLocation="projects" engine={null} error={null} onCreate={vi.fn().mockResolvedValue(false)} onOpen={onOpen} onOpenExisting={vi.fn()} onPickLocation={vi.fn()} onRetry={vi.fn()} onRevealProject={vi.fn()} onRemoveProject={onRemoveProject} onRemoveProjects={onRemoveProjects} projects={projects} theme="light" onToggleTheme={vi.fn()} />);
+      const alpha = screen.getByRole("button", { name: /Alpha/ });
+      const beta = screen.getByRole("button", { name: /Beta/ });
+      const gamma = screen.getByRole("button", { name: /Gamma/ });
+      fireEvent.click(alpha, { ctrlKey: true });
+      fireEvent.click(gamma, { shiftKey: true });
+      expect([alpha, beta, gamma].map((card) => card.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
+      fireEvent.click(beta, { ctrlKey: true });
+      expect(beta).toHaveAttribute("aria-pressed", "false");
+      fireEvent.keyDown(gamma, { key: "a", ctrlKey: true });
+      expect(beta).toHaveAttribute("aria-pressed", "true");
+      expect(onOpen).not.toHaveBeenCalled();
+
+      fireEvent.contextMenu(gamma);
+      expect(screen.queryByRole("menuitem", { name: /Delete Project/ })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: /Remove Project \(3\)/ }));
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(onRemoveProjects).toHaveBeenCalledWith(projects);
+      expect(onRemoveProject).not.toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
 });

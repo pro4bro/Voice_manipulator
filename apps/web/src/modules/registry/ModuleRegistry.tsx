@@ -7,12 +7,15 @@ import { PipelineDashboard } from "../dashboard/PipelineDashboard";
 import { ProjectOverview } from "../dashboard/ProjectOverview";
 import { LibraryPanel, ManipulatorLibrary } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
+import type { MediaBatchAction } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
+import { ObsCapture } from "../obs-capture/ObsCapture";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
 import { ScriptEditor } from "../script/ScriptEditor";
+import { ObsLiveLinkScript } from "../script/ObsLiveLinkScript";
 import { VoiceScript } from "../script/VoiceScript";
 import { ChangerRecordControls } from "../voice-changer/ChangerRecordControls";
 import { SoundReactor } from "../voice-changer/SoundReactor";
@@ -21,6 +24,7 @@ import { voicesInCategory, type VoiceCategory } from "../../domain/voiceScript";
 import { SpeakerEmotion } from "../speaker-emotion/SpeakerEmotion";
 import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
 import { Timeline, type ActiveTake } from "../timeline/Timeline";
+import { ObsLiveLinkTimeline } from "../timeline/ObsLiveLinkTimeline";
 import { Train } from "../train/Train";
 import { TrainingJob } from "../training-job/TrainingJob";
 import { VoiceGenerator } from "../voice-generator/VoiceGenerator";
@@ -38,6 +42,17 @@ export interface StudioContext {
   selectedAssetId: string | null;
   mediaBusy: boolean;
   recordingPreview: RecordingWaveformPreview | null;
+  obsTimelineActive: boolean;
+  obsTimelineRecordingId: string | null;
+  obsTranscriptRows: import("../../domain/types").ObsLiveLinkTranscriptRow[];
+  obsTranscriptError: string | null;
+  obsPlayheadSeconds: number;
+  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number; replayUntilSeconds?: number } | null;
+  onObsTimelineRecordingChange: (recordingId: string) => void;
+  onObsTranscriptSeek: (row: import("../../domain/types").ObsLiveLinkTranscriptRow, seconds?: number, replayUntilSeconds?: number) => void;
+  onObsPlayheadChange: (seconds: number) => void;
+  onObsTimelineSourceChange: (source: "microphone" | "display" | "obs-livelink") => void;
+  onOpenObsRecording: (recordingId: string) => void;
   liveTranscriptActive: boolean;
   liveTranscriptText: string | null;
   emotionStyle: EmotionStylePreferences;
@@ -56,6 +71,7 @@ export interface StudioContext {
   activeOutputId: string | null;
   onOpenVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
   onDeleteVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
+  onDeleteVoiceOutputs: (outputs: import("../../domain/types").VoiceOutput[]) => void;
   sttEngines: TrainingModelOption[];
   asrAdapters: import("../../domain/types").ProjectAsrAdapter[];
   projectVoices: import("../../domain/types").ProjectVoice[];
@@ -107,6 +123,8 @@ export interface StudioContext {
   onImportLocalMedia: () => void;
   onSetLocalCache: (assetId: string, enabled: boolean) => void;
   onSelectAsset: (assetId: string) => void;
+  onOpenObsAsset: (assetId: string) => void;
+  onObsImportReady: (assetId: string) => void;
   onRecordingPreview: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript: (text: string, active: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
@@ -114,6 +132,7 @@ export interface StudioContext {
   onQueueTranscriptions: (model: string) => void;
   onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
+  onBatchMediaAction: (action: MediaBatchAction) => void;
   onRestoreAsset: (asset: ProjectMediaAsset) => void;
   onRevealAsset: (asset: ProjectMediaAsset) => void;
   onSetAssetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
@@ -137,8 +156,11 @@ export interface StudioContext {
   onCancelTrainingRun: (runId: string) => void;
   onTrainingOutputsChanged: () => void;
   onDeleteVoice: (voice: import("../../domain/types").ProjectVoice) => void;
+  onDeleteVoices: (voices: import("../../domain/types").ProjectVoice[]) => void;
   onDeleteSpeaker: (speaker: import("../../domain/types").SpeakerProfile) => void;
+  onDeleteSpeakers: (speakers: import("../../domain/types").SpeakerProfile[]) => void;
   onDeleteEnvironment: (profile: import("../../domain/types").EnvironmentNoiseProfile) => void;
+  onDeleteEnvironments: (profiles: import("../../domain/types").EnvironmentNoiseProfile[]) => void;
   /** Whose voice a whole take is, assigned from Script without diarization. */
   onAssignAssetSpeaker: (assetId: string, speakerProfileId: string | null) => void;
   onSelectPage: (page: WorkspacePage) => void;
@@ -161,6 +183,7 @@ function mediaPoolProps(context: StudioContext) {
     onQueueTranscriptions: context.onQueueTranscriptions,
     onControlTranscriptions: context.onControlTranscriptions,
     onRemove: context.onRemoveAsset,
+    onBatchAction: context.onBatchMediaAction,
     onRestore: context.onRestoreAsset,
     onReveal: context.onRevealAsset,
     onSetDisabled: context.onSetAssetDisabled,
@@ -186,14 +209,27 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-vault":
       return <VoiceVault onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
+      if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
+        return <ObsLiveLinkScript error={context.obsTranscriptError} onSeek={context.onObsTranscriptSeek}
+          playheadSeconds={context.obsPlayheadSeconds}
+          recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows} />;
+      }
       const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
       return <ScriptEditor onSpeakerProfileChange={selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+    case "obs-capture":
+      return <ObsCapture onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
+      if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
+        return <ObsLiveLinkTimeline onRecordingIdChange={context.onObsTimelineRecordingChange}
+          onPlayheadChange={context.onObsPlayheadChange}
+          projectId={context.projectId} requestedRecordingId={context.obsTimelineRecordingId}
+          seekRequest={context.obsSeekRequest} transcriptRows={context.obsTranscriptRows} />;
+      }
       // Voice Manipulator shows only what the app generated, and none of the
       // footage's own cuts, gain or word edits: those belong to the file open in
       // Speech to Text, and applied here they changed the wrong audio.
@@ -221,7 +257,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "recent-takes":
       return <RecentTakes />;
     case "voice-output":
-      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
+      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {
@@ -245,6 +281,6 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <Timeline gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
     }
     case "manipulator-library":
-      return <ManipulatorLibrary onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
+      return <ManipulatorLibrary onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onDeleteOutputs={context.onDeleteVoiceOutputs} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
   }
 }

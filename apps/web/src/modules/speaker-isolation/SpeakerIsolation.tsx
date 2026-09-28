@@ -1,3 +1,6 @@
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
+
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -20,13 +23,26 @@ function orderedDiarizationLabels(words: StudioWord[]) {
 }
 
 export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: SpeakerIsolationProps) {
+  const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const status = asset?.diarizationStatus ?? "idle";
   const isBusy = status === "queued" || status === "processing";
   const diarizedWords = asset?.words ?? words;
   const labels = orderedDiarizationLabels(diarizedWords);
+  const selectedLabels = reconcileListSelection(selection, labels).ids;
   const assignments = asset?.diarizationSpeakerAssignments ?? {};
   const expectedCount = labels.length || speakers.length;
   const processorLabel = status === "complete" ? "DIARIZATION COMPLETE" : isBusy ? `PROCESSING ${Math.round(asset?.diarizationProgress ?? 0)}%` : status === "requires-setup" ? "SETUP REQUIRED" : status === "error" ? "PROCESSOR ERROR" : "READY AFTER STT";
+
+  function selectLabel(event: MouseEvent<HTMLButtonElement>, label: string) {
+    setSelection((current) => selectListItem(current, labels, label, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function selectAll(event: KeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) {
+      event.preventDefault();
+      setSelection((current) => selectAllListItems(current, labels));
+    }
+  }
 
   return (
     <ModuleFrame className="speaker-isolation-module" eyebrow="WHO SPOKE WHEN" title="Speaker Diarization">
@@ -35,8 +51,14 @@ export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: Sp
         <p>Đã nhận diện <b>{expectedCount || "Auto"}</b> speaker. Chọn người tương ứng cho từng nhãn máy ở đây; Script vẫn cho phép sửa lại theo row hoặc từng word.</p>
         {asset?.diarizationError ? <small>{asset.diarizationError}</small> : null}
       </div>
-      <div className="speaker-isolation-list">
+      <div aria-label="Danh sách nhãn Speaker" className="speaker-isolation-list" onKeyDown={selectAll} role="region" tabIndex={0}>
+        {selectedLabels.length ? <div className="speaker-isolation-bulk-actions"><b>{selectedLabels.length} nhãn đã chọn</b><select aria-label="Gán profile cho nhãn đã chọn" onChange={(event) => {
+          if (event.target.value === "__choose__") return;
+          const profileId = event.target.value === "__none__" ? null : event.target.value;
+          onAssign({ ...assignments, ...Object.fromEntries(selectedLabels.map((label) => [label, profileId])) });
+        }} value="__choose__"><option value="__choose__">Gán cùng profile…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select><button onClick={() => setSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
         {labels.map((label) => <div className="speaker-isolation-assignment" key={label}>
+          <button aria-label={`Chọn ${diarizationLabel(label)}`} aria-pressed={selectedLabels.includes(label)} className="speaker-isolation-select" onClick={(event) => selectLabel(event, label)} type="button">{selectedLabels.includes(label) ? "✓" : "□"}</button>
           <i style={{ background: speakers.find((speaker) => speaker.id === assignments[label])?.color ?? "var(--text-muted)" }} />
           <div><b>{diarizationLabel(label)}</b><span>{diarizedWords.filter((word) => word.diarizationSpeakerId === label).length} từ · nhãn máy</span></div>
           <select aria-label={`Gán ${diarizationLabel(label)} vào Speaker Profile`} onChange={(event) => onAssign({ ...assignments, [label]: event.currentTarget.value || null })} value={assignments[label] ?? ""}>

@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -17,9 +18,13 @@ interface VoiceVaultProps {
   onDeleteVoice?: (voice: ProjectVoice) => void;
   onDeleteSpeaker?: (speaker: SpeakerProfile) => void;
   onDeleteEnvironment?: (profile: EnvironmentNoiseProfile) => void;
+  onDeleteVoices?: (voices: ProjectVoice[]) => void;
+  onDeleteSpeakers?: (speakers: SpeakerProfile[]) => void;
+  onDeleteEnvironments?: (profiles: EnvironmentNoiseProfile[]) => void;
 }
 
 const VOICE_KIND_LABELS: Record<string, string> = { clone: "nhái giọng", lora: "LoRA", full: "full fine-tune", vc: "đổi giọng" };
+const EMPTY_PROJECT_VOICES: ProjectVoice[] = [];
 
 type ProfileType = "speaker" | "environment";
 const PROFILE_COLORS = ["#ff6745", "#a8d85d", "#eac75f", "#66a9d8", "#d87858"];
@@ -54,11 +59,21 @@ function speakerSummary(speaker: SpeakerProfile) {
   return [speaker.language, speaker.region, speaker.age, speaker.gender === "male" ? "Male" : speaker.gender === "female" ? "Female" : null].filter(Boolean).join(" · ") || "Chưa bổ sung thuộc tính";
 }
 
-export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = [], onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment }: VoiceVaultProps) {
+export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = EMPTY_PROJECT_VOICES, onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment, onDeleteVoices, onDeleteSpeakers, onDeleteEnvironments }: VoiceVaultProps) {
   const [activeType, setActiveType] = useState<ProfileType>("speaker");
   const [profileMenu, setProfileMenu] = useState<{ type: ProfileType; id: string; left: number; top: number } | null>(null);
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
   const [editingEnvironment, setEditingEnvironment] = useState<EnvironmentNoiseProfile | null>(null);
+  const [profileSelection, setProfileSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const [voiceSelection, setVoiceSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const [bulkSpeakerColor, setBulkSpeakerColor] = useState("#ff6745");
+  const profileItems = activeType === "speaker" ? catalog.speakers : catalog.environmentProfiles;
+  const profileIds = profileItems.map((item) => item.id);
+  const voiceIds = voices.map((item) => item.id);
+  const selectedProfileIds = reconcileListSelection(profileSelection, profileIds).ids;
+  const selectedVoiceIds = reconcileListSelection(voiceSelection, voiceIds).ids;
+  useEffect(() => setProfileSelection((current) => reconcileListSelection(current, profileIds)), [catalog, activeType]);
+  useEffect(() => setVoiceSelection((current) => reconcileListSelection(current, voiceIds)), [voices]);
   const facets = profileSchema?.facets ?? [];
   const facetById = useMemo(() => new Map(facets.map((facet) => [facet.id, facet])), [facets]);
   const languageId = editingSpeaker?.languageId?.toLocaleLowerCase() ?? "";
@@ -105,6 +120,53 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
     setEditingEnvironment((current) => current ? { ...current, attributes: { ...current.attributes, [id]: value } } : current);
   }
 
+  function selectProfile(event: MouseEvent<HTMLButtonElement>, id: string) {
+    setProfileSelection((current) => selectListItem(current, profileIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function selectVoiceItem(event: MouseEvent<HTMLButtonElement>, id: string) {
+    setVoiceSelection((current) => selectListItem(current, voiceIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+  }
+
+  function selectAllInLibrary(event: KeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !(event.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) {
+      event.preventDefault();
+      if (activeType === "speaker" && (event.target as HTMLElement).closest(".voice-card__voices")) setVoiceSelection((current) => selectAllListItems(current, voiceIds));
+      else setProfileSelection((current) => selectAllListItems(current, profileIds));
+    }
+  }
+
+  function deleteSelectedProfiles() {
+    if (!selectedProfileIds.length) return;
+    if (activeType === "speaker") {
+      const targets = catalog.speakers.filter((item) => selectedProfileIds.includes(item.id));
+      const dependentVoices = voices.filter((voice) => targets.some((speaker) => speaker.id === voice.speakerProfileId)).length;
+      if (!window.confirm(`Xoá ${targets.length} Speaker Profile đã chọn? ${dependentVoices} voice thuộc các profile này cũng sẽ bị xoá vĩnh viễn. Footage đang gán sẽ thành chưa gán người nói.`)) return;
+      if (onDeleteSpeakers) onDeleteSpeakers(targets);
+      else targets.forEach((target) => onDeleteSpeaker?.(target));
+    } else {
+      const targets = catalog.environmentProfiles.filter((item) => selectedProfileIds.includes(item.id));
+      if (!window.confirm(`Xoá ${targets.length} Environment Profile đã chọn? Footage tham chiếu không bị xoá.`)) return;
+      if (onDeleteEnvironments) onDeleteEnvironments(targets);
+      else targets.forEach((target) => onDeleteEnvironment?.(target));
+    }
+    setProfileSelection({ ids: [], anchorId: null });
+  }
+
+  function updateSelectedSpeakerColor() {
+    if (activeType !== "speaker" || !selectedProfileIds.length) return;
+    const selected = new Set(selectedProfileIds);
+    onCatalogChange({ ...catalog, speakers: catalog.speakers.map((speaker) => selected.has(speaker.id) ? { ...speaker, color: bulkSpeakerColor } : speaker) });
+  }
+
+  function deleteSelectedVoices() {
+    const targets = voices.filter((item) => selectedVoiceIds.includes(item.id));
+    if (!targets.length || !window.confirm(`Xoá ${targets.length} voice đã chọn khỏi project?`)) return;
+    if (onDeleteVoices) onDeleteVoices(targets);
+    else targets.forEach((target) => onDeleteVoice?.(target));
+    setVoiceSelection({ ids: [], anchorId: null });
+  }
+
   function speakerFacet(facetId: string, label?: string, hint?: string) {
     const facet = facetById.get(facetId);
     if (!facet || !editingSpeaker) return null;
@@ -128,8 +190,8 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
       title="Profiles"
     >
       <div className="sound-library-tabs" role="tablist" aria-label="Sound Library profile type">
-        <button aria-selected={activeType === "speaker"} className={activeType === "speaker" ? "is-active" : ""} onClick={() => setActiveType("speaker")} role="tab" type="button"><Icon name="person" />Speaker Profiles <b>{catalog.speakers.length}</b></button>
-        <button aria-selected={activeType === "environment"} className={activeType === "environment" ? "is-active" : ""} onClick={() => setActiveType("environment")} role="tab" type="button"><Icon name="landscape" />Environment Profiles <b>{catalog.environmentProfiles.length}</b></button>
+        <button aria-selected={activeType === "speaker"} className={activeType === "speaker" ? "is-active" : ""} onClick={() => { setActiveType("speaker"); setVoiceSelection({ ids: [], anchorId: null }); }} role="tab" type="button"><Icon name="person" />Speaker Profiles <b>{catalog.speakers.length}</b></button>
+        <button aria-selected={activeType === "environment"} className={activeType === "environment" ? "is-active" : ""} onClick={() => { setActiveType("environment"); setVoiceSelection({ ids: [], anchorId: null }); }} role="tab" type="button"><Icon name="landscape" />Environment Profiles <b>{catalog.environmentProfiles.length}</b></button>
       </div>
       {editingSpeaker ? (
         <form className="speaker-profile-form sound-profile-form" onSubmit={saveSpeaker}>
@@ -175,11 +237,14 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
         </form>
       ) : null}
       {!editingSpeaker && !editingEnvironment ? (
-        <div className="voice-vault__list sound-library-list">
+        <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
+          {selectedProfileIds.length ? <div className="sound-library-bulk-actions"><b>{selectedProfileIds.length} profile đã chọn</b>{activeType === "speaker" ? <><label>Màu chung<input aria-label="Màu cho Speaker Profiles đã chọn" onChange={(event) => setBulkSpeakerColor(event.target.value)} type="color" value={bulkSpeakerColor} /></label><button className="button button--quiet" onClick={updateSelectedSpeakerColor} type="button">Áp dụng màu</button></> : null}<button className="button button--quiet is-danger" onClick={deleteSelectedProfiles} type="button">Xoá profiles đã chọn</button><button className="button button--quiet" onClick={() => setProfileSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn profiles</button></div> : null}
+          {activeType === "speaker" && selectedVoiceIds.length ? <div className="sound-library-bulk-actions"><b>{selectedVoiceIds.length} voice đã chọn</b><button className="button button--quiet is-danger" onClick={deleteSelectedVoices} type="button">Xoá voices đã chọn</button><button className="button button--quiet" onClick={() => setVoiceSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn voices</button></div> : null}
           {activeType === "speaker" ? catalog.speakers.map((speaker) => {
             const own = voices.filter((voice) => voice.speakerProfileId === speaker.id);
             return (
-            <div className="voice-card-group" key={speaker.id}>
+            <div className={`voice-card-group ${selectedProfileIds.includes(speaker.id) ? "is-selected" : ""}`} key={speaker.id}>
+            <button aria-label={`Chọn profile ${speaker.name}`} aria-pressed={selectedProfileIds.includes(speaker.id)} className="sound-library-select" onClick={(event) => selectProfile(event, speaker.id)} type="button">{selectedProfileIds.includes(speaker.id) ? "✓" : "□"}</button>
             <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} onClick={() => onSelectVoice(speaker.id)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "speaker", id: speaker.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
               <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · {own.length} voice · Properties</small></span><i aria-hidden="true" />
             </button>
@@ -187,6 +252,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
               <ul aria-label={`Voice của ${speaker.name}`} className="voice-card__voices">
                 {own.map((voice) => (
                   <li key={voice.id} title={`${voice.id} · tạo ${new Date(voice.createdAt).toLocaleString("vi-VN", { hour12: false })}`}>
+                    <button aria-label={`Chọn voice ${voice.name}`} aria-pressed={selectedVoiceIds.includes(voice.id)} className="sound-library-select" onClick={(event) => selectVoiceItem(event, voice.id)} type="button">{selectedVoiceIds.includes(voice.id) ? "✓" : "□"}</button>
                     <span>{voice.name}</span>
                     <small>{VOICE_KIND_LABELS[voice.kind] ?? voice.kind} · {new Date(voice.createdAt).toLocaleDateString("vi-VN")}</small>
                     {onDeleteVoice ? <button aria-label={`Xoá voice ${voice.name}`} onClick={() => onDeleteVoice(voice)} title="Xoá voice" type="button">×</button> : null}
@@ -197,9 +263,12 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
             </div>
             );
           }) : catalog.environmentProfiles.map((profile) => (
+            <div className={`voice-card-group ${selectedProfileIds.includes(profile.id) ? "is-selected" : ""}`} key={profile.id}>
+            <button aria-label={`Chọn profile ${profile.name}`} aria-pressed={selectedProfileIds.includes(profile.id)} className="sound-library-select" onClick={(event) => selectProfile(event, profile.id)} type="button">{selectedProfileIds.includes(profile.id) ? "✓" : "□"}</button>
             <button className="voice-card environment-card" key={profile.id} onClick={() => editEnvironment(profile)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "environment", id: profile.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editEnvironment(profile)} title="Double click hoặc right click để mở Properties" type="button">
               <span className="voice-card__avatar"><Icon name="landscape" /></span><span className="voice-card__copy"><strong>{profile.name}</strong><span>{profile.attributes.description || "Environment profile"}</span><small>{profile.assetIds.length} footage tham chiếu · Properties</small></span><i aria-hidden="true" />
             </button>
+            </div>
           ))}
           {activeType === "speaker" && !catalog.speakers.length ? <div className="voice-vault-empty"><Icon name="person" /><b>Chưa có Speaker Profile</b><span>Thêm người nói trước khi phân vai footage hoặc bắt đầu training.</span></div> : null}
           {activeType === "environment" && !catalog.environmentProfiles.length ? <div className="voice-vault-empty"><Icon name="landscape" /><b>Chưa có Environment Profile</b><span>Đặt profile cho tiếng ồn/môi trường và gán cho footage hoặc từ trong transcript.</span></div> : null}

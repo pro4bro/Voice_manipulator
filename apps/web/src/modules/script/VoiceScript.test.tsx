@@ -106,6 +106,63 @@ describe("VoiceScript", () => {
     expect(screen.getByRole("button", { name: "Tạo voice" })).toHaveTextContent("Đoạn 1 chưa chọn voice");
   });
 
+  it("selects Script rows with Shift and reassigns the selected rows to one speaker", () => {
+    const onRows = vi.fn();
+    render(<Harness initial={[
+      { id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Một" },
+      { id: "r2", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Hai" },
+      { id: "r3", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Ba" },
+    ]} onRows={onRows} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 3" }), { shiftKey: true });
+    expect(screen.getByText("3 dòng đã chọn")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Gán speaker cho các dòng đã chọn" }), { target: { value: "speaker-khoa" } });
+
+    expect(onRows).toHaveBeenLastCalledWith([
+      { id: "r1", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Một" },
+      { id: "r2", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Hai" },
+      { id: "r3", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Ba" },
+    ]);
+  });
+
+  it("selects every Script row with Ctrl+A from the table", () => {
+    render(<Harness initial={[
+      { id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Một" },
+      { id: "r2", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Hai" },
+    ]} />);
+    fireEvent.keyDown(screen.getByRole("grid", { name: "Bảng Script theo lượt nói" }), { key: "a", ctrlKey: true });
+    expect(screen.getByText("2 dòng đã chọn")).toBeInTheDocument();
+  });
+
+  it("clears the whole Voice Script from the footer after confirmation", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onRows = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
+
+    const clear = screen.getByRole("button", { name: "Clear Script" });
+    const actions = clear.closest(".script-actions");
+    expect(actions).not.toBeNull();
+    expect(within(actions as HTMLElement).getByRole("button", { name: "Tạo voice" })).toBeInTheDocument();
+
+    fireEvent.click(clear);
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onRows).toHaveBeenLastCalledWith([]);
+    confirm.mockRestore();
+  });
+
+  it("keeps the Voice Script when clear is cancelled", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onRows = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Giữ nội dung" }]} onRows={onRows} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Script" }));
+
+    expect(onRows).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
 it("shows what the app is making under the Script, whatever started it", () => {
     const now = new Date().toISOString();
     const tasks = [

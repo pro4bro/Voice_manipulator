@@ -62,6 +62,14 @@ class MediaLibrary(Protocol):
         self, project_id: str, payload: MediaAssetCreate, asset_id: str | None = None
     ) -> ProjectMediaAsset: ...
 
+    def link_obs_archive_track(self, project_id: str, asset_id: str,
+                               parent_asset_id: str, stream_index: int,
+                               track_uid: int, analysis_path: str) -> ProjectMediaAsset: ...
+
+    def refresh_obs_archive_parent(self, project_id: str, asset_id: str,
+                                   source_path: str, duration: float,
+                                   codec: str) -> ProjectMediaAsset: ...
+
     def update_script(
         self,
         project_id: str,

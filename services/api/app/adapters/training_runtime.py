@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from app.domain.models import TrainingRuntimePackage, TrainingRuntimeReport
+from app.runtime_layout import python_executable, site_packages
 
 # What `omnivoice.cli.train` needs beyond what the STT sidecar already carries.
 # `omnivoice` is absent on purpose: it is installed from the checkout, below.
@@ -47,7 +48,7 @@ class TrainingRuntime:
 
     @property
     def python(self) -> Path:
-        return self.root / "Scripts" / "python.exe" if sys.platform == "win32" else self.root / "bin" / "python"
+        return python_executable(self.root)
 
     def report(self) -> TrainingRuntimeReport:
         """What provisioning would do, before it does any of it.
@@ -86,13 +87,7 @@ class TrainingRuntime:
     # ---------- inspection ----------
 
     def _site_packages(self) -> Path | None:
-        candidate = self.root / ("Lib" if sys.platform == "win32" else "lib") / "site-packages"
-        if candidate.is_dir():
-            return candidate
-        for lib in sorted((self.root / "lib").glob("python*")) if (self.root / "lib").is_dir() else []:
-            if (lib / "site-packages").is_dir():
-                return lib / "site-packages"
-        return None
+        return site_packages(self.root)
 
     @staticmethod
     def _installed(site: Path | None, name: str) -> bool:
@@ -113,6 +108,9 @@ class TrainingRuntime:
                     version = line.split("=", 1)[1].strip().split(".")
                     if len(version) >= 2 and version[0].isdigit() and version[1].isdigit():
                         return f"cp{version[0]}{version[1]}"
+        portable_version = self.root / "python311.zip"
+        if portable_version.is_file():
+            return "cp311"
         return f"cp{sys.version_info.major}{sys.version_info.minor}"
 
     def _wheel_tag_mismatch(self) -> list[str]:

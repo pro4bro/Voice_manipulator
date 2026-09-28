@@ -16,12 +16,17 @@ const apiMocks = vi.hoisted(() => ({
   listReadingPacks: vi.fn(),
   getDatasetReadiness: vi.fn(),
   listTrainingRuns: vi.fn(),
+  recycleProjectMedia: vi.fn(),
+  restoreProjectMedia: vi.fn(),
   getTrainingRunProgress: vi.fn(),
+  claimObsLiveLinkTarget: vi.fn(),
+  releaseObsLiveLinkTarget: vi.fn(),
 }));
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
-  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; onOpenVoiceOutput: (output: unknown) => void } }) => {
+  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void } }) => {
+    if (id === "library-panel") return <><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button></>;
     if (id === "script") return <output data-testid="script-value">{context.script}</output>;
     if (id === "timeline") return <output data-testid="timeline-take">{context.take?.name ?? "trống"}</output>;
     if (id === "manipulator-library") {
@@ -119,6 +124,88 @@ describe("WorkspaceShell STT synchronization", () => {
       },
     });
     apiMocks.getSystemStatus.mockResolvedValue(null);
+    apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
+    apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
+  });
+
+  it("claims the OBS target while a project is open and releases the same owner on leave", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    const view = render(<WorkspaceShell
+      engine={null}
+      onBack={vi.fn()}
+      onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)}
+      onToggleTheme={vi.fn()}
+      project={project}
+      runtime={null}
+      theme="dark"
+    />);
+    await waitFor(() => expect(apiMocks.claimObsLiveLinkTarget).toHaveBeenCalledWith(project.id, expect.any(String)));
+    const owner = apiMocks.claimObsLiveLinkTarget.mock.calls[0][1];
+    view.unmount();
+    expect(apiMocks.releaseObsLiveLinkTarget).toHaveBeenCalledWith(owner);
+  });
+
+  it("opens Voice Training and Voice Changer directly onto their modules", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    const { container } = render(<WorkspaceShell
+      engine={null}
+      onBack={vi.fn()}
+      onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)}
+      onToggleTheme={vi.fn()}
+      project={project}
+      runtime={null}
+      theme="dark"
+    />);
+    expect(container.querySelector(".workspace-brand__logo")).toHaveAttribute("src", "/pro4bro-logo.png");
+    fireEvent.click(screen.getByRole("button", { name: /Voice Training/ }));
+    await waitFor(() => expect(container.querySelector(".workspace-stage")).toHaveClass("is-compact-heading"));
+    expect(container.querySelector(".stage-heading")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Voice Changer/ }));
+    await waitFor(() => expect(container.querySelector(".workspace-stage")).toHaveClass("is-compact-heading"));
+    expect(container.querySelector(".stage-heading")).toBeNull();
+  });
+
+  it("recycles every selected Media Pool asset through the project API", async () => {
+    const first = mediaAsset("complete", "one", "2026-08-30T00:00:01Z");
+    const second = { ...mediaAsset("complete", "two", "2026-08-30T00:00:02Z"), id: "asset-2", name: "second.wav" };
+    apiMocks.listProjectMedia.mockResolvedValue([first, second]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.recycleProjectMedia.mockImplementation(async (_projectId: string, assetId: string) => ({ ...(assetId === first.id ? first : second), deletedAt: "2026-09-29T00:00:00Z" }));
+    render(<WorkspaceShell
+      engine={null}
+      onBack={vi.fn()}
+      onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)}
+      onToggleTheme={vi.fn()}
+      project={project}
+      runtime={null}
+      theme="dark"
+    />);
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("speech.wav"));
+    fireEvent.click(screen.getByRole("button", { name: "remove selected footage" }));
+    await waitFor(() => expect(apiMocks.recycleProjectMedia).toHaveBeenCalledTimes(2));
+    expect(apiMocks.recycleProjectMedia).toHaveBeenNthCalledWith(1, project.id, first.id);
+    expect(apiMocks.recycleProjectMedia).toHaveBeenNthCalledWith(2, project.id, second.id);
+    await waitFor(() => expect(screen.getByText("Đã chuyển vào Recycle Bin 2 footage.")).toBeInTheDocument());
+  });
+
+  it("restores selected Recycle Bin footage through the project API", async () => {
+    const first = { ...mediaAsset("complete", "one", "2026-08-30T00:00:01Z"), deletedAt: "2026-09-29T00:00:00Z" };
+    const second = { ...first, id: "asset-2", name: "second.wav" };
+    apiMocks.listProjectMedia.mockResolvedValue([first, second]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.restoreProjectMedia.mockImplementation(async (_projectId: string, assetId: string) => ({ ...(assetId === first.id ? first : second), deletedAt: null }));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project} onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("speech.wav"));
+    fireEvent.click(await screen.findByRole("button", { name: "restore selected footage" }));
+    await waitFor(() => expect(apiMocks.restoreProjectMedia).toHaveBeenCalledTimes(2));
+    expect(apiMocks.restoreProjectMedia).toHaveBeenNthCalledWith(1, project.id, first.id);
+    expect(apiMocks.restoreProjectMedia).toHaveBeenNthCalledWith(2, project.id, second.id);
+    await waitFor(() => expect(screen.getByText("Đã restore 2 footage.")).toBeInTheDocument());
   });
 
 it("keeps what each page has open: footage in Speech to Text, the generated voice in Voice Manipulator", async () => {
@@ -144,7 +231,7 @@ it("keeps what each page has open: footage in Speech to Text, the generated voic
     fireEvent.click(screen.getByRole("button", { name: "mở voice output" }));
     await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("Script · 35 đoạn"));
 
-    fireEvent.click(screen.getByRole("button", { name: /Speech to Text/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Input/ }));
     await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("speech.wav"));
     expect(screen.getByTestId("script-value")).toHaveTextContent("Transcript của footage");
 

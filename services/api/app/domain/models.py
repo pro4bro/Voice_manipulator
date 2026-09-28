@@ -440,6 +440,11 @@ class LocalMediaImport(DomainModel):
     cache_local: bool = True
 
 
+class ObsLiveLinkVideoImport(DomainModel):
+    span_id: str = Field(min_length=1, max_length=128)
+    source_path: str | None = Field(default=None, max_length=4096)
+
+
 class LocalMediaCacheUpdate(DomainModel):
     enabled: bool
 
@@ -448,6 +453,112 @@ class MediaImportResult(DomainModel):
     asset: ProjectMediaAsset
     item: dict[str, Any] | None = None
     elapsed: float
+
+
+class ObsTrackSource(DomainModel):
+    stream_index: int = Field(ge=0)
+    source_label: str = Field(min_length=1, max_length=200)
+    source_id: str | None = Field(default=None, max_length=200)
+
+
+class ObsSessionCreate(DomainModel):
+    # A machine-local locator used only for this request; never persisted.
+    source_path: str = Field(min_length=1, max_length=4096)
+    sources: list[ObsTrackSource] = Field(default_factory=list)
+
+
+class ObsRecordingInspect(DomainModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+
+
+class ObsRecordingStream(DomainModel):
+    stream_index: int = Field(ge=0)
+    obs_track: int = Field(ge=1)
+    sample_rate: int = Field(ge=1)
+    codec: str
+
+
+class ObsRecordingInspection(DomainModel):
+    duration: float = Field(ge=0)
+    tracks: list[ObsRecordingStream]
+
+
+class ObsSessionTrack(ObsTrackSource):
+    obs_track: int = Field(ge=1)
+    asset_id: str
+    source_path: str
+    analysis_path: str
+    video_offset_seconds: float = 0.0
+
+
+class ObsCaptureSession(DomainModel):
+    id: str
+    status: Literal["queued", "processing", "ready", "error"] = "queued"
+    created_at: datetime
+    updated_at: datetime
+    recording_asset_id: str | None = None
+    recording_path: str | None = None
+    duration: float = Field(default=0, ge=0)
+    tracks: list[ObsSessionTrack] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ObsLiveOpen(DomainModel):
+    protocol_version: Literal[1, 2]
+    capture_id: str | None = Field(default=None, min_length=1, max_length=100,
+                                   pattern=r"^[A-Za-z0-9_-]+(?:-[A-Za-z0-9_-]+)*$")
+    obs_version: str = Field(min_length=1, max_length=80)
+    source_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+(?:-[A-Za-z0-9_-]+)*$")
+    source_label: str = Field(min_length=1, max_length=200)
+    sample_rate: int = Field(ge=8000, le=192000)
+    channels: Literal[1, 2]
+    started_timestamp_ns: int = Field(ge=0)
+
+
+class ObsLiveEvent(DomainModel):
+    sequence: int = Field(ge=0)
+    kind: Literal["paused", "unpaused", "gap", "stopped"]
+    timestamp_ns: int = Field(ge=0)
+    missing_frames: int = Field(default=0, ge=0)
+    first_sequence: int | None = Field(default=None, ge=0)
+    last_sequence: int | None = Field(default=None, ge=0)
+
+
+class ObsLiveGap(DomainModel):
+    first_sequence: int = Field(ge=0)
+    last_sequence: int = Field(ge=0)
+    missing_frames: int = Field(ge=0)
+
+
+class ObsLiveSession(DomainModel):
+    id: str
+    status: Literal["recording", "paused", "stopped"] = "recording"
+    created_at: datetime
+    updated_at: datetime
+    obs_version: str
+    capture_id: str = ""
+    source_id: str
+    source_label: str
+    sample_rate: int
+    channels: int
+    started_timestamp_ns: int
+    last_sequence: int = -1
+    last_event_sequence: int = -1
+    frames_received: int = 0
+    bytes_received: int = 0
+    gaps: list[ObsLiveGap] = Field(default_factory=list)
+    stem_path: str | None = None
+    analysis_path: str | None = None
+    source_archive_asset_id: str | None = None
+    source_archive_stream_index: int | None = Field(default=None, ge=0)
+    source_archive_track_uid: int | None = Field(default=None, gt=0)
+    asset_id: str | None = None
+    timing_complete: bool = True
+    live_stt_status: Literal["waiting", "listening", "transcribing", "live", "paused", "stopped", "error"] = "waiting"
+    live_text: str = ""
+    live_pending: str = ""
+    live_stt_error: str | None = None
+    live_stt_lag_seconds: float = Field(default=0, ge=0)
 
 
 class ProfileChoice(DomainModel):

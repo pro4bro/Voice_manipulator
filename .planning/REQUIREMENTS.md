@@ -42,6 +42,20 @@
 - **STT-11**: Script words can carry a Speaker Profile so one mixed file can be reviewed as multiple named speakers.
 - **STT-12**: Media assets and individual Script words can carry controlled Emotion Labels from positive through critical; multi-emotion assets are labeled `mix`.
 - **STT-13**: Media Pool footage rows remain compact; file-level speaker/emotion tags are edited through a right-click menu instead of persistent checkbox groups.
+- **STT-OBS-01**: Speech to Text can ingest one OBS recording with separate audio tracks as one portable capture session, preserving the original video and track-to-source mapping.
+- **STT-OBS-02**: Each selected OBS audio track can be transcribed independently; its transcript and timing retain source and session provenance.
+- **STT-OBS-03**: Reviewed captions export as SRT against the recording timeline, accounting for track offsets and recording pauses; unsafe word timings cannot silently enter cues.
+- **STT-OBS-04**: An optional OBS plugin sends selected source PCM and recording events to the local app while OBS records video. The app durably records each source as its own project-owned audio stem and can run provisional live transcription. Transport loss creates explicit gap markers without blocking or corrupting OBS recording.
+- **STT-OBS-05**: Provisional live captions can appear in the OBS composition, while the original recording and final corrected captions remain separately recoverable.
+- **STT-OBS-06**: A finished session can render a new video with reviewed hard subtitles while preserving the original recording.
+- **STT-OBS-07**: OBS stop finalizes the app-side live stems, associates the finished OBS recording with the same capture session, and automatically queues authoritative per-source Final STT; the final revision replaces the live draft as the Script/SRT source.
+- **STT-OBS-08**: Every captured source has an explicit role. Microphone sources identify the primary user or people near that microphone; meeting-application sources identify remote guests. Diarization runs independently per source when requested, and Script/SRT speaker labels retain both the source role and diarized speaker identity.
+
+## Distribution
+
+- **PKG-01**: A Windows test bundle contains its Python runtimes, application dependencies, FFmpeg, built web application, engine source, and selected model weights inside the application folder.
+- **PKG-02**: Runtime defaults never silently resolve to a sibling checkout, user profile cache, or system Python installation.
+- **PKG-03**: A fail-closed portability audit reports every missing or external runtime component and must pass after the bundle is moved to a different path on a clean test machine.
 
 ## Voice Training
 

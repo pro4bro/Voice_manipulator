@@ -35,6 +35,26 @@ describe("VoiceOutputPanel", () => {
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "output-1" }));
   });
 
+  it("selects a range and confirms one bulk deletion", () => {
+    const onDeleteMany = vi.fn();
+    const outputs = [output(), output({ id: "output-2", name: "B · hai", text: "Câu hai" }), output({ id: "output-3", name: "C · ba", text: "Câu ba" })];
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onDeleteMany={onDeleteMany} onOpen={vi.fn()} outputs={outputs} speakers={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Chọn An · Xin chào" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn C · ba" }), { shiftKey: true });
+    expect(screen.getByText("3 đã chọn")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xoá đã chọn" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận xoá 3" }));
+
+    expect(onDeleteMany).toHaveBeenCalledWith(outputs);
+  });
+
+  it("selects all Voice Output rows with Ctrl+A while the list has focus", () => {
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[output(), output({ id: "output-2", name: "B · hai" })]} speakers={[]} />);
+    fireEvent.keyDown(screen.getByRole("region", { name: "Danh sách Voice Output" }), { key: "a", ctrlKey: true });
+    expect(screen.getByText("2 đã chọn")).toBeInTheDocument();
+  });
+
   it("says where results will appear before there are any", () => {
     render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[]} speakers={[]} />);
 

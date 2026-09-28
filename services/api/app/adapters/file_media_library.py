@@ -138,6 +138,38 @@ class FileMediaLibrary:
             )
             return asset.model_copy(update={"words": words})
 
+    def link_obs_archive_track(self, project_id: str, asset_id: str,
+                               parent_asset_id: str, stream_index: int,
+                               track_uid: int, analysis_path: str) -> ProjectMediaAsset:
+        """Point a LiveLink child at its verified parent; keep only analysis audio locally."""
+        with self._lock(project_id):
+            parent = self._require(project_id, parent_asset_id)
+            if not parent.source_path.endswith(".mka"):
+                raise ValueError("OBS parent asset must be an MKA archive")
+            root = self._project_root(project_id)
+            portable = self._portable_path(root, analysis_path)
+            if not self._resolved_project_path(root, portable).is_file():
+                raise FileNotFoundError(portable)
+            return self._update_asset(project_id, asset_id, {
+                "source_path": portable, "analysis_path": portable,
+                "source_extension": ".wav", "sample_rate": 24000,
+                "source_archive_asset_id": parent_asset_id,
+                "source_archive_stream_index": stream_index,
+                "source_archive_track_uid": track_uid,
+            })
+
+    def refresh_obs_archive_parent(self, project_id: str, asset_id: str,
+                                   source_path: str, duration: float,
+                                   codec: str) -> ProjectMediaAsset:
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            portable = self._portable_path(root, source_path)
+            if not portable.endswith(".mka") or not self._resolved_project_path(root, portable).is_file():
+                raise ValueError("Verified OBS MKA parent is missing")
+            return self._update_asset(project_id, asset_id, {
+                "source_path": portable, "audio_codec": codec, "duration": duration,
+            })
+
     def update_script(
         self,
         project_id: str,

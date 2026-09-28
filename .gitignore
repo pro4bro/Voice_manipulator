@@ -2,6 +2,7 @@
 .cache/
 .runtime/
 .tools/
+/build/
 data/
 apps/web/node_modules/
 apps/web/dist/
