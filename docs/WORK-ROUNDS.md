@@ -76,7 +76,7 @@ that gap matters, and the exact next round.
 | LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
-| MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Queued | A ready recording journal without its deleted MKA asset currently reappears as a pending footage row. |
+| MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Complete at API, restart and owner-journal inspection level; running-app check open | Permanent deletion leaves a portable ID tombstone; stale machine state and orphan journals cannot publish a pending footage row. |
 | UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Queued | Static CSS checks cannot prove inherited colors, overlays, browser selection or native OBS dialog appearance. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
@@ -2412,3 +2412,38 @@ Exact next round: `MEDIA-DELETE-17` — reconcile permanent OBS footage deletion
 with journal-backed Media Pool discovery, then verify a deleted MKA cannot
 reappear as a pending recording row. Keep `LIVELINK-INGEST-11B` as the physical
 long-take backlog gate.
+
+## Round MEDIA-DELETE-17 — 2026-10-02
+
+Completed scope:
+- Permanent deletion of an OBS MKA parent now writes the recording ID to
+  project-owned `assets/obs-livelink/deleted-recordings.json`, then removes the
+  recording folder and grouped assets. The API serializes this with the
+  recording's archive and LiveLink journal locks.
+- LiveLink state persistence and restart discard deleted IDs. Recovery and
+  archive retry reject them. Recording discovery excludes those IDs and also
+  excludes older archive-ready journals whose parent asset no longer exists;
+  a journal without a parent ID is hidden only when both MKA and PCM chunks
+  are absent. This keeps unfinished recordings discoverable.
+
+Evidence:
+- Backend full suite: 482 passed. Frontend full suite: 447 passed. TypeScript
+  typecheck, Vite build, and `git diff --check` passed.
+- Tests cover the permanent-delete API, project reload, stale machine-state
+  restore, journal persistence, archive retry and legacy orphan discovery.
+- Read-only inspection of the owner's `Test_OBS 7` recording
+  `1b775e3e-524a-4acb-8731-7b37057ec65f` found `archiveStatus=ready`,
+  parent asset `asset-live-b8a59398d825` absent from the media index, no
+  `source.mka`, and zero PCM chunks. It meets the orphan filter. No owner media
+  was modified for this inspection.
+
+Remaining gap: the updated app was not run against the owner's live OBS process
+and Media Pool viewport. The old orphan journal remains on disk as forensic
+metadata, but is no longer returned as pending footage; the code cannot infer
+that every unindexed journal should be physically erased because an archive
+can also be damaged or moved. A running-app check matters to confirm the row
+disappears without a manual refresh and a newly deleted take stays absent.
+
+Exact next round: `LIVELINK-MEDIA-14` — make the in-progress OBS footage row
+fully interactive during capture. Keep `LIVELINK-INGEST-11B` and
+`UI-CONTRAST-01B` as separate physical acceptance rounds.

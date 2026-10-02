@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from pydantic import ValidationError
 
 from app.adapters.obs_livelink_connection import LiveLinkError, ObsLiveLinkConnection
+from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.domain.obs_livelink_state import (
     ObsAppAction, ObsCaptureRecording, ObsChannel, ObsLifecycleEvent, ObsLiveLinkState,
     ObsResyncRequired, ObsStateConflict, ObsTargetLease, ObsTriggerPolicy,
@@ -186,6 +187,9 @@ class ObsLiveLinkRuntime:
             if len(matches) != 1:
                 raise LiveLinkError("Stopped OBS recording journal is missing or ambiguous.", 404 if not matches else 409)
             recorded = matches[0]
+            root = Path(self.projects.get(recorded.project_id).project_path).resolve()
+            if recording_id in deleted_recording_ids(root):
+                raise LiveLinkError("OBS recording was permanently deleted.", 404)
             previous = [item for item in state.completed_recordings if item.recording_id != recording_id]
             recent_ids = {item.recording_id for item in previous[-4:]}
             retained = [item for item in previous if item.archive_status == "pending" or
@@ -222,6 +226,8 @@ class ObsLiveLinkRuntime:
                     for item in loaded.completed_recordings:
                         try:
                             root = Path(self.projects.get(item.project_id).project_path).resolve()
+                            if item.recording_id in deleted_recording_ids(root):
+                                continue
                             path = root / "assets" / "obs-livelink" / item.recording_id / "recording.json"
                             recorded = ObsCaptureRecording.model_validate(
                                 json.loads(path.read_text(encoding="utf-8"))["recording"])
@@ -467,6 +473,8 @@ class ObsLiveLinkRuntime:
 
     def _persist(self) -> None:
         state = self._require_state()
+        completed = [item for item in state.completed_recordings if item.recording_id not in
+                     deleted_recording_ids(Path(self.projects.get(item.project_id).project_path).resolve())]
         def named(recording: ObsCaptureRecording) -> ObsCaptureRecording:
             if recording.display_name:
                 return recording
@@ -475,7 +483,7 @@ class ObsLiveLinkRuntime:
                 "LIV", recording.recording_id)})
         state = state.model_copy(update={
             "recording": named(state.recording) if state.recording else None,
-            "completed_recordings": [named(item) for item in state.completed_recordings],
+            "completed_recordings": [named(item) for item in completed],
         })
         self._state = state
         self._write(self._state_path(state.install_id),
@@ -501,6 +509,12 @@ class ObsLiveLinkRuntime:
                 record["channels"].extend(item for item in previous.get("channels", [])
                                           if item["channelId"] not in known)
             self._write(path, json.dumps(record, indent=2).encode())
+
+    def discard_deleted_recordings(self) -> None:
+        """Drop newly deleted recordings from the current machine snapshot."""
+        with self._lock:
+            if self._state is not None:
+                self._persist()
 
     def archive_ready(self, recording_id: str, archive: dict) -> None:
         with self._lock:

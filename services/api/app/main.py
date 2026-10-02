@@ -45,6 +45,7 @@ from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
 from app.adapters.obs_plugin_installation import ObsPluginInstallation, ObsPluginInstallError
 from app.adapters.obs_livelink_connection import ObsLiveLinkConnection, LiveLinkError
 from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
+from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.adapters.obs_livelink_audio import FileObsLiveLinkAudio, MAX_CHUNK_BYTES
 from app.adapters.obs_session_subtitles import ObsSessionSubtitles
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
@@ -1331,7 +1332,14 @@ def create_app(
         try:
             if not permanent:
                 return media.send_to_recycle_bin(project_id, asset_id)
-            media.remove(project_id, asset_id)
+            asset = media.get(project_id, asset_id)
+            if asset.obs_recording_id and asset.source_extension == ".mka":
+                # Serialize with archive finalization and journal persistence.
+                with obs_livelink_audio._recording_lock(asset.obs_recording_id), obs_livelink_runtime._lock:
+                    media.remove(project_id, asset_id)
+                    obs_livelink_runtime.discard_deleted_recordings()
+            else:
+                media.remove(project_id, asset_id)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
@@ -2301,9 +2309,25 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         locator_status = {item["spanId"]: item for item in obs_livelink_runtime.status().get("videoSpans", [])}
+        deleted_ids = deleted_recording_ids(root.parent.parent)
+        asset_ids = {asset.id for asset in media.list_metadata(project_id)}
         records = [(path.parent, json.loads(path.read_text(encoding="utf-8")))
                    for path in sorted(root.glob("*/recording.json"),
-                                      key=lambda item: item.stat().st_mtime, reverse=True)]
+                                      key=lambda item: item.stat().st_mtime, reverse=True)
+                   if path.parent.name not in deleted_ids]
+        # Older deletes could leave a ready journal after its archive and PCM
+        # disappeared. It is not a pending recording to offer in Media Pool.
+        def orphan_ready(folder: Path, record: dict) -> bool:
+            recording = record.get("recording", {})
+            if recording.get("archiveStatus") != "ready":
+                return False
+            archive_id = (recording.get("sourceArchive") or {}).get("parentAssetId")
+            if archive_id:
+                return archive_id not in asset_ids
+            return (not (folder / "source.mka").is_file()
+                    and not any((folder / "channels").glob("*/chunks/*.json")))
+
+        records = [(folder, record) for folder, record in records if not orphan_ready(folder, record)]
         for recording_folder, record in records:
             record["durableChannelIds"] = [
                 channel_folder.name for channel_folder in (recording_folder / "channels").glob("*")

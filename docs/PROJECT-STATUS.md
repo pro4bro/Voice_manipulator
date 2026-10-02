@@ -1,5 +1,18 @@
 # Project Status — 2026-09-22
 
+## Permanent OBS footage deletion — 2026-10-02
+
+`MEDIA-DELETE-17` records permanently deleted OBS recording IDs inside the
+portable project. The API deletes the MKA parent and channel assets while
+serialized with archive publication, then removes the ID from the current
+LiveLink machine snapshot. Restart, journal persistence, recovery and archive
+retry cannot recreate the deleted recording. Media Pool discovery also hides
+older archive-ready journals with no indexed parent asset, including the
+owner's orphan in `Test_OBS 7`. The old journal remains on disk for forensic
+inspection; it is no longer offered as pending footage. Backend 482/482 and
+frontend 447/447 tests, typecheck and build pass. Running-app/OBS verification
+remains open. See ADR 0026.
+
 ## LiveLink detailed STT from durable PCM — 2026-10-02
 
 `LIVELINK-STT-16` adds a per-recording, per-track detailed STT checkpoint. The

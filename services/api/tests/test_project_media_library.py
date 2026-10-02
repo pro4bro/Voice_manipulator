@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.domain.models import MediaAssetCreate, ProjectCreate, TimelineEditRange, TimelineGainKeyframe
 from app.adapters.file_project_repository import FileProjectRepository
 from app.main import create_app
@@ -864,4 +865,47 @@ def test_permanently_removed_recycled_footage_stays_absent_after_reload(tmp_path
 
     assert library.list(project.id) == []
     assert FileMediaLibrary(projects).list(project.id) == []
+
+
+def test_permanent_obs_delete_route_removes_journal_and_stays_out_of_recordings(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="OBS delete"))
+    root = Path(project.project_path)
+    recording_id = "take-to-delete"
+    folder = root / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "source.mka").write_bytes(b"archive")
+    (folder / "recording.json").write_text(json.dumps({"recording": {
+        "recordingId": recording_id, "archiveStatus": "ready"}, "channels": []}), encoding="utf-8")
+    asset = FileMediaLibrary(projects).create(project.id, MediaAssetCreate(
+        name="OBS take", source_extension=".mka", media_kind="audio",
+        source_path=f"assets/obs-livelink/{recording_id}/source.mka",
+        obs_recording_id=recording_id, origin="record",
+    ))
+    client = TestClient(create_app(project_repository=projects,
+        settings=replace(Settings.from_env(), data_root=tmp_path / "data")))
+    assert client.delete(f"/api/projects/{project.id}/media/{asset.id}",
+                         params={"permanent": "true"}).status_code == 204
+    assert not folder.exists()
+    assert recording_id in deleted_recording_ids(root)
+    assert client.get(f"/api/projects/{project.id}/obs-livelink/recordings").json() == []
+
+
+def test_corrupt_obs_delete_marker_stops_removal_before_media_is_erased(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="OBS marker"))
+    root = Path(project.project_path)
+    folder = root / "assets" / "obs-livelink" / "take"
+    folder.mkdir(parents=True)
+    (folder / "source.mka").write_bytes(b"archive")
+    asset = FileMediaLibrary(projects).create(project.id, MediaAssetCreate(
+        name="OBS take", source_extension=".mka", media_kind="audio",
+        source_path="assets/obs-livelink/take/source.mka",
+        obs_recording_id="take", origin="record",
+    ))
+    (root / "assets" / "obs-livelink" / "deleted-recordings.json").write_text("broken", encoding="utf-8")
+    with pytest.raises(ValueError):
+        FileMediaLibrary(projects).remove(project.id, asset.id)
+    assert (folder / "source.mka").read_bytes() == b"archive"
+    assert FileMediaLibrary(projects).get(project.id, asset.id).id == asset.id
 

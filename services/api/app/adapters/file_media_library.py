@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.adapters.media_index_store import MediaIndexStore
+from app.adapters.obs_livelink_deletions import mark_recording_deleted
 from app.adapters.project_activity_log import ProjectActivityLog
 from app.adapters.word_timing_quality import (
     WORD_TIMING_TRUST_VERSION,
@@ -63,6 +64,11 @@ class FileMediaLibrary:
     def list(self, project_id: str) -> list[ProjectMediaAsset]:
         with self._lock(project_id):
             return self._load(project_id)
+
+    def list_metadata(self, project_id: str) -> list[ProjectMediaAsset]:
+        """Read Media Pool identities without loading per-word transcript files."""
+        with self._lock(project_id):
+            return self._load(project_id, include_words=False)
 
     def get(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
         with self._lock(project_id):
@@ -700,6 +706,8 @@ class FileMediaLibrary:
                 if folder == allowed_root or allowed_root not in folder.parents:
                     raise ValueError("Media asset folder escapes its project folder.")
                 folders.append(folder)
+            if asset.obs_recording_id and asset.source_extension == ".mka":
+                mark_recording_deleted(project_root, asset.obs_recording_id)
             for folder in set(folders):
                 if folder.exists():
                     shutil.rmtree(folder)

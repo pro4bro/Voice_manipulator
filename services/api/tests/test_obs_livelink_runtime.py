@@ -18,6 +18,8 @@ from app.adapters.obs_livelink_connection import LiveLinkError
 from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
 from app.adapters.obs_livelink_waveform import ObsLiveLinkWaveform
 from app.domain.models import ProjectCreate
+from app.domain.models import MediaAssetCreate
+from app.adapters.obs_livelink_deletions import deleted_recording_ids, mark_recording_deleted
 from app.domain.obs_livelink_state import ObsTimeInterval, ObsTriggerPolicy
 
 
@@ -99,6 +101,78 @@ def test_new_obs_process_retains_stopped_recording_for_pcm_outbox_replay(tmp_pat
         sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm,
     )
     assert replayed["durable"]
+
+
+def test_permanent_obs_media_delete_cannot_be_recreated_from_machine_state(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    recording_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start",
+                             1_000_000_000, "span-1")["appRecording"]["recordingId"]
+    lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 2_000_000_000, "span-1")
+    root = Path(project.project_path)
+    folder = root / "assets" / "obs-livelink" / recording_id
+    (folder / "source.mka").write_bytes(b"archive")
+    library = FileMediaLibrary(runtime.projects)
+    parent = library.create(project.id, MediaAssetCreate(
+        name="OBS take", source_extension=".mka", media_kind="audio",
+        source_path=f"assets/obs-livelink/{recording_id}/source.mka",
+        obs_recording_id=recording_id, origin="record",
+    ))
+    stale_machine_state = runtime._state_path(hello["installId"]).read_bytes()
+    stale_journal = (folder / "recording.json").read_bytes()
+
+    library.remove(project.id, parent.id)
+    assert not folder.exists()
+    assert recording_id in deleted_recording_ids(root)
+    runtime.discard_deleted_recordings()
+    assert runtime.status()["recentRecordings"] == []
+    folder.mkdir()
+    (folder / "recording.json").write_bytes(stale_journal)
+    with pytest.raises(LiveLinkError, match="permanently deleted"):
+        runtime.recover_recording(
+            token, install_id=hello["installId"], connection_id=snapshot["connectionId"],
+            epoch=snapshot["connectionEpoch"], recording_id=recording_id,
+        )
+    shutil.rmtree(folder)
+    runtime._persist()
+    assert not folder.exists()
+
+    # A copied or stale machine snapshot must not recreate a deleted journal.
+    runtime._state_path(hello["installId"]).write_bytes(stale_machine_state)
+    restarted = ObsLiveLinkRuntime(link, runtime.projects, tmp_path / "machine")
+    new_hello = {**hello, "processInstanceId": str(uuid4())}
+    assert restarted.sync(new_hello, link.hello(token, new_hello))["recentRecordings"] == []
+    restarted._persist()
+    assert not folder.exists()
+
+
+def test_legacy_ready_journal_without_archive_or_chunks_is_not_pending_footage(tmp_path):
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+    import app.main as main
+    from app.settings import Settings
+
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Old OBS take"))
+    recording_id = str(uuid4())
+    folder = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "recording.json").write_text(json.dumps({"recording": {
+        "recordingId": recording_id, "archiveStatus": "ready"}, "channels": []}), encoding="utf-8")
+    client = TestClient(main.create_app(project_repository=projects,
+        settings=replace(Settings.from_env(), data_root=tmp_path / "data")))
+    url = f"/api/projects/{project.id}/obs-livelink/recordings"
+    assert client.get(url).json() == []
+    (folder / "channels" / "track-1" / "chunks").mkdir(parents=True)
+    (folder / "channels" / "track-1" / "chunks" / "0.json").write_text("{}", encoding="utf-8")
+    assert len(client.get(url).json()) == 1
+    (folder / "source.mka").write_bytes(b"orphan archive")
+    (folder / "recording.json").write_text(json.dumps({"recording": {
+        "recordingId": recording_id, "archiveStatus": "ready",
+        "sourceArchive": {"parentAssetId": "deleted-parent"}}, "channels": []}), encoding="utf-8")
+    assert client.get(url).json() == []
+    mark_recording_deleted(Path(project.project_path), recording_id)
+    assert client.get(url).json() == []
+    assert client.post(f"{url}/{recording_id}/archive/retry").status_code == 404
 
 
 def test_obs_restart_retains_all_unfinalized_recordings_beyond_recent_list(tmp_path):

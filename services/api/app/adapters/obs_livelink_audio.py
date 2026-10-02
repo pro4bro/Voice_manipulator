@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import UUID
 
 from app.adapters.obs_livelink_connection import LiveLinkError, ObsLiveLinkConnection
+from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.adapters.obs_livelink_archive import ObsLiveLinkArchiver
 from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
 from app.adapters.obs_livelink_waveform import ObsLiveLinkWaveform
@@ -192,6 +193,8 @@ class FileObsLiveLinkAudio:
         except ValueError as exc:
             raise LiveLinkError("Invalid OBS recording ID.", 422) from exc
         root, folder = self._folder(project_id, recording_id)
+        if recording_id in deleted_recording_ids(root):
+            raise LiveLinkError("OBS recording was permanently deleted.", 404)
         record_path = folder / "recording.json"
         if not record_path.is_file():
             raise LiveLinkError("OBS recording journal is missing.", 404)
