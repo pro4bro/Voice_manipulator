@@ -73,7 +73,8 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-11C | Install and measure sustained two-track OBS capture with simultaneous live and detailed STT | Measured; PCM/archive passed, latency and realtime STT gaps open | A real OBS take shows zero PCM sample gaps and a valid two-track MKA, but p95 ingest lag is about 16 seconds and realtime STT drops queued work. |
 | LIVELINK-INGEST-11D | Profile and reduce native HTTP ACK and API persistence latency under sustained two-track load | Complete on controlled two-source OBS gate; longer source matrix open | Durable PCM preparation now runs concurrently and waveform avoids a redundant flush; 304-second OBS p95 ingress lag fell to 4.20/4.14 seconds with zero sample gaps. |
 | LIVELINK-STT-12B | Prevent realtime transcription queue loss under concurrent detailed STT | Complete at two-source OBS and forced-backlog test level; restart recovery open | Bounded RAM queues now replay committed PCM per track instead of discarding recognition work when full. |
-| LIVELINK-STT-12C | Resume pending realtime STT from durable PCM after API restart | Queued | A process restart can still interrupt the in-memory catch-up cursor and leave provisional text incomplete. |
+| LIVELINK-STT-12C | Resume pending realtime STT from durable PCM after API restart | Complete at API startup, two-track restart and copied real-PCM replay level; physical model-load gate open | Per-track checkpoints reconstruct an unfinished utterance and replay committed PCM without repeating final transcript events. |
+| LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Queued | Measures actual model contention and catch-up lag across process loss, which deterministic replay cannot establish. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2699,3 +2700,58 @@ Exact next round: `LIVELINK-STT-12C` — checkpoint per-track realtime STT
 progress and resume unread committed PCM after API restart without duplicate
 final events, then measure catch-up lag. Continue the final `LIVELINK-08`
 source and UI gate afterward.
+
+## Round LIVELINK-STT-12C — 2026-10-02
+
+Completed scope:
+- Added a project-owned, atomically replaced `live-stt-progress.json` per OBS
+  track. It records the next PCM sequence and the start sequence of an open
+  utterance. API startup discovers these checkpoints, replays the open
+  utterance to rebuild the recognizer session, and drains unread committed PCM
+  even when OBS sends no new upload. A version marker on newly created
+  `recording.json` journals covers a crash before the first checkpoint without
+  triggering transcription of every legacy completed recording. Deleted
+  recordings are excluded. See ADR 0031.
+- Kept the public transcript journal idempotent across replay using the track,
+  utterance, event status and ending sample as the event identity. A fresh
+  recognizer session ID after API restart prevents old Studio session audio
+  from being appended a second time. A transient Windows file lock retries
+  checkpoint replacement. A failed event-journal write stops the worker
+  without advancing its checkpoint; later uploads cannot open a new queue past
+  the gap, so restart can retry all committed PCM. Permanent worker failures
+  are logged and reported.
+- Added graceful worker cancellation on API shutdown. Copied the 12B physical
+  OBS PCM into an isolated ignored project for restart measurement; original
+  source PCM and MKA remain unchanged.
+
+Evidence:
+- A two-track forced-backlog test interrupts processing, recreates the STT
+  adapter, drains both tracks, then rewinds one checkpoint behind an already
+  committed final event. The event journal remains byte-for-byte equivalent
+  after replay, with one final per utterance and monotonic event revisions.
+  Another test restarts during active speech, accepts later PCM, and retains
+  one utterance across the seam. FastAPI startup restores a stopped recording
+  without a new upload; tests cover the Windows checkpoint lock retry and
+  event-write failure before checkpoint advancement and another chunk arriving
+  after that failure.
+- The copied 185.71-second OBS source contains 330/329 PCM chunks. With a
+  deterministic 5-ms fake recognizer, a simulated restart after 8.594 seconds
+  completed all 659 chunks in 34.328 seconds total, 25.734 seconds after
+  restart. Both final checkpoints reached sequence 330/329; 104 transcript
+  events included 24 finals, zero duplicate finals and zero error events.
+  Replay report and script are in ignored `.scratch/livelink-stt-12c`.
+- Focused Live STT tests: 13 passed. Full backend suite: 492 passed with two
+  existing deprecation warnings.
+
+Remaining gap: no running OBS/API process was restarted during a physical
+recording with the real `medium` live recognizer and concurrent detailed STT.
+The measured 25.734-second replay tail uses a fake recognizer and cannot
+predict GPU contention or the caption delay seen by the owner. This matters
+because the durable cursor can be correct while the live Script still catches
+up too slowly under model load. The full owner source matrix and viewport also
+remain in `LIVELINK-08`.
+
+Exact next round: `LIVELINK-STT-12D` — restart the API during a real two-track
+OBS take with simultaneous live and detailed STT, then verify the PCM, event
+and checkpoint tails and measure visible caption lag. Continue the final
+`LIVELINK-08` source/UI gate after that result.

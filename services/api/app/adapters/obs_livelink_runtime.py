@@ -502,12 +502,16 @@ class ObsLiveLinkRuntime:
             path = folder / "recording.json"
             if path.is_file():
                 previous = json.loads(path.read_text(encoding="utf-8"))
+                if previous.get("liveSttRecoveryVersion") == 1:
+                    record["liveSttRecoveryVersion"] = 1
                 for key in ("sourceStems", "transportGaps", "archiveSha256"):
                     if key in previous:
                         record[key] = previous[key]
                 known = {item["channelId"] for item in record["channels"]}
                 record["channels"].extend(item for item in previous.get("channels", [])
                                           if item["channelId"] not in known)
+            else:
+                record["liveSttRecoveryVersion"] = 1
             self._write(path, json.dumps(record, indent=2).encode())
 
     def discard_deleted_recordings(self) -> None:

@@ -550,6 +550,16 @@ def create_app(
                         ensure_obs_detail_worker(project.id, checkpoint.parent.name)
                 except (OSError, ValueError, KeyError):
                     continue
+            livelink_root = Path(project.project_path) / "assets" / "obs-livelink"
+            deleted_ids = deleted_recording_ids(Path(project.project_path))
+            for journal in livelink_root.glob("*/recording.json"):
+                if journal.parent.name in deleted_ids:
+                    continue
+                try:
+                    obs_livelink_stt.resume_recording(project.id, journal.parent.name)
+                except (OSError, ValueError, KeyError) as exc:
+                    logging.getLogger(__name__).warning(
+                        "LiveLink STT could not resume %s: %s", journal.parent.name, exc)
 
     async def stop_mkv_watchers() -> None:
         tasks = list(mkv_watchers.values()) + list(mkv_stt_workers.values()) + list(obs_detailed_workers.values())
@@ -568,6 +578,7 @@ def create_app(
             await stop_mkv_watchers()
             if obs_finalizers:
                 await asyncio.gather(*obs_finalizers.values(), return_exceptions=True)
+            await obs_livelink_stt.close()
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.add_middleware(

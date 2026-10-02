@@ -426,6 +426,7 @@ def test_ignore_stop_keeps_recording_across_two_video_spans(tmp_path):
     assert final["recentRecordings"][0]["status"] == "stopped"
     project_root = Path(project.project_path)
     record = json.loads((project_root / "assets" / "obs-livelink" / recording_id / "recording.json").read_text())
+    assert record["liveSttRecoveryVersion"] == 1
     assert [span["spanId"] for span in record["videoSpans"]] == ["span-1", "span-2"]
 
 

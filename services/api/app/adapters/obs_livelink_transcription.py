@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 import os
 import time
 import wave
@@ -13,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
+from uuid import uuid4
 
 import httpx
 
@@ -21,6 +23,10 @@ from app.domain.ports import ProjectRepository
 
 
 Recognizer = Callable[[str, bytes | None, str], Awaitable[dict]]
+
+
+class _EventPersistenceError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -43,6 +49,7 @@ class _Audio:
 @dataclass
 class _Utterance:
     utterance_id: str
+    start_sequence: int
     start: int
     end: int
     sample_rate: int
@@ -92,8 +99,11 @@ class ObsLiveLinkTranscription:
         self._model = asyncio.Semaphore(1)
         self._file_lock = asyncio.Lock()
         self._events: dict[Path, list[dict]] = {}
+        self._event_keys: dict[Path, dict[tuple[str, str, str, int], dict]] = {}
         self._valid_bytes: dict[Path, int] = {}
         self._finished: set[str] = set()
+        self._failed: set[tuple[str, str, str]] = set()
+        self._process_epoch = uuid4().hex
 
     def _path(self, project_id: str, recording_id: str) -> Path:
         root = Path(self.projects.get(project_id).project_path).resolve()
@@ -122,6 +132,12 @@ class ObsLiveLinkTranscription:
             except FileNotFoundError:
                 pass
             self._events[path] = events
+            self._event_keys[path] = {
+                (event["channelId"], event["utteranceId"], event["status"],
+                 event["lastSampleIndexExclusive"]): event
+                for event in events if event.get("utteranceId") is not None and
+                all(key in event for key in ("channelId", "status", "lastSampleIndexExclusive"))
+            }
             self._valid_bytes[path] = valid_bytes
         return self._events[path]
 
@@ -139,6 +155,12 @@ class ObsLiveLinkTranscription:
         async with self._file_lock:
             path = self._path(item.project_id, item.recording_id)
             events = self._load(path)
+            event_key = ((item.channel_id, utterance.utterance_id, status,
+                          utterance.end) if utterance else None)
+            existing = self._event_keys[path].get(event_key) if event_key else None
+            if existing is not None:
+                utterance.revision = max(utterance.revision, existing["revision"])
+                return
             revision = events[-1]["eventRevision"] + 1 if events else 1
             if utterance:
                 utterance.revision += 1
@@ -175,7 +197,110 @@ class ObsLiveLinkTranscription:
                 output.flush()
                 os.fsync(output.fileno())
             events.append(event)
+            if event_key:
+                self._event_keys[path][event_key] = event
             self._valid_bytes[path] += len(line)
+
+    def _progress_path(self, key: tuple[str, str, str]) -> Path:
+        project_id, recording_id, channel_id = key
+        return self._path(project_id, recording_id).parent / "channels" / channel_id / "live-stt-progress.json"
+
+    def _read_progress(self, key: tuple[str, str, str]) -> dict | None:
+        path = self._progress_path(key)
+        if not path.is_file():
+            return None
+        progress = json.loads(path.read_text(encoding="utf-8"))
+        active = progress.get("activeStartSequence")
+        if (progress.get("schemaVersion") != 1 or
+                progress.get("recordingId") != key[1] or
+                progress.get("channelId") != key[2] or
+                type(progress.get("nextSequence")) is not int or
+                progress["nextSequence"] < 0 or
+                (active is not None and
+                 (type(active) is not int or active < 0 or active >= progress["nextSequence"]))):
+            raise ValueError(f"Invalid Live STT progress for track {key[2]}.")
+        return progress
+
+    def _save_progress(self, key: tuple[str, str, str], next_sequence: int,
+                       active_start_sequence: int | None) -> None:
+        path = self._progress_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {"schemaVersion": 1, "recordingId": key[1], "channelId": key[2],
+                "nextSequence": next_sequence,
+                "activeStartSequence": active_start_sequence}
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        try:
+            with temporary.open("wb") as output:
+                output.write(json.dumps(data, separators=(",", ":")).encode())
+                output.flush()
+                os.fsync(output.fileno())
+            for attempt in range(8):
+                try:
+                    os.replace(temporary, path)
+                    break
+                except PermissionError:
+                    if attempt == 7:
+                        raise
+                    time.sleep(0.01 * (attempt + 1))
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def resume_recording(self, project_id: str, recording_id: str) -> int:
+        """Resume committed per-track PCM after the API process is recreated."""
+        root = self._path(project_id, recording_id).parent
+        journal = json.loads((root / "recording.json").read_text(encoding="utf-8"))
+        recording = journal["recording"]
+        if recording["recordingId"] != recording_id or recording["projectId"] != project_id:
+            raise ValueError("Live STT recording journal identity changed.")
+        stopped = recording["status"] == "stopped" and recording.get("archiveStatus") == "ready"
+        legacy_ready = (stopped and journal.get("liveSttRecoveryVersion") != 1 and
+                        not any((root / "channels").glob("*/live-stt-progress.json")))
+        if legacy_ready:
+            return 0
+        labels = {item["channelId"]: item["relayLabel"] for item in journal["channels"]}
+        started = recording["startedMonotonicNs"]
+        resumed = 0
+        for folder in sorted((root / "channels").glob("*/chunks")):
+            channel_id = folder.parent.name
+            if channel_id not in labels:
+                continue
+            key = project_id, recording_id, channel_id
+            if key in self._tasks:
+                continue
+            files = sorted(path for path in folder.glob("*.json") if path.stem.isdecimal())
+            if not files:
+                continue
+            progress = self._read_progress(key)
+            next_sequence = progress["nextSequence"] if progress else 0
+            active = progress["activeStartSequence"] if progress else None
+            first = active if active is not None else next_sequence
+            last_sequence = int(files[-1].stem)
+            if next_sequence > last_sequence + 1:
+                raise ValueError(f"Live STT progress exceeds committed PCM for track {channel_id}.")
+            if first > last_sequence:
+                continue
+            metadata = json.loads(files[-1].read_text(encoding="utf-8"))
+            template = _Audio(project_id, recording_id, channel_id,
+                              metadata["sourceUuid"], labels[channel_id],
+                              last_sequence, metadata["firstSampleIndex"],
+                              metadata["sampleRate"], metadata["channels"],
+                              metadata["pluginMonotonicNs"], started, b"")
+            queue: asyncio.Queue[_Audio | None] = asyncio.Queue(maxsize=self.max_queue_chunks)
+            self._queues[key] = queue
+            self._queued_bytes[key] = 0
+            self._deferred[key] = _Deferred(first, last_sequence, template)
+            self._tasks[key] = asyncio.create_task(self._run(key, queue))
+            resumed += 1
+        if stopped:
+            self._finished.add(recording_id)
+        return resumed
+
+    async def close(self) -> None:
+        tasks = list(self._tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def offer(self, *, project_id: str, recording_id: str, channel_id: str,
               source_uuid: str, alias: str, sequence: int, first_sample: int,
@@ -189,6 +314,10 @@ class ObsLiveLinkTranscription:
                       sequence, first_sample, sample_rate, channels,
                       plugin_monotonic_ns, recording_started_ns, pcm)
         key = project_id, recording_id, channel_id
+        if key in self._failed:
+            # PCM remains committed; a new API process replays from the last
+            # checkpoint. Do not skip this gap by opening a fresh queue.
+            return
         queue = self._queues.get(key)
         if queue is None:
             queue = asyncio.Queue(maxsize=self.max_queue_chunks)
@@ -239,11 +368,11 @@ class ObsLiveLinkTranscription:
             pcm=pcm, queued_at=time.monotonic() - age,
         )
 
-    async def _safe_append(self, item: _Audio, utterance: _Utterance | None, **fields) -> None:
+    async def _append_event(self, item: _Audio, utterance: _Utterance | None, **fields) -> None:
         try:
             await self._append(item, utterance, **fields)
-        except (OSError, KeyError, ValueError):
-            pass
+        except (OSError, KeyError, ValueError) as exc:
+            raise _EventPersistenceError("Live STT event could not be saved.") from exc
 
     async def _run(self, key: tuple[str, str, str], queue: asyncio.Queue[_Audio | None]) -> None:
         utterance: _Utterance | None = None
@@ -256,17 +385,19 @@ class ObsLiveLinkTranscription:
                     try:
                         item = await asyncio.to_thread(self._read_deferred, key, deferred)
                     except (OSError, ValueError, KeyError, TypeError) as exc:
-                        await self._safe_append(deferred.template, None, status="error",
-                                                error=f"Durable Live STT catch-up stopped: {exc}")
+                        await self._append_event(deferred.template, None, status="error",
+                                                 error=f"Durable Live STT catch-up stopped: {exc}")
                         break
                 elif queue.empty() and key[1] in self._finished:
                     if utterance and last:
                         await self._complete(last, utterance)
+                        await asyncio.to_thread(self._save_progress, key, last.sequence + 1, None)
                     break
                 else:
                     item = await queue.get()
                 if item is not None and from_queue:
                     self._queued_bytes[key] -= len(item.pcm)
+                processed = False
                 try:
                     if item is None:
                         continue
@@ -287,20 +418,23 @@ class ObsLiveLinkTranscription:
                             if utterance.silence_frames >= item.sample_rate * self.silence_seconds:
                                 await self._complete(item, utterance)
                                 utterance = None
+                        processed = True
                         continue
                     if utterance is None:
                         utterance = _Utterance(
                             utterance_id=f"{item.recording_id}:{item.channel_id}:{item.first_sample}",
+                            start_sequence=item.sequence,
                             start=item.first_sample, end=item.first_sample,
                             sample_rate=item.sample_rate, channels=item.channels,
                             start_monotonic_ns=item.plugin_monotonic_ns,
                             end_monotonic_ns=item.plugin_monotonic_ns,
                             source_uuid=item.source_uuid, alias=item.alias,
-                            session=f"obs-v3-{item.recording_id}-{item.channel_id}-{item.first_sample}",
+                            session=(f"obs-v3-{item.recording_id}-{item.channel_id}-"
+                                     f"{item.first_sample}-{self._process_epoch}"),
                             language=self.projects.get(item.project_id).language or "",
                             queued_at=item.queued_at,
                         )
-                        await self._safe_append(item, utterance, status="listening")
+                        await self._append_event(item, utterance, status="listening")
                     utterance.alias = item.alias
                     utterance.pcm.extend(item.pcm)
                     utterance.buffered_frames += frames
@@ -310,17 +444,35 @@ class ObsLiveLinkTranscription:
                     utterance.silence_frames = 0
                     if utterance.buffered_frames >= item.sample_rate * self.window_seconds:
                         await self._partial(item, utterance)
+                    processed = True
+                except _EventPersistenceError:
+                    raise
                 except Exception as exc:
                     if item is not None:
-                        await self._safe_append(item, utterance, status="error", error=str(exc))
+                        await self._append_event(item, utterance, status="error", error=str(exc))
                     utterance = None
+                    processed = True
                 finally:
-                    if from_queue:
-                        queue.task_done()
-                    elif deferred is not None:
-                        deferred.next_sequence += 1
-                        if deferred.next_sequence > deferred.highest_sequence:
-                            self._deferred.pop(key, None)
+                    try:
+                        if item is not None and processed:
+                            await asyncio.to_thread(self._save_progress, key, item.sequence + 1,
+                                                    utterance.start_sequence if utterance else None)
+                    finally:
+                        if from_queue:
+                            queue.task_done()
+                        elif deferred is not None and processed:
+                            deferred.next_sequence += 1
+                            if deferred.next_sequence > deferred.highest_sequence:
+                                self._deferred.pop(key, None)
+        except Exception as exc:
+            self._failed.add(key)
+            logging.getLogger(__name__).exception("LiveLink STT worker stopped for %s", key)
+            if last is not None:
+                try:
+                    await self._append_event(last, None, status="error",
+                                             error=f"Live STT worker stopped: {exc}")
+                except _EventPersistenceError:
+                    pass
         finally:
             self._queues.pop(key, None)
             self._queued_bytes.pop(key, None)
@@ -347,8 +499,8 @@ class ObsLiveLinkTranscription:
         utterance.buffered_frames = 0
         utterance.last_text = str(result.get("text") or "")
         utterance.last_pending = str(result.get("pending") or "")
-        await self._safe_append(item, utterance, status="partial",
-                                text=utterance.last_text, pending=utterance.last_pending)
+        await self._append_event(item, utterance, status="partial",
+                                 text=utterance.last_text, pending=utterance.last_pending)
 
     async def _final(self, item: _Audio, utterance: _Utterance) -> None:
         if utterance.pcm and not self.batch_running():
@@ -357,16 +509,18 @@ class ObsLiveLinkTranscription:
             async with self._model:
                 result = await self.recognizer(utterance.session, None, utterance.language)
             text = str(result.get("text") or utterance.last_text)
-            await self._safe_append(item, utterance, status="final", text=text)
+            await self._append_event(item, utterance, status="final", text=text)
         elif self.batch_running():
-            await self._safe_append(item, utterance, status="error",
-                                    error="Live STT unavailable while batch STT uses the model.")
+            await self._append_event(item, utterance, status="error",
+                                     error="Live STT unavailable while batch STT uses the model.")
 
     async def _complete(self, item: _Audio, utterance: _Utterance) -> None:
         try:
             await self._final(item, utterance)
+        except _EventPersistenceError:
+            raise
         except Exception as exc:
-            await self._safe_append(item, utterance, status="error", error=str(exc))
+            await self._append_event(item, utterance, status="error", error=str(exc))
 
     async def _recognize(self, session: str, wav: bytes | None, language: str) -> dict:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:

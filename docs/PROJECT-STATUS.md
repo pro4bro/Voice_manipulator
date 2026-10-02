@@ -1,5 +1,24 @@
 # Project Status — 2026-09-22
 
+## LiveLink realtime STT restart recovery — 2026-10-02
+
+`LIVELINK-STT-12C` persists each track's next committed PCM sequence and the
+start of any open utterance. FastAPI startup restores unread PCM and replays
+an open utterance into a fresh Studio session. Matching transcript events are
+not appended twice, including a final event written just before a checkpoint
+was interrupted. New recording journals carry a recovery-version marker so a
+crash before the first checkpoint can still recover; legacy completed takes
+without the marker are left alone. See ADR 0031.
+
+The 12B physical OBS PCM was copied to an isolated project for a simulated
+process restart. All 659 chunks across two tracks reached checkpoints 330/329,
+with zero error events and zero duplicate finals. Processing the 185.71-second
+source took 34.328 seconds total, including 25.734 seconds after restart,
+with a deterministic 5-ms fake recognizer. API startup and active-recording
+restart are covered by tests. Actual caption lag with the real `medium`
+recognizer, simultaneous detailed STT and a running OBS/API process remains
+for `LIVELINK-STT-12D`; the wider source/UI gate remains `LIVELINK-08`.
+
 ## LiveLink realtime STT catch-up — 2026-10-02
 
 `LIVELINK-STT-12B` replaced queue-full loss with per-track replay of committed
