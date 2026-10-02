@@ -75,7 +75,7 @@ that gap matters, and the exact next round.
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Queued | A journal-only Media Pool row cannot yet open the ordinary footage actions while capture is active. |
 | LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
-| LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Queued | The current batch queue reads a track once and does not continue detailed STT as a LiveLink recording grows. |
+| LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
 | MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Queued | A ready recording journal without its deleted MKA asset currently reappears as a pending footage row. |
 | UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Queued | Static CSS checks cannot prove inherited colors, overlays, browser selection or native OBS dialog appearance. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
@@ -2369,3 +2369,46 @@ Exact next round: `LIVELINK-STT-16` — add durable initial PCM snapshot and
 configurable subsequent detailed STT blocks per selected LiveLink track, each
 with 10 seconds of preceding audio and seam-safe word replacement. Follow with
 `MEDIA-DELETE-17` for the confirmed journal-backed deleted footage.
+
+### LIVELINK-STT-16 Detailed PCM snapshot and padded blocks — 2026-10-02
+
+Completed:
+- Added a journal-backed detailed STT plan for selected LiveLink tracks. The
+  initial frame boundary is saved at the button press, independently of the
+  realtime transcript queue and the one-shot media batch queue.
+- Rendered immutable PCM slices from verified durable source chunks, preserving
+  sample-index gaps, pause/disabled intervals, source sample rate and timing;
+  FFmpeg produces deliberate 24 kHz mono analysis segments for recognition.
+- Added a 10–600-second subsequent block choice in the in-progress Media Pool
+  row. Each new block includes ten seconds before its boundary and replaces
+  words from the five-second seam by word midpoint. Missing word timestamps
+  fail without advancing the cursor.
+- Persisted recognition result before the per-track cursor, resumed jobs at
+  API startup, drained tails after Stop, and published track SRT plus timed
+  transcript after the verified MKA archive becomes ready. Kept user text edits.
+  Subsequent polls inspect only new durable chunk sequences.
+
+Evidence:
+- Backend full suite: 478 passed; the focused four tests passed again after
+  incremental chunk reads. Frontend full suite: 447 passed; TypeScript
+  typecheck, Vite build, and `git diff --check` passed. A parallel test run
+  briefly failed an unrelated Web Audio gain assertion; the isolated Timeline
+  suite and later full frontend run passed.
+- New generated-PCM tests cover two tracks with different start snapshots,
+  restart, 10-second padding, a short final tail, gap/pause silence, missing
+  word timestamps, asset publication, and API validation.
+- Read-only rendering of the owner's archived two-track `Test_OBS 7` capture
+  (`6d8e0b65`) produced 120,000-frame, mono 24 kHz WAVs for both sources. The
+  first four seconds of each matched the corresponding archived analysis WAV
+  byte for byte. No owner media was changed.
+
+Remaining gap: physical OBS recording while the app and STT model run together
+has not been exercised. That gate matters for GPU contention, PCM spool lag,
+the live Media Pool button, and final asset publication in the running app.
+`LIVELINK-MEDIA-14` remains the separate full provisional-footage interaction
+round; this round adds only the detailed STT action to the provisional row.
+
+Exact next round: `MEDIA-DELETE-17` — reconcile permanent OBS footage deletion
+with journal-backed Media Pool discovery, then verify a deleted MKA cannot
+reappear as a pending recording row. Keep `LIVELINK-INGEST-11B` as the physical
+long-take backlog gate.

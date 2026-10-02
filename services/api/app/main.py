@@ -22,6 +22,7 @@ from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_growing_mkv_follower import FileGrowingMkvFollower
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
+from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
@@ -215,6 +216,12 @@ class ObsLiveLinkRelease(BaseModel):
 
 class ObsLiveLinkAction(BaseModel):
     action: Literal["start", "pause", "resume", "stop"]
+
+
+class ObsLiveLinkDetailedSttStart(BaseModel):
+    segmentSeconds: int = 60
+    channelIds: list[str] | None = None
+    model: str = "large-v3"
 
 
 def create_app(
@@ -434,6 +441,7 @@ def create_app(
     obs_livelink_stt = ObsLiveLinkTranscription(
         projects, settings.legacy_studio_url, transcription_queue.status_any_running,
     )
+    obs_livelink_detailed_stt = ObsLiveLinkDetailedStt(media, media_importer)
     diarization_queue = SequentialDiarizationQueue(
         projects,
         media,
@@ -445,6 +453,34 @@ def create_app(
     mkv_stt_workers: dict[tuple[str, str], asyncio.Task[None]] = {}
     mkv_stt_errors: dict[tuple[str, str], str] = {}
     obs_finalizers: dict[str, asyncio.Task[dict]] = {}
+    obs_detailed_workers: dict[tuple[str, str], asyncio.Task[None]] = {}
+    obs_detailed_errors: dict[tuple[str, str], str] = {}
+
+    async def transcribe_obs_detail(project_id: str, recording_id: str) -> None:
+        key = (project_id, recording_id)
+        while True:
+            try:
+                progress = await obs_livelink_detailed_stt.process_once(projects.get(project_id), recording_id)
+                obs_detailed_errors.pop(key, None)
+                if progress["done"]:
+                    return
+                await asyncio.sleep(0.75)
+            except asyncio.CancelledError:
+                raise
+            except ValueError as exc:
+                obs_detailed_errors[key] = str(exc)
+                logging.getLogger(__name__).error("OBS detailed STT stopped for %s: %s", recording_id, exc)
+                return
+            except Exception as exc:
+                obs_detailed_errors[key] = str(exc)
+                logging.getLogger(__name__).exception("OBS detailed STT retry for %s", recording_id)
+                await asyncio.sleep(5)
+
+    def ensure_obs_detail_worker(project_id: str, recording_id: str) -> None:
+        key = (project_id, recording_id)
+        existing = obs_detailed_workers.get(key)
+        if existing is None or existing.done():
+            obs_detailed_workers[key] = asyncio.create_task(transcribe_obs_detail(project_id, recording_id))
 
     async def watch_growing_mkv(project_id: str, asset_id: str) -> None:
         key = (project_id, asset_id)
@@ -504,9 +540,18 @@ def create_app(
                         ensure_mkv_stt_worker(project.id, checkpoint.parent.name)
                 except (OSError, ValueError, KeyError):
                     continue
+            for checkpoint in (Path(project.project_path) / "assets" / "obs-livelink").glob(
+                "*/detailed-stt-state.json"
+            ):
+                try:
+                    progress = obs_livelink_detailed_stt.status(project, checkpoint.parent.name)
+                    if progress["tracks"]:
+                        ensure_obs_detail_worker(project.id, checkpoint.parent.name)
+                except (OSError, ValueError, KeyError):
+                    continue
 
     async def stop_mkv_watchers() -> None:
-        tasks = list(mkv_watchers.values()) + list(mkv_stt_workers.values())
+        tasks = list(mkv_watchers.values()) + list(mkv_stt_workers.values()) + list(obs_detailed_workers.values())
         for task in tasks:
             task.cancel()
         if tasks:
@@ -2256,17 +2301,56 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         locator_status = {item["spanId"]: item for item in obs_livelink_runtime.status().get("videoSpans", [])}
-        records = [json.loads(path.read_text(encoding="utf-8"))
+        records = [(path.parent, json.loads(path.read_text(encoding="utf-8")))
                    for path in sorted(root.glob("*/recording.json"),
                                       key=lambda item: item.stat().st_mtime, reverse=True)]
-        for record in records:
+        for recording_folder, record in records:
+            record["durableChannelIds"] = [
+                channel_folder.name for channel_folder in (recording_folder / "channels").glob("*")
+                if any((channel_folder / "chunks").glob("*.json"))
+            ]
+            if (recording_folder / "detailed-stt-state.json").is_file():
+                try:
+                    record["detailedStt"] = {
+                        **obs_livelink_detailed_stt.status(projects.get(project_id),
+                                                           record["recording"]["recordingId"]),
+                        "error": obs_detailed_errors.get((project_id, record["recording"]["recordingId"])),
+                    }
+                except (OSError, ValueError, KeyError):
+                    record["detailedStt"] = {"error": "Không đọc được checkpoint STT kỹ"}
             record["videoSpans"] = [{
                 **span,
                 **{key: locator_status[span["spanId"]][key]
                    for key in ("recordingFileName", "recordingFolder", "recordingFileAvailable")
                    if span.get("spanId") in locator_status},
             } for span in record.get("videoSpans", [])]
-        return records
+        return [record for _, record in records]
+
+    @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/detailed-stt")
+    async def start_obs_livelink_detailed_stt(
+        project_id: str, recording_id: str, payload: ObsLiveLinkDetailedSttStart
+    ) -> dict:
+        try:
+            configured = await asyncio.to_thread(
+                obs_livelink_detailed_stt.configure, projects.get(project_id), recording_id,
+                payload.segmentSeconds, payload.channelIds, payload.model,
+            )
+            ensure_obs_detail_worker(project_id, recording_id)
+            return configured
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="OBS recording not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/detailed-stt")
+    def obs_livelink_detailed_stt_status(project_id: str, recording_id: str) -> dict:
+        try:
+            state = obs_livelink_detailed_stt.status(projects.get(project_id), recording_id)
+            return {**state, "error": obs_detailed_errors.get((project_id, recording_id))}
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="OBS detailed STT not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/archive/retry")
     def obs_livelink_archive_retry(project_id: str, recording_id: str) -> dict:

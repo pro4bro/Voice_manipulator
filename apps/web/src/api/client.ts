@@ -223,6 +223,15 @@ export const api = {
     }),
   listObsLiveLinkRecordings: (projectId: string) =>
     request<import("../domain/types").ObsLiveLinkRecordingJournal[]>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings`),
+  startObsLiveLinkDetailedStt: (projectId: string, recordingId: string, segmentSeconds: number,
+                                channelIds: string[], model = "large-v3") =>
+    request<{ segmentSeconds: number; tracks: Record<string, { initialFrames: number; cursor: number }> }>(
+      `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/detailed-stt`,
+      { method: "POST", body: JSON.stringify({ segmentSeconds, channelIds, model }) },
+    ),
+  getObsLiveLinkDetailedStt: (projectId: string, recordingId: string) =>
+    request<{ segmentSeconds: number; tracks: Record<string, { initialFrames: number; cursor: number }>; error?: string | null }>(
+      `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/detailed-stt`),
   retryObsLiveLinkArchive: (projectId: string, recordingId: string) =>
     request<{ artifactReady: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/archive/retry`, {
       method: "POST",

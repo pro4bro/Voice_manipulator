@@ -21,6 +21,33 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("starts detailed STT on selected durable OBS tracks while recording", async () => {
+    const live = { recording: { recordingId: "take-live", projectId: "project", displayName: "OBS take live",
+      status: "recording", archiveStatus: "pending" },
+      durableChannelIds: ["mic", "desktop"],
+      channels: [
+        { channelId: "mic", relayLabel: "Mic", slot: 1, forwardApplied: true },
+        { channelId: "desktop", relayLabel: "Desktop", slot: 2, forwardApplied: true },
+        { channelId: "empty", relayLabel: "Empty", slot: 3, forwardApplied: true },
+      ] } as ObsLiveLinkRecordingJournal;
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockResolvedValue([live]);
+    const start = vi.spyOn(api, "startObsLiveLinkDetailedStt").mockResolvedValue({ segmentSeconds: 90,
+      tracks: { mic: { initialFrames: 240000, cursor: 0 } } });
+    try {
+      render(<MediaPool {...props({ assets: [], projectId: "project" })} />);
+      await screen.findByLabelText("Footage OBS OBS take live: ĐANG GHI");
+      fireEvent.click(screen.getByRole("button", { name: "STT kỹ" }));
+      expect(screen.queryByLabelText("STT kỹ Empty")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("STT kỹ Desktop"));
+      fireEvent.change(screen.getByLabelText("Độ dài block STT OBS"), { target: { value: "90" } });
+      fireEvent.click(screen.getByRole("button", { name: "Bắt đầu STT kỹ" }));
+      await waitFor(() => expect(start).toHaveBeenCalledWith("project", "take-live", 90, ["mic"]));
+      expect(await screen.findByText(/STT kỹ đang chạy cho 1 track/)).toBeInTheDocument();
+    } finally {
+      list.mockRestore();
+      start.mockRestore();
+    }
+  });
   it("shows a live OBS footage row and replaces it when its MKA is ready", async () => {
     const recording = { recordingId: "take-live", projectId: "project", displayName: "OBS take live",
       status: "recording", archiveStatus: "pending" };

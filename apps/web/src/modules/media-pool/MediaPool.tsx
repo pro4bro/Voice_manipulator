@@ -112,6 +112,11 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [detailTarget, setDetailTarget] = useState<ObsLiveLinkRecordingJournal | null>(null);
+  const [detailSeconds, setDetailSeconds] = useState(60);
+  const [detailChannels, setDetailChannels] = useState<string[]>([]);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailMessage, setDetailMessage] = useState<string | null>(null);
   const archiveReady = useRef(onArchiveReady);
   const announced = useRef(new Set<string>());
   const retried = useRef(new Set<string>());
@@ -161,21 +166,62 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
 
   const pending = journals.filter(({ recording }) => recording.projectId === projectId &&
     !assets.some((asset) => asset.obsRecordingId === recording.recordingId && asset.sourceExtension === ".mka"));
-  return <>{pending.map(({ recording }) => {
+  async function startDetail() {
+    if (!detailTarget) return;
+    setDetailBusy(true);
+    setDetailMessage(null);
+    try {
+      const result = await api.startObsLiveLinkDetailedStt(projectId, detailTarget.recording.recordingId,
+                                                            detailSeconds, detailChannels);
+      setDetailMessage(`STT kỹ đang chạy cho ${Object.keys(result.tracks).length} track; block tiếp theo dài ${detailSeconds} giây.`);
+      setDetailTarget(null);
+    } catch (reason) {
+      setDetailMessage(reason instanceof Error ? reason.message : "Không bắt đầu được STT kỹ.");
+    } finally {
+      setDetailBusy(false);
+    }
+  }
+  return <>{pending.map(({ recording, detailedStt, durableChannelIds }) => {
     const state = recording.status !== "stopped" ? "ĐANG GHI" :
       retryingId === recording.recordingId ? "ĐANG TẠO LẠI MKA" :
       recording.archiveStatus === "error" ? "MKA LỖI" :
       recording.archiveStatus === "ready" ? "ĐANG CẬP NHẬT MEDIA POOL" : "ĐANG TẠO MKA";
+    const cursors = Object.values(detailedStt?.tracks ?? {}).map((track) => track.cursor / 24000);
+    const detailLabel = detailedStt?.error ? `STT kỹ lỗi: ${detailedStt.error}` : cursors.length
+      ? `STT kỹ ${cursors.length} track · đã xử lý ${Math.min(...cursors).toFixed(0)} giây`
+      : recording.status === "stopped" ? "Đang kiểm tra PCM · chờ MKA" : "Phiên thu đang mở · MKA chưa hoàn tất";
     return <div aria-label={`Footage OBS ${recording.displayName || recording.recordingId}: ${state}`} className="media-pool-item media-pool-item--obs-pending" key={recording.recordingId}>
       <button className="media-pool-item__main" onClick={() => onOpenRecording?.(recording.recordingId)} type="button">
         <span className="media-kind media-kind--audio"><Icon name="waveform" /></span>
-        <span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · {state}</small><em>{recording.status === "stopped" ? "Đang kiểm tra PCM · chờ MKA" : "Phiên thu đang mở · MKA chưa hoàn tất"}</em></span>
+        <span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · {state}</small><em>{detailLabel}</em></span>
       </button>
+      <button className="media-pool-item__obs-retry" disabled={Boolean(detailedStt?.tracks && !detailedStt.error) || !durableChannelIds?.length} onClick={() => {
+        const journal = journals.find((item) => item.recording.recordingId === recording.recordingId);
+        if (!journal) return;
+        setDetailTarget(journal);
+        setDetailChannels(detailedStt?.tracks ? Object.keys(detailedStt.tracks) :
+          (journal.channels ?? []).filter((channel) => journal.durableChannelIds?.includes(channel.channelId))
+            .map((channel) => channel.channelId));
+        setDetailSeconds(detailedStt?.segmentSeconds ?? 60);
+        setDetailMessage(null);
+      }} type="button">{detailedStt?.error ? "Thử lại STT" : detailedStt?.tracks ? "STT đang chạy" : "STT kỹ"}</button>
       {recording.status === "stopped" && recording.archiveStatus === "error" ?
         <button className="media-pool-item__obs-retry" disabled={retryingId === recording.recordingId} onClick={() => void retry(recording.recordingId)} type="button">Thử lại</button> : null}
     </div>;
   })}{showEmpty && !pending.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
-    {retryError ? <small role="alert">{retryError}</small> : null}</>;
+    {retryError ? <small role="alert">{retryError}</small> : null}
+    {detailMessage ? <small role="status">{detailMessage}</small> : null}
+    {detailTarget ? <div className="media-import-backdrop"><section aria-label="Thiết lập STT OBS LiveLink" aria-modal="true" className="media-import-dialog" role="dialog">
+      <header><span>OBS STT KỸ</span><strong>{detailTarget.recording.displayName || `OBS LiveLink · ${detailTarget.recording.recordingId.slice(0, 8)}`}</strong></header>
+      <p>Lượt đầu đọc toàn bộ PCM đã lưu trên từng track lúc bấm bắt đầu. Các block tiếp theo có 10 giây audio trước ranh giới để ghép chữ; sau khi dừng sẽ xử lý nốt đoạn cuối.</p>
+      <div className="media-track-options">{(detailTarget.channels ?? []).filter((channel) => detailTarget.durableChannelIds?.includes(channel.channelId)).map((channel) => <label className="media-track-options__row" key={channel.channelId}>
+        <span><b>{channel.slot && obsTrackLabel(channel.relayLabel) !== `Track ${channel.slot}` ? `Track ${channel.slot} · ` : ""}{obsTrackLabel(channel.relayLabel)}</b></span>
+        <input aria-label={`STT kỹ ${channel.relayLabel}`} checked={detailChannels.includes(channel.channelId)} onChange={(event) => setDetailChannels((current) => event.target.checked ? [...current, channel.channelId] : current.filter((id) => id !== channel.channelId))} type="checkbox" />
+      </label>)}</div>
+      <label className="mkv-stt-segment-field">Độ dài block tiếp theo (giây)<input aria-label="Độ dài block STT OBS" max={600} min={10} onChange={(event) => setDetailSeconds(Number(event.target.value))} type="number" value={detailSeconds} /></label>
+      <footer><button className="button button--quiet" onClick={() => setDetailTarget(null)} type="button">Hủy</button><button className="button button--accent" disabled={detailBusy || !detailChannels.length || !Number.isInteger(detailSeconds) || detailSeconds < 10 || detailSeconds > 600} onClick={() => void startDetail()} type="button">{detailBusy ? "Đang bắt đầu…" : "Bắt đầu STT kỹ"}</button></footer>
+      {detailMessage ? <small role="alert">{detailMessage}</small> : null}
+    </section></div> : null}</>;
 }
 
 function StageToggle({ name, stage, selected, mixed = false, disabled = false, ariaLabel, onChange }: {

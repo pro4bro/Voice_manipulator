@@ -1,5 +1,27 @@
 # Project Status — 2026-09-22
 
+## LiveLink detailed STT from durable PCM — 2026-10-02
+
+`LIVELINK-STT-16` adds a per-recording, per-track detailed STT checkpoint. The
+in-progress OBS Media Pool row can select tracks that have durable PCM and a
+10–600-second block size. Starting the job freezes each selected track's full
+recorded interval at the button press. The worker recognizes that interval,
+then each subsequent full block with ten seconds of preceding audio. It
+replaces timed words from five seconds before the seam, saves each result
+before moving its cursor, resumes after API restart, and drains short tails
+after Stop. It publishes project-owned SRT and applies the final timed text to
+each archived track after the MKA is ready; an STT result without word timing
+cannot silently join an overlap block. No source PCM or archived media changes.
+The implementation uses the detailed `large-v3` path and keeps realtime
+LiveLink recognition separate. See ADR 0025.
+
+Generated two-track PCM and API/UI tests pass. A read-only replay of the
+owner's archived `Test_OBS 7` take rendered each source's first five seconds
+as PCM16 mono 24 kHz, with the first four seconds byte-identical to its saved
+analysis WAV. The physical while-recording OBS/UI and sustained GPU load gates
+remain open. `LIVELINK-MEDIA-14` still covers full provisional-footage
+interaction during capture; `LIVELINK-INGEST-11B` covers live STT spool lag.
+
 ## Concurrent multitrack Script rows — 2026-10-02
 
 `MEDIA-SCRIPT-01C` keeps an OBS or imported track's continuing speech in one
@@ -17,8 +39,6 @@ remain open. See ADR 0024.
 The same owner's project has an archive-ready OBS journal with no MKA asset,
 which explains a deleted recording reappearing as a journal-backed pending row.
 `MEDIA-DELETE-17` will reconcile permanent deletion with recording discovery.
-`LIVELINK-STT-16` remains needed for detailed STT that continues in padded
-blocks while a LiveLink recording grows.
 
 ## Voice Manipulator WAV and SRT export — 2026-10-02
 

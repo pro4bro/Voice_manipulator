@@ -881,6 +881,8 @@ export interface ObsLiveLinkRecording {
 export interface ObsLiveLinkRecordingJournal {
   protocolVersion: 3;
   recording: ObsLiveLinkRecording;
+  durableChannelIds?: string[];
+  detailedStt?: { segmentSeconds?: number; tracks?: Record<string, { initialFrames: number; cursor: number }>; error?: string | null };
   channels?: Array<{ channelId: string; nativeName?: string; relayLabel: string; slot: number | null; forwardApplied: boolean }>;
   videoSpans?: Array<{ spanId: string; startedMonotonicNs: number; endedMonotonicNs: number | null; importedVideoAssetId: string | null; recordingFileName?: string | null; recordingFolder?: string | null; recordingFileAvailable?: boolean; videoSha256?: string | null }>;
   sourceStems?: Array<{ channelId: string; sourceUuid: string; alias: string; assetId: string | null; sourcePath: string; analysisPath: string | null; gaps: Array<{ firstSampleIndex: number; lastSampleIndex: number; classification: string }> }>;
