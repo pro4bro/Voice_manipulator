@@ -51,13 +51,14 @@ export interface StudioContext {
   obsTranscriptRows: import("../../domain/types").ObsLiveLinkTranscriptRow[];
   obsTranscriptError: string | null;
   obsPlayheadSeconds: number;
-  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number } | null;
+  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number; selectOnly?: boolean } | null;
   onObsTimelineRecordingChange: (recordingId: string) => void;
   onObsTranscriptSeek: (row: import("../../domain/types").ObsLiveLinkTranscriptRow, seconds?: number) => void;
   onObsPlayheadChange: (seconds: number) => void;
   onObsTimelineCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
   onObsTimelineSourceChange: (source: "microphone" | "display" | "obs-livelink") => void;
   onOpenObsRecording: (recordingId: string) => void;
+  onOpenObsTrack: (recordingId: string, channelId: string) => void;
   onObsArchiveReady: (recordingId: string) => Promise<void>;
   liveTranscriptActive: boolean;
   liveTranscriptText: string | null;
@@ -227,6 +228,8 @@ function mediaPoolProps(context: StudioContext) {
     speakers: context.trainingCatalog.speakers,
     onUpdateAnnotations: context.onUpdateAnnotations,
     onOpenObsRecording: context.onOpenObsRecording,
+    onOpenObsTrack: context.onOpenObsTrack,
+    selectedObsRecordingId: context.obsTimelineActive ? context.obsTimelineRecordingId : null,
     onObsArchiveReady: context.onObsArchiveReady,
   };
 }

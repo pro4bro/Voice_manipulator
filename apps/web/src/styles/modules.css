@@ -26,10 +26,17 @@
 .media-pool-list { min-height: 0; display: grid; align-content: start; gap: 4px; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; scrollbar-color: rgba(24,26,22,.25) transparent; }
 .media-pool-item { display: grid; grid-template-columns: minmax(0,1fr) 45px; position: relative; border: 1px solid transparent; background: var(--soft-fill); }
 .media-pool-item:hover { border-color: var(--line); }
-.media-pool-item--obs-pending { grid-template-columns: minmax(0,1fr) auto; color: var(--text); border-color: var(--line); background: var(--surface-field); }
+.media-pool-item.media-pool-item--obs-pending { grid-template-columns: 18px minmax(0,1fr) auto; color: var(--text); border-color: var(--line); background: var(--surface-field); }
 .media-pool-item--obs-pending .media-pool-item__main { width: 100%; }
+.media-pool-item--obs-pending.is-selected { border-color: var(--accent); background: var(--strong-fill); }
 .media-pool-item__obs-retry { align-self: center; margin-right: 7px; padding: 6px; color: var(--text-inverse); background: var(--surface-inverse); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
 .media-pool-item__obs-retry:disabled { opacity: .5; }
+.media-pool-item__live-channels { padding-left: 18px; }
+.media-pool-item__live-channel { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
+.media-pool-item__live-channel .media-pool-item__obs-retry { white-space: nowrap; }
+.media-pool-item__live-preview { grid-column: 1/-1; display: grid; gap: 4px; min-width: 0; padding: 4px 6px 7px; border-top: 1px solid var(--line); }
+.media-pool-item__live-preview small { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.media-pool-item__live-preview audio { width: 100%; min-width: 0; height: 32px; }
 .media-pool-item.is-selected { border-color: var(--accent); background: var(--strong-fill); }
 .media-pool-item.is-selected::after { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); pointer-events: none; }
 .media-pool-item.is-active { border-color: var(--ink); background: var(--cream); }

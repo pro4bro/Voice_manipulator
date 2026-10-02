@@ -21,6 +21,46 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("opens live OBS tracks and previews acknowledged PCM before the MKA exists", async () => {
+    const live = { recording: { recordingId: "take-live", projectId: "project", displayName: "Lesson",
+      status: "recording", archiveStatus: "pending" }, durableChannelIds: ["mic"], channels: [
+      { channelId: "mic", relayLabel: "Mic", nativeName: "USB microphone", slot: 1, forwardApplied: true },
+      { channelId: "desk", relayLabel: "Desk", slot: 2, forwardApplied: true },
+    ] } as ObsLiveLinkRecordingJournal;
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockResolvedValue([live]);
+    const preview = vi.spyOn(api, "previewObsLiveLinkChannel").mockResolvedValue({
+      blob: new Blob(["wav"], { type: "audio/wav" }), startSeconds: 12, endSeconds: 15,
+    });
+    const previousCreate = URL.createObjectURL;
+    const previousRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:live-preview");
+    URL.revokeObjectURL = vi.fn();
+    const onOpenObsRecording = vi.fn();
+    const onOpenObsTrack = vi.fn();
+    try {
+      const view = render(<MediaPool {...props({ assets: [], projectId: "project",
+        selectedObsRecordingId: "take-live", onOpenObsRecording, onOpenObsTrack })} />);
+      const row = await screen.findByLabelText("Footage OBS Lesson: ĐANG GHI");
+      expect(row).toHaveClass("is-selected");
+      fireEvent.click(row.querySelector(".media-pool-item__main")!);
+      expect(onOpenObsRecording).toHaveBeenCalledWith("take-live");
+      expect(screen.getByRole("button", { name: "Mở Mic đang ghi" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Mở Mic đang ghi" }));
+      expect(onOpenObsTrack).toHaveBeenCalledWith("take-live", "mic");
+      expect(screen.getByRole("button", { name: "Nghe PCM đã lưu của Desk" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Nghe PCM đã lưu của Mic" }));
+      await waitFor(() => expect(preview).toHaveBeenCalledWith("project", "take-live", "mic"));
+      expect(await screen.findByLabelText("Nghe lại Mic")).toHaveAttribute("src", "blob:live-preview");
+      expect(row).toHaveTextContent("PCM 00:12–00:15");
+      view.unmount();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:live-preview");
+    } finally {
+      list.mockRestore();
+      preview.mockRestore();
+      URL.createObjectURL = previousCreate;
+      URL.revokeObjectURL = previousRevoke;
+    }
+  });
   it("starts detailed STT on selected durable OBS tracks while recording", async () => {
     const live = { recording: { recordingId: "take-live", projectId: "project", displayName: "OBS take live",
       status: "recording", archiveStatus: "pending" },
@@ -60,7 +100,7 @@ describe("MediaPool", () => {
       const view = render(<MediaPool {...props({ assets: [], projectId: "project", onObsArchiveReady, onOpenObsRecording })} />);
       const pending = await screen.findByLabelText("Footage OBS OBS take live: ĐANG GHI");
       expect(pending).toHaveTextContent("Phiên thu đang mở · MKA chưa hoàn tất");
-      fireEvent.click(screen.getByRole("button", { name: /OBS take live/ }));
+      fireEvent.click(pending.querySelector(".media-pool-item__main")!);
       expect(onOpenObsRecording).toHaveBeenCalledWith("take-live");
       await waitFor(() => expect(onObsArchiveReady).toHaveBeenCalledWith("take-live"), { timeout: 2500 });
       view.rerender(<MediaPool {...props({ assets: [{ ...asset, id: "archive", name: "OBS take live", sourceExtension: ".mka", obsRecordingId: "take-live" }], projectId: "project", onObsArchiveReady })} />);

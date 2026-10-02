@@ -72,7 +72,7 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-11B | Reduce long-take PCM spool backlog under live STT load | Queued | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
-| LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Queued | A journal-only Media Pool row cannot yet open the ordinary footage actions while capture is active. |
+| LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
 | LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
@@ -2447,3 +2447,38 @@ disappears without a manual refresh and a newly deleted take stays absent.
 Exact next round: `LIVELINK-MEDIA-14` — make the in-progress OBS footage row
 fully interactive during capture. Keep `LIVELINK-INGEST-11B` and
 `UI-CONTRAST-01B` as separate physical acceptance rounds.
+
+## Round LIVELINK-MEDIA-14 — 2026-10-02
+
+Completed scope:
+- The provisional OBS Media Pool row can expand its forwarded/saved tracks.
+  Opening a row clears the previous asset selection and shows its live Timeline
+  and Script; opening a track selects its lane without interrupting live follow.
+- Each track with durable PCM offers a 30-second listening preview. The API
+  validates recording/project/channel ownership, reads the continuous ACKed
+  prefix, verifies source PCM hashes, preserves gaps and pause/disabled silence,
+  and renders a temporary mono 24 kHz WAV outside the project. It reports the
+  exact preview time range and leaves source/project assets unchanged.
+- The Media Pool highlights the selected provisional row. When its verified MKA
+  arrives, the selected recording moves to the ordinary archived footage asset
+  without a manual refresh or a selection reset.
+
+Evidence:
+- Backend full suite: 483 passed. Frontend full suite: 450 passed. TypeScript
+  typecheck and Vite production build passed.
+- API tests cover the generated two-second PCM preview, time bounds, project
+  derivative absence, missing channel, and CORS-visible range headers. UI tests
+  cover track focus, audio preview, selecting over an old asset, archive handoff,
+  and a lane request that arrives before the live lanes.
+- Read-only replay of the owner's archived `Test_OBS 7` source PCM produced a
+  one-second, 24,000-frame mono WAV without modifying the project.
+
+Remaining gap: a physical OBS recording and app viewport check is still needed
+to confirm live row responsiveness, per-track playback, and the journal-to-MKA
+transition under real capture load. Long-take PCM spool lag remains in
+`LIVELINK-INGEST-11B`; the short preview does not make an unfinished MKA a
+seekable full-length footage file.
+
+Exact next round: `LIVELINK-OVERLAP-15` — link Script overlap selection with
+the corresponding Timeline interval in both directions. Keep the physical
+LiveLink capture/viewport gate and `LIVELINK-INGEST-11B` separate.

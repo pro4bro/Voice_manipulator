@@ -104,10 +104,29 @@ it("shows a draft caption per live lane, including a new listening row for B", a
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveTextContent("B chen vào");
   view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null}
     transcriptRows={[a, { ...b, text: "B chen vào", status: "partial", revision: 2 }]}
-    seekRequest={{ recordingId: "recording", channelId: ids[0], seconds: 0.5, serial: 1 }} />);
+    seekRequest={{ recordingId: "recording", channelId: ids[1], seconds: 0, selectOnly: true, serial: 1 }} />);
+  expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByRole("button", { name: "VỀ LIVE" })).not.toBeInTheDocument();
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null}
+    transcriptRows={[a, { ...b, text: "B chen vào", status: "partial", revision: 2 }]}
+    seekRequest={{ recordingId: "recording", channelId: ids[0], seconds: 0.5, serial: 2 }} />);
   expect(screen.getByRole("button", { name: "VỀ LIVE" })).toBeInTheDocument();
   expect(screen.getByLabelText("Phụ đề nháp Channel 1")).toHaveTextContent("A đang nói");
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveTextContent("Chưa có lời nói");
+});
+
+it("keeps a Media Pool track choice made before live lanes arrive", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+    seekRequest={{ recordingId: "recording", channelId: ids[1], seconds: 0,
+      selectOnly: true, serial: 1 }} />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  act(() => onStatus({ appRecording: recording, channels: ids.map((channelId, index) => ({
+    channelId, alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`,
+    slot: index + 1, appliedForward: true, desiredForward: true,
+    capture: { recordingId: "recording", projectId: "project", durableChunkCount: 1 },
+  })) } as unknown as ObsLiveLinkStatus));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.queryByRole("button", { name: "VỀ LIVE" })).not.toBeInTheDocument();
 });
 
 it("keeps each full channel timeline in both layouts and resizes columns independently", async () => {

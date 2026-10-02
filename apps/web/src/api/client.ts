@@ -223,6 +223,24 @@ export const api = {
     }),
   listObsLiveLinkRecordings: (projectId: string) =>
     request<import("../domain/types").ObsLiveLinkRecordingJournal[]>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings`),
+  previewObsLiveLinkChannel: async (projectId: string, recordingId: string, channelId: string,
+                                    startSeconds?: number) => {
+    const query = new URLSearchParams({ durationSeconds: "30" });
+    if (startSeconds !== undefined) query.set("startSeconds", String(startSeconds));
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/channels/${encodeURIComponent(channelId)}/preview?${query}`);
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+      throw new Error(body?.detail ?? `Không nghe thử được OBS (${response.status})`);
+    }
+    const startHeader = response.headers.get("X-Preview-Start-Seconds");
+    const endHeader = response.headers.get("X-Preview-End-Seconds");
+    const previewStartSeconds = Number(startHeader);
+    const endSeconds = Number(endHeader);
+    if (startHeader === null || endHeader === null || !Number.isFinite(previewStartSeconds) ||
+        !Number.isFinite(endSeconds) || endSeconds <= previewStartSeconds)
+      throw new Error("Mốc thời gian nghe thử OBS không hợp lệ.");
+    return { blob: await response.blob(), startSeconds: previewStartSeconds, endSeconds };
+  },
   startObsLiveLinkDetailedStt: (projectId: string, recordingId: string, segmentSeconds: number,
                                 channelIds: string[], model = "large-v3") =>
     request<{ segmentSeconds: number; tracks: Record<string, { initialFrames: number; cursor: number }> }>(

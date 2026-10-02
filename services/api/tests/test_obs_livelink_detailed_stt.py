@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import io
 import json
 import shutil
 import wave
@@ -185,3 +186,33 @@ def test_api_lists_only_durable_tracks_and_rejects_empty_detail_plan(tmp_path):
             "segmentSeconds": 60, "channelIds": [channels[1]]})
         assert rejected.status_code == 409
         assert not (folder / "detailed-stt-state.json").exists()
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg required")
+def test_live_pcm_preview_reads_saved_track_without_project_derivative(tmp_path):
+    projects, project, folder, recording_id, channels, _ = _setup(tmp_path)
+    _chunk(folder, channels[0], 0, 2)
+    before = {path.relative_to(folder) for path in folder.rglob("*")}
+    settings = replace(Settings.from_env(), data_root=tmp_path / "machine",
+                       ffmpeg_path=shutil.which("ffmpeg"))
+    with TestClient(create_app(project_repository=projects, settings=settings)) as client:
+        base = f"/api/projects/{project.id}/obs-livelink/recordings/{recording_id}/channels"
+        latest = client.get(f"{base}/{channels[0]}/preview", params={"durationSeconds": 1},
+                            headers={"Origin": "http://127.0.0.1:18121"})
+        assert latest.status_code == 200
+        assert latest.headers["content-type"] == "audio/wav"
+        assert latest.headers["cache-control"] == "no-store"
+        assert "X-Preview-Start-Seconds" in latest.headers["access-control-expose-headers"]
+        assert float(latest.headers["x-preview-start-seconds"]) == 1
+        with wave.open(io.BytesIO(latest.content), "rb") as audio:
+            assert (audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getnframes()) == (
+                1, 2, 24000, 24000)
+            assert audio.readframes(1) == b"\x00\x10"
+        earlier = client.get(f"{base}/{channels[0]}/preview", params={
+            "startSeconds": 0, "durationSeconds": 1})
+        assert earlier.status_code == 200
+        assert float(earlier.headers["x-preview-start-seconds"]) == 0
+        assert client.get(f"{base}/{channels[1]}/preview").status_code == 404
+        assert client.get(f"{base}/{channels[0]}/preview", params={"durationSeconds": 31}).status_code == 422
+        assert client.get(f"{base}/{channels[0]}/preview", params={"startSeconds": 5}).status_code == 422
+    assert {path.relative_to(folder) for path in folder.rglob("*")} == before

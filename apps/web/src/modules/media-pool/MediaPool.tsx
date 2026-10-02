@@ -99,14 +99,18 @@ interface MediaPoolProps {
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
   onOpenObsRecording?: (recordingId: string) => void;
+  onOpenObsTrack?: (recordingId: string, channelId: string) => void;
+  selectedObsRecordingId?: string | null;
   onObsArchiveReady?: (recordingId: string) => Promise<void>;
 }
 
-function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onArchiveReady }: {
+function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOpenTrack, selectedRecordingId, onArchiveReady }: {
   projectId: string;
   assets: ProjectMediaAsset[];
   showEmpty: boolean;
   onOpenRecording?: (recordingId: string) => void;
+  onOpenTrack?: (recordingId: string, channelId: string) => void;
+  selectedRecordingId?: string | null;
   onArchiveReady?: (recordingId: string) => Promise<void>;
 }) {
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
@@ -117,10 +121,47 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
   const [detailChannels, setDetailChannels] = useState<string[]>([]);
   const [detailBusy, setDetailBusy] = useState(false);
   const [detailMessage, setDetailMessage] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{ recordingId: string; channelId: string; url: string;
+    startSeconds: number; endSeconds: number } | null>(null);
+  const [previewBusy, setPreviewBusy] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewUrl = useRef<string | null>(null);
+  const previewRequest = useRef(0);
   const archiveReady = useRef(onArchiveReady);
   const announced = useRef(new Set<string>());
   const retried = useRef(new Set<string>());
   archiveReady.current = onArchiveReady;
+
+  useEffect(() => {
+    setPreview(null);
+    return () => {
+      previewRequest.current += 1;
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current = null;
+    };
+  }, [projectId]);
+
+  async function playSavedPcm(recordingId: string, channelId: string) {
+    const key = `${recordingId}:${channelId}`;
+    const requestId = ++previewRequest.current;
+    setPreviewBusy(key);
+    setPreviewError(null);
+    try {
+      const audio = await api.previewObsLiveLinkChannel(projectId, recordingId, channelId);
+      if (requestId !== previewRequest.current) return;
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      const url = URL.createObjectURL(audio.blob);
+      previewUrl.current = url;
+      setPreview({ recordingId, channelId, url, startSeconds: audio.startSeconds,
+        endSeconds: audio.endSeconds });
+    } catch (reason) {
+      if (requestId === previewRequest.current)
+        setPreviewError(reason instanceof Error ? reason.message : "Không nghe thử được PCM đã lưu.");
+    } finally {
+      if (requestId === previewRequest.current) setPreviewBusy(null);
+    }
+  }
 
   async function retry(recordingId: string) {
     setRetryingId(recordingId);
@@ -181,7 +222,7 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
       setDetailBusy(false);
     }
   }
-  return <>{pending.map(({ recording, detailedStt, durableChannelIds }) => {
+  return <>{pending.map(({ recording, channels, detailedStt, durableChannelIds }) => {
     const state = recording.status !== "stopped" ? "ĐANG GHI" :
       retryingId === recording.recordingId ? "ĐANG TẠO LẠI MKA" :
       recording.archiveStatus === "error" ? "MKA LỖI" :
@@ -190,8 +231,11 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
     const detailLabel = detailedStt?.error ? `STT kỹ lỗi: ${detailedStt.error}` : cursors.length
       ? `STT kỹ ${cursors.length} track · đã xử lý ${Math.min(...cursors).toFixed(0)} giây`
       : recording.status === "stopped" ? "Đang kiểm tra PCM · chờ MKA" : "Phiên thu đang mở · MKA chưa hoàn tất";
-    return <div aria-label={`Footage OBS ${recording.displayName || recording.recordingId}: ${state}`} className="media-pool-item media-pool-item--obs-pending" key={recording.recordingId}>
-      <button className="media-pool-item__main" onClick={() => onOpenRecording?.(recording.recordingId)} type="button">
+    const available = (channels ?? []).filter((channel) => channel.forwardApplied || durableChannelIds?.includes(channel.channelId));
+    const expanded = expandedIds.includes(recording.recordingId);
+    return <div aria-label={`Footage OBS ${recording.displayName || recording.recordingId}: ${state}`} className={`media-pool-item media-pool-item--obs-pending ${selectedRecordingId === recording.recordingId ? "is-selected" : ""}`} key={recording.recordingId}>
+      <button aria-expanded={expanded} aria-label={`${expanded ? "Thu gọn" : "Xổ"} track của ${recording.displayName || recording.recordingId}`} className="media-pool-item__expand" onClick={() => setExpandedIds((current) => expanded ? current.filter((id) => id !== recording.recordingId) : [...current, recording.recordingId])} type="button">{expanded ? "▾" : "▸"}</button>
+      <button aria-pressed={selectedRecordingId === recording.recordingId} className="media-pool-item__main" onClick={() => { onOpenRecording?.(recording.recordingId); setExpandedIds((current) => current.includes(recording.recordingId) ? current : [...current, recording.recordingId]); }} type="button">
         <span className="media-kind media-kind--audio"><Icon name="waveform" /></span>
         <span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · {state}</small><em>{detailLabel}</em></span>
       </button>
@@ -207,9 +251,23 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onAr
       }} type="button">{detailedStt?.error ? "Thử lại STT" : detailedStt?.tracks ? "STT đang chạy" : "STT kỹ"}</button>
       {recording.status === "stopped" && recording.archiveStatus === "error" ?
         <button className="media-pool-item__obs-retry" disabled={retryingId === recording.recordingId} onClick={() => void retry(recording.recordingId)} type="button">Thử lại</button> : null}
+      {expanded ? <div className="media-pool-item__channels media-pool-item__live-channels">
+        {available.map((channel) => {
+          const hasPcm = Boolean(durableChannelIds?.includes(channel.channelId));
+          const key = `${recording.recordingId}:${channel.channelId}`;
+          const activePreview = preview?.recordingId === recording.recordingId && preview.channelId === channel.channelId ? preview : null;
+          return <div className="media-pool-item__channel media-pool-item__live-channel" key={channel.channelId}>
+            <button aria-label={`Mở ${obsTrackLabel(channel.relayLabel)} đang ghi`} className="media-pool-item__channel-name" onClick={() => onOpenTrack?.(recording.recordingId, channel.channelId)} title={channel.nativeName || channel.relayLabel} type="button">{channel.slot && obsTrackLabel(channel.relayLabel) !== `Track ${channel.slot}` ? `Track ${channel.slot} · ` : ""}{obsTrackLabel(channel.relayLabel)}<small>{hasPcm ? "PCM ĐÃ LƯU · TIMELINE / SCRIPT" : "CHỜ PCM"}</small></button>
+            <button aria-label={`Nghe PCM đã lưu của ${obsTrackLabel(channel.relayLabel)}`} className="media-pool-item__obs-retry" disabled={!hasPcm || previewBusy === key} onClick={() => void playSavedPcm(recording.recordingId, channel.channelId)} type="button">{previewBusy === key ? "ĐANG TẠO…" : "NGHE 30s"}</button>
+            {activePreview ? <div className="media-pool-item__live-preview"><small>PCM {durationLabel(activePreview.startSeconds)}–{durationLabel(activePreview.endSeconds)} · bản nghe thử</small><audio aria-label={`Nghe lại ${obsTrackLabel(channel.relayLabel)}`} controls preload="metadata" src={activePreview.url} /></div> : null}
+          </div>;
+        })}
+        {!available.length ? <small>Chưa có track được Forward.</small> : null}
+      </div> : null}
     </div>;
   })}{showEmpty && !pending.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
     {retryError ? <small role="alert">{retryError}</small> : null}
+    {previewError ? <small role="alert">{previewError}</small> : null}
     {detailMessage ? <small role="status">{detailMessage}</small> : null}
     {detailTarget ? <div className="media-import-backdrop"><section aria-label="Thiết lập STT OBS LiveLink" aria-modal="true" className="media-import-dialog" role="dialog">
       <header><span>OBS STT KỸ</span><strong>{detailTarget.recording.displayName || `OBS LiveLink · ${detailTarget.recording.recordingId.slice(0, 8)}`}</strong></header>
@@ -325,6 +383,8 @@ export function MediaPool({
   onUpdateAnnotations,
   onSendToTraining,
   onOpenObsRecording,
+  onOpenObsTrack,
+  selectedObsRecordingId,
   onObsArchiveReady,
 }: MediaPoolProps) {
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
@@ -575,7 +635,7 @@ export function MediaPool({
         {pendingLocalMedia ? <div className="media-pool-pending" onContextMenu={(event) => openContextMenu(event, "__pending_local__")}>
           <button aria-label={`Chọn track cho ${pendingLocalMedia.name}`} onClick={(event) => openContextMenu(event, "__pending_local__")} type="button"><Icon name="folder" /><span><b>{pendingLocalMedia.name}</b><small>CHỜ IMPORT · {pendingLocalMedia.tracks.length} AUDIO TRACK · BẤM ĐỂ CHỌN KÊNH VÀ THEO DÕI</small></span></button>
         </div> : null}
-        {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={onOpenObsRecording} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
+        {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
         {liveAssets.map(renderAsset)}
         {!projectId && !pendingLocalMedia && !liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
         {/* Rendered after the list rather than inside it, so no amount of

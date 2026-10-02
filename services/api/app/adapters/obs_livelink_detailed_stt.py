@@ -13,6 +13,7 @@ import json
 import math
 import os
 import subprocess
+import tempfile
 import threading
 import wave
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Awaitable, Callable
 from uuid import UUID
 
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription, RATE, _atomic_json
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.media_presentation import render_srt
@@ -160,6 +162,36 @@ class ObsLiveLinkDetailedStt:
         self._configuration_lock = threading.Lock()
         self._chunk_lock = threading.Lock()
         self._chunk_cache: dict[tuple[Path, str], list[dict]] = {}
+
+    def preview_audio(self, project: ProjectRecord, recording_id: str, channel_id: str,
+                      start_seconds: float | None = None, duration_seconds: float = 30) -> tuple[bytes, float, float]:
+        """Render at most 30 seconds of acknowledged PCM for an in-progress take."""
+        if not math.isfinite(duration_seconds) or not 1 <= duration_seconds <= 30:
+            raise ValueError("Đoạn nghe thử phải dài từ 1 đến 30 giây")
+        if start_seconds is not None and (not math.isfinite(start_seconds) or start_seconds < 0):
+            raise ValueError("Mốc nghe thử OBS không hợp lệ")
+        if not self.importer.ffmpeg_path:
+            raise RuntimeError("Cần FFmpeg để nghe thử PCM OBS")
+        folder = _folder(project, recording_id)
+        if recording_id in deleted_recording_ids(Path(project.project_path)):
+            raise FileNotFoundError("Bản ghi OBS đã được xóa")
+        journal = _journal(folder, project, recording_id)
+        if channel_id not in {item["channelId"] for item in journal.get("channels", [])}:
+            raise FileNotFoundError("Track OBS không thuộc bản ghi này")
+        chunks = _chunks(folder, channel_id)
+        total = _available_frames(journal["recording"], chunks)
+        if not total:
+            raise FileNotFoundError("Track OBS chưa có PCM đã lưu")
+        length = round(duration_seconds * RATE)
+        start = max(0, total - length) if start_seconds is None else round(start_seconds * RATE)
+        end = min(total, start + length)
+        if end <= start:
+            raise ValueError("PCM đã lưu chưa tới mốc nghe thử")
+        with tempfile.TemporaryDirectory(prefix="pro4bro-obs-preview-") as temporary:
+            output = Path(temporary) / "preview.wav"
+            _render_segment(folder, journal["recording"], channel_id, chunks,
+                            start, end, output, self.importer.ffmpeg_path)
+            return output.read_bytes(), start / RATE, end / RATE
 
     def _read_chunks(self, folder: Path, channel_id: str) -> list[dict]:
         """Read the immutable ACK prefix once, then inspect only new sequences."""

@@ -1,5 +1,20 @@
 # Project Status — 2026-09-22
 
+## Interactive in-progress OBS footage — 2026-10-02
+
+`LIVELINK-MEDIA-14` lets the journal-backed Media Pool footage expand into
+recorded tracks during capture. Selecting the footage opens its live Timeline
+and Script; selecting a track focuses its lane while live follow continues.
+Tracks with durable PCM can play a 30-second preview rendered from verified,
+continuous source chunks. The temporary 24 kHz mono WAV is outside the
+project; its exact range is reported to the UI, and source PCM is unchanged.
+The selected provisional row moves to its archived MKA parent when publication
+finishes. Backend 483/483 and frontend 450/450 tests, typecheck and build pass.
+A read-only preview of the owner's `Test_OBS 7` PCM yielded a one-second,
+24,000-frame WAV. Physical OBS/app viewport acceptance remains open. The
+in-progress preview is bounded; full-length playback still depends on the
+completed MKA. See ADR 0027.
+
 ## Permanent OBS footage deletion — 2026-10-02
 
 `MEDIA-DELETE-17` records permanently deleted OBS recording IDs inside the
@@ -32,8 +47,8 @@ Generated two-track PCM and API/UI tests pass. A read-only replay of the
 owner's archived `Test_OBS 7` take rendered each source's first five seconds
 as PCM16 mono 24 kHz, with the first four seconds byte-identical to its saved
 analysis WAV. The physical while-recording OBS/UI and sustained GPU load gates
-remain open. `LIVELINK-MEDIA-14` still covers full provisional-footage
-interaction during capture; `LIVELINK-INGEST-11B` covers live STT spool lag.
+remain open. Provisional-footage interaction is now covered by
+`LIVELINK-MEDIA-14`; `LIVELINK-INGEST-11B` covers live STT spool lag.
 
 ## Concurrent multitrack Script rows — 2026-10-02
 
@@ -83,9 +98,9 @@ still needed to verify queue behavior, model load and PCM upload latency. The
 local STT portable-runtime profile passes all six checks and now requires the
 `medium` model; runtime setup preloads it alongside the batch model. The
 Project `Test_OBS 7` has no language set, so automatic detection still applies.
-The user's audio/SRT export, live Media Pool interaction and bidirectional
-overlap selection requests are queued as `VOICE-EXPORT-13`, `LIVELINK-MEDIA-14`
-and `LIVELINK-OVERLAP-15`.
+The user's audio/SRT export and live Media Pool interaction are implemented in
+`VOICE-EXPORT-13` and `LIVELINK-MEDIA-14`. Bidirectional overlap selection
+remains queued as `LIVELINK-OVERLAP-15`.
 
 ## LiveLink waveform tail and overlap controls — 2026-10-02
 

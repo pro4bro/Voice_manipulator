@@ -34,12 +34,12 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
-  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
+  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
     if (id === "library-panel") return <><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
-    if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
+    if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "script") return <><output data-testid="script-value">{context.script}</output><output data-testid="script-track">{context.selectedImportedTrackId ?? "none"}</output><button onClick={() => context.onSelectImportedTrack("channel-b")} type="button">select second imported track</button><button onClick={() => context.onScriptChange("Edited channel B")} type="button">edit imported script</button></>;
-    if (id === "timeline") return <><output data-testid="timeline-take">{context.take?.name ?? "trống"}</output><output data-testid="obs-recording">{context.obsTimelineRecordingId ?? "none"}:{String(context.obsTimelineActive)}</output></>;
-    if (id === "recorder") return <button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button>;
+    if (id === "timeline") return <><output data-testid="timeline-take">{context.take?.name ?? "trống"}</output><output data-testid="obs-recording">{context.obsTimelineRecordingId ?? "none"}:{String(context.obsTimelineActive)}</output><output data-testid="obs-track-request">{context.obsSeekRequest?.channelId ?? "none"}:{String(context.obsSeekRequest?.selectOnly ?? false)}</output></>;
+    if (id === "recorder") return <><button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsRecording("take-new")} type="button">open new OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button></>;
     if (id === "manipulator-library") {
       return <button onClick={() => context.onOpenVoiceOutput(GENERATED)} type="button">mở voice output</button>;
     }
@@ -225,6 +225,24 @@ describe("WorkspaceShell STT synchronization", () => {
     await waitFor(() => expect(apiMocks.getObsLiveLinkTranscriptEvents).toHaveBeenCalledWith(project.id, "take-one", expect.any(Number)));
   });
 
+  it("switches from an archived asset to provisional OBS footage and its live track", async () => {
+    const first = mediaAsset("complete", "Archived text", "2026-08-30T00:00:02Z");
+    apiMocks.listProjectMedia.mockResolvedValue([first]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent(first.id));
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    expect(screen.getByTestId("script-value")).toHaveTextContent("Archived text");
+    fireEvent.click(screen.getByRole("button", { name: "open live OBS take" }));
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent("trống");
+    expect(screen.getByTestId("script-value")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("obs-recording")).toHaveTextContent("live-take:true");
+    fireEvent.click(screen.getByRole("button", { name: "open live OBS track" }));
+    expect(screen.getByTestId("obs-track-request")).toHaveTextContent("mic-1:true");
+  });
+
   it("adds a newly archived OBS recording to Media Pool without reloading the project", async () => {
     const archived = { ...mediaAsset("skipped", "", "2026-09-29T00:00:00Z"),
       id: "archive-new", name: "OBS LiveLink · take-new", sourceExtension: ".mka", obsRecordingId: "take-new" };
@@ -235,8 +253,11 @@ describe("WorkspaceShell STT synchronization", () => {
       project={project} runtime={null} theme="dark" />);
     await waitFor(() => expect(apiMocks.listProjectMedia).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("media-ids")).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole("button", { name: "open new OBS take" }));
+    expect(screen.getByTestId("obs-recording")).toHaveTextContent("take-new:true");
     fireEvent.click(screen.getByRole("button", { name: "archive ready" }));
     await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("archive-new"));
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent("OBS LiveLink · take-new");
   });
 
   it("opens an imported multitrack parent with channel Script and saves edits to the selected child", async () => {

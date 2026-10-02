@@ -581,6 +581,7 @@ def create_app(
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Preview-Start-Seconds", "X-Preview-End-Seconds"],
     )
 
     @app.get("/api/health", response_model=HealthStatus)
@@ -2056,6 +2057,26 @@ def create_app(
             )
         except LiveLinkError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/channels/{channel_id}/preview")
+    async def obs_livelink_pcm_preview(project_id: str, recording_id: str, channel_id: str,
+                                       startSeconds: float | None = None,
+                                       durationSeconds: float = 30) -> Response:
+        try:
+            audio, start, end = await asyncio.to_thread(
+                obs_livelink_detailed_stt.preview_audio, projects.get(project_id),
+                recording_id, channel_id, startSeconds, durationSeconds,
+            )
+            return Response(audio, media_type="audio/wav", headers={
+                "Cache-Control": "no-store", "X-Preview-Start-Seconds": str(start),
+                "X-Preview-End-Seconds": str(end),
+            })
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/transcript-events")
     def obs_livelink_transcript_events(project_id: str, recording_id: str,

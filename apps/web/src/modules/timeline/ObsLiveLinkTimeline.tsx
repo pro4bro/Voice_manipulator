@@ -145,7 +145,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   assets?: ProjectMediaAsset[];
   visibleAssetId?: string | null;
   onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
-  seekRequest?: { recordingId: string; channelId: string; seconds: number; serial: number } | null;
+  seekRequest?: { recordingId: string; channelId: string; seconds: number; serial: number; selectOnly?: boolean } | null;
 }) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
@@ -308,6 +308,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   useEffect(() => {
     if (!seekRequest || seekRequest.recordingId !== recordingId) return;
     setSelectedChannelId(seekRequest.channelId);
+    if (seekRequest.selectOnly) return;
     setCurrentTime(seekRequest.seconds);
     setWindowStart(Math.max(0, seekRequest.seconds - windowSpan / 3));
     setFollowLive(false);
@@ -317,9 +318,13 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (!isLive && recording) setCurrentTime((time) => Math.min(time, duration));
   }, [isLive, recording, duration]);
   useEffect(() => {
+    if (!lanes.length) return;
+    const requested = seekRequest?.recordingId === recordingId ? seekRequest.channelId : null;
+    if (requested && !lanes.some((lane) => lane.channelId === requested)) return;
     if (lanes.some((lane) => lane.channelId === selectedChannelId)) return;
-    setSelectedChannelId(lanes.find((lane) => lane.assetId)?.channelId ?? lanes[0]?.channelId ?? null);
-  }, [laneIds, selectedChannelId, journal]);
+    setSelectedChannelId(lanes.find((lane) => lane.channelId === requested)?.channelId
+      ?? lanes.find((lane) => lane.assetId)?.channelId ?? lanes[0].channelId);
+  }, [laneIds, selectedChannelId, journal, seekRequest?.serial, recordingId]);
 
   useEffect(() => {
     if (!recordingId || !lanes.length || isLive) return;

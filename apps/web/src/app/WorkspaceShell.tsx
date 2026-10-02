@@ -786,6 +786,22 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setWordSelection(EMPTY_SELECTION);
   }
 
+  function openObsRecording(recordingId: string, channelId?: string) {
+    flushCurrentMediaDraft();
+    selectedAssetIdRef.current = null;
+    scriptAssetIdRef.current = null;
+    setSelectedAssetId(null);
+    setSelectedImportedTrackId(null);
+    setTake(null);
+    setScript("");
+    setScriptDirty(false);
+    setWordSelection(EMPTY_SELECTION);
+    setObsTimelineRecordingId(recordingId);
+    setObsTimelineActive(true);
+    if (channelId) setObsSeekRequest((current) => ({ recordingId, channelId, seconds: 0,
+      selectOnly: true, serial: (current?.serial ?? 0) + 1 }));
+  }
+
   async function openObsAsset(assetId: string) {
     try {
       const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
@@ -1989,10 +2005,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onObsPlayheadChange: (seconds) => setObsPlayheadSeconds(seconds),
     onObsTimelineCutsChange: (assetIds, ranges) => blockedByRecycleBin() ? Promise.resolve(false) : updateObsTimelineCuts(assetIds, ranges),
     onObsTimelineSourceChange: (source) => setObsTimelineActive(source === "obs-livelink"),
-    onOpenObsRecording: (recordingId) => { setObsTimelineRecordingId(recordingId); setObsTimelineActive(true); },
+    onOpenObsRecording: (recordingId) => openObsRecording(recordingId),
+    onOpenObsTrack: (recordingId, channelId) => openObsRecording(recordingId, channelId),
     onObsArchiveReady: async (recordingId) => {
       const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
-      if (!assets.some((asset) => asset.obsRecordingId === recordingId && asset.sourceExtension === ".mka")) {
+      const archived = assets.find((asset) => asset.obsRecordingId === recordingId && asset.sourceExtension === ".mka");
+      if (!archived) {
         throw new Error(`OBS archive ${recordingId} is not in Media Pool yet`);
       }
       setMediaAssets((current) => {
@@ -2000,6 +2018,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         const added = assets.filter((asset) => !known.has(asset.id));
         return added.length ? [...added, ...current] : current;
       });
+      if (obsTimelineActive && obsTimelineRecordingId === recordingId && selectedAssetId === null)
+        applyMediaAsset(archived, assets);
     },
     liveTranscriptActive,
     liveTranscriptText: latestLiveRevision?.text ?? null,
