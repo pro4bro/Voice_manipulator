@@ -6,6 +6,29 @@ export interface ObsOverlapInterval {
   otherChannelIds: string[];
 }
 
+/** UI review selection; source IDs are live channel IDs or archived track asset IDs. */
+export interface ObsOverlapSelection {
+  recordingId: string;
+  startSeconds: number;
+  endSeconds: number;
+  sourceIds: string[];
+}
+
+export interface ObsTimelineSeekRequest {
+  recordingId: string;
+  channelId?: string;
+  assetId?: string;
+  seconds: number;
+  serial: number;
+  selectOnly?: boolean;
+}
+
+export function obsOverlapSelectionMatches(selection: ObsOverlapSelection | null, recordingId: string,
+                                           sourceId: string, interval: Pick<ObsOverlapInterval, "startSeconds" | "endSeconds">): boolean {
+  return Boolean(selection && selection.recordingId === recordingId && selection.sourceIds.includes(sourceId) &&
+    Math.min(selection.endSeconds, interval.endSeconds) > Math.max(selection.startSeconds, interval.startSeconds));
+}
+
 const MIN_OVERLAP_SECONDS = 0.4;
 
 function hasSegmentBounds(row: ObsLiveLinkTranscriptRow): boolean {

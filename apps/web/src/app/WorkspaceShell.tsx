@@ -53,6 +53,7 @@ import type {
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
 import type { MediaBatchAction } from "../modules/media-pool/MediaPool";
 import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-feed";
+import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../modules/obs-capture/obs-overlap";
 import { categoryOf, parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
 import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
 import { resolveRowVoice, rowsFromOutput, scriptReadiness, voicesInCategory } from "../domain/voiceScript";
@@ -191,7 +192,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [obsTimelineActive, setObsTimelineActive] = useState(false);
   const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
   const [obsPlayheadSeconds, setObsPlayheadSeconds] = useState(0);
-  const [obsSeekRequest, setObsSeekRequest] = useState<{ recordingId: string; channelId: string; seconds: number; serial: number } | null>(null);
+  const [obsSeekRequest, setObsSeekRequest] = useState<ObsTimelineSeekRequest | null>(null);
+  const [obsOverlapSelection, setObsOverlapSelection] = useState<ObsOverlapSelection | null>(null);
+  useEffect(() => setObsOverlapSelection(null), [project.id, obsTimelineRecordingId]);
   const { rows: obsTranscriptRows, error: obsTranscriptError } = useObsLiveLinkTranscript(
     project.id, obsTimelineRecordingId, obsTimelineActive && activePage === "speech-to-text");
   const [liveTranscriptActive, setLiveTranscriptActive] = useState(false);
@@ -1997,14 +2000,36 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     obsTranscriptError,
     obsPlayheadSeconds,
     obsSeekRequest,
+    obsOverlapSelection,
     onObsTimelineRecordingChange: (recordingId) => setObsTimelineRecordingId(recordingId),
-    onObsTranscriptSeek: (row, seconds) => setObsSeekRequest((current) => ({
-      recordingId: row.recordingId, channelId: row.channelId, seconds: seconds ?? row.startSeconds,
-      serial: (current?.serial ?? 0) + 1,
-    })),
+    onObsTranscriptSeek: (row, seconds) => {
+      if (seconds === undefined) setObsOverlapSelection(null);
+      setObsSeekRequest((current) => ({
+        recordingId: row.recordingId, channelId: row.channelId, seconds: seconds ?? row.startSeconds,
+        serial: (current?.serial ?? 0) + 1,
+      }));
+    },
+    onObsOverlapSelect: (selection) => {
+      setObsOverlapSelection(selection);
+      if (selection && selectedImportedTrackId) {
+        const parent = mediaAssets.find((asset) => asset.id === selectedAssetId);
+        if (parent?.obsRecordingId === selection.recordingId) {
+          flushCurrentMediaDraft();
+          applyMediaAsset(parent, mediaAssets);
+        }
+      }
+    },
+    onObsArchivedOverlapSelect: (trackId, selection) => {
+      setObsOverlapSelection(selection);
+      setObsSeekRequest((current) => ({ recordingId: selection.recordingId, assetId: trackId,
+        seconds: selection.startSeconds, serial: (current?.serial ?? 0) + 1 }));
+    },
     onObsPlayheadChange: (seconds) => setObsPlayheadSeconds(seconds),
     onObsTimelineCutsChange: (assetIds, ranges) => blockedByRecycleBin() ? Promise.resolve(false) : updateObsTimelineCuts(assetIds, ranges),
-    onObsTimelineSourceChange: (source) => setObsTimelineActive(source === "obs-livelink"),
+    onObsTimelineSourceChange: (source) => {
+      setObsTimelineActive(source === "obs-livelink");
+      if (source !== "obs-livelink") setObsOverlapSelection(null);
+    },
     onOpenObsRecording: (recordingId) => openObsRecording(recordingId),
     onOpenObsTrack: (recordingId, channelId) => openObsRecording(recordingId, channelId),
     onObsArchiveReady: async (recordingId) => {
@@ -2152,7 +2177,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, script, selectedAssetId, selectedImportedTrackId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

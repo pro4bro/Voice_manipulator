@@ -34,6 +34,7 @@
 - **Imported Multitrack Footage**: One imported MKV, MOV, or MP4 source with two or more audio streams. The Media Pool shows one parent footage; each audio stream has a child analysis asset identified by its container stream index. A track is not proof of an isolated source or speaker.
 - **Growing MKV Follow**: One native file locator feeding an Imported Multitrack Footage while its MKV grows. Complete Clusters and a durable per-track cursor produce provisional audio; an explicit Finish replaces it with continuously decoded audio from the closed, project-owned MKV.
 - **OBS Overlap Review Interval**: A derived intersection of two or more different LiveLink channels on one recording's OBS time axis. It marks segment-level review and replay, not verified words or speaker identities.
+- **OBS Overlap Selection**: Transient workspace focus on one review interval and its participating LiveLink channels or archived track assets. Script and Timeline share it; it does not alter the source or transcript.
 - **Transcript Candidate**: A realtime, accurate STT, AI-corrected, or user-corrected option for one Script span.
 - **Source Word Timing**: A per-word start/end interval returned by the STT recognizer. It remains the recognizer’s source data and is not a guessed replacement for alignment.
 - **Timing Quality**: The Asset-level summary of word timing trust: `source` means every word is trusted, `partial` means fewer than 5% need individual alignment, `needs-alignment` means at least 5% are unsafe, and `unverified` has not yet been checked.

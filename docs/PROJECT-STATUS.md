@@ -1,5 +1,18 @@
 # Project Status — 2026-09-22
 
+## Bidirectional OBS overlap review — 2026-10-02
+
+`LIVELINK-OVERLAP-15` shares one selected OBS recording interval between Script
+and Timeline. A live or detailed-STT Script overlap badge seeks its own source
+and highlights the matching range on participating Timeline lanes. Clicking a
+waveform within an overlap highlights the corresponding Script badges; moving
+from a single archived track to an overlap restores the parent multitrack
+Script. Neither direction autoplays audio. Thin Timeline overlap markers remain
+passive to pointer dragging. Once trusted detailed words exist, both modules
+use those intervals rather than stale realtime-only markers. Frontend 455/455
+tests, typecheck and build pass. Running OBS and owner-viewport contrast/hit
+area acceptance remain open. See ADR 0028.
+
 ## Interactive in-progress OBS footage — 2026-10-02
 
 `LIVELINK-MEDIA-14` lets the journal-backed Media Pool footage expand into
@@ -98,9 +111,9 @@ still needed to verify queue behavior, model load and PCM upload latency. The
 local STT portable-runtime profile passes all six checks and now requires the
 `medium` model; runtime setup preloads it alongside the batch model. The
 Project `Test_OBS 7` has no language set, so automatic detection still applies.
-The user's audio/SRT export and live Media Pool interaction are implemented in
-`VOICE-EXPORT-13` and `LIVELINK-MEDIA-14`. Bidirectional overlap selection
-remains queued as `LIVELINK-OVERLAP-15`.
+The user's audio/SRT export, live Media Pool interaction and bidirectional
+overlap selection are implemented in `VOICE-EXPORT-13`, `LIVELINK-MEDIA-14`
+and `LIVELINK-OVERLAP-15`.
 
 ## LiveLink waveform tail and overlap controls — 2026-10-02
 

@@ -1,6 +1,7 @@
 import type { ObsLiveLinkTranscriptRow } from "../../domain/types";
 import { obsTranscriptText } from "../obs-capture/obs-transcript-feed";
-import { obsOverlapAt, obsOverlapByUtterance, obsOverlapTime, type ObsOverlapInterval } from "../obs-capture/obs-overlap";
+import { obsOverlapAt, obsOverlapByUtterance, obsOverlapSelectionMatches, obsOverlapTime,
+  type ObsOverlapInterval, type ObsOverlapSelection } from "../obs-capture/obs-overlap";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 
@@ -62,12 +63,15 @@ function timecode(seconds: number): string {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
 
-export function ObsLiveLinkScript({ rows, recordingId, playheadSeconds, error, onSeek, embedded = false }: {
+export function ObsLiveLinkScript({ rows, recordingId, playheadSeconds, error, onSeek, onSelectOverlap,
+                                    selectedOverlap = null, embedded = false }: {
   rows: ObsLiveLinkTranscriptRow[];
   recordingId: string | null;
   playheadSeconds: number;
   error: string | null;
   onSeek: (row: ObsLiveLinkTranscriptRow, seconds?: number) => void;
+  onSelectOverlap?: (selection: ObsOverlapSelection | null) => void;
+  selectedOverlap?: ObsOverlapSelection | null;
   embedded?: boolean;
 }) {
   const overlapByUtterance = obsOverlapByUtterance(rows);
@@ -101,8 +105,13 @@ export function ObsLiveLinkScript({ rows, recordingId, playheadSeconds, error, o
           </button>
           {overlaps.length ? <div className="obs-script__overlaps" aria-label={`Đoạn chồng tiếng ${row.alias}`}>
             {overlaps.map((overlap) => <button key={`${overlap.startSeconds}-${overlap.endSeconds}`}
+              aria-pressed={obsOverlapSelectionMatches(selectedOverlap, row.recordingId, row.channelId, overlap)}
               aria-label={`Đến đoạn chồng tiếng ${row.alias} từ ${obsOverlapTime(overlap.startSeconds)} đến ${obsOverlapTime(overlap.endSeconds)}`}
-              onClick={() => onSeek(row, overlap.startSeconds)} title="Đến đoạn chồng tiếng trên track gốc" type="button">
+              onClick={() => {
+                onSelectOverlap?.({ recordingId: row.recordingId, startSeconds: overlap.startSeconds,
+                  endSeconds: overlap.endSeconds, sourceIds: [...new Set([row.channelId, ...overlap.otherChannelIds])] });
+                onSeek(row, overlap.startSeconds);
+              }} title="Chọn đoạn chồng tiếng trên track gốc" type="button">
               <span aria-hidden="true">●</span> {obsOverlapTime(overlap.startSeconds)}–{obsOverlapTime(overlap.endSeconds)}
             </button>)}
           </div> : null}

@@ -339,8 +339,10 @@
 .obs-timeline__interval { background: color-mix(in srgb, var(--gold) 20%, transparent); border-left: 1px solid var(--gold); }
 .obs-timeline__gap { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0 3px, transparent 3px 7px); border-left: 1px solid var(--accent); }
 .obs-timeline__speech-span { position: absolute; z-index: 1; inset-block: 0; background: color-mix(in srgb, var(--lime) 16%, transparent); border-left: 2px solid var(--lime); pointer-events: none; }
+.obs-timeline__selected-overlap { position: absolute; z-index: 1; inset-block: 0; background: color-mix(in srgb, #ff666d 28%, transparent); border-inline: 2px solid #ff666d; pointer-events: none; }
 .obs-timeline__overlap-markers { grid-column: 2; grid-row: 1; position: relative; z-index: 6; min-width: 0; pointer-events: none; }
 .obs-timeline__overlap-markers i { position: absolute; top: 0; height: 4px; min-width: 2px; background: #ff666d; pointer-events: none; }
+.obs-timeline__overlap-markers i.is-selected { height: 6px; background: #ffe3e4; box-shadow: 0 0 0 1px #a83c44; }
 .obs-timeline__caption { grid-column: 2; grid-row: 2; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; padding: 0 6px; color: var(--text); background: var(--soft-fill); border-bottom: 1px solid var(--audio-line); font-size: calc(9px * var(--font-scale)); }
 .obs-timeline__caption.is-overlap span { color: #ff666d; }
 .obs-timeline__caption span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -487,6 +489,7 @@
 .obs-script__overlaps { display: flex; flex-wrap: wrap; gap: 3px; padding: 2px 4px 0; }
 .obs-script__overlaps button { padding: 1px 4px; border: 1px solid #a83c44; color: #ff9297; background: color-mix(in srgb, #e73543 12%, var(--surface-field)); font-family: var(--mono); font-size: calc(7px * var(--font-scale)); line-height: 1.1; cursor: pointer; }
 .obs-script__overlaps button:hover, .obs-script__overlaps button:focus-visible { border-color: #ff7379; outline: 1px solid #ff7379; }
+.obs-script__overlaps button[aria-pressed="true"] { border-color: #ff7379; color: var(--text-inverse); background: var(--surface-inverse); box-shadow: inset 2px 0 #ff7379; }
 .obs-script__source { min-width: 0; display: grid; gap: 3px; }
 .obs-script__source b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(10px * var(--font-scale)); }
 .obs-script__source small { color: var(--muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }

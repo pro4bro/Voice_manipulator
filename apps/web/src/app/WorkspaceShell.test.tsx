@@ -37,8 +37,18 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
   ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
     if (id === "library-panel") return <><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
-    if (id === "script") return <><output data-testid="script-value">{context.script}</output><output data-testid="script-track">{context.selectedImportedTrackId ?? "none"}</output><button onClick={() => context.onSelectImportedTrack("channel-b")} type="button">select second imported track</button><button onClick={() => context.onScriptChange("Edited channel B")} type="button">edit imported script</button></>;
-    if (id === "timeline") return <><output data-testid="timeline-take">{context.take?.name ?? "trống"}</output><output data-testid="obs-recording">{context.obsTimelineRecordingId ?? "none"}:{String(context.obsTimelineActive)}</output><output data-testid="obs-track-request">{context.obsSeekRequest?.channelId ?? "none"}:{String(context.obsSeekRequest?.selectOnly ?? false)}</output></>;
+    if (id === "script") {
+      const overlap = context as unknown as { obsOverlapSelection: { startSeconds: number; endSeconds: number } | null;
+        onObsArchivedOverlapSelect: (trackId: string, selection: { recordingId: string; startSeconds: number;
+          endSeconds: number; sourceIds: string[] }) => void };
+      return <><output data-testid="script-value">{context.script}</output><output data-testid="script-track">{context.selectedImportedTrackId ?? "none"}</output><output data-testid="obs-overlap-selection">{overlap.obsOverlapSelection ? `${overlap.obsOverlapSelection.startSeconds}-${overlap.obsOverlapSelection.endSeconds}` : "none"}</output><button onClick={() => overlap.onObsArchivedOverlapSelect("asset-b", { recordingId: "take-one", startSeconds: 2, endSeconds: 5, sourceIds: ["asset-a", "asset-b"] })} type="button">select archived overlap</button><button onClick={() => context.onSelectImportedTrack("channel-b")} type="button">select second imported track</button><button onClick={() => context.onScriptChange("Edited channel B")} type="button">edit imported script</button></>;
+    }
+    if (id === "timeline") {
+      const request = context.obsSeekRequest as { assetId?: string; channelId?: string; selectOnly?: boolean } | null;
+      const overlap = context as unknown as { onObsOverlapSelect: (selection: { recordingId: string;
+        startSeconds: number; endSeconds: number; sourceIds: string[] }) => void };
+      return <><output data-testid="timeline-take">{context.take?.name ?? "trống"}</output><output data-testid="obs-recording">{context.obsTimelineRecordingId ?? "none"}:{String(context.obsTimelineActive)}</output><output data-testid="obs-track-request">{request?.channelId ?? "none"}:{String(request?.selectOnly ?? false)}</output><output data-testid="obs-asset-request">{request?.assetId ?? "none"}</output><button onClick={() => overlap.onObsOverlapSelect({ recordingId: "take-one", startSeconds: 2, endSeconds: 5, sourceIds: ["asset-a", "asset-b"] })} type="button">select Timeline overlap</button></>;
+    }
     if (id === "recorder") return <><button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsRecording("take-new")} type="button">open new OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button></>;
     if (id === "manipulator-library") {
       return <button onClick={() => context.onOpenVoiceOutput(GENERATED)} type="button">mở voice output</button>;
@@ -223,6 +233,47 @@ describe("WorkspaceShell STT synchronization", () => {
     fireEvent.click(screen.getByRole("button", { name: "open OBS footage" }));
     await waitFor(() => expect(screen.getByTestId("obs-recording")).toHaveTextContent("take-one:true"));
     await waitFor(() => expect(apiMocks.getObsLiveLinkTranscriptEvents).toHaveBeenCalledWith(project.id, "take-one", expect.any(Number)));
+  });
+
+  it("routes an archived Script overlap to the OBS Timeline asset without narrowing the footage", async () => {
+    const archived = { ...mediaAsset("skipped", "", "2026-09-29T00:00:00Z"),
+      id: "archive-1", name: "OBS LiveLink · take-one", sourceExtension: ".mka",
+      sourcePath: "assets/obs-livelink/take-one/source.mka", obsRecordingId: "take-one" };
+    apiMocks.listProjectMedia.mockResolvedValue([archived]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("archive-1"));
+    fireEvent.click(screen.getByRole("button", { name: "open OBS footage" }));
+    fireEvent.click(screen.getByRole("button", { name: "select archived overlap" }));
+    expect(screen.getByTestId("obs-overlap-selection")).toHaveTextContent("2-5");
+    expect(screen.getByTestId("obs-asset-request")).toHaveTextContent("asset-b");
+    expect(screen.getByTestId("script-track")).toHaveTextContent("none");
+    fireEvent.click(screen.getByRole("button", { name: "open live OBS take" }));
+    await waitFor(() => expect(screen.getByTestId("obs-overlap-selection")).toHaveTextContent("none"));
+  });
+
+  it("returns from a single archived track to the parent Script when Timeline selects overlap", async () => {
+    const archived = { ...mediaAsset("skipped", "", "2026-09-29T00:00:00Z"),
+      id: "archive-1", name: "OBS LiveLink · take-one", sourceExtension: ".mka",
+      sourcePath: "assets/obs-livelink/take-one/source.mka", obsRecordingId: "take-one" };
+    const child = { ...mediaAsset("complete", "Track B", "2026-09-29T00:00:01Z"),
+      id: "channel-b", name: "OBS LiveLink · Track 2", obsRecordingId: "take-one",
+      sourceArchiveAssetId: "archive-1", sourceArchiveStreamIndex: 1 };
+    apiMocks.listProjectMedia.mockResolvedValue([archived, child]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("channel-b"));
+    fireEvent.click(screen.getByRole("button", { name: "open OBS footage" }));
+    fireEvent.click(screen.getByRole("button", { name: "select second imported track" }));
+    expect(screen.getByTestId("script-track")).toHaveTextContent("channel-b");
+    fireEvent.click(screen.getByRole("button", { name: "select Timeline overlap" }));
+    expect(screen.getByTestId("script-track")).toHaveTextContent("none");
+    expect(screen.getByTestId("obs-overlap-selection")).toHaveTextContent("2-5");
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent("OBS LiveLink · take-one");
   });
 
   it("switches from an archived asset to provisional OBS footage and its live track", async () => {

@@ -75,18 +75,24 @@ it("keeps one listening placeholder before any recognized speech", () => {
 
 it("colors both rows only while reviewing their shared segment and seeks each source marker", () => {
   const onSeek = vi.fn();
+  const onSelectOverlap = vi.fn();
   const a = { ...row("a", "A", 1, "final", "A nói liên tục"), endSeconds: 5,
     lastSampleIndexExclusive: 5 * 48000 };
   const b = { ...row("b", "B", 2, "partial", "B chen vào rồi nói tiếp"), endSeconds: 7,
     lastSampleIndexExclusive: 7 * 48000 };
-  const view = render(<ObsLiveLinkScript error={null} onSeek={onSeek} playheadSeconds={3}
+  const view = render(<ObsLiveLinkScript error={null} onSeek={onSeek} onSelectOverlap={onSelectOverlap} playheadSeconds={3}
     recordingId="recording" rows={[a, b]} />);
   expect(screen.getByText("A nói liên tục")).toHaveClass("is-overlap");
   expect(screen.getByText("B chen vào rồi nói tiếp")).toHaveClass("is-overlap");
   fireEvent.click(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Channel B từ 00:02.00 đến 00:05.00" }));
   expect(onSeek).toHaveBeenCalledWith(b, 2);
-  view.rerender(<ObsLiveLinkScript error={null} onSeek={onSeek} playheadSeconds={5}
+  const selection = { recordingId: "recording", startSeconds: 2, endSeconds: 5, sourceIds: ["B", "A"] };
+  expect(onSelectOverlap).toHaveBeenCalledWith(selection);
+  view.rerender(<ObsLiveLinkScript error={null} onSeek={onSeek} onSelectOverlap={onSelectOverlap}
+    selectedOverlap={selection} playheadSeconds={5}
     recordingId="recording" rows={[a, b]} />);
+  expect(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Channel A từ 00:02.00 đến 00:05.00" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Channel B từ 00:02.00 đến 00:05.00" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByText("B chen vào rồi nói tiếp")).not.toHaveClass("is-overlap");
   expect(screen.getByText("A nói liên tục")).not.toHaveClass("is-overlap");
 });

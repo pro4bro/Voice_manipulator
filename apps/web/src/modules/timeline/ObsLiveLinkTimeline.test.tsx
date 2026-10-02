@@ -218,6 +218,7 @@ it("hides an archived OBS channel withdrawn by its Import checkbox", async () =>
 it("shows compact, passive overlap marks and seeks without starting playback", async () => {
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const onOverlapSelect = vi.fn();
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
     recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 9_000_000_000 },
     channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
@@ -227,14 +228,25 @@ it("shows compact, passive overlap marks and seeks without starting playback", a
   }]);
   const a = { ...captionRow(ids[0], 1, "A nói"), endSeconds: 5, lastSampleIndexExclusive: 5 * 48000 };
   const b = { ...captionRow(ids[1], 2, "B nói tiếp"), endSeconds: 7, lastSampleIndexExclusive: 7 * 48000 };
-  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" transcriptRows={[a, b]} />);
+  const view = render(<ObsLiveLinkTimeline onOverlapSelect={onOverlapSelect}
+    projectId="project" requestedRecordingId="recording" transcriptRows={[a, b]} />);
   await screen.findByRole("img", { name: "Sóng âm Channel 2" });
   expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i")).toHaveLength(2);
   const wave = screen.getByRole("img", { name: "Sóng âm Channel 2" });
   vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.click(wave, { clientX: 30 });
+  const selection = { recordingId: "recording", startSeconds: 2, endSeconds: 5,
+    sourceIds: [ids[1], ids[0]] };
+  expect(onOverlapSelect).toHaveBeenCalledWith(selection);
+  expect(play).not.toHaveBeenCalled();
+  view.rerender(<ObsLiveLinkTimeline onOverlapSelect={onOverlapSelect} selectedOverlap={selection}
+    projectId="project" requestedRecordingId="recording" transcriptRows={[a, b]} />);
+  expect(view.container.querySelectorAll(".obs-timeline__selected-overlap")).toHaveLength(2);
+  expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i.is-selected")).toHaveLength(2);
   fireEvent.pointerDown(wave, { pointerId: 1, clientX: 20 });
   fireEvent.pointerMove(wave, { pointerId: 1, clientX: 40 });
   fireEvent.pointerUp(wave, { pointerId: 1, clientX: 40 });
+  expect(onOverlapSelect).toHaveBeenCalledTimes(1);
   expect(play).not.toHaveBeenCalled();
   const audio = view.container.querySelector("audio") as HTMLAudioElement;
   expect(screen.getByLabelText("Phụ đề nháp Channel 1")).toHaveClass("is-overlap");
@@ -246,9 +258,69 @@ it("shows compact, passive overlap marks and seeks without starting playback", a
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).not.toHaveClass("is-overlap");
   fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
   expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i")).toHaveLength(2);
-  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+  view.rerender(<ObsLiveLinkTimeline onOverlapSelect={onOverlapSelect} projectId="project" requestedRecordingId="recording"
     transcriptRows={[a, b]} seekRequest={{ recordingId: "recording", channelId: ids[1], seconds: 5, serial: 1 }} />);
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).not.toHaveClass("is-overlap");
+});
+
+it("uses trusted detailed-STT word overlap and seeks the archived track asset", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 10_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
+      relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })),
+    sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`,
+      alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
+  }]);
+  const assets = [
+    { id: "asset-0", name: "OBS LiveLink · Channel 1", obsRecordingId: "recording",
+      sourceArchiveAssetId: "parent", importSelected: true, text: "Một",
+      words: [{ text: "Một", start: 1, end: 2, timingTrusted: true }] },
+    { id: "asset-1", name: "OBS LiveLink · Channel 2", obsRecordingId: "recording",
+      sourceArchiveAssetId: "parent", importSelected: true, text: "Hai",
+      words: [{ text: "Hai", start: 1.3, end: 2.2, timingTrusted: true }] },
+  ] as ProjectMediaAsset[];
+  const draftA = { ...captionRow(ids[0], 1, "Nháp A"), endSeconds: 5, lastSampleIndexExclusive: 5 * 48000 };
+  const draftB = { ...captionRow(ids[1], 2, "Nháp B"), endSeconds: 7, lastSampleIndexExclusive: 7 * 48000 };
+  const onOverlapSelect = vi.fn();
+  const view = render(<ObsLiveLinkTimeline assets={assets} onOverlapSelect={onOverlapSelect}
+    projectId="project" requestedRecordingId="recording" transcriptRows={[draftA, draftB]} />);
+  const wave = await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i")).toHaveLength(2);
+  expect(view.container.querySelector(".obs-timeline__overlap-markers i")).toHaveAttribute("title", "Chồng tiếng 00:01.30–00:02.00");
+  vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.click(wave, { clientX: 35 });
+  expect(onOverlapSelect).toHaveBeenLastCalledWith(null);
+  fireEvent.click(wave, { clientX: 15 });
+  const selection = { recordingId: "recording", startSeconds: 1.3, endSeconds: 2,
+    sourceIds: ["asset-0", "asset-1"] };
+  expect(onOverlapSelect).toHaveBeenCalledWith(selection);
+  view.rerender(<ObsLiveLinkTimeline assets={assets} onOverlapSelect={onOverlapSelect}
+    projectId="project" requestedRecordingId="recording" selectedOverlap={selection} transcriptRows={[draftA, draftB]}
+    seekRequest={{ recordingId: "recording", assetId: "asset-1", seconds: 1.3, serial: 1 }} />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.getByText("00:00:01.300")).toBeInTheDocument();
+  expect(view.container.querySelectorAll(".obs-timeline__selected-overlap")).toHaveLength(2);
+});
+
+it("resolves an archived asset seek when stem IDs arrive after channel lanes", async () => {
+  const base = { protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 10_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
+      relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })) };
+  mocks.listObsLiveLinkRecordings.mockResolvedValueOnce([{ ...base, sourceStems: [] }])
+    .mockResolvedValue([{ ...base, sourceStems: ids.map((channelId, index) => ({ channelId,
+      sourceUuid: `source-${index}`, alias: `Channel ${index + 1}`, assetId: `asset-${index}`,
+      sourcePath: "", analysisPath: "", gaps: [] })) }]);
+  const intervals = vi.spyOn(window, "setInterval");
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+    seekRequest={{ recordingId: "recording", assetId: "asset-1", seconds: 1.3, serial: 1 }} />);
+  await screen.findByRole("button", { name: "Nghe kênh Channel 2" });
+  expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "false");
+  const refresh = intervals.mock.calls.find(([, milliseconds]) => milliseconds === 3_000)?.[0];
+  expect(refresh).toBeDefined();
+  act(() => { if (typeof refresh === "function") refresh(); });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"));
+  expect(screen.getByText("00:00:01.300")).toBeInTheDocument();
 });
 
 it("keeps the chosen layout while reporting the playhead to the parent Script", async () => {

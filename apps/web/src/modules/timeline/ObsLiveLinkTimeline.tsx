@@ -4,7 +4,9 @@ import { api } from "../../api/client";
 import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, TimelineEditRange } from "../../domain/types";
 import { subscribeObsLiveLinkWaveforms } from "../obs-capture/obs-waveform-feed";
 import { obsTranscriptText } from "../obs-capture/obs-transcript-feed";
-import { obsOverlapAt, obsOverlapByUtterance, obsOverlapTime } from "../obs-capture/obs-overlap";
+import { obsOverlapByUtterance, obsOverlapSelectionMatches, obsOverlapTime,
+  type ObsOverlapSelection, type ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
+import { channelScriptRows } from "../script/channel-script";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { Icon } from "../../ui/Icon";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
@@ -28,6 +30,13 @@ interface Lane {
   nativeName: string;
   assetId: string | null;
   slot: number;
+}
+
+interface TimelineOverlap {
+  startSeconds: number;
+  endSeconds: number;
+  sourceIds: string[];
+  markerId: string;
 }
 
 function clock(seconds: number): string {
@@ -137,7 +146,8 @@ function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): n
 }
 
 export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
-                                      transcriptRows = [], seekRequest = null, assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null }: {
+                                      transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
+                                      assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null }: {
   projectId: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
@@ -145,7 +155,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   assets?: ProjectMediaAsset[];
   visibleAssetId?: string | null;
   onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
-  seekRequest?: { recordingId: string; channelId: string; seconds: number; serial: number; selectOnly?: boolean } | null;
+  seekRequest?: ObsTimelineSeekRequest | null;
+  selectedOverlap?: ObsOverlapSelection | null;
+  onOverlapSelect?: (selection: ObsOverlapSelection | null) => void;
 }) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
@@ -179,6 +191,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const suppressClickRef = useRef(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const playbackActionRef = useRef<() => void>(() => undefined);
+  const handledSeekRef = useRef<string | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const columnResizeRef = useRef<{ channelId: string; pointerId: number; startX: number; startWidth: number } | null>(null);
@@ -233,7 +246,24 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
   const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
   const overlapByUtterance = useMemo(() => obsOverlapByUtterance(transcriptRows), [transcriptRows]);
+  const detailedOverlaps = useMemo(() => {
+    const tracks = assets.filter((asset) => asset.obsRecordingId === recordingId && asset.sourceArchiveAssetId &&
+      asset.importSelected !== false);
+    if (!tracks.some((track) => track.words?.length || (track.transcriptionStatus === "complete" && track.text?.trim()))) return null;
+    const rows = channelScriptRows(tracks);
+    const byAsset = new Map<string, TimelineOverlap[]>();
+    rows.forEach((row, rowIndex) => row.overlaps.forEach((interval) => {
+      const sourceIds = [...new Set(rows.filter((peer) => peer.overlaps.some((part) =>
+        Math.min(part.endSeconds, interval.endSeconds) > Math.max(part.startSeconds, interval.startSeconds)))
+        .map((peer) => peer.trackId))];
+      const markers = byAsset.get(row.trackId) ?? [];
+      markers.push({ ...interval, sourceIds, markerId: `${rowIndex}-${interval.startSeconds}` });
+      byAsset.set(row.trackId, markers);
+    }));
+    return byAsset;
+  }, [assets, recordingId]);
   const laneIds = lanes.map((lane) => lane.channelId).join(",");
+  const laneTargets = lanes.map((lane) => `${lane.channelId}:${lane.assetId ?? ""}`).join(",");
   const defaultColumnWidth = viewportWidth ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length)))) : 360;
   const clampColumnWidth = (value: number) => Math.max(240, Math.min(1200, Math.round(value)));
 
@@ -307,24 +337,29 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }, [duration, isLive, followLive, windowStart, windowSeconds]);
   useEffect(() => {
     if (!seekRequest || seekRequest.recordingId !== recordingId) return;
-    setSelectedChannelId(seekRequest.channelId);
+    const key = `${recordingId}:${seekRequest.serial}`;
+    if (handledSeekRef.current === key) return;
+    const target = lanes.find((lane) => lane.channelId === seekRequest.channelId || lane.assetId === seekRequest.assetId);
+    if (!target) return;
+    handledSeekRef.current = key;
+    setSelectedChannelId(target.channelId);
     if (seekRequest.selectOnly) return;
     setCurrentTime(seekRequest.seconds);
     setWindowStart(Math.max(0, seekRequest.seconds - windowSpan / 3));
     setFollowLive(false);
     forEachPlaybackAudio((audio) => { audio.currentTime = seekRequest.seconds; });
-  }, [seekRequest?.serial, recordingId]);
+  }, [seekRequest?.serial, recordingId, laneTargets]);
   useEffect(() => {
     if (!isLive && recording) setCurrentTime((time) => Math.min(time, duration));
   }, [isLive, recording, duration]);
   useEffect(() => {
     if (!lanes.length) return;
-    const requested = seekRequest?.recordingId === recordingId ? seekRequest.channelId : null;
-    if (requested && !lanes.some((lane) => lane.channelId === requested)) return;
     if (lanes.some((lane) => lane.channelId === selectedChannelId)) return;
-    setSelectedChannelId(lanes.find((lane) => lane.channelId === requested)?.channelId
-      ?? lanes.find((lane) => lane.assetId)?.channelId ?? lanes[0].channelId);
-  }, [laneIds, selectedChannelId, journal, seekRequest?.serial, recordingId]);
+    const requested = seekRequest?.recordingId === recordingId
+      ? lanes.find((lane) => lane.channelId === seekRequest.channelId || lane.assetId === seekRequest.assetId)
+      : null;
+    setSelectedChannelId(requested?.channelId ?? lanes.find((lane) => lane.assetId)?.channelId ?? lanes[0].channelId);
+  }, [laneIds, selectedChannelId, journal, recordingId, seekRequest?.serial]);
 
   useEffect(() => {
     if (!recordingId || !lanes.length || isLive) return;
@@ -486,12 +521,17 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (next !== null) selectWindow(next);
   }
 
-  function seek(clientX: number, element: HTMLElement) {
+  function positionSeconds(clientX: number, element: HTMLElement): number | null {
     const bounds = element.getBoundingClientRect();
-    if (!bounds.width) return;
+    if (!bounds.width) return null;
     const position = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
-    const next = Math.min(duration, element.classList.contains("obs-timeline__scrub")
+    return Math.min(duration, element.classList.contains("obs-timeline__scrub")
       ? position * duration : windowStart + position * windowSpan);
+  }
+
+  function seek(clientX: number, element: HTMLElement) {
+    const next = positionSeconds(clientX, element);
+    if (next === null) return;
     setCurrentTime(next);
     setFollowLive(false);
     if (next < windowStart || next > windowStart + windowSpan) {
@@ -500,9 +540,18 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, audio.duration || next); });
   }
 
-  function clickSeek(event: MouseEvent<HTMLElement>) {
+  function clickSeek(event: MouseEvent<HTMLElement>, lane?: Lane, overlaps: TimelineOverlap[] = []) {
     if (suppressClickRef.current) { suppressClickRef.current = false; return; }
-    if (!isLive) seek(event.clientX, event.currentTarget);
+    const seconds = positionSeconds(event.clientX, event.currentTarget);
+    if (seconds === null) return;
+    const overlap = overlaps.find((item) => item.startSeconds <= seconds && seconds < item.endSeconds);
+    if (isLive && !overlap) { onOverlapSelect?.(null); return; }
+    seek(event.clientX, event.currentTarget);
+    if (overlap && lane && recordingId) {
+      setSelectedChannelId(lane.channelId);
+      onOverlapSelect?.({ recordingId, startSeconds: overlap.startSeconds,
+        endSeconds: overlap.endSeconds, sourceIds: overlap.sourceIds });
+    } else onOverlapSelect?.(null);
   }
 
   function beginScrub(event: PointerEvent<HTMLElement>) {
@@ -609,9 +658,18 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
             </div></> : null}
           {visibleLanes.map((lane) => {
             const captions = transcriptRows.filter((row) => row.recordingId === recordingId && row.channelId === lane.channelId);
-            const overlaps = captions.flatMap((row) => (overlapByUtterance.get(row.utteranceId) ?? []).map((interval) => ({
-              ...interval, utteranceId: row.utteranceId,
-            })));
+            const overlaps: TimelineOverlap[] = detailedOverlaps
+              ? detailedOverlaps.get(lane.assetId ?? "") ?? []
+              : captions.flatMap((row) => (overlapByUtterance.get(row.utteranceId) ?? []).map((interval) => ({
+                ...interval, sourceIds: [lane.channelId, ...interval.otherChannelIds],
+                markerId: `${row.utteranceId}-${interval.startSeconds}`,
+              })));
+            const overlapSourceId = detailedOverlaps ? lane.assetId : lane.channelId;
+            const selectedRanges = selectedOverlap && recordingId && overlapSourceId
+              ? overlaps.filter((interval) => obsOverlapSelectionMatches(selectedOverlap, recordingId, overlapSourceId, interval))
+                .map((interval) => ({ startSeconds: Math.max(interval.startSeconds, selectedOverlap.startSeconds),
+                  endSeconds: Math.min(interval.endSeconds, selectedOverlap.endSeconds) }))
+              : [];
             const caption = isLive && followLive
               ? [...captions].reverse().find((row) => duration - row.endSeconds < 4)
               : [...captions].reverse().find((row) => row.startSeconds <= currentTime && currentTime <= Math.max(row.endSeconds, row.startSeconds + 1));
@@ -661,7 +719,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 </span>)}
               </div> : null}
               <div aria-label={`Sóng âm ${lane.label}`} className="obs-timeline__wave" role="img"
-                onClick={clickSeek}
+                onClick={(event) => clickSeek(event, lane, overlaps)}
                 onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
                 {intervals.map((part, index) => {
                   const from = (part.startMonotonicNs - intervalOrigin) / 1e9;
@@ -685,6 +743,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   return position ? <i aria-label={`Lượt nói ${lane.label} tại ${row.startSeconds.toFixed(2)}s`}
                     className="obs-timeline__speech-span" key={row.utteranceId} style={position} /> : null;
                 })}
+                {selectedRanges.map((range) => {
+                  const position = intervalPosition(range.startSeconds, range.endSeconds, windowStart, windowSpan);
+                  return position ? <i aria-label={`Đoạn chồng tiếng đang chọn ${lane.label} ${obsOverlapTime(range.startSeconds)}–${obsOverlapTime(range.endSeconds)}`}
+                    className="obs-timeline__selected-overlap" key={`${range.startSeconds}-${range.endSeconds}`} style={position} /> : null;
+                })}
                 <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ?
                   <i aria-label={`Playhead ${lane.label}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}
@@ -703,12 +766,14 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               <div aria-hidden="true" className="obs-timeline__overlap-markers">
                 {overlaps.map((overlap) => {
                   const position = intervalPosition(overlap.startSeconds, overlap.endSeconds, windowStart, windowSpan);
-                  return position ? <i key={`${overlap.utteranceId}-${overlap.startSeconds}`}
-                    style={position} title={`Chồng tiếng ${obsOverlapTime(overlap.startSeconds)}–${obsOverlapTime(overlap.endSeconds)}`} /> : null;
+                  return position ? <i className={overlapSourceId && recordingId &&
+                    obsOverlapSelectionMatches(selectedOverlap, recordingId, overlapSourceId, overlap) ? "is-selected" : undefined}
+                    key={overlap.markerId} style={position}
+                    title={`Chồng tiếng ${obsOverlapTime(overlap.startSeconds)}–${obsOverlapTime(overlap.endSeconds)}`} /> : null;
                 })}
               </div>
               <div aria-label={`Phụ đề nháp ${lane.label}`}
-                className={`obs-timeline__caption${caption && obsOverlapAt(overlapByUtterance.get(caption.utteranceId) ?? [], currentTime) ? " is-overlap" : ""}`}
+                className={`obs-timeline__caption${caption && !detailedOverlaps && overlaps.some((item) => item.startSeconds <= currentTime && currentTime < item.endSeconds) ? " is-overlap" : ""}`}
                 title="Live draft · thời gian theo đoạn, chưa xác thực từng từ">
                 <span>{caption ? obsTranscriptText(caption) || "Đang nghe…" : "Chưa có lời nói"}</span>
                 {caption ? <small>{caption.status === "final" ? "DRAFT" : "LIVE"}</small> : null}

@@ -13,6 +13,7 @@ import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
 import { ObsCapture } from "../obs-capture/ObsCapture";
+import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
 import { ScriptEditor } from "../script/ScriptEditor";
 import { ObsLiveLinkScript } from "../script/ObsLiveLinkScript";
@@ -51,9 +52,12 @@ export interface StudioContext {
   obsTranscriptRows: import("../../domain/types").ObsLiveLinkTranscriptRow[];
   obsTranscriptError: string | null;
   obsPlayheadSeconds: number;
-  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number; selectOnly?: boolean } | null;
+  obsSeekRequest: ObsTimelineSeekRequest | null;
+  obsOverlapSelection: ObsOverlapSelection | null;
   onObsTimelineRecordingChange: (recordingId: string) => void;
   onObsTranscriptSeek: (row: import("../../domain/types").ObsLiveLinkTranscriptRow, seconds?: number) => void;
+  onObsOverlapSelect: (selection: ObsOverlapSelection | null) => void;
+  onObsArchivedOverlapSelect: (trackId: string, selection: ObsOverlapSelection) => void;
   onObsPlayheadChange: (seconds: number) => void;
   onObsTimelineCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
   onObsTimelineSourceChange: (source: "microphone" | "display" | "obs-livelink") => void;
@@ -253,9 +257,13 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const childTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === context.selectedAssetId);
       const parentFeed = context.workflow === "speech-to-text" && !context.selectedImportedTrackId && childTracks.length > 0 &&
         (!context.obsTimelineActive || childTracks.some((track) => track.words?.length || (track.transcriptionStatus === "complete" && track.text?.trim())))
-        ? <ChannelScript tracks={childTracks} onSelectTrack={context.onSelectImportedTrack} /> : null;
+        ? <ChannelScript tracks={childTracks} onSelectTrack={context.onSelectImportedTrack}
+          recordingId={context.obsTimelineActive ? context.obsTimelineRecordingId : null}
+          selectedOverlap={context.obsOverlapSelection}
+          onSelectOverlap={context.obsTimelineActive ? context.onObsArchivedOverlapSelect : undefined} /> : null;
       const liveFeed = context.workflow === "speech-to-text" && context.obsTimelineActive && !context.selectedImportedTrackId && !parentFeed
         ? <ObsLiveLinkScript embedded error={context.obsTranscriptError} onSeek={context.onObsTranscriptSeek}
+          onSelectOverlap={context.onObsOverlapSelect} selectedOverlap={context.obsOverlapSelection}
           playheadSeconds={context.obsPlayheadSeconds} recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows} />
         : null;
       return <ScriptEditor key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
@@ -273,6 +281,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
           assets={context.mediaAssets} onCutsChange={context.onObsTimelineCutsChange}
           visibleAssetId={context.selectedImportedTrackId}
           projectId={context.projectId} projectName={context.projectName} requestedRecordingId={context.obsTimelineRecordingId}
+          onOverlapSelect={context.onObsOverlapSelect} selectedOverlap={context.obsOverlapSelection}
           seekRequest={context.obsSeekRequest} transcriptRows={context.obsTranscriptRows} />;
       }
       const importedParent = workingAssets.find((asset) => asset.id === context.selectedAssetId);

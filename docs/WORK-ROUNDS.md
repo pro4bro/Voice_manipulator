@@ -73,7 +73,7 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
-| LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
+| LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Implemented at frontend regression level; running OBS viewport gate open | Script and Timeline share a selected interval for live and detailed STT, with source-specific highlighting and no autoplay. |
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
 | MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Complete at API, restart and owner-journal inspection level; running-app check open | Permanent deletion leaves a portable ID tombstone; stale machine state and orphan journals cannot publish a pending footage row. |
@@ -2482,3 +2482,40 @@ seekable full-length footage file.
 Exact next round: `LIVELINK-OVERLAP-15` — link Script overlap selection with
 the corresponding Timeline interval in both directions. Keep the physical
 LiveLink capture/viewport gate and `LIVELINK-INGEST-11B` separate.
+
+## Round LIVELINK-OVERLAP-15 — 2026-10-02
+
+Completed scope:
+- Added one transient OBS overlap selection with recording ID, exact time range,
+  and participating source IDs. Realtime selections use LiveLink channel IDs;
+  detailed STT selections use archived track asset IDs. Switching recordings or
+  leaving OBS Timeline clears the selection.
+- Clicking a Script overlap badge selects the same interval on both participating
+  Timeline lanes and seeks the chosen source without starting playback. The
+  archived word-timed Script now sends an asset-targeted seek that OBS Timeline
+  actually handles; the imported multitrack Script keeps its existing seek.
+- Clicking a Timeline waveform inside an overlap selects its Script badges and
+  shows the clipped interval on each participating lane. The thin red markers
+  remain pointer-passive so dragging the waveform still works. In single-track
+  OBS view, selection returns to the parent Script so both sources are visible.
+- After detailed STT exists, Timeline derives markers from the same trusted
+  word overlap rows as parent Script instead of retaining stale realtime-only
+  overlap indicators.
+
+Evidence:
+- Frontend full suite: 455 passed; TypeScript typecheck and Vite build passed.
+  Tests cover live and archived Script badge selection, Timeline click/drag and
+  no autoplay, asset-targeted seek even when stem IDs arrive late,
+  detail-over-draft timing, single-track return to parent, and selection
+  clearing on recording change.
+- No backend or media files changed. The overlap remains a review interval, not
+  evidence of acoustically separate speakers or trusted subtitle timing.
+
+Remaining gap: the running app at the owner's viewport and a real OBS take have
+not been used to verify marker hit areas, selected-range contrast in both
+layouts/themes, and timing under live transcript revisions. DOM tests establish
+state and event behavior but cannot prove these physical pointer/visual details.
+
+Exact next round: `LIVELINK-INGEST-11B` — measure and reduce the long-take PCM
+spool backlog under simultaneous OBS capture and STT load. Keep the physical
+overlap viewport check in the final `LIVELINK-08` acceptance matrix.
