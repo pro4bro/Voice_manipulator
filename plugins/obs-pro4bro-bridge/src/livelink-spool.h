@@ -25,8 +25,9 @@ public:
 	LiveLinkSpool &operator=(const LiveLinkSpool &) = delete;
 	bool ready() const { return db_ != nullptr; }
 	bool append(const std::vector<LiveLinkAudioChunk> &chunks);
-	std::optional<LiveLinkSpoolEntry> oldest();
+	std::optional<LiveLinkSpoolEntry> oldest(int64_t after_id = 0);
 	bool acknowledge(int64_t id);
+	bool acknowledge(const std::vector<int64_t> &ids);
 	bool clip_to_stop(int64_t id, uint32_t frames);
 	bool reject(int64_t id, int status);
 	uint64_t pending(const std::string &recording_id = {});

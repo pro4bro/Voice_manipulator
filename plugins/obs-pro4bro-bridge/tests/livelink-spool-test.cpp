@@ -64,5 +64,42 @@ int main()
 		CHECK(recovered.acknowledge(entry->id));
 		CHECK(recovered.pending() == 0);
 	}
+	// Pending ACKs must retain PCM across process death. Reading later rows
+	// must not consume or erase the older row before a batch commits.
+	std::vector<int64_t> ids;
+	{
+		LiveLinkSpool spool(path);
+		CHECK(spool.append({first, second}));
+		auto one = spool.oldest();
+		CHECK(one);
+		auto two = spool.oldest(one->id);
+		CHECK(one && two && two->chunk.sequence == 1);
+		CHECK(spool.oldest()->id == one->id);
+		CHECK(spool.pending() == 2);
+		ids = {one->id, two->id};
+	}
+	{
+		LiveLinkSpool recovered(path);
+		CHECK(recovered.pending() == 2);
+		CHECK(recovered.oldest()->chunk.pcm == first.pcm);
+		// A missing ID rolls the entire batch back, including its first delete.
+		CHECK(!recovered.acknowledge(std::vector<int64_t>{ids[0], ids[1] + 1}));
+		CHECK(recovered.pending() == 2);
+		CHECK(recovered.acknowledge(ids));
+		CHECK(recovered.pending() == 0);
+	}
+	{
+		LiveLinkSpool recovered(path);
+		CHECK(recovered.pending() == 0);
+		CHECK(recovered.acknowledge(std::vector<int64_t>{}));
+		CHECK(recovered.append({first, second}));
+		auto one = recovered.oldest();
+		CHECK(one && recovered.reject(one->id, 422));
+		auto two = recovered.oldest(one->id);
+		CHECK(two && two->chunk.sequence == 1);
+		CHECK(recovered.acknowledge(std::vector<int64_t>{two->id}));
+		CHECK(recovered.pending() == 1); // unrelated rejected PCM is retained
+		CHECK(!recovered.oldest());
+	}
 	std::filesystem::remove_all(folder);
 }

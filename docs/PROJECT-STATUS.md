@@ -1,5 +1,32 @@
 # Project Status — 2026-09-22
 
+## LiveLink sustained PCM ACK optimization — 2026-10-03
+
+`LIVELINK-STT-12G` batches native outbox ACK deletion in one FULL transaction
+per bounded send burst and avoids rewriting unchanged recording-folder
+locators. Source PCM and metadata retain durable flushes; crash/retry and
+atomic rollback semantics are covered by native/API regressions (ADR 0033).
+Plugin/package 0.6.7 is built and verified in isolated OBS; the owner's
+installed plugin still needs Preferences Install/Repair and an OBS restart.
+
+Two warmed physical OBS takes with the browser workspace open and concurrent
+live/detailed STT ran 174.830/171.477 seconds. Before/after PCM receipt p95
+was 49.012/49.263 versus 2.157/2.520 seconds; pending peak was 99 versus 7.
+Both retained sample-contiguous 48 kHz stereo PCM, hash/decode-verified
+two-track MKA, complete live checkpoints and detailed STT, with no live error
+events or duplicate finals. Browser text-event receipt age medians changed
+from 26.977/24.151 to 4.210/3.864 seconds. First-frame timing is a proxy;
+most later Script rows were offscreen, and the comparison is not a universal
+latency or recognition-quality guarantee. Backend 493, frontend 455 and
+native 2/2 tests passed; typecheck/build passed after probe removal.
+
+Live waveform UI still sometimes looked empty despite low PCM latency and
+nonzero waveform API data. Historical removed sources also appeared as extra
+live lanes, disappearing at archive handoff. Exact next is `LIVELINK-STT-12H`
+to repair these presentation issues and verify the live tail. See
+`docs/gates/livelink-stt-12g-ingress.md`; broader startup/reconnect, Script
+follow, owner viewport/DPI and portability gates remain under `LIVELINK-08`.
+
 ## LiveLink browser caption timing — 2026-10-03
 
 `LIVELINK-STT-12F` measured event persistence, browser receipt and Script row

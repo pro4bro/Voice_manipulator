@@ -464,6 +464,55 @@ def test_plugin_heartbeat_remains_parseable_after_archive_with_uint64_track_uid(
     assert plugin_status["appRecording"]["recordingId"] != first_id
 
 
+def test_heartbeat_persists_recording_folder_only_when_changed(tmp_path, monkeypatch):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    runtime.set_recording_folder_connected(True)
+    folders = [tmp_path / "OBS recordings", tmp_path / "OBS moved"]
+    for folder in folders:
+        folder.mkdir()
+    path = runtime._recording_folder_path(hello["installId"])
+    writes = []
+    original_write = runtime._write
+
+    def counted_write(target, data):
+        if target == path:
+            writes.append(json.loads(data))
+        return original_write(target, data)
+
+    monkeypatch.setattr(runtime, "_write", counted_write)
+
+    def heartbeat(folder):
+        payload = {"installId": hello["installId"], "connectionId": snapshot["connectionId"],
+                   "connectionEpoch": snapshot["connectionEpoch"], "channels": [],
+                   "recordingFolder": str(folder)}
+        return runtime.sync(payload, link.heartbeat(token, payload), for_obs=True)
+
+    for _ in range(5):
+        assert heartbeat(folders[0])["recordingFolder"] == str(folders[0].resolve())
+    assert len(writes) == 1, "Unchanged heartbeats must not block PCM ingress on another fsync"
+    heartbeat(folders[1])
+    assert len(writes) == 2
+    assert json.loads(path.read_bytes())["folder"] == str(folders[1].resolve())
+
+    # A fresh API instance reads the durable locator without flushing it again.
+    restarted = ObsLiveLinkRuntime(link, runtime.projects, tmp_path / "machine")
+    def reject_write(*args):
+        raise AssertionError("Unchanged folder was rewritten after restart")
+    monkeypatch.setattr(restarted, "_write", reject_write)
+    payload = {**hello, "recordingFolder": str(folders[1])}
+    assert restarted.sync(payload, link.status(), for_obs=True)["recordingFolder"] == str(folders[1].resolve())
+
+    runtime.set_recording_folder_connected(False)
+    assert not path.exists()
+    assert heartbeat(folders[1])["recordingFolder"] is None
+    runtime.set_recording_folder_connected(True)
+    heartbeat(folders[1])
+    assert len(writes) == 3, "Reconnecting must recreate the durable locator"
+    path.write_text("corrupt", encoding="utf-8")
+    heartbeat(folders[1])
+    assert len(writes) == 4
+
+
 def test_recording_folder_locators_are_machine_local_and_per_span(tmp_path):
     link, runtime, project, token, hello, snapshot = setup(tmp_path)
     runtime.set_recording_folder_connected(True)

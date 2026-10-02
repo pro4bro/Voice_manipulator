@@ -102,15 +102,16 @@ bool LiveLinkSpool::append(const std::vector<LiveLinkAudioChunk> &chunks)
 	return ok;
 }
 
-std::optional<LiveLinkSpoolEntry> LiveLinkSpool::oldest()
+std::optional<LiveLinkSpoolEntry> LiveLinkSpool::oldest(int64_t after_id)
 {
 	std::lock_guard lock(mutex_);
 	if (!db_) return std::nullopt;
 	sqlite3_stmt *stmt = nullptr;
 	constexpr const char *sql = "SELECT id, recording_id, channel_id, sequence, source_uuid, "
 		"first_sample_index, obs_timestamp_ns, plugin_monotonic_ns, frames, sample_rate, channels, pcm "
-		"FROM chunks WHERE rejected_status IS NULL ORDER BY id LIMIT 1";
+		"FROM chunks WHERE rejected_status IS NULL AND id>? ORDER BY id LIMIT 1";
 	if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) { fail("read"); return std::nullopt; }
+	sqlite3_bind_int64(stmt, 1, after_id);
 	std::optional<LiveLinkSpoolEntry> result;
 	if (sqlite3_step(stmt) == SQLITE_ROW) {
 		LiveLinkSpoolEntry entry;
@@ -144,14 +145,26 @@ std::optional<LiveLinkSpoolEntry> LiveLinkSpool::oldest()
 
 bool LiveLinkSpool::acknowledge(int64_t id)
 {
+	return acknowledge(std::vector<int64_t>{id});
+}
+
+bool LiveLinkSpool::acknowledge(const std::vector<int64_t> &ids)
+{
+	if (ids.empty()) return true;
 	std::lock_guard lock(mutex_);
-	if (!db_) return false;
+	if (!db_ || !exec("BEGIN IMMEDIATE")) return false;
 	sqlite3_stmt *stmt = nullptr;
-	if (sqlite3_prepare_v2(db_, "DELETE FROM chunks WHERE id=?", -1, &stmt, nullptr) != SQLITE_OK) { fail("ack"); return false; }
-	sqlite3_bind_int64(stmt, 1, id);
-	const bool ok = sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db_) == 1;
-	if (!ok) fail("ack");
-	sqlite3_finalize(stmt);
+	bool ok = sqlite3_prepare_v2(db_, "DELETE FROM chunks WHERE id=?", -1, &stmt, nullptr) == SQLITE_OK;
+	for (const auto id : ids) {
+		if (!ok) break;
+		ok = sqlite3_bind_int64(stmt, 1, id) == SQLITE_OK &&
+			sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db_) == 1;
+		if (!ok) fail("ack");
+		sqlite3_reset(stmt);
+	}
+	if (stmt) sqlite3_finalize(stmt);
+	if (ok) ok = exec("COMMIT");
+	if (!ok) sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
 	return ok;
 }
 

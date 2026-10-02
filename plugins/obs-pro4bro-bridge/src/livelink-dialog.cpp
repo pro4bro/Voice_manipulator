@@ -962,19 +962,23 @@ private:
 		uint64_t sent_chunks = 0;
 		uint64_t send_elapsed_ms = 0;
 		uint64_t max_send_ms = 0;
+		uint64_t ack_commits = 0, ack_elapsed_ms = 0;
 		auto last_rejection_log = std::chrono::steady_clock::now() - std::chrono::seconds(5);
 		while (active_) {
 			drain();
 			if (std::chrono::steady_clock::now() - last_spool_report >= std::chrono::seconds(5)) {
 				const auto count = spool.pending();
 				if (count || !unspooled.empty() || sent_chunks)
-					blog(LOG_INFO, "[Pro4Bro] PCM disk spool pending=%llu volatile=%llu sends=%llu http_avg_ms=%llu http_max_ms=%llu",
+					blog(LOG_INFO, "[Pro4Bro] PCM disk spool pending=%llu volatile=%llu sends=%llu http_avg_ms=%llu http_max_ms=%llu ack_commits=%llu ack_total_ms=%llu",
 						static_cast<unsigned long long>(count),
 						static_cast<unsigned long long>(unspooled.size()),
 						static_cast<unsigned long long>(sent_chunks),
 						static_cast<unsigned long long>(sent_chunks ? send_elapsed_ms / sent_chunks : 0),
-						static_cast<unsigned long long>(max_send_ms));
+						static_cast<unsigned long long>(max_send_ms),
+						static_cast<unsigned long long>(ack_commits),
+						static_cast<unsigned long long>(ack_elapsed_ms));
 				sent_chunks = send_elapsed_ms = max_send_ms = 0;
+				ack_commits = ack_elapsed_ms = 0;
 				last_spool_report = std::chrono::steady_clock::now();
 			}
 			Pairing pairing = read_pairing();
@@ -1003,7 +1007,7 @@ private:
 				Reply reply;
 				if (connection_id_.empty()) {
 					obs_data_set_string(payload, "processInstanceId", process_id_.c_str());
-					obs_data_set_string(payload, "pluginVersion", "0.6.6");
+					obs_data_set_string(payload, "pluginVersion", "0.6.7");
 					obs_data_set_string(payload, "obsVersion", obs_get_version_string());
 					obs_data_set_int(payload, "protocolMin", 3);
 					obs_data_set_int(payload, "protocolMax", 3);
@@ -1094,12 +1098,14 @@ private:
 					}
 					if (!connection_id_.empty() && active_) {
 						const auto burst_started = std::chrono::steady_clock::now();
+						std::vector<int64_t> durable_acks;
 						for (int sent_count = 0; sent_count < 20; ++sent_count) {
 							// Keep control commands responsive, while amortizing each
 							// heartbeat/command round trip across more queued PCM.
 							if (sent_count && std::chrono::steady_clock::now() - burst_started >=
 								std::chrono::seconds(1)) break;
-							if (!outstanding) outstanding = spool.oldest();
+							if (!outstanding) outstanding = spool.oldest(
+								durable_acks.empty() ? 0 : durable_acks.back());
 							if (!outstanding) break;
 							const auto boundary = stop_boundaries.find(outstanding->chunk.recording_id);
 							if (boundary != stop_boundaries.end()) {
@@ -1145,10 +1151,23 @@ private:
 								std::this_thread::sleep_for(std::chrono::milliseconds(100));
 								break;
 							}
-							if (!spool.acknowledge(outstanding->id)) {
-								blog(LOG_ERROR, "[Pro4Bro] PCM spool ACK commit failed: %s", spool.error().c_str());
-								break;
-							}
+							// The API already flushed this source PCM. Keep it in the
+							// outbox until one FULL transaction commits this burst's ACKs.
+							// A crash before commit safely replays the same sequences.
+							durable_acks.push_back(outstanding->id);
+							outstanding = spool.oldest(outstanding->id);
+						}
+						const auto ack_started = std::chrono::steady_clock::now();
+						const bool ack_committed = spool.acknowledge(durable_acks);
+						if (!durable_acks.empty()) {
+							++ack_commits;
+							ack_elapsed_ms += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+								std::chrono::steady_clock::now() - ack_started).count());
+						}
+						if (!ack_committed) {
+							blog(LOG_ERROR, "[Pro4Bro] PCM spool ACK commit failed: %s", spool.error().c_str());
+							// Retry from the oldest retained row, including already
+							// durable API chunks; do not skip them on a failed commit.
 							outstanding.reset();
 						}
 						if (!outstanding) outstanding = spool.oldest();

@@ -15,13 +15,15 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12F` measured browser
-receipt and visible/offscreen Script frame boundaries, with complete PCM and
-STT artifacts in its controlled take. The planned sustained duration remains
-open after a harness request failure. `LIVELINK-STT-12G` next profiles PCM ACK
-latency while the browser polls; cold startup, reconnect/follow UX and the
-wider source/UI matrix remain open under `docs/WORK-ROUNDS.md`. No product
-phase is marked complete by this diagnostic round.
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12G` completed two
+sustained warmed OBS/browser takes with concurrent live and detailed STT.
+Batched native outbox ACKs and changed-only folder persistence passed their
+regressions; PCM receipt p95 changed from 49.012/49.263 to 2.157/2.520 seconds,
+with complete PCM/MKA/STT. `LIVELINK-STT-12H` next repairs live waveform
+clearing and historical missing-source lanes found under the improved ingress
+path. Owner plugin installation, cold startup, reconnect/Script follow and
+the wider source/UI/portability matrix remain under `docs/WORK-ROUNDS.md`.
+No product phase is marked complete by this focused round.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.

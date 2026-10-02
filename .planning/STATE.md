@@ -37,12 +37,17 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12F` (2026-10-03), diagnostic
-measurement complete with the sustained-duration gate still open. Browser row
-rendering is measured separately from PCM/recognition delay; see
-`docs/gates/livelink-stt-12f-browser.md`. Exact next is `LIVELINK-STT-12G` for
-PCM ACK profiling under browser polling. This does not advance the Voice
-Training phase or close the wider `LIVELINK-08` acceptance matrix. The historical
+Latest bounded LiveLink round: `LIVELINK-STT-12G` (2026-10-03), sustained
+two-source PCM/data/latency gate complete. Plugin 0.6.7 batches durable outbox
+ACK commits; the API avoids unchanged folder-locator flushes. Two warmed
+browser takes measured PCM receipt p95 49.012/49.263 before and 2.157/2.520
+seconds after, with complete PCM/MKA/live and detailed STT. Backend 493,
+frontend 455 and native 2/2 tests passed. See
+`docs/gates/livelink-stt-12g-ingress.md`. Exact next is `LIVELINK-STT-12H`:
+repair empty live waveform presentation and historical missing-source lanes.
+Owner plugin installation, cold startup, reconnect/Script follow and the wider
+`LIVELINK-08` acceptance matrix remain open. This does not advance the Voice
+Training phase. The historical
 phase baseline below remains distinct from this round's focused checks.
 
 - Backend: 364 passed.

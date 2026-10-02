@@ -212,7 +212,16 @@ class ObsLiveLinkRuntime:
                 try:
                     folder = Path(payload["recordingFolder"]).expanduser().resolve(strict=True)
                     if folder.is_dir():
-                        self._write(self._recording_folder_path(install_id), json.dumps({"folder": str(folder)}).encode())
+                        path = self._recording_folder_path(install_id)
+                        try:
+                            saved = json.loads(path.read_bytes())
+                        except (OSError, ValueError):
+                            saved = None
+                        locator = {"folder": str(folder)}
+                        # Heartbeats share the PCM ingress lock. Only a changed
+                        # or missing locator needs another durable disk flush.
+                        if saved != locator:
+                            self._write(path, json.dumps(locator).encode())
                 except (OSError, ValueError):
                     pass
             if self._state is None:

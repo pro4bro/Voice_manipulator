@@ -77,7 +77,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Complete at physical data/model gate; owner viewport open | Both tracks recovered complete PCM, live transcript and detailed STT; post-restart caption delay remains measurable. |
 | LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Complete at two-track physical data/model gate; owner viewport open | Warm model reuse reduced repeat-call time and post-restart median caption delay; detached-launch failure did not recur. |
 | LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Measured; sustained-duration gate open | Measured browser receipt and visible/offscreen row frame boundaries; PCM ingress and a long recognition request dominate peaks, while a harness request failure shortened the controlled take. |
-| LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Queued | The warmed browser take retained all PCM but p95 receipt age reached 33.2/34.0 seconds, before captions could reach the UI. |
+| LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Complete at sustained two-source data/latency gate; live waveform UI remains open | Batched native outbox ACK commits and changed-only folder persistence passed regressions; two warmed browser takes measured PCM p95 falling from 49.01/49.26 to 2.16/2.52 seconds without sample gaps. |
+| LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Queued | With low PCM receipt latency, active lanes still sometimes looked empty despite nonzero waveform API data; removed test sources also appeared as extra live lanes. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2923,3 +2924,64 @@ Exact next round: `LIVELINK-STT-12G` — profile native PCM HTTP ACK stages whil
 the browser workspace polls during a sustained two-track take, reduce the
 measured bottleneck, then repeat ingress and caption timing. Continue the
 remaining startup/reconnect UX and final `LIVELINK-08` gates afterward.
+
+## Round LIVELINK-STT-12G — 2026-10-03
+
+Completed scope:
+
+- Profiled PCM ACK stages with the browser workspace polling. Replayed the
+  unchanged-folder heartbeat cost and measured native SQLite ACK deletion.
+- Plugin 0.6.7 now commits explicit ACK IDs once per existing bounded send
+  burst. FULL source/ACK durability and API PCM/metadata flushes remain. Crash
+  before commit replays retained sequences; failure rolls the entire ACK batch
+  back. Added native ACK commit timing and changed-only folder persistence.
+- Completed two warmed physical two-source OBS takes with live `medium`,
+  detailed `large-v3`, Script/Media Pool/Timeline polling and browser timing.
+  Removed temporary probes, restored test OBS settings and stopped test
+  processes. The package is built; owner installation remains separate.
+
+Evidence:
+
+- Folder regression failed on 5 durable writes for 5 identical heartbeats,
+  then passed with 1, including change/restart/reconnect/corruption recovery.
+  A quiet 30-chunk replay took 8.735 seconds before and 4.145 after; a replay
+  during model loading was slower and excluded from that comparison.
+- Native 40-row ACK benchmark: 1.488 seconds individually, 0.773 seconds in
+  batches of four. Native tests verify retained PCM on reopen before ACK,
+  atomic rollback, successful batch deletion and rejected-row preservation.
+- Before/after take duration: 174.830/171.477 seconds. PCM receipt p95:
+  49.012/49.263 versus 2.157/2.520 seconds; pending peak 99 versus 7, then 0.
+  Last receipt after Stop request: 52.344 versus 2.670 seconds. API durable
+  PCM-pair preparation remains its largest stage; lock acquisition and
+  waveform projection did not explain the backlog. Separate takes/cache/disk
+  scheduling prevent attributing every latency difference to one change.
+- Both tracks in each take are sample-contiguous 48 kHz stereo PCM with valid
+  hashes; both MKA archives decode two FLAC streams and match their journal
+  hash. Live checkpoints reach 255/256 and 257/258, with 91/93 events, no
+  error-status events or duplicate finals. Detailed STT published the entire
+  4,195,894/4,195,908 and 4,115,449/4,115,442 analysis frames. Studio kept the
+  same process; its model-load count was 2 before the second take and 5 at
+  cleanup. The additional loads are not timed by the logs; continuous model
+  residency is not established.
+- All 91/93 events reached the browser. Text-event receipt audio-age medians
+  changed from 26.977/24.151 to 4.210/3.864 seconds. Receipt-to-first-frame
+  median was 33 ms in both, p95 51/67 ms. Only 8/10 measured first frames
+  intersected the Script viewport; offscreen rows are not visible-caption
+  evidence. This is a render-boundary proxy, not compositor presentation.
+- Backend 493 passed (two existing warnings); frontend 54 files / 455 tests
+  passed with `--maxWorkers=2`; typecheck/build passed after probe removal.
+  Native build/package 0.6.7 and CTest 2/2 passed. `git diff --check` passed.
+  Detailed evidence: `docs/gates/livelink-stt-12g-ingress.md`, ADR 0033 and
+  ignored `.scratch/livelink-stt-12g` artifacts.
+
+Remaining gap: the live Timeline sometimes looked empty despite low PCM
+latency and nonzero waveform API data. Removed historical sources also
+appeared as extra live lanes; the completed MKA rendered the two real tracks.
+The owner's waveform complaint is not resolved by this ingress improvement.
+Preferences Install/Repair and OBS restart are needed for the owner's installed
+plugin to use 0.6.7. Cold startup, runtime reconnect/Script follow and the
+wider source/UI/portability gates remain under `LIVELINK-08`.
+
+Exact next round: `LIVELINK-STT-12H` — reproduce and repair live waveform
+clearing and historical missing-source lanes, then verify the recording tail
+in the browser on the improved ingress path.
