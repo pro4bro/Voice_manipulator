@@ -1,5 +1,30 @@
 # Project Status — 2026-09-22
 
+## LiveLink browser caption timing — 2026-10-03
+
+`LIVELINK-STT-12F` measured event persistence, browser receipt and Script row
+frame boundaries. In a warmed, isolated two-track take with concurrent detailed
+STT, visible-row audio age peaked at 23.123/10.321 seconds (9/3 samples).
+Browser receipt-to-frame median was 39 ms, p95 115 ms, with one 1.882-second
+outlier. PCM ingress p95 was 33.210/33.964 seconds; an offscreen tail caption
+took 54.379 seconds, including 33.999 seconds before PCM receipt and a
+14.234-second recognition request. These are double-animation-frame/viewport
+proxies, not compositor presentation measurements. The harness stopped the
+take at 70.804 seconds after a status request protocol error; the API stayed
+healthy. It is not the planned 170-second sustained acceptance or a latency
+improvement claim. All 104 chunks per track were sample-contiguous, the MKA
+passed hash/decode checks, live checkpoints reached both tails and detailed
+STT published both tracks with no live error events or duplicate finals.
+
+A separate 234.233-second cold take retained all PCM and detailed STT but had
+one live timeout with an empty error string. Listener loss recurred in another
+launch attempt without an isolated cause. Runtime partial status also reset
+the workspace source selection, and later Script rows were rendered offscreen.
+See `docs/gates/livelink-stt-12f-browser.md` for methods, limitations and recovery
+evidence. Temporary probes were removed; this round changes documentation only.
+Exact next: `LIVELINK-STT-12G`, profiling PCM ACK latency under browser polling.
+Cold startup, reconnect/follow UX and the wider `LIVELINK-08` matrix remain open.
+
 ## LiveLink model reuse and caption delay — 2026-10-03
 
 `LIVELINK-STT-12E` keeps `medium` live and `large-v3` detailed recognizers

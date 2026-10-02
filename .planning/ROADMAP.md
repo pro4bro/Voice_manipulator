@@ -15,6 +15,14 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12F` measured browser
+receipt and visible/offscreen Script frame boundaries, with complete PCM and
+STT artifacts in its controlled take. The planned sustained duration remains
+open after a harness request failure. `LIVELINK-STT-12G` next profiles PCM ACK
+latency while the browser polls; cold startup, reconnect/follow UX and the
+wider source/UI matrix remain open under `docs/WORK-ROUNDS.md`. No product
+phase is marked complete by this diagnostic round.
+
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.
 - [ ] **Phase 3: Voice Training** - Deterministic datasets, real training runs, and gated voice publication.

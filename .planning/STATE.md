@@ -37,6 +37,14 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
+Latest bounded LiveLink round: `LIVELINK-STT-12F` (2026-10-03), diagnostic
+measurement complete with the sustained-duration gate still open. Browser row
+rendering is measured separately from PCM/recognition delay; see
+`docs/gates/livelink-stt-12f-browser.md`. Exact next is `LIVELINK-STT-12G` for
+PCM ACK profiling under browser polling. This does not advance the Voice
+Training phase or close the wider `LIVELINK-08` acceptance matrix. The historical
+phase baseline below remains distinct from this round's focused checks.
+
 - Backend: 364 passed.
 - Frontend: 288 passed.
 - TypeScript/Vite production build: passed.

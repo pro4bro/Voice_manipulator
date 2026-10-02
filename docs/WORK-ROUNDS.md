@@ -76,7 +76,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12C | Resume pending realtime STT from durable PCM after API restart | Complete at API startup, two-track restart and copied real-PCM replay level; physical model-load gate open | Per-track checkpoints reconstruct an unfinished utterance and replay committed PCM without repeating final transcript events. |
 | LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Complete at physical data/model gate; owner viewport open | Both tracks recovered complete PCM, live transcript and detailed STT; post-restart caption delay remains measurable. |
 | LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Complete at two-track physical data/model gate; owner viewport open | Warm model reuse reduced repeat-call time and post-restart median caption delay; detached-launch failure did not recur. |
-| LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Queued | The 12E take still had estimated 16.0/10.9-second post-restart peaks and API arrival did not measure browser paint. |
+| LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Measured; sustained-duration gate open | Measured browser receipt and visible/offscreen row frame boundaries; PCM ingress and a long recognition request dominate peaks, while a harness request failure shortened the controlled take. |
+| LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Queued | The warmed browser take retained all PCM but p95 receipt age reached 33.2/34.0 seconds, before captions could reach the UI. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2860,3 +2861,65 @@ in `LIVELINK-08`.
 Exact next round: `LIVELINK-STT-12F` — capture browser-visible caption timing
 and trace the remaining peaks during sustained two-track OBS plus detailed
 STT; then continue the final `LIVELINK-08` source/UI gate.
+
+## Round LIVELINK-STT-12F — 2026-10-03
+
+Completed scope:
+- Captured PCM receipt, recognition request, event persistence, browser receipt
+  and double-animation-frame row timing with temporary probes. Removed those
+  probes byte-for-byte after measurement; this is a diagnostic/documentation
+  round, with no claimed product performance improvement.
+- Ran a 234.233-second cold two-track OBS take with detailed STT and API restart,
+  recovered an interrupted 161.744-second attempt, then measured a warmed
+  controlled take with Script in the viewport and detailed STT started at 36.6
+  seconds. A status-request RemoteProtocolError stopped the controlled take at
+  70.804 seconds; its API listener remained healthy afterward.
+- Used an isolated portable OBS copy and later an isolated API project registry
+  to separate the current take from recovery of older projects. Restored scene,
+  recording directory and the six original visible-source Forward settings,
+  released the lease and stopped all test processes.
+
+Evidence:
+- Controlled take: 104 consecutive 48 kHz stereo PCM chunks per track, zero
+  sample gaps/overlaps, and a 2,036,378-byte hash-verified MKA decoding both
+  FLAC streams through Stop. Live checkpoints reached 104/104, with 35 events,
+  zero error-status events or duplicate finals. Detailed STT published the full
+  1,699,284/1,699,285 analysis frames; the native spool drained to zero.
+- All 35 events reached the browser. Measured 26 resulting row revisions:
+  12 intersected the list viewport and 14 were offscreen. Browser receipt to
+  frame had median 0.039 seconds, p95 0.115 and max 1.882; persistence to receipt
+  had median 0.485, p95 1.171 and max 1.283. These are render-boundary proxies,
+  not compositor presentation timing. Visible caption audio-age medians were
+  11.151/9.850 seconds and maxima 23.123/10.321, on only 9/3 samples.
+- Controlled PCM ingress p95 was 33.210/33.964 seconds. The offscreen tail
+  caption peaked at 54.379 seconds: 33.999 seconds before PCM receipt, 19.369
+  until event persistence, 0.976 until browser receipt and 0.035 until the frame
+  callback. A live request in this tail lasted 14.234 seconds with models warm.
+  Both ingress and recognition remain relevant; browser render time alone
+  cannot explain the peak. Polling has not been proven to cause slower ingress.
+- Cold take: 350 contiguous chunks per track and a verified 6,436,215-byte MKA;
+  complete live checkpoints and detailed publication, but one opening live
+  timeout produced an error event with an empty error string. PCM p95 was
+  63.405/63.699 seconds and live catch-up finished about 152–155 seconds after
+  Stop. The interrupted warm attempt also recovered gap-free PCM and a verified
+  two-stream archive. Neither is a clean warmed latency comparison with 12E.
+- Detailed method, peak decomposition and launch/harness limitations:
+  `docs/gates/livelink-stt-12f-browser.md`; raw evidence stays in ignored
+  `.scratch/livelink-stt-12f-physical`, `-warm` and `-controlled` directories.
+- Frontend verification after probe removal: default `npm test` exited 1 with
+  218 passing tests and 19 worker-start timeouts; the full rerun with
+  `--maxWorkers=2` passed all 54 files / 455 tests. Typecheck and production
+  build passed. Focused backend runtime tests: 21 passed with two existing
+  deprecation warnings. `git diff --check` passed; product/engine source is clean.
+
+Remaining gap: the planned sustained browser duration did not complete.
+Listener loss recurred in another launch without an isolated cause; the cold
+live timeout, workspace source reset on partial runtime status, and offscreen
+new Script rows remain open. Data continuity does not establish complete live
+text after a timeout or acceptable perceived caption latency. The wider source,
+owner viewport/DPI and clean-machine gates remain in `LIVELINK-08`.
+
+Exact next round: `LIVELINK-STT-12G` — profile native PCM HTTP ACK stages while
+the browser workspace polls during a sustained two-track take, reduce the
+measured bottleneck, then repeat ingress and caption timing. Continue the
+remaining startup/reconnect UX and final `LIVELINK-08` gates afterward.
