@@ -6,8 +6,11 @@ export interface ObsOverlapInterval {
   otherChannelIds: string[];
 }
 
+const MIN_OVERLAP_SECONDS = 0.4;
+
 function hasSegmentBounds(row: ObsLiveLinkTranscriptRow): boolean {
-  return row.timingTrust === "segment" && row.sampleRate > 0 &&
+  return row.status !== "error" && Boolean(row.text.trim() || row.pending.trim()) &&
+    row.timingTrust === "segment" && row.sampleRate > 0 &&
     row.lastSampleIndexExclusive > row.firstSampleIndex &&
     Number.isFinite(row.startSeconds) && Number.isFinite(row.endSeconds) &&
     row.startSeconds >= 0 && row.endSeconds > row.startSeconds;
@@ -32,7 +35,7 @@ export function obsOverlapByUtterance(rows: ObsLiveLinkTranscriptRow[]): Map<str
     for (const earlier of active) {
       if (earlier.channelId === current.channelId) continue;
       const end = Math.min(earlier.endSeconds, current.endSeconds);
-      if (end <= current.startSeconds) continue; // A shared boundary is not concurrent speech.
+      if (end - current.startSeconds < MIN_OVERLAP_SECONDS) continue;
       add(earlier, current, current.startSeconds, end);
       add(current, earlier, current.startSeconds, end);
     }

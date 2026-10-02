@@ -1940,5 +1940,6 @@
 .imported-timeline__words { position: relative; display: block; padding: 0; }
 .imported-timeline__word { position: absolute; top: 0; bottom: 0; min-width: 0; padding: 0 2px; overflow: hidden; white-space: nowrap; text-align: left; border: 0; border-left: 1px solid var(--audio-line); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .channel-script-word { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.channel-script-word:hover::after, .channel-script-word:focus-visible::after { content: " " attr(data-time); color: var(--text); background: var(--surface-raised); border: 1px solid var(--line); padding: 1px 3px; margin-left: 3px; font-family: var(--mono); font-size: calc(8px * var(--font-scale)); white-space: nowrap; }
 .imported-timeline__word.is-active, .channel-script-word.is-active { color: #151811; background: var(--accent); }
 .imported-timeline__word.is-untrusted, .channel-script-word.is-untrusted { text-decoration: underline wavy #e0b65c; }

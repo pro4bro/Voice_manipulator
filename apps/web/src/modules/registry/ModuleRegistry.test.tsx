@@ -74,7 +74,7 @@ it("shows the parent's imported channel turns in chronological order and opens a
   render(<ModuleRegistry context={context} id="script" />);
   const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
   expect([...list.querySelectorAll("li")].map((item) => item.dataset.channelId)).toEqual(["b", "a"]);
-  fireEvent.click(screen.getByRole("button", { name: "Mở Desk tại 00:01" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mở Desk tại 00:01.00" }));
   expect(onSelectImportedTrack).toHaveBeenCalledWith("b");
 });
 

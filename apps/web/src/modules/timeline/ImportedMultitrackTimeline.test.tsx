@@ -40,9 +40,9 @@ it("keeps each Script word and both subtitle lanes synchronized without opening 
   render(<><ChannelScript tracks={timed} onSelectTrack={select} /><ImportedMultitrackTimeline parent={parent}
     tracks={timed} selectedTrackId={null} onSelectTrack={select} onCutsChange={async () => true} /></>);
   const script = within(screen.getByLabelText("Script theo channel"));
-  fireEvent.click(script.getAllByRole("button", { name: "world · 00:30–00:33" })[0]);
+  fireEvent.click(script.getAllByRole("button", { name: "world · 00:30.000–00:33.000" })[0]);
   expect(select).not.toHaveBeenCalled();
-  expect(script.getAllByRole("button", { name: "world · 00:30–00:33" }).every((word) => word.classList.contains("is-active"))).toBe(true);
+  expect(script.getAllByRole("button", { name: "world · 00:30.000–00:33.000" }).every((word) => word.classList.contains("is-active"))).toBe(true);
   expect(within(screen.getByLabelText("Subtitle Channel 2")).getByRole("button", { name: "world · 00:30–00:33" })).toHaveClass("is-active");
 });
 

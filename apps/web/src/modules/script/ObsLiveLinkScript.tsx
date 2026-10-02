@@ -10,22 +10,51 @@ export function groupObsSpeechTurns(rows: ObsLiveLinkTranscriptRow[]): SpeechTur
   const turns: SpeechTurn[] = [];
   const speechRows = [...rows].filter((row) => row.status !== "error" && obsTranscriptText(row))
     .sort((a, b) => a.startSeconds - b.startSeconds || a.firstEventRevision - b.firstEventRevision);
+  const byTrack = new Map<string, ObsLiveLinkTranscriptRow[]>();
   for (const row of speechRows) {
-    const text = obsTranscriptText(row);
-    const previous = turns.at(-1);
-    if (previous && row.recordingId === previous.first.recordingId && row.channelId === previous.first.channelId) {
-      previous.rows.push(row);
-      previous.text = `${previous.text} ${text}`;
-      previous.endSeconds = Math.max(previous.endSeconds, row.endSeconds);
-    } else {
-      turns.push({ first: row, rows: [row], text, endSeconds: row.endSeconds });
+    const key = `${row.recordingId}\0${row.channelId}`;
+    const trackRows = byTrack.get(key);
+    if (trackRows) trackRows.push(row);
+    else byTrack.set(key, [row]);
+  }
+  for (const trackRows of byTrack.values()) {
+    const first = trackRows[0];
+    const otherSpeech = speechRows.filter((row) => row.recordingId === first.recordingId && row.channelId !== first.channelId)
+      .reduce<Array<{ start: number; end: number }>>((intervals, row) => {
+        const previous = intervals.at(-1);
+        if (previous && row.startSeconds <= previous.end + 0.25) previous.end = Math.max(previous.end, row.endSeconds);
+        else intervals.push({ start: row.startSeconds, end: row.endSeconds });
+        return intervals;
+      }, []);
+    let otherCursor = 0;
+    let turn: SpeechTurn | null = null;
+    for (const row of trackRows) {
+      const gapStart = (turn?.endSeconds ?? row.startSeconds) + 0.25;
+      const gapEnd = row.startSeconds - 0.25;
+      while (otherSpeech[otherCursor]?.end <= gapStart) otherCursor += 1;
+      let interrupted = false;
+      for (let index = otherCursor; otherSpeech[index]?.start < gapEnd; index += 1) {
+        const interval = otherSpeech[index];
+        if (Math.min(interval.end, gapEnd) - Math.max(interval.start, gapStart) >= 0.3) {
+          interrupted = true;
+          break;
+        }
+      }
+      if (!turn || interrupted) {
+        turn = { first: row, rows: [], text: "", endSeconds: row.endSeconds };
+        turns.push(turn);
+      }
+      turn.rows.push(row);
+      turn.text = turn.text ? `${turn.text} ${obsTranscriptText(row)}` : obsTranscriptText(row);
+      turn.endSeconds = Math.max(turn.endSeconds, row.endSeconds);
     }
   }
   if (!turns.length && rows.length) {
     const latest = rows.at(-1)!;
     turns.push({ first: latest, rows: [latest], text: "", endSeconds: latest.endSeconds });
   }
-  return turns;
+  return turns.sort((a, b) => a.first.startSeconds - b.first.startSeconds ||
+    a.first.firstEventRevision - b.first.firstEventRevision);
 }
 
 function timecode(seconds: number): string {

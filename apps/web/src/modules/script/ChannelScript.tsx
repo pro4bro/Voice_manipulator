@@ -2,16 +2,20 @@ import type { ProjectMediaAsset } from "../../domain/types";
 import { channelScriptRows, type ChannelScriptRow } from "./channel-script";
 import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
 
-function timecode(seconds: number | null) {
+function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+  const units = 10 ** precision;
+  const rounded = Math.max(0, Math.round(seconds * units));
+  const whole = Math.floor(rounded / units);
+  return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}.${String(rounded % units).padStart(precision, "0")}`;
 }
 
 function ChannelWords({ row }: { row: ChannelScriptRow }) {
   const active = usePlaybackWord(row.trackId);
   return <span className="obs-script__content">{row.words.length ? row.words.map(({ word, index }) =>
     <span key={index}><button type="button" className={`channel-script-word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
-      aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`} title={`${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
+      aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
+      title={`${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
       onClick={() => requestPlaybackSeek(row.trackId, word.start)}>{word.text}</button>{" "}</span>) : row.text}</span>;
 }
 
@@ -25,6 +29,13 @@ export function ChannelScript({ tracks, onSelectTrack }: { tracks: ProjectMediaA
           <ChannelWords row={row} />
           {row.speakerId ? <span className="obs-script__state">{row.speakerId}</span> : null}
         </div>
+        {row.overlaps.length ? <div aria-label={`Đoạn chồng tiếng ${row.trackName}`} className="obs-script__overlaps">
+          {row.overlaps.map((overlap) => <button key={`${overlap.startSeconds}-${overlap.endSeconds}`}
+            aria-label={`Đến đoạn chồng tiếng ${row.trackName} từ ${timecode(overlap.startSeconds)} đến ${timecode(overlap.endSeconds)}`}
+            onClick={() => requestPlaybackSeek(row.trackId, overlap.startSeconds)} type="button">
+            <span aria-hidden="true">●</span> CHỒNG TIẾNG {timecode(overlap.startSeconds)}–{timecode(overlap.endSeconds)}
+          </button>)}
+        </div> : null}
       </li>)}
     </ol>
     {!rows.length ? <p className="obs-script__empty">Các track đã Import chưa có transcript.</p> : null}

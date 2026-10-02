@@ -66,4 +66,14 @@ describe("OBS cross-channel overlap", () => {
       { startSeconds: 2, endSeconds: 5, otherChannelIds: ["A"] },
     ]);
   });
+
+  it("ignores listening-only and sub-second edge intersections", () => {
+    const a = row("a", "A", 1, 4);
+    const listening = { ...row("waiting", "B", 2, 3), status: "listening" as const, text: "" };
+    expect(obsOverlapByUtterance([a, listening]).size).toBe(0);
+    expect(obsOverlapByUtterance([a, row("edge", "B", 3.85, 5)]).size).toBe(0);
+    expect(obsOverlapByUtterance([a, row("real", "B", 3.4, 5)]).get("a")).toEqual([
+      { startSeconds: 3.4, endSeconds: 4, otherChannelIds: ["B"] },
+    ]);
+  });
 });

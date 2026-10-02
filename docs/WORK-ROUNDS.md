@@ -74,6 +74,9 @@ that gap matters, and the exact next round.
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Queued | A journal-only Media Pool row cannot yet open the ordinary footage actions while capture is active. |
 | LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
+| MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
+| LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Queued | The current batch queue reads a track once and does not continue detailed STT as a LiveLink recording grows. |
+| MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Queued | A ready recording journal without its deleted MKA asset currently reappears as a pending footage row. |
 | UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Queued | Static CSS checks cannot prove inherited colors, overlays, browser selection or native OBS dialog appearance. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
@@ -2322,3 +2325,47 @@ open its recorded tracks and available actions while capture continues, with
 live project artifact and UI checks. `LIVELINK-OVERLAP-15` then connects Script
 and Timeline overlap selection; `LIVELINK-INGEST-11B` remains the sustained OBS
 load gate.
+
+### MEDIA-SCRIPT-01C Concurrent track rows and timed overlap — 2026-10-02
+
+Completed scope:
+- Parent Script now groups recognized words per track before ordering rows by
+  start time. An interjection on another track does not close speech that
+  continues on the original track. Another track speaking in a genuine gap
+  closes the earlier turn; a diarized speaker change still makes a new row.
+  OBS realtime turns use the same track-continuation rule.
+- OBS archive rows show `Track N` and a custom alias where present, rather than
+  the full footage asset name. Each row shows start/end to centiseconds; each
+  word exposes its saved millisecond timestamp on hover/focus and in its
+  accessible name. These are source STT times, not newly inferred alignment.
+- Realtime overlap requires recognized text and at least 0.4 seconds of
+  shared segment time. After detailed STT, parent Script derives overlap from
+  trusted word intervals on different tracks, applying the same minimum and
+  showing seekable review badges. See ADR 0024.
+
+Evidence:
+- Regressions first failed for track interjection, full OBS asset labels, and
+  listening-only/very short overlap; all focused tests now pass. The full
+  frontend suite passes 446/446, with typecheck, Vite build, and diff check.
+- Read-only replay of the owner's `Test_OBS 7` MKA `6d8e0b65` found 157 timed
+  words on Track 1 and 70 on Track 4. The new grouping yields seven rows;
+  Track 1 stays in one row from 0.096 to 15.740 seconds while Track 4 begins
+  at 8.096 seconds. Saved word timestamps were already present; this round
+  makes them visible and prevents display grouping from fragmenting them.
+- The same project has a stopped, archive-ready recording journal
+  `1b775e3e` with no MKA asset in its media index. The journal-only Media Pool
+  path would render it as pending after permanent deletion; this round did not
+  modify deletion or remove owner media.
+
+Remaining gap: the 0.4-second floor removes short timing artifacts but cannot
+prove acoustic overlap when one OBS source contains bleed from another. A
+running-browser viewport check is still needed. LiveLink's explicit detailed
+STT still reads each analysis WAV once and lacks continuing blocks with
+10-second padding; permanent OBS deletion can leave a journal-only placeholder.
+These matter because the visible Script can improve while long-running
+recognition and Media Pool lifecycle remain incorrect.
+
+Exact next round: `LIVELINK-STT-16` — add durable initial PCM snapshot and
+configurable subsequent detailed STT blocks per selected LiveLink track, each
+with 10 seconds of preceding audio and seam-safe word replacement. Follow with
+`MEDIA-DELETE-17` for the confirmed journal-backed deleted footage.

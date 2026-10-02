@@ -1,5 +1,25 @@
 # Project Status — 2026-09-22
 
+## Concurrent multitrack Script rows — 2026-10-02
+
+`MEDIA-SCRIPT-01C` keeps an OBS or imported track's continuing speech in one
+Script row when another track interjects. Rows remain ordered by start time;
+diarized speaker changes still split them. Archived OBS rows use short Track
+labels, show row time bounds, and expose each saved STT word timestamp on
+hover/focus. Realtime overlap ignores listening-only and sub-0.4-second
+intersections; after detailed STT, parent Script shows overlap review badges
+from trusted cross-track word intervals. Frontend 446/446 tests, typecheck and
+build pass. Read-only replay of the owner's two-track `Test_OBS 7` recording
+found 227 saved timed words and seven Script rows; Track 1 stays open through
+Track 4's interjection. Physical viewport and acoustic overlap acceptance
+remain open. See ADR 0024.
+
+The same owner's project has an archive-ready OBS journal with no MKA asset,
+which explains a deleted recording reappearing as a journal-backed pending row.
+`MEDIA-DELETE-17` will reconcile permanent deletion with recording discovery.
+`LIVELINK-STT-16` remains needed for detailed STT that continues in padded
+blocks while a LiveLink recording grows.
+
 ## Voice Manipulator WAV and SRT export — 2026-10-02
 
 `VOICE-EXPORT-13` gives each Voice Output row WAV, SRT by Script line, and

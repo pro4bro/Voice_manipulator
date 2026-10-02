@@ -48,3 +48,40 @@ it("keeps a manually assigned speaker profile together across raw diarization la
   ])]);
   expect(rows.map((row) => row.text)).toEqual(["Cùng người"]);
 });
+
+it("keeps a track's continuing speech in one row while another track interjects", () => {
+  const rows = channelScriptRows([
+    track("mic", [
+      { text: "Tôi", start: 0, end: 0.5 },
+      { text: "đang", start: 0.6, end: 1.1 },
+      { text: "nói", start: 1.2, end: 1.7 },
+      { text: "tiếp", start: 3, end: 3.5 },
+    ]),
+    track("desk", [{ text: "Vâng", start: 0.8, end: 2.5 }]),
+  ]);
+  expect(rows.map((row) => [row.trackId, row.text, row.start, row.end])).toEqual([
+    ["mic", "Tôi đang nói", 0, 1.7],
+    ["desk", "Vâng", 0.8, 2.5],
+    ["mic", "tiếp", 3, 3.5],
+  ]);
+});
+
+it("shows a short OBS track label and only sustained trusted word overlap", () => {
+  const rows = channelScriptRows([
+    { ...track("mic", [
+      { text: "một", start: 1, end: 2, timingTrusted: true },
+      { text: "hai", start: 3, end: 4, timingTrusted: true },
+      { text: "chưa", start: 5, end: 6 },
+    ]), name: "OBS LiveLink · Channel 4", sourceArchiveStreamIndex: 1 },
+    { ...track("desk", [
+      { text: "ngắn", start: 1.9, end: 2.2, timingTrusted: true },
+      { text: "dài", start: 3.3, end: 4.2, timingTrusted: true },
+      { text: "ước", start: 5, end: 6 },
+      { text: "lỗi", start: 7, end: 8, timingTrusted: false },
+    ]), name: "OBS LiveLink · Desktop Audio", sourceArchiveStreamIndex: 0 },
+  ]);
+  expect(rows.find((row) => row.trackId === "mic")?.trackName).toBe("Track 4");
+  expect(rows.find((row) => row.trackId === "desk")?.trackName).toBe("Track 1 · Desktop Audio");
+  expect(rows.find((row) => row.trackId === "mic")?.overlaps).toEqual([{ startSeconds: 3.3, endSeconds: 4 }]);
+  expect(rows.find((row) => row.trackId === "desk")?.overlaps).toEqual([{ startSeconds: 3.3, endSeconds: 4 }]);
+});

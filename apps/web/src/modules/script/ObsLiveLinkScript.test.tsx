@@ -16,6 +16,17 @@ it("coalesces one channel across long pauses but splits at another channel's spe
   ]);
 });
 
+it("keeps a live track row open while another track interjects during its speech", () => {
+  const a1 = { ...row("a1", "A", 1, "final", "Tôi đang"), endSeconds: 3,
+    lastSampleIndexExclusive: 3 * 48000 };
+  const a2 = { ...row("a2", "A", 3.2, "final", "nói tiếp"), endSeconds: 5,
+    lastSampleIndexExclusive: 5 * 48000 };
+  const b = { ...row("b", "B", 2, "final", "Vâng"), endSeconds: 4,
+    lastSampleIndexExclusive: 4 * 48000 };
+  expect(groupObsSpeechTurns([a1, b, a2]).map((turn) => [turn.first.channelId, turn.text, turn.endSeconds]))
+    .toEqual([["A", "Tôi đang nói tiếp", 5], ["B", "Vâng", 4]]);
+});
+
 it("shows one row through long silence and empty listening events until another channel speaks", () => {
   const onSeek = vi.fn();
   const rows = [row("a1", "A", 1, "final", "Xin"), row("idle-b", "B", 10, "listening", ""),
