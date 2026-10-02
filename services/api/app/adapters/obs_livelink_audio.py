@@ -9,6 +9,7 @@ import os
 import subprocess
 import threading
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
@@ -66,6 +67,28 @@ class FileObsLiveLinkAudio:
             output.flush()
             os.fsync(output.fileno())
         temporary.replace(path)
+
+    @staticmethod
+    def _write_chunk_pair(pcm_path: Path, pcm: bytes,
+                          metadata_path: Path, metadata: bytes) -> None:
+        """Sync both files concurrently; publish metadata only after PCM exists."""
+        pcm_path.parent.mkdir(parents=True, exist_ok=True)
+        pcm_part = pcm_path.with_name(pcm_path.name + ".part")
+        metadata_part = metadata_path.with_name(metadata_path.name + ".part")
+
+        def prepare(path: Path, data: bytes) -> None:
+            with path.open("wb") as output:
+                output.write(data)
+                output.flush()
+                os.fsync(output.fileno())
+
+        with ThreadPoolExecutor(max_workers=2) as writers:
+            pcm_write = writers.submit(prepare, pcm_part, pcm)
+            metadata_write = writers.submit(prepare, metadata_part, metadata)
+            pcm_write.result()
+            metadata_write.result()
+        os.replace(pcm_part, pcm_path)
+        os.replace(metadata_part, metadata_path)
 
     @staticmethod
     def _hash_file(path: Path) -> str:
@@ -161,8 +184,8 @@ class FileObsLiveLinkAudio:
                 path.suffix == ".json" for path in channel_folder.iterdir()
             ):
                 raise LiveLinkError("OBS PCM sequence, sample index or format discontinuity requires resync.")
-            self._write(pcm_path, pcm)
-            self._write(metadata_path, json.dumps(metadata, separators=(",", ":")).encode())
+            self._write_chunk_pair(pcm_path, pcm, metadata_path,
+                                   json.dumps(metadata, separators=(",", ":")).encode())
             self.waveform.note_chunk(recording.project_id, recording_id, channel_id,
                                      recording.started_monotonic_ns, metadata, pcm)
             self.runtime.note_durable_chunk(recording, channel_id, metadata, duplicate=False)

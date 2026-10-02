@@ -71,8 +71,8 @@ that gap matters, and the exact next round.
 | LIVELINK-TIMELINE-11 | Keep the live waveform window current and simplify overlap review/playback | Complete at frontend regression level; real long-take viewport gate open | Prevents stale window cursors and responses from blanking the tail, distinguishes pending PCM from gaps, and restores drag/Space controls. |
 | LIVELINK-INGEST-11B | Remove per-chunk take scan and amortize PCM transport controls | Implemented at replay, API test and native-build level; physical load gate open | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
 | LIVELINK-INGEST-11C | Install and measure sustained two-track OBS capture with simultaneous live and detailed STT | Measured; PCM/archive passed, latency and realtime STT gaps open | A real OBS take shows zero PCM sample gaps and a valid two-track MKA, but p95 ingest lag is about 16 seconds and realtime STT drops queued work. |
-| LIVELINK-INGEST-11D | Profile and reduce native HTTP ACK and API persistence latency under sustained two-track load | Queued | The 11C spool peak fell to 56, yet delayed PCM still postpones live waveform and transcript input. |
-| LIVELINK-STT-12B | Prevent realtime transcription queue loss under concurrent detailed STT | Queued after 11D | The 11C take kept durable PCM but emitted 382 queue-full errors, so its live transcript is incomplete. |
+| LIVELINK-INGEST-11D | Profile and reduce native HTTP ACK and API persistence latency under sustained two-track load | Complete on controlled two-source OBS gate; longer source matrix open | Durable PCM preparation now runs concurrently and waveform avoids a redundant flush; 304-second OBS p95 ingress lag fell to 4.20/4.14 seconds with zero sample gaps. |
+| LIVELINK-STT-12B | Prevent realtime transcription queue loss under concurrent detailed STT | Queued | The 11D take kept durable PCM but still emitted 47 queue-full errors, so its live transcript can remain incomplete. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2606,3 +2606,48 @@ Exact next round: `LIVELINK-INGEST-11D` — profile the HTTP ACK and API write
 critical path during sustained two-track capture, reduce p95 PCM ingest lag,
 then repeat the OBS load test. Follow with `LIVELINK-STT-12B` for the separate
 realtime transcription queue-loss path.
+
+## Round LIVELINK-INGEST-11D — 2026-10-02
+
+Completed scope:
+- Profiled the durable PCM ACK path with 100 real 11C source chunks. At the
+  baseline median, PCM flush cost 37.68 ms, metadata flush 50.76 ms, envelope
+  flush 38.2 ms, and waveform point calculation 9.93 ms. The source PCM and
+  metadata remain flushed before ACK; their temporary files now flush in
+  parallel and publish PCM before metadata. The rebuildable waveform sidecar
+  keeps atomic replace without a separate flush on the ACK path. See ADR 0029.
+- Repeated a native OBS recording with the same two copied speech fixtures,
+  automatic live STT, and detailed `large-v3` STT started during capture.
+  Restored OBS scene, Forward choices and recording folder, then stopped the
+  OBS and app processes started for the round. Source media was not changed.
+
+Evidence:
+- A failure-injection test went red before the pair writer existed and green
+  after implementation. It verifies that failed PCM publication leaves no
+  committed metadata and that retry succeeds. Full backend suite: 485 passed.
+- In the 304.05-second take, 516/517 PCM chunks were contiguous at 48 kHz
+  stereo with zero missing/overlapping samples. The MKA hash matches the
+  journal, decodes both FLAC tracks, and ends at 304.049 seconds. Detailed STT
+  published both tracks. The last PCM arrived 1.713 seconds after Stop.
+- Per-track median ingest lag was 0.531/0.664 seconds, p95 4.199/4.141
+  seconds, maximum 7.207/7.340 seconds. The 11C take's first 304 seconds had
+  13.036/13.304-second median and 16.955/17.232-second p95 on the same
+  fixtures. The measured spool peak fell from 56 to 20 chunks, median pending
+  was one, and pending returned to zero. OBS telemetry logged 1,033 sends,
+  weighted mean HTTP duration 188.8 ms versus 258.8 ms in the full 11C run,
+  with no capture overflow or rejected chunk in the new take.
+- Read-only samples, media verification and comparison scripts are retained in
+  ignored `.scratch/livelink-ingest-11d`; tracked source and docs pass
+  `git diff --check`.
+
+Remaining gap: the new 304-second test is shorter than 11C's 497-second take
+and starts app capture at a different point in the OBS session, so it cannot
+prove the same p95 under every long-session load. More importantly, realtime
+STT still emitted 47 queue-full errors while durable PCM and detailed STT were
+complete. Live Script can therefore omit speech even when the waveform and
+final archive remain intact. The owner's full OBS source matrix and live UI
+viewport are still part of final `LIVELINK-08` acceptance.
+
+Exact next round: `LIVELINK-STT-12B` — replace the lossy realtime STT queue
+behavior with a durable per-track catch-up path, then verify two-track live
+transcription during simultaneous detailed STT without losing recorded audio.

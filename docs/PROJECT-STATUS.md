@@ -1,5 +1,23 @@
 # Project Status — 2026-09-22
 
+## LiveLink PCM ACK latency reduction — 2026-10-02
+
+`LIVELINK-INGEST-11D` measured the 11C ACK path with real source chunks:
+separate PCM, metadata and waveform flushes cost roughly 38, 51 and 38 ms
+at the median. PCM and metadata now flush concurrently, then publish in PCM
+before metadata order so a retry never sees committed metadata without
+committed audio. Rebuildable waveform envelopes retain atomic replace but no
+longer add a third per-chunk flush to the ACK path. See ADR 0029.
+
+A 304-second two-source OBS take with live and detailed STT lowered p95 PCM
+ingest lag to 4.20/4.14 seconds, versus 16.96/17.23 seconds in the first
+304 seconds of the 11C take. Spool peak fell from 56 to 20 chunks. Both
+tracks remained sample-contiguous, the final two-track MKA matched its journal
+hash and decoded, and detailed STT published both tracks. Full backend suite:
+485 passed. The shorter take and different startup timing limit a universal
+performance claim. Realtime STT still emitted 47 queue-full errors; the next
+round is `LIVELINK-STT-12B`, followed by the full `LIVELINK-08` source/UI gate.
+
 ## LiveLink physical two-track ingress gate — 2026-10-02
 
 `LIVELINK-INGEST-11C` loaded the 0.6.6 package in OBS 32.2.2 and recorded

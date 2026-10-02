@@ -1,5 +1,6 @@
 import json
 import hashlib
+import os
 import struct
 import wave
 import shutil
@@ -138,6 +139,30 @@ def test_pcm_ingest_checks_immediate_predecessor_without_scanning_take(tmp_path,
     assert ingest(1)["durable"]
     with pytest.raises(LiveLinkError, match="sequence, sample index or format discontinuity"):
         ingest(3)
+
+
+def test_pcm_pair_commit_publishes_metadata_only_after_durable_pcm(tmp_path, monkeypatch):
+    pcm_path = tmp_path / "chunks" / "000000000000.pcm"
+    metadata_path = pcm_path.with_suffix(".json")
+    original_replace = os.replace
+    commits = []
+
+    def fail_pcm_commit(source, target):
+        commits.append(Path(target))
+        if Path(target) == pcm_path:
+            raise OSError("simulated PCM commit failure")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", fail_pcm_commit)
+    with pytest.raises(OSError, match="PCM commit failure"):
+        FileObsLiveLinkAudio._write_chunk_pair(pcm_path, b"pcm", metadata_path, b"metadata")
+    assert commits == [pcm_path]
+    assert not metadata_path.exists(), "A retry must not find metadata without PCM"
+
+    monkeypatch.setattr(os, "replace", original_replace)
+    FileObsLiveLinkAudio._write_chunk_pair(pcm_path, b"pcm", metadata_path, b"metadata")
+    assert pcm_path.read_bytes() == b"pcm"
+    assert metadata_path.read_bytes() == b"metadata"
 
 
 def test_permanent_obs_media_delete_cannot_be_recreated_from_machine_state(tmp_path):

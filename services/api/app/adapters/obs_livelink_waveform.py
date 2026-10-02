@@ -72,8 +72,8 @@ class ObsLiveLinkWaveform:
         temporary = path.with_name(path.name + ".part")
         with temporary.open("w", encoding="utf-8") as output:
             json.dump(document, output, separators=(",", ":"))
-            output.flush()
-            os.fsync(output.fileno())
+        # Envelopes are rebuildable from durable PCM (or the final MKA). Keep
+        # the atomic rename, but do not make each PCM ACK wait on a third fsync.
         os.replace(temporary, path)
 
     def note_chunk(self, project_id: str, recording_id: str, channel_id: str,
