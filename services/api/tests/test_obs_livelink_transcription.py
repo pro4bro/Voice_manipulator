@@ -1,6 +1,9 @@
 import asyncio
+import hashlib
 import json
 import struct
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -8,6 +11,98 @@ import pytest
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
 from app.domain.models import ProjectCreate
+
+
+def test_full_live_queue_replays_committed_pcm_in_order_on_both_tracks(tmp_path):
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Live STT catch-up"))
+    recording_id = str(uuid4())
+    root = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    root.mkdir(parents=True)
+    (root / "recording.json").write_text("{}", encoding="utf-8")
+    channels = [(str(uuid4()), str(uuid4())), (str(uuid4()), str(uuid4()))]
+    recognized = []
+
+    async def recognize(session, wav, _language):
+        if wav is not None:
+            await asyncio.sleep(0.005)
+            recognized.append(session)
+        return {"text": "đã nhận", "pending": ""}
+
+    async def run():
+        stt = ObsLiveLinkTranscription(
+            projects, "http://unused", lambda: False, recognize,
+            window_seconds=0.01, max_queue_chunks=1, max_queued_bytes=960,
+        )
+        for sequence in range(24):
+            for channel_id, source_uuid in channels:
+                pcm = struct.pack("<480h", *([2000 + sequence] * 480))
+                folder = root / "channels" / channel_id / "chunks"
+                folder.mkdir(parents=True, exist_ok=True)
+                stem = f"{sequence:012d}"
+                (folder / f"{stem}.pcm").write_bytes(pcm)
+                (folder / f"{stem}.json").write_text(json.dumps({
+                    "sequence": sequence, "firstSampleIndex": sequence * 480,
+                    "frameCount": 480, "sampleRate": 48000, "channels": 1,
+                    "pluginMonotonicNs": 1_000_000_000 + sequence * 10_000_000,
+                    "sourceUuid": source_uuid, "sha256": hashlib.sha256(pcm).hexdigest(),
+                    "receivedAtUtc": datetime.now(timezone.utc).isoformat(),
+                }), encoding="utf-8")
+                stt.offer(project_id=project.id, recording_id=recording_id,
+                          channel_id=channel_id, source_uuid=source_uuid, alias="Mic",
+                          sequence=sequence, first_sample=sequence * 480,
+                          sample_rate=48000, channels=1,
+                          plugin_monotonic_ns=1_000_000_000 + sequence * 10_000_000,
+                          recording_started_ns=1_000_000_000, pcm=pcm)
+        stt.finish(recording_id)
+        await asyncio.wait_for(asyncio.gather(*list(stt._tasks.values())), timeout=10)
+        events = stt.snapshot(project.id, recording_id)["events"]
+        assert not any("queue is full" in (item.get("error") or "") for item in events)
+        for channel_id, _ in channels:
+            own = [item for item in events if item["channelId"] == channel_id]
+            assert own[-1]["status"] == "final"
+            assert own[-1]["lastSampleIndexExclusive"] == 24 * 480
+            assert sum(item["status"] == "partial" for item in own) == 24
+        assert len(recognized) == 48
+
+    asyncio.run(run())
+
+
+def test_deferred_live_stt_refuses_corrupt_committed_pcm(tmp_path):
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Live STT corrupt chunk"))
+    recording_id, channel_id, source_uuid = str(uuid4()), str(uuid4()), str(uuid4())
+    root = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    folder = root / "channels" / channel_id / "chunks"
+    folder.mkdir(parents=True)
+    (root / "recording.json").write_text("{}", encoding="utf-8")
+    pcm = struct.pack("<480h", *([2000] * 480))
+    (folder / "000000000000.pcm").write_bytes(pcm)
+    (folder / "000000000000.json").write_text(json.dumps({
+        "sequence": 0, "firstSampleIndex": 0, "frameCount": 480,
+        "sampleRate": 48000, "channels": 1,
+        "pluginMonotonicNs": 1_000_000_000, "sourceUuid": source_uuid,
+        "sha256": "0" * 64, "receivedAtUtc": datetime.now(timezone.utc).isoformat(),
+    }), encoding="utf-8")
+
+    async def run():
+        stt = ObsLiveLinkTranscription(
+            projects, "http://unused", lambda: False,
+            max_queued_bytes=1,
+        )
+        stt.offer(project_id=project.id, recording_id=recording_id,
+                  channel_id=channel_id, source_uuid=source_uuid, alias="Mic",
+                  sequence=0, first_sample=0, sample_rate=48000, channels=1,
+                  plugin_monotonic_ns=1_000_000_000,
+                  recording_started_ns=1_000_000_000, pcm=pcm)
+        stt.finish(recording_id)
+        await asyncio.wait_for(asyncio.gather(*list(stt._tasks.values())), timeout=10)
+        events = stt.snapshot(project.id, recording_id)["events"]
+        assert len(events) == 1
+        assert events[0]["status"] == "error"
+        assert "failed verification" in events[0]["error"]
+
+    asyncio.run(run())
 
 
 def test_two_channels_partial_revision_alias_and_restart(tmp_path):
@@ -84,7 +179,7 @@ def test_two_channels_partial_revision_alias_and_restart(tmp_path):
     asyncio.run(run())
 
 
-def test_slow_or_failed_model_does_not_hold_audio_offer(tmp_path):
+def test_failed_model_does_not_hold_audio_offer(tmp_path):
     projects = FileProjectRepository(tmp_path / "projects")
     project = projects.create(ProjectCreate(name="Live STT errors"))
     recording_id, channel_id = str(uuid4()), str(uuid4())
@@ -113,18 +208,6 @@ def test_slow_or_failed_model_does_not_hold_audio_offer(tmp_path):
         event = stt.snapshot(project.id, recording_id)["events"][-1]
         assert event["status"] == "error" and "recognizer failed" in event["error"]
         assert event["channelId"] == channel_id
-
-        # A blocked recognizer cannot grow the in-memory capture queue without bound.
-        for sequence in range(1, 25):
-            stt.offer(project_id=project.id, recording_id=recording_id,
-                      channel_id=channel_id, source_uuid=str(uuid4()), alias="Mic",
-                      sequence=sequence, first_sample=sequence * 480,
-                      sample_rate=48000, channels=1,
-                      plugin_monotonic_ns=1_000_000_000 + sequence * 10_000_000,
-                      recording_started_ns=1_000_000_000, pcm=pcm)
-        await next(iter(stt._queues.values())).join()
-        assert any("queue is full" in (item["error"] or "") for item in
-                   stt.snapshot(project.id, recording_id)["events"])
 
     asyncio.run(run())
 

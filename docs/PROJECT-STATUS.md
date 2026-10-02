@@ -1,5 +1,23 @@
 # Project Status — 2026-09-22
 
+## LiveLink realtime STT catch-up — 2026-10-02
+
+`LIVELINK-STT-12B` replaced queue-full loss with per-track replay of committed
+PCM. The RAM queue stays bounded; when it fills, a sequence cursor reads the
+remaining project-owned chunks, checks their hashes, and drains through Stop.
+A forced two-track backlog test verified all 24 chunks per track reached live
+recognition, and a corrupt deferred chunk fails closed. See ADR 0030.
+
+A 185.71-second physical OBS take with two speech sources and concurrent
+`large-v3` detailed STT produced zero live queue-full or other event errors,
+52 live text events, contiguous PCM on both tracks, a verified two-track MKA,
+and published detailed STT for both tracks. PCM ingress p95 was 0.972/1.133
+seconds. This take did not prove that the deferred path activated; the forced
+backlog test does. The maximum observed live final-event lag was 26.828/20.578
+seconds while models shared the runtime. The cursor does not yet survive API
+restart. `LIVELINK-STT-12C` will checkpoint and resume it, then measure
+catch-up lag; the broader source and viewport gate remains `LIVELINK-08`.
+
 ## LiveLink PCM ACK latency reduction — 2026-10-02
 
 `LIVELINK-INGEST-11D` measured the 11C ACK path with real source chunks:

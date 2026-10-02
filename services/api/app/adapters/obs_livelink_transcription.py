@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import os
 import time
 import wave
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -61,8 +63,15 @@ class _Utterance:
     queued_at: float = field(default_factory=time.monotonic)
 
 
+@dataclass
+class _Deferred:
+    next_sequence: int
+    highest_sequence: int
+    template: _Audio
+
+
 class ObsLiveLinkTranscription:
-    """One ordered queue per channel; recognition cannot delay PCM ACKs."""
+    """Bounded live queues catch up from committed PCM without delaying ACKs."""
 
     def __init__(self, projects: ProjectRepository, studio_url: str,
                  batch_running: Callable[[], bool], recognizer: Recognizer | None = None,
@@ -78,6 +87,7 @@ class ObsLiveLinkTranscription:
         self.max_queued_bytes = max_queued_bytes
         self._queues: dict[tuple[str, str, str], asyncio.Queue[_Audio | None]] = {}
         self._queued_bytes: dict[tuple[str, str, str], int] = {}
+        self._deferred: dict[tuple[str, str, str], _Deferred] = {}
         self._tasks: dict[tuple[str, str, str], asyncio.Task] = {}
         self._model = asyncio.Semaphore(1)
         self._file_lock = asyncio.Lock()
@@ -185,22 +195,49 @@ class ObsLiveLinkTranscription:
             self._queues[key] = queue
             self._queued_bytes[key] = 0
             self._tasks[key] = asyncio.create_task(self._run(key, queue))
+        deferred = self._deferred.get(key)
+        if deferred is not None:
+            deferred.highest_sequence = max(deferred.highest_sequence, sequence)
+            deferred.template = replace(item, pcm=b"")
+            return
         try:
             if self._queued_bytes[key] + len(pcm) > self.max_queued_bytes:
                 raise asyncio.QueueFull
             queue.put_nowait(item)
             self._queued_bytes[key] += len(pcm)
         except asyncio.QueueFull:
-            asyncio.create_task(self._safe_append(item, None, status="error",
-                                                  error="Live STT queue is full; durable audio is intact."))
+            # The API already committed this chunk. Keep only a sequence range
+            # here; the worker reads the audio from its durable source files.
+            self._deferred[key] = _Deferred(sequence, sequence, replace(item, pcm=b""))
 
     def finish(self, recording_id: str) -> None:
         if recording_id in self._finished:
             return
         self._finished.add(recording_id)
         for key, queue in list(self._queues.items()):
-            if key[1] == recording_id:
-                asyncio.create_task(queue.put(None))
+            if key[1] == recording_id and queue.empty():
+                queue.put_nowait(None)
+
+    def _read_deferred(self, key: tuple[str, str, str], deferred: _Deferred) -> _Audio:
+        project_id, recording_id, channel_id = key
+        sequence = deferred.next_sequence
+        root = self._path(project_id, recording_id).parent
+        path = root / "channels" / channel_id / "chunks" / f"{sequence:012d}.json"
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+        pcm = path.with_suffix(".pcm").read_bytes()
+        if (metadata["sequence"] != sequence or
+                metadata["sourceUuid"] != deferred.template.source_uuid or
+                len(pcm) != metadata["frameCount"] * metadata["channels"] * 2 or
+                hashlib.sha256(pcm).hexdigest() != metadata["sha256"]):
+            raise ValueError(f"Durable Live STT PCM chunk {sequence} failed verification.")
+        received = datetime.fromisoformat(metadata["receivedAtUtc"].replace("Z", "+00:00"))
+        age = max(0.0, (datetime.now(timezone.utc) - received).total_seconds())
+        return replace(
+            deferred.template, sequence=sequence,
+            first_sample=metadata["firstSampleIndex"], sample_rate=metadata["sampleRate"],
+            channels=metadata["channels"], plugin_monotonic_ns=metadata["pluginMonotonicNs"],
+            pcm=pcm, queued_at=time.monotonic() - age,
+        )
 
     async def _safe_append(self, item: _Audio, utterance: _Utterance | None, **fields) -> None:
         try:
@@ -213,14 +250,26 @@ class ObsLiveLinkTranscription:
         last: _Audio | None = None
         try:
             while True:
-                item = await queue.get()
-                if item is not None:
+                deferred = self._deferred.get(key) if queue.empty() else None
+                from_queue = deferred is None
+                if deferred is not None:
+                    try:
+                        item = await asyncio.to_thread(self._read_deferred, key, deferred)
+                    except (OSError, ValueError, KeyError, TypeError) as exc:
+                        await self._safe_append(deferred.template, None, status="error",
+                                                error=f"Durable Live STT catch-up stopped: {exc}")
+                        break
+                elif queue.empty() and key[1] in self._finished:
+                    if utterance and last:
+                        await self._complete(last, utterance)
+                    break
+                else:
+                    item = await queue.get()
+                if item is not None and from_queue:
                     self._queued_bytes[key] -= len(item.pcm)
                 try:
                     if item is None:
-                        if utterance and last:
-                            await self._complete(last, utterance)
-                        break
+                        continue
                     if utterance and (item.first_sample != utterance.end + utterance.silence_frames or
                                       item.sample_rate != utterance.sample_rate or
                                       item.channels != utterance.channels):
@@ -266,10 +315,16 @@ class ObsLiveLinkTranscription:
                         await self._safe_append(item, utterance, status="error", error=str(exc))
                     utterance = None
                 finally:
-                    queue.task_done()
+                    if from_queue:
+                        queue.task_done()
+                    elif deferred is not None:
+                        deferred.next_sequence += 1
+                        if deferred.next_sequence > deferred.highest_sequence:
+                            self._deferred.pop(key, None)
         finally:
             self._queues.pop(key, None)
             self._queued_bytes.pop(key, None)
+            self._deferred.pop(key, None)
             self._tasks.pop(key, None)
 
     @staticmethod
