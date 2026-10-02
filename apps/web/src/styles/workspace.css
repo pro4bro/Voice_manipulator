@@ -22,7 +22,7 @@
 .project-rail > button { width: 36px; height: 36px; display: grid; place-items: center; color: var(--text); background: transparent; }
 .project-rail > button:last-child { margin-top: auto; }
 .rail-project { display: grid; justify-items: center; gap: 5px; width: 100%; }
-.rail-project > span { width: 36px; height: 36px; display: grid; place-items: center; color: var(--ink); background: var(--lime); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 900; }
+.rail-project > span { width: 36px; height: 36px; display: grid; place-items: center; color: var(--text-on-accent); background: var(--lime); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 900; }
 .rail-project b, .rail-project small { display: none; }
 .rail-spine { flex: 1; display: flex; align-items: center; writing-mode: vertical-rl; transform: rotate(180deg); color: var(--text-subtle); font-family: var(--mono); font-size: calc(7px * var(--font-scale)); letter-spacing: .15em; }
 
@@ -42,7 +42,7 @@
 .mode-switcher button::after { content: ""; position: absolute; left: 13px; right: 13px; bottom: -1px; height: 3px; background: transparent; }
 .mode-switcher button.is-active { color: var(--ink); }
 .mode-switcher button.is-active::after { background: var(--accent); }
-.mode-switcher small { padding: 2px 4px; color: var(--muted); background: var(--paper-2); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .08em; }
+.mode-switcher small { padding: 2px 4px; color: var(--text); background: var(--paper-2); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .08em; }
 .processor-banner { min-height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 29px; color: #fff; background: var(--ink-soft); font-size: calc(10px * var(--font-scale)); }
 .processor-banner b { color: var(--gold); }
 .processor-banner span { color: rgba(255,255,255,.62); }

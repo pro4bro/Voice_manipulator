@@ -36,12 +36,45 @@ that gap matters, and the exact next round.
 | LIVELINK-08H | Channel-ordered live Script rows and Timeline captions | Complete at UI, API-consumer and archived-recording fixture level; physical OBS simultaneous speech remains in final LIVELINK-08 | Show who spoke from which source while the recording is running. |
 | LIVELINK-08I | Cross-channel overlap color and replay markers | Complete at derived-timing, UI and archived four-track OBS preview level; physical simultaneous OBS speech remains in final LIVELINK-08 | Make concurrent speech reviewable at its source time. |
 | LIVELINK-08J | OBS-style plugin dialog and Pro4Bro brand asset | Implemented; real OBS dark/light and 1/5/20-source checks passed at 100% DPI; 125/150% physical DPI remains open in LIVELINK-08 | Make the OBS-facing control visually coherent while keeping its behavior. |
-| LIVELINK-08 | Final integrated OBS matrix, time reconciliation, portability, and clean-machine acceptance | Open; final gate follows LIVELINK-08J | Accept only after channel Record state, waveform, live transcript, overlap review and real media artifacts are visible and verified together. |
+| LIVELINK-08K | Diagnose missing PCM in the owner's multi-channel recording | Complete from archived PCM metadata, API log and capture/send code; exact native drop counter unavailable | Establishes where audio disappears before changing the capture path. |
+| LIVELINK-08L | Prevent short-stall PCM loss and expose native overflow | Implemented at API/native regression and plugin-package level; real OBS and prolonged-stall gates open | Removes the observed two-second eviction path and lets later tests distinguish overflow from API latency. |
+| LIVELINK-08M | Measure PCM resilience in real OBS and add a durable PCM outbox | Complete on development OBS; longer outage gate remains in 08N | Two/four-channel recordings and recovery of a stalled four-channel take produced gap-free MKA archives. |
+| MEDIA-MULTITRACK-01 | Preserve every audio track when importing completed MKV/MOV/MP4 | Complete at generated-media and UI list level; Timeline presentation open | One original footage retains separate stream-indexed analysis assets and group lifecycle. |
+| MEDIA-MULTITRACK-02 | Show imported tracks as synchronized Timeline instances and channel Script | Complete at source and frontend test level; owner viewport acceptance open | Selection exposes every track with shared scrub/zoom/edit controls and per-track Script, gain and level. |
+| MKV-FOLLOW-01 | Follow a growing local MKV into durable per-track audio chunks | Complete at generated-MKV/API test level; real OBS writer gate open | Reads complete clusters only, persists a byte/sample cursor, auto-resumes on API restart, and reconciles final audio from the closed MKV. |
+| MKV-FOLLOW-02 | Make growing-MKV import discoverable from IMPORT and return footage before backlog decode | Implemented at UI, generated-media and live OBS-file read level; full-session throughput gate open | The active MKV appears promptly while a bounded watcher drains previously recorded clusters. |
+| MKV-FOLLOW-03 | Measure and improve long-session multitrack backlog throughput | Queued | A recording already hours long can exceed realtime processing speed when each Cluster is decoded separately per track. |
+| MKV-CHANNEL-01 | Media Pool right-click per-channel Import and Live Transcribe/STT checkboxes | Complete at generated-media/API/UI test level; owner viewport gate open | Native MKV/MOV/MP4 inspection offers per-track choices before import or MKV follow; imported footage retains available and selected tracks. |
+| MKV-STT-01 | Live transcript and configurable one-minute-per-track final STT backlog | Implemented at generated-media/test level; real OBS and STT engine gate open | Fast previews use checkpointed PCM; final segments use the closed MKV, persist results before cursors, and drain the short tail after Finish. |
+| MKV-ACCEPT-01 | Real OBS growing-MKV and STT engine acceptance | Queued after MKV-STT-01 | Check multi-track source timing, live backlog, Stop-tail completion, transcript quality and UI responsiveness on actual hardware. |
+| MEDIA-STAGES-01 | Four persisted workflow selections on Media Pool footage and imported tracks | Implemented at API/UI test level; owner viewport gate open | Footage and materialized tracks expose Import, STT, Speaker Diarization and Train; parent checkboxes summarize and apply to children. |
+| MEDIA-STAGES-02 | Materialize an omitted source track after import and align physical import state | Queued | An existing footage must be able to add a previously skipped stream without reimporting the whole source. |
+| MEDIA-VIEW-01 | Withdraw/re-add imported footage and tracks from the workspace, fit full-file zoom, render detailed waveform | Implemented at UI regression level; owner viewport check open | The Import checkbox controls visible work, the left zoom edge fits any duration, and PCM detail replaces sparse bars at close zoom. |
+| MEDIA-VIEW-02 | Put Timeline Channel and Track names on one scrolling line | Implemented at UI regression level; physical viewport check open | Narrow Layer labels and resizable Columns remain readable without taking height from meters or waveform. |
+| MEDIA-VIEW-02B | Verify label motion at minimum Column width and owner DPI | Queued | Confirms animation, clipping and reduced-motion behavior in the running app. |
+| LIVELINK-08 | Final integrated OBS matrix, time reconciliation, portability, and clean-machine acceptance | Open; final gate follows LIVELINK-08M | Accept only after channel Record state, waveform, live transcript, overlap review and real media artifacts are visible and verified together. |
 | UX-01 | Remove redundant page headings, simplify Media Pool context actions, and apply the supplied Pro4Bro logo | Complete in source and packaged plugin; physical UI review open | Restores workspace height and carries the owner's mark into the app and OBS plugin. |
 | UX-02 | Shared range/toggle/select-all behavior and Media Pool batch operations | Complete at UI and project API test level | Establishes predictable multi-selection and safe action targets before applying it across lists. |
 | UX-03 | Extend multi-selection and bulk actions to Sound Library, Voice Output, Script rows, and other lists | Implemented in primary editable lists; specialized OBS track actions and physical UI sweep remain | Lets users edit and remove selected objects together in each module. |
 | UX-04 | Diagnose and stop repeated PCM viewport waveform loading | Complete at regression-test level; physical playback check remains | Prevents the waveform from flashing and repeatedly reporting loading after media settles. |
-| UX-05 | Finish specialized list selection and physical UX acceptance | Queued | Closes the remaining OBS track action gap and checks modifier behavior and waveform stability in the running app. |
+| UX-05 | Repair Recycle Bin bulk deletion and stale rows, preserve full Script UI in OBS mode, complete remaining editable list actions | Implemented at source and test level; physical UX review remains | Makes deletion truthful and keeps Script tools available during LiveLink. |
+| UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Queued | Checks layout, shortcuts, real deletion refresh, and PCM waveform stability in the running app. |
+| UX-06 | OBS Stop boundary and per-channel Timeline layouts | Implemented at source, regression-test and plugin-build level; physical OBS gate open | Prevents PCM/STT crossing Stop and makes layer/column Timeline controls usable. |
+| UX-06B | Physical OBS Stop and Timeline layout acceptance | Queued | Checks app Stop, OBS Stop with and without Ignore Stop, transcript tail, and layer/column sizes with real channels. |
+| UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented at source and test level; physical OBS acceptance open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
+| UX-08B | Record two real OBS sessions and reopen each footage | Queued | Confirms Media Pool grouping, channel/audio/Script identity, and delete/restore in the running app. |
+| UX-09 | Match normal/OBS Timeline controls, refine Layer meters, and resize Column edges | Implemented at source and test level; browser visual acceptance open | Switching capture source retains a consistent control layout while each channel remains adjustable. |
+| UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Queued | Catches spacing, clipping, and pointer-hit issues that DOM tests cannot prove. |
+| LIVELINK-UX-10 | Short Track labels, truthful PCM evidence, archive-ready Media Pool refresh, and clear highlight text | Implemented at source, frontend regression and native build level; real OBS and viewport gates open | Prevents a moving source meter from implying saved audio and makes completed MKA footage visible without F5. |
+| LIVELINK-CAPTURE-10 | Repair muted-source PCM, stale source rows, and in-progress Media Pool visibility | Implemented; real muted Track 1 capture passed, browser visibility and wider source matrix remain open | A moving meter now leads to raw source PCM when Forward is on, and a stopped journal can recover its MKA without F5. |
+| LIVELINK-CAPTURE-10B | Verify live Media Pool row and several independent sources in the running app | Queued | Confirms the visual recording-to-MKA transition and each selected source on the owner's full OBS setup. |
+| LIVELINK-TIMELINE-11 | Keep the live waveform window current and simplify overlap review/playback | Complete at frontend regression level; real long-take viewport gate open | Prevents stale window cursors and responses from blanking the tail, distinguishes pending PCM from gaps, and restores drag/Space controls. |
+| LIVELINK-INGEST-11B | Reduce long-take PCM spool backlog under live STT load | Queued | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
+| LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
+| VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
+| LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Queued | A journal-only Media Pool row cannot yet open the ordinary footage actions while capture is active. |
+| LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Queued | Seeking works from Script, but the matching interval is not highlighted in the other module. |
+| UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Queued | Static CSS checks cannot prove inherited colors, overlays, browser selection or native OBS dialog appearance. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
 
@@ -1289,3 +1322,1003 @@ open gates.
 Exact next owner-requested round: `UX-05` — complete OBS session track batch
 selection/actions and run a physical browser sweep of the editable lists and
 PCM waveform with real media.
+
+### UX-05 Recycle Bin, Script LiveLink, and remaining editable lists — 2026-09-29
+
+The Recycle Bin now offers Delete for selected footage, a symbol-only Empty
+Recycle Bin control, and Restore/Delete actions scoped to the selected rows on
+right-click. One confirmation covers a permanent-delete batch. Completed IDs
+leave the UI, failures remain visible and are reported. In-flight Media Pool
+list responses started before a successful permanent delete can no longer
+reinsert its footage. A reopened project test confirms the media index also
+keeps permanently removed footage absent on disk.
+
+OBS LiveLink no longer replaces Script with the small live-only module. Its
+channel transcript is embedded above the original Script editor, preserving
+the text tools, actions, and existing footage text. The list audit also found
+that Sound Library's bulk callbacks were implemented but not passed through
+its registry entry; they are now wired. Voice Changer recordings have a
+modifier-selectable management list and one grouped delete confirmation.
+Imported OBS session tracks support Shift/Ctrl/Ctrl+A through their existing
+selection checkboxes and can queue Final STT for all selected tracks at once.
+
+Verification: frontend **378 passed** across 49 files, typecheck and Vite
+build passed; backend **440 passed** with two existing dependency warnings.
+Tests cover batch Delete/Empty/right-click scope, one confirmation, stale list
+responses after deletion, persistent removal after reopening, original Script
+controls alongside the LiveLink feed, grouped Sound Library callbacks, Voice
+Changer recording deletion, and OBS track batch STT. `git diff --check`
+passed with line-ending warnings only.
+
+Remaining gap: physical browser interaction against real project media and an
+OBS recording has not been run in this round. That matters for verifying
+layout, actual modifier keys, and the reported PCM waveform behavior in the
+running app. Final `LIVELINK-08` integrated OBS acceptance also remains open.
+
+Exact next owner-requested round: `UX-05B` — run the physical UI sweep for
+Recycle Bin, Script LiveLink, Voice Changer/OBS lists, and PCM waveform with
+real media, then repair any observed runtime discrepancy.
+
+### UX-06 OBS Stop boundary and per-channel Timeline — 2026-09-29
+
+The owner's clarified Stop policy preserves separate app and OBS recording
+state: OBS Stop ends app capture when Ignore Stop is off; Ignore Stop keeps app
+capture active; app Stop always ends app capture. The native plugin now clips
+the final PCM packet to the applied Stop timestamp and cannot combine later
+packets into an earlier batch. The API rejects any chunk whose duration crosses
+the stopped recording boundary. Live STT drains only accepted recorded PCM,
+closes its queue once, rejects late offers, and closes even when archive creation
+fails. A failed archive is left in the project journal for explicit Retry;
+the plugin no longer loops indefinitely on an HTTP finalization error. The
+recorder shows `Đang dừng…` while awaiting the plugin ACK and discards stale
+status polls around app actions.
+
+Each OBS layer now occupies 60% of the Timeline viewport, with its own tall
+waveform, subtitle, vertical Gain and vertical Level columns. Column mode keeps
+the same four parts, places Gain and Level on one equally split row below the
+waveform/subtitle, and provides an independent width slider per channel.
+
+Verification: frontend **381 passed** across 49 files, typecheck and Vite
+build passed; backend **441 passed** with two existing dependency warnings;
+native OBS plugin 0.6.2 built and packaged successfully. Regression tests cover
+the Stop-pending UI, stale poll suppression, one-time STT tail drain and late-offer rejection, backend
+PCM boundary rejection, and independent Timeline column widths. Existing
+reducer tests cover OBS Stop with and without Ignore Stop.
+
+Remaining gap: the rebuilt plugin has not been installed into a live OBS
+process or exercised with simultaneous real channels in this round. CSS layout
+also needs a physical browser inspection at multiple workspace sizes. These
+checks matter because timing and actual viewport sizing cannot be established
+by component tests or compilation alone.
+
+Exact next owner-requested round: `UX-06B` — test the three Stop paths and
+live STT tail with real OBS, inspect layer/column layouts at multiple sizes,
+then repair any observed discrepancy. `UX-05B` remains queued for the earlier
+Recycle Bin and list sweep.
+
+### UX-07 One recording-wide OBS Timeline and integrated Script — 2026-09-29
+
+The owner clarified that simultaneous OBS channels are different signals of
+one recording. Live draft rows now occupy the Script module's primary content
+area, with a control to switch between the draft and original editable Script;
+its existing text tools remain in the same module. The OBS Timeline retains
+one shared playhead, ruler and transport scrub, one zoom control, and the
+original Mark In/Out → Cut → Delete, Uncut, and Reset workflow. Seeking on a
+channel waveform, its ruler, or the transport updates every channel's playhead.
+Cut overlays show on every waveform. An atomic batch API stores the same
+removed ranges on every archived stem while preserving individual gain
+keyframes and source media. An edit failure leaves the staged cut visible.
+
+Layer layout puts the channel label above vertical Gain/Level at the left of
+each 60%-height lane. Column layout puts `Channel - source` and Gain/Level
+above the waveform, distributes unresized columns equally, and keeps each
+user-adjusted width when switching views. There is no per-channel zoom.
+ADR 0015 records the recording-wide edit axis and storage decision.
+
+Verification: frontend **382 passed** across 49 files, typecheck and Vite
+build passed; backend **443 passed** with two existing dependency warnings;
+`git diff --check` passed. Tests cover Script's single content area and mode
+switch, shared marks/cut/delete/uncut and synced waveform/ruler/transport
+seeking, column width behavior, and all-or-nothing API persistence. The
+new OBS batch API is covered through FastAPI TestClient and disk reopen.
+
+Remaining gap: no physical OBS session or browser viewport with simultaneous
+real channels was available in this round. Visual sizing and actual audio
+timing still need a real run; tests establish state transitions and stored
+cuts, not final perceptual quality.
+
+Exact next owner-requested round: `UX-07B` — run a real multi-channel OBS
+recording, verify Script and Timeline layouts at several widths, seek/zoom
+sync and recording-wide cuts after reopen, then repair observed discrepancies.
+The earlier `UX-05B` Recycle Bin/list sweep remains queued.
+`UX-06B` Stop/Ignore Stop acceptance with the installed OBS plugin also
+remains queued.
+
+### UX-08 One OBS recording as one MKA footage — 2026-09-29
+
+Each completed LiveLink session now produces one visible Media Pool footage:
+the verified multitrack MKA. The per-channel analysis WAV records stay in the
+project for STT and training but are hidden from the footage list. The media
+index persists recording ID, parent ID, stream index, and track UID; older
+indexes recover those links once from `recording.json`. Selecting a footage
+opens the corresponding recording-wide Timeline and Script feed. Recycling,
+restoring, and permanently deleting that footage update its channel assets
+together. ADR 0016 records the aggregate boundary.
+
+Verification: frontend **384 passed** across 49 files, typecheck and Vite
+build passed; backend **445 passed** with two existing dependency warnings;
+`git diff --check` passed. Tests cover two distinct recording parents, two
+channels per parent, persisted and legacy relationships after reopen,
+group recycle/restore/delete, and routing a selected MKA to the OBS view.
+The existing FFmpeg archive test also confirms parent and child relationships
+survive a copied project.
+
+Remaining gap: no new physical OBS two-take run was available for this round.
+The real Media Pool appearance, channel playback, and per-recording Script
+contents need an end-to-end check after reopen.
+
+Exact next owner-requested round: `UX-08B` — record twice with multiple OBS
+channels, reopen each Media Pool footage, verify its MKA channels and Script,
+then exercise Recycle/Restore/Delete on one footage while the other remains.
+
+### UX-09 Consistent Timeline controls and column-edge resizing — 2026-09-29
+
+OBS LiveLink Timeline now places Column/Layer immediately before Mark In in
+the same header row as the edit controls. The separate layout row is removed.
+Zoom uses the normal Timeline's control order and width. Transport uses its
+play button, full timecode format, scrub placement, and playback-rate position;
+OBS track/window actions remain at the right. Layer Gain/Level labels run
+vertically at the left of full-height controls. Column width sliders are gone;
+each column has a draggable edge with arrow/Home/End keyboard adjustment.
+The adjusted width survives switching between Layer and Column.
+
+Verification: frontend **384 passed** across 49 files, typecheck, Vite build,
+and `git diff --check` passed. Component tests assert control order and shared
+classes, column-edge pointer and keyboard resizing, width retention, zoom,
+timecode, gain, and shared seek/cut behavior. Backend code was untouched.
+
+Remaining gap: the browser DevTools test surface was unavailable and no
+running OBS session was attached. Unit tests cannot establish final visual
+spacing, meter height, or resize hit targets at the owner's display scale.
+
+Exact next owner-requested round: `UX-09B` — compare normal and OBS modes in
+the running app at the same viewport/DPI, test Layer and Column with real
+channels, and repair any clipping or pointer-hit discrepancy. `UX-08B`
+two-take footage acceptance remains queued.
+
+### UX-10 OBS channel readability and status — 2026-09-29
+
+Column and Layer headers now show `Channel - source` on one line at 16px
+(scaled with the app font setting), truncating inside the available label
+space. Column-edge resize keeps the 240px minimum. Layer rows use a measured
+60% of the Timeline viewport as their height, while their common track grows
+with every channel; the shared playhead therefore spans the full set of rows.
+The Timeline selector is labeled `BẢN GHI` and explains that one OBS take is
+one footage with its channels and Script. The app's OBS mixer and recorder
+channel lists no longer create their own nested scroll area. Every recorder
+row begins with a REC indicator; it turns red and blinks only while that
+channel is receiving during app recording. A paused channel shows PAUSE with
+a two-bar symbol.
+
+Verification: frontend **384 passed** across 49 files, focused Timeline and
+Recorder tests **34 passed**, typecheck and Vite build passed, and
+`git diff --check` passed. The component tests cover inline names, 240px
+minimum resize, selector wording, and persistent REC/PAUSE state evidence.
+Backend and native plugin behavior were not changed in this round.
+
+Remaining gap: browser rendering at the owner's viewport and a real OBS
+multi-channel pause/record cycle still need a visual check. The tests do not
+measure actual glyph truncation, scrollbar appearance, or playhead pixel
+height in the running app.
+
+Exact next owner-requested round: `UX-10B` — inspect six or more live OBS
+channels at the owner's display scale, resize a Column to 240px, verify the
+Layer playhead reaches the last channel, and verify REC/PAUSE and the single
+outer scroll during recording and pause. `UX-08B` two-take footage acceptance
+remains queued.
+
+### UX-11 Named OBS recordings and smaller channel labels — 2026-09-29
+
+The Timeline `BẢN GHI` selector now labels each OBS capture as
+`yyyy-mm-dd_hh-mm-ss_project-name`, using the recording's start timestamp in
+local time and the current project's name with spaces/punctuation converted
+to hyphens. The active recording has an option even before its journal entry
+appears; old records without a valid start time fall back to their short ID.
+The selector is wider and exposes the complete name as a tooltip. Channel
+labels in both Column and Layer views are now 11.2px, exactly 70% of the
+previous 16px size, while retaining truncation at narrow widths. This changes
+the displayed name; the stable recording ID and project-owned MKA path still
+identify the media.
+
+Verification: frontend **385 passed** across 49 files, focused Timeline,
+Registry, and Workspace tests **29 passed**, typecheck and Vite build passed,
+and `git diff --check` passed. A component test checks two distinct local
+timestamps, the project-name suffix, and the selected option title.
+
+Remaining gap: final truncation and control spacing at the owner's viewport
+still need a browser check. No real OBS recording was available in this round.
+
+Exact next owner-requested round: `UX-11B` — inspect the selector and 11.2px
+channel labels with multiple recordings and channels at the owner's viewport;
+adjust only observed readability or clipping issues. `UX-08B` two-take
+footage acceptance remains queued.
+
+### LIVELINK-08K Missing PCM diagnosis — 2026-09-29
+
+The owner's `Test OBS 2` recording `e99416d0-e0ee-4a6d-9cd0-06ee5e0b096c`
+has 25 transport gaps (13.55 s) in Channel 1 and 23 (10.56 s) in Channel 2.
+Its archived per-channel chunk sequences are contiguous, and the recording
+contains no capture pause. All 208 accepted PCM PUTs returned 200. One initial
+Channel 2 sequence-0 request returned 409 and its retry returned 200 in the
+same second. The silent regions are therefore missing before the plugin
+assigns a chunk sequence; the MKA correctly reflects missing source PCM.
+
+The strongest cause is sender backlog overflowing the plugin's two-second
+per-source queue. The native callback advances the source sample index before
+`try_lock` and the queue limit; both paths can discard PCM before `take()`
+assigns a sequence. The sender performs synchronous HTTP calls for PCM,
+heartbeat, and commands in one loop. A good two-channel recording
+`490d9f85-8e9f-5321-86dd-2eaad9984afc` has zero gaps, about 0.55 s
+median capture-to-receive lag and about 0.6 s median chunk size. The affected
+recording rises from about 0.8 s lag in its first 20 s to about 1.8–1.9 s
+in the heavily gapped 20–60 s interval; its median chunk size reaches the
+one-second batch limit. A four-channel recording has 118 gaps. These are
+consistent with backlog and queue eviction, but the current plugin logs no
+drop reason or queue depth, so the exact split between overflow and callback
+lock failure cannot be measured retrospectively. Synchronous disk/fsync and
+waveform work in the API's async PCM route may lengthen sender waits; its
+share of the delay is also unmeasured.
+
+Verification was read-only: compare five immutable recording journals and
+their PCM chunk metadata, check affected API PUT statuses, and trace native
+callback, queue, sender, and API paths. A red/green journal check fails for
+the affected recording (48 transport gaps) and passes for the healthy
+two-channel control (zero). No product or stored media was changed.
+
+Remaining gap: no plugin queue/drop telemetry exists for this historical
+take, and no new physical OBS capture was run. Its missing source PCM cannot
+be recovered from the completed MKA. `LiveLinkCapture::take()` also combines
+packets without checking adjacent sample indices, so losses inside one batch
+may be hidden from the journal.
+
+Exact next round: `LIVELINK-08L` — add per-reason drop/backlog evidence,
+remove real-time PCM loss under stalled HTTP, enforce sample continuity in
+batched chunks, move blocking API PCM persistence off the event loop, then
+verify two and four simultaneous OBS channels with an intentionally slowed
+API and inspect the resulting MKA for zero source-sample gaps.
+
+### LIVELINK-08L PCM capture resilience — 2026-09-29
+
+The v3 native callback now waits for the short queue mutex instead of
+discarding a packet on `try_lock` failure. Track detach and callback removal
+run outside that mutex, with a separate lifecycle lock, so waiting callbacks
+cannot deadlock OBS source removal. A recording keeps up to 120 seconds per
+source and 512 MiB per connection; idle preroll keeps 10 seconds. Any overflow
+past those explicit safety limits increments a per-channel lost-frame counter
+and emits an OBS error log with recording/channel identity, backlog and peak
+depth. Callback lock waits above 5 ms are logged separately. The sender skips
+its 100 ms sleep and command long poll while PCM is pending. Batching stops
+at a sample-index discontinuity, leaving the next chunk's true index visible
+to the API and archive gap catalog.
+
+The API now runs durable PCM persistence and live waveform work in a worker
+thread rather than blocking the FastAPI event loop. A regression test first
+failed with a 0.52 s health-response delay during a 0.5 s PCM write; after
+the change it passed below 0.35 s. A compiled native stress test queues
+eight seconds of four stereo channels without sending, drains all 32 exact
+one-second chunks without loss, verifies a deliberate sample-index jump is
+split between chunks, and verifies callback mutex contention preserves PCM.
+
+Verification: backend suite **446 passed**, native capture stress executable
+passed, OBS plugin 0.6.3 built and packaged, and `git diff --check` passed.
+The installed OBS process was already running with its older DLL, so no new
+live capture or MKA was produced in this round.
+
+Remaining gap: 120 seconds and 512 MiB are finite safety limits. A sustained
+API outage or more concurrent channels can still exhaust them; overflow is
+now explicit, not lossless. The physical two/four-channel OBS matrix and an
+intentionally slowed API remain unverified. This matters because native unit
+tests cannot prove the installed plugin's throughput or archive timing.
+
+Exact next round: `LIVELINK-08M` — install/reload plugin 0.6.3 after OBS is
+idle, record two and four forwarded channels with an intentionally slowed
+local API, inspect the new MKA and chunk catalog for zero transport gaps,
+and decide from measured backlog whether a disk-backed spool is required for
+longer outages.
+
+### LIVELINK-08M Physical capture and durable PCM outbox — 2026-09-29
+
+OBS was restarted with plugin 0.6.3. Physical recordings in `Test OBS 2`
+produced a ready two-track MKA (`207f182f-a35d-44fc-85b3-e39cac1b56a7`,
+32 PCM chunks per channel) and a ready four-track MKA
+(`db3dd240-8986-49a7-bc7b-d65318782a21`, 16 chunks per channel). Both
+have zero source-sample gaps. Suspending the local API for five seconds during
+a two-channel capture left ten chunks on the SQLite disk outbox; after resume,
+`880479af-b16a-437e-9686-8f41066882c9` archived with zero gaps and an
+empty outbox. A four-channel stall likewise retained pending PCM but exposed
+a Stop-tail rejection: one 0.6.4 chunk crossed the Stop boundary by 245 frames.
+Plugin 0.6.6 trims pending PCM at the exact Stop boundary and reattaches a
+stopped project journal after an OBS process restart. The previously stuck
+four-channel recording `adb81fad-2678-4543-b891-2dc88cd016dc` then replayed
+the clipped chunk, emptied the outbox and finalized as a four-FLAC-track MKA
+with zero source-sample gaps. Its original rejected chunk was preserved until
+that successful replay.
+
+The v3 plugin worker now writes captured PCM to a machine-local SQLite WAL
+database with `synchronous=FULL` before HTTP upload, deletes only after API
+acceptance, and recovers pending stopped recordings from project journals.
+The audio callback performs no database I/O. Native spool and capture tests,
+16 focused backend tests, 448 backend regression tests, plugin 0.6.6
+build/package and physical replay pass.
+The old in-memory safety limit remains if SQLite cannot accept data, and disk
+exhaustion has no automatic recovery UI. The outbox is machine-local; moving a
+project to another machine while its recording has pending chunks requires
+first draining this host's outbox.
+
+OBS MKV was probed while recording: FFprobe saw an HEVC video stream and six
+AAC stereo mix tracks; FFmpeg decoded three seconds of committed audio before
+OBS stopped. The growing tail reported premature EOF, so readers must expect
+an incomplete live file and retry as it grows. OBS mix tracks are limited and
+do not prove one-to-one capture of every forwarded source. MKV can help verify
+or recover configured OBS mixes, but cannot be the canonical per-source take:
+Ignore Stop can continue app recording after OBS closes its MKV. See
+`docs/adr/0017-obs-livelink-durable-pcm-spool.md`.
+
+Exact next round: `LIVELINK-08N` — expose disk-outbox health and retained
+invalid chunks in the app, add a safe recovery/export action for a full disk,
+and run a longer high-channel-count physical outage test.
+
+### MEDIA-MULTITRACK-01 Completed-file import foundation — 2026-09-29
+
+The import processor previously mapped only `0:a:0`. It now probes all audio
+streams in a completed MKV, MOV, or MP4 and retains one original video footage
+plus one 24 kHz mono analysis WAV asset per audio stream in a single FFmpeg
+read of the source file. Each child records
+its absolute container stream index and parent ID; a project-relative
+`audio-tracks.json` records title, codec, source sample rate/channel count,
+language, and analysis path. Media Pool displays the track count, selecting
+STT/TRAIN on the footage targets its children, and Recycle/Restore/permanent
+Delete apply to the whole group. A machine-local original locator and Local
+File Cache refresh preserve the existing portability contract. The first
+track remains the parent preview until the shared multitrack Timeline exists.
+
+Generated one-second MKV, MOV and MP4 fixtures with two different AAC audio
+streams were imported through native-path and browser-upload paths. Each
+produced two distinct analysis WAVs with stream indices 1 and 2; the native
+path also passed cache refresh and grouped deletion. Verification: 451
+backend tests, 385 frontend tests, TypeScript typecheck and Vite build passed.
+This round does **not** claim a multitrack Timeline or live MKV read.
+One audio stream with a multichannel layout remains one track/instance, as in
+the OBS source model; tracks are not assumed to be isolated microphones.
+
+Feasibility: Matroska clusters and FFmpeg can expose committed audio while
+the writer is still running, as the LIVELINK-08M physical probe demonstrated.
+The growing tail may be incomplete, and a fresh FFmpeg process reaching EOF
+does not by itself guarantee continuous following. A production follower must
+checkpoint source identity, complete packet/cluster position and per-track
+timestamp/sample progress, retry incomplete tails, detect truncation or file
+replacement, and compare the final read against the closed MKV. Browser file
+upload is a fixed snapshot; live follow requires a local file locator. The
+configurable per-track final STT queue must only consume durable, nonduplicate
+segments and finish the post-Stop tail. ADR 0018 records these boundaries.
+
+### MEDIA-MULTITRACK-02 Imported channel Timeline and Script — 2026-09-29
+
+Selecting a completed MKV/MOV/MP4 parent now opens all imported audio streams
+as Timeline instances. Layer and Column views share one time axis, playhead,
+scrub, zoom and Mark In/Out/Cut/Delete/Uncut/Reset. A batch cut writes the same
+ranges to every child asset. Playback starts the track audio elements together
+and corrects drift against the first channel; each channel has its own preview
+gain and source level. Script lists every channel and its transcript, opens the
+selected channel in the full editor, and saves edits and word annotations to
+that child. Recycle state prevents persistent edits. The completed-file import
+and OBS LiveLink paths remain separate.
+
+Frontend regression tests cover import routing, channel selection, Script save,
+shared cut, layout controls and waveform loading. Typecheck, frontend test
+suite and production build pass. Owner viewport review with a representative
+multitrack file remains open; this round does not follow a growing MKV.
+
+Exact next round: `MKV-FOLLOW-01` — follow a growing local MKV into durable,
+nonduplicate per-track audio chunks with source identity, committed-byte
+cursor, restart recovery and final-file reconciliation.
+
+### MKV-FOLLOW-01 Growing local MKV follower — 2026-09-29
+
+The native-path follower now parses EBML boundaries and consumes only complete
+Matroska Clusters. A project-owned checkpoint records source identity, last
+Cluster hash, committed byte cursor, per-track frame counts and gap evidence.
+Each selected container audio stream has durable PCM chunk WAVs and a live
+analysis WAV under one Media Pool footage. The API polls active followers
+automatically, resumes unfinished checkpoints after API restart, and exposes
+start/status/poll/finish endpoints. Polling a partial tail does not advance
+the cursor; recovery truncates uncheckpointed bytes before retry. Source
+truncation or replacement fails instead of silently joining another take.
+
+Live per-Cluster decoding is provisional because AAC/other stateful codec
+boundaries can differ from uninterrupted decoding. Explicit Finish after the
+writer stops copies the complete MKV into the project and re-decodes each
+selected track from that closed source, publishing those final WAVs. It does
+not infer Stop from temporary EOF. Generated two-track AAC MKV tests cover
+partial Clusters, repeated polls, reader restart/orphan WAV recovery, source
+truncation, automatic API polling, one-track selection, and final footage
+paths. Backend suite: 456 passed. Real OBS growing-file capture and the owner
+viewport are still unverified; live/final STT and the right-click channel
+selection menu are separate rounds.
+
+Exact next round: `MKV-CHANNEL-01` — add Media Pool right-click checkboxes for
+each channel's Import and Live Transcribe/STT selection, persist those choices,
+and pass selected stream indices into the MKV follower. `MKV-STT-01` then
+consumes the selected tracks through Stop.
+
+### MKV-CHANNEL-01 Per-track Import and STT selection — 2026-09-29
+
+The native file picker now inspects MKV/MOV/MP4 audio streams before creating
+a multitrack footage. Media Pool shows a pending item whose right-click menu
+has separate Import and STT checkboxes for each stream. The confirmed stream
+indices go to completed-file import or the growing-MKV follower; only selected
+streams are decoded. Parent footage and its track manifest retain all probed
+streams, including omitted ones, while each imported track retains its STT
+selection. The footage right-click menu shows the persisted choices and can
+change STT selection. A one-track MKV keeps its STT selection on the footage.
+
+Generated-media API tests verify selective import/follow and saved selection.
+The full backend suite passes (456 tests), as do frontend tests (394 tests),
+typecheck, production build and diff whitespace check. Owner viewport review
+with a real OBS recording remains open. The checkboxes persist STT intent;
+they do not start a live STT worker in this round. Browser upload still takes
+a fixed file snapshot and does not expose the native-path track picker.
+
+Exact next round: `MKV-STT-01` — consume durable per-track audio for live
+transcription, offer a user-selected final segment length (default 60 seconds),
+and drain every selected track's backlog through the final MKV after Stop.
+
+### MKV-STT-01 Live preview and final segmented STT — 2026-09-29
+
+A worker separate from the MKV reader now transcribes selected tracks from
+checkpointed analysis WAV frames. It saves short live preview segments and
+text using the tiny model while the MKV grows. The Media Pool follow dialog
+lets the user set the detailed STT segment length from 10 to 600 seconds
+(default 60). Explicit Finish switches detailed STT to the continuously
+decoded final WAV; it processes from frame zero and drains a shorter final
+segment. Per-track result files are durable before advancing STT cursors, so
+API restart can reuse a saved result without sending it to the model twice.
+The API resumes unfinished workers, exposes STT progress/errors with follow
+status, and the workspace refreshes the selected channel's Script during
+capture. User edits to Script remain visible; detailed STT is saved as a
+revision for comparison.
+
+Generated two-track AAC and twelve-second MKV tests cover live preview,
+segment boundary and final tail, restart with cursor rollback, and Script
+edit preservation. Backend suite: 459 passed. Frontend suite: 395 passed;
+typecheck, production build and diff whitespace check pass. The real OBS
+writer and STT engine were not available for an end-to-end run in this round;
+an attempted request to the local Studio service timed out. Live preview
+throughput with many selected tracks remains to be measured on real hardware.
+
+Exact next round: `MKV-ACCEPT-01` — test a real growing OBS MKV with several
+selected tracks and the actual Studio models; compare saved PCM duration,
+segment coverage, Script timing, Stop-tail completion and UI responsiveness.
+
+### MKV-ACCEPT-01 Segmented STT during an active MKV write — 2026-09-30
+
+The detailed STT worker now runs on each selected track while the MKV is still
+growing. Pressing STT on a followed footage opens a minutes-and-seconds dialog
+(10–600 seconds, default 60); completed intervals are recognized from the
+start of each track, saved by source frame range, and joined into Script with
+word timestamps offset to the original timeline. The quick three-second
+preview continues ahead of detailed results. Finish drains the shorter last
+interval from the final decoded WAV. A saved segment result is reused after a
+worker restart, and a user-edited Script remains in review with the detailed
+result retained as a revision. The main STT action targets the selected
+growing footage when several are present.
+
+Generated two-track AAC tests cover detailed text and word positions before
+Finish, restart idempotency, final-tail joining, user-edit preservation, and a
+real FFmpeg process writing the MKV concurrently with the follower and STT
+worker. This is a simulated source and recognizer: the local OBS process and
+Studio model were unavailable for the physical acceptance run. The real OBS
+capture, actual-model word quality, sustained multi-track throughput, and
+viewport responsiveness remain the next acceptance gate.
+
+Exact next round: `MKV-ACCEPT-02` — capture a real OBS growing MKV with several
+selected tracks, run the installed Studio models, and compare source duration,
+PCM/segment coverage, word timing, Stop-tail completion, and UI responsiveness.
+
+### MEDIA-STAGES-01 Media Pool workflow selections — 2026-09-30
+
+The Media Pool now shows Import, STT, Speaker Diarization and Train on each
+footage and each materialized child track. An expander shows the tracks under
+their footage. A parent checkbox is checked if all children agree, indeterminate
+if only some are selected, and clicking it applies the stage to all children.
+Import and Speaker Diarization choices persist through project API endpoints;
+existing STT and Train choices remain persisted. An unchecked Import choice
+excludes that existing asset from STT, diarization and dataset compilation
+without deleting its source media. The STT action queues the selected imported
+assets, the diarization action queues eligible selected assets, and the Train
+dataset compiler uses selected imported assets. A compact notice before
+diarization explains that single-speaker footage wastes resources. The extra
+imported-channel list above the Script editor is removed; its track choice is
+available in Media Pool. The pre-import native track picker remains separate.
+
+The API persistence test, Media Pool tri-state/component tests and focused
+Speaker notice/Script tests pass. The full frontend suite passed 399 tests on
+rerun, frontend typecheck and production build passed, and the backend suite
+passed 463 tests. One existing Timeline test failed intermittently on the first
+full frontend run but passed both by itself and on the complete rerun; no
+Timeline code was changed for this round. `git diff --check` passed. A real
+viewport check is still open. Previously omitted source tracks have no
+analysis asset to toggle; their import checkboxes in the old context menu are
+still read-only. The Import checkbox added here gates processing of an already
+materialized asset; it does not decode an omitted stream.
+
+Exact next round: `MEDIA-STAGES-02` — use the saved source track manifest to
+decode and register a previously omitted channel on demand, then make Import
+selection correspond to actual track presence and verify it on a real MKV.
+
+### MEDIA-VIEW-01 Import visibility and long-footage Timeline — 2026-09-30
+
+Unchecking Import withdraws an existing footage or child track from working
+modules. The Media Pool retains its row and source data so Import can be ticked
+again. If the open channel is withdrawn, Script moves to another imported
+channel; if no channel remains, the workspace closes the footage. Archived OBS
+channel lanes also honor the saved Import selection. Training and queued STT
+already gate on it at the service boundary from MEDIA-STAGES-01; the growing
+MKV transcription worker now checks it on each processing pass, pausing a
+withdrawn track until Import is ticked again.
+
+The imported multitrack Timeline now uses a continuous zoom range. Its left
+edge fits the entire file, however long; its right edge maps 0.01 seconds to
+10 pixels of the measured waveform width. When a close view would stretch a
+sparse full-file overview, it requests the API's cached PCM peaks for the
+visible interval and draws a connected, filled envelope. This changes only
+visualization, not source audio or timing.
+
+Regression tests reproduce all three reported symptoms and cover withdrawal,
+re-addition, shared zoom bounds and detailed peak rendering. A physical
+viewport review with the owner's long footage remains open. An omitted source
+stream that was never decoded still cannot be checked back in; its source
+manifest is retained for MEDIA-STAGES-02.
+
+Exact next round: `MEDIA-STAGES-02` — decode a previously omitted MKV/MOV/MP4
+stream on demand from the retained original and make its Import box active in
+Media Pool, then verify a real multitrack footage end to end.
+
+### MEDIA-VIEW-02 Single-line Timeline channel labels — 2026-09-30
+
+Imported multitrack labels now put Channel and Track on one line in both Layer
+and Column views. The same label component also handles OBS LiveLink channel
+and source names. It measures the available width, stays still when the text
+fits, and repeats a right-to-left loop only when clipped. Hover or keyboard
+focus pauses the loop; reduced-motion preference disables it while the full
+name remains available as a title. This does not change channel selection,
+waveform layout or gain/level controls.
+
+Regression coverage checks one-line content, clipped scrolling, widened
+static text and both imported Timeline layouts. Physical inspection at the
+owner's column width and DPI remains open.
+
+Exact next round: `MEDIA-VIEW-02B` — inspect Layer and the narrowest Column in
+the running app, including text motion, hover/focus pause and reduced motion.
+
+### MKV-FOLLOW-02 Active OBS MKV import visibility — 2026-09-30
+
+The owner used the main IMPORT file input on a still-growing OBS MKV. That
+path uploaded a browser snapshot and offered no follow action, so a large
+recording did not appear as a live footage. The import dialog now offers a
+prominent growing-MKV action, explains why it must reopen the same file using
+the native local-file picker, and keeps completed-file import explicit. The
+pending Media Pool row now says to click it to select tracks and follow.
+
+The follower previously decoded every existing Cluster inside `start`, which
+held the API response until a long backlog completed. `start` now scans only
+the first committed Cluster for track discovery, registers the footage and
+returns before decoding. The background watcher processes at most eight
+Clusters per pass, publishing incremental PCM while preserving checkpoints.
+On an OBS MKV that was growing in the owner's recording folder, registration
+against a temporary project took 0.17 seconds; one real Cluster decoded two
+selected audio tracks in 0.55 seconds. The source was only read and the
+temporary project was discarded.
+
+Frontend and backend regression tests cover the visible follow route, fast
+registration, limited scanning and existing follow recovery. Full-session
+throughput for an hours-long recording with all six tracks has not yet been
+measured; per-Cluster FFmpeg process startup may leave the watcher behind the
+OBS writer even though the footage now appears promptly.
+
+Exact next round: `MKV-FOLLOW-03` — measure backlog rate on a long six-track
+OBS MKV, then batch Cluster decode or otherwise reduce per-Cluster process
+startup while preserving cursor, timing and final re-decode invariants.
+
+### MEDIA-OPEN-01 Footage selection and long-recording render containment — 2026-09-30
+
+Media Pool now clears the open footage when its blank list area is clicked.
+Script, Timeline take, OBS recording feed, and word selection all clear together.
+Reloading the workspace leaves footage unselected rather than opening the
+first asset automatically. A newly opened standard or imported multitrack
+Timeline starts zoomed to the entire duration. Imported multitrack audio
+elements use `preload="none"` so opening six long analysis WAVs for visual
+inspection does not eagerly load their audio into the browser. Per-module
+render boundaries keep a failing Script/Timeline view from blanking the entire
+workspace; they show the error and allow the footage to be closed or retried.
+
+The owner's `test-obs-3` project contains a 9276.633-second imported MKV with
+six analysis WAVs of about 424.6 MB each. Its existing cached overview has
+7200 points across the full duration. This is a plausible memory-pressure
+trigger, but no browser crash was reproduced without the exact failing asset
+and runtime console trace. Frontend tests pass 412/412, typecheck and Vite
+build pass. A live browser check of that recording remains open.
+
+Exact next round: `MEDIA-SCRIPT-01` — selecting a parent shows imported channel
+transcripts in time order, selecting a child shows only that channel, and live
+OBS rows coalesce adjacent speech from one channel while diarization refines
+speaker turns. Verify against the owner's failing recording and capture its
+console error if the render boundary reports one.
+
+### MEDIA-SCRIPT-01 Parent/child Script and speech turns — 2026-09-30
+
+Selecting a multitrack parent now keeps that footage open and renders imported
+channel transcript turns ordered by timestamp. A channel click shows its own
+editable Script and one waveform; returning to the parent restores all lanes.
+Timeline cut/mark operations still retain the full set of channel IDs. Word
+speaker labels split parent rows when diarization identifies a new speaker.
+OBS live transcript events from adjacent same-channel speech coalesce for
+display, while intervening channels and long pauses split rows. Event storage
+and per-utterance seek data remain intact. Frontend tests: 415 passing;
+typecheck and build passing. The owner recording `test-obs-3` was inspected:
+six imported analysis tracks, 9276.633 seconds, no completed STT text or word
+timing. No local app listener was present, so browser console and visual
+acceptance of that recording remain unverified.
+
+Exact next round: `MEDIA-SCRIPT-02` — run live viewport acceptance with the
+owner's failing footage and a multitrack footage whose channels have completed
+STT/diarization; capture a render-boundary console error if one occurs and
+repair any verified mismatch.
+
+### MEDIA-SCRIPT-01B Continuous dialogue rows — 2026-09-30
+
+Owner feedback clarified that silence does not end a Script row. A row of
+recognized speech continues for the same channel and speaker regardless of
+elapsed time. A spoken interjection by another channel, or a new diarized
+speaker, starts a new row; returning to the earlier source starts another.
+Imported parent Script now merges words after sorting all channels on the
+shared time axis. OBS live rows ignore empty listening events as interruptions.
+The previous 1.5-second gap rule caused the reported extra rows and is gone.
+Regression tests cover long silence, channel interjections, speaker changes,
+empty listening updates and the displayed row count. Frontend verification:
+420/420 tests, typecheck and Vite build pass.
+
+Exact next round remains `MEDIA-SCRIPT-02` for live viewport acceptance with
+the owner's recording and completed multitrack STT data.
+
+### MEDIA-PLAYBACK-01 Multitrack playback and import picker — 2026-09-30
+
+OBS archive playback now starts every imported channel at the same playhead,
+keeps channel positions aligned during playback, and offers an independent
+Mute button beside Gain in both OBS and imported multitrack timelines.
+Imported waveform pointer-down no longer changes the selected footage and
+unmounts the dragged waveform. OBS scrub suppresses the synthetic post-drag
+click that could seek back to zero. The OBS archive zoom adds the full
+recording duration after the fixed short windows. Media import uses a Windows
+file dialog when the portable Python runtime lacks `tkinter`.
+
+Verification: frontend 423/423 full-suite tests plus one additional scrub
+regression test in a passing targeted run, typecheck and Vite build pass;
+backend 466/466 tests pass. The Windows picker fallback is covered with an unavailable
+`tkinter` runtime mock; a physical dialog and live OBS capture were not run.
+The owner's `test-obs-4` recording journal marks two channels forwarded for a
+40-second take but has no PCM chunks or source stems and remains archive
+`pending`. That evidence places this instance of the missing audio before
+Timeline rendering or playback. The plugin's callback/transport behavior on
+that workstation still needs a live two-channel trace.
+
+Exact next round: `LIVELINK-CAPTURE-09` — instrument and reproduce a two-channel
+OBS take, confirm each source callback, spool write and API chunk count, then
+repair the first missing handoff and verify the resulting MKA contains both
+channels. `MEDIA-SCRIPT-02` viewport acceptance remains queued after that.
+
+### LIVELINK-CAPTURE-09 PCM recovery and growing-file import — 2026-09-30
+
+Found a real transport stall: 63 SQLite PCM chunks from two channels remained
+unacknowledged while an old finalize request repeatedly encoded MKA under the
+global audio lock. The endpoint exceeded the plugin HTTP deadline. Reproduced
+the lock contention and duplicate encoding with failing tests, then fixed
+per-recording serialization, prompt asynchronous acknowledgement and idempotent
+publication. Journal writes are protected against concurrent heartbeat updates;
+cleanup of a locked temporary WAV no longer invalidates a verified archive.
+
+Reloaded the managed portable API/STT without restarting or stopping OBS. Its
+pending SQLite queue drained, and recording 925c6dfb published both tracks.
+New real take 2cc71de9 received both channels without sample gaps and published
+MKA. Take c15789f2 included two temporary speech sources alongside the existing
+two sources: all four had zero observed sample gaps; speech sources had nonzero
+waveforms, live text and final transcript events, and the MKA contains four
+tracks. Temporary OBS sources were removed; historical channel mappings remain
+for their saved recording. The user's muted mic and OBS paused recording state
+were preserved.
+
+Primary IMPORT now uses the native source picker, avoiding browser File snapshots
+of a growing MKV. Track choices open automatically after inspection. Native picker
+fallback supports UTF-8 paths in the portable runtime without tkinter. Inspected
+the user's currently open OBS MKV and found all six tracks. An independent real
+two-track MKV writer stayed active during import: registration took 0.391 seconds,
+six clusters were consumed while writing continued, and finish completed both
+24.056-second tracks and detailed STT. No follow or STT error was reported.
+
+New recording/footage names follow
+`yyyy-mm-dd_hh-mm-ss_project-name_MIC|SYS|LIV_id8` from the recording start time.
+OBS names are persisted; MIC/SYS filenames and take labels share the same name.
+
+Verification: 428 frontend tests, 468 backend tests, typecheck and build pass.
+Real evidence and reproducible local scripts are in `.scratch/livelink-capture-09/`.
+Browser inspection confirmed the named footage, four waveform lanes and two
+speech rows; no render error was logged. Physical Windows file-dialog interaction
+was not automated; its fallback is covered by tests and source inspection/follow
+were exercised through the running API. These short capture checks do not claim
+an hours-long zero-drop guarantee. ADR 0019 records the finalization contract.
+
+Next acceptance: an extended owner recording under ordinary OBS workload;
+`MEDIA-SCRIPT-02` remains the separate broader Script/diarization viewport round.
+
+### MKV-STT-02 Snapshot, overlap and word timing — 2026-10-01
+
+Reproduced the initial-interval bug (110 seconds of available audio was processed
+as a 60-second first block), wrong absolute offsets at the 29:50 overlap seam,
+and missing timestamp-positioned subtitle words with failing regression tests.
+Detailed STT now snapshots committed frames before waiting for the decoder lock,
+retains a durable plan, processes the complete initial backlog and continues
+with configurable blocks. Each later block reads 10 preceding seconds and
+replaces the previous transcript from 5 seconds before its logical start.
+Midpoint seam ownership avoids appending the same overlap words twice. Results
+commit before cursors and publication retries after interruption.
+
+Import's STT checkboxes now select channels for live preview. They no longer
+start detailed recognition before the explicit Speech to text request. The
+dialog at that request sets future block length. Existing automatic queues
+remain compatible; an explicit plan can supersede legacy segmentation. Detailed
+jobs run separately from live passes; audio copying has bounded memory use.
+After Finish, the queue drains its final short block and atomically updates
+each channel's accurate-only `transcript.stt.srt`.
+
+Imported Timeline now draws each subtitle word at its absolute interval.
+Parent Script preserves word nodes and original indices, highlights every
+channel at the shared time, and seeks all channel audio when a word is clicked.
+Untimed text is not displayed as if it covered an arbitrary timeline interval.
+
+Evidence:
+- Full frontend suite: 430 tests / 53 files; full backend suite: 470 tests.
+- After final start/snapshot refinements: 49 relevant frontend tests and all
+  14 growing-MKV tests pass; typecheck/build and diff check pass. Two existing
+  backend deprecation warnings remain (Starlette/httpx and audioop).
+- Real acceptance script `.scratch/mkv-stt-02/verify_overlap.py` records a
+  42-second AAC MKV with two speech tracks while import/follow and tiny/large-v3
+  recognition run. Latest evidence project `mkv-stt02-overlap-acceptance-9a7877b4`,
+  parent `asset-089c65a9843a`: before the button, detailed mode was false and its
+  cursors zero; after Finish both tracks are complete with 91 timed words each,
+  no reported STT error, correct saved context/merge offsets and SRT artifacts.
+- Browser inspection verifies clicking a Script word seeks both lanes and
+  highlights their independently timed words. No browser error was logged.
+  Screenshots: `.scratch/mkv-stt-02/timed-words.png` and
+  `.scratch/mkv-stt-02/timed-words-columns.png`.
+- Managed API/STT reloaded, web build refreshed; OBS was left running unchanged.
+
+Limits: model word timing still needs human accuracy review; this short English
+fixture does not prove 30-minute Vietnamese accuracy or throughput. The 29:50
+example is covered deterministically. Parent multi-channel SRT export and wider
+Script/diarization viewport acceptance were not added in this round; SRT artifacts
+and the existing selected-child subtitle export are per channel. ADR 0020 records
+the timing contract. No commit was requested for this round.
+
+### LIVELINK-UX-10 Track and capture feedback — 2026-10-02
+
+OBS LiveLink now calls each independent source row a Track in the native dialog,
+app mixer, Recorder, Timeline label and Script copy. New default aliases are
+`Track N`; legacy `Channel N` aliases display as `Track N` without rewriting
+recording metadata or user aliases. OBS' six mix tracks remain distinct from
+LiveLink's independent source streams, so capture is not capped at six.
+
+Recorder rows show durable PCM chunk counts beside the source meter and label
+the meter as OBS signal, not proof of saved PCM. When a recording journal first
+reports archive `ready`, Recorder asks the workspace to fetch Media Pool assets;
+the verified MKA parent and any new children appear without F5. The callback
+retries if the parent is not yet present. Selected Script edits stay in memory
+because this refresh only inserts newly returned assets.
+
+A static color audit found white on orange at 2.89:1 and undefined
+`var(--surface)` foregrounds on several active states. Highlight text now uses
+the dark foreground token on orange, lime, gold and red fills where measured;
+the small gain number uses a theme-specific readable accent. The affected
+token pairs measured at least 4.53:1 in their applicable theme. This was a
+source-level audit, not a visual sweep of every rendered UI state.
+
+Evidence: 432 frontend tests in 53 files, typecheck and Vite build pass. OBS
+plugin RelWithDebInfo builds; native capture and spool tests pass 2/2 after
+adding OBS' DLL directory to the test PATH. `git diff --check` passes. No
+physical OBS recording was started for this round, and the existing installed
+plugin DLL was not replaced while OBS might be running.
+
+Remaining gap: a moving meter with PCM count zero still needs a real OBS trace
+to determine whether capture callback, spool or API acknowledgement is absent.
+The source-level contrast audit cannot certify every selected/hover/focus
+combination in the app or the native OBS dialog. These matter because a source
+can look active without a usable artifact, and inherited text colors can still
+be hard to read at the owner's DPI.
+
+Exact next round: `LIVELINK-CAPTURE-10` — record a real multi-source OBS take,
+correlate source meter, callback, SQLite spool, API chunk count, journal, MKA
+tracks and immediate Media Pool appearance; repair the first missing handoff.
+Then `UI-CONTRAST-01B` performs the physical light/dark highlight sweep.
+
+### LIVELINK-CAPTURE-10 Muted PCM and footage lifecycle — 2026-10-02
+
+Completed scope:
+- Inspected the owner's latest `Test_OBS 6` recording. Track 1 had 58.4 seconds
+  of all-zero PCM despite a moving source meter; its Desktop Audio source was
+  muted in OBS and forwarded in LiveLink. The native callback explicitly zeroed
+  samples whenever OBS reported `muted`. Capture now records raw callback PCM
+  when Forward is on, independently of the OBS mix mute. A native regression
+  feeds nonzero source samples with `muted=true` and checks nonzero output.
+- The same take had a verified MKA but archive status `error`, so the Media Pool
+  had only hidden child WAVs. Project archive retry rebuilt the MKA parent and
+  changed the journal to `ready`. Recorder and Media Pool now each try the
+  latest failed archive once, with a visible manual retry if needed.
+- Media Pool reads recording journals while mounted and displays an in-progress
+  footage row during capture and finalization. It swaps to the persisted MKA
+  parent when ready. The provisional row is labeled as recording/processing;
+  it is not presented as a completed file. OBS rows missing from the current
+  scene collection are hidden in plugin and app views but retained in the
+  protocol and recording history. The owner's eight entries were six present
+  sources plus two old missing sources; the current views therefore show six.
+  Media Pool OBS labels now use Track, including stored default Channel aliases.
+- Built and packaged the plugin, gracefully restarted idle OBS, repaired the
+  installed plugin, and reopened OBS. Package and installed DLL SHA-256 both
+  equal `F82EACDAB74E7693BF1CD12DFF8DEBD981651280C694B554B3ACC3AA018E28BF`.
+
+Evidence:
+- Frontend suite: 434 tests / 53 files; typecheck and Vite build pass. Native
+  build passes; capture and spool tests pass 2/2 with OBS DLLs on PATH.
+- After the final auto-retry and Track-label refinements, 57 focused frontend
+  tests, typecheck, build, and diff check pass.
+- Installed OBS 32.2.2 reconnects; current inventory has six present and two
+  retained missing sources. A controlled five-second 440-Hz Desktop Audio
+  playback produced moving Track 1 meter values while that source remained
+  muted. The resulting ten-second take `26071d29-feaf-4a74-9faa-dca0466ae93c`
+  finalized automatically to MKA `ready`; its Track 1 analysis WAV has peak
+  32,284 and RMS 5,211. The MKA parent is returned by project media API.
+- Recovered owner take `f25c8fd0-a786-4c74-85f0-43cb2ca75aee` is `ready`
+  with parent `asset-live-587541be9c21`; its original Track 1 samples remain
+  silent because the old plugin captured zeros. Source media was preserved.
+
+Remaining gap: the provisional Media Pool row and automatic recovery are
+component-tested but not visually checked in a running browser during a live
+take. The physical test proved muted Track 1 with a known tone and MKA
+publication, not all six sources carrying distinct simultaneous audio. The
+original archive error was transient and its exact exception was not retained
+in logs; a single automatic retry is now available when it recurs. These gaps
+matter because layout and multi-source routing need separate real capture
+evidence. No commit was requested; existing dirty work was preserved.
+
+Exact next round: `LIVELINK-CAPTURE-10B` — observe the Media Pool row in the
+running app while recording and after Stop, then record known audio on each
+selected OBS source and verify per-track nonzero PCM, stream identity, and
+archive publication. `UI-CONTRAST-01B` remains the separate physical theme
+and highlight sweep.
+
+### LIVELINK-TIMELINE-11 Live waveform and overlap controls — 2026-10-02
+
+Completed scope:
+- Live waveform subscriptions now treat each Timeline window as a separate
+  cursor. A shifted or zoomed window fetches a full snapshot even if no new
+  PCM sequence arrives; a late response for the previous window is discarded.
+  The competing live full-fetch effect was removed. Tail bins beyond the last
+  received PCM are shown as pending rather than red missing-PCM gaps.
+- Timeline overlap markers are thin passive marks, so clicking and dragging
+  the underlying waveform still seeks. Overlap selection in Script seeks only;
+  it no longer starts or stops playback. Script overlap badges use compact
+  time ranges. Space toggles archived track playback while the pointer is over
+  the Timeline module, without overriding text entry or other controls.
+
+Evidence:
+- The owner's `Test_OBS 7` recording `1b775e3e-524a-4acb-8731-7b37057ec65f`
+  has 925 Track 1 and 944 Track 4 durable PCM chunks. Sequence, sample-index,
+  journal and MKA gap checks found zero missing spans; both tracks reach Stop.
+  No overflow was logged for this recording.
+- Chunk timestamps expose a separate throughput problem: median ingest delay
+  about 1.3 seconds per track, 95th percentile about 62 seconds, last chunk
+  about 50 seconds late. OBS spool pending grew from 9 around 01:16 to 153
+  around 01:20 and drained after Stop. The frontend changes cannot remove this
+  upstream delay; the pending label makes it explicit.
+- Frontend focused tests cover window shifts, stale responses, passive overlap
+  marks, Space playback, and pending versus internal missing PCM. Full suite,
+  typecheck, build and diff check passed in this round.
+
+Remaining gap: the new Timeline behavior was not observed during another long
+real OBS take. The PCM sender still falls behind realtime under the owner's
+long two-track recording with live STT. This matters because even a correct
+frontend cannot draw PCM that has not reached the API. Existing user changes
+were preserved; no commit or OBS restart was made.
+
+Exact next round: `LIVELINK-INGEST-11B` — profile native spool send, HTTP ACK,
+API durable write and concurrent STT during a sustained two-track OBS run;
+remove the measured bottleneck and verify low tail latency, zero sample gaps,
+and final MKA at Stop. `LIVELINK-CAPTURE-10B` and `UI-CONTRAST-01B` remain the
+separate Media Pool/multi-source and physical contrast gates.
+
+### LIVELINK-STT-12 Live transcript quality and cadence — 2026-10-02
+
+Completed scope:
+- LiveLink v3 STT uses the locally available `medium` recognizer and accumulates
+  four seconds of voiced PCM per live pass. The recognizer receives the Project
+  language when set; a Project with no language still uses automatic detection.
+  The model and cadence are separate from imported-MKV and batch STT paths.
+- STT runtime setup now preloads `medium` alongside the batch model; the
+  portable-runtime check requires both models so a packaged LiveLink session
+  does not silently depend on an online download.
+- The two-channel transcript queue remains ordered and bounded. Durable PCM
+  capture still ACKs independently of STT. No historical transcript was
+  rewritten and source audio was not changed. See ADR 0022.
+
+Evidence:
+- The owner's 11-minute `Test_OBS 7` transcript has 171 Track 1 live STT
+  queue-full errors, median event lag about 45 seconds and maximum 203 seconds.
+  Its PCM archive had no sample gaps. Recognition and transcript backlog are
+  distinct from audio capture completeness.
+- On a preserved 12-second Track 1 excerpt, `medium` recognizes terms such as
+  "Chopper AI" and "anh Minh" where `tiny` produces unrelated wording. This is
+  qualitative inspection, not a word-error-rate measurement against verified
+  text. In an offline 24-second-per-track two-stream replay, old `tiny`/2-second
+  passes took 72.69 seconds across 24 calls; `medium`/4-second passes took
+  12.28 seconds across 12 calls on this machine's CUDA runtime. The latter
+  stayed below the 24-second elapsed audio interval in that probe.
+- The full backend suite passed 471 tests before the final parameterized
+  language-test refinement; all six focused LiveLink STT tests passed after it.
+  These verify explicit and automatic language handling and the studio request
+  model. The STT portable-runtime profile passed all six local checks, including
+  the new `medium` weight check. Live OBS acceptance remains a separate gate.
+
+Remaining gap: the replay does not include native plugin upload, HTTP and disk
+write pressure, so it cannot prove a new long take will avoid queue overflow or
+PCM spool delay. Projects without a chosen language still rely on detection;
+there is no per-recording language picker. Real transcript accuracy has not
+been scored against a manually verified reference. These gaps matter for
+multilingual lessons and sustained recordings.
+
+Exact next round: `VOICE-EXPORT-13` — add Voice Manipulator audio export and
+word/line SRT from outputs with verified timing, then test generated artifacts.
+`LIVELINK-INGEST-11B` remains the real OBS load gate; `LIVELINK-MEDIA-14` and
+`LIVELINK-OVERLAP-15` cover the other requests from this session.
+
+### VOICE-EXPORT-13 Voice Manipulator WAV and SRT — 2026-10-02
+
+Completed scope:
+- Each Voice Output row offers WAV, SRT by Script line, and SRT by word. The
+  active output's Script export menu offers the same choices and retains the
+  existing sentence SRT and Script CSV options. The browser downloads the
+  original generated WAV; it does not render or resample another copy.
+- A line SRT cue uses each saved Voice Output segment's text, speaker and
+  start/end on the assembled audio timeline. This remains available when word
+  recognition failed or word timing is estimated. Word SRT continues to use
+  measured per-word intervals and omits untrusted words. Missing or invalid
+  line boundaries fail closed. See ADR 0023.
+
+Evidence:
+- An API test generated a two-row WAV with a half-second gap and no trusted
+  word timing. WAV download matched the saved file byte-for-byte; line SRT had
+  two cues at 0.000–0.500 and 1.000–1.500 seconds, while word SRT returned 400.
+- All seven Voice Outputs currently present under local project folders have
+  ordered, in-range saved segment boundaries (read-only metadata check).
+- The complete backend suite passed 474/474; focused subtitle/voice-script
+  tests passed 19/19 again after the final atomic-write refinement. Frontend
+  passed 441/441 tests, typecheck, and production build; UI tests cover choosing
+  a specific output and disabling word export when timing is untrusted.
+
+Remaining gap: the app was not running for a manual browser-download and
+viewport check. Direct legacy Voice Outputs without Script-row segments can
+download WAV but have no honest per-row SRT timestamps. This matters because
+generating those timestamps from text alone would misrepresent the audio.
+
+Exact next round: `LIVELINK-MEDIA-14` — make the in-progress OBS footage row
+open its recorded tracks and available actions while capture continues, with
+live project artifact and UI checks. `LIVELINK-OVERLAP-15` then connects Script
+and Timeline overlap selection; `LIVELINK-INGEST-11B` remains the sustained OBS
+load gate.

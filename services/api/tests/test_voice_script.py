@@ -165,6 +165,38 @@ def test_a_script_is_read_row_by_row_into_one_output_with_words_on_its_timeline(
     assert outputs.list(project.id) == [output]
 
 
+def test_voice_output_exports_wav_and_one_srt_cue_per_script_row_without_word_alignment(tmp_path):
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+
+    project, an, binh, outputs, _lease, speaker, _recognizer = speaker_fixture(tmp_path, FakeEngine())
+    speaker.recognizer = None
+    job = speaker.start(project.id, VoiceScriptRequest(gap_seconds=0.5, rows=[
+        VoiceScriptRow(id="r1", voice_id=an.id, text="Xin chào"),
+        VoiceScriptRow(id="r2", voice_id=binh.id, text="Tạm biệt"),
+    ]), background=False)
+    output = job.output
+    assert output.word_timing_quality == "needs-alignment"
+    client = TestClient(create_app(project_repository=speaker.projects,
+                                   settings=replace(Settings.from_env(), data_root=tmp_path / "data")))
+    route = f"/api/projects/{project.id}/voice-outputs/{output.id}"
+
+    audio = client.get(f"{route}/audio")
+    lines = client.get(f"{route}/subtitles", params={"mode": "line"})
+
+    assert audio.status_code == 200
+    assert audio.content == outputs.audio_path(project.id, output.id).read_bytes()
+    assert lines.status_code == 200
+    assert lines.headers["content-disposition"].endswith(f'{output.id}--line.srt"')
+    assert lines.text.count("-->") == 2
+    assert "00:00:00,000 --> 00:00:00,500" in lines.text
+    assert "00:00:01,000 --> 00:00:01,500" in lines.text
+    assert "Xin chào" in lines.text and "Tạm biệt" in lines.text
+    assert (Path(project.project_path) / "exports" / "subtitles" / f"{output.id}--line.srt").is_file()
+    assert client.get(f"{route}/subtitles", params={"mode": "word"}).status_code == 400
+
+
 def test_reading_again_speaks_only_the_rows_that_changed(tmp_path):
     engine = FakeEngine()
     project, an, binh, outputs, _lease, speaker, _ = speaker_fixture(tmp_path, engine)

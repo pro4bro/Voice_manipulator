@@ -10,6 +10,7 @@ import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
 import { downsample, encodeWav, int16FrameCount, isSilent, toInt16, wavFromInt16 } from "./pcm-chunk";
 import { ObsCaptureController } from "./ObsCaptureController";
+import { recordingName } from "../../domain/recording-name";
 
 export interface CapturedAudio {
   name: string;
@@ -40,8 +41,10 @@ export interface ReadingSessionView {
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
   projectId?: string;
+  projectName?: string;
   onOpenObsAsset?: (assetId: string) => void;
   onOpenObsRecording?: (recordingId: string) => void;
+  onObsArchiveReady?: (recordingId: string) => Promise<void>;
   onCaptureSourceChange?: (source: "microphone" | "display" | "obs-livelink") => void;
   onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript?: (text: string, active: boolean) => void;
@@ -101,8 +104,10 @@ function speechConstructor(): SpeechRecognitionConstructor | null {
 export function Recorder({
   onRecordingReady,
   projectId,
+  projectName = projectId ?? "project",
   onOpenObsAsset,
   onOpenObsRecording,
+  onObsArchiveReady,
   onCaptureSourceChange,
   onRecordingPreview,
   onLiveTranscript,
@@ -512,9 +517,9 @@ export function Recorder({
       chunksRef.current = [];
       streamRef.current = stream;
       recorderRef.current = recorder;
+      const captureName = recordingName(new Date(), projectName, captureSource === "display" ? "SYS" : "MIC", crypto.randomUUID());
       recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
       recorder.onstop = () => {
-        const prefix = captureSource === "display" ? "system-recording" : "mic-recording";
         const frames = int16FrameCount(takePcmRef.current);
         const rate = takeRateRef.current;
         // Lossless when the audio graph gave us PCM, which is every browser that
@@ -525,7 +530,7 @@ export function Recorder({
           ? wavFromInt16(takePcmRef.current, rate)
           : new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         const extension = lossless ? "wav" : recorder.mimeType.includes("mp4") ? "m4a" : "webm";
-        const file = new File([blob], `${prefix}-${Date.now()}.${extension}`, { type: blob.type });
+        const file = new File([blob], `${captureName}.${extension}`, { type: blob.type });
         const url = URL.createObjectURL(blob);
         // Sample count is the exact length; the wall clock includes the moment
         // between pressing stop and the graph going quiet.
@@ -536,7 +541,7 @@ export function Recorder({
         const card = cardRef.current;
         stopResources();
         onRecordingReady({
-          name: card ? `${card.cardId}.${extension}` : file.name,
+          name: file.name,
           url,
           duration,
           file,
@@ -604,7 +609,7 @@ export function Recorder({
         <option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option>
         <option value="obs-livelink">OBS LiveLink</option>
       </select></label>
-      <ObsCaptureController onOpenAsset={onOpenObsAsset} onOpenRecording={onOpenObsRecording} projectId={projectId} />
+      <ObsCaptureController onArchiveReady={onObsArchiveReady} onOpenAsset={onOpenObsAsset} onOpenRecording={onOpenObsRecording} projectId={projectId} />
     </ModuleFrame>;
   }
 

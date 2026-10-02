@@ -52,7 +52,7 @@ class SequentialTranscriptionQueue:
         assets = [
             asset
             for asset in self.media.list(project_id)
-            if asset.id in requested and asset.analysis_path and asset.status != "no-audio"
+            if asset.id in requested and asset.import_selected and asset.analysis_path and asset.status != "no-audio"
             and asset.deleted_at is None and not asset.disabled
         ]
         assets.sort(key=lambda asset: asset.created_at)

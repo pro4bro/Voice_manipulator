@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../api/client";
 import type { ObsLiveLinkChannelCapture, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTriggerPolicy } from "../../domain/types";
+import { obsTrackLabel } from "../../domain/obs-track-label";
 
 interface Props {
   projectId: string;
   onOpenAsset?: (assetId: string) => void;
   onOpenRecording?: (recordingId: string) => void;
+  onArchiveReady?: (recordingId: string) => Promise<void>;
 }
 
 const triggerChoices: Array<{ key: keyof ObsLiveLinkTriggerPolicy; label: string }> = [
@@ -21,22 +23,45 @@ const captureLabels: Record<ObsLiveLinkChannelCapture["state"], string> = {
   pending: "Waiting for PCM", receiving: "Recording", stalled: "PCM stalled",
 };
 
-export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording }: Props) {
+export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, onArchiveReady }: Props) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const actionRevision = useRef(0);
+  const actionInFlight = useRef(false);
+  const refreshedArchives = useRef(new Set<string>());
+  const autoRetriedArchives = useRef(new Set<string>());
 
   useEffect(() => {
     let active = true;
     const refresh = async () => {
+      const revision = actionRevision.current;
       try {
         const [next, records] = await Promise.all([
           api.getObsLiveLinkStatus(), api.listObsLiveLinkRecordings(projectId),
         ]);
-        if (active) { setStatus(next); setJournals(records); setError(null); }
+        if (active && !actionInFlight.current && revision === actionRevision.current) {
+          setStatus(next); setJournals(records); setError(null);
+          for (const journal of records) {
+            const recording = journal.recording;
+            if (recording.projectId !== projectId || recording.archiveStatus !== "ready" ||
+                refreshedArchives.current.has(recording.recordingId) || !onArchiveReady) continue;
+            refreshedArchives.current.add(recording.recordingId);
+            void onArchiveReady(recording.recordingId).catch(() => {
+              refreshedArchives.current.delete(recording.recordingId);
+            });
+          }
+          const latest = records[0]?.recording;
+          if (latest?.projectId === projectId && latest.status === "stopped" &&
+              latest.archiveStatus === "error" && !autoRetriedArchives.current.has(latest.recordingId)) {
+            autoRetriedArchives.current.add(latest.recordingId);
+            void retryArchive(latest.recordingId);
+          }
+        }
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS LiveLink.");
+        if (active && !actionInFlight.current && revision === actionRevision.current)
+          setError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS LiveLink.");
       }
     };
     void refresh();
@@ -45,10 +70,12 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording }
   }, [projectId]);
 
   async function act(action: "start" | "pause" | "resume" | "stop") {
+    actionInFlight.current = true;
+    actionRevision.current += 1;
     setBusy(true);
     try { setStatus(await api.actOnObsLiveLinkRecording(action)); setError(null); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "OBS không áp dụng lệnh thu."); }
-    finally { setBusy(false); }
+    finally { actionRevision.current += 1; actionInFlight.current = false; setBusy(false); }
   }
 
   async function setPolicy(key: keyof ObsLiveLinkTriggerPolicy, enabled: boolean) {
@@ -109,8 +136,8 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording }
       <strong>OBS LiveLink</strong>
       <span>{connected ? "Linked" : "Disconnected"} · {armed ? "Project armed" : "No active project"} · OBS {status?.obsRecording ?? "unknown"} · App {state}</span>
     </div>
-    <div className="obs-recorder__channels" aria-label="Kênh OBS LiveLink">
-      {status?.channels.map((channel) => {
+    <div className="obs-recorder__channels" aria-label="Track OBS LiveLink">
+      {status?.channels.filter((channel) => !channel.missing).map((channel) => {
         const observedState = !recording ? "idle" : channel.capture?.recordingId === recording.recordingId &&
           channel.capture?.projectId === projectId ? channel.capture.state : "pending";
         const captureState = state === "paused" && observedState === "receiving" ? "paused" : observedState;
@@ -118,19 +145,20 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording }
         const label = captureLabels[captureState];
         return <div className={`obs-recorder__channel${receiving ? " is-receiving" : ""}`} key={channel.channelId}>
           <div className="obs-recorder__channel-head">
-            <b title={channel.alias}>{channel.alias}</b>
-            <small title={channel.nativeName}>{channel.nativeName} · {label}</small>
-            <span aria-label={`Trạng thái ${channel.alias}: ${label}`} className="obs-recorder__indicator" data-state={captureState} role="status"><i aria-hidden="true" />{receiving ? <em>REC</em> : null}</span>
+            <span aria-label={`Trạng thái ${obsTrackLabel(channel.alias)}: ${label}`} className="obs-recorder__indicator" data-state={captureState} data-recording={receiving} role="status"><i aria-hidden="true" /><em>{captureState === "paused" ? "PAUSE" : "REC"}</em></span>
+            <b title={obsTrackLabel(channel.alias)}>{obsTrackLabel(channel.alias)}</b>
+            <small title={channel.nativeName}>{channel.nativeName} · {label} · PCM {channel.capture?.durableChunkCount ?? 0}</small>
           </div>
-          <meter aria-label={`Mức ${channel.alias}`} min={0} max={100} value={channel.missing ? 0 : channel.meterPeak} />
+          <meter aria-label={`Tín hiệu OBS ${obsTrackLabel(channel.alias)}, không xác nhận PCM đã lưu`} min={0} max={100} value={channel.missing ? 0 : channel.meterPeak} />
         </div>;
       })}
     </div>
+    <small>Meter: tín hiệu từ OBS · PCM: số đoạn đã lưu vào project</small>
     <div className="obs-recorder__actions recorder-actions">
       <button className={`record-button${recording ? " is-live" : ""}`}
         disabled={!connected || (!recording && !armed) || actionPending}
         onClick={() => void act(recording ? "stop" : "start")} type="button">
-        <span aria-hidden="true" />{status?.pendingAction === "start" ? "Đang bắt đầu…" : recording ? "Stop" : "Record"}
+        <span aria-hidden="true" />{status?.pendingAction === "start" ? "Đang bắt đầu…" : status?.pendingAction === "stop" ? "Đang dừng…" : recording ? "Stop" : "Record"}
       </button>
       {recording ? <button className="button button--quiet" disabled={!connected || actionPending}
         onClick={() => void act(state === "paused" ? "resume" : "pause")} type="button">{state === "paused" ? "Resume" : "Pause"}</button> : null}
@@ -164,7 +192,7 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording }
           {span.importedVideoAssetId && onOpenAsset ? <button onClick={() => onOpenAsset(span.importedVideoAssetId as string)} type="button">Mở video</button> : null}
         </div>)}
         {journal.sourceStems?.map((stem) => <div key={stem.channelId}>
-          {stem.assetId && onOpenAsset ? <button onClick={() => onOpenAsset(stem.assetId as string)} type="button">{stem.alias}</button> : <span>{stem.alias}: {stem.assetId ? "sẵn sàng" : "chưa có analysis WAV"}</span>}
+          {stem.assetId && onOpenAsset ? <button onClick={() => onOpenAsset(stem.assetId as string)} type="button">{obsTrackLabel(stem.alias)}</button> : <span>{obsTrackLabel(stem.alias)}: {stem.assetId ? "sẵn sàng" : "chưa có analysis WAV"}</span>}
           <small>{stem.gaps.length} khoảng gián đoạn</small>
         </div>)}
       </div>)}

@@ -8,9 +8,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from app.adapters.project_activity_log import ProjectActivityLog
-from app.domain.models import ProjectMediaAsset, ProjectRecord, SpeakerProfile
+from app.domain.models import ProjectMediaAsset, ProjectRecord, SpeakerProfile, VoiceOutput
 
 SubtitleExportMode = Literal["sentence", "word", "table"]
 
@@ -36,7 +37,7 @@ class TimedWord:
 
 
 class SubtitleExporter:
-    """Writes portable, speaker-aware exports from persisted word timing."""
+    """Writes portable, speaker-aware exports from persisted audio timing."""
 
     def __init__(self) -> None:
         self.activity = ProjectActivityLog()
@@ -80,6 +81,45 @@ class SubtitleExporter:
                 "skippedSubtitleLines": skipped_cues if mode != "table" else 0,
             },
         )
+        return destination
+
+    def export_voice_output_lines(
+        self, project: ProjectRecord, output: VoiceOutput,
+        speakers: list[SpeakerProfile] | None = None,
+    ) -> Path:
+        """One cue per generated Script row, using the audio assembly boundaries."""
+        if not output.segments:
+            raise ValueError("Voice Output này chưa có mốc thời gian từng dòng Script.")
+        cues: list[SubtitleCue] = []
+        previous_end = 0.0
+        for segment in output.segments:
+            text = self._clean_text(segment.text)
+            start, end = self._number(segment.start), self._number(segment.end)
+            if (not text or start is None or end is None or start < previous_end - 0.001
+                    or end <= start or end > output.duration + 0.001):
+                raise ValueError("Mốc thời gian dòng Script không hợp lệ; không thể xuất SRT.")
+            cues.append(SubtitleCue(start, end, self._wrap_text(text),
+                                    speaker_profile_id=segment.speaker_profile_id))
+            previous_end = end
+
+        profiles = {speaker.id: speaker for speaker in speakers or []}
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", output.id).strip("-._")
+        if not safe_id:
+            raise ValueError("Voice Output không có ID hợp lệ để xuất SRT.")
+        destination = Path(project.project_path) / "exports" / "subtitles" / f"{safe_id}--line.srt"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_text(self._render_srt(cues, profiles), encoding="utf-8", newline="\n")
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        self.activity.append(project.project_path, "SUBTITLE_EXPORTED",
+                             f"Xuất SRT từng dòng: {output.name}", {
+                                 "assetId": output.id, "mode": "line",
+                                 "file": destination.relative_to(Path(project.project_path)).as_posix(),
+                                 "lineCount": len(cues),
+                             })
         return destination
 
     def _timed_words(self, asset: ProjectMediaAsset) -> list[TimedWord]:

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { VoiceOutputPanel } from "./VoiceOutputPanel";
@@ -33,6 +33,43 @@ describe("VoiceOutputPanel", () => {
     expect(onDelete).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Xoá hẳn?" }));
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "output-1" }));
+  });
+
+  it("exports the chosen Voice Output as WAV, Script-line SRT or trusted-word SRT", () => {
+    const onExport = vi.fn();
+    const timed = output({
+      id: "output-2", name: "Khoa · lời chào",
+      segments: [{ rowId: "r1", voiceId: "voice-1", voiceName: "Khoa", speakerProfileId: "speaker-an",
+        engine: "omnivoice", generatorId: "omnivoice-generate", text: "Xin chào", start: 0, end: 1 }],
+      words: [{ text: "Xin", start: 0, end: 0.4, timingTrusted: true }],
+    });
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onExport={onExport} onOpen={vi.fn()} outputs={[output(), timed]} speakers={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Xuất Khoa · lời chào" }));
+    const choices = screen.getByRole("group", { name: "Định dạng xuất Khoa · lời chào" });
+    fireEvent.click(within(choices).getByRole("button", { name: "SRT dòng" }));
+    expect(onExport).toHaveBeenCalledWith(timed, "line");
+    fireEvent.click(screen.getByRole("button", { name: "Xuất Khoa · lời chào" }));
+    fireEvent.click(screen.getByRole("button", { name: "SRT từ" }));
+    expect(onExport).toHaveBeenCalledWith(timed, "word");
+    fireEvent.click(screen.getByRole("button", { name: "Xuất Khoa · lời chào" }));
+    fireEvent.click(screen.getByRole("button", { name: "WAV" }));
+    expect(onExport).toHaveBeenCalledWith(timed, "audio");
+  });
+
+  it("keeps WAV and line SRT available when word timings are untrusted", () => {
+    const onExport = vi.fn();
+    const estimated = output({
+      words: [{ text: "Xin", start: 0, end: 0.4, timingTrusted: false }],
+      segments: [{ rowId: "r1", voiceId: "voice-1", voiceName: "An", speakerProfileId: "speaker-an",
+        engine: "omnivoice", generatorId: "omnivoice-generate", text: "Xin chào", start: 0, end: 1 }],
+    });
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onExport={onExport} onOpen={vi.fn()} outputs={[estimated]} speakers={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Xuất An · Xin chào" }));
+
+    expect(screen.getByRole("button", { name: "WAV" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "SRT dòng" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "SRT từ" })).toBeDisabled();
   });
 
   it("selects a range and confirms one bulk deletion", () => {

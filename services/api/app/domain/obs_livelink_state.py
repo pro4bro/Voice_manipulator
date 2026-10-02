@@ -147,6 +147,7 @@ class ObsCaptureRecording(DomainModel):
     project_id: str = Field(min_length=1)
     started_monotonic_ns: int = Field(ge=0)
     started_at_utc: AwareDatetime | None = None
+    display_name: str | None = None
     ended_monotonic_ns: int | None = Field(default=None, ge=0)
     status: Literal["recording", "paused", "stopped"] = "recording"
     archive_status: Literal["pending", "ready", "error"] = "pending"

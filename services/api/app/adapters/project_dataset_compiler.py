@@ -426,7 +426,7 @@ class ProjectDatasetCompiler:
         selected = [
             asset
             for asset in self.library.list(project_id)
-            if asset.training_selected
+            if asset.training_selected and asset.import_selected
             and not getattr(asset, "deleted_at", None)
             and asset.origin != "generate"
         ]

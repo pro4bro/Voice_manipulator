@@ -64,3 +64,42 @@ it("polls status after SSE disconnect and stops on unsubscribe", async () => {
   await vi.advanceTimersByTimeAsync(2_000);
   expect(api.getObsLiveLinkStatus).toHaveBeenCalledTimes(3);
 });
+
+it("reloads a shifted live window even when no new chunk arrives", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.mocked(api.getObsLiveLinkStatus).mockResolvedValue(status(4));
+  vi.mocked(api.getObsLiveLinkWaveform).mockImplementation(async (...args) => ({
+    ...waveform(4), startSeconds: args[3], endSeconds: args[4], lastIncludedSequence: -1,
+  }));
+  let start = 0;
+  const snapshots: ObsLiveLinkWaveform[] = [];
+  const unsubscribe = subscribeObsLiveLinkWaveforms("project", () => ({ startSeconds: start, endSeconds: start + 1 }),
+    (next) => snapshots.push(next));
+  await vi.waitFor(() => expect(snapshots).toHaveLength(1));
+  start = 1;
+  FakeEventSource.instance.emit(status(4));
+  await vi.waitFor(() => expect(snapshots).toHaveLength(2));
+  expect(vi.mocked(api.getObsLiveLinkWaveform).mock.calls[1]?.[6]).toBeUndefined();
+  expect(snapshots[1].startSeconds).toBe(1);
+  unsubscribe();
+});
+
+it("discards an old-window response before updating its cursor", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.mocked(api.getObsLiveLinkStatus).mockResolvedValue(status(4));
+  let resolveFirst!: (value: ObsLiveLinkWaveform) => void;
+  vi.mocked(api.getObsLiveLinkWaveform).mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+    .mockImplementation(async (...args) => ({ ...waveform(4), startSeconds: args[3], endSeconds: args[4] }));
+  let start = 0;
+  const snapshots: ObsLiveLinkWaveform[] = [];
+  const unsubscribe = subscribeObsLiveLinkWaveforms("project", () => ({ startSeconds: start, endSeconds: start + 1 }),
+    (next) => snapshots.push(next));
+  await vi.waitFor(() => expect(api.getObsLiveLinkWaveform).toHaveBeenCalledTimes(1));
+  start = 1;
+  FakeEventSource.instance.emit(status(4));
+  resolveFirst(waveform(4));
+  await vi.waitFor(() => expect(snapshots).toHaveLength(1));
+  expect(snapshots[0].startSeconds).toBe(1);
+  expect(vi.mocked(api.getObsLiveLinkWaveform).mock.calls[1]?.[6]).toBeUndefined();
+  unsubscribe();
+});

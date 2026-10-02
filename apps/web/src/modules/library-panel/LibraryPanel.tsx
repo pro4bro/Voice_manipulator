@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceOutput, WorkspacePage } from "../../domain/types";
+import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, PendingLocalMedia, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceOutput, VoiceOutputExportMode, WorkspacePage } from "../../domain/types";
 import { MediaPool } from "../media-pool/MediaPool";
 import type { MediaBatchAction } from "../media-pool/MediaPool";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
@@ -10,6 +10,7 @@ import { Icon } from "../../ui/Icon";
 interface LibraryPanelProps {
   assets: ProjectMediaAsset[];
   selectedAssetId: string | null;
+  selectedImportedTrackId?: string | null;
   busy: boolean;
   workflow: WorkspacePage;
   speakers: SpeakerProfile[];
@@ -18,9 +19,18 @@ interface LibraryPanelProps {
   profileSchema: EngineProfileSchema | null;
   selectedVoice: string;
   onImport: (choices: MediaImportChoice[]) => void;
+  pendingLocalMedia?: PendingLocalMedia | null;
+  onPendingLocalTrackChange?: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
+  onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number) => void;
+  onCancelPendingLocalMedia?: () => void;
+  onFinishGrowingMkv?: (assetId: string) => void;
+  onStartGrowingMkvDetailedStt?: (assetId: string, segmentSeconds: number) => void;
   onSelect: (assetId: string) => void;
+  onSelectTrack?: (assetId: string) => void;
+  onToggleImport?: (assetId: string, selected: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
+  onToggleDiarization?: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
   onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemove: (asset: ProjectMediaAsset) => void;
@@ -73,6 +83,7 @@ interface ManipulatorLibraryProps {
   outputs: VoiceOutput[];
   activeOutputId: string | null;
   onOpenOutput: (output: VoiceOutput) => void;
+  onExportOutput: (output: VoiceOutput, mode: VoiceOutputExportMode) => void;
   onDeleteOutput: (output: VoiceOutput) => void;
   onDeleteOutputs?: (outputs: VoiceOutput[]) => void;
 }
@@ -91,7 +102,7 @@ export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
       </div>
       {tab === "sound"
         ? <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
-        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
+        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onExport={props.onExportOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>
   );
 }

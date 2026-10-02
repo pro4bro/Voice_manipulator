@@ -498,6 +498,8 @@ export function Timeline({
 
   useEffect(() => {
     stopPlaybackClock();
+    setZoom(1);
+    if (timelineScrollRef.current) timelineScrollRef.current.scrollLeft = 0;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectMediaAsset, SpeakerProfile, TrainingModelOption } from "../../domain/types";
+import { api } from "../../api/client";
+import type { ObsLiveLinkRecordingJournal, ProjectMediaAsset, SpeakerProfile, TrainingModelOption } from "../../domain/types";
 import { MediaPool, sttChoices } from "./MediaPool";
 
 const asset: ProjectMediaAsset = {
@@ -20,6 +21,183 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("shows a live OBS footage row and replaces it when its MKA is ready", async () => {
+    const recording = { recordingId: "take-live", projectId: "project", displayName: "OBS take live",
+      status: "recording", archiveStatus: "pending" };
+    const live = { recording } as ObsLiveLinkRecordingJournal;
+    const ready = { recording: { ...recording, status: "stopped", archiveStatus: "ready" } } as ObsLiveLinkRecordingJournal;
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockResolvedValueOnce([live]).mockResolvedValue([ready]);
+    const onObsArchiveReady = vi.fn().mockResolvedValue(undefined);
+    const onOpenObsRecording = vi.fn();
+    try {
+      const view = render(<MediaPool {...props({ assets: [], projectId: "project", onObsArchiveReady, onOpenObsRecording })} />);
+      const pending = await screen.findByLabelText("Footage OBS OBS take live: ĐANG GHI");
+      expect(pending).toHaveTextContent("Phiên thu đang mở · MKA chưa hoàn tất");
+      fireEvent.click(screen.getByRole("button", { name: /OBS take live/ }));
+      expect(onOpenObsRecording).toHaveBeenCalledWith("take-live");
+      await waitFor(() => expect(onObsArchiveReady).toHaveBeenCalledWith("take-live"), { timeout: 2500 });
+      view.rerender(<MediaPool {...props({ assets: [{ ...asset, id: "archive", name: "OBS take live", sourceExtension: ".mka", obsRecordingId: "take-live" }], projectId: "project", onObsArchiveReady })} />);
+      expect(screen.queryByLabelText("Footage OBS OBS take live: ĐANG CẬP NHẬT MEDIA POOL")).not.toBeInTheDocument();
+      expect(list).toHaveBeenCalledWith("project");
+    } finally {
+      list.mockRestore();
+    }
+  });
+  it("opens the native source picker directly from the primary IMPORT button", () => {
+    const onImportLocal = vi.fn();
+    render(<MediaPool {...props({ onImportLocal })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mở file media từ máy" }));
+    expect(onImportLocal).toHaveBeenCalledOnce();
+  });
+  it("clears the open footage when the empty part of the list is clicked", () => {
+    const onSelect = vi.fn();
+    const onClearSelection = vi.fn();
+    render(<MediaPool {...props({ onSelect, onClearSelection, selectedAssetId: asset.id })} />);
+    fireEvent.click(screen.getByRole("region", { name: "Danh sách Media Pool" }));
+    expect(onClearSelection).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: /interview\.mov/ }));
+    expect(onSelect).toHaveBeenCalledWith(asset.id);
+    expect(onClearSelection).toHaveBeenCalledOnce();
+  });
+
+  it("offers a local growing-MKV path when an active recording is chosen through IMPORT", () => {
+    const onImport = vi.fn();
+    const onImportLocal = vi.fn();
+    render(<MediaPool {...props({ onImport, onImportLocal })} />);
+    fireEvent.change(screen.getByLabelText("Import media"), {
+      target: { files: [new File(["partial mkv"], "recording.mkv", { type: "video/x-matroska" })] },
+    });
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    expect(dialog).toHaveTextContent("MKV đang ghi");
+    expect(screen.getByRole("button", { name: "Import file đã hoàn tất" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Theo dõi MKV đang ghi" }));
+    expect(onImportLocal).toHaveBeenCalledOnce();
+    expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("configures import and STT per pending native track from the right-click menu", () => {
+    const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: false },
+      { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2, imported: true, transcribe: false },
+    ] };
+    const onPendingLocalTrackChange = vi.fn();
+    const onConfirmPendingLocalMedia = vi.fn();
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia, onPendingLocalTrackChange, onConfirmPendingLocalMedia })} />);
+    const menu = screen.getByRole("menu", { name: "Chọn track cho recording.mkv" });
+    expect(menu).toHaveTextContent("Mic");
+    expect(menu).toHaveTextContent("Desktop");
+    fireEvent.click(screen.getByLabelText("Import track 1 Mic"));
+    fireEvent.click(screen.getByLabelText("STT track 2 Desktop"));
+    expect(onPendingLocalTrackChange).toHaveBeenCalledWith(1, "imported", false);
+    expect(onPendingLocalTrackChange).toHaveBeenCalledWith(2, "transcribe", true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Theo dõi MKV đang ghi" }));
+    expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("follow", 60);
+  });
+
+  it("starts following with live preview and defers detailed STT until its button is pressed", () => {
+    const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: true },
+    ] };
+    const onConfirmPendingLocalMedia = vi.fn();
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn track cho recording.mkv" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Theo dõi MKV đang ghi" }));
+    expect(screen.queryByRole("dialog", { name: "Thiết lập STT MKV" })).not.toBeInTheDocument();
+    expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("follow", 60);
+  });
+
+  it("shows persisted imported and omitted tracks and selects STT for one child", () => {
+    const parent = { ...asset, id: "parent", name: "video.mkv", growingMkvFollow: true, availableAudioTracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: false },
+      { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2, imported: true },
+    ] };
+    const child = { ...asset, id: "child", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, transcriptionSelected: false };
+    const onToggleTranscription = vi.fn();
+    const onFinishGrowingMkv = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, child], onToggleTranscription, onFinishGrowingMkv })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^video\.mkv/ }));
+    expect(screen.getByLabelText("Đã import track 1 Mic")).not.toBeChecked();
+    expect(screen.getByLabelText("Đã import track 2 Desktop")).toBeChecked();
+    expect(screen.getByLabelText("STT track 1 Mic")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("STT track 2 Desktop"));
+    expect(onToggleTranscription).toHaveBeenCalledWith("child", true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Finish MKV sau khi OBS dừng" }));
+    expect(onFinishGrowingMkv).toHaveBeenCalledWith("parent");
+  });
+
+  it("shows four per-track stages and makes a mixed parent checkbox apply to all tracks", () => {
+    const parent = { ...asset, id: "parent", name: "multi.mkv" };
+    const desk = { ...asset, id: "desk", name: "Desk", sourceArchiveAssetId: "parent", importSelected: true, transcriptionSelected: true, diarizationSelected: false, trainingSelected: true };
+    const mic = { ...asset, id: "mic", name: "Mic", sourceArchiveAssetId: "parent", importSelected: false, transcriptionSelected: false, diarizationSelected: false, trainingSelected: false };
+    const onToggleImport = vi.fn();
+    const onToggleDiarization = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, desk, mic], onToggleImport, onToggleDiarization })} />);
+
+    const parentImport = screen.getByRole("checkbox", { name: "Import multi.mkv" }) as HTMLInputElement;
+    expect(parentImport.indeterminate).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Xổ track của multi.mkv" }));
+    expect(screen.getByRole("checkbox", { name: "Import Desk" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Import Mic" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "STT Desk" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Speaker Diarization Desk" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Train Desk" })).toBeChecked();
+    fireEvent.click(parentImport);
+    expect(onToggleImport).toHaveBeenCalledWith("parent", true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Speaker Diarization Desk" }));
+    expect(onToggleDiarization).toHaveBeenCalledWith("desk", true);
+  });
+
+  it("starts detailed STT during a growing MKV with a minutes and seconds dialog", () => {
+    const parent = { ...asset, id: "parent", name: "recording.mkv", growingMkvFollow: true };
+    const child = { ...asset, id: "mic", sourceArchiveAssetId: "parent", transcriptionSelected: true };
+    const onStartGrowingMkvDetailedStt = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, child], onStartGrowingMkvDetailedStt })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^recording\.mkv/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "STT kỹ MKV đang ghi" }));
+    fireEvent.change(screen.getByLabelText("Số phút STT kỹ"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Số giây STT kỹ"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu STT kỹ" }));
+    expect(onStartGrowingMkvDetailedStt).toHaveBeenCalledWith("parent", 125);
+  });
+
+  it("opens detailed STT for the selected growing footage when more than one is present", () => {
+    const first = { ...asset, id: "first", name: "first.mkv", growingMkvFollow: true };
+    const second = { ...asset, id: "second", name: "second.mkv", growingMkvFollow: true };
+    const tracks = [
+      { ...asset, id: "first-track", sourceArchiveAssetId: "first", transcriptionSelected: true },
+      { ...asset, id: "second-track", sourceArchiveAssetId: "second", transcriptionSelected: true },
+    ];
+    const onStartGrowingMkvDetailedStt = vi.fn();
+    render(<MediaPool {...props({ assets: [first, second, ...tracks], selectedAssetId: "second", onStartGrowingMkvDetailedStt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Speech to text/ }));
+    expect(screen.getByRole("dialog", { name: "Thiết lập STT MKV" })).toHaveTextContent("second.mkv");
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu STT kỹ" }));
+    expect(onStartGrowingMkvDetailedStt).toHaveBeenCalledWith("second", 60);
+  });
+
+  it("can change STT selection on an imported MKV with one audio track", () => {
+    const single = { ...asset, name: "single.mkv", availableAudioTracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true },
+    ] };
+    const onToggleTranscription = vi.fn();
+    render(<MediaPool {...props({ assets: [single], onToggleTranscription })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /single.mkv/ }));
+    fireEvent.click(screen.getByLabelText("STT track 1 Mic"));
+    expect(onToggleTranscription).toHaveBeenCalledWith("asset-1", true);
+  });
+
+  it("shows one footage per OBS recording and keeps its channels inside it", () => {
+    const parent = { ...asset, id: "archive-1", name: "OBS LiveLink · take-one", sourceExtension: ".mka", sourcePath: "assets/obs-livelink/take-one/source.mka", obsRecordingId: "take-one", mediaKind: "audio" as const };
+    const child = { ...asset, id: "channel-1", name: "Channel 1", sourceExtension: ".wav", obsRecordingId: "take-one", sourceArchiveAssetId: "archive-1", transcriptionSelected: true };
+    const second = { ...parent, id: "archive-2", name: "OBS LiveLink · take-two", obsRecordingId: "take-two" };
+    const onSelect = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, child, second], onSelect })} />);
+    expect(screen.getByText("ASSETS").parentElement).toHaveTextContent("2 ASSETS");
+    expect(screen.getByText(/1 TRACK/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mở Script Track 1" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^OBS LiveLink · take-one/ }));
+    expect(onSelect).toHaveBeenCalledWith("archive-1");
+  });
   it("imports common media formats and selects an asset with its own history", () => {
     const onSelect = vi.fn();
     render(<MediaPool {...props({ onSelect })} />);
@@ -193,6 +371,36 @@ describe("MediaPool", () => {
     expect([firstRow, secondRow].map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "true"]);
     fireEvent.click(screen.getByRole("button", { name: "Restore đã chọn" }));
     expect(onBatchAction).toHaveBeenCalledWith({ kind: "restore", assetIds: ["asset-binned", "asset-binned-2"] });
+  });
+
+  it("deletes the selected bin rows together and offers an icon to empty the entire bin", () => {
+    const second = { ...recycled, id: "asset-binned-2", name: "cu-2.wav" };
+    const third = { ...recycled, id: "asset-binned-3", name: "cu-3.wav" };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [recycled, second, third], onBatchAction })} />);
+    fireEvent.click(screen.getByRole("button", { name: /RECYCLE BIN/ }));
+    fireEvent.click(screen.getByRole("button", { name: /cu.wav/ }));
+    fireEvent.click(screen.getByRole("button", { name: /cu-2.wav/ }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Delete đã chọn" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "delete", assetIds: ["asset-binned", "asset-binned-2"] });
+    fireEvent.click(screen.getByRole("button", { name: "Empty Recycle Bin" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "delete", assetIds: ["asset-binned", "asset-binned-2", "asset-binned-3"] });
+  });
+
+  it("keeps selected bin rows on right-click and offers only bin actions", () => {
+    const second = { ...recycled, id: "asset-binned-2", name: "cu-2.wav" };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [recycled, second], onBatchAction })} />);
+    fireEvent.click(screen.getByRole("button", { name: /RECYCLE BIN/ }));
+    const first = screen.getByRole("button", { name: /cu.wav/ });
+    const secondRow = screen.getByRole("button", { name: /cu-2.wav/ });
+    fireEvent.click(first);
+    fireEvent.click(secondRow, { shiftKey: true });
+    fireEvent.contextMenu(first);
+    const menu = screen.getByRole("menu");
+    expect(menu.querySelectorAll("section")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete permanently (2)" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "delete", assetIds: ["asset-binned", "asset-binned-2"] });
   });
 
   it("selects a range, toggles individual footage, and scopes Ctrl+A to live Media Pool rows", () => {

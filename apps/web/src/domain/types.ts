@@ -192,9 +192,12 @@ export interface ProjectMediaAsset {
   mediaKind: "audio" | "video";
   sourcePath: string;
   analysisPath?: string | null;
+  obsRecordingId?: string | null;
   sourceArchiveAssetId?: string | null;
   sourceArchiveStreamIndex?: number | null;
   sourceArchiveTrackUid?: number | null;
+  growingMkvFollow?: boolean;
+  availableAudioTracks?: Array<{ streamIndex: number; title: string; codec: string | null; channels: number | null; imported: boolean }>;
   hasExternalSource?: boolean;
   localCacheEnabled?: boolean;
   localCacheUpdatedAt?: string | null;
@@ -214,10 +217,12 @@ export interface ProjectMediaAsset {
   origin: "import" | "record" | "generate";
   status?: "ready" | "no-audio" | "error";
   transcriptionStatus: MediaTranscriptionStatus;
+  importSelected?: boolean;
   transcriptionSelected: boolean;
   transcriptionProgress?: number;
   transcriptionError: string | null;
   diarizationStatus?: MediaDiarizationStatus;
+  diarizationSelected?: boolean;
   diarizationProgress?: number;
   diarizationError?: string | null;
   diarizationSpeakerAssignments?: Record<string, string | null>;
@@ -444,6 +449,20 @@ export interface ProjectMediaImportResult {
   asset: ProjectMediaAsset;
   item: StudioAudioItem | null;
   elapsed: number;
+  trackAssetIds?: string[];
+}
+
+export interface PendingLocalMedia {
+  sourcePath: string;
+  name: string;
+  tracks: Array<{
+    streamIndex: number;
+    title: string;
+    codec: string;
+    channels: number | null;
+    imported: boolean;
+    transcribe: boolean;
+  }>;
 }
 
 export interface EngineStatus {
@@ -844,6 +863,7 @@ export interface ObsLiveLinkTriggerPolicy {
 }
 
 export interface ObsLiveLinkRecording {
+  displayName?: string | null;
   recordingId: string;
   projectId: string;
   status: "recording" | "paused" | "stopped";
@@ -996,6 +1016,9 @@ export interface VoiceOutput {
   segments?: VoiceOutputSegment[];
   createdAt: string;
 }
+
+export type VoiceOutputSubtitleMode = "line" | "word" | "sentence" | "table";
+export type VoiceOutputExportMode = "audio" | VoiceOutputSubtitleMode;
 
 export interface VoiceOutputSegment {
   rowId: string;

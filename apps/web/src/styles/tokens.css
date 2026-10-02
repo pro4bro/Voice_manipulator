@@ -10,6 +10,7 @@
   --cream: #faf7ef;
   --accent: #ff6745;
   --accent-dark: #ce4126;
+  --accent-ink: #9f2b14;
   --lime: #caed70;
   --lime-dark: #8fb43b;
   --gold: #eac75f;
@@ -51,6 +52,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --ink: #f3f0e7;
+  --accent-ink: #ff9e89;
   --ink-soft: #b7baaf;
   --coal: #171916;
   --coal-2: #20231f;

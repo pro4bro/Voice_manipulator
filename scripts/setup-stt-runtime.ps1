@@ -39,8 +39,8 @@ $env:PRO4BRO_STUDIO_ROOT = $runtimeRoot
 $env:PRO4BRO_STT_MODEL_ROOT = $modelRoot
 $env:PRO4BRO_STT_MODEL = $Model
 if (-not $SkipModelPreload) {
-    Write-Host "Tải và kiểm tra model WhisperX $Model..." -ForegroundColor Cyan
-    Invoke-RuntimePython @("-c", "from studio_app import server; model, device = server._model(); print(f'READY model={server.MODEL_NAME} device={device}')")
+    Write-Host "Tải và kiểm tra model WhisperX $Model và LiveLink medium..." -ForegroundColor Cyan
+    Invoke-RuntimePython @("-c", "from studio_app import server; server._model(); server._model('medium'); print(f'READY batch={server.MODEL_NAME} livelink=medium')")
 }
 & (Join-Path $PSScriptRoot "build-portable-python-runtimes.ps1") -Profiles STT
 if ($LASTEXITCODE -ne 0) { throw "Không tạo được portable STT runtime." }

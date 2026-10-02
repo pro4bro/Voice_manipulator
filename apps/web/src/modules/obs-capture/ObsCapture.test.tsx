@@ -118,4 +118,26 @@ describe("ObsCapture", () => {
     fireEvent.click(screen.getByRole("button", { name: "Render video có subtitle" }));
     await waitFor(() => expect(mock.renderObsSessionHardSubtitle).toHaveBeenCalledWith("project-1", "obs-1", ["asset-mic", "asset-tab"]));
   });
+
+  it("selects OBS tracks by range or Ctrl+A and queues Final STT once for the group", async () => {
+    mock.listObsSessions.mockResolvedValue([{ id: "obs-1", status: "ready", createdAt: "2026-09-22T00:00:00Z", duration: 22,
+      recordingAssetId: "asset-video", tracks: [
+        { assetId: "asset-mic", sourceLabel: "Micro", streamIndex: 1, obsTrack: 1 },
+        { assetId: "asset-tab", sourceLabel: "Tab họp", streamIndex: 2, obsTrack: 2 },
+      ],
+    }]);
+    render(<ObsCapture onImportReady={vi.fn()} onOpenAsset={vi.fn()} projectId="project-1" />);
+    const first = await screen.findByRole("checkbox", { name: "Ghép vào SRT: Micro" });
+    const second = screen.getByRole("checkbox", { name: "Ghép vào SRT: Tab họp" });
+    fireEvent.click(first);
+    fireEvent.click(second, { shiftKey: true });
+    expect(first).toBeChecked();
+    expect(second).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Final STT đã chọn (2)" }));
+    await waitFor(() => expect(mock.enqueueMediaTranscriptions).toHaveBeenCalledWith("project-1", ["asset-mic", "asset-tab"]));
+    fireEvent.click(first);
+    fireEvent.keyDown(screen.getByRole("region", { name: "Danh sách track OBS phiên obs-1" }), { key: "a", ctrlKey: true });
+    expect(first).toBeChecked();
+    expect(second).toBeChecked();
+  });
 });

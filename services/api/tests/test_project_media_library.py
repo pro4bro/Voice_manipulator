@@ -3,10 +3,183 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from dataclasses import replace
+import pytest
+from fastapi.testclient import TestClient
 
 from app.adapters.file_media_library import FileMediaLibrary
-from app.domain.models import MediaAssetCreate, ProjectCreate
+from app.domain.models import MediaAssetCreate, ProjectCreate, TimelineEditRange, TimelineGainKeyframe
 from app.adapters.file_project_repository import FileProjectRepository
+from app.main import create_app
+from app.settings import Settings
+
+
+def test_import_and_diarization_stage_selection_persist_per_track(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Stage selection"))
+    library = FileMediaLibrary(projects)
+    parent = library.create(project.id, MediaAssetCreate(
+        name="take.mkv", source_extension=".mkv", media_kind="video",
+        source_path="assets/media/take.mkv", origin="import",
+    ))
+    tracks = [library.create(project.id, MediaAssetCreate(
+        name=f"track {index}", source_extension=".wav", media_kind="audio",
+        source_path=f"assets/media/track-{index}.wav", origin="import",
+        source_archive_asset_id=parent.id,
+    )) for index in range(2)]
+    library.set_import_selected(project.id, tracks[0].id, False)
+    library.set_diarization_selected(project.id, tracks[1].id, True)
+    reopened = FileMediaLibrary(projects)
+    assert reopened.get(project.id, tracks[0].id).import_selected is False
+    assert reopened.get(project.id, tracks[0].id).diarization_selected is False
+    assert reopened.get(project.id, tracks[1].id).import_selected is True
+    assert reopened.get(project.id, tracks[1].id).diarization_selected is True
+
+
+def test_follow_stt_keeps_a_current_user_script_and_records_final_candidate(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Live script"))
+    library = FileMediaLibrary(projects)
+    asset = library.create(project.id, MediaAssetCreate(
+        name="Mic", source_extension=".wav", media_kind="audio",
+        source_path="assets/media/mic.wav", origin="import",
+    ))
+    library.update_live_transcript(project.id, asset.id, "lời tạm")
+    library.update_script(project.id, asset.id, "bản sửa của người dùng", "user")
+    library.update_live_transcript(project.id, asset.id, "lời tạm mới")
+    assert library.get(project.id, asset.id).text == "bản sửa của người dùng"
+    result = {"text": "STT kỹ", "words": [], "duration": 5, "sample_rate": 24000}
+    library.apply_transcription(project.id, asset.id, result, 5, preserve_user_text=True)
+    # Replaying the committed STT result before the complete-state write is safe.
+    library.apply_transcription(project.id, asset.id, result, 5, preserve_user_text=True)
+    restored = library.get(project.id, asset.id)
+    assert restored.text == "bản sửa của người dùng"
+    assert restored.revisions[-1].source == "stt"
+    assert restored.revisions[-1].text == "STT kỹ"
+
+
+def test_obs_recordings_are_distinct_footage_with_persisted_channels_and_group_lifecycle(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Two OBS takes"))
+    root = Path(project.project_path)
+    library = FileMediaLibrary(projects)
+    parents = []
+    for recording_id in ("take-one", "take-two"):
+        folder = root / "assets" / "obs-livelink" / recording_id
+        folder.mkdir(parents=True)
+        (folder / "source.mka").write_bytes(b"verified archive")
+        parent = library.create(project.id, MediaAssetCreate(
+            name=f"OBS LiveLink · {recording_id}", source_extension=".mka",
+            media_kind="audio", source_path=f"assets/obs-livelink/{recording_id}/source.mka",
+            obs_recording_id=recording_id, origin="record", transcription_status="skipped",
+        ))
+        parents.append(parent)
+        for index in range(2):
+            child_folder = root / "assets" / "media" / f"{recording_id}-{index}"
+            child_folder.mkdir(parents=True)
+            (child_folder / "analysis.wav").write_bytes(b"analysis")
+            child = library.create(project.id, MediaAssetCreate(
+                name=f"{recording_id} channel {index}", source_extension=".wav",
+                media_kind="audio", source_path=f"assets/media/{recording_id}-{index}/analysis.wav",
+                analysis_path=f"assets/media/{recording_id}-{index}/analysis.wav",
+                obs_recording_id=recording_id, origin="record",
+            ))
+            library.link_obs_archive_track(project.id, child.id, parent.id, index, index + 11,
+                                           child.analysis_path)
+    reopened = FileMediaLibrary(projects)
+    assets = reopened.list(project.id)
+    assert {asset.obs_recording_id for asset in assets if asset.source_extension == ".mka"} == {"take-one", "take-two"}
+    assert sorted(asset.source_archive_stream_index for asset in assets if asset.source_archive_asset_id == parents[0].id) == [0, 1]
+    reopened.send_to_recycle_bin(project.id, parents[0].id)
+    assert all(asset.deleted_at for asset in reopened.list(project.id) if asset.obs_recording_id == "take-one")
+    reopened.restore_from_recycle_bin(project.id, parents[0].id)
+    assert all(not asset.deleted_at for asset in reopened.list(project.id) if asset.obs_recording_id == "take-one")
+    reopened.remove(project.id, parents[0].id)
+    assert {asset.obs_recording_id for asset in reopened.list(project.id)} == {"take-two"}
+    assert not (root / "assets" / "obs-livelink" / "take-one").exists()
+    assert (root / "assets" / "obs-livelink" / "take-two" / "source.mka").is_file()
+
+
+def test_legacy_obs_index_recovers_archive_relation_from_recording_journal(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Older OBS take"))
+    root = Path(project.project_path)
+    library = FileMediaLibrary(projects)
+    recording_id = "older-take"
+    folder = root / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "source.mka").write_bytes(b"archive")
+    parent = library.create(project.id, MediaAssetCreate(
+        name="OBS source archive", source_extension=".mka", media_kind="audio",
+        source_path=f"assets/obs-livelink/{recording_id}/source.mka",
+        origin="record", transcription_status="skipped",
+    ))
+    child = library.create(project.id, MediaAssetCreate(
+        name="Channel 1", source_extension=".wav", media_kind="audio",
+        source_path="assets/media/old-channel/analysis.wav", origin="record",
+    ))
+    (folder / "recording.json").write_text(json.dumps({
+        "recording": {"sourceArchive": {"parentAssetId": parent.id}},
+        "sourceStems": [{"assetId": child.id, "streamIndex": 0, "trackUid": 42}],
+    }), encoding="utf-8")
+    reopened = FileMediaLibrary(projects)
+    assert reopened.get(project.id, parent.id).obs_recording_id == recording_id
+    recovered = reopened.get(project.id, child.id)
+    assert (recovered.obs_recording_id, recovered.source_archive_asset_id,
+            recovered.source_archive_stream_index, recovered.source_archive_track_uid) == (
+                recording_id, parent.id, 0, 42)
+    (folder / "recording.json").unlink()
+    assert FileMediaLibrary(projects).get(project.id, child.id).source_archive_asset_id == parent.id
+
+
+def test_obs_timeline_cuts_are_written_to_all_stems_together(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="OBS cuts"))
+    library = FileMediaLibrary(projects)
+    stems = [library.create(project.id, MediaAssetCreate(
+        name=f"channel-{index}.wav", source_extension=".wav", media_kind="audio",
+        source_path=f"assets/media/channel-{index}.wav", duration=12 - index * 4, origin="record",
+    )) for index in range(2)]
+    keyframe = TimelineGainKeyframe(time=3, gain_db=-2)
+    library.update_timeline_edits(project.id, stems[1].id, [], [keyframe])
+    cut = TimelineEditRange(start=2, end=5)
+
+    changed = library.update_timeline_cuts_many(project.id, [item.id for item in stems], [cut])
+    assert [item.removed_ranges for item in changed] == [[cut], [cut]]
+    reopened = FileMediaLibrary(projects)
+    assert all(reopened.get(project.id, item.id).removed_ranges == [cut] for item in stems)
+    assert reopened.get(project.id, stems[1].id).gain_keyframes == [keyframe]
+
+    late_cut = TimelineEditRange(start=9, end=11)
+    library.update_timeline_cuts_many(project.id, [item.id for item in stems], [late_cut])
+    assert all(reopened.get(project.id, item.id).removed_ranges == [late_cut] for item in stems)
+
+    with pytest.raises(ValueError):
+        library.update_timeline_cuts_many(project.id, [item.id for item in stems], [
+            TimelineEditRange(start=2, end=5), TimelineEditRange(start=4, end=6),
+        ])
+    assert all(reopened.get(project.id, item.id).removed_ranges == [late_cut] for item in stems)
+
+
+def test_obs_timeline_batch_route_updates_every_channel_or_none(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="OBS batch route"))
+    library = FileMediaLibrary(projects)
+    stems = [library.create(project.id, MediaAssetCreate(
+        name=f"channel-{index}.wav", source_extension=".wav", media_kind="audio",
+        source_path=f"assets/media/channel-{index}.wav", duration=12, origin="record",
+    )) for index in range(2)]
+    client = TestClient(create_app(project_repository=projects,
+        settings=replace(Settings.from_env(), data_root=tmp_path / "data")))
+    url = f"/api/projects/{project.id}/media/timeline-cuts-batch"
+    payload = {"assetIds": [item.id for item in stems], "removedRanges": [{"start": 2, "end": 5}]}
+    response = client.patch(url, json=payload)
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert all(library.get(project.id, item.id).removed_ranges[0].start == 2 for item in stems)
+    response = client.patch(url, json={**payload, "assetIds": [stems[0].id, "missing"]})
+    assert response.status_code == 404
+    assert all(library.get(project.id, item.id).removed_ranges[0].start == 2 for item in stems)
 
 
 def test_media_library_keeps_assets_and_script_revisions_per_project(tmp_path):
@@ -677,4 +850,18 @@ def test_recycling_survives_a_reload_from_disk(tmp_path):
 
     reopened = FileMediaLibrary(projects)
     assert reopened.get(project.id, asset.id).deleted_at is not None
+
+
+def test_permanently_removed_recycled_footage_stays_absent_after_reload(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Empty bin", location=str(tmp_path / "work")))
+    library = FileMediaLibrary(projects)
+    first = _recyclable(library, project.id, "first")
+    second = _recyclable(library, project.id, "second")
+    for asset in (first, second):
+        library.send_to_recycle_bin(project.id, asset.id)
+        library.remove(project.id, asset.id)
+
+    assert library.list(project.id) == []
+    assert FileMediaLibrary(projects).list(project.id) == []
 

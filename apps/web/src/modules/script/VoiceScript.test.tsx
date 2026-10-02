@@ -25,6 +25,28 @@ function Harness({ initial, output = null, onRead = vi.fn(), onRows }: { initial
 }
 
 describe("VoiceScript", () => {
+  it("offers WAV and Script-line SRT for an output even without word timing", () => {
+    const onExport = vi.fn();
+    const output: VoiceOutput = {
+      id: "output-1", name: "Bài đọc", text: "Xin chào", voiceId: "an-clone", voiceName: "Anh Vũ",
+      speakerProfileId: "speaker-an", engine: "omnivoice", generatorId: "omnivoice-generate",
+      parameters: {}, duration: 0.8, sampleRate: 24000, audioPath: "assets/voice-output/output-1/audio.wav",
+      words: [], segments: [{ rowId: "r1", voiceId: "an-clone", voiceName: "Anh Vũ", speakerProfileId: "speaker-an",
+        engine: "omnivoice", generatorId: "omnivoice-generate", text: "Xin chào", start: 0, end: 0.8 }],
+      createdAt: "2026-10-02T00:00:00Z",
+    };
+    render(<VoiceScript category="clone" onExport={onExport} onRead={vi.fn()} onRowsChange={vi.fn()} output={output} playbackId={output.id}
+      rows={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} speakers={[AN]} voices={VOICES} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "EXPORT ▾" }));
+    expect(screen.getByRole("menuitem", { name: /SRT từng từ/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("menuitem", { name: /SRT từng dòng/ }));
+    expect(onExport).toHaveBeenCalledWith("line");
+    fireEvent.click(screen.getByRole("button", { name: "EXPORT ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Âm thanh WAV/ }));
+    expect(onExport).toHaveBeenCalledWith("audio");
+  });
+
   it("picks the voice of each row from the Speaker cell", () => {
     const onRows = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: null, voiceId: null, text: "Được không sao" }]} onRows={onRows} />);

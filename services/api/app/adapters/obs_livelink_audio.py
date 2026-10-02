@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -30,8 +31,14 @@ class FileObsLiveLinkAudio:
         self.connection, self.runtime = connection, runtime
         self.projects, self.media, self.ffmpeg = projects, media, ffmpeg
         self._lock = threading.RLock()
+        self._recording_locks: dict[str, threading.RLock] = {}
         self.archiver = ObsLiveLinkArchiver(media, ffmpeg, ffprobe)
         self.waveform = ObsLiveLinkWaveform(projects, ffmpeg)
+
+    def _recording_lock(self, recording_id: str) -> threading.RLock:
+        # Encoding a stopped take must never hold the ingress lock for another take.
+        with self._lock:
+            return self._recording_locks.setdefault(recording_id, threading.RLock())
 
     def _recording(self, recording_id: str):
         try:
@@ -93,22 +100,30 @@ class FileObsLiveLinkAudio:
             UUID(source_uuid)
         except ValueError as exc:
             raise LiveLinkError("Invalid OBS source identity.", 422) from exc
-        with self._lock, self.runtime._lock:
+        with self._recording_lock(recording_id), self.runtime._lock:
             state, recording = self._recording(recording_id)
+            chunk_end_ns = plugin_monotonic_ns + (frame_count * 1_000_000_000 + sample_rate - 1) // sample_rate
             if (recording.ended_monotonic_ns is not None and
-                    plugin_monotonic_ns > recording.ended_monotonic_ns):
+                    chunk_end_ns > recording.ended_monotonic_ns):
                 raise LiveLinkError("PCM arrived after the recording boundary.")
             if plugin_monotonic_ns < recording.started_monotonic_ns:
                 raise LiveLinkError("PCM precedes the recording boundary.")
+            _, folder = self._folder(recording.project_id, recording_id)
             channel = next((item for item in state.channels if item.channel_id == channel_id), None)
             if channel is None or channel.source_uuid != source_uuid:
-                raise LiveLinkError("OBS channel identity changed.")
+                try:
+                    journal = json.loads((folder / "recording.json").read_text(encoding="utf-8"))
+                    historical = next((item for item in journal["channels"]
+                                       if item["channelId"] == channel_id and item["sourceUuid"] == source_uuid), None)
+                except (OSError, ValueError, KeyError):
+                    historical = None
+                if historical is None:
+                    raise LiveLinkError("OBS channel identity changed.")
             for interval in recording.channel_intervals:
                 if interval.channel_id == channel_id and interval.start_monotonic_ns <= plugin_monotonic_ns and (
                     interval.end_monotonic_ns is None or plugin_monotonic_ns < interval.end_monotonic_ns
                 ):
                     raise LiveLinkError("PCM falls inside a disabled or missing-source interval.")
-            _, folder = self._folder(recording.project_id, recording_id)
             channel_folder = folder / "channels" / channel_id / "chunks"
             pcm_path = channel_folder / f"{sequence:012d}.pcm"
             metadata_path = channel_folder / f"{sequence:012d}.json"
@@ -151,7 +166,7 @@ class FileObsLiveLinkAudio:
     def finalize(self, authorization: str, *, install_id: str, connection_id: str,
                  epoch: str, recording_id: str) -> dict:
         self.connection.require_connection(authorization, install_id, connection_id, epoch)
-        with self._lock:
+        with self._recording_lock(recording_id):
             with self.runtime._lock:
                 state, recording = self._recording(recording_id)
                 _, folder = self._folder(recording.project_id, recording_id)
@@ -162,12 +177,16 @@ class FileObsLiveLinkAudio:
             try:
                 return self._finalize(recording_id, recording, [*state.channels, *historical],
                                       update_runtime=True)
-            except LiveLinkError:
+            except (LiveLinkError, OSError):
                 self.runtime.archive_error(recording_id)
                 raise
 
     def retry(self, project_id: str, recording_id: str) -> dict:
         """Rebuild a stopped capture from project-owned chunks after OBS/API restart."""
+        with self._recording_lock(recording_id):
+            return self._retry(project_id, recording_id)
+
+    def _retry(self, project_id: str, recording_id: str) -> dict:
         try:
             UUID(recording_id)
         except ValueError as exc:
@@ -207,10 +226,17 @@ class FileObsLiveLinkAudio:
 
     def _finalize(self, recording_id: str, recording: ObsCaptureRecording,
                   source_channels: list[ObsChannel], *, update_runtime: bool) -> dict:
-        with self._lock:
+        with self._recording_lock(recording_id):
             if recording.status != "stopped":
                 raise LiveLinkError("OBS recording has not stopped.")
             root, folder = self._folder(recording.project_id, recording_id)
+            record = json.loads((folder / "recording.json").read_text(encoding="utf-8"))
+            archive = record["recording"].get("sourceArchive")
+            if (record["recording"].get("archiveStatus") == "ready" and archive and
+                    (root / archive["sourcePath"]).is_file() and
+                    record.get("archiveSha256") == self._hash_file(root / archive["sourcePath"])):
+                return {"recordingId": recording_id, "sourceStems": record.get("sourceStems", []),
+                        "sourceArchive": archive, "artifactReady": True}
             stems: list[dict] = []
             for channel_folder in sorted((folder / "channels").glob("*")):
                 metadata_paths = sorted((channel_folder / "chunks").glob("*.json"))
@@ -310,6 +336,7 @@ class FileObsLiveLinkAudio:
                             source_extension=".wav", media_kind="audio",
                             source_path=stem_path.relative_to(root).as_posix(),
                             analysis_path=analysis_path.relative_to(root).as_posix(),
+                            obs_recording_id=recording_id,
                             duration=duration, sample_rate=sample_rate,
                             audio_codec="pcm_s16le", origin="record",
                             transcription_status="skipped",
@@ -320,9 +347,10 @@ class FileObsLiveLinkAudio:
                               "analysisPath": analysis_path.relative_to(root).as_posix() if analysis_path.is_file() else None,
                               "gaps": gaps})
             record_path = folder / "recording.json"
-            record = json.loads(record_path.read_text(encoding="utf-8"))
-            record["sourceStems"] = stems
-            self._write(record_path, json.dumps(record, indent=2).encode())
+            with self.runtime._lock:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+                record["sourceStems"] = stems
+                self._write(record_path, json.dumps(record, indent=2).encode())
             archive = self.archiver.finalize(recording.project_id, root, folder, record)
             if update_runtime:
                 self.runtime.archive_ready(recording_id, archive.model_dump(mode="json", by_alias=True))
@@ -332,16 +360,21 @@ class FileObsLiveLinkAudio:
                 track = next(item for item in archive.tracks if item.channel_id == stem["channelId"])
                 stem["streamIndex"] = track.stream_index
                 stem["trackUid"] = track.track_uid
-            ready_record = json.loads(record_path.read_text(encoding="utf-8"))
-            ready_record["sourceStems"] = stems
-            ready_record["recording"]["archiveStatus"] = "ready"
-            ready_record["recording"]["sourceArchive"] = archive.model_dump(mode="json", by_alias=True)
-            ready_record["archiveSha256"] = self._hash_file(root / archive.source_path)
-            self._write(record_path, json.dumps(ready_record, indent=2).encode())
+            archive_hash = self._hash_file(root / archive.source_path)
+            with self.runtime._lock:
+                ready_record = json.loads(record_path.read_text(encoding="utf-8"))
+                ready_record["sourceStems"] = stems
+                ready_record["recording"]["archiveStatus"] = "ready"
+                ready_record["recording"]["sourceArchive"] = archive.model_dump(mode="json", by_alias=True)
+                ready_record["archiveSha256"] = archive_hash
+                self._write(record_path, json.dumps(ready_record, indent=2).encode())
             for channel_folder in sorted((folder / "channels").glob("*")):
                 candidate = root / "assets" / "media" / ("asset-live-" + hashlib.sha256(
                     f"{recording_id}:{channel_folder.name}".encode()).hexdigest()[:12]) / "source.wav"
-                candidate.unlink(missing_ok=True)
+                try:
+                    candidate.unlink(missing_ok=True)
+                except OSError:
+                    logging.getLogger(__name__).warning("Verified OBS archive retained temporary stem %s", candidate)
             return {"recordingId": recording_id, "sourceStems": stems,
                     "sourceArchive": archive.model_dump(mode="json", by_alias=True),
                     "artifactReady": True}

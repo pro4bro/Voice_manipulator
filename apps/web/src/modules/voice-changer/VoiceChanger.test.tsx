@@ -95,6 +95,23 @@ describe("Voice Changer modules", () => {
     expect(screen.getByText("L: micro · R: đã đổi · bù 52 ms")).toBeInTheDocument();
   });
 
+  it("selects Voice Changer recordings by range and deletes them with one confirmation", () => {
+    const recording: VoiceChangerRecording = { id: "changer-1", name: "Bản ghi 1", engineId: "passthrough-check", voiceId: null, voiceName: null, speakerProfileId: null,
+      duration: 12, sampleRate: 48000, channels: 2, delayMs: 40, refinedDelayMs: 12, audioPath: "", parameters: {}, createdAt: "" };
+    const recordings = [recording, { ...recording, id: "changer-2", name: "Bản ghi 2" }, { ...recording, id: "changer-3", name: "Bản ghi 3" }];
+    const onDeleteMany = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<ChangerRecordControls activeRecordingId={null} onDelete={vi.fn()} onDeleteMany={onDeleteMany} onOpen={vi.fn()} onRecord={vi.fn()} onStopRecording={vi.fn()} recordings={recordings} status={null} />);
+      fireEvent.click(screen.getByRole("button", { name: "Quản lý bản ghi Voice Changer" }));
+      fireEvent.click(screen.getByRole("button", { name: /Chọn bản ghi Bản ghi 1/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Chọn bản ghi Bản ghi 3/ }), { shiftKey: true });
+      fireEvent.click(screen.getByRole("button", { name: "Xóa 3 bản ghi đã chọn" }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onDeleteMany).toHaveBeenCalledWith(recordings);
+    } finally { confirm.mockRestore(); }
+  });
+
   it("maps decibels onto the meter", () => {
     expect(meterFraction(-120)).toBe(0);
     expect(meterFraction(-30)).toBe(0.5);

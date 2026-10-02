@@ -189,7 +189,7 @@ void LiveLinkMixer::refresh()
 			if (channel->id.empty()) return true;
 			channel->uuid = key;
 			channel->slot = slot;
-			channel->alias = "Channel " + std::to_string(slot);
+			channel->alias = "Track " + std::to_string(slot);
 			it = ctx.channels->emplace(key, std::move(channel)).first;
 			*ctx.changed = true;
 		}
@@ -234,7 +234,7 @@ std::vector<MixerRow> LiveLinkMixer::rows(bool include_missing) const
 	auto found = collections_.find(collection_);
 	if (found == collections_.end()) return result;
 	for (const auto &[uuid, channel] : found->second) {
-		if (include_missing || channel->present || channel->forward) {
+		if (include_missing || channel->present) {
 			int level = GetTickCount64() - channel->last_meter_ms.load() <= 1000 ? channel->level.load() : 0;
 			result.push_back({channel->id, uuid, channel->name, channel->alias, channel->slot, channel->alias_revision,
 				level, channel->sample_rate, channel->audio_channels, channel->forward, !channel->present,

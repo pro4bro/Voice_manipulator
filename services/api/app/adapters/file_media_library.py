@@ -170,6 +170,57 @@ class FileMediaLibrary:
                 "source_path": portable, "audio_codec": codec, "duration": duration,
             })
 
+    def refresh_followed_mkv(self, project_id: str, parent_id: str,
+                               tracks: dict[str, tuple[str, float]],
+                               final_source: str | None = None) -> None:
+        """Publish one growing-MKV audio snapshot across parent and children."""
+        if not tracks:
+            return
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            parent = next((asset for asset in assets if asset.id == parent_id), None)
+            if parent is None:
+                raise KeyError(parent_id)
+            now = datetime.now(timezone.utc)
+            first_path = None
+            first_stream = None
+            maximum = 0.0
+            updated = []
+            seen: set[str] = set()
+            for asset in assets:
+                if asset.id not in tracks:
+                    updated.append(asset)
+                    continue
+                if asset.source_archive_asset_id != parent_id:
+                    raise ValueError("Growing MKV track does not belong to its parent")
+                path, duration = tracks[asset.id]
+                portable = self._portable_path(root, path)
+                if not self._resolved_project_path(root, portable).is_file():
+                    raise FileNotFoundError(portable)
+                if (first_stream is None or
+                        asset.source_archive_stream_index < first_stream):
+                    first_path = portable
+                    first_stream = asset.source_archive_stream_index
+                maximum = max(maximum, duration)
+                seen.add(asset.id)
+                updated.append(asset.model_copy(update={
+                    "analysis_path": portable, "source_path": portable,
+                    "duration": duration, "updated_at": now,
+                }))
+            if seen != set(tracks):
+                raise KeyError(next(iter(set(tracks) - seen)))
+            parent_changes = {"analysis_path": first_path, "duration": maximum,
+                              "updated_at": now}
+            if final_source is not None:
+                portable_source = self._portable_path(root, final_source)
+                if not self._resolved_project_path(root, portable_source).is_file():
+                    raise FileNotFoundError(portable_source)
+                parent_changes["source_path"] = portable_source
+            updated = [asset.model_copy(update=parent_changes)
+                       if asset.id == parent_id else asset for asset in updated]
+            self._store.write_index(root, project_id, updated)
+
     def update_script(
         self,
         project_id: str,
@@ -207,6 +258,40 @@ class FileMediaLibrary:
                 activity_message=f"Transcript revision cho {asset.name}",
             )
 
+    def update_live_transcript(
+        self, project_id: str, asset_id: str, text: str,
+        words: list[dict] | None = None, duration: float | None = None,
+    ) -> None:
+        """Publish growing STT text and timed words without per-window revisions."""
+        with self._lock(project_id):
+            asset = self._require(project_id, asset_id)
+            if any(revision.source == "user" and revision.text == asset.text
+                   for revision in reversed(asset.revisions)):
+                return
+            if (asset.text == text and asset.transcription_status == "processing"
+                    and (words is None or asset.words == words)):
+                return
+            updates: dict[str, Any] = {
+                "text": text, "transcription_status": "processing", "transcription_error": None,
+            }
+            next_words = _KEEP_WORDS
+            if words is not None:
+                inspection = reconcile_word_timing_quality(
+                    "partial", None, words, duration or asset.duration,
+                    trust_version=asset.word_timing_trust_version,
+                )
+                next_words = inspection.words
+                updates.update(word_timing_quality=inspection.quality,
+                               word_timing_note=inspection.note,
+                               word_timing_trust_version=WORD_TIMING_TRUST_VERSION)
+            self._update_asset(
+                project_id, asset_id,
+                updates, words=next_words,
+                event="LIVE_TRANSCRIPT_UPDATED",
+                details={"assetId": asset_id, "characters": len(text),
+                         "wordCount": len(words) if words is not None else len(asset.words)},
+            )
+
     def append_ai_review(
         self,
         project_id: str,
@@ -237,6 +322,8 @@ class FileMediaLibrary:
         asset_id: str,
         item: dict,
         fallback_duration: float,
+        *,
+        preserve_user_text: bool = False,
     ) -> ProjectMediaAsset:
         text = str(item.get("text", ""))
         words = list(item.get("words", []))
@@ -251,6 +338,18 @@ class FileMediaLibrary:
             ):
                 revisions.append(MediaRevision(source="stt", text=text))
             duration = float(item.get("duration") or fallback_duration)
+            if preserve_user_text and any(
+                revision.source == "user" and revision.text == asset.text
+                for revision in reversed(asset.revisions)
+            ):
+                return self._update_asset(
+                    project_id, asset_id,
+                    {"duration": duration, "revisions": revisions,
+                     "transcription_status": "reviewing", "transcription_progress": 99.9,
+                     "transcription_error": None},
+                    event="STT_COMPLETED",
+                    details={"wordCount": len(words), "preservedUserText": True},
+                )
             annotated = self._carry_word_annotations(previous_words, words)
             inspection = reconcile_word_timing_quality(
                 str(item.get("word_timing_quality", "unverified")),
@@ -398,6 +497,41 @@ class FileMediaLibrary:
                 },
             )
 
+    def update_timeline_cuts_many(
+        self,
+        project_id: str,
+        asset_ids: list[str],
+        removed_ranges: list[TimelineEditRange],
+    ) -> list[ProjectMediaAsset]:
+        """Write one shared cut list for an OBS recording's source stems."""
+        if len(asset_ids) != len(set(asset_ids)):
+            raise ValueError("Danh sách channel có asset trùng lặp.")
+        ordered = sorted(removed_ranges, key=lambda item: (item.start, item.end))
+        previous_end = -1.0
+        for item in ordered:
+            if item.end <= item.start or item.start < previous_end:
+                raise ValueError("Các đoạn cắt Timeline phải hợp lệ và không chồng nhau.")
+            previous_end = item.end
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            selected = {asset.id: asset for asset in assets if asset.id in asset_ids}
+            if len(selected) != len(asset_ids):
+                raise KeyError(next(asset_id for asset_id in asset_ids if asset_id not in selected))
+            updated_at = datetime.now(timezone.utc)
+            updated = {
+                asset_id: selected[asset_id].model_copy(update={
+                    "removed_ranges": ordered, "updated_at": updated_at,
+                }) for asset_id in asset_ids
+            }
+            self._store.write_index(root, project_id, [updated.get(asset.id, asset) for asset in assets])
+            self._append_activity(project_id, "OBS_TIMELINE_CUTS_CHANGED", updated[asset_ids[0]], {
+                "assetIds": asset_ids, "removedRangeCount": len(ordered),
+            })
+            return [updated[asset_id].model_copy(update={
+                "words": self._store.read_words(root, project_id, asset_id),
+            }) for asset_id in asset_ids]
+
     def update_annotations(
         self,
         project_id: str,
@@ -468,6 +602,22 @@ class FileMediaLibrary:
             "TRAINING_SELECTION_CHANGED", "Voice Training",
         )
 
+    def set_import_selected(
+        self, project_id: str, asset_id: str, selected: bool
+    ) -> ProjectMediaAsset:
+        return self._set_boolean(
+            project_id, asset_id, "import_selected", selected,
+            "IMPORT_SELECTION_CHANGED", "Import",
+        )
+
+    def set_diarization_selected(
+        self, project_id: str, asset_id: str, selected: bool
+    ) -> ProjectMediaAsset:
+        return self._set_boolean(
+            project_id, asset_id, "diarization_selected", selected,
+            "DIARIZATION_SELECTION_CHANGED", "Speaker Diarization",
+        )
+
     def set_transcription_selected(
         self, project_id: str, asset_id: str, selected: bool
     ) -> ProjectMediaAsset:
@@ -480,6 +630,7 @@ class FileMediaLibrary:
         updates: dict[str, Any] = {"disabled": disabled}
         if disabled:
             updates["transcription_selected"] = False
+            updates["diarization_selected"] = False
             updates["training_selected"] = False
         return self._update_asset(project_id, asset_id, updates, event="MEDIA_DISABLED" if disabled else "MEDIA_ENABLED")
 
@@ -492,24 +643,42 @@ class FileMediaLibrary:
         work queue, though - transcribing something the user has thrown away
         would burn GPU time on a mistake.
         """
-        return self._update_asset(
-            project_id,
-            asset_id,
-            {
-                "deleted_at": datetime.now(timezone.utc),
-                "transcription_selected": False,
-                "training_selected": False,
-            },
-            event="MEDIA_RECYCLED",
-        )
+        return self._set_recycled(project_id, asset_id, datetime.now(timezone.utc))
 
     def restore_from_recycle_bin(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
-        return self._update_asset(
-            project_id,
-            asset_id,
-            {"deleted_at": None},
-            event="MEDIA_RESTORED",
-        )
+        return self._set_recycled(project_id, asset_id, None)
+
+    def _set_recycled(self, project_id: str, asset_id: str,
+                      deleted_at: datetime | None) -> ProjectMediaAsset:
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            parent = next((item for item in assets if item.id == asset_id), None)
+            if parent is None:
+                raise KeyError(asset_id)
+            group = any(item.source_archive_asset_id == asset_id for item in assets)
+            now = datetime.now(timezone.utc)
+            updated_parent = None
+            for index, asset in enumerate(assets):
+                if asset.id != asset_id and not (group and asset.source_archive_asset_id == asset_id):
+                    continue
+                updates: dict[str, Any] = {"deleted_at": deleted_at, "updated_at": now}
+                if deleted_at:
+                    updates.update(transcription_selected=False, diarization_selected=False,
+                                   training_selected=False)
+                updated = asset.model_copy(update=updates)
+                assets[index] = updated
+                if asset.id == asset_id:
+                    updated_parent = updated
+            self._store.write_index(root, project_id, assets)
+            self.activity.append(
+                self.projects.get(project_id).project_path,
+                "MEDIA_RECYCLED" if deleted_at else "MEDIA_RESTORED",
+                parent.name, {},
+            )
+            return updated_parent.model_copy(update={
+                "words": self._store.read_words(root, project_id, asset_id),
+            })
 
     def remove(self, project_id: str, asset_id: str) -> None:
         with self._lock(project_id):
@@ -519,18 +688,28 @@ class FileMediaLibrary:
             if not asset:
                 raise KeyError(asset_id)
             project_root = Path(self.projects.get(project_id).project_path).resolve()
-            source = self._resolved_project_path(project_root, asset.source_path)
-            asset_dir = source.parent
+            targets = [asset, *(item for item in assets
+                                if item.source_archive_asset_id == asset_id)]
             media_root = (project_root / "assets" / "media").resolve()
-            if asset_dir == media_root or media_root not in asset_dir.parents:
-                raise ValueError("Media asset folder escapes its project folder.")
-            if asset_dir.exists():
-                shutil.rmtree(asset_dir)
-            self._job_snapshot_path(project_id, "transcription", asset_id).unlink(missing_ok=True)
-            self._job_snapshot_path(project_id, "diarization", asset_id).unlink(missing_ok=True)
-            self._store.forget(project_id, asset_id)
+            obs_root = (project_root / "assets" / "obs-livelink").resolve()
+            folders = []
+            for target in targets:
+                source = self._resolved_project_path(project_root, target.source_path)
+                folder = source.parent
+                allowed_root = obs_root if target.id == asset_id and asset.obs_recording_id and asset.source_extension == ".mka" else media_root
+                if folder == allowed_root or allowed_root not in folder.parents:
+                    raise ValueError("Media asset folder escapes its project folder.")
+                folders.append(folder)
+            for folder in set(folders):
+                if folder.exists():
+                    shutil.rmtree(folder)
+            for target in targets:
+                self._job_snapshot_path(project_id, "transcription", target.id).unlink(missing_ok=True)
+                self._job_snapshot_path(project_id, "diarization", target.id).unlink(missing_ok=True)
+                self._store.forget(project_id, target.id)
+            removed_ids = {target.id for target in targets}
             self._store.write_index(
-                root, project_id, [item for item in assets if item.id != asset_id]
+                root, project_id, [item for item in assets if item.id not in removed_ids]
             )
             self._append_activity(project_id, "MEDIA_REMOVED", asset, {"assetId": asset.id})
 
@@ -660,6 +839,39 @@ class FileMediaLibrary:
         root = self._project_root(project_id)
         stored = self._store.read_index(root, project_id)
         normalized = [self._normalize_asset(project_id, root, asset) for asset in stored]
+        # Old LiveLink indexes dropped these fields because the model did not
+        # declare them. Recover the parent/track relation from the project-owned
+        # recording journal once, then persist it in the portable media index.
+        by_id = {asset.id: index for index, asset in enumerate(normalized)}
+        for index, asset in enumerate(normalized):
+            if asset.source_extension != ".mka" or asset.obs_recording_id:
+                continue
+            parts = Path(asset.source_path).parts
+            if len(parts) != 4 or parts[0:2] != ("assets", "obs-livelink") or parts[3] != "source.mka":
+                continue
+            journal = root / "assets" / "obs-livelink" / parts[2] / "recording.json"
+            if not journal.is_file():
+                continue
+            try:
+                payload = json.loads(journal.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            archive = payload.get("recording", {}).get("sourceArchive") or {}
+            if archive.get("parentAssetId") != asset.id:
+                continue
+            normalized[index] = asset.model_copy(update={"obs_recording_id": parts[2]})
+            for stem in payload.get("sourceStems", []):
+                child_index = by_id.get(stem.get("assetId"))
+                if child_index is None:
+                    continue
+                child = normalized[child_index]
+                normalized[child_index] = child.model_copy(update={
+                    "obs_recording_id": parts[2],
+                    "source_archive_asset_id": asset.id,
+                    "source_archive_stream_index": stem.get("streamIndex"),
+                    "source_archive_track_uid": stem.get("trackUid"),
+                    "deleted_at": asset.deleted_at,
+                })
         if normalized != stored:
             # Legacy absolute paths are rewritten once, not on every read.
             self._store.write_index(root, project_id, normalized)

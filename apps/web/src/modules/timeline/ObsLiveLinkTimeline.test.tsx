@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform } from "../../domain/types";
+import type { ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ProjectMediaAsset } from "../../domain/types";
 import { ObsLiveLinkTimeline } from "./ObsLiveLinkTimeline";
 
 const mocks = vi.hoisted(() => ({
@@ -65,6 +65,24 @@ const captionRow = (channelId: string, startSeconds: number, text: string,
   timingTrust: "segment", lagSeconds: 0.1, error: null,
 });
 
+it("names each OBS recording with its local start time and project name", async () => {
+  const firstStart = new Date(2026, 8, 29, 11, 22, 27).toISOString();
+  const secondStart = new Date(2026, 8, 29, 11, 25, 4).toISOString();
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([
+    { recording: { ...recording, status: "stopped", recordingId: "recording",
+      startedAtUtc: firstStart, endedMonotonicNs: 2_000_000_000 }, channels: [], sourceStems: [] },
+    { recording: { ...recording, status: "stopped", recordingId: "recording-2",
+      startedAtUtc: secondStart, endedMonotonicNs: 2_000_000_000 }, channels: [], sourceStems: [] },
+  ]);
+  render(<ObsLiveLinkTimeline projectId="project" projectName="Test OBS 2"
+    requestedRecordingId="recording" />);
+  const selector = await screen.findByRole("combobox", { name: "Bản ghi OBS" });
+  await waitFor(() => expect(screen.getByRole("option", { name: "2026-09-29_11-22-27_Test-OBS-2_LIV_recordin" })).toBeInTheDocument());
+  expect(screen.getByRole("option", { name: "2026-09-29_11-25-04_Test-OBS-2_LIV_recordin" })).toBeInTheDocument();
+  expect(selector).toHaveValue("recording");
+  expect(selector).toHaveAttribute("title", "2026-09-29_11-22-27_Test-OBS-2_LIV_recordin");
+});
+
 it("shows a draft caption per live lane, including a new listening row for B", async () => {
   const a = captionRow(ids[0], 0.5, "A đang nói");
   const b = captionRow(ids[1], 1, "", "listening");
@@ -92,6 +110,58 @@ it("shows a draft caption per live lane, including a new listening row for B", a
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveTextContent("Chưa có lời nói");
 });
 
+it("keeps each full channel timeline in both layouts and resizes columns independently", async () => {
+  const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  act(() => onStatus({ appRecording: recording, channels: ids.map((channelId, index) => ({
+    channelId, alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`,
+    slot: index + 1, appliedForward: true, desiredForward: true,
+    capture: { recordingId: "recording", projectId: "project", durableChunkCount: 1 },
+  })) } as unknown as ObsLiveLinkStatus));
+  const firstWave = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const firstLane = firstWave.closest(".obs-timeline__lane") as HTMLElement;
+  expect(firstLane).toContainElement(screen.getByLabelText("Phụ đề nháp Channel 1"));
+  expect(firstLane).toContainElement(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" }));
+  expect(firstLane).toContainElement(screen.getByRole("meter", { name: "Level nguồn Channel 1" }));
+  expect(firstLane.parentElement).toHaveClass("is-layers");
+  expect(firstLane.querySelectorAll(".obs-timeline__lane-label b")).toHaveLength(1);
+  expect(firstLane.querySelector(".obs-timeline__lane-label b")).toHaveTextContent("Track 1 - Mic 1");
+  expect(firstLane.querySelector(".obs-timeline__lane-label small")).toBeNull();
+  expect(firstLane.parentElement).toHaveStyle({ "--obs-layer-height": "110px" });
+  expect(screen.getByText("BẢN GHI")).toHaveAttribute("title", expect.stringContaining("một footage"));
+  const header = container.querySelector(".module-frame__header") as HTMLElement;
+  const layoutControls = screen.getByRole("group", { name: "Kiểu hiển thị Timeline OBS" });
+  expect(header).toContainElement(layoutControls);
+  expect(layoutControls.compareDocumentPosition(screen.getByRole("button", { name: "MARK IN" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Zoom Timeline OBS" })).toHaveClass("timeline-zoom");
+  expect(container.querySelector(".transport-bar .transport-button")).toBeInTheDocument();
+  expect(container.querySelector(".obs-timeline__toolbar")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
+  const firstWidth = screen.getByRole("separator", { name: "Điều chỉnh độ rộng Timeline Channel 1" });
+  expect(firstLane.querySelector(".obs-timeline__lane-label")).toHaveTextContent("Track 1 - Mic 1");
+  expect(firstLane.parentElement).toHaveClass("is-columns");
+  expect(firstLane.style.flexBasis).toBe("");
+  expect(screen.queryByRole("slider", { name: "Độ rộng Timeline Channel 1" })).toBeNull();
+  vi.spyOn(firstLane, "getBoundingClientRect").mockReturnValue({ width: 400 } as DOMRect);
+  fireEvent.pointerDown(firstWidth, { pointerId: 1, clientX: 400 });
+  fireEvent.pointerMove(firstWidth, { pointerId: 1, clientX: 520 });
+  fireEvent.pointerUp(firstWidth, { pointerId: 1, clientX: 520 });
+  expect(firstLane).toHaveStyle({ flexBasis: "520px" });
+  fireEvent.keyDown(firstWidth, { key: "ArrowRight" });
+  expect(firstLane).toHaveStyle({ flexBasis: "544px" });
+  fireEvent.keyDown(firstWidth, { key: "Home" });
+  expect(firstLane).toHaveStyle({ flexBasis: "240px" });
+  fireEvent.keyDown(firstWidth, { key: "ArrowLeft" });
+  expect(firstLane).toHaveStyle({ flexBasis: "240px" });
+  expect((screen.getByRole("img", { name: "Sóng âm Channel 2" }).closest(".obs-timeline__lane") as HTMLElement).style.flexBasis).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "LAYER" }));
+  fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
+  expect(firstLane).toHaveStyle({ flexBasis: "240px" });
+  expect(firstLane).toContainElement(screen.getByLabelText("Phụ đề nháp Channel 1"));
+  expect(firstLane).toContainElement(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" }));
+  expect(firstLane).toContainElement(screen.getByRole("meter", { name: "Level nguồn Channel 1" }));
+});
+
 it("seeks a Script row to its own archived source and recording time", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
     recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 8_000_000_000 },
@@ -108,13 +178,25 @@ it("seeks a Script row to its own archived source and recording time", async () 
   view.rerender(<ObsLiveLinkTimeline onRecordingIdChange={onRecordingIdChange}
     projectId="project" requestedRecordingId="recording" transcriptRows={rows}
     seekRequest={{ recordingId: "recording", channelId: ids[1], seconds: 3, serial: 1 }} />);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"), { timeout: 2500 });
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveTextContent("B");
-  expect(screen.getByText("00:03")).toBeInTheDocument();
+  expect(screen.getByText("00:00:03.000")).toBeInTheDocument();
   expect(screen.getByLabelText("Lượt nói Channel 2 tại 3.00s")).toBeInTheDocument();
 });
 
-it("places overlap markers on both archived stems and clears red after A stops", async () => {
+it("hides an archived OBS channel withdrawn by its Import checkbox", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 8_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`, relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })),
+    sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`, alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
+  }]);
+  const assets = [{ id: "asset-0", importSelected: false }, { id: "asset-1", importSelected: true }] as ProjectMediaAsset[];
+  render(<ObsLiveLinkTimeline assets={assets} projectId="project" requestedRecordingId="recording" />);
+  await screen.findByLabelText("Sóng âm Channel 2");
+  expect(screen.queryByLabelText("Sóng âm Channel 1")).not.toBeInTheDocument();
+});
+
+it("shows compact, passive overlap marks and seeks without starting playback", async () => {
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
@@ -127,25 +209,24 @@ it("places overlap markers on both archived stems and clears red after A stops",
   const a = { ...captionRow(ids[0], 1, "A nói"), endSeconds: 5, lastSampleIndexExclusive: 5 * 48000 };
   const b = { ...captionRow(ids[1], 2, "B nói tiếp"), endSeconds: 7, lastSampleIndexExclusive: 7 * 48000 };
   const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" transcriptRows={[a, b]} />);
-  const marker = await screen.findByRole("button", { name: "Nghe lại chồng tiếng Channel 2 từ 00:02.00 đến 00:05.00" });
-  expect(screen.getByRole("button", { name: "Nghe lại chồng tiếng Channel 1 từ 00:02.00 đến 00:05.00" })).toBeInTheDocument();
-  fireEvent.click(marker);
-  expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true");
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i")).toHaveLength(2);
+  const wave = screen.getByRole("img", { name: "Sóng âm Channel 2" });
+  vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.pointerDown(wave, { pointerId: 1, clientX: 20 });
+  fireEvent.pointerMove(wave, { pointerId: 1, clientX: 40 });
+  fireEvent.pointerUp(wave, { pointerId: 1, clientX: 40 });
+  expect(play).not.toHaveBeenCalled();
   const audio = view.container.querySelector("audio") as HTMLAudioElement;
-  expect(audio.src).toContain("asset-1/audio");
-  Object.defineProperty(audio, "readyState", { configurable: true, value: HTMLMediaElement.HAVE_METADATA });
-  fireEvent.loadedMetadata(audio);
-  await waitFor(() => expect(play).toHaveBeenCalled());
-  expect(audio.currentTime).toBe(2);
   expect(screen.getByLabelText("Phụ đề nháp Channel 1")).toHaveClass("is-overlap");
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveClass("is-overlap");
   audio.currentTime = 5;
   fireEvent.timeUpdate(audio);
-  expect(pause).toHaveBeenCalled();
+  expect(pause).not.toHaveBeenCalled();
   expect(audio.currentTime).toBe(5);
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).not.toHaveClass("is-overlap");
   fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
-  expect(screen.getByRole("button", { name: "Nghe lại chồng tiếng Channel 2 từ 00:02.00 đến 00:05.00" })).toBeInTheDocument();
+  expect(view.container.querySelectorAll(".obs-timeline__overlap-markers i")).toHaveLength(2);
   view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
     transcriptRows={[a, b]} seekRequest={{ recordingId: "recording", channelId: ids[1], seconds: 5, serial: 1 }} />);
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).not.toHaveClass("is-overlap");
@@ -175,7 +256,7 @@ it("draws separate live source paths under one ruler and playhead", async () => 
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
   const onSnapshot = mocks.subscribe.mock.calls[0]?.[2] as (next: ObsLiveLinkWaveform) => void;
-  const live = { appRecording: recording, channels: ids.map((channelId, index) => ({
+  const live = { appRecording: { ...recording, startedAtUtc: new Date(Date.now() - 5_000).toISOString() }, channels: ids.map((channelId, index) => ({
     channelId, alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`, slot: index + 1,
     appliedForward: true, desiredForward: true,
     capture: { recordingId: "recording", projectId: "project", durableChunkCount: 1, lastDurableSequence: 0 },
@@ -193,6 +274,13 @@ it("draws separate live source paths under one ruler and playhead", async () => 
   expect(screen.getAllByLabelText("Ruler chung")).toHaveLength(1);
   expect(screen.getAllByLabelText("Playhead chung")).toHaveLength(1);
   expect(screen.getAllByLabelText("Channel 1: app-paused")).toHaveLength(1);
+  expect(screen.queryByLabelText("Channel 1: thiếu PCM")).not.toBeInTheDocument();
+  expect(screen.getAllByText(/Đang nhận PCM · trễ/)).toHaveLength(2);
+  act(() => onSnapshot({ ...wave(ids[0], 12000, "pcm"), points: [
+    ...wave(ids[0], 12000, "pcm").points,
+    { startFrame: 4800, endFrame: 7200, firstSampleIndex: 4800, lastSampleIndexExclusive: 7200,
+      min: -2000, max: 2000, peak: 2000 },
+  ] }));
   expect(screen.getByLabelText("Channel 1: thiếu PCM")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Phát track OBS" })).toBeDisabled();
 });
@@ -214,7 +302,7 @@ it("reopens a stopped MKA recording with source-owned playback and seek", async 
   }]);
   const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   await screen.findByRole("img", { name: "Sóng âm Channel 2" });
-  expect(screen.getByText("Mic 1")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Nghe kênh Channel 1" })).toHaveTextContent("Track 1 - Mic 1");
   await waitFor(() => expect(mocks.getObsLiveLinkWaveform).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.getByRole("img", { name: "Sóng âm Channel 1" }).querySelector("path")?.getAttribute("d")).toBeTruthy());
   expect(container.querySelector("audio")?.getAttribute("src")).toContain("asset-0/audio");
@@ -224,7 +312,7 @@ it("reopens a stopped MKA recording with source-owned playback and seek", async 
   const lane = screen.getByRole("img", { name: "Sóng âm Channel 2" });
   vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
   fireEvent.click(lane, { clientX: 30 });
-  expect(screen.getByText("00:03")).toBeInTheDocument();
+  expect(screen.getByText("00:00:03.000")).toBeInTheDocument();
   fireEvent.loadedMetadata(container.querySelector("audio") as HTMLAudioElement);
   expect((container.querySelector("audio") as HTMLAudioElement).currentTime).toBe(3);
   expect(screen.getByLabelText("Channel 1: transport-gap")).toBeInTheDocument();
@@ -246,7 +334,7 @@ it("clamps the shared playhead to the archive duration after live capture stops"
   await waitFor(() => expect(screen.getByText("REC LIVE")).toBeInTheDocument());
   act(() => onStatus({ appRecording: null, channels: [] } as unknown as ObsLiveLinkStatus));
   await waitFor(() => expect(screen.getByText("MKA READY")).toBeInTheDocument());
-  expect(screen.getAllByText("00:01")).toHaveLength(2);
+  expect(screen.getAllByText("00:00:01.000")).toHaveLength(2);
 });
 
 it.each([1, 2, 5, 20])("keeps %i live channels reachable in both layouts", async (count) => {
@@ -288,23 +376,78 @@ it("keeps archive seek and each preview gain across layout and zoom changes", as
   const lane = screen.getByRole("img", { name: "Sóng âm Channel 1" });
   vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
   fireEvent.click(lane, { clientX: 30 });
-  expect(screen.getByText("00:12")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "CỘT" }).compareDocumentPosition(
-    screen.getByRole("button", { name: "MARK IN" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText("00:00:12.000")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "MARK IN" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "MARK IN" }));
   fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
   expect(screen.getByLabelText("Mark In Channel 1")).toBeInTheDocument();
   expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" })).toHaveValue("42");
-  expect(screen.getByText("00:12")).toBeInTheDocument();
+  expect(screen.getByText("00:00:12.000")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
   expect(screen.getByText("30s")).toBeInTheDocument();
-  expect(screen.getByText("00:12")).toBeInTheDocument();
+  expect(screen.getByText("00:00:12.000")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "LAYER" }));
   expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" })).toHaveValue("42");
   fireEvent.click(screen.getByRole("button", { name: "Nghe kênh Channel 2" }));
   expect((container.querySelector("audio") as HTMLAudioElement).volume).toBe(1);
   fireEvent.click(screen.getByRole("button", { name: "Nghe kênh Channel 1" }));
   expect((container.querySelector("audio") as HTMLAudioElement).volume).toBeCloseTo(.42);
+});
+
+it("marks and cuts one shared time range across every archived channel", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
+      relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })),
+    sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`,
+      alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
+  }]);
+  const onCutsChange = vi.fn();
+  const assets = ids.map((_, index) => ({ id: `asset-${index}`, removedRanges: [] })) as unknown as ProjectMediaAsset[];
+  const view = render(<ObsLiveLinkTimeline assets={assets} onCutsChange={onCutsChange} projectId="project" requestedRecordingId="recording" />);
+  const waveA = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const waveB = screen.getByRole("img", { name: "Sóng âm Channel 2" });
+  vi.spyOn(waveA, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  vi.spyOn(waveB, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(waveA, { clientX: 25 });
+  fireEvent.click(screen.getByRole("button", { name: "MARK IN" }));
+  fireEvent.click(waveB, { clientX: 50 });
+  expect((view.container.querySelector("audio") as HTMLAudioElement).src).toContain("asset-0/audio");
+  fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
+  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "50%" });
+  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "50%" });
+  const rulerB = screen.getByLabelText("Ruler Channel 2");
+  vi.spyOn(rulerB, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(rulerB, { clientX: 75 });
+  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "75%" });
+  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "75%" });
+  const transport = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(transport, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(transport, { clientX: 25 });
+  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "25%" });
+  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "25%" });
+  fireEvent.click(waveB, { clientX: 50 });
+  fireEvent.click(screen.getByRole("button", { name: "MARK OUT" }));
+  expect(screen.getAllByLabelText(/^Mark In Channel/)).toHaveLength(2);
+  expect(screen.getAllByLabelText(/^Mark Out Channel/)).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "CUT" }));
+  expect(screen.getAllByLabelText(/^Đoạn chuẩn bị xóa Channel/)).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "DELETE" }));
+  expect(onCutsChange).toHaveBeenCalledWith(["asset-0", "asset-1"], [expect.objectContaining({ start: 10, end: 20 })]);
+  await waitFor(() => expect(screen.queryByLabelText("Đoạn chuẩn bị xóa Channel 1")).not.toBeInTheDocument());
+  const cut = onCutsChange.mock.calls[0][1][0];
+  view.rerender(<ObsLiveLinkTimeline assets={assets.map((asset) => ({ ...asset, removedRanges: [cut] }))}
+    onCutsChange={onCutsChange} projectId="project" requestedRecordingId="recording" />);
+  expect(screen.getAllByLabelText(/^Đoạn đã loại Channel/)).toHaveLength(2);
+  onCutsChange.mockResolvedValueOnce(false);
+  fireEvent.click(screen.getByRole("button", { name: "RESET" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "RESET" })).toBeEnabled());
+  expect(screen.getAllByLabelText(/^Đoạn đã loại Channel/)).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "UNCUT" }));
+  expect(onCutsChange).toHaveBeenLastCalledWith(["asset-0", "asset-1"], []);
+  view.rerender(<ObsLiveLinkTimeline assets={assets} visibleAssetId="asset-0" onCutsChange={onCutsChange}
+    projectId="project" requestedRecordingId="recording" />);
+  expect(screen.getAllByRole("img", { name: /Sóng âm Channel/ })).toHaveLength(1);
 });
 
 it("shows the actual visible time span for a short archive", async () => {
@@ -348,4 +491,80 @@ it("boosts only preview playback through a channel-scoped Web Audio gain node", 
   expect(source.disconnect).toHaveBeenCalled();
   expect(graph.close).toHaveBeenCalled();
   expect(container.querySelector("audio")?.getAttribute("src")).toContain("asset-1/audio");
+});
+
+it("plays both archived tracks and mutes one without changing its gain", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
+      relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })),
+    sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`,
+      alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
+  }]);
+  const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  const audios = [...container.querySelectorAll("audio")];
+  expect(audios).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 2" }));
+  expect(audios[1].volume).toBe(0);
+  fireEvent.click(screen.getByRole("button", { name: "Phát track OBS" }));
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+  expect(audios[0].volume).toBe(1);
+  expect(audios[1].volume).toBe(0);
+});
+
+it("uses Space to toggle playback only while the pointer is over Timeline", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 10_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  fireEvent.keyDown(window, { key: " " });
+  expect(play).not.toHaveBeenCalled();
+  const module = view.container.querySelector(".obs-timeline")!;
+  fireEvent.pointerEnter(module);
+  fireEvent.keyDown(window, { key: " " });
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+  fireEvent.keyDown(window, { key: " " });
+  expect(pause).toHaveBeenCalled();
+  fireEvent.pointerLeave(module);
+  fireEvent.keyDown(window, { key: " " });
+  expect(play).toHaveBeenCalledTimes(1);
+});
+
+it("can zoom out to the entire archived recording", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 901_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
+  expect(screen.getByText("900s")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" })).toBeDisabled();
+});
+
+it("does not seek back to zero after dragging a waveform", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const wave = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.pointerDown(wave, { pointerId: 1, clientX: 20 });
+  fireEvent.pointerMove(wave, { pointerId: 1, clientX: 60 });
+  fireEvent.pointerUp(wave, { pointerId: 1, clientX: 60 });
+  fireEvent.click(wave, { clientX: 0 });
+  expect(screen.getByText("00:00:24.000")).toBeInTheDocument();
 });

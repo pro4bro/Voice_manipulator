@@ -24,6 +24,7 @@ function orderedDiarizationLabels(words: StudioWord[]) {
 
 export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: SpeakerIsolationProps) {
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const [showRunNotice, setShowRunNotice] = useState(false);
   const status = asset?.diarizationStatus ?? "idle";
   const isBusy = status === "queued" || status === "processing";
   const diarizedWords = asset?.words ?? words;
@@ -69,7 +70,11 @@ export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: Sp
         {!labels.length ? <p>{speakers.length ? "Chạy Nhận diện Speaker để tạo các nhãn Speaker 1, Speaker 2… rồi map từng nhãn vào Profile." : "Chưa có Speaker Profile hoặc nhãn diarization. Tạo Profile trong Sound Library rồi chạy Nhận diện Speaker."}</p> : null}
       </div>
       {diarizedWords.length ? <p className="speaker-isolation-empty">Mapping ở đây là mặc định ban đầu cho cả nhãn máy. Bật BẢNG SCRIPT để đổi một row hoặc kéo từng word sang row khác; timestamp subtitle không đổi.</p> : null}
-      <button className="button button--quiet button--full" disabled={!asset || isBusy} onClick={onRun} type="button">{isBusy ? "Đang nhận diện speaker..." : "Nhận diện Speaker"}</button>
+      <button className="button button--quiet button--full" disabled={!asset || isBusy} onClick={() => setShowRunNotice(true)} type="button">{isBusy ? "Đang nhận diện speaker..." : "Nhận diện Speaker"}</button>
+      {showRunNotice ? <div aria-label="Lưu ý Speaker Diarization" className="speaker-isolation-run-notice" role="alertdialog">
+        <p>Speaker Diarization chỉ hữu ích khi footage hoặc track có nhiều người cùng nói. Với một người nói, bước này dùng thêm tài nguyên mà không cần thiết. Chạy cho tất cả mục đã tick DIA?</p>
+        <div><button onClick={() => setShowRunNotice(false)} type="button">Hủy</button><button onClick={() => { setShowRunNotice(false); onRun(); }} type="button">Chạy Speaker Diarization</button></div>
+      </div> : null}
     </ModuleFrame>
   );
 }

@@ -19,6 +19,7 @@ from app.domain.obs_livelink_state import (
     apply_app_action, apply_channel_ack, apply_obs_event,
 )
 from app.domain.ports import ProjectRepository
+from app.domain.recording_name import recording_name
 
 
 class ObsLiveLinkRuntime:
@@ -159,6 +160,41 @@ class ObsLiveLinkRuntime:
             raise LiveLinkError("OBS LiveLink is not initialized.")
         return self._state
 
+    def recover_recording(self, authorization: str, *, install_id: str,
+                          connection_id: str, epoch: str, recording_id: str) -> dict:
+        """Reattach a stopped project journal when OBS restarts with PCM in its outbox."""
+        self.connection.require_connection(authorization, install_id, connection_id, epoch)
+        try:
+            UUID(recording_id)
+        except ValueError as exc:
+            raise LiveLinkError("Invalid OBS recording ID.", 422) from exc
+        with self._lock:
+            state = self._require_state()
+            if state.install_id != install_id:
+                raise LiveLinkError("OBS installation does not own this recording.", 403)
+            matches = []
+            for project in self.projects.list():
+                path = Path(project.project_path).resolve() / "assets" / "obs-livelink" / recording_id / "recording.json"
+                try:
+                    recorded = ObsCaptureRecording.model_validate(
+                        json.loads(path.read_text(encoding="utf-8"))["recording"])
+                except (OSError, ValueError, KeyError):
+                    continue
+                if (recorded.recording_id == recording_id and recorded.project_id == project.id and
+                        recorded.status == "stopped" and recorded.ended_monotonic_ns is not None):
+                    matches.append(recorded)
+            if len(matches) != 1:
+                raise LiveLinkError("Stopped OBS recording journal is missing or ambiguous.", 404 if not matches else 409)
+            recorded = matches[0]
+            previous = [item for item in state.completed_recordings if item.recording_id != recording_id]
+            recent_ids = {item.recording_id for item in previous[-4:]}
+            retained = [item for item in previous if item.archive_status == "pending" or
+                        item.recording_id in recent_ids]
+            self._state = state.model_copy(update={"completed_recordings": [*retained, recorded]})
+            self._persist()
+            return {"recordingId": recording_id, "endedMonotonicNs": recorded.ended_monotonic_ns,
+                    "archiveStatus": recorded.archive_status, "projectId": recorded.project_id}
+
     def sync(self, payload: dict, snapshot: dict, *, for_obs: bool = False) -> dict:
         install_id = payload["installId"]
         process_id = payload.get("processInstanceId")
@@ -178,8 +214,6 @@ class ObsLiveLinkRuntime:
             if self._state is None:
                 try:
                     loaded = ObsLiveLinkState.model_validate_json(self._state_path(install_id).read_bytes())
-                    if process_id and loaded.process_instance_id != process_id:
-                        loaded = None
                 except (OSError, ValueError):
                     loaded = None
                 self._state = loaded
@@ -199,9 +233,19 @@ class ObsLiveLinkRuntime:
                         refreshed.append(item)
                     self._state = loaded.model_copy(update={"completed_recordings": refreshed})
             if self._state is None or (process_id and self._state.process_instance_id != process_id):
+                # A new OBS process must not erase stopped project recordings.
+                # Its connection/event cursor is new, while their durable PCM
+                # may still be replaying from the plugin's SQLite outbox.
+                completed = []
+                if self._state and self._state.install_id == install_id:
+                    previous = self._state.completed_recordings
+                    recent_ids = {item.recording_id for item in previous[-5:]}
+                    completed = [item for item in previous if item.archive_status == "pending" or
+                                 item.recording_id in recent_ids]
                 self._state = ObsLiveLinkState(
                     connection_id=snapshot["connectionId"], install_id=install_id,
                     process_instance_id=process_id or "unknown",
+                    completed_recordings=completed,
                 )
             project = snapshot["activeProject"]
             lease = None
@@ -259,10 +303,15 @@ class ObsLiveLinkRuntime:
             # OBS's obs_data JSON parser accepts signed 64-bit integers only.
             # Matroska TrackUID is uint64, so omit archive detail from plugin
             # heartbeat/hello snapshots; the app status and journal retain it.
+            completed = state.completed_recordings[-5:] if state else []
+            if state and for_obs:
+                recent_ids = {item.recording_id for item in completed}
+                completed = [item for item in state.completed_recordings if
+                             item.archive_status == "pending" or item.recording_id in recent_ids]
             snapshot["recentRecordings"] = [item.model_dump(
                 mode="json", by_alias=True,
                 exclude={"source_archive"} if for_obs else None,
-            ) for item in state.completed_recordings[-5:]] if state else []
+            ) for item in completed]
             snapshot["videoSpans"] = [span.model_dump(mode="json", by_alias=True) for span in state.spans] if state else []
             snapshot["lastTransitionMonotonicNs"] = state.last_transition_monotonic_ns if state else -1
             snapshot["triggerPolicy"] = self._policy.model_dump(mode="json", by_alias=True)
@@ -418,6 +467,17 @@ class ObsLiveLinkRuntime:
 
     def _persist(self) -> None:
         state = self._require_state()
+        def named(recording: ObsCaptureRecording) -> ObsCaptureRecording:
+            if recording.display_name:
+                return recording
+            return recording.model_copy(update={"display_name": recording_name(
+                recording.started_at_utc, self.projects.get(recording.project_id).name,
+                "LIV", recording.recording_id)})
+        state = state.model_copy(update={
+            "recording": named(state.recording) if state.recording else None,
+            "completed_recordings": [named(item) for item in state.completed_recordings],
+        })
+        self._state = state
         self._write(self._state_path(state.install_id),
                     state.model_dump_json(by_alias=True, indent=2).encode())
         records = [*state.completed_recordings]

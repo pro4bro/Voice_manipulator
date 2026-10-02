@@ -23,6 +23,23 @@ machines, re-pair the project so the plugin updates the machine-local file path.
 
 The plugin can begin while the app is unavailable. It retains a bounded in-memory backlog, reports overflow as a sequence gap, and resumes the same source session when the local API returns.
 
+The v3 LiveLink capture path keeps 10 seconds of idle preroll and up to 120
+seconds per source in memory while recording, within a 512 MiB connection
+limit. Its worker moves PCM to a machine-local SQLite outbox at
+`%APPDATA%\obs-studio\plugin_config\pro4bro-obs-bridge\livelink-pcm-spool.sqlite3`
+before upload. The database uses WAL and `synchronous=FULL`; a chunk is removed
+only after the API accepts it. On OBS restart, stopped project recordings are
+reattached from their project journals, pending PCM is trimmed at the Stop
+boundary, replayed, and then archived. An invalid chunk remains on disk for
+diagnosis. Callback mutex contention waits instead of discarding PCM and
+sample-index jumps are exposed between chunks. The in-memory bound still
+applies if local SQLite cannot keep up or its disk is full; overflow is logged.
+
+An OBS MKV may be probed and its committed audio decoded during recording, but
+its audio tracks are configured OBS mix tracks. They are not a guaranteed
+one-to-one source archive and cannot replace the per-source PCM outbox,
+especially when the app continues recording under Ignore Stop.
+
 The Tools > Pro4Bro Voice Manipulator LiveLink dialog connects through
 `livelink-install.json`, written per Windows user by the app installer. It
 shows connection, OBS recording and active-project status and can launch the local app. New

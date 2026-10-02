@@ -3,7 +3,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type C
 import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { usePlaybackWord } from "../../domain/playback-sync";
-import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
+import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceOutputExportMode, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/word-selection";
 import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
@@ -32,7 +32,7 @@ interface VoiceScriptProps {
   activityTasks?: ActivityTask[];
   busy?: boolean;
   onRead: () => void;
-  onExport?: (mode: "sentence" | "word" | "table") => void;
+  onExport?: (mode: VoiceOutputExportMode) => void;
   onOpenTraining?: () => void;
 }
 
@@ -469,6 +469,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   const orphanVoices = voices.filter((voice) => !speakers.some((speaker) => speaker.id === voice.speakerProfileId));
   const duration = freshOutput && output ? output.duration : estimatedSeconds(rows);
   const timingNote = output && freshOutput && output.wordTimingQuality && output.wordTimingQuality !== "source" ? output.wordTimingNote : null;
+  const hasTrustedWords = words.some((word) => word.timingTrusted !== false);
   const readLabel = busy
     ? job ? `Đang đọc ${Math.min(job.done + 1, job.total)}/${job.total}` : "Đang gửi…"
     : readiness.problem ?? (freshOutput ? "Đọc lại Script" : "Tạo voice");
@@ -542,7 +543,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     <div className="script-module__footer">
       <div className="script-stats"><span><b>{rows.filter((row) => normalizedRowText(row.text)).length}</b> đoạn</span><span><b>{usedVoices.size}</b> voice</span><span><b>{wordCount}</b> từ</span></div>
       <div className="script-actions">
-        {output && words.length && onExport ? <span className="script-export"><button aria-expanded={exportOpen} className="button button--quiet" onClick={() => setExportOpen((open) => !open)} type="button">EXPORT ▾</button>{exportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setExportOpen(false); onExport("sentence"); }} role="menuitem" type="button"><b>Theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button onClick={() => { setExportOpen(false); onExport("word"); }} role="menuitem" type="button"><b>Từng từ</b><small>Timestamp theo giọng đã tạo</small></button><button onClick={() => { setExportOpen(false); onExport("table"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}
+        {output && onExport ? <span className="script-export"><button aria-expanded={exportOpen} className="button button--quiet" onClick={() => setExportOpen((open) => !open)} type="button">EXPORT ▾</button>{exportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setExportOpen(false); onExport("audio"); }} role="menuitem" type="button"><b>Âm thanh WAV</b><small>File giọng đã tạo</small></button><button disabled={!output.segments?.length} onClick={() => { setExportOpen(false); onExport("line"); }} role="menuitem" title={!output.segments?.length ? "Output này chưa có mốc thời gian từng dòng Script" : undefined} type="button"><b>SRT từng dòng</b><small>Mỗi dòng Script một cue</small></button><button disabled={!hasTrustedWords} onClick={() => { setExportOpen(false); onExport("word"); }} role="menuitem" title={!hasTrustedWords ? "Chưa có thời gian từng từ đáng tin" : undefined} type="button"><b>SRT từng từ</b><small>Timestamp theo giọng đã tạo</small></button><button disabled={!hasTrustedWords} onClick={() => { setExportOpen(false); onExport("sentence"); }} role="menuitem" type="button"><b>SRT theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button disabled={!words.length} onClick={() => { setExportOpen(false); onExport("table"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}
         <button className="button button--quiet is-danger" disabled={busy || !rows.length} onClick={clearScript} type="button">Clear Script</button>
         <button aria-label="Tạo voice" className="button button--accent" disabled={busy || Boolean(readiness.problem)} onClick={onRead} type="button"><span><b>{readLabel}</b><small>{readiness.rows.length} đoạn · {usedVoices.size} voice · {CATEGORY_LABELS[category]}</small></span><Icon name="arrow" /></button>
       </div>

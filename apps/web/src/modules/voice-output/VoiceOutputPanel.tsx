@@ -1,7 +1,7 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
-import type { SpeakerProfile, VoiceOutput } from "../../domain/types";
+import type { SpeakerProfile, VoiceOutput, VoiceOutputExportMode } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 
@@ -10,6 +10,7 @@ interface VoiceOutputPanelProps {
   speakers: SpeakerProfile[];
   activeOutputId: string | null;
   onOpen: (output: VoiceOutput) => void;
+  onExport?: (output: VoiceOutput, mode: VoiceOutputExportMode) => void;
   onDelete: (output: VoiceOutput) => void;
   onDeleteMany?: (outputs: VoiceOutput[]) => void;
 }
@@ -23,9 +24,10 @@ function clock(seconds: number) {
  * Speech made in Voice Manipulator. Kept out of Media Pool on purpose: Media
  * Pool is source material for STT and training, this is what came out.
  */
-export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onDelete, onDeleteMany }: VoiceOutputPanelProps) {
+export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onExport, onDelete, onDeleteMany }: VoiceOutputPanelProps) {
   // Deleting removes the file for good, so it takes a second, deliberate click.
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const ids = outputs.map((output) => output.id);
   const selected = reconcileListSelection(selection, ids).ids;
@@ -61,11 +63,17 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
                   <small>{output.segments && output.segments.length > 1 ? `${output.segments.length} đoạn · ${output.voiceName}` : output.voiceName} · {clock(output.duration)} · {new Date(output.createdAt).toLocaleTimeString("vi-VN", { hour12: false })}</small>
                 </span>
               </button>
+              {onExport ? <button aria-expanded={exporting === output.id} aria-label={`Xuất ${output.name}`} className="voice-output-export" onClick={() => setExporting((current) => current === output.id ? null : output.id)} type="button">Xuất</button> : null}
               {confirming === output.id ? (
                 <button className="voice-output-delete is-confirming" onClick={() => { setConfirming(null); onDelete(output); }} onBlur={() => setConfirming(null)} type="button">Xoá hẳn?</button>
               ) : (
                 <button aria-label={`Xoá ${output.name}`} className="voice-output-delete" onClick={() => setConfirming(output.id)} type="button"><Icon name="trash" /></button>
               )}
+              {onExport && exporting === output.id ? <div aria-label={`Định dạng xuất ${output.name}`} className="voice-output-export-options" role="group">
+                <button onClick={() => { setExporting(null); onExport(output, "audio"); }} type="button">WAV</button>
+                <button disabled={!output.segments?.length} onClick={() => { setExporting(null); onExport(output, "line"); }} title={!output.segments?.length ? "Chưa có mốc thời gian từng dòng Script" : undefined} type="button">SRT dòng</button>
+                <button disabled={!output.words?.some((word) => word.timingTrusted !== false)} onClick={() => { setExporting(null); onExport(output, "word"); }} title={!output.words?.some((word) => word.timingTrusted !== false) ? "Chưa có thời gian từng từ đáng tin" : undefined} type="button">SRT từ</button>
+              </div> : null}
             </li>
           ))}
         </ul>

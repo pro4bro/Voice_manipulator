@@ -30,7 +30,7 @@ class TranscriptionChunk:
 import httpx
 from fastapi import UploadFile
 
-from app.domain.models import MediaAssetCreate, MediaImportResult, ProjectMediaAsset, ProjectRecord
+from app.domain.models import MediaAssetCreate, MediaAudioTrackChoice, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
 from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
@@ -100,12 +100,22 @@ class MediaImportProcessor:
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
             None,
         )
+        audio_streams = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"]
         video_stream = next(
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
             None,
         )
         duration = self._duration(probe)
         media_kind = self._media_kind(extension, audio_stream, video_stream)
+
+        if len(audio_streams) > 1:
+            return await self._import_multitrack(
+                project, asset_id, asset_dir, source_path, portable_source_path,
+                filename, extension, audio_streams, video_stream, duration,
+                origin=origin, capture_tier=capture_tier or origin,
+                transcribe=transcribe, queue_for_transcription=queue_for_transcription,
+                started=started,
+            )
 
         if not audio_stream:
             asset = self.library.create(
@@ -183,6 +193,8 @@ class MediaImportProcessor:
         source_value: str,
         *,
         cache_local: bool,
+        stream_indexes: list[int] | None = None,
+        transcribe_stream_indexes: list[int] | None = None,
     ) -> MediaImportResult:
         """Import a native file while retaining its absolute locator only in app-local state."""
         started = time.perf_counter()
@@ -212,6 +224,15 @@ class MediaImportProcessor:
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
             None,
         )
+        audio_streams = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"]
+        available = {stream.get("index") for stream in audio_streams}
+        selected = available if stream_indexes is None else set(stream_indexes)
+        selected_stt = set(transcribe_stream_indexes or [])
+        if ((audio_streams and not selected) or not selected.issubset(available)
+                or len(selected) != len(stream_indexes or selected)):
+            raise ValueError("Danh sách track audio cần import không hợp lệ")
+        if not selected_stt.issubset(selected) or len(selected_stt) != len(transcribe_stream_indexes or []):
+            raise ValueError("Track STT phải nằm trong các track được import và không được chọn trùng")
         video_stream = next(
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
             None,
@@ -219,6 +240,19 @@ class MediaImportProcessor:
         duration = self._duration(probe)
         media_kind = self._media_kind(extension, audio_stream, video_stream)
         portable_source_path = cache_path.relative_to(project_root).as_posix()
+
+        if len(audio_streams) > 1:
+            result = await self._import_multitrack(
+                project, asset_id, asset_dir, working_source, portable_source_path,
+                original_path.name, extension, audio_streams, video_stream, duration,
+                origin="import", capture_tier="import", transcribe=False,
+                queue_for_transcription=False, started=started,
+                external_source=original_path,
+                cached_at=cached_at,
+                selected_stream_indexes=selected,
+                selected_stt_stream_indexes=selected_stt,
+            )
+            return result
 
         analysis_path: Path | None = None
         if audio_stream:
@@ -241,9 +275,15 @@ class MediaImportProcessor:
                 sample_rate=self._sample_rate(audio_stream),
                 audio_codec=self._codec(audio_stream),
                 video_codec=self._codec(video_stream),
+                available_audio_tracks=[MediaAudioTrackChoice(
+                    stream_index=audio_stream["index"],
+                    title=str((audio_stream.get("tags") or {}).get("title") or "Track 1")[:160],
+                    codec=self._codec(audio_stream), channels=audio_stream.get("channels"), imported=True,
+                )] if audio_stream else [],
                 origin="import",
                 status="ready" if audio_stream else "no-audio",
                 transcription_status="skipped" if audio_stream else "not-applicable",
+                transcription_selected=bool(audio_stream and audio_stream.get("index") in selected_stt),
             ),
             asset_id,
         )
@@ -280,10 +320,121 @@ class MediaImportProcessor:
             working_source = cache_path
             cached_at = datetime.now(timezone.utc)
 
-        if asset.analysis_path:
+        tracks = [item for item in self.library.list(project.id)
+                  if item.source_archive_asset_id == asset.id and item.source_archive_stream_index is not None]
+        if asset.analysis_path and not tracks:
             analysis_path = project_root / asset.analysis_path
             await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
+        if tracks:
+            await asyncio.to_thread(self._extract_audio_streams, working_source, [
+                (project_root / track.analysis_path, track.source_archive_stream_index)
+                for track in tracks if track.analysis_path
+            ])
         return self.library.update_local_cache(project.id, asset.id, enabled, cached_at)
+
+    async def _import_multitrack(
+        self, project: ProjectRecord, asset_id: str, asset_dir: Path,
+        source: Path, portable_source: str, filename: str, extension: str,
+        audio_streams: list[dict[str, Any]], video_stream: dict[str, Any] | None,
+        duration: float, *, origin: str, capture_tier: str,
+        transcribe: bool, queue_for_transcription: bool, started: float,
+        external_source: Path | None = None, cached_at: datetime | None = None,
+        selected_stream_indexes: set[int] | None = None,
+        selected_stt_stream_indexes: set[int] | None = None,
+    ) -> MediaImportResult:
+        """Keep one original footage and one independently addressable analysis WAV per track."""
+        root = Path(project.project_path)
+        available = {stream.get("index") for stream in audio_streams}
+        selected = available if selected_stream_indexes is None else selected_stream_indexes
+        selected_stt = selected_stt_stream_indexes or set()
+        if not selected or not selected.issubset(available) or not selected_stt.issubset(selected):
+            raise ValueError("Danh sách track audio được chọn không hợp lệ")
+        prepared = []
+        for ordinal, stream in enumerate(audio_streams, 1):
+            stream_index = stream.get("index")
+            if not isinstance(stream_index, int) or stream_index < 0:
+                raise ValueError("Audio track không có stream index hợp lệ.")
+            if stream_index not in selected:
+                continue
+            child_id = f"asset-{uuid4().hex[:12]}"
+            child_dir = root / "assets" / "media" / child_id
+            child_dir.mkdir(parents=True, exist_ok=False)
+            analysis = child_dir / "analysis.wav"
+            title = str((stream.get("tags") or {}).get("title") or f"Track {ordinal}").strip()[:160]
+            prepared.append((child_id, analysis, stream, title))
+        await asyncio.to_thread(self._extract_audio_streams, source, [
+            (analysis, stream["index"]) for _, analysis, stream, _ in prepared
+        ])
+        complete = []
+        for child_id, analysis, stream, title in prepared:
+            item = None
+            if transcribe:
+                item, _ = await self._run_studio_import(analysis, origin, "")
+                item = self._attach_timing_quality(item, duration)
+            complete.append((child_id, analysis, stream, title, item))
+
+        first_analysis = complete[0][1].relative_to(root).as_posix()
+        parent = self.library.create(project.id, MediaAssetCreate(
+            name=filename, source_extension=extension,
+            media_kind=self._media_kind(extension, audio_streams[0], video_stream),
+            source_path=portable_source, analysis_path=first_analysis,
+            url=f"/api/projects/{project.id}/media/{asset_id}/audio",
+            duration=duration, sample_rate=24000,
+            audio_codec=self._codec(next(stream for stream in audio_streams if stream["index"] in selected)),
+            video_codec=self._codec(video_stream),
+            available_audio_tracks=[MediaAudioTrackChoice(
+                stream_index=stream["index"],
+                title=str((stream.get("tags") or {}).get("title") or f"Track {ordinal}")[:160],
+                codec=self._codec(stream), channels=stream.get("channels"),
+                imported=stream["index"] in selected,
+            ) for ordinal, stream in enumerate(audio_streams, 1)],
+            origin=origin, capture_tier=capture_tier, status="ready",
+            transcription_status="not-applicable",
+            has_external_source=external_source is not None or cached_at is not None,
+            local_cache_enabled=cached_at is not None,
+            local_cache_updated_at=cached_at,
+        ), asset_id)
+        if external_source and self.local_sources:
+            self.local_sources.set(project.id, asset_id, external_source)
+        track_manifest = []
+        for child_id, analysis, stream, title, item in complete:
+            relative_analysis = analysis.relative_to(root).as_posix()
+            words = list(item.get("words", [])) if item else []
+            self.library.create(project.id, MediaAssetCreate(
+                name=f"{filename} · {title}"[:512], source_extension=".wav",
+                media_kind="audio", source_path=relative_analysis,
+                analysis_path=relative_analysis,
+                source_archive_asset_id=asset_id,
+                source_archive_stream_index=stream["index"],
+                url=f"/api/projects/{project.id}/media/{child_id}/audio",
+                duration=float(item.get("duration") or duration) if item else duration,
+                sample_rate=24000, audio_codec="pcm_s16le",
+                origin=origin, capture_tier=capture_tier,
+                text=str(item.get("text", "")) if item else "",
+                words=words,
+                word_timing_quality=str(item.get("word_timing_quality", "unverified")) if item else "unverified",
+                word_timing_note=item.get("word_timing_note") if item else None,
+                transcription_status="complete" if item else "skipped",
+                transcription_selected=(queue_for_transcription or stream["index"] in selected_stt) and not item,
+            ), child_id)
+            track_manifest.append({
+                "assetId": child_id, "streamIndex": stream["index"], "title": title,
+                "codec": self._codec(stream), "sampleRate": self._sample_rate(stream),
+                "channels": stream.get("channels"), "language": (stream.get("tags") or {}).get("language"),
+                "analysisPath": relative_analysis,
+            })
+        (asset_dir / "audio-tracks.json").write_text(
+            json.dumps({"version": 2, "tracks": track_manifest, "availableTracks": [
+                {"streamIndex": stream["index"],
+                 "title": str((stream.get("tags") or {}).get("title") or f"Track {ordinal}")[:160],
+                 "codec": self._codec(stream), "channels": stream.get("channels"),
+                 "imported": stream["index"] in selected}
+                for ordinal, stream in enumerate(audio_streams, 1)
+            ]}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return MediaImportResult(asset=parent, elapsed=round(time.perf_counter() - started, 2),
+                                 track_asset_ids=[item[0] for item in complete])
     async def transcribe_existing(
         self,
         project: ProjectRecord,
@@ -506,10 +657,24 @@ class MediaImportProcessor:
         return json.loads(result.stdout)
 
     def _extract_audio(self, source: Path, destination: Path) -> None:
+        self._extract_audio_stream(source, destination, 0, audio_ordinal=True)
+
+    def _extract_audio_stream(self, source: Path, destination: Path,
+                              stream_index: int, *, audio_ordinal: bool = False) -> None:
+        self._extract_audio_streams(source, [(destination, stream_index)], audio_ordinal=audio_ordinal)
+
+    def _extract_audio_streams(self, source: Path, destinations: list[tuple[Path, int]],
+                               *, audio_ordinal: bool = False) -> None:
+        if not destinations:
+            return
+        outputs = [part for destination, index in destinations for part in (
+            "-map", "0:a:0" if audio_ordinal else f"0:{index}",
+            "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", "-f", "wav", str(destination),
+        )]
         result = subprocess.run(
             [
                 self.ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
-                "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(destination),
+                *outputs,
             ],
             capture_output=True,
             check=False,
@@ -518,7 +683,7 @@ class MediaImportProcessor:
             errors="replace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        if result.returncode != 0 or not destination.is_file():
+        if result.returncode != 0 or any(not destination.is_file() for destination, _ in destinations):
             raise ValueError(f"Không trích xuất được audio: {result.stderr.strip() or 'FFmpeg error'}")
 
     async def _run_studio_import(

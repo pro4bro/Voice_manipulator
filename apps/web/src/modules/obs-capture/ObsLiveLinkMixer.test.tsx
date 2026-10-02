@@ -42,14 +42,26 @@ it("shows pending until the matching applied snapshot arrives", async () => {
   }] };
   apiMocks.setObsLiveLinkForward.mockResolvedValue(pending);
   render(<ObsLiveLinkMixer projectId="project" />);
-  expect(await screen.findByText("Mic · Channel 1 · 48 kHz · 2 ch")).toBeInTheDocument();
+  expect(await screen.findByText("Mic · Track 1 · 48 kHz · 2 ch")).toBeInTheDocument();
+  expect(screen.getByText("Track 1")).toBeInTheDocument();
   expect(screen.getByText("Project: Project")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("checkbox", { name: "Forward Channel 1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Forward Track 1" }));
   await waitFor(() => expect(apiMocks.setObsLiveLinkForward).toHaveBeenCalledWith("channel", true));
   expect(await screen.findByText("Đang áp dụng…")).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Forward Channel 1" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Forward Track 1" })).toBeDisabled();
   MockEventSource.instance.emit({ ...pending, statusRevision: 3, channels: [{
     ...pending.channels[0], appliedForward: true, pendingCommandId: null,
   }] });
   expect(await screen.findByText("Đã bật")).toBeInTheDocument();
+});
+
+it("shows only sources still present in OBS even when a missing source was forwarded", async () => {
+  apiMocks.getObsLiveLinkStatus.mockResolvedValue({ ...initial, channels: [
+    initial.channels[0],
+    { ...initial.channels[0], channelId: "old", alias: "Track 8", slot: 8,
+      missing: true, desiredForward: true, appliedForward: true },
+  ] });
+  render(<ObsLiveLinkMixer projectId="project" />);
+  expect(await screen.findByText("Track 1")).toBeInTheDocument();
+  expect(screen.queryByText("Track 8")).not.toBeInTheDocument();
 });

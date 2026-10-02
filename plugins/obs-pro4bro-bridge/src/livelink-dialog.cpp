@@ -1,6 +1,7 @@
 #include "livelink-dialog.h"
 #include "livelink-mixer.h"
 #include "livelink-capture.h"
+#include "livelink-spool.h"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -237,8 +238,9 @@ public:
 	void stop()
 	{
 		active_ = false;
-		scene_collection_changing();
+		capture_.finish_at(os_gettime_ns());
 		if (worker_.joinable()) worker_.join();
+		scene_collection_changing();
 		if (window_) DestroyWindow(window_);
 		window_ = nullptr;
 		mixer_.reset();
@@ -851,9 +853,11 @@ private:
 			const auto &row = rows_[index];
 			if (strip.uuid != row.uuid) {
 				strip.uuid = row.uuid;
-				SetWindowTextW(strip.alias, wide(row.alias).c_str());
+				const std::string old_default = "Channel " + std::to_string(row.slot);
+				SetWindowTextW(strip.alias, wide(row.alias == old_default ?
+					"Track " + std::to_string(row.slot) : row.alias).c_str());
 			}
-			std::wstring name = L"Channel " + std::to_wstring(row.slot) + L"  |  " + wide(row.name);
+			std::wstring name = L"Track " + std::to_wstring(row.slot) + L"  |  " + wide(row.name);
 			if (row.missing) name += L" (missing)";
 			SetWindowTextW(strip.name, name.c_str());
 			strip.level = row.level;
@@ -916,11 +920,56 @@ private:
 	void run()
 	{
 		int64_t command_cursor = 0;
-		std::optional<LiveLinkAudioChunk> outstanding;
+		char *config_path = obs_module_config_path("livelink-pcm-spool.sqlite3");
+		const auto spool_path = config_path ? std::filesystem::path(wide(config_path)) : std::filesystem::path();
+		if (config_path) bfree(config_path);
+		LiveLinkSpool spool(spool_path);
+		if (!spool.ready()) blog(LOG_ERROR, "[Pro4Bro] PCM disk spool unavailable: %s", spool.error().c_str());
+		else if (const auto count = spool.pending())
+			blog(LOG_WARNING, "[Pro4Bro] PCM disk spool recovered %llu unacknowledged chunks",
+				static_cast<unsigned long long>(count));
+		std::vector<LiveLinkAudioChunk> unspooled;
+		std::optional<LiveLinkSpoolEntry> outstanding;
+		auto next_flush = std::chrono::steady_clock::now();
+		auto drain = [&](bool force = false) -> bool {
+			const auto now = std::chrono::steady_clock::now();
+			if (!force && now < next_flush) return false;
+			next_flush = now + std::chrono::milliseconds(250);
+			if (!spool.ready()) return false;
+			if (unspooled.empty()) {
+				while (unspooled.size() < 32) {
+					auto chunk = capture_.take();
+					if (!chunk) break;
+					unspooled.push_back(std::move(*chunk));
+				}
+			}
+			const bool full_batch = unspooled.size() == 32;
+			if (unspooled.empty()) return false;
+			if (spool.append(unspooled)) { unspooled.clear(); return full_batch; }
+			blog(LOG_ERROR, "[Pro4Bro] PCM disk spool write failed; keeping chunks in memory: %s",
+				spool.error().c_str());
+			return false;
+		};
 		std::string active_recording_id;
 		uint64_t ended_recording_ns = 0;
+		std::map<std::string, uint64_t> stop_boundaries;
+		std::set<std::string> needs_finalization;
+		std::set<std::string> recovered_recordings;
 		std::set<std::string> finalized_recordings;
+		std::map<std::string, uint64_t> reported_overflow_frames;
+		std::map<std::string, uint64_t> reported_callback_wait_ns;
+		auto last_spool_report = std::chrono::steady_clock::now();
+		auto last_rejection_log = std::chrono::steady_clock::now() - std::chrono::seconds(5);
 		while (active_) {
+			drain();
+			if (std::chrono::steady_clock::now() - last_spool_report >= std::chrono::seconds(5)) {
+				const auto count = spool.pending();
+				if (count || !unspooled.empty())
+					blog(LOG_INFO, "[Pro4Bro] PCM disk spool pending=%llu volatile=%llu",
+						static_cast<unsigned long long>(count),
+						static_cast<unsigned long long>(unspooled.size()));
+				last_spool_report = std::chrono::steady_clock::now();
+			}
 			Pairing pairing = read_pairing();
 			if (open_requested_.exchange(false)) open_app(pairing);
 			if (pairing.install_id.empty() || pairing.token.empty()) {
@@ -947,7 +996,7 @@ private:
 				Reply reply;
 				if (connection_id_.empty()) {
 					obs_data_set_string(payload, "processInstanceId", process_id_.c_str());
-					obs_data_set_string(payload, "pluginVersion", "0.6.1");
+					obs_data_set_string(payload, "pluginVersion", "0.6.6");
 					obs_data_set_string(payload, "obsVersion", obs_get_version_string());
 					obs_data_set_int(payload, "protocolMin", 3);
 					obs_data_set_int(payload, "protocolMax", 3);
@@ -959,13 +1008,17 @@ private:
 				}
 				obs_data_release(payload);
 				if (reply.status == 200) {
+					drain();
 					obs_data_t *snapshot = obs_data_create_from_json(reply.body.c_str());
 					if (snapshot) {
 						std::string previous_epoch = epoch_;
 						connection_id_ = field(snapshot, "connectionId");
 						connect_recording_folder_ = obs_data_get_bool(snapshot, "connectRecordingFolder");
 						epoch_ = field(snapshot, "connectionEpoch");
-						if (epoch_ != previous_epoch) command_cursor = 0;
+						if (epoch_ != previous_epoch) {
+							command_cursor = 0;
+							recovered_recordings.clear();
+						}
 						{
 							std::lock_guard lock(mutex_);
 							current_epoch_ = epoch_;
@@ -975,6 +1028,18 @@ private:
 						publish(L"Connected", name);
 						if (project) obs_data_release(project);
 						obs_data_t *recording = obs_data_get_obj(snapshot, "appRecording");
+						obs_data_array_t *recent = obs_data_get_array(snapshot, "recentRecordings");
+						if (recent) {
+							for (size_t i = 0; i < obs_data_array_count(recent); ++i) {
+								obs_data_t *item = obs_data_array_item(recent, i);
+								const auto end = static_cast<uint64_t>(std::max<int64_t>(0, obs_data_get_int(item, "endedMonotonicNs")));
+								const std::string id = field(item, "recordingId");
+								if (end) stop_boundaries[id] = end;
+								if (end && field(item, "archiveStatus") == "pending") needs_finalization.insert(id);
+								obs_data_release(item);
+							}
+							obs_data_array_release(recent);
+						}
 						if (recording) {
 							std::string next_id = field(recording, "recordingId");
 							if (next_id != active_recording_id) ended_recording_ns = 0;
@@ -1000,40 +1065,122 @@ private:
 						}
 						obs_data_release(snapshot);
 					}
+					for (const auto &id : spool.recordings()) {
+						if (id == active_recording_id || stop_boundaries.count(id) || recovered_recordings.count(id)) continue;
+						obs_data_t *body = obs_data_create();
+						obs_data_set_string(body, "installId", pairing.install_id.c_str());
+						obs_data_set_string(body, "connectionId", connection_id_.c_str());
+						obs_data_set_string(body, "connectionEpoch", epoch_.c_str());
+						const std::string path = "/api/obs-livelink/v3/recordings/" + id + "/recover";
+						Reply restored = request(pairing, L"POST", path.c_str(), obs_data_get_json(body));
+						obs_data_release(body);
+						if (restored.status == 200) {
+							obs_data_t *info = obs_data_create_from_json(restored.body.c_str());
+							if (info) {
+								stop_boundaries[id] = static_cast<uint64_t>(obs_data_get_int(info, "endedMonotonicNs"));
+								if (field(info, "archiveStatus") == "pending") needs_finalization.insert(id);
+								obs_data_release(info);
+							}
+							recovered_recordings.insert(id);
+							blog(LOG_INFO, "[Pro4Bro] PCM spool recording recovered: %s", id.c_str());
+						}
+					}
 					if (!connection_id_.empty() && active_) {
-						if (outstanding && ended_recording_ns &&
-							outstanding->plugin_monotonic_ns >= ended_recording_ns) outstanding.reset();
 						for (int sent_count = 0; sent_count < 5; ++sent_count) {
-							if (!outstanding) outstanding = capture_.take();
+							if (!outstanding) outstanding = spool.oldest();
 							if (!outstanding) break;
-							Reply sent = send_chunk(pairing, pairing.install_id, connection_id_, epoch_, *outstanding);
-							if (sent.status != 200) break;
+							const auto boundary = stop_boundaries.find(outstanding->chunk.recording_id);
+							if (boundary != stop_boundaries.end()) {
+								const auto &chunk = outstanding->chunk;
+								const uint64_t allowed = chunk.plugin_monotonic_ns < boundary->second
+									? (boundary->second - chunk.plugin_monotonic_ns) * chunk.sample_rate / 1'000'000'000ULL : 0;
+								if (allowed < chunk.frames) {
+									if (!spool.clip_to_stop(outstanding->id, static_cast<uint32_t>(allowed))) {
+										blog(LOG_ERROR, "[Pro4Bro] PCM spool Stop clip failed: %s", spool.error().c_str());
+										break;
+									}
+									blog(LOG_INFO, "[Pro4Bro] PCM spool clipped to Stop recording=%s channel=%s kept_frames=%llu",
+										chunk.recording_id.c_str(), chunk.channel_id.c_str(),
+										static_cast<unsigned long long>(allowed));
+									if (!allowed) { outstanding.reset(); continue; }
+									outstanding->chunk.frames = static_cast<uint32_t>(allowed);
+									outstanding->chunk.pcm.resize(static_cast<size_t>(allowed) * chunk.channels);
+								}
+							}
+							Reply sent = send_chunk(pairing, pairing.install_id, connection_id_, epoch_, outstanding->chunk);
+							if (sent.status != 200) {
+								if (sent.status == 413 || sent.status == 422) {
+									blog(LOG_ERROR, "[Pro4Bro] PCM spool chunk rejected recording=%s channel=%s sequence=%llu status=%lu; retained on disk",
+										outstanding->chunk.recording_id.c_str(), outstanding->chunk.channel_id.c_str(),
+										static_cast<unsigned long long>(outstanding->chunk.sequence), sent.status);
+									spool.reject(outstanding->id, static_cast<int>(sent.status));
+									outstanding.reset();
+									continue;
+								}
+								if (sent.status == 409 &&
+									std::chrono::steady_clock::now() - last_rejection_log >= std::chrono::seconds(5)) {
+									blog(LOG_WARNING, "[Pro4Bro] PCM spool chunk not accepted yet recording=%s channel=%s sequence=%llu; will retry",
+										outstanding->chunk.recording_id.c_str(), outstanding->chunk.channel_id.c_str(),
+										static_cast<unsigned long long>(outstanding->chunk.sequence));
+									last_rejection_log = std::chrono::steady_clock::now();
+								}
+								std::this_thread::sleep_for(std::chrono::milliseconds(100));
+								break;
+							}
+							if (!spool.acknowledge(outstanding->id)) {
+								blog(LOG_ERROR, "[Pro4Bro] PCM spool ACK commit failed: %s", spool.error().c_str());
+								break;
+							}
 							outstanding.reset();
 						}
-						if (!outstanding) outstanding = capture_.take();
-						if (!active_recording_id.empty() && !outstanding &&
-							!finalized_recordings.count(active_recording_id)) {
-							// Finalize is attempted only after the app recording is stopped.
-							obs_data_t *latest = obs_data_create_from_json(reply.body.c_str());
-							obs_data_t *current = latest ? obs_data_get_obj(latest, "appRecording") : nullptr;
-							bool stopped = latest && !current;
-							if (current) obs_data_release(current);
-							if (latest) obs_data_release(latest);
-							if (stopped) {
+						if (!outstanding) outstanding = spool.oldest();
+						for (const auto &status : capture_.queue_status()) {
+							uint64_t &reported_wait = reported_callback_wait_ns[status.channel_id];
+							if (status.max_callback_wait_ns < reported_wait) reported_wait = 0;
+							if (status.max_callback_wait_ns >= 5'000'000 &&
+								status.max_callback_wait_ns > std::max<uint64_t>(reported_wait * 2, 5'000'000)) {
+								blog(LOG_WARNING, "[Pro4Bro] PCM callback lock wait channel=%s max_wait_ns=%llu",
+									status.channel_id.c_str(),
+									static_cast<unsigned long long>(status.max_callback_wait_ns));
+								reported_wait = status.max_callback_wait_ns;
+							}
+							uint64_t &reported = reported_overflow_frames[status.channel_id];
+							if (status.overflow_frames < reported) reported = 0;
+							if (status.overflow_frames > reported) {
+								blog(LOG_ERROR, "[Pro4Bro] PCM queue overflow recording=%s channel=%s lost_frames=%llu total_lost_frames=%llu queued_frames=%llu peak_frames=%llu max_callback_wait_ns=%llu",
+									active_recording_id.c_str(),
+									status.channel_id.c_str(),
+									static_cast<unsigned long long>(status.overflow_frames - reported),
+									static_cast<unsigned long long>(status.overflow_frames),
+									static_cast<unsigned long long>(status.queued_frames),
+									static_cast<unsigned long long>(status.peak_queued_frames),
+									static_cast<unsigned long long>(status.max_callback_wait_ns));
+								reported = status.overflow_frames;
+							}
+						}
+						for (const auto &id : needs_finalization) {
+							if (finalized_recordings.count(id) || spool.pending(id) ||
+								(outstanding && outstanding->chunk.recording_id == id) ||
+								std::any_of(unspooled.begin(), unspooled.end(),
+									[&id](const auto &chunk) { return chunk.recording_id == id; })) continue;
 								obs_data_t *body = obs_data_create();
 								obs_data_set_string(body, "installId", pairing.install_id.c_str());
 								obs_data_set_string(body, "connectionId", connection_id_.c_str());
 								obs_data_set_string(body, "connectionEpoch", epoch_.c_str());
-								std::string path = "/api/obs-livelink/v3/recordings/" + active_recording_id + "/finalize";
+								std::string path = "/api/obs-livelink/v3/recordings/" + id + "/finalize";
 								Reply finished = request(pairing, L"POST", path.c_str(), obs_data_get_json(body));
 								obs_data_release(body);
-								if (finished.status == 200) {
-									finalized_recordings.insert(active_recording_id);
-									capture_.set_recording("", 0, false, 0);
-									active_recording_id.clear();
-									ended_recording_ns = 0;
+								// An HTTP error is a completed server decision (including an
+								// unavailable archiver). The journal keeps PCM for explicit Retry;
+								// only transport failure should keep automatic retry active.
+								if (finished.status == 200 || finished.status >= 400) {
+									finalized_recordings.insert(id);
+									if (id == active_recording_id) {
+										capture_.set_recording("", 0, false, 0);
+										active_recording_id.clear();
+										ended_recording_ns = 0;
+									}
 								}
-							}
 						}
 						std::string event_json;
 						{
@@ -1056,7 +1203,8 @@ private:
 						}
 						std::string route = "/api/obs-livelink/v3/connections/" + connection_id_ +
 							"/commands?installId=" + pairing.install_id + "&epoch=" + epoch_ +
-							"&after=" + std::to_string(command_cursor) + "&waitSeconds=0.1";
+							"&after=" + std::to_string(command_cursor) +
+							(outstanding ? "&waitSeconds=0" : "&waitSeconds=0.1");
 						Reply commands = request(pairing, L"GET", route.c_str());
 						if (commands.status == 200) {
 							obs_data_t *result = obs_data_create_from_json(commands.body.c_str());
@@ -1109,9 +1257,12 @@ private:
 					publish(reply.status == 401 ? L"Pairing rejected" : L"Disconnected", L"No active project");
 				}
 			}
-			for (int tick = 0; active_ && tick < 2 && !open_requested_; ++tick)
+			for (int tick = 0; active_ && !outstanding && tick < 2 && !open_requested_; ++tick)
 				std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
+		// OBS can close while HTTP is unavailable. Persist every captured tail
+		// chunk before the callback/queue is detached by Dialog::stop().
+		while (drain(true)) {}
 	}
 };
 

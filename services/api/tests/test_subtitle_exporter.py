@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.adapters.subtitle_exporter import SubtitleExporter
-from app.domain.models import MediaAssetCreate, ProjectCreate, ProjectMediaAsset, ProjectRecord, SpeakerProfile
+from app.domain.models import MediaAssetCreate, ProjectCreate, ProjectMediaAsset, ProjectRecord, SpeakerProfile, VoiceOutput, VoiceOutputSegment
 
 
 def make_project(tmp_path: Path) -> ProjectRecord:
@@ -57,6 +59,26 @@ def test_word_srt_keeps_one_cue_per_non_removed_word(tmp_path: Path):
     assert output.name.endswith("--word.srt")
     assert rendered.count("-->") == 6
     assert "1\n00:00:00,000 --> 00:00:00,200\nXin" in rendered
+
+
+def test_voice_output_line_srt_refuses_missing_or_overlapping_row_boundaries(tmp_path: Path):
+    project = make_project(tmp_path)
+    output = VoiceOutput(
+        id="output-1", name="Bài đọc", text="Xin chào\nTạm biệt", voice_id="voice-1",
+        voice_name="Anh Vũ", speaker_profile_id="speaker-1", engine="omnivoice",
+        generator_id="omnivoice-generate", duration=2, audio_path="assets/voice-output/output-1/audio.wav",
+    )
+    exporter = SubtitleExporter()
+    with pytest.raises(ValueError, match="mốc thời gian từng dòng"):
+        exporter.export_voice_output_lines(project, output)
+
+    segment = VoiceOutputSegment(row_id="r1", voice_id="voice-1", voice_name="Anh Vũ",
+                                 speaker_profile_id="speaker-1", engine="omnivoice",
+                                 generator_id="omnivoice-generate", text="Xin chào", start=0, end=1.2)
+    overlapping = segment.model_copy(update={"row_id": "r2", "text": "Tạm biệt", "start": 1.0, "end": 2.0})
+    with pytest.raises(ValueError, match="không hợp lệ"):
+        exporter.export_voice_output_lines(project, output.model_copy(update={"segments": [segment, overlapping]}))
+    assert not (Path(project.project_path) / "exports" / "subtitles" / "output-1--line.srt").exists()
 
 
 def test_partial_sentence_srt_skips_only_cues_with_untrusted_words_and_reports_count(tmp_path: Path):

@@ -27,7 +27,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 .button:hover:not(:disabled) { transform: translateY(-1px); }
 .button:active:not(:disabled) { transform: translateY(0); }
 .button:disabled { cursor: not-allowed; opacity: .45; }
-.button--accent { color: #fff; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0,0,0,.16); }
+.button--accent { color: var(--text-on-accent); background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0,0,0,.16); }
 .button--accent:hover:not(:disabled) { background: #f45a38; }
 .button--lime { color: var(--text-on-accent); background: var(--lime); }
 .button--quiet { border-color: var(--line); background: transparent; }

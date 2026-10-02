@@ -13,6 +13,8 @@ import type {
   EngineProfileSchema,
   EngineStatus,
   MediaImportChoice,
+  ModuleId,
+  PendingLocalMedia,
   MediaTranscriptionProgress,
   Project,
   DatasetReadiness,
@@ -27,6 +29,7 @@ import type {
   ProjectVoice,
   SpeakerProfile,
   VoiceOutput,
+  VoiceOutputExportMode,
   VoiceScriptJob,
   VoiceScriptRow,
   VoiceChangerPreflight,
@@ -61,6 +64,7 @@ import { workspaceManifest } from "../pages/workspaceManifest";
 import { mergeEvents } from "../domain/activity";
 import { Icon, type IconName } from "../ui/Icon";
 import { RuntimeMenuItems } from "./RuntimeMenuItems";
+import { ModuleErrorBoundary } from "./ModuleErrorBoundary";
 
 interface WorkspaceShellProps {
   project: Project;
@@ -169,19 +173,25 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const pageTake = activePageTake();
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
+  // Full-list requests started before a permanent delete must not reinsert it.
+  const permanentlyRemovedMediaIds = useRef(new Set<string>());
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedImportedTrackId, setSelectedImportedTrackId] = useState<string | null>(null);
+  const scriptAssetId = selectedImportedTrackId ?? selectedAssetId;
   // Owned here rather than in either module, so Script and Timeline agree on
   // what is selected instead of each keeping a private answer.
   const [wordSelection, setWordSelection] = useState<WordSelection>(EMPTY_SELECTION);
   const selectedAssetIdRef = useRef<string | null>(null);
+  const scriptAssetIdRef = useRef<string | null>(null);
   const scriptDirtyRef = useRef(false);
   const liveTranscriptActiveRef = useRef(false);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const [pendingLocalMedia, setPendingLocalMedia] = useState<PendingLocalMedia | null>(null);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [obsTimelineActive, setObsTimelineActive] = useState(false);
   const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
   const [obsPlayheadSeconds, setObsPlayheadSeconds] = useState(0);
-  const [obsSeekRequest, setObsSeekRequest] = useState<{ recordingId: string; channelId: string; seconds: number; serial: number; replayUntilSeconds?: number } | null>(null);
+  const [obsSeekRequest, setObsSeekRequest] = useState<{ recordingId: string; channelId: string; seconds: number; serial: number } | null>(null);
   const { rows: obsTranscriptRows, error: obsTranscriptError } = useObsLiveLinkTranscript(
     project.id, obsTimelineRecordingId, obsTimelineActive && activePage === "speech-to-text");
   const [liveTranscriptActive, setLiveTranscriptActive] = useState(false);
@@ -243,9 +253,18 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [scriptDirty, setScriptDirty] = useState(false);
   const scriptRef = useRef("");
   const scratchStorageKey = `pro4bro:${project.id}:scratch-script`;
-  const legacyScriptStorageKey = `pro4bro:${project.id}:script`;
-  const [script, setScript] = useState(() => localStorage.getItem(scratchStorageKey) ?? localStorage.getItem(legacyScriptStorageKey) ?? "");
+  const [script, setScript] = useState("");
   const manifest = workspaceManifest(activePage);
+
+  function withoutPermanentlyRemoved(assets: ProjectMediaAsset[]) {
+    return assets.filter((asset) => !permanentlyRemovedMediaIds.current.has(asset.id));
+  }
+
+  function relatedMediaIds(assetId: string) {
+    return mediaAssetsRef.current.filter((asset) => asset.id === assetId || asset.sourceArchiveAssetId === assetId).map((asset) => asset.id);
+  }
+
+  useEffect(() => { permanentlyRemovedMediaIds.current.clear(); }, [project.id]);
 
   async function runRuntimeAction(action: RuntimeAction) {
     setWindowsMenuOpen(false);
@@ -265,11 +284,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   // carrying the finished transcript. That is the "STT ran but Script stayed
   // empty" report: the work was done, the response was thrown away.
   selectedAssetIdRef.current = selectedAssetId;
+  scriptAssetIdRef.current = scriptAssetId;
   scriptDirtyRef.current = scriptDirty;
   liveTranscriptActiveRef.current = liveTranscriptActive;
 
   useEffect(() => {
-    if (!selectedAssetId) localStorage.setItem(scratchStorageKey, script);
+    if (!selectedAssetId && script) localStorage.setItem(scratchStorageKey, script);
   }, [script, scratchStorageKey, selectedAssetId]);
 
   useEffect(() => {
@@ -366,12 +386,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       api.getPreferences(),
     ]).then(([assets, catalog, schema, savedPreferences]) => {
       if (cancelled) return;
-      setMediaAssets(assets);
+      const visibleAssets = withoutPermanentlyRemoved(assets);
+      setMediaAssets(visibleAssets);
       setTrainingCatalog(catalog);
       setProfileSchema(schema);
       setPreferences(savedPreferences);
       if (catalog.speakers[0]) setSelectedVoice((current) => current || catalog.speakers[0].id);
-      if (assets[0]) applyMediaAsset(assets[0]);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được dữ liệu workspace");
     }).finally(() => {
@@ -434,6 +454,42 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   const hasBackgroundTranscription = mediaAssets.some(isBackgroundTranscribing);
   const hasBackgroundDiarization = mediaAssets.some((asset) => ["queued", "processing"].includes(asset.diarizationStatus ?? "idle"));
+  const followedMkvIds = mediaAssets.filter((asset) => asset.growingMkvFollow && !asset.deletedAt
+    && (!asset.sourcePath.endsWith("source-final.mkv") || mediaAssets.some((child) => child.sourceArchiveAssetId === asset.id
+      && child.transcriptionSelected && child.transcriptionStatus !== "complete"))).map((asset) => asset.id).join(",");
+
+  useEffect(() => {
+    if (!followedMkvIds) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refresh = () => {
+      if (inFlight) return;
+      inFlight = true;
+      void Promise.all(followedMkvIds.split(",").map((id) => api.getGrowingMkvAssets(project.id, id)))
+        .then((groups) => {
+          if (cancelled) return;
+          const refreshed = groups.flat();
+          const byId = new Map(refreshed.map((asset) => [asset.id, asset]));
+          setMediaAssets((current) => {
+            const changed = current.some((asset) => {
+              const updated = byId.get(asset.id);
+              return updated && updated.updatedAt !== asset.updatedAt;
+            });
+            return changed ? current.map((asset) => byId.get(asset.id) ?? asset) : current;
+          });
+          const selected = byId.get(scriptAssetIdRef.current ?? "");
+          const previous = mediaAssetsRef.current.find((asset) => asset.id === selected?.id);
+          if (selected && selected.updatedAt !== previous?.updatedAt
+            && !scriptDirtyRef.current && !liveTranscriptActiveRef.current) {
+            setScript(selected.text);
+            setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
+          }
+        }).catch(() => undefined).finally(() => { inFlight = false; });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [project.id, followedMkvIds]);
 
   useEffect(() => {
     if (!hasBackgroundTranscription) return;
@@ -443,10 +499,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const refreshFullMedia = () => {
       if (fullMediaRefreshInFlight) return;
       fullMediaRefreshInFlight = true;
-      void api.listProjectMedia(project.id).then((assets) => {
+      void api.listProjectMedia(project.id).then((response) => {
         if (cancelled) return;
+        const assets = withoutPermanentlyRemoved(response);
         const currentAssets = mediaAssetsRef.current;
-        const activeAssetId = selectedAssetIdRef.current;
+        const activeAssetId = scriptAssetIdRef.current;
         const currentSelected = currentAssets.find((asset) => asset.id === activeAssetId);
         const selected = assets.find((asset) => asset.id === activeAssetId);
         const selectedChanged = Boolean(selected && (!currentSelected || selected.updatedAt !== currentSelected.updatedAt));
@@ -519,10 +576,11 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const refreshFullMedia = () => {
       if (fullMediaRefreshInFlight) return;
       fullMediaRefreshInFlight = true;
-      void api.listProjectMedia(project.id).then((assets) => {
+      void api.listProjectMedia(project.id).then((response) => {
         if (cancelled) return;
+        const assets = withoutPermanentlyRemoved(response);
         setMediaAssets((current) => current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt) ? current : assets);
-        const selected = assets.find((asset) => asset.id === selectedAssetIdRef.current);
+        const selected = assets.find((asset) => asset.id === scriptAssetIdRef.current);
         if (selected && selected.diarizationStatus === "complete" && !scriptDirtyRef.current && !liveTranscriptActiveRef.current) {
           setTake(selected.url ? { id: selected.studioItemId ?? selected.id, name: selected.name, url: selected.url, duration: selected.duration, text: selected.text, words: selected.words, wordTimingQuality: selected.wordTimingQuality, wordTimingNote: selected.wordTimingNote } : null);
         }
@@ -592,8 +650,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }, [catalogRevision, project.id, trainingCatalog]);
 
   useEffect(() => {
-    if (!scriptDirty || !selectedAssetId || liveTranscriptActive) return;
-    const pendingAssetId = selectedAssetId;
+    if (!scriptDirty || !scriptAssetId || liveTranscriptActive) return;
+    const pendingAssetId = scriptAssetId;
     const pendingText = script;
     const timer = window.setTimeout(() => {
       void api.updateMediaScript(project.id, pendingAssetId, pendingText, "user").then((updated) => {
@@ -602,7 +660,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "Không lưu được revision Script"));
     }, 850);
     return () => window.clearTimeout(timer);
-  }, [project.id, script, scriptDirty, selectedAssetId, liveTranscriptActive]);
+  }, [project.id, script, scriptDirty, scriptAssetId, liveTranscriptActive]);
 
   useEffect(() => () => {
     if (take?.url?.startsWith("blob:")) URL.revokeObjectURL(take.url);
@@ -661,10 +719,35 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     else setRightWidth((width) => Math.min(540, Math.max(260, width - delta)));
   }
 
-  function applyMediaAsset(asset: ProjectMediaAsset) {
+  function isImportedForWork(asset: ProjectMediaAsset, available: ProjectMediaAsset[]) {
+    if (asset.sourceArchiveAssetId) return asset.importSelected !== false;
+    const children = available.filter((item) => item.sourceArchiveAssetId === asset.id);
+    return children.length ? children.some((item) => item.importSelected !== false) : asset.importSelected !== false;
+  }
+
+  function applyMediaAsset(asset: ProjectMediaAsset, available = mediaAssetsRef.current) {
     setSelectedAssetId(asset.id);
+    setSelectedImportedTrackId(null);
+    setObsTimelineRecordingId(asset.obsRecordingId ?? null);
+    setObsTimelineActive(Boolean(asset.obsRecordingId));
     setScript(asset.text);
     setScriptDirty(false);
+    setTake({ id: asset.studioItemId ?? asset.id, name: asset.name, url: asset.url ?? "", duration: asset.duration, text: asset.text, words: asset.words, wordTimingQuality: asset.wordTimingQuality, wordTimingNote: asset.wordTimingNote });
+  }
+
+  function selectImportedTrack(assetId: string) {
+    const asset = mediaAssets.find((item) => item.id === assetId && item.sourceArchiveAssetId && item.importSelected !== false);
+    if (!asset || asset.id === selectedImportedTrackId) return;
+    const parent = mediaAssets.find((item) => item.id === asset.sourceArchiveAssetId);
+    if (!parent || !isImportedForWork(parent, mediaAssets)) return;
+    flushCurrentMediaDraft();
+    setSelectedAssetId(parent.id);
+    setSelectedImportedTrackId(asset.id);
+    setObsTimelineRecordingId(parent.obsRecordingId ?? null);
+    setObsTimelineActive(Boolean(parent.obsRecordingId));
+    setScript(asset.text);
+    setScriptDirty(false);
+    setWordSelection(EMPTY_SELECTION);
     setTake(asset.url ? { id: asset.studioItemId ?? asset.id, name: asset.name, url: asset.url, duration: asset.duration, text: asset.text, words: asset.words, wordTimingQuality: asset.wordTimingQuality, wordTimingNote: asset.wordTimingNote } : null);
   }
 
@@ -673,23 +756,39 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function flushCurrentMediaDraft() {
-    if (!scriptDirty || !selectedAssetId) return;
-    const assetId = selectedAssetId;
+    if (!scriptDirty || !scriptAssetId) return;
+    const assetId = scriptAssetId;
     const text = scriptRef.current;
     void api.updateMediaScript(project.id, assetId, text, "user").then(storeMediaAsset).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "Không lưu được revision Script trước khi đổi asset"));
   }
 
   function selectMediaAsset(assetId: string) {
     const asset = mediaAssets.find((item) => item.id === assetId);
-    if (asset && asset.id !== selectedAssetId) {
+    if (asset && isImportedForWork(asset, mediaAssets) && (asset.id !== selectedAssetId || selectedImportedTrackId !== null)) {
       flushCurrentMediaDraft();
       applyMediaAsset(asset);
     }
   }
 
+  function clearMediaSelection() {
+    flushCurrentMediaDraft();
+    selectedAssetIdRef.current = null;
+    scriptAssetIdRef.current = null;
+    setSelectedAssetId(null);
+    setSelectedImportedTrackId(null);
+    setObsTimelineRecordingId(null);
+    setObsTimelineActive(false);
+    setObsSeekRequest(null);
+    setTake(null);
+    setRecordingPreview(null);
+    setScript("");
+    setScriptDirty(false);
+    setWordSelection(EMPTY_SELECTION);
+  }
+
   async function openObsAsset(assetId: string) {
     try {
-      const assets = await api.listProjectMedia(project.id);
+      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
       setMediaAssets(assets);
       const asset = assets.find((item) => item.id === assetId);
       if (!asset) throw new Error("Không tìm thấy track OBS trong Media Pool.");
@@ -704,8 +803,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setScript(value);
     // In Voice Manipulator the Script is text to speak, not the transcript of
     // whatever footage happens to be selected; typing there must not rewrite it.
-    if (!selectedAssetId || liveTranscriptActive || activePage === "voice-manipulator") return;
-    setMediaAssets((current) => current.map((asset) => asset.id === selectedAssetId ? { ...asset, text: value } : asset));
+    if (!scriptAssetId || liveTranscriptActive || activePage === "voice-manipulator") return;
+    setMediaAssets((current) => current.map((asset) => asset.id === scriptAssetId ? { ...asset, text: value } : asset));
     setScriptDirty(true);
   }
 
@@ -715,14 +814,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setCatalogRevision(catalogRevisionRef.current);
   }
 
-  async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[]) {
-    if (!selectedAssetId) return;
-    const previous = mediaAssets.find((asset) => asset.id === selectedAssetId);
+  async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[], assetId = selectedAssetId) {
+    if (!assetId) return;
+    const previous = mediaAssets.find((asset) => asset.id === assetId);
     if (!previous) return;
     const nextKeyframes = gainKeyframes ?? previous.gainKeyframes ?? [];
-    setMediaAssets((current) => current.map((asset) => asset.id === selectedAssetId ? { ...asset, removedRanges: ranges, gainKeyframes: nextKeyframes } : asset));
+    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, removedRanges: ranges, gainKeyframes: nextKeyframes } : asset));
     try {
-      const updated = await api.updateMediaTimelineEdits(project.id, selectedAssetId, ranges, nextKeyframes);
+      const updated = await api.updateMediaTimelineEdits(project.id, assetId, ranges, nextKeyframes);
       setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
       setNotice(nextKeyframes.length ? `Đã lưu ${nextKeyframes.length} keyframe Auto Calibration.` : ranges.length ? `${ranges.length} đoạn đã được loại khỏi audio xử lý STT/training.` : "Đã reset timeline; STT/training sẽ dùng lại toàn bộ audio.");
     } catch (error) {
@@ -773,8 +872,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   async function changeWordAnnotations(words: StudioWord[], text?: string) {
-    if (!selectedAssetId) return;
-    const asset = mediaAssets.find((item) => item.id === selectedAssetId);
+    if (!scriptAssetId) return;
+    const asset = mediaAssets.find((item) => item.id === scriptAssetId);
     if (!asset) return;
     const wordSpeakerIds = words.map((word) => word.speakerId).filter((id): id is string => Boolean(id));
     const wordEnvironmentIds = words.flatMap((word) => word.environmentProfileIds ?? []);
@@ -895,6 +994,22 @@ Voice Output đã tạo bằng voice này vẫn giữ nguyên. Không khôi ph�
       setNotice(error instanceof Error ? error.message : "Không xoá được voice");
     }
     await refreshProjectVoices();
+  }
+  async function updateObsTimelineCuts(assetIds: string[], ranges: TimelineEditRange[]): Promise<boolean> {
+    if (!assetIds.length) return false;
+    try {
+      const updated = await api.updateObsTimelineCuts(project.id, assetIds, ranges);
+      const byId = new Map(updated.map((asset) => [asset.id, asset]));
+      setMediaAssets((current) => [
+        ...current.map((asset) => byId.get(asset.id) ?? asset),
+        ...updated.filter((asset) => !current.some((item) => item.id === asset.id)),
+      ]);
+      setNotice(ranges.length ? `Đã áp dụng ${ranges.length} đoạn cắt cho ${updated.length} channel.` : `Đã reset đoạn cắt của ${updated.length} channel.`);
+      return true;
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không lưu được các đoạn cắt OBS.");
+      return false;
+    }
   }
 
   async function deleteProjectVoices(voices: ProjectVoice[]) {
@@ -1119,17 +1234,22 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setMediaBusy(true);
     let imported = 0;
     let lastAsset: ProjectMediaAsset | null = null;
+    let lastAssets: ProjectMediaAsset[] = [];
     try {
       for (const choice of choices) {
         const result = await api.importProjectMedia(project.id, choice.file, "import", "", false, false);
-        const asset = choice.transcribe ? await api.setMediaTranscriptionSelected(project.id, result.asset.id, true) : result.asset;
-        storeMediaAsset(asset);
+        const targets = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
+        if (choice.transcribe) await Promise.all(targets.map((id) => api.setMediaTranscriptionSelected(project.id, id, true)));
+        const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+        lastAssets = assets;
+        setMediaAssets(assets);
+        const asset = assets.find((item) => item.id === result.asset.id) ?? result.asset;
         lastAsset = asset;
         imported += 1;
       }
       if (lastAsset) {
         flushCurrentMediaDraft();
-        applyMediaAsset(lastAsset);
+        applyMediaAsset(lastAsset, lastAssets);
       }
       setNotice(`Đã import ${imported} asset. Các footage đã tick STT sẵn sàng trong hàng chờ.`);
     } catch (error) {
@@ -1144,19 +1264,101 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setMediaBusy(true);
     try {
       const picked = await api.pickMediaFile();
-      if (!picked.path) return;
+      if (!picked.path) { setNotice("Đã hủy chọn file gốc."); return; }
+      const extension = picked.path.split(".").pop()?.toLowerCase();
+      if (["mkv", "mov", "mp4"].includes(extension ?? "")) {
+        const inspection = await api.inspectLocalMediaTracks(project.id, picked.path);
+        if (inspection.tracks.length && (inspection.tracks.length > 1 || extension === "mkv")) {
+          setPendingLocalMedia({
+            sourcePath: picked.path,
+            name: picked.path.split(/[\\/]/).pop() ?? "media",
+            tracks: inspection.tracks.map((track) => ({ ...track, imported: true, transcribe: false })),
+          });
+          setNotice("File đang chờ trong Media Pool. Bấm mục chờ để chọn track, rồi chọn Theo dõi MKV đang ghi.");
+          return;
+        }
+      }
       const cacheLocal = window.confirm(
         "Bật Local File Caching?\n\nOK: copy file vào project để xử lý nhanh.\nCancel: giữ file gốc làm nguồn xử lý.",
       );
       const result = await api.importLocalProjectMedia(project.id, picked.path, cacheLocal);
       flushCurrentMediaDraft();
-      storeMediaAsset(result.asset);
-      applyMediaAsset(result.asset);
+      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      setMediaAssets(assets);
+      applyMediaAsset(assets.find((asset) => asset.id === result.asset.id) ?? result.asset, assets);
       setNotice(cacheLocal
         ? "Đã import và cache file vào project. Chuột phải footage để refresh cache khi file gốc thay đổi."
         : "Đã import theo link file gốc. Bật Local File Caching từ menu chuột phải khi cần.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không import được file gốc");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  function changePendingLocalTrack(streamIndex: number, field: "imported" | "transcribe", selected: boolean) {
+    setPendingLocalMedia((current) => current ? {
+      ...current,
+      tracks: current.tracks.map((track) => track.streamIndex === streamIndex
+        ? field === "imported"
+          ? { ...track, imported: selected, transcribe: selected && track.transcribe }
+          : { ...track, transcribe: selected && track.imported }
+        : track),
+    } : null);
+  }
+
+  async function confirmPendingLocalMedia(mode: "import" | "follow", sttSegmentSeconds = 60) {
+    const pending = pendingLocalMedia;
+    if (!pending) return;
+    const streamIndexes = pending.tracks.filter((track) => track.imported).map((track) => track.streamIndex);
+    const transcribeStreamIndexes = pending.tracks.filter((track) => track.imported && track.transcribe).map((track) => track.streamIndex);
+    if (!streamIndexes.length) { setNotice("Hãy chọn ít nhất một track để import."); return; }
+    setMediaBusy(true);
+    try {
+      const cacheLocal = mode === "import" ? window.confirm(
+        "Bật Local File Caching?\n\nOK: copy file vào project.\nCancel: giữ file gốc làm nguồn xử lý.",
+      ) : true;
+      const result = mode === "follow"
+        ? await api.startGrowingMkvFollow(project.id, pending.sourcePath, streamIndexes, transcribeStreamIndexes, sttSegmentSeconds)
+        : await api.importLocalProjectMedia(project.id, pending.sourcePath, cacheLocal, streamIndexes, transcribeStreamIndexes);
+      flushCurrentMediaDraft();
+      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      setMediaAssets(assets);
+      applyMediaAsset(assets.find((asset) => asset.id === result.asset.id) ?? result.asset, assets);
+      setPendingLocalMedia(null);
+      setNotice(mode === "follow"
+        ? `Đang theo dõi MKV với ${streamIndexes.length} track${transcribeStreamIndexes.length ? `; STT nhanh chạy cho ${transcribeStreamIndexes.length} track` : ""}. Bấm Speech to text để bắt đầu STT kỹ. Khi OBS dừng, chọn Finish MKV để hoàn tất file và xử lý nốt hàng đợi đã bật.`
+        : `Đã import ${streamIndexes.length} track. Các track đã tick STT sẵn sàng trong hàng chờ.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không import được track đã chọn");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function finishGrowingMkv(assetId: string) {
+    setMediaBusy(true);
+    try {
+      await api.finishGrowingMkvFollow(project.id, assetId);
+      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      setMediaAssets(assets);
+      const selected = assets.find((asset) => asset.id === assetId);
+      if (selectedAssetId === assetId && selected) applyMediaAsset(selected, assets);
+      setNotice("Đã hoàn tất MKV và giải mã lại các track từ file ghi hình đầy đủ.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không hoàn tất được MKV");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function startGrowingMkvDetailedStt(assetId: string, segmentSeconds: number) {
+    setMediaBusy(true);
+    try {
+      const started = await api.startGrowingMkvDetailedStt(project.id, assetId, segmentSeconds);
+      setNotice(`STT kỹ đang xử lý ${started.selectedTrackCount} track: lượt đầu là toàn bộ audio đã đọc lúc bấm; sau đó mỗi block ${started.segmentSeconds} giây, thêm 10 giây ngữ cảnh và ghép từ 5 giây trước ranh giới.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Không bắt đầu được STT kỹ cho MKV");
     } finally {
       setMediaBusy(false);
     }
@@ -1179,35 +1381,80 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setMediaBusy(false);
     }
   }
-  async function toggleTrainingAsset(assetId: string, selected: boolean) {
-    const previous = mediaAssets.find((asset) => asset.id === assetId);
-    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, trainingSelected: selected } : asset));
+  async function toggleImportAsset(assetId: string, selected: boolean) {
+    const children = mediaAssets.filter((asset) => asset.sourceArchiveAssetId === assetId);
+    const targets = children.length ? children : mediaAssets.filter((asset) => asset.id === assetId);
+    const targetIds = new Set(targets.map((asset) => asset.id));
+    const nextAssets = mediaAssets.map((asset) => targetIds.has(asset.id) ? { ...asset, importSelected: selected } : asset);
+    setMediaAssets(nextAssets);
+    const openParent = nextAssets.find((asset) => asset.id === selectedAssetId);
+    if (openParent && !isImportedForWork(openParent, nextAssets)) {
+      flushCurrentMediaDraft();
+      moveOffAsset(nextAssets);
+    } else if (!selected && openParent && selectedImportedTrackId && targetIds.has(selectedImportedTrackId)) {
+      flushCurrentMediaDraft();
+      applyMediaAsset(openParent, nextAssets);
+    }
     try {
-      const updated = await api.setMediaTrainingSelected(project.id, assetId, selected);
-      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+      const updated = await Promise.all(targets.map((asset) => api.setMediaImportSelected(project.id, asset.id, selected)));
+      setMediaAssets((current) => current.map((asset) => updated.find((item) => item.id === asset.id) ?? asset));
+      void refreshDatasetReadiness();
+    } catch (error) {
+      setMediaAssets((current) => current.map((asset) => targets.find((item) => item.id === asset.id) ?? asset));
+      setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn Import");
+    }
+  }
+
+  async function toggleDiarizationAsset(assetId: string, selected: boolean) {
+    const children = mediaAssets.filter((asset) => asset.sourceArchiveAssetId === assetId);
+    const targets = children.length ? children : mediaAssets.filter((asset) => asset.id === assetId);
+    const targetIds = new Set(targets.map((asset) => asset.id));
+    setMediaAssets((current) => current.map((asset) => targetIds.has(asset.id) ? { ...asset, diarizationSelected: selected } : asset));
+    try {
+      const updated = await Promise.all(targets.map((asset) => api.setMediaDiarizationSelected(project.id, asset.id, selected)));
+      setMediaAssets((current) => current.map((asset) => updated.find((item) => item.id === asset.id) ?? asset));
+    } catch (error) {
+      setMediaAssets((current) => current.map((asset) => targets.find((item) => item.id === asset.id) ?? asset));
+      setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn Speaker Diarization");
+    }
+  }
+
+  async function toggleTrainingAsset(assetId: string, selected: boolean) {
+    const children = mediaAssets.filter((asset) => asset.sourceArchiveAssetId === assetId);
+    const targets = children.length ? children : mediaAssets.filter((asset) => asset.id === assetId);
+    const targetIds = new Set(targets.map((asset) => asset.id));
+    setMediaAssets((current) => current.map((asset) => targetIds.has(asset.id) ? { ...asset, trainingSelected: selected } : asset));
+    try {
+      const updated = await Promise.all(targets.map((asset) => api.setMediaTrainingSelected(project.id, asset.id, selected)));
+      setMediaAssets((current) => current.map((asset) => updated.find((item) => item.id === asset.id) ?? asset));
       // Readiness is derived from the selection, so it is stale the moment the
       // selection changes. Recomputing it is cheap; showing a wrong count is not.
       void refreshDatasetReadiness();
     } catch (error) {
-      if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
+      setMediaAssets((current) => current.map((asset) => targets.find((item) => item.id === asset.id) ?? asset));
       setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn Voice Training");
     }
   }
 
   async function toggleTranscriptionAsset(assetId: string, selected: boolean) {
-    const previous = mediaAssets.find((asset) => asset.id === assetId);
-    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, transcriptionSelected: selected } : asset));
+    const children = mediaAssets.filter((asset) => asset.sourceArchiveAssetId === assetId);
+    const targets = children.length ? children : mediaAssets.filter((asset) => asset.id === assetId);
+    const targetIds = new Set(targets.map((asset) => asset.id));
+    setMediaAssets((current) => current.map((asset) => targetIds.has(asset.id) ? { ...asset, transcriptionSelected: selected } : asset));
     try {
-      const updated = await api.setMediaTranscriptionSelected(project.id, assetId, selected);
-      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+      const updated = await Promise.all(targets.map((asset) => api.setMediaTranscriptionSelected(project.id, asset.id, selected)));
+      setMediaAssets((current) => current.map((asset) => updated.find((item) => item.id === asset.id) ?? asset));
     } catch (error) {
-      if (previous) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
+      setMediaAssets((current) => current.map((asset) => targets.find((item) => item.id === asset.id) ?? asset));
       setNotice(error instanceof Error ? error.message : "Không lưu được lựa chọn STT");
     }
   }
 
   async function queueSelectedTranscriptions(model = "large-v3") {
-    const assetIds = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.status !== "no-audio" && !["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)).map((asset) => asset.id);
+    const followedParents = new Set(mediaAssets.filter((asset) => asset.growingMkvFollow).map((asset) => asset.id));
+    const assetIds = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.importSelected !== false && asset.status !== "no-audio"
+      && !followedParents.has(asset.sourceArchiveAssetId ?? "")
+      && !["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)).map((asset) => asset.id);
     if (!assetIds.length) {
       setNotice("Hãy tick STT cho ít nhất một footage không đang chạy.");
       return;
@@ -1229,16 +1476,14 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     try {
       if (permanent) {
         await api.removeProjectMedia(project.id, asset.id);
-        setMediaAssets((current) => {
-          const remaining = current.filter((item) => item.id !== asset.id);
-          if (selectedAssetId === asset.id) moveOffAsset(remaining);
-          return remaining;
-        });
+        for (const id of relatedMediaIds(asset.id)) permanentlyRemovedMediaIds.current.add(id);
+        setMediaAssets((current) => withoutPermanentlyRemoved(current));
+        if (selectedAssetIdRef.current === asset.id) moveOffAsset(withoutPermanentlyRemoved(mediaAssetsRef.current));
         setNotice(`Đã xóa hẳn ${asset.name}.`);
         return;
       }
       const recycled = await api.recycleProjectMedia(project.id, asset.id);
-      setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item));
+      setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item.sourceArchiveAssetId === recycled.id ? { ...item, deletedAt: recycled.deletedAt, transcriptionSelected: false, trainingSelected: false } : item));
       if (selectedAssetId === asset.id) {
         moveOffAsset(mediaAssets.filter((item) => item.id !== asset.id && !item.deletedAt));
       }
@@ -1248,11 +1493,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       // The server says it is not there; the list saying otherwise is the stale
       // one, so drop it rather than leaving a row nothing can act on.
       if (/not found/i.test(message)) {
-        setMediaAssets((current) => {
-          const remaining = current.filter((item) => item.id !== asset.id);
-          if (selectedAssetId === asset.id) moveOffAsset(remaining);
-          return remaining;
-        });
+        for (const id of relatedMediaIds(asset.id)) permanentlyRemovedMediaIds.current.add(id);
+        setMediaAssets((current) => withoutPermanentlyRemoved(current));
+        if (selectedAssetIdRef.current === asset.id) moveOffAsset(withoutPermanentlyRemoved(mediaAssetsRef.current));
         setNotice(`${asset.name} đã không còn trong project.`);
         return;
       }
@@ -1261,9 +1504,23 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   async function batchMediaAction(action: MediaBatchAction) {
+    const deleteIds = action.kind === "delete"
+      ? [...new Set(action.assetIds)].filter((id) => mediaAssetsRef.current.some((asset) => asset.id === id && asset.deletedAt))
+      : [];
+    if (action.kind === "delete") {
+      if (!deleteIds.length) return;
+      if (!window.confirm(`Xóa hẳn ${deleteIds.length} footage khỏi Recycle Bin? File và toàn bộ dữ liệu trong project sẽ mất, không khôi phục được.`)) return;
+    }
     const completed: string[] = [];
     const failures: string[] = [];
-    const changes = action.kind === "annotations" ? action.changes : action.assetIds.map((assetId) => ({ assetId }));
+    const operationIds: string[] = action.kind === "annotations" ? [] : action.kind === "delete" ? deleteIds : action.kind === "selection"
+      ? action.assetIds.flatMap((id) => {
+          const children = mediaAssetsRef.current.filter((asset) => asset.sourceArchiveAssetId === id);
+          return children.length ? children.map((asset) => asset.id) : [id];
+        })
+      : action.kind === "disabled"
+        ? action.assetIds.flatMap((id) => relatedMediaIds(id)) : action.assetIds;
+    const changes = action.kind === "annotations" ? action.changes : [...new Set(operationIds)].map((assetId) => ({ assetId }));
     for (const change of changes) {
       try {
         if (action.kind === "annotations") {
@@ -1276,38 +1533,56 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         } else if (action.kind === "selection") {
           const updated = action.target === "stt"
             ? await api.setMediaTranscriptionSelected(project.id, change.assetId, action.selected)
-            : await api.setMediaTrainingSelected(project.id, change.assetId, action.selected);
+            : action.target === "training"
+              ? await api.setMediaTrainingSelected(project.id, change.assetId, action.selected)
+              : action.target === "import"
+                ? await api.setMediaImportSelected(project.id, change.assetId, action.selected)
+                : await api.setMediaDiarizationSelected(project.id, change.assetId, action.selected);
           setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+        } else if (action.kind === "delete") {
+          await api.removeProjectMedia(project.id, change.assetId);
+          for (const id of relatedMediaIds(change.assetId)) permanentlyRemovedMediaIds.current.add(id);
+          setMediaAssets((current) => withoutPermanentlyRemoved(current));
         } else if (action.kind === "restore") {
           const restored = await api.restoreProjectMedia(project.id, change.assetId);
-          setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item));
+          setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item.sourceArchiveAssetId === restored.id ? { ...item, deletedAt: null } : item));
         } else {
           const recycled = await api.recycleProjectMedia(project.id, change.assetId);
-          setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item));
+          setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item.sourceArchiveAssetId === recycled.id ? { ...item, deletedAt: recycled.deletedAt, transcriptionSelected: false, trainingSelected: false } : item));
         }
         completed.push(change.assetId);
       } catch (error) {
-        failures.push(`${change.assetId}: ${error instanceof Error ? error.message : "Lỗi không xác định"}`);
+        const message = error instanceof Error ? error.message : "Lỗi không xác định";
+        if (action.kind === "delete" && /not found/i.test(message)) {
+          for (const id of relatedMediaIds(change.assetId)) permanentlyRemovedMediaIds.current.add(id);
+          setMediaAssets((current) => withoutPermanentlyRemoved(current));
+          completed.push(change.assetId);
+        } else failures.push(`${change.assetId}: ${message}`);
       }
+    }
+    if (action.kind === "delete" && selectedAssetIdRef.current && completed.includes(selectedAssetIdRef.current)) {
+      moveOffAsset(withoutPermanentlyRemoved(mediaAssetsRef.current));
     }
     if (action.kind === "recycle" && selectedAssetId && completed.includes(selectedAssetId)) {
       moveOffAsset(mediaAssets.filter((item) => !item.deletedAt && !completed.includes(item.id)));
     }
-    if ((action.kind === "annotations" || action.kind === "selection" && action.target === "training") && completed.length) void refreshDatasetReadiness();
+    if ((action.kind === "annotations" || action.kind === "selection" && ["training", "import"].includes(action.target)) && completed.length) void refreshDatasetReadiness();
     setNotice(failures.length
       ? `Đã xử lý ${completed.length}/${changes.length} footage. Lỗi: ${failures.join("; ")}`
-      : `Đã ${action.kind === "restore" ? "restore" : action.kind === "recycle" ? "chuyển vào Recycle Bin" : action.kind === "disabled" ? action.disabled ? "tắt" : "bật" : action.kind === "selection" ? action.selected ? `chọn ${action.target.toUpperCase()} cho` : `bỏ ${action.target.toUpperCase()} của` : "cập nhật nhãn cho"} ${completed.length} footage.`);
+      : `Đã ${action.kind === "delete" ? "xóa hẳn" : action.kind === "restore" ? "restore" : action.kind === "recycle" ? "chuyển vào Recycle Bin" : action.kind === "disabled" ? action.disabled ? "tắt" : "bật" : action.kind === "selection" ? action.selected ? `chọn ${action.target.toUpperCase()} cho` : `bỏ ${action.target.toUpperCase()} của` : "cập nhật nhãn cho"} ${completed.length} footage.`);
   }
 
   function moveOffAsset(remaining: ProjectMediaAsset[]) {
-    const next = remaining.find((item) => !item.deletedAt) ?? null;
+    const next = remaining.find((item) => !item.deletedAt && !item.sourceArchiveAssetId && isImportedForWork(item, remaining)) ?? null;
     if (next) {
-      applyMediaAsset(next);
+      applyMediaAsset(next, remaining);
       return;
     }
     setSelectedAssetId(null);
+    setSelectedImportedTrackId(null);
+    setObsTimelineActive(false);
     setTake(null);
-    setScript(localStorage.getItem(scratchStorageKey) ?? "");
+    setScript("");
   }
 
   async function revealMediaAsset(asset: ProjectMediaAsset) {
@@ -1320,9 +1595,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   async function setMediaDisabled(asset: ProjectMediaAsset, disabled: boolean) {
     try {
-      const updated = await api.setMediaDisabled(project.id, asset.id, disabled);
-      setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setNotice(`${updated.name} ${disabled ? "đã tắt - không vào batch nào nữa" : "đã bật lại"}.`);
+      const updated = await Promise.all(relatedMediaIds(asset.id).map((id) => api.setMediaDisabled(project.id, id, disabled)));
+      setMediaAssets((current) => current.map((item) => updated.find((result) => result.id === item.id) ?? item));
+      setNotice(`${asset.name} ${disabled ? "đã tắt - không vào batch nào nữa" : "đã bật lại"}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không đổi được trạng thái footage");
     }
@@ -1331,7 +1606,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   async function restoreMediaAsset(asset: ProjectMediaAsset) {
     try {
       const restored = await api.restoreProjectMedia(project.id, asset.id);
-      setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item));
+      setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item.sourceArchiveAssetId === restored.id ? { ...item, deletedAt: null } : item));
       setNotice(`Đã restore ${restored.name}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không thể restore footage");
@@ -1339,7 +1614,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   function sendSelectedToTraining() {
-    const selectedCount = mediaAssets.filter((asset) => asset.trainingSelected).length;
+    const selectedCount = mediaAssets.filter((asset) => asset.trainingSelected && asset.importSelected !== false && !asset.deletedAt && !asset.disabled).length;
     if (!selectedCount) {
       setNotice("Hãy tick TRAIN cho ít nhất một footage.");
       return;
@@ -1349,13 +1624,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   async function runAccurateTranscription() {
-    if (!selectedAssetId) {
+    if (!scriptAssetId) {
       setNotice("Hãy chọn footage trong Media Pool trước khi chạy STT kỹ.");
       return;
     }
     try {
-      const selected = await api.setMediaTranscriptionSelected(project.id, selectedAssetId, true);
-      const queued = await api.enqueueMediaTranscriptions(project.id, [selectedAssetId]);
+      const selected = await api.setMediaTranscriptionSelected(project.id, scriptAssetId, true);
+      const queued = await api.enqueueMediaTranscriptions(project.id, [scriptAssetId]);
       setMediaAssets((current) => current.map((asset) => {
         const replacement = queued.find((item) => item.id === asset.id);
         return replacement ?? (asset.id === selected.id ? selected : asset);
@@ -1367,8 +1642,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   async function runDiarization() {
-    if (!selectedAssetId) {
-      setNotice("Hãy chọn footage trong Media Pool trước khi nhận diện speaker.");
+    const targets = mediaAssets.filter((asset) => asset.diarizationSelected && asset.importSelected !== false
+      && !asset.deletedAt && !asset.disabled && asset.status !== "no-audio" && asset.analysisPath
+      && !["queued", "processing"].includes(asset.diarizationStatus ?? "idle")
+      && !mediaAssets.some((child) => child.sourceArchiveAssetId === asset.id));
+    if (!targets.length) {
+      setNotice("Hãy tick Speaker Diarization cho ít nhất một footage hoặc track đã Import.");
       return;
     }
 
@@ -1378,20 +1657,21 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       return;
     }
     try {
-      const expectedSpeakers = trainingCatalog.speakers.length || null;
-      const queued = await api.enqueueMediaDiarization(project.id, selectedAssetId, expectedSpeakers);
-      storeMediaAsset(queued);
-      setNotice("Đã đưa Speaker Diarization vào hàng chờ GPU. App vẫn dùng bình thường trong lúc xử lý.");
+      const results = await Promise.allSettled(targets.map((asset) => api.enqueueMediaDiarization(project.id, asset.id, null)));
+      const queued = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      setMediaAssets((current) => current.map((asset) => queued.find((item) => item.id === asset.id) ?? asset));
+      const failed = results.length - queued.length;
+      setNotice(`Đã đưa ${queued.length} track/footage vào Speaker Diarization.${failed ? ` ${failed} mục không thể bắt đầu; hãy kiểm tra đã hoàn tất STT.` : ""}`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không thể chạy Speaker Diarization.");
     }
   }
   async function exportSubtitles(mode: "sentence" | "word" | "table") {
-    if (!selectedAssetId) {
+    if (!scriptAssetId) {
       setNotice("Hãy chọn footage đã có transcript trước khi xuất SRT.");
       return;
     }
-    const selected = mediaAssets.find((asset) => asset.id === selectedAssetId);
+    const selected = mediaAssets.find((asset) => asset.id === scriptAssetId);
     if (!selected?.words.length) {
       setNotice("Footage này chưa có word timing. Hãy chạy STT kỹ trước khi xuất SRT.");
       return;
@@ -1408,11 +1688,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
   async function runAiReview() {
-    if (!selectedAssetId) {
+    if (!scriptAssetId) {
       setNotice("Hãy chọn footage trong Media Pool trước khi dùng AI fix.");
       return;
     }
-    const selected = mediaAssets.find((asset) => asset.id === selectedAssetId);
+    const selected = mediaAssets.find((asset) => asset.id === scriptAssetId);
     if (!selected || selected.transcriptionStatus !== "complete" || !scriptRef.current.trim()) {
       setNotice("AI fix chỉ khả dụng sau khi STT kỹ hoàn tất và đã có transcript.");
       return;
@@ -1589,17 +1869,23 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
 
-  async function exportVoiceOutputSubtitles(mode: "sentence" | "word" | "table") {
-    const output = voiceOutputs.find((item) => item.id === outputTake?.id);
-    if (!output?.words?.length) {
-      setNotice("Mở một Voice Output đã có word timing trước khi xuất.");
+  async function exportVoiceOutput(output: VoiceOutput, mode: VoiceOutputExportMode) {
+    if (mode === "line" && !output.segments?.length) {
+      setNotice("Voice Output này chưa có mốc thời gian từng dòng Script.");
+      return;
+    }
+    if (mode !== "audio" && mode !== "line" && !output.words?.length) {
+      setNotice("Voice Output này chưa có word timing để xuất SRT từng từ hoặc theo câu.");
       return;
     }
     try {
-      await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
-      setNotice(mode === "table" ? "Đã xuất bảng Script CSV của Voice Output." : "Đã xuất SRT theo giọng đã tạo.");
+      if (mode === "audio") await api.downloadVoiceOutputAudio(project.id, output.id);
+      else await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
+      setNotice(mode === "audio" ? `Đã tải WAV: ${output.name}.`
+        : mode === "table" ? "Đã tải bảng Script CSV."
+          : `Đã tải SRT ${mode === "line" ? "từng dòng" : mode === "word" ? "từng từ" : "theo câu"} của ${output.name}.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không thể xuất SRT.");
+      setNotice(error instanceof Error ? error.message : "Không thể xuất Voice Output.");
     }
   }
 
@@ -1612,6 +1898,19 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không xoá được Voice Output");
     }
+  }
+
+  async function deleteChangerRecordings(recordings: VoiceChangerRecording[]) {
+    const results = await Promise.allSettled(recordings.map((recording) => api.deleteChangerRecording(project.id, recording.id)));
+    const removedIds = new Set(recordings.filter((_, index) => results[index].status === "fulfilled").map((recording) => recording.id));
+    if (removedIds.size) {
+      setChangerRecordings((current) => current.filter((recording) => !removedIds.has(recording.id)));
+      if (recordingTake?.id && removedIds.has(recordingTake.id)) setRecordingTake(null);
+    }
+    const failed = recordings.filter((_, index) => results[index].status === "rejected").map((recording) => recording.name);
+    setNotice(failed.length
+      ? `Đã xóa ${removedIds.size}/${recordings.length} bản ghi Voice Changer; chưa xóa được: ${failed.join(", ")}.`
+      : `Đã xóa ${removedIds.size} bản ghi Voice Changer.`);
   }
 
   async function deleteVoiceOutputs(outputs: VoiceOutput[]) {
@@ -1657,11 +1956,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setNotice("Footage này đang ở Recycle Bin - chỉ xem được. Restore trước khi sửa.");
     return true;
   }
-  const latestAiRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
+  const scriptMediaAsset = mediaAssets.find((asset) => asset.id === scriptAssetId) ?? selectedMediaAsset;
+  const latestAiRevision = [...(scriptMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
   const latestLiveRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "record") ?? null;
   // Voice Manipulator offers the kind of voice chosen in Voice Training.
   const voiceCategory = categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
-  const canRunAiReview = Boolean(selectedMediaAsset?.text.trim() && selectedMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
+  const canRunAiReview = Boolean(scriptMediaAsset?.text.trim() && scriptMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
   const context = useMemo<StudioContext>(() => ({
     workflow: activePage,
     script,
@@ -1671,6 +1971,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     take: pageTake,
     mediaAssets,
     selectedAssetId,
+    selectedImportedTrackId,
+    onSelectImportedTrack: selectImportedTrack,
     mediaBusy,
     recordingPreview,
     obsTimelineActive,
@@ -1680,14 +1982,25 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     obsPlayheadSeconds,
     obsSeekRequest,
     onObsTimelineRecordingChange: (recordingId) => setObsTimelineRecordingId(recordingId),
-    onObsTranscriptSeek: (row, seconds, replayUntilSeconds) => setObsSeekRequest((current) => ({
+    onObsTranscriptSeek: (row, seconds) => setObsSeekRequest((current) => ({
       recordingId: row.recordingId, channelId: row.channelId, seconds: seconds ?? row.startSeconds,
-      replayUntilSeconds,
       serial: (current?.serial ?? 0) + 1,
     })),
     onObsPlayheadChange: (seconds) => setObsPlayheadSeconds(seconds),
+    onObsTimelineCutsChange: (assetIds, ranges) => blockedByRecycleBin() ? Promise.resolve(false) : updateObsTimelineCuts(assetIds, ranges),
     onObsTimelineSourceChange: (source) => setObsTimelineActive(source === "obs-livelink"),
     onOpenObsRecording: (recordingId) => { setObsTimelineRecordingId(recordingId); setObsTimelineActive(true); },
+    onObsArchiveReady: async (recordingId) => {
+      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      if (!assets.some((asset) => asset.obsRecordingId === recordingId && asset.sourceExtension === ".mka")) {
+        throw new Error(`OBS archive ${recordingId} is not in Media Pool yet`);
+      }
+      setMediaAssets((current) => {
+        const known = new Set(current.map((asset) => asset.id));
+        const added = assets.filter((asset) => !known.has(asset.id));
+        return added.length ? [...added, ...current] : current;
+      });
+    },
     liveTranscriptActive,
     liveTranscriptText: latestLiveRevision?.text ?? null,
     emotionStyle: preferences.emotionStyle,
@@ -1700,6 +2013,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     datasetReadiness,
     datasetBusy,
     projectId: project.id,
+    projectName: project.name,
     voiceOutputs,
     activeOutputId: voiceOutputs.some((output) => output.id === outputTake?.id) ? outputTake?.id ?? null : null,
     onOpenVoiceOutput: openVoiceOutput,
@@ -1716,7 +2030,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onVoiceScriptRowsChange: setVoiceScriptRows,
     voiceCategory,
     voiceScriptJob,
-    onExportVoiceOutput: (mode) => void exportVoiceOutputSubtitles(mode),
+    onExportVoiceOutput: (output, mode) => void exportVoiceOutput(output, mode),
     voiceChangers,
     changerPreflight,
     changerSettings,
@@ -1731,6 +2045,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onStopChangerRecording: () => void stopChangerRecording(),
     onOpenChangerRecording: openChangerRecording,
     onDeleteChangerRecording: (recording) => void deleteChangerRecording(recording),
+    onDeleteChangerRecordings: (recordings) => void deleteChangerRecordings(recordings),
     trainingRuns,
     activityTasks,
     activityEvents,
@@ -1776,8 +2091,15 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onTakeChange: (captured) => void processCapturedAudio(captured),
     onImportMedia: (choices) => void importMedia(choices),
     onImportLocalMedia: () => void importLocalMedia(),
+    pendingLocalMedia,
+    onPendingLocalTrackChange: changePendingLocalTrack,
+    onConfirmPendingLocalMedia: (mode, sttSegmentSeconds) => void confirmPendingLocalMedia(mode, sttSegmentSeconds),
+    onCancelPendingLocalMedia: () => setPendingLocalMedia(null),
+    onFinishGrowingMkv: (assetId) => void finishGrowingMkv(assetId),
+    onStartGrowingMkvDetailedStt: (assetId, segmentSeconds) => void startGrowingMkvDetailedStt(assetId, segmentSeconds),
     onSetLocalCache: (assetId, enabled) => void setLocalCache(assetId, enabled),
     onSelectAsset: selectMediaAsset,
+    onClearMediaSelection: clearMediaSelection,
     onOpenObsAsset: (assetId) => void openObsAsset(assetId),
     onObsImportReady: (assetId) => void openObsAsset(assetId),
     onRecordingPreview: setRecordingPreview,
@@ -1785,10 +2107,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onTimelineEditsChange: (ranges, gainKeyframes) => { if (!blockedByRecycleBin()) void updateTimelineEdits(ranges, gainKeyframes); },
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
+    onToggleImport: (assetId, selected) => void toggleImportAsset(assetId, selected),
+    onToggleDiarization: (assetId, selected) => void toggleDiarizationAsset(assetId, selected),
     onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
     onControlTranscriptions: (action, assetIds) => void controlTranscriptions(action, assetIds),
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
-    onBatchMediaAction: (action) => { if (action.kind === "restore" || !blockedByRecycleBin()) void batchMediaAction(action); },
+    onBatchMediaAction: (action) => { if (action.kind === "restore" || action.kind === "delete" || !blockedByRecycleBin()) void batchMediaAction(action); },
     onRestoreAsset: (asset) => void restoreMediaAsset(asset),
     onRevealAsset: (asset) => void revealMediaAsset(asset),
     onSetAssetDisabled: (asset, disabled) => void setMediaDisabled(asset, disabled),
@@ -1808,7 +2132,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, script, selectedAssetId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, script, selectedAssetId, selectedImportedTrackId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+
+  const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
+    onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
+    <ModuleRegistry context={context} id={id} />
+  </ModuleErrorBoundary>;
 
   return (
     <main className="workspace-shell">
@@ -1826,12 +2155,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         <section className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
           <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
-            <div className="module-column module-column--left">{manifest.columns.left.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
+            <div className="module-column module-column--left">{manifest.columns.left.map(renderModule)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
-            <div className="module-column module-column--center">{manifest.columns.center.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
+            <div className="module-column module-column--center">{manifest.columns.center.map(renderModule)}</div>
             <div aria-label="Co kéo cột phải" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("right", event)} onPointerDown={(event) => beginResize("right", event)} role="separator" tabIndex={0}><i /></div>
-            <div className="module-column module-column--right">{manifest.columns.right.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
-            <div className="module-column module-column--bottom">{manifest.columns.bottom.map((id) => <ModuleRegistry context={context} id={id} key={id} />)}</div>
+            <div className="module-column module-column--right">{manifest.columns.right.map(renderModule)}</div>
+            <div className="module-column module-column--bottom">{manifest.columns.bottom.map(renderModule)}</div>
           </div>
         </section>
       </div>

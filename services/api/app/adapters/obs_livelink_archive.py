@@ -237,8 +237,9 @@ class ObsLiveLinkArchiver:
             existing_parent = self.media.get(project_id, parent_id)
         except KeyError:
             self.media.create(project_id, MediaAssetCreate(
-                name="OBS LiveLink · source archive", source_extension=".mka",
+                name=recording.get("displayName") or f"OBS LiveLink · {recording['recordingId'][:8]}", source_extension=".mka",
                 media_kind="audio", source_path=archive.source_path,
+                obs_recording_id=recording["recordingId"],
                 duration=duration, audio_codec=codec, origin="record",
                 transcription_status="skipped",
             ), parent_id)

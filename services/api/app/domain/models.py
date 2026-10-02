@@ -102,12 +102,26 @@ class TimelineGainKeyframe(DomainModel):
     source: Literal["auto-calibration", "manual"] = "auto-calibration"
 
 
+class MediaAudioTrackChoice(DomainModel):
+    stream_index: int = Field(ge=0)
+    title: str = Field(min_length=1, max_length=160)
+    codec: str | None = None
+    channels: int | None = Field(default=None, ge=1)
+    imported: bool = False
+
+
 class MediaAssetCreate(DomainModel):
     name: str = Field(min_length=1, max_length=512)
     source_extension: str = Field(max_length=20)
     media_kind: MediaKind
     source_path: str
     analysis_path: str | None = None
+    obs_recording_id: str | None = None
+    source_archive_asset_id: str | None = None
+    source_archive_stream_index: int | None = Field(default=None, ge=0)
+    source_archive_track_uid: int | None = Field(default=None, gt=0)
+    growing_mkv_follow: bool = False
+    available_audio_tracks: list[MediaAudioTrackChoice] = Field(default_factory=list)
     has_external_source: bool = False
     local_cache_enabled: bool = False
     local_cache_updated_at: datetime | None = None
@@ -127,10 +141,12 @@ class MediaAssetCreate(DomainModel):
     origin: MediaOrigin
     status: MediaStatus = "ready"
     transcription_status: MediaTranscriptionStatus = "complete"
+    import_selected: bool = True
     transcription_selected: bool = False
     transcription_progress: float = Field(default=0, ge=0, le=100)
     transcription_error: str | None = Field(default=None, max_length=2000)
     diarization_status: MediaDiarizationStatus = "idle"
+    diarization_selected: bool = False
     diarization_progress: float = Field(default=0, ge=0, le=100)
     diarization_error: str | None = Field(default=None, max_length=2000)
     diarization_speaker_assignments: dict[str, str | None] = Field(default_factory=dict)
@@ -210,11 +226,24 @@ class MediaTimelineEditsUpdate(DomainModel):
     gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
 
 
+class MediaTimelineCutsBatch(DomainModel):
+    asset_ids: list[str] = Field(min_length=1, max_length=64)
+    removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
+
+
 class MediaTrainingSelection(DomainModel):
     selected: bool
 
 
 class MediaTranscriptionSelection(DomainModel):
+    selected: bool
+
+
+class MediaImportSelection(DomainModel):
+    selected: bool
+
+
+class MediaDiarizationSelection(DomainModel):
     selected: bool
 
 
@@ -438,6 +467,23 @@ class TrainingModelOption(TrainingModelDescriptor):
 class LocalMediaImport(DomainModel):
     source_path: str = Field(min_length=1, max_length=4096)
     cache_local: bool = True
+    stream_indexes: list[int] | None = None
+    transcribe_stream_indexes: list[int] | None = None
+
+
+class LocalMediaInspect(DomainModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+
+
+class GrowingMkvFollowCreate(DomainModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+    stream_indexes: list[int] | None = None
+    transcribe_stream_indexes: list[int] | None = None
+    stt_segment_seconds: int = Field(default=60, ge=10, le=600)
+
+
+class GrowingMkvDetailedSttStart(DomainModel):
+    segment_seconds: int = Field(default=60, ge=10, le=600)
 
 
 class ObsLiveLinkVideoImport(DomainModel):
@@ -453,6 +499,7 @@ class MediaImportResult(DomainModel):
     asset: ProjectMediaAsset
     item: dict[str, Any] | None = None
     elapsed: float
+    track_asset_ids: list[str] = Field(default_factory=list)
 
 
 class ObsTrackSource(DomainModel):

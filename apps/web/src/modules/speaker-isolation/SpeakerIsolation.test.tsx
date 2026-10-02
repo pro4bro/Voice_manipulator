@@ -1,9 +1,20 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ProjectMediaAsset } from "../../domain/types";
 import { SpeakerIsolation } from "./SpeakerIsolation";
 
 describe("SpeakerIsolation", () => {
+  it("explains the multi-speaker cost before running the selected diarization batch", () => {
+    const onRun = vi.fn();
+    render(<SpeakerIsolation asset={{ id: "footage" } as ProjectMediaAsset} onAssign={vi.fn()} onRun={onRun} speakers={[]} words={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Nhận diện Speaker" }));
+    expect(screen.getByRole("alertdialog", { name: "Lưu ý Speaker Diarization" })).toHaveTextContent("nhiều người cùng nói");
+    expect(onRun).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Chạy Speaker Diarization" }));
+    expect(onRun).toHaveBeenCalledTimes(1);
+  });
+
   it("maps each detected Speaker N label in the diarization module", () => {
     const onAssign = vi.fn();
     render(<SpeakerIsolation

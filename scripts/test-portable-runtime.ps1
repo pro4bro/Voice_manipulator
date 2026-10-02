@@ -139,6 +139,7 @@ if ($selected -contains "STT") {
     Test-PythonRuntime "stt.python" ".runtime\python\stt" @("numpy", "faster_whisper", "whisperx")
     Test-LocalPath "stt.server" ".runtime\omnivoice-studio\studio_app\server.py" "STT service"
     Test-NonEmptyTree "stt.whisper-large-v3" ".runtime\omnivoice-studio\models\models--Systran--faster-whisper-large-v3" "Final STT model" "model.bin"
+    Test-NonEmptyTree "stt.whisper-medium" ".runtime\omnivoice-studio\models\models--Systran--faster-whisper-medium" "LiveLink STT model" "model.bin"
     Test-NonEmptyTree "stt.diarization-models" ".runtime\omnivoice-studio\models\diarization" "Speaker diarization models"
 }
 

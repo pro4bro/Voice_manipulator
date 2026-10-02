@@ -168,7 +168,7 @@
 .project-grid { scrollbar-color: var(--line) transparent; }
 .project-card { color: var(--text); border-color: var(--line); background: var(--surface-panel); }
 .project-card:hover { border-color: var(--text-muted); box-shadow: var(--shadow); }
-.project-preview { color: var(--lime-dark); background: var(--surface-audio); }
+.project-preview { color: var(--text); background: var(--surface-audio); }
 .project-preview::before { background: linear-gradient(var(--audio-grid) 1px,transparent 1px),linear-gradient(90deg,var(--audio-grid) 1px,transparent 1px); background-size: 20px 20px; }
 .project-preview > b,
 .create-project__intro > span { color: var(--text-on-accent); }

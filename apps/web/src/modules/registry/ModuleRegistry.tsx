@@ -1,6 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { ReadingMode } from "../../domain/reading-plan";
-import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingModelOption, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, WorkspacePage } from "../../domain/types";
+import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, PendingLocalMedia, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingModelOption, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, VoiceOutputExportMode, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
 import { DatasetReadinessPanel } from "../dashboard/DatasetReadinessPanel";
 import { PipelineDashboard } from "../dashboard/PipelineDashboard";
@@ -25,6 +25,8 @@ import { SpeakerEmotion } from "../speaker-emotion/SpeakerEmotion";
 import { SpeakerIsolation } from "../speaker-isolation/SpeakerIsolation";
 import { Timeline, type ActiveTake } from "../timeline/Timeline";
 import { ObsLiveLinkTimeline } from "../timeline/ObsLiveLinkTimeline";
+import { ImportedMultitrackTimeline } from "../timeline/ImportedMultitrackTimeline";
+import { ChannelScript } from "../script/ChannelScript";
 import { Train } from "../train/Train";
 import { TrainingJob } from "../training-job/TrainingJob";
 import { VoiceGenerator } from "../voice-generator/VoiceGenerator";
@@ -40,6 +42,8 @@ export interface StudioContext {
   take: ActiveTake | null;
   mediaAssets: ProjectMediaAsset[];
   selectedAssetId: string | null;
+  selectedImportedTrackId: string | null;
+  onSelectImportedTrack: (assetId: string) => void;
   mediaBusy: boolean;
   recordingPreview: RecordingWaveformPreview | null;
   obsTimelineActive: boolean;
@@ -47,12 +51,14 @@ export interface StudioContext {
   obsTranscriptRows: import("../../domain/types").ObsLiveLinkTranscriptRow[];
   obsTranscriptError: string | null;
   obsPlayheadSeconds: number;
-  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number; replayUntilSeconds?: number } | null;
+  obsSeekRequest: { recordingId: string; channelId: string; seconds: number; serial: number } | null;
   onObsTimelineRecordingChange: (recordingId: string) => void;
-  onObsTranscriptSeek: (row: import("../../domain/types").ObsLiveLinkTranscriptRow, seconds?: number, replayUntilSeconds?: number) => void;
+  onObsTranscriptSeek: (row: import("../../domain/types").ObsLiveLinkTranscriptRow, seconds?: number) => void;
   onObsPlayheadChange: (seconds: number) => void;
+  onObsTimelineCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
   onObsTimelineSourceChange: (source: "microphone" | "display" | "obs-livelink") => void;
   onOpenObsRecording: (recordingId: string) => void;
+  onObsArchiveReady: (recordingId: string) => Promise<void>;
   liveTranscriptActive: boolean;
   liveTranscriptText: string | null;
   emotionStyle: EmotionStylePreferences;
@@ -67,6 +73,7 @@ export interface StudioContext {
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
   projectId: string;
+  projectName: string;
   voiceOutputs: import("../../domain/types").VoiceOutput[];
   activeOutputId: string | null;
   onOpenVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
@@ -86,7 +93,7 @@ export interface StudioContext {
   /** Follows the kind chosen in Voice Training. */
   voiceCategory: VoiceCategory;
   voiceScriptJob: import("../../domain/types").VoiceScriptJob | null;
-  onExportVoiceOutput: (mode: "sentence" | "word" | "table") => void;
+  onExportVoiceOutput: (output: import("../../domain/types").VoiceOutput, mode: VoiceOutputExportMode) => void;
   voiceChangers: TrainingModelOption[];
   changerPreflight: import("../../domain/types").VoiceChangerPreflight | null;
   changerSettings: import("../../domain/types").VoiceChangerSettings;
@@ -101,6 +108,7 @@ export interface StudioContext {
   onStopChangerRecording: () => void;
   onOpenChangerRecording: (recording: import("../../domain/types").VoiceChangerRecording) => void;
   onDeleteChangerRecording: (recording: import("../../domain/types").VoiceChangerRecording) => void;
+  onDeleteChangerRecordings: (recordings: import("../../domain/types").VoiceChangerRecording[]) => void;
   trainingRuns: TrainingRun[];
   /** Every job the app has in flight, and its log lines. */
   activityTasks: import("../../domain/types").ActivityTask[];
@@ -121,14 +129,23 @@ export interface StudioContext {
   onTakeChange: (take: CapturedAudio) => void;
   onImportMedia: (choices: MediaImportChoice[]) => void;
   onImportLocalMedia: () => void;
+  pendingLocalMedia: PendingLocalMedia | null;
+  onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
+  onConfirmPendingLocalMedia: (mode: "import" | "follow", sttSegmentSeconds?: number) => void;
+  onCancelPendingLocalMedia: () => void;
+  onFinishGrowingMkv: (assetId: string) => void;
+  onStartGrowingMkvDetailedStt: (assetId: string, segmentSeconds: number) => void;
   onSetLocalCache: (assetId: string, enabled: boolean) => void;
   onSelectAsset: (assetId: string) => void;
+  onClearMediaSelection: () => void;
   onOpenObsAsset: (assetId: string) => void;
   onObsImportReady: (assetId: string) => void;
   onRecordingPreview: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript: (text: string, active: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
+  onToggleImport: (assetId: string, selected: boolean) => void;
+  onToggleDiarization: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
   onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
@@ -174,11 +191,18 @@ interface ModuleRegistryProps {
 
 function mediaPoolProps(context: StudioContext) {
   return {
+    projectId: context.projectId,
     assets: context.mediaAssets,
     busy: context.mediaBusy,
     environments: context.trainingCatalog.environmentProfiles,
     onImport: context.onImportMedia,
     onImportLocal: context.onImportLocalMedia,
+    pendingLocalMedia: context.pendingLocalMedia,
+    onPendingLocalTrackChange: context.onPendingLocalTrackChange,
+    onConfirmPendingLocalMedia: context.onConfirmPendingLocalMedia,
+    onCancelPendingLocalMedia: context.onCancelPendingLocalMedia,
+    onFinishGrowingMkv: context.onFinishGrowingMkv,
+    onStartGrowingMkvDetailedStt: context.onStartGrowingMkvDetailedStt,
     onSetLocalCache: context.onSetLocalCache,
     onQueueTranscriptions: context.onQueueTranscriptions,
     onControlTranscriptions: context.onControlTranscriptions,
@@ -188,81 +212,107 @@ function mediaPoolProps(context: StudioContext) {
     onReveal: context.onRevealAsset,
     onSetDisabled: context.onSetAssetDisabled,
     onSelect: context.onSelectAsset,
+    onClearSelection: context.onClearMediaSelection,
+    onSelectTrack: context.onSelectImportedTrack,
+    selectedImportedTrackId: context.selectedImportedTrackId,
     onSendToTraining: context.onSendToTraining,
     onToggleTraining: context.onToggleTraining,
     onToggleTranscription: context.onToggleTranscription,
+    onToggleImport: context.onToggleImport,
+    onToggleDiarization: context.onToggleDiarization,
     selectedAssetId: context.selectedAssetId,
     workflow: context.workflow,
     sttEngines: context.sttEngines,
     asrAdapters: context.asrAdapters,
     speakers: context.trainingCatalog.speakers,
     onUpdateAnnotations: context.onUpdateAnnotations,
+    onOpenObsRecording: context.onOpenObsRecording,
+    onObsArchiveReady: context.onObsArchiveReady,
   };
 }
 
 export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
+  const parentsWithTracks = new Set(context.mediaAssets.map((asset) => asset.sourceArchiveAssetId).filter((id): id is string => Boolean(id)));
+  const parentsWithImportedTracks = new Set(context.mediaAssets.filter((asset) => asset.sourceArchiveAssetId && asset.importSelected !== false).map((asset) => asset.sourceArchiveAssetId));
+  const workingAssets = context.mediaAssets.filter((asset) => {
+    if (asset.sourceArchiveAssetId) return asset.importSelected !== false;
+    return parentsWithTracks.has(asset.id) ? parentsWithImportedTracks.has(asset.id) : asset.importSelected !== false;
+  });
   switch (id) {
     case "library-panel":
-      return <LibraryPanel {...mediaPoolProps(context)} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
+      return <LibraryPanel {...mediaPoolProps(context)} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "media-pool":
       return <MediaPool {...mediaPoolProps(context)} />;
     case "voice-vault":
-      return <VoiceVault onDeleteEnvironment={context.onDeleteEnvironment} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteVoice={context.onDeleteVoice} voices={context.projectVoices} assets={context.mediaAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
+      return <VoiceVault onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} assets={workingAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
-      if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
-        return <ObsLiveLinkScript error={context.obsTranscriptError} onSeek={context.onObsTranscriptSeek}
-          playheadSeconds={context.obsPlayheadSeconds}
-          recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows} />;
-      }
-      const selectedAsset = context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
-      return <ScriptEditor onSpeakerProfileChange={selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+      const selectedAsset = workingAssets.find((asset) => asset.id === (context.selectedImportedTrackId ?? context.selectedAssetId));
+      const childTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === context.selectedAssetId);
+      const parentFeed = context.workflow === "speech-to-text" && !context.selectedImportedTrackId && childTracks.length > 0 &&
+        (!context.obsTimelineActive || childTracks.some((track) => track.words?.length || (track.transcriptionStatus === "complete" && track.text?.trim())))
+        ? <ChannelScript tracks={childTracks} onSelectTrack={context.onSelectImportedTrack} /> : null;
+      const liveFeed = context.workflow === "speech-to-text" && context.obsTimelineActive && !context.selectedImportedTrackId && !parentFeed
+        ? <ObsLiveLinkScript embedded error={context.obsTranscriptError} onSeek={context.onObsTranscriptSeek}
+          playheadSeconds={context.obsPlayheadSeconds} recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows} />
+        : null;
+      return <ScriptEditor key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "obs-capture":
       return <ObsCapture onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
         return <ObsLiveLinkTimeline onRecordingIdChange={context.onObsTimelineRecordingChange}
           onPlayheadChange={context.onObsPlayheadChange}
-          projectId={context.projectId} requestedRecordingId={context.obsTimelineRecordingId}
+          assets={context.mediaAssets} onCutsChange={context.onObsTimelineCutsChange}
+          visibleAssetId={context.selectedImportedTrackId}
+          projectId={context.projectId} projectName={context.projectName} requestedRecordingId={context.obsTimelineRecordingId}
           seekRequest={context.obsSeekRequest} transcriptRows={context.obsTranscriptRows} />;
+      }
+      const importedParent = workingAssets.find((asset) => asset.id === context.selectedAssetId);
+      const importedTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === importedParent?.id)
+        .sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0));
+      if (context.workflow === "speech-to-text" && importedParent && importedTracks.length > 0) {
+        return <ImportedMultitrackTimeline key={importedParent.id} parent={importedParent} tracks={importedTracks}
+          selectedTrackId={context.selectedImportedTrackId} singleTrackView={Boolean(context.selectedImportedTrackId)} onSelectTrack={context.onSelectImportedTrack} wordSelection={context.wordSelection}
+          onCutsChange={context.onObsTimelineCutsChange} readOnly={context.readOnlyAsset} />;
       }
       // Voice Manipulator shows only what the app generated, and none of the
       // footage's own cuts, gain or word edits: those belong to the file open in
       // Speech to Text, and applied here they changed the wrong audio.
       const generatedOnly = context.workflow === "voice-manipulator";
-      const selectedAsset = generatedOnly ? undefined : context.mediaAssets.find((asset) => asset.id === context.selectedAssetId);
+      const selectedAsset = generatedOnly ? undefined : workingAssets.find((asset) => asset.id === context.selectedAssetId);
       const noop = () => undefined;
-      return <Timeline wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={context.take} />;
+      return <Timeline wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={generatedOnly || selectedAsset ? context.take : null} />;
     }
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
       return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":
-      return <PipelineDashboard assets={context.mediaAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
+      return <PipelineDashboard assets={workingAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
     case "project-overview":
-      return <ProjectOverview assets={context.mediaAssets} model={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)} onSelectAsset={(assetId) => { context.onSelectAsset(assetId); context.onSelectPage("speech-to-text"); }} readiness={context.datasetReadiness} runs={context.trainingRuns} settings={context.trainingCatalog.settings} speakers={context.trainingCatalog.speakers} />;
+      return <ProjectOverview assets={workingAssets} model={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)} onSelectAsset={(assetId) => { context.onSelectAsset(assetId); context.onSelectPage("speech-to-text"); }} readiness={context.datasetReadiness} runs={context.trainingRuns} settings={context.trainingCatalog.settings} speakers={context.trainingCatalog.speakers} />;
     case "dataset-readiness":
       return <DatasetReadinessPanel busy={context.datasetBusy} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
-      return <SpeakerIsolation asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
+      return <SpeakerIsolation asset={workingAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":
-      return <SpeakerEmotion asset={context.mediaAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
+      return <SpeakerEmotion asset={workingAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":
-      return <Train assets={context.mediaAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} trainingModels={context.trainingModels} trainingRuntime={context.trainingRuntime} />;
+      return <Train assets={workingAssets} busy={context.datasetBusy} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onStart={context.onStartTrainingRun} readiness={context.datasetReadiness} trainingModels={context.trainingModels} trainingRuntime={context.trainingRuntime} />;
     case "recent-takes":
       return <RecentTakes />;
     case "voice-output":
-      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
+      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {
       const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
-      return <VoiceScript activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={context.onExportVoiceOutput} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+      return <VoiceScript activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
     }
     case "sound-reactor-input":
     case "sound-reactor-output": {
@@ -278,9 +328,9 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "changer-timeline": {
       const recording = context.changerRecordings.find((item) => item.id === context.take?.id) ?? null;
       const status = context.changerStatus;
-      return <Timeline gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
+      return <Timeline gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onDeleteMany={context.onDeleteChangerRecordings} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
     }
     case "manipulator-library":
-      return <ManipulatorLibrary onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={context.mediaAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onDeleteOutputs={context.onDeleteVoiceOutputs} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
+      return <ManipulatorLibrary onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={workingAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onDeleteOutputs={context.onDeleteVoiceOutputs} onExportOutput={context.onExportVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
   }
 }

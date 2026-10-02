@@ -26,10 +26,13 @@
 - **Script**: The time-aware transcript document shown and edited in the Script module.
 - **OBS LiveLink Connection**: One OBS process's machine-local link and control state; it can be active while app recording is idle.
 - **OBS LiveLink Channel**: One stable channel ID paired with an OBS source UUID. Its native source name, relay label, slot, and forwarding state can change without changing identity.
-- **OBS Capture Recording**: One project-owned app audio recording spanning any number of OBS LiveLink channels and zero or more OBS video recording spans.
+- **OBS Capture Recording**: One project-owned app audio recording spanning any number of OBS LiveLink channels and zero or more OBS video recording spans. Each completed recording becomes exactly one OBS Capture Footage.
+- **OBS Capture Footage**: One Media Pool item for one completed OBS Capture Recording. Its source is a multitrack MKA; channel analysis WAVs and channel transcripts belong to this footage rather than appearing as separate footage.
 - **OBS Video Recording Span**: One observed OBS Start-to-Stop video interval. It remains separate from the app recording and may later link to an imported MKV asset.
 - **Project Target Lease**: A short-lived, machine-local claim by one workspace/project owner to receive new OBS LiveLink recordings.
 - **OBS Source Archive**: The app's audio-only MKA parent asset with one independently addressable FLAC/PCM track per OBS source. Analysis WAV files are rebuildable derivatives for STT.
+- **Imported Multitrack Footage**: One imported MKV, MOV, or MP4 source with two or more audio streams. The Media Pool shows one parent footage; each audio stream has a child analysis asset identified by its container stream index. A track is not proof of an isolated source or speaker.
+- **Growing MKV Follow**: One native file locator feeding an Imported Multitrack Footage while its MKV grows. Complete Clusters and a durable per-track cursor produce provisional audio; an explicit Finish replaces it with continuously decoded audio from the closed, project-owned MKV.
 - **OBS Overlap Review Interval**: A derived intersection of two or more different LiveLink channels on one recording's OBS time axis. It marks segment-level review and replay, not verified words or speaker identities.
 - **Transcript Candidate**: A realtime, accurate STT, AI-corrected, or user-corrected option for one Script span.
 - **Source Word Timing**: A per-word start/end interval returned by the STT recognizer. It remains the recognizer’s source data and is not a guessed replacement for alignment.

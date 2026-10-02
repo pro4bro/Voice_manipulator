@@ -88,7 +88,7 @@ async function downloadFile(path: string, fallbackFilename: string, init?: Reque
   const response = await fetch(path, init);
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? `Không thể xuất SRT (${response.status})`);
+    throw new Error(body?.detail ?? `Không thể tải file (${response.status})`);
   }
   const contentDisposition = response.headers.get("content-disposition") ?? "";
   const filename = /filename="?([^";]+)"?/iu.exec(contentDisposition)?.[1] ?? fallbackFilename;
@@ -130,12 +130,14 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
   return {
     ...asset,
     transcriptionStatus: asset.transcriptionStatus ?? "complete",
+    importSelected: asset.importSelected ?? true,
     transcriptionSelected: asset.transcriptionSelected ?? false,
     transcriptionProgress: asset.transcriptionProgress ?? (asset.transcriptionStatus === "complete" ? 100 : 0),
     transcriptionError: asset.transcriptionError ?? null,
     deletedAt: asset.deletedAt ?? null,
     disabled: asset.disabled ?? false,
     diarizationStatus: asset.diarizationStatus ?? "idle",
+    diarizationSelected: asset.diarizationSelected ?? false,
     diarizationProgress: asset.diarizationProgress ?? 0,
     diarizationError: asset.diarizationError ?? null,
     diarizationSpeakerAssignments: asset.diarizationSpeakerAssignments ?? (asset as unknown as Record<string, unknown>).diarization_speaker_assignments as Record<string, string | null> | undefined ?? {},
@@ -240,13 +242,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ initialPath }),
     }),
-  importLocalProjectMedia: async (projectId: string, sourcePath: string, cacheLocal: boolean) => {
+  inspectLocalMediaTracks: (projectId: string, sourcePath: string) =>
+    request<{ tracks: Array<{ streamIndex: number; title: string; codec: string; channels: number | null }> }>(
+      `/api/projects/${projectId}/media/inspect-local`,
+      { method: "POST", body: JSON.stringify({ sourcePath }) },
+    ),
+  importLocalProjectMedia: async (projectId: string, sourcePath: string, cacheLocal: boolean,
+                                  streamIndexes?: number[], transcribeStreamIndexes?: number[]) => {
     const result = await request<ProjectMediaImportResult>("/api/projects/" + projectId + "/media/import-local", {
       method: "POST",
-      body: JSON.stringify({ sourcePath, cacheLocal }),
+      body: JSON.stringify({ sourcePath, cacheLocal, streamIndexes, transcribeStreamIndexes }),
     });
     return { ...result, asset: normalizeMediaAsset(result.asset), item: result.item ? normalizeStudioItem(result.item) : null };
   },
+  startGrowingMkvFollow: async (projectId: string, sourcePath: string, streamIndexes: number[], transcribeStreamIndexes: number[], sttSegmentSeconds = 60) => {
+    const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/follow-mkv`, {
+      method: "POST", body: JSON.stringify({ sourcePath, streamIndexes, transcribeStreamIndexes, sttSegmentSeconds }),
+    });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
+  getGrowingMkvAssets: async (projectId: string, assetId: string) => {
+    const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/${assetId}/follow/assets`);
+    return assets.map(normalizeMediaAsset);
+  },
+  finishGrowingMkvFollow: (projectId: string, assetId: string) =>
+    request<{ finished: boolean }>(`/api/projects/${projectId}/media/${assetId}/follow/finish`, { method: "POST" }),
+  startGrowingMkvDetailedStt: (projectId: string, assetId: string, segmentSeconds: number) =>
+    request<{ assetId: string; segmentSeconds: number; selectedTrackCount: number }>(
+      `/api/projects/${projectId}/media/${assetId}/follow/detailed-stt`,
+      { method: "POST", body: JSON.stringify({ segmentSeconds }) },
+    ),
   updateMediaLocalCache: async (projectId: string, assetId: string, enabled: boolean) => {
     const asset = await request<ProjectMediaAsset>("/api/projects/" + projectId + "/media/" + assetId + "/local-cache", {
       method: "PATCH",
@@ -346,10 +371,29 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  updateObsTimelineCuts: async (projectId: string, assetIds: string[], removedRanges: TimelineEditRange[]) => {
+    const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/timeline-cuts-batch`, {
+      method: "PATCH",
+      body: JSON.stringify({ assetIds, removedRanges }),
+    });
+    return assets.map(normalizeMediaAsset);
+  },
   setMediaTrainingSelected: async (projectId: string, assetId: string, selected: boolean) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/training-selection`, {
       method: "PATCH",
       body: JSON.stringify({ selected }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  setMediaImportSelected: async (projectId: string, assetId: string, selected: boolean) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/import-selection`, {
+      method: "PATCH", body: JSON.stringify({ selected }),
+    });
+    return normalizeMediaAsset(asset);
+  },
+  setMediaDiarizationSelected: async (projectId: string, assetId: string, selected: boolean) => {
+    const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/diarization-selection`, {
+      method: "PATCH", body: JSON.stringify({ selected }),
     });
     return normalizeMediaAsset(asset);
   },
@@ -482,7 +526,9 @@ export const api = {
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   deleteVoiceOutput: (projectId: string, outputId: string) =>
     request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),
-  exportVoiceOutputSubtitles: (projectId: string, outputId: string, mode: "sentence" | "word" | "table") =>
+  downloadVoiceOutputAudio: (projectId: string, outputId: string) =>
+    downloadFile(`/api/projects/${projectId}/voice-outputs/${outputId}/audio`, `${outputId}.wav`),
+  exportVoiceOutputSubtitles: (projectId: string, outputId: string, mode: "sentence" | "word" | "table" | "line") =>
     downloadSrt(
       `/api/projects/${projectId}/voice-outputs/${outputId}/subtitles?mode=${mode}`,
       `voice-output--${mode}.${mode === "table" ? "csv" : "srt"}`,

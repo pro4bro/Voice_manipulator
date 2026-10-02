@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 
 import { api } from "../../api/client";
-import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint } from "../../domain/types";
+import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, TimelineEditRange } from "../../domain/types";
 import { subscribeObsLiveLinkWaveforms } from "../obs-capture/obs-waveform-feed";
 import { obsTranscriptText } from "../obs-capture/obs-transcript-feed";
 import { obsOverlapAt, obsOverlapByUtterance, obsOverlapTime } from "../obs-capture/obs-overlap";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { Icon } from "../../ui/Icon";
+import { TimelineLaneLabel } from "./TimelineLaneLabel";
+import { recordingName } from "../../domain/recording-name";
+import { obsTrackLabel } from "../../domain/obs-track-label";
 
 const WINDOW_OPTIONS = [15, 30, 60, 120] as const;
 const DEFAULT_WINDOW_SECONDS = 60;
+const EMPTY_ASSETS: ProjectMediaAsset[] = [];
 type Layout = "layers" | "columns";
 interface PreviewAudioGraph {
   context: AudioContext;
@@ -28,6 +33,18 @@ interface Lane {
 function clock(seconds: number): string {
   const value = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
+}
+
+function timecode(seconds: number): string {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const remainingSeconds = safe - hours * 3600 - minutes * 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${remainingSeconds.toFixed(3).padStart(6, "0")}`;
+}
+
+function recordingDisplayName(recording: ObsLiveLinkRecording, projectName: string): string {
+  return recording.displayName || recordingName(new Date(recording.startedAtUtc ?? ""), projectName, "LIV", recording.recordingId);
 }
 
 function recordingSeconds(recording: ObsLiveLinkRecording, now: number): number {
@@ -98,10 +115,12 @@ function missingPcmRanges(points: ObsLiveLinkWaveformPoint[], sampleRate: number
                           elapsedSeconds: number): Array<{ start: number; end: number }> {
   if (!sampleRate) return [];
   const ranges: Array<{ start: number; end: number }> = [];
+  const lastReceivedFrame = points.reduce((latest, point) => point.peak === null
+    ? latest : Math.max(latest, point.endFrame), 0);
   for (const point of points) {
-    if (point.peak !== null) continue;
+    if (point.peak !== null || point.startFrame >= lastReceivedFrame) continue;
     const start = point.startFrame / sampleRate;
-    const end = Math.min(elapsedSeconds, point.endFrame / sampleRate);
+    const end = Math.min(elapsedSeconds, point.endFrame / sampleRate, lastReceivedFrame / sampleRate);
     if (end <= start) continue;
     const previous = ranges[ranges.length - 1];
     if (previous && start <= previous.end + 1 / sampleRate) previous.end = Math.max(previous.end, end);
@@ -117,13 +136,16 @@ function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): n
   return Math.max(0, Math.min(100, Math.round(((point?.peak ?? 0) / 32768) * 100)));
 }
 
-export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
-                                      transcriptRows = [], seekRequest = null }: {
-  projectId: string; requestedRecordingId: string | null;
+export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
+                                      transcriptRows = [], seekRequest = null, assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null }: {
+  projectId: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
   transcriptRows?: ObsLiveLinkTranscriptRow[];
-  seekRequest?: { recordingId: string; channelId: string; seconds: number; serial: number; replayUntilSeconds?: number } | null;
+  assets?: ProjectMediaAsset[];
+  visibleAssetId?: string | null;
+  onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
+  seekRequest?: { recordingId: string; channelId: string; seconds: number; serial: number } | null;
 }) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
@@ -134,19 +156,32 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
   const [currentTime, setCurrentTime] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [playing, setPlaying] = useState(false);
-  const [pendingReplay, setPendingReplay] = useState<{ channelId: string; startSeconds: number; endSeconds: number } | null>(null);
-  const [replayUntil, setReplayUntil] = useState<number | null>(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [archiveRetry, setArchiveRetry] = useState(0);
   const [layout, setLayout] = useState<Layout>("layers");
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [windowSeconds, setWindowSeconds] = useState<number>(DEFAULT_WINDOW_SECONDS);
   const [gainByChannel, setGainByChannel] = useState<Record<string, number>>({});
+  const [mutedByChannel, setMutedByChannel] = useState<Record<string, boolean>>({});
   const [markIn, setMarkIn] = useState<number | null>(null);
+  const [markOut, setMarkOut] = useState<number | null>(null);
+  const [stagedCut, setStagedCut] = useState<TimelineEditRange | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
   const [followLive, setFollowLive] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const otherAudioRefs = useRef(new Map<string, HTMLAudioElement>());
   const audioGraphRef = useRef<PreviewAudioGraph | null>(null);
   const windowRef = useRef({ start: 0, end: DEFAULT_WINDOW_SECONDS });
   const recordingIdRef = useRef<string | null>(null);
+  const scrubbingRef = useRef(false);
+  const scrubStartXRef = useRef(0);
+  const suppressClickRef = useRef(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const playbackActionRef = useRef<() => void>(() => undefined);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const columnResizeRef = useRef<{ channelId: string; pointerId: number; startX: number; startWidth: number } | null>(null);
 
   useEffect(() => setSelectedRecordingId(requestedRecordingId), [projectId, requestedRecordingId]);
   useEffect(() => {
@@ -186,13 +221,46 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
   const duration = recording ? recordingSeconds(recording, now) : 0;
   const visibleSpan = (seconds: number) => isLive ? seconds :
     Math.min(seconds, Math.max(10, Math.ceil(duration / 10) * 10));
+  const zoomOptions = !isLive && duration > WINDOW_OPTIONS[WINDOW_OPTIONS.length - 1]
+    ? [...WINDOW_OPTIONS, duration] : [...WINDOW_OPTIONS];
   const windowSpan = visibleSpan(windowSeconds);
   windowRef.current = { start: windowStart, end: windowStart + windowSpan };
   recordingIdRef.current = recordingId;
-  const lanes = useMemo(() => sourceLanes(status, journal, recordingId, isLive),
-    [status, journal, recordingId, isLive]);
+  const lanes = useMemo(() => sourceLanes(status, journal, recordingId, isLive).filter((lane) => {
+    if (isLive || !lane.assetId) return true;
+    return assets.find((asset) => asset.id === lane.assetId)?.importSelected !== false;
+  }), [status, journal, recordingId, isLive, assets]);
+  const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
+  const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
   const overlapByUtterance = useMemo(() => obsOverlapByUtterance(transcriptRows), [transcriptRows]);
   const laneIds = lanes.map((lane) => lane.channelId).join(",");
+  const defaultColumnWidth = viewportWidth ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length)))) : 360;
+  const clampColumnWidth = (value: number) => Math.max(240, Math.min(1200, Math.round(value)));
+
+  function beginColumnResize(event: PointerEvent<HTMLDivElement>, channelId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? defaultColumnWidth;
+    columnResizeRef.current = { channelId, pointerId: event.pointerId, startX: event.clientX, startWidth };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveColumnResize(event: PointerEvent<HTMLDivElement>) {
+    const resize = columnResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    setColumnWidths((current) => ({ ...current,
+      [resize.channelId]: clampColumnWidth(resize.startWidth + event.clientX - resize.startX) }));
+  }
+
+  function endColumnResize(event: PointerEvent<HTMLDivElement>) {
+    if (columnResizeRef.current?.pointerId !== event.pointerId) return;
+    columnResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  const assetIds = lanes.map((lane) => lane.assetId).filter((id): id is string => Boolean(id));
+  const sharedCuts = assets.find((asset) => asset.id === assetIds[0])?.removedRanges ?? [];
+  const canMark = !isLive && lanes.length > 0 && assetIds.length === lanes.length;
+  const canEdit = canMark && Boolean(onCutsChange) && !editBusy;
 
   useEffect(() => {
     if (transcriptRows.length) onPlayheadChange?.(currentTime);
@@ -203,12 +271,27 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
     setWindowStart(0);
     setCurrentTime(0);
     setPlaying(false);
-    setPendingReplay(null);
-    setReplayUntil(null);
     setMarkIn(null);
+    setMarkOut(null);
+    setStagedCut(null);
     setFollowLive(true);
+    setWindowSeconds(DEFAULT_WINDOW_SECONDS);
   }, [recordingId]);
   useEffect(() => setGainByChannel({}), [projectId]);
+  useEffect(() => setMutedByChannel({}), [projectId]);
+  useEffect(() => setColumnWidths({}), [projectId]);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      setViewportWidth(viewport.clientWidth);
+      setViewportHeight(viewport.clientHeight);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!isLive || !followLive) return;
     const timer = window.setInterval(() => setNow(Date.now()), 250);
@@ -224,17 +307,11 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
   }, [duration, isLive, followLive, windowStart, windowSeconds]);
   useEffect(() => {
     if (!seekRequest || seekRequest.recordingId !== recordingId) return;
-    if (seekRequest.replayUntilSeconds !== undefined) {
-      seekOverlap(seekRequest.channelId, seekRequest.seconds, seekRequest.replayUntilSeconds);
-      return;
-    }
-    setPendingReplay(null);
-    setReplayUntil(null);
     setSelectedChannelId(seekRequest.channelId);
     setCurrentTime(seekRequest.seconds);
     setWindowStart(Math.max(0, seekRequest.seconds - windowSpan / 3));
     setFollowLive(false);
-    if (audioRef.current) audioRef.current.currentTime = seekRequest.seconds;
+    forEachPlaybackAudio((audio) => { audio.currentTime = seekRequest.seconds; });
   }, [seekRequest?.serial, recordingId]);
   useEffect(() => {
     if (!isLive && recording) setCurrentTime((time) => Math.min(time, duration));
@@ -261,32 +338,91 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
     return () => { cancelled = true; window.clearTimeout(retryTimer); };
   }, [projectId, recordingId, isLive, journal?.recording.archiveStatus, laneIds, windowStart, windowSpan, archiveRetry]);
 
-  useEffect(() => {
-    if (!isLive || !recordingId || windowStart === 0 || !lanes.length) return;
-    let cancelled = false;
-    for (const lane of lanes) void api.getObsLiveLinkWaveform(projectId, recordingId,
-      lane.channelId, windowStart, windowStart + windowSpan, 600)
-      .then((waveform) => { if (!cancelled) setWaveforms((current) => ({ ...current, [lane.channelId]: waveform })); })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Không tải được cửa sổ sóng âm."); });
-    return () => { cancelled = true; };
-  }, [projectId, recordingId, isLive, laneIds, windowStart, windowSpan]);
-
-  const selectedLane = lanes.find((lane) => lane.channelId === selectedChannelId) ?? lanes[0];
+  const selectedLane = visibleLanes.find((lane) => lane.channelId === selectedChannelId) ?? visibleLanes[0];
   const playbackUrl = selectedLane?.assetId
     ? `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(selectedLane.assetId)}/audio`
     : null;
   const selectedGain = selectedLane ? gainByChannel[`${recordingId}:${selectedLane.channelId}`] ?? 100 : 100;
+  const selectedMuted = selectedLane ? mutedByChannel[`${recordingId}:${selectedLane.channelId}`] ?? false : false;
   const playhead = ((currentTime - windowStart) / windowSpan) * 100;
   const markInPosition = markIn === null ? null : ((markIn - windowStart) / windowSpan) * 100;
-  const canPlay = !isLive && Boolean(playbackUrl);
+  const canPlay = !isLive && lanes.some((lane) => lane.assetId);
+
+  function forEachPlaybackAudio(callback: (audio: HTMLAudioElement, channelId: string) => void) {
+    if (audioRef.current && selectedLane) callback(audioRef.current, selectedLane.channelId);
+    otherAudioRefs.current.forEach(callback);
+  }
+
+  function pausePlayback() {
+    forEachPlaybackAudio((audio) => audio.pause());
+    setPlaying(false);
+  }
+
+  function togglePlayback() {
+    if (!canPlay) return;
+    if (playing) { pausePlayback(); return; }
+    const audios: HTMLAudioElement[] = [];
+    forEachPlaybackAudio((audio) => { audio.currentTime = currentTime; audio.playbackRate = playbackRate; audios.push(audio); });
+    if (!audios.length) return;
+    if (audioRef.current) preparePreviewAudio(audioRef.current);
+    void Promise.all(audios.map((audio) => audio.play())).then(() => setPlaying(true)).catch(() => {
+      pausePlayback(); setError("Không phát được tất cả track OBS.");
+    });
+  }
+  playbackActionRef.current = togglePlayback;
+
+  useEffect(() => {
+    const module = viewportRef.current?.closest(".obs-timeline");
+    if (!module) return;
+    let pointerInside = false;
+    const enter = () => { pointerInside = true; };
+    const leave = () => { pointerInside = false; };
+    const keydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (!pointerInside || event.key !== " " || event.repeat || event.altKey || event.ctrlKey || event.metaKey ||
+          (target instanceof HTMLElement && (target.isContentEditable ||
+            Boolean(target.closest("input, textarea, select, button, [role='slider']"))))) return;
+      event.preventDefault();
+      playbackActionRef.current();
+    };
+    module.addEventListener("pointerenter", enter);
+    module.addEventListener("pointerleave", leave);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      module.removeEventListener("pointerenter", enter);
+      module.removeEventListener("pointerleave", leave);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, []);
 
   useEffect(() => {
     if (audioGraphRef.current?.element === audioRef.current) {
-      audioGraphRef.current.gain.gain.value = selectedGain / 100;
+      audioGraphRef.current.gain.gain.value = selectedMuted ? 0 : selectedGain / 100;
     } else if (audioRef.current) {
-      audioRef.current.volume = Math.min(1, selectedGain / 100);
+      audioRef.current.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
     }
-  }, [playbackUrl, selectedGain]);
+  }, [playbackUrl, selectedGain, selectedMuted]);
+  useEffect(() => {
+    otherAudioRefs.current.forEach((audio, channelId) => {
+      const key = `${recordingId}:${channelId}`;
+      audio.volume = mutedByChannel[key] ? 0 : Math.min(1, (gainByChannel[key] ?? 100) / 100);
+    });
+  }, [recordingId, playbackUrl, gainByChannel, mutedByChannel]);
+  useEffect(() => {
+    forEachPlaybackAudio((audio) => { audio.playbackRate = playbackRate; });
+  }, [playbackUrl, playbackRate]);
+
+  useEffect(() => {
+    if (!playing || isLive) return;
+    const audios: HTMLAudioElement[] = [];
+    forEachPlaybackAudio((audio) => { audio.currentTime = currentTime; audios.push(audio); });
+    if (audioRef.current) preparePreviewAudio(audioRef.current);
+    void Promise.all(audios.map((audio) => audio.play())).catch(() => {
+      pausePlayback(); setError("Không phát được tất cả track OBS.");
+    });
+  // Reconnect the selected player when the user changes the focused lane.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playbackUrl]);
 
   useEffect(() => () => {
     const graph = audioGraphRef.current;
@@ -315,118 +451,158 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
     const graph = audioGraphRef.current;
     if (graph?.element === audio) {
       audio.volume = 1;
-      graph.gain.gain.value = selectedGain / 100;
+      graph.gain.gain.value = selectedMuted ? 0 : selectedGain / 100;
       void graph.context.resume().catch(() => setError("Không kích hoạt được gain nghe lại."));
     } else {
-      audio.volume = Math.min(1, selectedGain / 100);
+      audio.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
       if (selectedGain > 100) setError("Trình duyệt không hỗ trợ tăng gain nghe lại trên 100%.");
     }
   }
 
-  function playPendingReplay(audio: HTMLAudioElement) {
-    if (!pendingReplay || isLive || selectedLane?.channelId !== pendingReplay.channelId ||
-        audio.readyState < HTMLMediaElement.HAVE_METADATA) return;
-    audio.currentTime = Math.min(pendingReplay.startSeconds, audio.duration || pendingReplay.startSeconds);
-    preparePreviewAudio(audio);
-    setReplayUntil(pendingReplay.endSeconds);
-    setPendingReplay(null);
-    void audio.play().catch(() => setError("Không phát được đoạn chồng tiếng trên track OBS."));
-  }
-
-  function finishReplay(audio: HTMLAudioElement) {
-    if (replayUntil === null || audio.currentTime < replayUntil) return;
-    audio.pause();
-    audio.currentTime = replayUntil;
-    setCurrentTime(replayUntil);
-    setReplayUntil(null);
-  }
-
-  useEffect(() => {
-    if (audioRef.current) playPendingReplay(audioRef.current);
-  }, [pendingReplay, playbackUrl, selectedLane?.channelId]);
-
-  useEffect(() => {
-    if (replayUntil === null || !playing) return;
-    const timer = window.setInterval(() => {
-      if (audioRef.current) finishReplay(audioRef.current);
-    }, 25);
-    return () => window.clearInterval(timer);
-  }, [replayUntil, playing]);
-
   function zoomTarget(direction: -1 | 1): number | null {
-    let index = WINDOW_OPTIONS.findIndex((value) => value === windowSeconds) + direction;
-    while (index >= 0 && index < WINDOW_OPTIONS.length) {
-      const next = WINDOW_OPTIONS[index];
+    let index = zoomOptions.findIndex((value) => value === windowSeconds) + direction;
+    while (index >= 0 && index < zoomOptions.length) {
+      const next = zoomOptions[index];
       if (visibleSpan(next) !== windowSpan) return next;
       index += direction;
     }
     return null;
   }
 
-  function changeWindow(direction: -1 | 1) {
-    const next = zoomTarget(direction);
-    if (next === null) return;
+  function selectWindow(next: number) {
     const nextSpan = visibleSpan(next);
     setWindowStart(isLive ? Math.max(0, duration - nextSpan) :
       Math.max(0, Math.min(duration - nextSpan, currentTime - nextSpan / 2)));
     setWindowSeconds(next);
   }
 
+  function changeWindow(direction: -1 | 1) {
+    const next = zoomTarget(direction);
+    if (next !== null) selectWindow(next);
+  }
+
   function seek(clientX: number, element: HTMLElement) {
     const bounds = element.getBoundingClientRect();
     if (!bounds.width) return;
     const position = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
-    const next = Math.min(duration, windowStart + position * windowSpan);
+    const next = Math.min(duration, element.classList.contains("obs-timeline__scrub")
+      ? position * duration : windowStart + position * windowSpan);
     setCurrentTime(next);
-    if (audioRef.current) audioRef.current.currentTime = Math.min(next, audioRef.current.duration || next);
+    setFollowLive(false);
+    if (next < windowStart || next > windowStart + windowSpan) {
+      setWindowStart(Math.max(0, Math.min(Math.max(0, duration - windowSpan), next - windowSpan / 2)));
+    }
+    forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, audio.duration || next); });
   }
 
-  function seekOverlap(channelId: string, seconds: number, endSeconds: number) {
-    setSelectedChannelId(channelId);
-    setFollowLive(false);
-    setCurrentTime(seconds);
-    setReplayUntil(null);
-    setPendingReplay(!isLive && lanes.some((lane) => lane.channelId === channelId && lane.assetId)
-      ? { channelId, startSeconds: seconds, endSeconds } : null);
+  function clickSeek(event: MouseEvent<HTMLElement>) {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+    if (!isLive) seek(event.clientX, event.currentTarget);
+  }
+
+  function beginScrub(event: PointerEvent<HTMLElement>) {
+    if (isLive) return;
+    scrubbingRef.current = true;
+    scrubStartXRef.current = event.clientX;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seek(event.clientX, event.currentTarget);
+  }
+
+  function moveScrub(event: PointerEvent<HTMLElement>) {
+    if (scrubbingRef.current) seek(event.clientX, event.currentTarget);
+  }
+
+  function endScrub(event: PointerEvent<HTMLElement>) {
+    if (!scrubbingRef.current) return;
+    seek(event.clientX, event.currentTarget);
+    scrubbingRef.current = false;
+    suppressClickRef.current = Math.abs(event.clientX - scrubStartXRef.current) > 2;
+    if (suppressClickRef.current) window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
+
+  function cancelScrub(event: PointerEvent<HTMLElement>) {
+    scrubbingRef.current = false;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function cutMarkedRange() {
+    if (markIn === null || markOut === null || Math.abs(markOut - markIn) < 0.05) return;
+    const start = Math.min(markIn, markOut);
+    const end = Math.max(markIn, markOut);
+    setStagedCut({ id: `cut-preview-${start}-${end}`, start, end });
+  }
+
+  async function applySharedCuts(ranges: TimelineEditRange[]): Promise<boolean> {
+    if (!canEdit || !onCutsChange) return false;
+    setEditBusy(true);
+    try { return await onCutsChange(assetIds, ranges) !== false; }
+    finally { setEditBusy(false); }
+  }
+
+  async function deleteStagedCut() {
+    if (!stagedCut || !canEdit) return;
+    const saved = await applySharedCuts([...sharedCuts, { ...stagedCut, id: `cut-${crypto.randomUUID().slice(0, 12)}` }]
+      .sort((left, right) => left.start - right.start));
+    if (!saved) return;
+    setStagedCut(null);
+    setMarkIn(null);
+    setMarkOut(null);
   }
 
   return <ModuleFrame eyebrow={isLive ? `REC LIVE · ${lanes.length} CHANNEL` : recordingId ? `OBS LIVELINK · ${recordingId.slice(0, 8)}` : "OBS LIVELINK"}
     title="Timeline" index="A1" tone="dark" className="timeline-module obs-timeline"
-    action={<div className="obs-timeline__header-actions">
-      <label>SESSION <select aria-label="Bản ghi OBS" disabled={isLive} onChange={(event) => { setSelectedRecordingId(event.target.value); onRecordingIdChange?.(event.target.value); }} value={recordingId ?? ""}>
+    action={<div className="timeline-header-actions obs-timeline__header-actions">
+      <label title="Mỗi lần ghi OBS tạo một footage chứa các track và Script đi kèm">BẢN GHI <select aria-label="Bản ghi OBS" disabled={isLive} onChange={(event) => { setSelectedRecordingId(event.target.value); onRecordingIdChange?.(event.target.value); }} title={recording ? recordingDisplayName(recording, projectName) : undefined} value={recordingId ?? ""}>
         {!recordingId ? <option value="">Chưa có bản ghi</option> : null}
+        {active && !journals.some((item) => item.recording.recordingId === active.recordingId) ?
+          <option value={active.recordingId}>{recordingDisplayName(active, projectName)}</option> : null}
         {journals.map((item) => <option key={item.recording.recordingId} value={item.recording.recordingId}>
-          {item.recording.recordingId.slice(0, 8)} · {item.recording.archiveStatus}
+          {recordingDisplayName(item.recording, projectName)}
         </option>)}
       </select></label>
-      <span>{isLive ? recording?.status === "paused" ? "PAUSED" : "REC LIVE" : recording?.archiveStatus === "ready" ? "MKA READY" : "PCM SAVED"}</span>
+      {recording ? <span>{isLive ? recording.status === "paused" ? "PAUSED" : "REC LIVE" : recording.archiveStatus === "ready" ? "MKA READY" : "PCM SAVED"}</span> : null}
+      <div aria-label="Kiểu hiển thị Timeline OBS" className="obs-timeline__layout" role="group">
+        <button aria-pressed={layout === "columns"} onClick={() => setLayout("columns")} type="button">CỘT</button>
+        <button aria-pressed={layout === "layers"} onClick={() => setLayout("layers")} type="button">LAYER</button>
+      </div>
+      <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
+        <button disabled={!canMark} onClick={() => { setMarkIn(currentTime); setStagedCut(null); }} type="button">MARK IN</button>
+        <button disabled={!canMark} onClick={() => { setMarkOut(currentTime); setStagedCut(null); }} type="button">MARK OUT</button>
+        <button disabled={!canMark || markIn === null || markOut === null} onClick={cutMarkedRange} type="button">CUT</button>
+        <button disabled={!canEdit || (!stagedCut && !sharedCuts.length)} onClick={() => {
+          if (stagedCut) setStagedCut(null);
+          else void applySharedCuts(sharedCuts.slice(0, -1));
+        }} type="button">UNCUT</button>
+        <button className="is-delete" disabled={!canEdit || !stagedCut} onClick={() => void deleteStagedCut()} type="button">DELETE</button>
+        <button disabled={!canMark || (editBusy || (!sharedCuts.length && !stagedCut && markIn === null && markOut === null))} onClick={() => {
+          if (sharedCuts.length) void applySharedCuts([]).then((saved) => {
+            if (saved) { setMarkIn(null); setMarkOut(null); setStagedCut(null); }
+          });
+          else { setMarkIn(null); setMarkOut(null); setStagedCut(null); }
+        }} type="button">RESET</button>
+      </div>
+      <div aria-label="Zoom Timeline OBS" className="timeline-zoom obs-timeline__zoom" role="group">
+        <button aria-label="Thu nhỏ Timeline OBS" disabled={zoomTarget(1) === null} onClick={() => changeWindow(1)} type="button">−</button>
+        <input aria-label="Zoom timeline" disabled={zoomTarget(-1) === null && zoomTarget(1) === null}
+          max={zoomOptions.length - 1} min={0} onChange={(event) => selectWindow(zoomOptions[zoomOptions.length - 1 - Number(event.target.value)])}
+          step={1} type="range" value={zoomOptions.length - 1 - Math.max(0, zoomOptions.indexOf(windowSeconds))} />
+        <span>{windowSpan}s</span>
+        <button aria-label="Phóng to Timeline OBS" disabled={zoomTarget(-1) === null} onClick={() => changeWindow(-1)} type="button">+</button>
+      </div>
     </div>}>
     <div className="obs-timeline__main">
       {error ? <p className="obs-timeline__error" role="alert">{error}</p> : null}
-      <div className="obs-timeline__toolbar">
-        <div aria-label="Kiểu hiển thị Timeline OBS" className="obs-timeline__layout" role="group">
-          <button aria-pressed={layout === "columns"} onClick={() => setLayout("columns")} type="button">CỘT</button>
-          <button aria-pressed={layout === "layers"} onClick={() => setLayout("layers")} type="button">LAYER</button>
-        </div>
-        <button className="obs-timeline__mark-button" disabled={isLive || !recordingId}
-          onClick={() => setMarkIn(currentTime)} type="button">MARK IN</button>
-        <div aria-label="Zoom Timeline OBS" className="obs-timeline__zoom" role="group">
-          <button aria-label="Phóng to Timeline OBS" disabled={zoomTarget(-1) === null}
-            onClick={() => changeWindow(-1)} type="button">+</button>
-          <span>{windowSpan}s</span>
-          <button aria-label="Thu nhỏ Timeline OBS" disabled={zoomTarget(1) === null}
-            onClick={() => changeWindow(1)} type="button">−</button>
-        </div>
-      </div>
-      <div className="obs-timeline__viewport">
-        <div className={`obs-timeline__track-scroll is-${layout}`} aria-label="Timeline đa kênh OBS">
+      <div className="obs-timeline__viewport" ref={viewportRef}>
+        <div className={`obs-timeline__track-scroll is-${layout}`} aria-label="Timeline đa kênh OBS"
+          style={{ "--obs-layer-height": `${Math.max(110, Math.round(viewportHeight * 0.6))}px` } as CSSProperties}>
           {layout === "layers" ? <><div className="obs-timeline__label-spacer" />
-            <div className="obs-timeline__ruler" aria-label="Ruler chung">
+            <div className="obs-timeline__ruler" aria-label="Ruler chung" onClick={clickSeek} onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
               {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>
                 {clock(windowStart + (part * windowSpan) / 4)}
               </span>)}
             </div></> : null}
-          {lanes.map((lane) => {
+          {visibleLanes.map((lane) => {
             const captions = transcriptRows.filter((row) => row.recordingId === recordingId && row.channelId === lane.channelId);
             const overlaps = captions.flatMap((row) => (overlapByUtterance.get(row.utteranceId) ?? []).map((interval) => ({
               ...interval, utteranceId: row.utteranceId,
@@ -435,10 +611,15 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
               ? [...captions].reverse().find((row) => duration - row.endSeconds < 4)
               : [...captions].reverse().find((row) => row.startSeconds <= currentTime && currentTime <= Math.max(row.endSeconds, row.startSeconds + 1));
             const waveform = waveforms[lane.channelId];
-            const points = waveform?.recordingId === recordingId ? waveform.points : [];
+            const points = waveform?.recordingId === recordingId && waveform.startSeconds === windowStart &&
+              waveform.endSeconds === windowStart + windowSpan ? waveform.points : [];
             const hasPcm = points.some((point) => point.peak !== null);
-            const path = waveformPath(points, waveform?.sampleRate ?? null, windowStart, windowSpan);
-            const missing = isLive ? missingPcmRanges(points, waveform?.sampleRate ?? null, duration) : [];
+            const sampleRate = waveform?.sampleRate ?? null;
+            const path = waveformPath(points, sampleRate, windowStart, windowSpan);
+            const missing = isLive ? missingPcmRanges(points, sampleRate, duration) : [];
+            const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null
+              ? latest : Math.max(latest, point.endFrame / sampleRate), 0) : 0;
+            const pendingSeconds = isLive && followLive && hasPcm ? Math.max(0, duration - receivedUntil) : 0;
             const livePeak = status?.channels.find((channel) => channel.channelId === lane.channelId)?.meterPeak ?? 0;
             const level = isLive ? Math.max(0, Math.min(100, Math.round(livePeak * 100))) :
               sourceLevel(waveform, currentTime);
@@ -450,18 +631,33 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
               ...(recording?.channelIntervals ?? []).filter((part) => part.channelId === lane.channelId)
                 .map((part) => ({ ...part, reason: part.reason })),
             ];
-            return <div className="obs-timeline__lane" key={lane.channelId}>
+            return <div className="obs-timeline__lane" key={lane.channelId}
+              style={layout === "columns" && columnWidths[lane.channelId] ? { flexBasis: columnWidths[lane.channelId], flexGrow: 0 } : undefined}>
               <button aria-label={`Nghe kênh ${lane.label}`} aria-pressed={selectedLane?.channelId === lane.channelId}
-                className="obs-timeline__lane-label" onClick={() => { setSelectedChannelId(lane.channelId); audioRef.current?.pause(); }} type="button">
-                <b title={lane.label}>{lane.label}</b><small title={lane.nativeName}>{lane.nativeName}</small>
+                className="obs-timeline__lane-label" onClick={() => setSelectedChannelId(lane.channelId)} type="button">
+                <TimelineLaneLabel text={`${obsTrackLabel(lane.label)} - ${lane.nativeName}`} />
               </button>
-              {layout === "columns" ? <div aria-label={`Ruler ${lane.label}`} className="obs-timeline__ruler obs-timeline__column-ruler">
+              {layout === "columns" ? <div aria-label={`Điều chỉnh độ rộng Timeline ${lane.label}`}
+                aria-orientation="vertical" aria-valuemin={240} aria-valuemax={1200}
+                aria-valuenow={columnWidths[lane.channelId] ?? defaultColumnWidth}
+                className="obs-timeline__column-resizer" onKeyDown={(event) => {
+                  const width = columnWidths[lane.channelId] ?? defaultColumnWidth;
+                  const delta = event.key === "ArrowRight" ? 24 : event.key === "ArrowLeft" ? -24 : null;
+                  if (delta === null && event.key !== "Home" && event.key !== "End") return;
+                  event.preventDefault();
+                  setColumnWidths((current) => ({ ...current, [lane.channelId]:
+                    event.key === "Home" ? 240 : event.key === "End" ? 1200 : clampColumnWidth(width + (delta ?? 0)) }));
+                }} onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, lane.channelId)}
+                onPointerMove={moveColumnResize} onPointerUp={endColumnResize} role="separator" tabIndex={0}
+                title={`Kéo vách để đổi độ rộng Timeline ${lane.label}`} /> : null}
+              {layout === "columns" ? <div aria-label={`Ruler ${lane.label}`} className="obs-timeline__ruler obs-timeline__column-ruler" onClick={clickSeek} onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
                 {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>
                   {clock(windowStart + (part * windowSpan) / 4)}
                 </span>)}
               </div> : null}
               <div aria-label={`Sóng âm ${lane.label}`} className="obs-timeline__wave" role="img"
-                onClick={(event) => { if (!isLive) seek(event.clientX, event.currentTarget); }}>
+                onClick={clickSeek}
+                onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
                 {intervals.map((part, index) => {
                   const from = (part.startMonotonicNs - intervalOrigin) / 1e9;
                   const to = part.endMonotonicNs === null ? duration : (part.endMonotonicNs - intervalOrigin) / 1e9;
@@ -489,16 +685,21 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
                   <i aria-label={`Playhead ${lane.label}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}
                 {markInPosition !== null && markInPosition >= 0 && markInPosition <= 100 ?
                   <i aria-label={`Mark In ${lane.label}`} className="obs-timeline__mark" style={{ left: `${markInPosition}%` }} /> : null}
-                {!hasPcm ? <span className="obs-timeline__empty">{isLive ? "Đang chờ PCM" : "Không có PCM"}</span> : null}
+                {markOut !== null ? <i aria-label={`Mark Out ${lane.label}`} className="obs-timeline__mark" style={{ left: `${((markOut - windowStart) / windowSpan) * 100}%` }} /> : null}
+                {sharedCuts.map((cut) => {
+                  const position = intervalPosition(cut.start, cut.end, windowStart, windowSpan);
+                  return position ? <i aria-label={`Đoạn đã loại ${lane.label}`} className="obs-timeline__removed-range" key={cut.id} style={position} /> : null;
+                })}
+                {stagedCut ? <i aria-label={`Đoạn chuẩn bị xóa ${lane.label}`} className="obs-timeline__removed-range is-staged" style={intervalPosition(stagedCut.start, stagedCut.end, windowStart, windowSpan) ?? undefined} /> : null}
+                {isLive && pendingSeconds > 2 ? <span className="obs-timeline__pending">
+                  Đang nhận PCM · trễ {Math.round(pendingSeconds)}s
+                </span> : !hasPcm ? <span className="obs-timeline__empty">{isLive ? "Đang chờ PCM" : "Không có PCM"}</span> : null}
               </div>
-              <div className="obs-timeline__overlap-markers">
+              <div aria-hidden="true" className="obs-timeline__overlap-markers">
                 {overlaps.map((overlap) => {
                   const position = intervalPosition(overlap.startSeconds, overlap.endSeconds, windowStart, windowSpan);
-                  return position ? <button key={`${overlap.utteranceId}-${overlap.startSeconds}`}
-                    aria-label={`Nghe lại chồng tiếng ${lane.label} từ ${obsOverlapTime(overlap.startSeconds)} đến ${obsOverlapTime(overlap.endSeconds)}`}
-                    onClick={() => seekOverlap(lane.channelId, overlap.startSeconds, overlap.endSeconds)}
-                    style={position} title={`Chồng tiếng ${obsOverlapTime(overlap.startSeconds)}–${obsOverlapTime(overlap.endSeconds)} · thời gian theo đoạn · nghe ${lane.label}`}
-                    type="button" /> : null;
+                  return position ? <i key={`${overlap.utteranceId}-${overlap.startSeconds}`}
+                    style={position} title={`Chồng tiếng ${obsOverlapTime(overlap.startSeconds)}–${obsOverlapTime(overlap.endSeconds)}`} /> : null;
                 })}
               </div>
               <div aria-label={`Phụ đề nháp ${lane.label}`}
@@ -508,15 +709,19 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
                 {caption ? <small>{caption.status === "final" ? "DRAFT" : "LIVE"}</small> : null}
               </div>
               <div className="obs-timeline__lane-controls" title="Gain chỉ đổi âm lượng nghe lại trong Pro4Bro; không đổi fader OBS hoặc PCM/MKA gốc.">
-                <label className="obs-timeline__gain">GAIN
+                <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span>
+                  <button aria-label={`${mutedByChannel[gainKey] ? "Bật tiếng" : "Tắt tiếng"} ${lane.label}`}
+                    aria-pressed={Boolean(mutedByChannel[gainKey])} className="obs-timeline__mute"
+                    onClick={() => setMutedByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
+                    title={mutedByChannel[gainKey] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button></div>
                   <input aria-label={`Gain nghe lại ${lane.label}`} max="200" min="0"
                     onChange={(event) => setGainByChannel((current) => ({ ...current,
                       [gainKey]: Number(event.target.value) }))} step="1" type="range" value={gain} />
                   <output>{gain}%</output>
-                </label>
+                </div>
                 <div className="obs-timeline__level" role="meter" aria-label={`Level nguồn ${lane.label}`}
                   aria-valuemin={0} aria-valuemax={100} aria-valuenow={level} title={`Mức nguồn ${level}% · không chịu tác động của Gain nghe lại`}>
-                  <span>LEVEL</span><div><i style={{ width: `${level}%` }} /></div><output>{level}%</output>
+                  <span>LEVEL</span><div><i style={{ "--source-level": `${level}%` } as CSSProperties} /></div><output>{level}%</output>
                 </div>
               </div>
             </div>;
@@ -524,39 +729,63 @@ export function ObsLiveLinkTimeline({ projectId, requestedRecordingId, onRecordi
           {layout === "layers" && playhead >= 0 && playhead <= 100 ? <div className="obs-timeline__playhead-layer">
             <i aria-label="Playhead chung" className="obs-timeline__playhead" style={{ left: `${playhead}%` }} />
           </div> : null}
-          {!lanes.length ? <p className="obs-timeline__no-channels">{recordingId ? "Bản ghi này chưa có channel được forward." : "Chọn OBS LiveLink và bấm Record để xem từng channel."}</p> : null}
+          {!lanes.length ? <p className="obs-timeline__no-channels">{recordingId ? "Bản ghi này chưa có track được forward." : "Chọn OBS LiveLink và bấm Record để xem từng track."}</p> : null}
         </div>
       </div>
-      <div className="obs-timeline__transport">
+      <div className="transport-bar obs-timeline__transport">
         <button aria-label={playing ? "Tạm dừng track OBS" : "Phát track OBS"} disabled={!canPlay}
-          onClick={() => { if (!audioRef.current) return; if (playing) audioRef.current.pause(); else {
-            preparePreviewAudio(audioRef.current);
-            void audioRef.current.play().catch(() => setError("Không phát được track OBS."));
-          } }} type="button">
-          {playing ? "Ⅱ" : "▶"}
+          className="transport-button"
+          onClick={togglePlayback} type="button">
+          <Icon name={playing ? "pause" : "play"} />
         </button>
-        <code>{clock(currentTime)}</code>
-        <span>{isLive ? "Đang thu · nghe lại sau Stop" : selectedLane?.assetId ? `TRACK · ${selectedLane.label}` : "Track chưa sẵn sàng"}</span>
-        {isLive && !followLive ? <button onClick={() => { setFollowLive(true); setCurrentTime(duration); }} type="button">VỀ LIVE</button> : null}
-        <button aria-label="Lùi cửa sổ Timeline" disabled={windowStart === 0 || isLive}
-          onClick={() => setWindowStart((value) => Math.max(0, value - windowSpan / 4))} type="button">←</button>
-        <button aria-label="Tiến cửa sổ Timeline" disabled={isLive || windowStart + windowSpan >= duration}
-          onClick={() => setWindowStart((value) => Math.min(Math.max(0, duration - windowSpan), value + windowSpan / 4))} type="button">→</button>
-        <code>{clock(duration)}</code>
+        <code>{timecode(currentTime)}</code>
+        <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub"
+          onClick={clickSeek}
+          onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
+          <i style={{ width: `${Math.max(0, Math.min(100, duration ? currentTime / duration * 100 : 0))}%` }} />
+          <b style={{ left: `${Math.max(0, Math.min(100, duration ? currentTime / duration * 100 : 0))}%` }} />
+        </div>
+        <code>{timecode(duration)}</code>
+        <label className="transport-rate"><span>RATE</span><select aria-label="Tốc độ phát" onChange={(event) => setPlaybackRate(Number(event.target.value))} value={playbackRate}>
+          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+        </select></label>
+        <div className="obs-timeline__transport-extras">
+          <span>{isLive ? "Đang thu" : selectedLane?.assetId ? `TRACK · ${selectedLane.label}` : "Track chưa sẵn sàng"}</span>
+          {isLive && !followLive ? <button onClick={() => { setFollowLive(true); setCurrentTime(duration); }} type="button">VỀ LIVE</button> : null}
+          <button aria-label="Lùi cửa sổ Timeline" disabled={windowStart === 0 || isLive}
+            onClick={() => setWindowStart((value) => Math.max(0, value - windowSpan / 4))} type="button">←</button>
+          <button aria-label="Tiến cửa sổ Timeline" disabled={isLive || windowStart + windowSpan >= duration}
+            onClick={() => setWindowStart((value) => Math.min(Math.max(0, duration - windowSpan), value + windowSpan / 4))} type="button">→</button>
+        </div>
       </div>
     </div>
-    {playbackUrl ? <audio key={playbackUrl} onEnded={() => { setPlaying(false); setReplayUntil(null); }}
-      onPause={() => { setPlaying(false); setReplayUntil(null); }}
+    {playbackUrl ? <audio key={playbackUrl} onEnded={pausePlayback}
       onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime,
         Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : currentTime);
+        event.currentTarget.playbackRate = playbackRate;
         if (audioGraphRef.current?.element !== event.currentTarget) {
-          event.currentTarget.volume = Math.min(1, selectedGain / 100);
+          event.currentTarget.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
         }
-        playPendingReplay(event.currentTarget); }}
+      }}
       onPlay={() => setPlaying(true)} onTimeUpdate={(event) => {
-        setCurrentTime(event.currentTarget.currentTime);
-        finishReplay(event.currentTarget);
+        const time = event.currentTarget.currentTime;
+        setCurrentTime(time);
+        otherAudioRefs.current.forEach((other) => {
+          if (Math.abs(other.currentTime - time) > .08) other.currentTime = time;
+        });
       }}
       preload="metadata" ref={audioRef} src={playbackUrl} /> : null}
+    {lanes.filter((lane) => lane.assetId && lane.channelId !== selectedLane?.channelId).map((lane) => {
+      const gainKey = `${recordingId}:${lane.channelId}`;
+      return <audio key={lane.channelId}
+        onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime,
+          Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : currentTime);
+          event.currentTarget.playbackRate = playbackRate;
+          event.currentTarget.volume = mutedByChannel[gainKey] ? 0 : Math.min(1, (gainByChannel[gainKey] ?? 100) / 100); }}
+        preload="metadata" ref={(element) => {
+          if (element) otherAudioRefs.current.set(lane.channelId, element);
+          else otherAudioRefs.current.delete(lane.channelId);
+        }} src={`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(lane.assetId!)}/audio`} />;
+    })}
   </ModuleFrame>;
 }

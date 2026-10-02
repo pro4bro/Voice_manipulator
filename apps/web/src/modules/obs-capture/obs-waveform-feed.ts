@@ -18,6 +18,7 @@ export function subscribeObsLiveLinkWaveforms(
   let active = true;
   let fallback = typeof EventSource === "undefined";
   const cursors = new Map<string, number>();
+  const windows = new Map<string, string>();
   const inFlight = new Set<string>();
   let latest: ObsLiveLinkStatus | null = null;
   let activeRecordingId: string | null = null;
@@ -30,15 +31,26 @@ export function subscribeObsLiveLinkWaveforms(
       if (capture?.recordingId !== recording.recordingId ||
           capture.lastDurableSequence === null) continue;
       const key = `${recording.recordingId}:${channel.channelId}`;
+      const window = windowFor(recording.recordingId, channel.channelId);
+      const windowKey = `${window.startSeconds}:${window.endSeconds}:${window.maxPoints ?? 600}`;
+      if (windows.get(key) !== windowKey) {
+        windows.set(key, windowKey);
+        cursors.delete(key);
+      }
       const cursor = cursors.get(key);
       if (inFlight.has(key) || (cursor !== undefined && capture.lastDurableSequence <= cursor)) continue;
-      const window = windowFor(recording.recordingId, channel.channelId);
       inFlight.add(key);
       let succeeded = false;
+      let stale = false;
       void api.getObsLiveLinkWaveform(projectId, recording.recordingId, channel.channelId,
         window.startSeconds, window.endSeconds, window.maxPoints ?? 600, cursor)
         .then((snapshot) => {
           if (!active || activeRecordingId !== recording.recordingId) return;
+          const currentWindow = windowFor(recording.recordingId, channel.channelId);
+          if (`${currentWindow.startSeconds}:${currentWindow.endSeconds}:${currentWindow.maxPoints ?? 600}` !== windowKey) {
+            stale = true;
+            return;
+          }
           cursors.set(key, snapshot.lastIncludedSequence >= 0
             ? snapshot.lastIncludedSequence : snapshot.lastDurableSequence);
           succeeded = true;
@@ -47,7 +59,7 @@ export function subscribeObsLiveLinkWaveforms(
         .catch((reason) => { if (active) onError?.(reason); })
         .finally(() => {
           inFlight.delete(key);
-          if (active && succeeded && latest) fetchChanged(latest);
+          if (active && (succeeded || stale) && latest) fetchChanged(latest);
         });
     }
   };
@@ -59,6 +71,7 @@ export function subscribeObsLiveLinkWaveforms(
     if (recordingId !== activeRecordingId) {
       activeRecordingId = recordingId;
       cursors.clear();
+      windows.clear();
     }
     latest = status;
     onStatus?.(status);
@@ -76,5 +89,6 @@ export function subscribeObsLiveLinkWaveforms(
     events.onerror = () => { events.close(); fallback = true; refresh(); };
   }
   const timer = window.setInterval(() => { if (fallback) refresh(); }, 2_000);
-  return () => { active = false; window.clearInterval(timer); events?.close(); };
+  const windowTimer = window.setInterval(() => { if (latest) fetchChanged(latest); }, 500);
+  return () => { active = false; window.clearInterval(timer); window.clearInterval(windowTimer); events?.close(); };
 }

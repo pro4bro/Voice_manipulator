@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -19,6 +20,8 @@ from app.adapters import activity_center
 from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.file_growing_mkv_follower import FileGrowingMkvFollower
+from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
@@ -85,14 +88,19 @@ from app.domain.models import (
     FolderPickResult,
     LocalMediaCacheUpdate,
     LocalMediaImport,
+    LocalMediaInspect,
+    GrowingMkvFollowCreate,
+    GrowingMkvDetailedSttStart,
     MediaFilePickRequest,
     MediaFilePickResult,
     MediaDiarizationAssignmentsUpdate,
     MediaDiarizationEnqueue,
+    MediaDiarizationSelection,
     MediaDiarizationProgress,
     HealthStatus,
     MediaAnnotationUpdate,
     MediaImportResult,
+    MediaImportSelection,
     ObsCaptureSession,
     ObsLiveLinkVideoImport,
     ObsRecordingInspect,
@@ -104,6 +112,7 @@ from app.domain.models import (
     MediaScriptUpdate,
     MediaTranscriptReviewResult,
     MediaTimelineEditsUpdate,
+    MediaTimelineCutsBatch,
     MediaTrainingSelection,
     MediaTranscriptionControl,
     MediaTranscriptionEnqueue,
@@ -389,6 +398,10 @@ def create_app(
         settings.ffmpeg_path,
         other_stt={"vibevoice-asr": vibevoice_stt},
     )
+    growing_mkv = FileGrowingMkvFollower(
+        media, local_media_sources, media_importer.ffmpeg_path, media_importer.ffprobe_path
+    )
+    growing_mkv_stt = GrowingMkvTranscription(media, media_importer)
     obs_sessions = FileObsCaptureSessions(
         projects, media, media_importer.ffmpeg_path, media_importer.ffprobe_path
     )
@@ -427,7 +440,90 @@ def create_app(
         preferences,
         StudioDiarizationGateway(settings.legacy_studio_url),
     )
-    app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0")
+    mkv_watchers: dict[tuple[str, str], asyncio.Task[None]] = {}
+    mkv_watch_errors: dict[tuple[str, str], str] = {}
+    mkv_stt_workers: dict[tuple[str, str], asyncio.Task[None]] = {}
+    mkv_stt_errors: dict[tuple[str, str], str] = {}
+    obs_finalizers: dict[str, asyncio.Task[dict]] = {}
+
+    async def watch_growing_mkv(project_id: str, asset_id: str) -> None:
+        key = (project_id, asset_id)
+        while True:
+            try:
+                result = await asyncio.to_thread(growing_mkv.poll, projects.get(project_id), asset_id,
+                                                 max_clusters=8)
+            except (FileNotFoundError, KeyError, ValueError, RuntimeError, OSError) as exc:
+                mkv_watch_errors[key] = str(exc)
+                logging.getLogger(__name__).warning("Growing MKV follow stopped for %s: %s", asset_id, exc)
+                return
+            mkv_watch_errors.pop(key, None)
+            if result["finished"]:
+                return
+            await asyncio.sleep(0.75)
+
+    def ensure_mkv_watcher(project_id: str, asset_id: str) -> None:
+        key = (project_id, asset_id)
+        existing = mkv_watchers.get(key)
+        if existing is None or existing.done():
+            mkv_watchers[key] = asyncio.create_task(watch_growing_mkv(project_id, asset_id))
+
+    async def transcribe_growing_mkv(project_id: str, asset_id: str) -> None:
+        key = (project_id, asset_id)
+        while True:
+            try:
+                progress = await growing_mkv_stt.process_once(projects.get(project_id), asset_id, wait_for_detail=False)
+                mkv_stt_errors.pop(key, None)
+                if progress["done"]:
+                    return
+                await asyncio.sleep(0.75)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                mkv_stt_errors[key] = str(exc)
+                logging.getLogger(__name__).exception("Growing MKV STT retry for %s", asset_id)
+                await asyncio.sleep(5)
+
+    def ensure_mkv_stt_worker(project_id: str, asset_id: str) -> None:
+        key = (project_id, asset_id)
+        existing = mkv_stt_workers.get(key)
+        if existing is None or existing.done():
+            mkv_stt_workers[key] = asyncio.create_task(transcribe_growing_mkv(project_id, asset_id))
+
+    async def resume_mkv_watchers() -> None:
+        for project in projects.list():
+            media_root = Path(project.project_path) / "assets" / "media"
+            for checkpoint in media_root.glob("asset-*/follow-state.json"):
+                try:
+                    state = json.loads(checkpoint.read_text(encoding="utf-8"))
+                    if not state.get("finished") and state.get("parentId") == checkpoint.parent.name:
+                        ensure_mkv_watcher(project.id, checkpoint.parent.name)
+                    if state.get("parentId") == checkpoint.parent.name and any(
+                        media.get(project.id, track["assetId"]).transcription_selected
+                        for track in state.get("tracks", [])
+                    ):
+                        ensure_mkv_stt_worker(project.id, checkpoint.parent.name)
+                except (OSError, ValueError, KeyError):
+                    continue
+
+    async def stop_mkv_watchers() -> None:
+        tasks = list(mkv_watchers.values()) + list(mkv_stt_workers.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await growing_mkv_stt.close()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await resume_mkv_watchers()
+        try:
+            yield
+        finally:
+            await stop_mkv_watchers()
+            if obs_finalizers:
+                await asyncio.gather(*obs_finalizers.values(), return_exceptions=True)
+
+    app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -752,10 +848,11 @@ def create_app(
                 queue_for_transcription,
                 capture_tier or None,
             )
-            if queue_for_transcription and result.asset.analysis_path:
+            queued_ids = result.track_asset_ids or ([result.asset.id] if result.asset.analysis_path else [])
+            if queue_for_transcription and queued_ids:
                 await transcription_queue.enqueue(
                     project_id,
-                    [result.asset.id],
+                    queued_ids,
                     realtime_text=realtime_text,
                 )
                 result = result.model_copy(update={"asset": media.get(project_id, result.asset.id)})
@@ -763,6 +860,31 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/media/inspect-local")
+    async def inspect_local_media_tracks(project_id: str, payload: LocalMediaInspect) -> dict:
+        try:
+            projects.get(project_id)
+            source = Path(payload.source_path).expanduser().resolve()
+            if not source.is_file():
+                raise FileNotFoundError("Không tìm thấy file media nguồn")
+            probe = await asyncio.to_thread(
+                growing_mkv.inspect if source.suffix.lower() == ".mkv" else media_importer._probe,
+                str(source) if source.suffix.lower() == ".mkv" else source,
+            )
+            audio = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"]
+            return {"tracks": [{
+                "streamIndex": stream["index"],
+                "title": str((stream.get("tags") or {}).get("title") or f"Track {ordinal}"),
+                "codec": str(stream.get("codec_name") or "unknown"),
+                "channels": stream.get("channels"),
+            } for ordinal, stream in enumerate(audio, 1)]}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -781,6 +903,8 @@ def create_app(
                 project,
                 payload.source_path,
                 cache_local=payload.cache_local,
+                stream_indexes=payload.stream_indexes,
+                transcribe_stream_indexes=payload.transcribe_stream_indexes,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
@@ -790,6 +914,93 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/media/follow-mkv",
+        response_model=MediaImportResult,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def start_growing_mkv_follow(project_id: str, payload: GrowingMkvFollowCreate) -> MediaImportResult:
+        try:
+            project = projects.get(project_id)
+            result = await asyncio.to_thread(
+                growing_mkv.start, project, payload.source_path, payload.stream_indexes,
+                payload.transcribe_stream_indexes, payload.stt_segment_seconds,
+            )
+            ensure_mkv_watcher(project_id, result.asset.id)
+            if payload.transcribe_stream_indexes:
+                ensure_mkv_stt_worker(project_id, result.asset.id)
+            return result
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/media/{asset_id}/follow/status")
+    async def growing_mkv_status(project_id: str, asset_id: str) -> dict:
+        try:
+            result = await asyncio.to_thread(growing_mkv.status, projects.get(project_id), asset_id)
+            error = mkv_watch_errors.get((project_id, asset_id))
+            stt = growing_mkv_stt.status(projects.get(project_id), asset_id)
+            return {**result, "stt": stt, "followError": error,
+                    "sttError": mkv_stt_errors.get((project_id, asset_id))}
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="MKV follow not found") from exc
+
+    @app.post("/api/projects/{project_id}/media/{asset_id}/follow/detailed-stt")
+    async def start_growing_mkv_detailed_stt(
+        project_id: str, asset_id: str, payload: GrowingMkvDetailedSttStart
+    ) -> dict:
+        try:
+            result = await asyncio.to_thread(
+                growing_mkv.configure_detailed_stt, projects.get(project_id),
+                asset_id, payload.segment_seconds,
+            )
+            ensure_mkv_stt_worker(project_id, asset_id)
+            return result
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="MKV follow not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/media/{asset_id}/follow/assets",
+             response_model=list[ProjectMediaAsset])
+    def growing_mkv_assets(project_id: str, asset_id: str) -> list[ProjectMediaAsset]:
+        try:
+            parent = media.get(project_id, asset_id)
+            if not parent.growing_mkv_follow:
+                raise KeyError(asset_id)
+            return [parent, *(asset for asset in media.list(project_id)
+                              if asset.source_archive_asset_id == asset_id)]
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="MKV follow not found") from exc
+
+    @app.post("/api/projects/{project_id}/media/{asset_id}/follow/poll")
+    async def poll_growing_mkv(project_id: str, asset_id: str) -> dict:
+        try:
+            result = await asyncio.to_thread(growing_mkv.poll, projects.get(project_id), asset_id)
+            mkv_watch_errors.pop((project_id, asset_id), None)
+            if not result["finished"]:
+                ensure_mkv_watcher(project_id, asset_id)
+            return result
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="MKV follow not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/media/{asset_id}/follow/finish")
+    async def finish_growing_mkv(project_id: str, asset_id: str) -> dict:
+        try:
+            result = await asyncio.to_thread(growing_mkv.finish, projects.get(project_id), asset_id)
+            mkv_watch_errors.pop((project_id, asset_id), None)
+            ensure_mkv_stt_worker(project_id, asset_id)
+            return result
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="MKV follow not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/local-cache",
@@ -886,6 +1097,20 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.patch(
+        "/api/projects/{project_id}/media/timeline-cuts-batch",
+        response_model=list[ProjectMediaAsset],
+    )
+    def update_media_timeline_cuts_batch(
+        project_id: str, payload: MediaTimelineCutsBatch
+    ) -> list[ProjectMediaAsset]:
+        try:
+            return media.update_timeline_cuts_many(project_id, payload.asset_ids, payload.removed_ranges)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/training-selection",
         response_model=ProjectMediaAsset,
     )
@@ -898,14 +1123,43 @@ def create_app(
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
 
     @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/import-selection",
+        response_model=ProjectMediaAsset,
+    )
+    def update_media_import_selection(
+        project_id: str, asset_id: str, payload: MediaImportSelection
+    ) -> ProjectMediaAsset:
+        try:
+            return media.set_import_selected(project_id, asset_id, payload.selected)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/{asset_id}/diarization-selection",
+        response_model=ProjectMediaAsset,
+    )
+    def update_media_diarization_selection(
+        project_id: str, asset_id: str, payload: MediaDiarizationSelection
+    ) -> ProjectMediaAsset:
+        try:
+            return media.set_diarization_selected(project_id, asset_id, payload.selected)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+
+    @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/transcription-selection",
         response_model=ProjectMediaAsset,
     )
-    def update_media_transcription_selection(
+    async def update_media_transcription_selection(
         project_id: str, asset_id: str, payload: MediaTranscriptionSelection
     ) -> ProjectMediaAsset:
         try:
-            return media.set_transcription_selected(project_id, asset_id, payload.selected)
+            updated = media.set_transcription_selected(project_id, asset_id, payload.selected)
+            if payload.selected and updated.source_archive_asset_id:
+                parent = media.get(project_id, updated.source_archive_asset_id)
+                if parent.growing_mkv_follow:
+                    ensure_mkv_stt_worker(project_id, parent.id)
+            return updated
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
 
@@ -1456,17 +1710,21 @@ def create_app(
     def export_voice_output_subtitles(
         project_id: str,
         output_id: str,
-        mode: Literal["sentence", "word", "table"] = "sentence",
+        mode: Literal["sentence", "word", "table", "line"] = "sentence",
     ) -> FileResponse:
         try:
             project = projects.get(project_id)
             output = voice_outputs.get(project_id, output_id)
-            if not output.words:
-                raise ValueError("Voice Output này chưa có word timing; đọc Script lại để có subtitle.")
-            # The exporter reads footage; generated speech has the same words,
-            # duration and name, and nothing cut from its timeline.
-            speech = SimpleNamespace(id=output.id, name=output.id, words=output.words, duration=output.duration, removed_ranges=[])
-            subtitle_path = subtitle_exporter.export(project, speech, mode, training_catalogs.get(project_id).speakers)  # type: ignore[arg-type]
+            speakers = training_catalogs.get(project_id).speakers
+            if mode == "line":
+                subtitle_path = subtitle_exporter.export_voice_output_lines(project, output, speakers)
+            else:
+                if not output.words:
+                    raise ValueError("Voice Output này chưa có word timing; đọc Script lại để có subtitle.")
+                # The exporter reads footage; generated speech has the same words,
+                # duration and name, and nothing cut from its timeline.
+                speech = SimpleNamespace(id=output.id, name=output.id, words=output.words, duration=output.duration, removed_ranges=[])
+                subtitle_path = subtitle_exporter.export(project, speech, mode, speakers)  # type: ignore[arg-type]
             return FileResponse(
                 subtitle_path,
                 media_type="text/csv; charset=utf-8" if mode == "table" else "application/x-subrip",
@@ -1881,6 +2139,17 @@ def create_app(
         except LiveLinkError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
+    @app.post("/api/obs-livelink/v3/recordings/{recording_id}/recover")
+    def obs_livelink_recover(recording_id: str, payload: dict, request: Request) -> dict:
+        try:
+            return obs_livelink_runtime.recover_recording(
+                request.headers.get("authorization", ""), install_id=payload.get("installId", ""),
+                connection_id=payload.get("connectionId", ""),
+                epoch=payload.get("connectionEpoch", ""), recording_id=recording_id,
+            )
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
     @app.put("/api/obs-livelink/v3/recordings/{recording_id}/channels/{channel_id}/chunks/{sequence}")
     async def obs_livelink_chunk(recording_id: str, channel_id: str, sequence: int,
                                  request: Request, installId: str, connectionId: str,
@@ -1897,7 +2166,8 @@ def create_app(
                 pcm.extend(part)
                 if len(pcm) > MAX_CHUNK_BYTES:
                     raise HTTPException(status_code=413, detail="OBS PCM chunk exceeds the upload limit")
-            result = obs_livelink_audio.chunk(
+            result = await asyncio.to_thread(
+                obs_livelink_audio.chunk,
                 request.headers.get("authorization", ""), install_id=installId,
                 connection_id=connectionId, epoch=epoch, recording_id=recording_id,
                 channel_id=channel_id, source_uuid=sourceUuid, sequence=sequence,
@@ -1934,22 +2204,50 @@ def create_app(
 
     @app.post("/api/obs-livelink/v3/recordings/{recording_id}/finalize")
     async def obs_livelink_finalize(recording_id: str, payload: dict, request: Request) -> dict:
+        authorization = request.headers.get("authorization", "")
+        try:
+            obs_livelink_connection.require_connection(
+                authorization, payload.get("installId", ""), payload.get("connectionId", ""),
+                payload.get("connectionEpoch", ""))
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        task = obs_finalizers.get(recording_id)
+        if task is None:
+            task = asyncio.create_task(finalize_obs_recording(recording_id, payload, authorization))
+            obs_finalizers[recording_id] = task
+        if task.done():
+            result = task.result()
+            if result.get("error"):
+                raise HTTPException(status_code=503, detail=result["error"])
+            return result
+        # OBS has a short HTTP deadline. Keep its PCM/control loop running while
+        # exactly one job verifies and publishes this stopped recording.
+        return {"recordingId": recording_id, "artifactReady": False, "status": "finalizing"}
+
+    async def finalize_obs_recording(recording_id: str, payload: dict, authorization: str) -> dict:
         try:
             result = await asyncio.to_thread(
                 obs_livelink_audio.finalize,
-                request.headers.get("authorization", ""),
+                authorization,
                 install_id=payload.get("installId", ""),
                 connection_id=payload.get("connectionId", ""),
                 epoch=payload.get("connectionEpoch", ""), recording_id=recording_id)
-            try:
-                obs_livelink_stt.finish(recording_id)
-            except Exception as exc:
-                logging.getLogger(__name__).warning(
-                    "LiveLink STT could not finalize recording %s: %s", recording_id, exc,
-                )
             return result
-        except LiveLinkError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        except Exception as exc:
+            logging.getLogger(__name__).exception("OBS archive failed for %s", recording_id)
+            return {"recordingId": recording_id, "artifactReady": False, "error": str(exc)}
+        finally:
+            # Archive creation can fail after capture stopped. Its result must
+            # not keep the provisional STT worker open past the recorded tail.
+            state = obs_livelink_runtime._state
+            if state and any(item.recording_id == recording_id and item.status == "stopped"
+                             for item in state.completed_recordings):
+                try:
+                    obs_livelink_stt.finish(recording_id)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "LiveLink STT could not finalize recording %s: %s", recording_id, exc,
+                    )
 
     @app.get("/api/projects/{project_id}/obs-livelink/recordings")
     def obs_livelink_recordings(project_id: str) -> list[dict]:

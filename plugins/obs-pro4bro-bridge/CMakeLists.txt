@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
-project(pro4bro_obs_bridge VERSION 0.6.1 LANGUAGES CXX RC)
+project(pro4bro_obs_bridge VERSION 0.6.6 LANGUAGES CXX RC)
 
 if(NOT DEFINED OBS_SOURCE_DIR OR NOT DEFINED OBS_IMPORT_LIB_DIR)
   message(FATAL_ERROR "Set OBS_SOURCE_DIR and OBS_IMPORT_LIB_DIR. See README.md.")
 endif()
 
-add_library(pro4bro-obs-bridge MODULE src/plugin-main.cpp src/livelink-dialog.cpp src/livelink-mixer.cpp src/livelink-capture.cpp src/brand-logo.rc)
+add_library(pro4bro-obs-bridge MODULE src/plugin-main.cpp src/livelink-dialog.cpp src/livelink-mixer.cpp src/livelink-capture.cpp src/livelink-spool.cpp src/brand-logo.rc)
 target_compile_features(pro4bro-obs-bridge PRIVATE cxx_std_20)
 target_compile_definitions(pro4bro-obs-bridge PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_include_directories(pro4bro-obs-bridge PRIVATE
@@ -19,9 +19,34 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/obsconfig.h"
   "#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n#define OBS_BETA 0\n")
 
 target_link_directories(pro4bro-obs-bridge PRIVATE "${OBS_IMPORT_LIB_DIR}")
-target_link_libraries(pro4bro-obs-bridge PRIVATE obs obs-frontend-api winhttp bcrypt shell32 ole32 comctl32 uxtheme dwmapi)
+target_link_libraries(pro4bro-obs-bridge PRIVATE obs obs-frontend-api winhttp bcrypt shell32 ole32 comctl32 uxtheme dwmapi winsqlite3)
 set_target_properties(pro4bro-obs-bridge PROPERTIES PREFIX "" OUTPUT_NAME "pro4bro-obs-bridge")
 
 if(MSVC)
   target_compile_options(pro4bro-obs-bridge PRIVATE /W4 /permissive- /utf-8)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(pro4bro-capture-tests tests/livelink-capture-test.cpp src/livelink-capture.cpp src/livelink-spool.cpp)
+  target_compile_features(pro4bro-capture-tests PRIVATE cxx_std_20)
+  target_compile_definitions(pro4bro-capture-tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(pro4bro-capture-tests PRIVATE
+    "${OBS_SOURCE_DIR}/libobs" "${OBS_SOURCE_DIR}/frontend/api" "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  target_link_directories(pro4bro-capture-tests PRIVATE "${OBS_IMPORT_LIB_DIR}")
+  target_link_libraries(pro4bro-capture-tests PRIVATE obs winsqlite3)
+  if(MSVC)
+    target_compile_options(pro4bro-capture-tests PRIVATE /W4 /permissive- /utf-8)
+  endif()
+  add_test(NAME pro4bro-capture-tests COMMAND pro4bro-capture-tests)
+
+  add_executable(pro4bro-spool-tests tests/livelink-spool-test.cpp src/livelink-spool.cpp)
+  target_compile_features(pro4bro-spool-tests PRIVATE cxx_std_20)
+  target_compile_definitions(pro4bro-spool-tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(pro4bro-spool-tests PRIVATE "${OBS_SOURCE_DIR}/libobs" "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  target_link_libraries(pro4bro-spool-tests PRIVATE winsqlite3)
+  if(MSVC)
+    target_compile_options(pro4bro-spool-tests PRIVATE /W4 /permissive- /utf-8)
+  endif()
+  add_test(NAME pro4bro-spool-tests COMMAND pro4bro-spool-tests)
 endif()

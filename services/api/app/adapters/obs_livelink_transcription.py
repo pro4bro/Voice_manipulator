@@ -18,7 +18,7 @@ from app.adapters.obs_livelink_connection import LiveLinkError
 from app.domain.ports import ProjectRepository
 
 
-Recognizer = Callable[[str, bytes | None], Awaitable[dict]]
+Recognizer = Callable[[str, bytes | None, str], Awaitable[dict]]
 
 
 @dataclass
@@ -50,6 +50,7 @@ class _Utterance:
     source_uuid: str
     alias: str
     session: str
+    language: str
     pcm: bytearray = field(default_factory=bytearray)
     buffered_frames: int = 0
     silence_frames: int = 0
@@ -65,7 +66,7 @@ class ObsLiveLinkTranscription:
 
     def __init__(self, projects: ProjectRepository, studio_url: str,
                  batch_running: Callable[[], bool], recognizer: Recognizer | None = None,
-                 *, window_seconds: float = 2.0, silence_seconds: float = 0.5,
+                 *, window_seconds: float = 4.0, silence_seconds: float = 0.5,
                  max_queue_chunks: int = 1024, max_queued_bytes: int = 8 * 1024 * 1024) -> None:
         self.projects = projects
         self.studio_url = studio_url.rstrip("/")
@@ -82,6 +83,7 @@ class ObsLiveLinkTranscription:
         self._file_lock = asyncio.Lock()
         self._events: dict[Path, list[dict]] = {}
         self._valid_bytes: dict[Path, int] = {}
+        self._finished: set[str] = set()
 
     def _path(self, project_id: str, recording_id: str) -> Path:
         root = Path(self.projects.get(project_id).project_path).resolve()
@@ -169,6 +171,10 @@ class ObsLiveLinkTranscription:
               source_uuid: str, alias: str, sequence: int, first_sample: int,
               sample_rate: int, channels: int, plugin_monotonic_ns: int,
               recording_started_ns: int, pcm: bytes) -> None:
+        # Finalize follows the last durable PCM upload. Never open a new queue
+        # for a delayed/retried upload after the recording's tail was drained.
+        if recording_id in self._finished:
+            return
         item = _Audio(project_id, recording_id, channel_id, source_uuid, alias,
                       sequence, first_sample, sample_rate, channels,
                       plugin_monotonic_ns, recording_started_ns, pcm)
@@ -189,6 +195,9 @@ class ObsLiveLinkTranscription:
                                                   error="Live STT queue is full; durable audio is intact."))
 
     def finish(self, recording_id: str) -> None:
+        if recording_id in self._finished:
+            return
+        self._finished.add(recording_id)
         for key, queue in list(self._queues.items()):
             if key[1] == recording_id:
                 asyncio.create_task(queue.put(None))
@@ -239,6 +248,7 @@ class ObsLiveLinkTranscription:
                             end_monotonic_ns=item.plugin_monotonic_ns,
                             source_uuid=item.source_uuid, alias=item.alias,
                             session=f"obs-v3-{item.recording_id}-{item.channel_id}-{item.first_sample}",
+                            language=self.projects.get(item.project_id).language or "",
                             queued_at=item.queued_at,
                         )
                         await self._safe_append(item, utterance, status="listening")
@@ -276,7 +286,7 @@ class ObsLiveLinkTranscription:
         if self.batch_running():
             raise RuntimeError("Batch STT is using the model; durable audio is intact.")
         async with self._model:
-            result = await self.recognizer(utterance.session, self._wav(utterance))
+            result = await self.recognizer(utterance.session, self._wav(utterance), utterance.language)
         utterance.posted = True
         utterance.pcm.clear()
         utterance.buffered_frames = 0
@@ -290,7 +300,7 @@ class ObsLiveLinkTranscription:
             await self._partial(item, utterance)
         if utterance.posted:
             async with self._model:
-                result = await self.recognizer(utterance.session, None)
+                result = await self.recognizer(utterance.session, None, utterance.language)
             text = str(result.get("text") or utterance.last_text)
             await self._safe_append(item, utterance, status="final", text=text)
         elif self.batch_running():
@@ -303,7 +313,7 @@ class ObsLiveLinkTranscription:
         except Exception as exc:
             await self._safe_append(item, utterance, status="error", error=str(exc))
 
-    async def _recognize(self, session: str, wav: bytes | None) -> dict:
+    async def _recognize(self, session: str, wav: bytes | None, language: str) -> dict:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:
             if wav is None:
                 response = await client.post(f"{self.studio_url}/api/audio/live/end",
@@ -312,7 +322,7 @@ class ObsLiveLinkTranscription:
                 response = await client.post(
                     f"{self.studio_url}/api/audio/live/chunk",
                     files={"file": ("obs-v3.wav", wav, "audio/wav")},
-                    data={"session": session, "model": "tiny", "language": ""},
+                    data={"session": session, "model": "medium", "language": language},
                 )
         response.raise_for_status()
         return response.json()

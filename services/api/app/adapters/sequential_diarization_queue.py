@@ -231,6 +231,8 @@ class SequentialDiarizationQueue:
 
     async def enqueue(self, project_id: str, asset_id: str, expected_speakers: int | None = None) -> None:
         asset = self.media.get(project_id, asset_id)
+        if not asset.import_selected or asset.deleted_at or asset.disabled:
+            raise ValueError("Footage chưa được chọn Import hoặc đang bị tắt.")
         if asset.transcription_status in {"queued", "processing", "reviewing", "skipped", "not-applicable"}:
             raise ValueError("Hãy hoàn tất Speech to Text trước khi nhận diện speaker.")
         if not asset.analysis_path:

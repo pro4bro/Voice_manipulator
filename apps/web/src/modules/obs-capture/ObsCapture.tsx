@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { api } from "../../api/client";
+import { selectListItem } from "../../domain/listSelection";
 import type { ObsCaptureSession, ObsLiveCaptionQuality, ObsLiveSession, ObsRecordingInspection, ObsSessionSubtitleStatus, ObsTrackSource } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { ObsLiveLinkMixer } from "./ObsLiveLinkMixer";
@@ -24,6 +25,7 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
   const [sttBusy, setSttBusy] = useState<string | null>(null);
   const [renderBusy, setRenderBusy] = useState<string | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Record<string, string[]>>({});
+  const [trackSelectionAnchors, setTrackSelectionAnchors] = useState<Record<string, string>>({});
   const [pairing, setPairing] = useState<{ protocolVersion: string; token: string; overlayPath: string } | null>(null);
   const [sourcePath, setSourcePath] = useState("");
   const [inspection, setInspection] = useState<ObsRecordingInspection | null>(null);
@@ -134,15 +136,24 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
     }
   }
 
-  async function runFinalStt(assetId: string) {
-    setSttBusy(assetId);
+  async function runFinalStt(assetIds: string[]) {
+    if (!assetIds.length || sttBusy) return;
+    setSttBusy(assetIds.join(","));
     setError(null);
     try {
-      await api.enqueueMediaTranscriptions(projectId, [assetId]);
+      await api.enqueueMediaTranscriptions(projectId, assetIds);
     } catch (reason) {
       setError(messageFrom(reason, "Không thể đưa nguồn OBS vào hàng đợi Final STT."));
     } finally {
       setSttBusy(null);
+    }
+  }
+
+  function selectAllSessionTracks(event: KeyboardEvent<HTMLDivElement>, session: ObsCaptureSession) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setSelectedTracks((current) => ({ ...current, [session.id]: session.tracks.map((track) => track.assetId) }));
+      if (session.tracks[0]) setTrackSelectionAnchors((current) => ({ ...current, [session.id]: session.tracks[0].assetId }));
     }
   }
 
@@ -208,7 +219,7 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
           {session.liveSttLagSeconds > 0 ? <span>STT từ ACK {session.liveSttLagSeconds.toFixed(1)}s</span> : null}
           {captionQuality[session.id]?.finalAvailable ? <span>Sai khác live/final ~{captionQuality[session.id].mismatchPercent?.toFixed(1)}% ({captionQuality[session.id].liveWords}/{captionQuality[session.id].finalWords} từ)</span> : null}
           {session.assetId ? <button onClick={() => onOpenAsset(session.assetId as string)} type="button">Mở stem</button> : null}
-          {session.assetId ? <button disabled={sttBusy === session.assetId} onClick={() => void runFinalStt(session.assetId as string)} type="button">Final STT stem</button> : null}
+          {session.assetId ? <button disabled={Boolean(sttBusy)} onClick={() => void runFinalStt([session.assetId as string])} type="button">Final STT stem</button> : null}
         </footer>
       </section>) : <p className="obs-capture-empty">Plugin chưa gửi nguồn live nào vào project.</p>}
     </div>
@@ -216,17 +227,25 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
       {sessions.length ? sessions.map((session) => <section aria-label={`Phiên OBS ${session.id}`} className="obs-capture-session" key={session.id}>
         <div><strong>{new Date(session.createdAt).toLocaleString("vi-VN")}</strong><span>{session.status === "ready" ? `${session.tracks.length} track · ${Math.round(session.duration)}s` : session.status === "error" ? "Lỗi" : "Đang nhập…"}</span></div>
         {session.error ? <p role="alert">{session.error}</p> : null}
-        {session.status === "ready" ? <div className="obs-capture-tracks">
+        {session.status === "ready" ? <div aria-label={`Danh sách track OBS phiên ${session.id}`} className="obs-capture-tracks" onKeyDown={(event) => selectAllSessionTracks(event, session)} role="region" tabIndex={0}>
           {session.recordingAssetId ? <button onClick={() => onOpenAsset(session.recordingAssetId as string)} type="button">Âm thanh video OBS</button> : null}
+          {(selectedTracks[session.id] ?? []).length > 1 ? <button disabled={Boolean(sttBusy)} onClick={() => void runFinalStt(session.tracks.map((track) => track.assetId).filter((id) => (selectedTracks[session.id] ?? []).includes(id)))} type="button">Final STT đã chọn ({selectedTracks[session.id].length})</button> : null}
           {session.tracks.map((track) => <div className="obs-capture-track-final" key={track.assetId}>
-            <label><input type="checkbox" checked={(selectedTracks[session.id] ?? []).includes(track.assetId)} onChange={(event) => setSelectedTracks((current) => ({
-              ...current,
-              [session.id]: event.target.checked
-                ? [...(current[session.id] ?? []), track.assetId]
-                : (current[session.id] ?? []).filter((id) => id !== track.assetId),
-            }))} />Ghép vào SRT: {track.sourceLabel}</label>
+            <label><input type="checkbox" checked={(selectedTracks[session.id] ?? []).includes(track.assetId)} onChange={(event) => {
+              const pointer = event.nativeEvent as MouseEvent;
+              const shift = Boolean(pointer.shiftKey);
+              const checked = event.target.checked;
+              const trackIds = session.tracks.map((item) => item.assetId);
+              setSelectedTracks((current) => {
+                const ids = current[session.id] ?? [];
+                return { ...current, [session.id]: shift
+                  ? selectListItem({ ids, anchorId: trackSelectionAnchors[session.id] ?? track.assetId }, trackIds, track.assetId, { shift: true, toggle: Boolean(pointer.ctrlKey || pointer.metaKey) }).ids
+                  : checked ? [...new Set([...ids, track.assetId])] : ids.filter((id) => id !== track.assetId) };
+              });
+              if (!shift) setTrackSelectionAnchors((current) => ({ ...current, [session.id]: track.assetId }));
+            }} />Ghép vào SRT: {track.sourceLabel}</label>
             <button onClick={() => onOpenAsset(track.assetId)} type="button">{track.sourceLabel}</button>
-            <button disabled={sttBusy === track.assetId} onClick={() => void runFinalStt(track.assetId)} type="button">Final STT</button>
+            <button disabled={Boolean(sttBusy)} onClick={() => void runFinalStt([track.assetId])} type="button">Final STT</button>
             <small>{subtitleStatuses[session.id]?.sources.find((source) => source.assetId === track.assetId)?.transcriptionStatus ?? "skipped"}</small>
           </div>)}
           <a href={`/api/projects/${projectId}/obs-sessions/${session.id}/recording`}>Tải MKV gốc</a>

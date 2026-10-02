@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { ObsCaptureController } from "./ObsCaptureController";
@@ -45,6 +45,45 @@ it("arms OBS recording through the backend and prevents another Start until ACK"
   expect(await screen.findByRole("button", { name: "Đang bắt đầu…" })).toBeDisabled();
 });
 
+it("shows Stop as pending until the app recording receives its OBS ACK", async () => {
+  const running = { ...connected, obsRecording: "recording",
+    appRecording: { recordingId: "rec-1", projectId: "project", status: "recording",
+      videoSpanIds: ["span"], pauseCauses: [] } };
+  apiMocks.getObsLiveLinkStatus.mockResolvedValue(running);
+  apiMocks.actOnObsLiveLinkRecording.mockResolvedValue({ ...running, pendingAction: "stop" });
+  render(<ObsCaptureController projectId="project" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+  await waitFor(() => expect(apiMocks.actOnObsLiveLinkRecording).toHaveBeenCalledWith("stop"));
+  expect(await screen.findByRole("button", { name: "Đang dừng…" })).toBeDisabled();
+});
+
+it("does not restore an older recording state from a poll begun before Stop", async () => {
+  const running = { ...connected, obsRecording: "recording",
+    appRecording: { recordingId: "rec-1", projectId: "project", status: "recording",
+      videoSpanIds: ["span"], pauseCauses: [] } };
+  let resolveOldPoll: (value: typeof running) => void = () => undefined;
+  const oldPoll = new Promise<typeof running>((resolve) => { resolveOldPoll = resolve; });
+  apiMocks.getObsLiveLinkStatus.mockResolvedValueOnce(running).mockReturnValueOnce(oldPoll);
+  apiMocks.actOnObsLiveLinkRecording.mockResolvedValue({ ...running, pendingAction: "stop" });
+  const timerCallbacks: Array<() => void> = [];
+  const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+    timerCallbacks.push(handler as () => void);
+    return 42;
+  });
+  try {
+    render(<ObsCaptureController projectId="project" />);
+    const stop = await screen.findByRole("button", { name: "Stop" });
+    timerCallbacks[0]?.();
+    await waitFor(() => expect(apiMocks.getObsLiveLinkStatus).toHaveBeenCalledTimes(2));
+    fireEvent.click(stop);
+    expect(await screen.findByRole("button", { name: "Đang dừng…" })).toBeDisabled();
+    await act(async () => resolveOldPoll(running));
+    expect(screen.getByRole("button", { name: "Đang dừng…" })).toBeDisabled();
+  } finally {
+    interval.mockRestore();
+  }
+});
+
 it.each([
   ["receiving", "Recording", true],
   ["pending", "Waiting for PCM", false],
@@ -54,7 +93,7 @@ it.each([
   ["disabled", "Disabled", false],
   ["missing", "Missing", false],
   ["disconnected", "Disconnected", false],
-] as const)("shows %s evidence without false REC", async (captureState, label, isReceiving) => {
+] as const)("shows %s evidence with a persistent REC or PAUSE indicator", async (captureState, label, isReceiving) => {
   apiMocks.getObsLiveLinkStatus.mockResolvedValue({
     ...connected, obsRecording: "recording",
     appRecording: { recordingId: "rec-1", projectId: "project", status: "recording", videoSpanIds: ["span"], pauseCauses: [] },
@@ -62,9 +101,16 @@ it.each([
       state: captureState, durableChunkCount: isReceiving ? 1 : 0 } }],
   });
   render(<ObsCaptureController projectId="project" />);
-  const indicator = await screen.findByRole("status", { name: `Trạng thái Channel 1: ${label}` });
+  const indicator = await screen.findByRole("status", { name: `Trạng thái Track 1: ${label}` });
   expect(indicator).toHaveAttribute("data-state", captureState);
-  expect(Boolean(indicator.textContent?.includes("REC"))).toBe(isReceiving);
+  expect(indicator).toHaveTextContent(captureState === "paused" ? "PAUSE" : "REC");
+  expect(indicator).toHaveAttribute("data-recording", String(isReceiving));
+  expect(indicator.querySelector("i")).toBeInTheDocument();
+  if (isReceiving) expect(indicator.closest(".obs-recorder__channel")).toHaveClass("is-receiving");
+  else expect(indicator.closest(".obs-recorder__channel")).not.toHaveClass("is-receiving");
+  expect(indicator.parentElement?.firstElementChild).toBe(indicator);
+  expect(screen.getByText(new RegExp(`PCM ${isReceiving ? 1 : 0}`))).toBeInTheDocument();
+  expect(screen.getByRole("meter", { name: /Tín hiệu OBS Track 1, không xác nhận PCM đã lưu/ })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Pause" }));
   await waitFor(() => expect(apiMocks.actOnObsLiveLinkRecording).toHaveBeenCalledWith("pause"));
@@ -76,8 +122,8 @@ it("leaves the indicator gray when OBS records under Ignore Start", async () => 
     triggerPolicy: { ignoreStart: true, ignorePause: false, ignoreStop: false },
   });
   render(<ObsCaptureController projectId="project" />);
-  expect(await screen.findByRole("status", { name: "Trạng thái Channel 1: Idle" })).toHaveAttribute("data-state", "idle");
-  expect(screen.queryByText("REC")).not.toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: "Trạng thái Track 1: Idle" })).toHaveAttribute("data-state", "idle");
+  expect(screen.getByRole("status", { name: "Trạng thái Track 1: Idle" })).toHaveTextContent("REC");
   expect(screen.getByRole("button", { name: "Record" })).toBeEnabled();
 });
 
@@ -89,8 +135,8 @@ it("keeps a paused app gray if its last channel evidence still says receiving", 
       state: "receiving", durableChunkCount: 2 } }],
   });
   render(<ObsCaptureController projectId="project" />);
-  expect(await screen.findByRole("status", { name: "Trạng thái Channel 1: Paused" })).toHaveAttribute("data-state", "paused");
-  expect(screen.queryByText("REC")).not.toBeInTheDocument();
+  expect(await screen.findByRole("status", { name: "Trạng thái Track 1: Paused" })).toHaveAttribute("data-state", "paused");
+  expect(screen.getByRole("status", { name: "Trạng thái Track 1: Paused" })).toHaveTextContent("PAUSE");
   expect(screen.getByRole("button", { name: "Resume" })).toBeEnabled();
 });
 
@@ -132,6 +178,18 @@ it("retries a stopped capture archive from its project journal", async () => {
   expect(await screen.findByText(/MKA ready/)).toBeInTheDocument();
 });
 
+it("automatically retries the latest failed MKA once after Stop", async () => {
+  const failed = { recording: { recordingId: "rec-failed", projectId: "project",
+    status: "stopped", archiveStatus: "error", videoSpanIds: [] }, sourceStems: [] };
+  apiMocks.listObsLiveLinkRecordings.mockResolvedValueOnce([failed]).mockResolvedValue([
+    { ...failed, recording: { ...failed.recording, archiveStatus: "ready" } },
+  ]);
+  render(<ObsCaptureController projectId="project" />);
+  await waitFor(() => expect(apiMocks.retryObsLiveLinkArchive).toHaveBeenCalledWith("project", "rec-failed"));
+  expect(apiMocks.retryObsLiveLinkArchive).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText(/MKA ready/)).toBeInTheDocument();
+});
+
 it("connects the OBS folder and imports the completed MKV for its own span", async () => {
   const journal = { recording: { recordingId: "rec-2", projectId: "project",
     status: "stopped", archiveStatus: "ready", videoSpanIds: ["span-1"] },
@@ -155,4 +213,29 @@ it("opens Browse in the span's OBS folder", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Browse MKV" }));
   await waitFor(() => expect(apiMocks.pickMediaFile).toHaveBeenCalledWith("D:\\Recordings"));
   await waitFor(() => expect(apiMocks.importObsLiveLinkVideoSpan).toHaveBeenCalledWith("project", "span-2", "C:\\OBS\\take.mkv"));
+});
+
+it("announces a completed archive once so Media Pool can refresh without F5", async () => {
+  const onArchiveReady = vi.fn().mockResolvedValue(undefined);
+  const pending = { recording: { recordingId: "rec-ready", projectId: "project", status: "stopped", archiveStatus: "pending", videoSpanIds: [] } };
+  apiMocks.listObsLiveLinkRecordings.mockResolvedValueOnce([pending]).mockResolvedValue([
+    { ...pending, recording: { ...pending.recording, archiveStatus: "ready" } },
+  ]);
+  const callbacks: Array<() => void> = [];
+  const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+    callbacks.push(handler as () => void);
+    return 42;
+  });
+  try {
+    render(<ObsCaptureController onArchiveReady={onArchiveReady} projectId="project" />);
+    await waitFor(() => expect(apiMocks.listObsLiveLinkRecordings).toHaveBeenCalledTimes(1));
+    expect(onArchiveReady).not.toHaveBeenCalled();
+    callbacks[0]?.();
+    await waitFor(() => expect(onArchiveReady).toHaveBeenCalledWith("rec-ready"));
+    callbacks[0]?.();
+    await waitFor(() => expect(apiMocks.listObsLiveLinkRecordings).toHaveBeenCalledTimes(3));
+    expect(onArchiveReady).toHaveBeenCalledTimes(1);
+  } finally {
+    interval.mockRestore();
+  }
 });

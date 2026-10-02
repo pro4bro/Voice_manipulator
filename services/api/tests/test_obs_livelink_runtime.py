@@ -3,6 +3,8 @@ import hashlib
 import struct
 import wave
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 import pytest
@@ -57,6 +59,63 @@ def source(channel_id, source_id, *, slot=1, forward=True, missing=False):
             "alias": f"Channel {slot}", "aliasRevision": 0, "slot": slot,
             "forward": forward, "missing": missing, "meterPeak": 0,
             "sampleRate": 48000, "audioChannels": 1, "muted": False}
+
+
+def test_new_obs_process_retains_stopped_recording_for_pcm_outbox_replay(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    started = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 1_000_000_000, "span-1")
+    recording_id = started["appRecording"]["recordingId"]
+    stopped = lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 2_000_000_000, "span-1")
+    assert stopped["recentRecordings"][-1]["recordingId"] == recording_id
+
+    new_hello = {**hello, "processInstanceId": str(uuid4())}
+    restarted = ObsLiveLinkRuntime(link, runtime.projects, tmp_path / "machine")
+    replacement = restarted.sync(new_hello, link.hello(token, new_hello), for_obs=True)
+    assert replacement["appRecording"] is None
+    assert replacement["recentRecordings"][-1]["recordingId"] == recording_id
+    assert replacement["recentRecordings"][-1]["endedMonotonicNs"] == 2_000_000_000
+
+    # 0.6.4 could overwrite machine state before its last SQLite row was ACKed.
+    restarted._state = restarted._state.model_copy(update={"completed_recordings": []})
+    restarted._persist()
+    recovered = restarted.recover_recording(
+        token, install_id=hello["installId"], connection_id=replacement["connectionId"],
+        epoch=replacement["connectionEpoch"], recording_id=recording_id,
+    )
+    assert recovered["endedMonotonicNs"] == 2_000_000_000
+    assert recovered["archiveStatus"] == "pending"
+    assert restarted.status()["recentRecordings"][-1]["recordingId"] == recording_id
+    pcm = struct.pack("<" + "h" * 480, *([1200] * 480))
+    audio = FileObsLiveLinkAudio(link, restarted, restarted.projects,
+                                 FileMediaLibrary(restarted.projects), None)
+    replayed = audio.chunk(
+        token, install_id=hello["installId"], connection_id=replacement["connectionId"],
+        epoch=replacement["connectionEpoch"], recording_id=recording_id,
+        channel_id=channel_id, source_uuid=source_id, sequence=0, first_sample_index=0,
+        frame_count=480, sample_rate=48000, channels=1,
+        obs_audio_timestamp_ns=1_100_000_000, plugin_monotonic_ns=1_100_000_000,
+        sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm,
+    )
+    assert replayed["durable"]
+
+
+def test_obs_restart_retains_all_unfinalized_recordings_beyond_recent_list(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    recording_ids = []
+    for index in range(7):
+        span = f"span-{index}"
+        started = lifecycle(runtime, token, hello, snapshot, index * 2,
+                            "obs-start", (index * 2 + 1) * 1_000_000_000, span)
+        recording_ids.append(started["appRecording"]["recordingId"])
+        lifecycle(runtime, token, hello, snapshot, index * 2 + 1,
+                  "obs-stop", (index * 2 + 2) * 1_000_000_000, span)
+    new_hello = {**hello, "processInstanceId": str(uuid4())}
+    restarted = ObsLiveLinkRuntime(link, runtime.projects, tmp_path / "machine")
+    replacement = restarted.sync(new_hello, link.hello(token, new_hello), for_obs=True)
+    assert {item["recordingId"] for item in replacement["recentRecordings"]} == set(recording_ids)
+    assert len(restarted.status()["recentRecordings"]) == 5
 
 
 def test_waveform_separates_channels_and_preserves_silence_gap_and_restart(tmp_path, monkeypatch):
@@ -483,6 +542,10 @@ def test_durable_pcm_chunk_and_verified_transitional_stem(tmp_path):
         }),
     })
     lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 2_000_000_000, "span-1")
+    with pytest.raises(LiveLinkError, match="after the recording boundary"):
+        audio.chunk(token, **{**kwargs, "sequence": 2,
+                            "first_sample_index": 5760,
+                            "plugin_monotonic_ns": 1_999_000_000})
     arguments = dict(install_id=hello["installId"], connection_id=snapshot["connectionId"],
                      epoch=snapshot["connectionEpoch"], recording_id=recording_id)
     with pytest.raises(LiveLinkError, match="FFmpeg"):
@@ -580,6 +643,9 @@ def test_mka_has_one_verified_track_per_source_and_portable_children(tmp_path, m
     assert len({track["trackUid"] for track in archive["tracks"]}) == source_count
     assert all(track["trackUid"] > 0 for track in archive["tracks"])
     assert (root / archive["sourcePath"]).is_file()
+    assert media.get(project.id, archive["parentAssetId"]).obs_recording_id == recording_id
+    assert media.get(project.id, archive["parentAssetId"]).name == started["appRecording"]["displayName"]
+    assert started["appRecording"]["displayName"].endswith(f"_OBS-runtime_LIV_{recording_id[:8]}")
     assert media.get(project.id, archive["parentAssetId"]).audio_codec == (
         "pcm_s16le" if force_pcm else "flac")
     journal = json.loads((root / "assets" / "obs-livelink" / recording_id / "recording.json").read_text())
@@ -600,6 +666,13 @@ def test_mka_has_one_verified_track_per_source_and_portable_children(tmp_path, m
         with wave.open(str(root / child.analysis_path), "rb") as wav:
             assert (wav.getframerate(), wav.getnchannels(), wav.getsampwidth()) == (24000, 1, 2)
     assert len([item for item in media.list(project.id) if item.source_path.endswith(".mka")]) == 1
+    def must_not_reencode(*args, **kwargs):
+        raise AssertionError("A retried finalize must reuse the verified archive")
+    monkeypatch.setattr(audio.archiver, "finalize", must_not_reencode)
+    repeated = audio.finalize(token, install_id=hello["installId"],
+                              connection_id=snapshot["connectionId"],
+                              epoch=snapshot["connectionEpoch"], recording_id=recording_id)
+    assert repeated["sourceArchive"] == archive
     if source_count == 2:
         relocated = tmp_path / "relocated-project"
         shutil.copytree(root, relocated)
@@ -608,5 +681,48 @@ def test_mka_has_one_verified_track_per_source_and_portable_children(tmp_path, m
         reopened_media = FileMediaLibrary(reopened_projects)
         assert reopened.id == project.id
         assert (relocated / archive["sourcePath"]).is_file()
+        assert reopened_media.get(reopened.id, archive["parentAssetId"]).obs_recording_id == recording_id
         for stem in finalized["sourceStems"]:
             assert reopened_media.resolve_audio_path(reopened.id, stem["assetId"]).is_file()
+            assert reopened_media.get(reopened.id, stem["assetId"]).source_archive_asset_id == archive["parentAssetId"]
+
+
+def test_archiving_old_take_does_not_block_pcm_for_next_take(tmp_path, monkeypatch):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    audio = FileObsLiveLinkAudio(link, runtime, runtime.projects, FileMediaLibrary(runtime.projects), None)
+    pcm = struct.pack("<480h", *([1200] * 480))
+    def send(recording_id, at):
+        return audio.chunk(token, install_id=hello["installId"], connection_id=snapshot["connectionId"],
+                           epoch=snapshot["connectionEpoch"], recording_id=recording_id,
+                           channel_id=channel_id, source_uuid=source_id, sequence=0,
+                           first_sample_index=0, frame_count=480, sample_rate=48000, channels=1,
+                           obs_audio_timestamp_ns=at, plugin_monotonic_ns=at,
+                           sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm)
+    old_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 1_000_000_000, "old")["appRecording"]["recordingId"]
+    send(old_id, 1_100_000_000)
+    lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 2_000_000_000, "old")
+    new_id = lifecycle(runtime, token, hello, snapshot, 2, "obs-start", 3_000_000_000, "new")["appRecording"]["recordingId"]
+    entered, release, received = threading.Event(), threading.Event(), threading.Event()
+    def slow_archive(*args):
+        entered.set()
+        release.wait(3)
+        raise LiveLinkError("test archive stopped", 503)
+    monkeypatch.setattr(audio.archiver, "finalize", slow_archive)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        old = pool.submit(audio.finalize, token, install_id=hello["installId"],
+                          connection_id=snapshot["connectionId"], epoch=snapshot["connectionEpoch"], recording_id=old_id)
+        assert entered.wait(1)
+        def receive():
+            result = send(new_id, 3_100_000_000)
+            received.set()
+            return result
+        new = pool.submit(receive)
+        try:
+            assert received.wait(.5), "Old archive blocked durable PCM receipt for the active take"
+        finally:
+            release.set()
+        assert new.result()["durable"]
+        with pytest.raises(LiveLinkError):
+            old.result()

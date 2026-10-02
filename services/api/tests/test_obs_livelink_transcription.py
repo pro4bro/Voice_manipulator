@@ -3,6 +3,8 @@ import json
 import struct
 from uuid import uuid4
 
+import pytest
+
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
 from app.domain.models import ProjectCreate
@@ -19,7 +21,7 @@ def test_two_channels_partial_revision_alias_and_restart(tmp_path):
     (folder / "recording.json").write_text("{}", encoding="utf-8")
     calls = {}
 
-    async def recognize(session, wav):
+    async def recognize(session, wav, _language):
         if wav is None:
             return {"text": calls[session][-1], "pending": ""}
         calls.setdefault(session, []).append("xin" if len(calls.get(session, [])) == 0 else "xin chào")
@@ -91,7 +93,7 @@ def test_slow_or_failed_model_does_not_hold_audio_offer(tmp_path):
     folder.mkdir(parents=True)
     (folder / "recording.json").write_text(json.dumps({}), encoding="utf-8")
 
-    async def fail(_session, _wav):
+    async def fail(_session, _wav, _language):
         await asyncio.sleep(0.05)
         raise RuntimeError("recognizer failed")
 
@@ -125,6 +127,101 @@ def test_slow_or_failed_model_does_not_hold_audio_offer(tmp_path):
                    stt.snapshot(project.id, recording_id)["events"])
 
     asyncio.run(run())
+
+
+def test_stop_drains_recorded_audio_once_and_rejects_late_live_stt(tmp_path):
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Stopped Live STT"))
+    recording_id, channel_id = str(uuid4()), str(uuid4())
+    from pathlib import Path
+    folder = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "recording.json").write_text("{}", encoding="utf-8")
+    calls = []
+
+    async def recognize(session, wav, _language):
+        calls.append((session, wav is None))
+        return {"text": "đã ghi", "pending": ""}
+
+    async def run():
+        stt = ObsLiveLinkTranscription(projects, "http://unused", lambda: False,
+                                       recognize, window_seconds=1)
+        pcm = struct.pack("<" + "h" * 480, *([2000] * 480))
+        common = dict(project_id=project.id, recording_id=recording_id,
+                      channel_id=channel_id, source_uuid=str(uuid4()), alias="Mic",
+                      sample_rate=48000, channels=1,
+                      recording_started_ns=1_000_000_000, pcm=pcm)
+        stt.offer(**common, sequence=0, first_sample=0,
+                  plugin_monotonic_ns=1_000_000_000)
+        stt.finish(recording_id)
+        stt.finish(recording_id)
+        stt.offer(**common, sequence=1, first_sample=480,
+                  plugin_monotonic_ns=1_010_000_000)
+        await asyncio.wait_for(next(iter(stt._tasks.values())), timeout=2)
+        events = stt.snapshot(project.id, recording_id)["events"]
+        assert [item["status"] for item in events] == ["listening", "partial", "final"]
+        assert events[-1]["lastSampleIndexExclusive"] == 480
+        assert len(calls) == 2
+        assert not stt._queues
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(("project_language", "expected_language"), [("vi", "vi"), (None, "")])
+def test_live_stt_uses_project_language_and_quality_model(tmp_path, monkeypatch,
+                                                          project_language, expected_language):
+    from pathlib import Path
+
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Lesson", language=project_language))
+    recording_id, channel_id = str(uuid4()), str(uuid4())
+    folder = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "recording.json").write_text("{}", encoding="utf-8")
+    posted = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "xin chào", "pending": ""}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            pass
+
+        async def post(self, url, **kwargs):
+            posted.append((url, kwargs))
+            return Response()
+
+    monkeypatch.setattr("app.adapters.obs_livelink_transcription.httpx.AsyncClient", Client)
+
+    async def run():
+        stt = ObsLiveLinkTranscription(projects, "http://studio", lambda: False,
+                                       window_seconds=0.01)
+        stt.offer(project_id=project.id, recording_id=recording_id,
+                  channel_id=channel_id, source_uuid=str(uuid4()), alias="Track 1",
+                  sequence=0, first_sample=0, sample_rate=48000, channels=1,
+                  plugin_monotonic_ns=1_000_000_000,
+                  recording_started_ns=1_000_000_000,
+                  pcm=struct.pack("<" + "h" * 480, *([2000] * 480)))
+        stt.finish(recording_id)
+        await asyncio.wait_for(next(iter(stt._tasks.values())), timeout=2)
+
+    asyncio.run(run())
+    chunks = [args["data"] for url, args in posted if url.endswith("/chunk")]
+    assert len(chunks) == 1
+    assert chunks[0]["session"].startswith(f"obs-v3-{recording_id}-{channel_id}-")
+    assert chunks[0]["model"] == "medium"
+    assert chunks[0]["language"] == expected_language
+    assert posted[-1][0].endswith("/end")
 
 
 def test_transcript_event_api_returns_cursor_delta(tmp_path):

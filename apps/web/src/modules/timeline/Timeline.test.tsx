@@ -50,6 +50,16 @@ describe("Timeline", () => {
     expect(screen.getByText(/REC LIVE · waveform đang cập nhật/)).toBeInTheDocument();
   });
 
+  it("fits a newly opened footage after zooming into the previous one", () => {
+    const { rerender } = render(<Timeline gain={0} onGainChange={() => undefined}
+      take={{ id: "first", name: "first.wav", url: "/first.wav", duration: 120 }} />);
+    fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "1000" } });
+    expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("1000");
+    rerender(<Timeline gain={0} onGainChange={() => undefined}
+      take={{ id: "second", name: "second.wav", url: "/second.wav", duration: 3600 }} />);
+    expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
+  });
+
   it("keeps a settled PCM window when the server groups peaks below the requested point count", async () => {
     const fetchWaveform = vi.fn().mockResolvedValue({
       ok: true,
