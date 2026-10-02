@@ -1,5 +1,25 @@
 # Project Status — 2026-09-22
 
+## LiveLink physical two-track ingress gate — 2026-10-02
+
+`LIVELINK-INGEST-11C` loaded the 0.6.6 package in OBS 32.2.2 and recorded
+497.288 seconds from two independent OBS speech sources while automatic
+realtime and user-started `large-v3` detailed STT ran for both tracks. Native
+PCM had zero sample gaps/overlaps across 793 and 795 chunks. The final MKA
+matches its journal hash, decodes both 48 kHz stereo FLAC tracks, and ends at
+the Stop boundary. Detailed STT published both tracks, with 128 and 66 SRT
+cues. Peak disk-spool backlog fell from the earlier 153 chunks to 56; the last
+PCM arrived 2.268 seconds after Stop instead of roughly 50 seconds.
+
+The take did not maintain low live latency throughout: PCM ingest p95 was
+16.29/16.49 seconds, and the native HTTP log recorded a 258.8 ms weighted
+mean and 1,986 ms maximum request. Realtime STT emitted 382 queue-full errors
+despite durable PCM remaining complete. `LIVELINK-INGEST-11D` will address
+the PCM ACK/write latency; `LIVELINK-STT-12B` will address the distinct
+realtime recognition queue. This run used controlled OBS media sources on the
+owner's machine; the full source matrix and UI viewport remain in the final
+`LIVELINK-08` gate.
+
 ## LiveLink long-take PCM ingress throughput — 2026-10-02
 
 `LIVELINK-INGEST-11B` removes the directory-wide chunk metadata scan from
