@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import audioop
+import gc
+from collections import OrderedDict
 from copy import deepcopy
 import math
 import os
@@ -81,6 +83,10 @@ model_lock = threading.Lock()
 loaded_model: Any | None = None
 loaded_model_name: str | None = None
 loaded_device: str | None = None
+loaded_models: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
+loaded_model_names: tuple[str, ...] = ()
+model_load_count = 0
+last_model_load_seconds: float | None = None
 diarization_lock = threading.Lock()
 loaded_diarization: Any | None = None
 loaded_diarization_model: str | None = None
@@ -150,30 +156,69 @@ def _resolve_device() -> tuple[str, str]:
     return "cpu", "int8"
 
 
+def _model_cache_capacity(device: str) -> int:
+    """Keep live and detailed models warm only on GPUs large enough for both."""
+    if device != "cuda":
+        return 1
+    try:
+        import torch
+        free, total = torch.cuda.mem_get_info(0)
+        return 2 if total >= 20 * 1024 ** 3 and free >= 6 * 1024 ** 3 else 1
+    except (ImportError, RuntimeError, AssertionError):
+        return 1
+
+
 def _model(model_name: str = MODEL_NAME) -> tuple[Any, str]:
     global loaded_model, loaded_model_name, loaded_device, model_load_error, model_load_state
+    global loaded_model_names, model_load_count, last_model_load_seconds
     device, compute_type = _resolve_device()
+    key = model_name, device, compute_type
     with model_lock:
-        if loaded_model is not None and loaded_model_name == model_name and loaded_device == device:
+        if key in loaded_models:
+            loaded_models.move_to_end(key)
+            loaded_model_names = tuple(item[0] for item in loaded_models)
+            loaded_model = loaded_models[key]
+            loaded_model_name = model_name
+            loaded_device = device
             return loaded_model, device
         model_load_error = None
         model_load_state = "importing Faster-Whisper"
+        capacity = _model_cache_capacity(device)
+        while len(loaded_models) >= capacity:
+            loaded_models.popitem(last=False)
+        loaded_model_names = tuple(item[0] for item in loaded_models)
+        loaded_model = None
+        gc.collect()
         try:
             _configure_windows_cuda_dlls()
             from faster_whisper import WhisperModel
 
             MODEL_ROOT.mkdir(parents=True, exist_ok=True)
             model_load_state = "loading ASR model"
-            loaded_model = WhisperModel(
-                model_name,
-                device=device,
-                compute_type=compute_type,
-                download_root=str(MODEL_ROOT),
-            )
+            started = time.perf_counter()
+            try:
+                model = WhisperModel(model_name, device=device, compute_type=compute_type,
+                                     download_root=str(MODEL_ROOT))
+            except Exception as exc:
+                # A cached model may have consumed the headroom needed by the
+                # next one. Fall back to the previous single-model behavior.
+                if loaded_models and "out of memory" in str(exc).lower():
+                    loaded_models.clear()
+                    loaded_model_names = ()
+                    gc.collect()
+                    model = WhisperModel(model_name, device=device, compute_type=compute_type,
+                                         download_root=str(MODEL_ROOT))
+                else:
+                    raise
         except Exception as exc:
             model_load_state = "failed"
             model_load_error = str(exc)
             raise
+        loaded_models[key] = model
+        loaded_model_names = tuple(item[0] for item in loaded_models)
+        model_load_count += 1
+        last_model_load_seconds = round(time.perf_counter() - started, 3)
+        loaded_model = model
         loaded_model_name = model_name
         loaded_device = device
         model_load_state = "ready"
@@ -679,7 +724,9 @@ async def live_end(session: str = Form(...)) -> dict[str, Any]:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     device, compute_type = _resolve_device()
-    return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None, "load_state": model_load_state, "load_error": model_load_error}
+    return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None, "load_state": model_load_state, "load_error": model_load_error,
+            "loaded_models": list(loaded_model_names), "model_load_count": model_load_count,
+            "last_model_load_seconds": last_model_load_seconds}
 
 
 @app.get("/api/audio/import/{progress_id}/progress")

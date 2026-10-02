@@ -1,5 +1,21 @@
 # Project Status — 2026-09-22
 
+## LiveLink model reuse and caption delay — 2026-10-03
+
+`LIVELINK-STT-12E` keeps `medium` live and `large-v3` detailed recognizers
+warm together when CUDA has sufficient memory (ADR 0032). A fixed repeated
+request sequence reduced warm live calls from roughly 3.2 to 0.6 seconds. A
+172.806-second physical two-track OBS take with both STT modes and a detached
+FastAPI restart retained gap-free PCM, a verified two-stream MKA, complete
+live checkpoints and detailed STT on both tracks. Post-restart caption delay
+estimates had medians 0.923/1.764 seconds and maxima 16.029/10.912 seconds,
+versus 11.689/12.715 and 19.434/29.092 in the prior 12D retry. Independent
+API polling measured 6.147/4.641-second median event ages; browser paint was
+not observed. The detached launcher stayed healthy for 90 seconds both idle
+and under recording load, so the earlier intermittent listener failure remains
+unattributed. `LIVELINK-STT-12F` will trace remaining caption spikes at the
+viewport; `LIVELINK-08` still owns the wider source/UI acceptance matrix.
+
 ## LiveLink physical API restart under model load — 2026-10-03
 
 `LIVELINK-STT-12D` restarted FastAPI during a physical two-track OBS recording

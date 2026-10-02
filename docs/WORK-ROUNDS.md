@@ -75,7 +75,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12B | Prevent realtime transcription queue loss under concurrent detailed STT | Complete at two-source OBS and forced-backlog test level; restart recovery open | Bounded RAM queues now replay committed PCM per track instead of discarding recognition work when full. |
 | LIVELINK-STT-12C | Resume pending realtime STT from durable PCM after API restart | Complete at API startup, two-track restart and copied real-PCM replay level; physical model-load gate open | Per-track checkpoints reconstruct an unfinished utterance and replay committed PCM without repeating final transcript events. |
 | LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Complete at physical data/model gate; owner viewport open | Both tracks recovered complete PCM, live transcript and detailed STT; post-restart caption delay remains measurable. |
-| LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Queued | The successful 12D retry still reached an estimated 19.4/29.1-second caption age after API restart. |
+| LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Complete at two-track physical data/model gate; owner viewport open | Warm model reuse reduced repeat-call time and post-restart median caption delay; detached-launch failure did not recur. |
+| LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Queued | The 12E take still had estimated 16.0/10.9-second post-restart peaks and API arrival did not measure browser paint. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2809,3 +2810,53 @@ blaming the app. The full OBS source matrix and viewport remain in
 Exact next round: `LIVELINK-STT-12E` — reproduce the detached-launch failure,
 then reduce and remeasure post-restart live-caption lag while detailed STT runs.
 Continue the final `LIVELINK-08` source/UI gate afterward.
+
+## Round LIVELINK-STT-12E — 2026-10-03
+
+Completed scope:
+- Diagnosed Studio's single-model retention as repeated construction when
+  `medium` live STT and `large-v3` detailed STT alternate. Added a two-model
+  least-recently-used cache only when CUDA reports at least 20 GiB total and
+  6 GiB free, with single-model fallback and observable load counts (ADR 0032).
+- Reproduced the 12D detached API restart method first without OBS load, then
+  during a 172.806-second physical two-track OBS recording with both STT modes
+  active. The API listener stayed healthy for 18 samples over 90 seconds in
+  both attempts; the first 12D listener loss did not recur. OBS scene,
+  recording directory and the original six channel Forward states were
+  restored, and the test lease was released.
+
+Evidence:
+- The fixed five-request Studio benchmark changed repeated `medium` calls
+  from 3.195/3.213 to 0.619/0.556 seconds and repeated `large-v3` from
+  10.392 to 5.875 seconds. The Studio reported both models resident and two
+  successful model loads. Cold-call times varied and are not counted as a gain.
+- The physical take retained 276 contiguous 48 kHz stereo PCM chunks per
+  track with zero sample gaps or overlaps; the 4,838,627-byte MKA matched the
+  journal hash and decoded two FLAC streams through 172.806 seconds. Its PCM
+  ingress p95 was 5.711/5.914 seconds; spool peak was 26 and drained to zero.
+  Both live checkpoints reached sequence 276, with 96 events, 22 finals,
+  zero event errors or duplicate finals. Detailed STT published both tracks.
+- Using the same event-lag estimate as 12D, post-restart caption delay medians
+  fell from 11.689/12.715 to 0.923/1.764 seconds; maxima fell from
+  19.434/29.092 to 16.029/10.912 seconds. An independent one-second API poll
+  measured post-restart caption age medians 6.147/4.641 seconds and maxima
+  17.940/12.378 seconds. Neither measures browser paint. The restart happened
+  at 116.706 seconds; the detached launcher became ready in about 8.5 seconds
+  and kept the same Studio PID.
+- Studio cache/local-agreement tests: 14 passed. Focused LiveLink API tests:
+  21 passed. Full API suite: 492 passed; Python compilation and `git diff
+  --check` passed. The test OBS process and app workloads were stopped after
+  the recording and report checks.
+  Read-only acceptance data is in ignored `.scratch/livelink-stt-12e`,
+  `.scratch/livelink-stt-12e-physical` and the prior 12D retry directory.
+
+Remaining gap: the 12D detached-listener failure was not reproduced, so its
+root cause remains unknown. Caption peaks still reached 16.0/10.9 seconds by
+the event estimate, and the owner viewport was not measured. The separate
+takes do not prove that the model cache alone caused every latency difference;
+PCM ingress and recognition load also varied. The full source/UI matrix stays
+in `LIVELINK-08`.
+
+Exact next round: `LIVELINK-STT-12F` — capture browser-visible caption timing
+and trace the remaining peaks during sustained two-track OBS plus detailed
+STT; then continue the final `LIVELINK-08` source/UI gate.
