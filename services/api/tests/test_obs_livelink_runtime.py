@@ -103,6 +103,43 @@ def test_new_obs_process_retains_stopped_recording_for_pcm_outbox_replay(tmp_pat
     assert replayed["durable"]
 
 
+def test_pcm_ingest_checks_immediate_predecessor_without_scanning_take(tmp_path, monkeypatch):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    recording_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start",
+                             1_000_000_000, "span-1")["appRecording"]["recordingId"]
+    audio = FileObsLiveLinkAudio(link, runtime, runtime.projects,
+                                 FileMediaLibrary(runtime.projects), None)
+    pcm = struct.pack("<" + "h" * 480, *([1200] * 480))
+    kwargs = dict(install_id=hello["installId"], connection_id=snapshot["connectionId"],
+                  epoch=snapshot["connectionEpoch"], recording_id=recording_id,
+                  channel_id=channel_id, source_uuid=source_id, frame_count=480,
+                  sample_rate=48000, channels=1, sha256=hashlib.sha256(pcm).hexdigest(),
+                  pcm=pcm)
+
+    def ingest(sequence):
+        ns = 1_100_000_000 + sequence * 10_000_000
+        return audio.chunk(token, **kwargs, sequence=sequence,
+                           first_sample_index=sequence * 480,
+                           obs_audio_timestamp_ns=ns, plugin_monotonic_ns=ns)
+
+    assert ingest(0)["durable"]
+    chunks = (Path(project.project_path) / "assets" / "obs-livelink" /
+              recording_id / "channels" / channel_id / "chunks")
+    original_glob = Path.glob
+
+    def reject_full_scan(path, pattern):
+        if path == chunks and pattern == "*.json":
+            raise AssertionError("PCM ingress scanned all prior chunk metadata")
+        return original_glob(path, pattern)
+
+    monkeypatch.setattr(Path, "glob", reject_full_scan)
+    assert ingest(1)["durable"]
+    with pytest.raises(LiveLinkError, match="sequence, sample index or format discontinuity"):
+        ingest(3)
+
+
 def test_permanent_obs_media_delete_cannot_be_recreated_from_machine_state(tmp_path):
     link, runtime, project, token, hello, snapshot = setup(tmp_path)
     recording_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start",

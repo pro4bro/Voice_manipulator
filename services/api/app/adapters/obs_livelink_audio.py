@@ -148,15 +148,19 @@ class FileObsLiveLinkAudio:
                                          recording.started_monotonic_ns, existing_metadata, pcm)
                 self.runtime.note_durable_chunk(recording, channel_id, existing_metadata, duplicate=True)
                 return {"sequence": sequence, "durable": True, "duplicate": True}
-            existing = sorted(channel_folder.glob("*.json"))
-            if existing:
-                previous = json.loads(existing[-1].read_text(encoding="utf-8"))
-                if (sequence != previous["sequence"] + 1 or
+            if sequence:
+                previous_path = channel_folder / f"{sequence - 1:012d}.json"
+                if not previous_path.is_file():
+                    raise LiveLinkError("OBS PCM sequence, sample index or format discontinuity requires resync.")
+                previous = json.loads(previous_path.read_text(encoding="utf-8"))
+                if (previous["sequence"] != sequence - 1 or
                         first_sample_index < previous["firstSampleIndex"] + previous["frameCount"] or
                         (sample_rate, channels) != (previous["sampleRate"], previous["channels"])):
                     raise LiveLinkError("OBS PCM sequence, sample index or format discontinuity requires resync.")
-            elif sequence != 0:
-                raise LiveLinkError("OBS PCM channel must start at sequence zero.")
+            elif channel_folder.is_dir() and any(
+                path.suffix == ".json" for path in channel_folder.iterdir()
+            ):
+                raise LiveLinkError("OBS PCM sequence, sample index or format discontinuity requires resync.")
             self._write(pcm_path, pcm)
             self._write(metadata_path, json.dumps(metadata, separators=(",", ":")).encode())
             self.waveform.note_chunk(recording.project_id, recording_id, channel_id,

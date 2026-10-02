@@ -959,15 +959,22 @@ private:
 		std::map<std::string, uint64_t> reported_overflow_frames;
 		std::map<std::string, uint64_t> reported_callback_wait_ns;
 		auto last_spool_report = std::chrono::steady_clock::now();
+		uint64_t sent_chunks = 0;
+		uint64_t send_elapsed_ms = 0;
+		uint64_t max_send_ms = 0;
 		auto last_rejection_log = std::chrono::steady_clock::now() - std::chrono::seconds(5);
 		while (active_) {
 			drain();
 			if (std::chrono::steady_clock::now() - last_spool_report >= std::chrono::seconds(5)) {
 				const auto count = spool.pending();
-				if (count || !unspooled.empty())
-					blog(LOG_INFO, "[Pro4Bro] PCM disk spool pending=%llu volatile=%llu",
+				if (count || !unspooled.empty() || sent_chunks)
+					blog(LOG_INFO, "[Pro4Bro] PCM disk spool pending=%llu volatile=%llu sends=%llu http_avg_ms=%llu http_max_ms=%llu",
 						static_cast<unsigned long long>(count),
-						static_cast<unsigned long long>(unspooled.size()));
+						static_cast<unsigned long long>(unspooled.size()),
+						static_cast<unsigned long long>(sent_chunks),
+						static_cast<unsigned long long>(sent_chunks ? send_elapsed_ms / sent_chunks : 0),
+						static_cast<unsigned long long>(max_send_ms));
+				sent_chunks = send_elapsed_ms = max_send_ms = 0;
 				last_spool_report = std::chrono::steady_clock::now();
 			}
 			Pairing pairing = read_pairing();
@@ -1086,7 +1093,12 @@ private:
 						}
 					}
 					if (!connection_id_.empty() && active_) {
-						for (int sent_count = 0; sent_count < 5; ++sent_count) {
+						const auto burst_started = std::chrono::steady_clock::now();
+						for (int sent_count = 0; sent_count < 20; ++sent_count) {
+							// Keep control commands responsive, while amortizing each
+							// heartbeat/command round trip across more queued PCM.
+							if (sent_count && std::chrono::steady_clock::now() - burst_started >=
+								std::chrono::seconds(1)) break;
 							if (!outstanding) outstanding = spool.oldest();
 							if (!outstanding) break;
 							const auto boundary = stop_boundaries.find(outstanding->chunk.recording_id);
@@ -1107,7 +1119,13 @@ private:
 									outstanding->chunk.pcm.resize(static_cast<size_t>(allowed) * chunk.channels);
 								}
 							}
+							const auto send_started = std::chrono::steady_clock::now();
 							Reply sent = send_chunk(pairing, pairing.install_id, connection_id_, epoch_, outstanding->chunk);
+							const auto elapsed = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+								std::chrono::steady_clock::now() - send_started).count());
+							++sent_chunks;
+							send_elapsed_ms += elapsed;
+							max_send_ms = std::max(max_send_ms, elapsed);
 							if (sent.status != 200) {
 								if (sent.status == 413 || sent.status == 422) {
 									blog(LOG_ERROR, "[Pro4Bro] PCM spool chunk rejected recording=%s channel=%s sequence=%llu status=%lu; retained on disk",

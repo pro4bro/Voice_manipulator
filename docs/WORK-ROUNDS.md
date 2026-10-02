@@ -69,7 +69,8 @@ that gap matters, and the exact next round.
 | LIVELINK-CAPTURE-10 | Repair muted-source PCM, stale source rows, and in-progress Media Pool visibility | Implemented; real muted Track 1 capture passed, browser visibility and wider source matrix remain open | A moving meter now leads to raw source PCM when Forward is on, and a stopped journal can recover its MKA without F5. |
 | LIVELINK-CAPTURE-10B | Verify live Media Pool row and several independent sources in the running app | Queued | Confirms the visual recording-to-MKA transition and each selected source on the owner's full OBS setup. |
 | LIVELINK-TIMELINE-11 | Keep the live waveform window current and simplify overlap review/playback | Complete at frontend regression level; real long-take viewport gate open | Prevents stale window cursors and responses from blanking the tail, distinguishes pending PCM from gaps, and restores drag/Space controls. |
-| LIVELINK-INGEST-11B | Reduce long-take PCM spool backlog under live STT load | Queued | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
+| LIVELINK-INGEST-11B | Remove per-chunk take scan and amortize PCM transport controls | Implemented at replay, API test and native-build level; physical load gate open | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
+| LIVELINK-INGEST-11C | Install and measure sustained two-track OBS capture with simultaneous live and detailed STT | Queued | Verifies the new sender under the owner's real CPU, GPU and disk load, including spool peak, tail latency and final MKA. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2519,3 +2520,40 @@ state and event behavior but cannot prove these physical pointer/visual details.
 Exact next round: `LIVELINK-INGEST-11B` — measure and reduce the long-take PCM
 spool backlog under simultaneous OBS capture and STT load. Keep the physical
 overlap viewport check in the final `LIVELINK-08` acceptance matrix.
+
+## Round LIVELINK-INGEST-11B — 2026-10-02
+
+Completed scope:
+- API PCM ingress now validates the immediate predecessor metadata by sequence
+  instead of enumerating and sorting every prior chunk in a long take. The
+  existing duplicate/hash and sample-index/format checks remain in place.
+- The OBS sender can deliver up to 20 queued chunks per control cycle instead
+  of five, with a one-second burst budget so lifecycle and channel commands
+  continue to be polled. Its five-second spool log now includes HTTP send
+  count, average request duration and maximum request duration for diagnosis.
+- Built the updated native plugin and refreshed the local plugin package and
+  matching SHA-256 manifest. The running OBS process has not loaded it yet.
+
+Evidence:
+- The regression test failed on the old full-directory scan and passed after
+  the predecessor lookup. It also rejects a skipped sequence. Backend full
+  suite: 484 passed; frontend: 455 passed, typecheck and build passed.
+- Native Release and RelWithDebInfo builds passed. Capture and spool native
+  tests: 2/2 passed with the OBS DLL directory on PATH. The packaged DLL hash
+  matches its manifest.
+- On an isolated two-track, 360-chunk PCM replay, median API persistence time
+  for sequences 150–179 fell from 26.8 to 23.9 ms/chunk. The old directory
+  scan alone took about 4.7 ms at 900 metadata files and 9.3 ms at 1,800
+  files on this machine. This replay excludes native HTTP and concurrent STT.
+
+Remaining gap: no sustained OBS take with live STT has run against the newly
+built plugin and API. The earlier 153-chunk peak and ~50-second tail have not
+been remeasured after installation. This matters because API disk I/O, HTTP
+ACKs, native control polling and model load can still compete in the actual
+session; an isolated replay cannot establish gap-free, low-latency capture.
+
+Exact next round: `LIVELINK-INGEST-11C` — load the updated package in OBS,
+record a sustained two-track take with live and detailed STT, read the new
+spool/HTTP metrics and project PCM timestamps, and verify low tail latency,
+zero sample gaps and a final two-track MKA. Continue the final `LIVELINK-08`
+acceptance matrix after that result.

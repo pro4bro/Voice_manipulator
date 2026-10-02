@@ -1,5 +1,19 @@
 # Project Status — 2026-09-22
 
+## LiveLink long-take PCM ingress throughput — 2026-10-02
+
+`LIVELINK-INGEST-11B` removes the directory-wide chunk metadata scan from
+each API PCM write. An isolated two-track replay at sequences 150–179 reduced
+median persistence time from 26.8 to 23.9 ms per chunk. The native sender now
+amortizes control polling across up to 20 sends within a one-second burst and
+logs send count plus average/maximum HTTP request duration every five seconds.
+The plugin builds, its package manifest hash matches the DLL, native tests
+pass 2/2, backend passes 484/484 and frontend passes 455/455 with typecheck
+and build. The running OBS process has not loaded the new DLL. The owner's
+earlier 153 pending chunks and roughly 50-second Stop tail remain the physical
+comparison for `LIVELINK-INGEST-11C`: sustained OBS plus STT, zero sample gaps,
+low tail delay and final MKA publication.
+
 ## Bidirectional OBS overlap review — 2026-10-02
 
 `LIVELINK-OVERLAP-15` shares one selected OBS recording interval between Script
