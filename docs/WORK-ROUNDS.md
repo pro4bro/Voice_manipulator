@@ -74,7 +74,8 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-11D | Profile and reduce native HTTP ACK and API persistence latency under sustained two-track load | Complete on controlled two-source OBS gate; longer source matrix open | Durable PCM preparation now runs concurrently and waveform avoids a redundant flush; 304-second OBS p95 ingress lag fell to 4.20/4.14 seconds with zero sample gaps. |
 | LIVELINK-STT-12B | Prevent realtime transcription queue loss under concurrent detailed STT | Complete at two-source OBS and forced-backlog test level; restart recovery open | Bounded RAM queues now replay committed PCM per track instead of discarding recognition work when full. |
 | LIVELINK-STT-12C | Resume pending realtime STT from durable PCM after API restart | Complete at API startup, two-track restart and copied real-PCM replay level; physical model-load gate open | Per-track checkpoints reconstruct an unfinished utterance and replay committed PCM without repeating final transcript events. |
-| LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Queued | Measures actual model contention and catch-up lag across process loss, which deterministic replay cannot establish. |
+| LIVELINK-STT-12D | Restart the running API during physical two-track OBS capture and concurrent detailed STT | Complete at physical data/model gate; owner viewport open | Both tracks recovered complete PCM, live transcript and detailed STT; post-restart caption delay remains measurable. |
+| LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Queued | The successful 12D retry still reached an estimated 19.4/29.1-second caption age after API restart. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2755,3 +2756,56 @@ Exact next round: `LIVELINK-STT-12D` — restart the API during a real two-track
 OBS take with simultaneous live and detailed STT, then verify the PCM, event
 and checkpoint tails and measure visible caption lag. Continue the final
 `LIVELINK-08` source/UI gate after that result.
+
+## Round LIVELINK-STT-12D — 2026-10-03
+
+Completed scope:
+- Ran two isolated physical OBS 32.2.2 takes with two looping speech sources,
+  automatic `medium` per-track live STT and user-started `large-v3` detailed STT.
+  Restarted only the FastAPI process while OBS and Studio stayed running. Test
+  projects, source media and reports are in ignored `.scratch/livelink-stt-12d`
+  and `.scratch/livelink-stt-12d-retry`; no product source changed. Restored the
+  original OBS scene, recording directory and six present-channel Forward
+  settings after each take, then released the test lease.
+- The first restart using a detached PowerShell `Start-Process` launcher briefly
+  served requests, then lost its listener while Python remained alive. Its
+  268.723-second recording was stopped and recovered by a foreground API launch:
+  400/401 PCM chunks and live checkpoints reached the tail, a two-track MKA
+  decoded, and no final transcript was duplicated. That outage made its latency
+  measurement unsuitable for the intended model-contention comparison; the
+  launcher failure is not yet attributed to product code.
+- Repeated the take with an observed foreground API restart at 114.156 seconds
+  into a 173.507-second recording. Studio kept the same PID. The API remained
+  available through Stop and archive finalization.
+
+Evidence:
+- The retry retained 288 consecutive 48 kHz stereo PCM chunks per track with
+  zero sample gaps or overlaps and 148/170 nonzero chunks. Its 4,866,298-byte
+  MKA matched the journal SHA-256 and decoded two FLAC audio streams through
+  the Stop boundary. PCM ingress p95 was 2.536/2.777 seconds, spool peak was
+  20 chunks and was empty at Stop. The final PCM receipt was 2.729 seconds
+  after Stop.
+- Both live STT checkpoints reached sequence 288/288 roughly 15 seconds after
+  Stop. There were 94 transcript events, 21 finals, zero event errors and zero
+  duplicate finals. Detailed STT reached and published the full 4,164,171
+  analysis frames on both tracks. The maximum live event `lagSeconds` values
+  were 29.417/42.745 seconds. Estimated caption age relative to the latest
+  transcribed audio after restart had medians 11.689/12.715 seconds and maxima
+  19.434/29.092 seconds; these subtract utterance duration from event lag and
+  do not measure browser paint time.
+- Read-only sample/hash/decode checks and the restart report are in ignored
+  `.scratch/livelink-stt-12d-retry`. Focused backend regression:
+  `test_obs_livelink_runtime.py` 21 passed with two existing deprecation
+  warnings. OBS settings and lease were checked after cleanup.
+
+Remaining gap: the owner viewport was not observed during the take, so the
+caption-age estimate does not prove perceived UI delay. Live captions still
+lagged by up to about 29 seconds after the process restart under model load,
+even though no PCM or transcript tail was lost. The detached API launcher lost
+its listener in the first attempt and needs a controlled reproduction before
+blaming the app. The full OBS source matrix and viewport remain in
+`LIVELINK-08`.
+
+Exact next round: `LIVELINK-STT-12E` — reproduce the detached-launch failure,
+then reduce and remeasure post-restart live-caption lag while detailed STT runs.
+Continue the final `LIVELINK-08` source/UI gate afterward.

@@ -1,5 +1,21 @@
 # Project Status — 2026-09-22
 
+## LiveLink physical API restart under model load — 2026-10-03
+
+`LIVELINK-STT-12D` restarted FastAPI during a physical two-track OBS recording
+while per-track `medium` live STT and `large-v3` detailed STT ran. The successful
+173.507-second retry retained 288 contiguous 48 kHz stereo PCM chunks per
+track, a hash-verified and decoded two-stream MKA, 94 live transcript events
+with no errors or duplicate finals, complete sequence-288 live checkpoints,
+and full detailed STT publication on both tracks. The checkpoints reached the
+tail about 15 seconds after Stop. Estimated caption age after restart peaked
+at 19.434/29.092 seconds; browser paint time was not measured. The first
+detached API launch lost its listener despite a live Python process, while a
+foreground launch recovered its PCM and transcripts. See `docs/WORK-ROUNDS.md`
+and ignored `.scratch/livelink-stt-12d-retry` evidence. The next bounded round
+is `LIVELINK-STT-12E` for launcher diagnosis and live-caption latency; the
+owner source/UI matrix remains `LIVELINK-08`.
+
 ## LiveLink realtime STT restart recovery — 2026-10-02
 
 `LIVELINK-STT-12C` persists each track's next committed PCM sequence and the
