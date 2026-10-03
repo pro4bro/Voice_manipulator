@@ -97,7 +97,7 @@ that gap matters, and the exact next round.
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Complete at source/evidence reconciliation and documentation level | Current near-term queue: 13 scheduled rounds and 2 conditional repairs; later phases remain open. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
 
-| PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Complete at Windows regression, concurrent HTTP/browser and restart/copy gate | Unique staging files and serialized repository transactions prevent collision and stale updates; see persistence gate. |
 | RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -109,7 +109,7 @@ that gap matters, and the exact next round.
 
 Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
 retain historical implementation/acceptance distinctions. Exact next:
-**PROJECT-WRITE-01**.
+**RUNTIME-VOICE-01**.
 
 ## Round 03-03A — 2026-09-22
 
@@ -3540,3 +3540,24 @@ Planning only: no product code/media/model/runtime changes. Documentation
 references, requirement IDs, dependency order and ledger pointers are checked;
 diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
 baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.
+
+
+## PROJECT-WRITE-01 — 2026-10-03
+
+`PROJECT-WRITE-01` completed the project metadata persistence seam. Windows
+stress reproduced shared staging-file access failures (7/8 workers); deterministic
+regressions proved payload collision and stale reopen overwrites. Repository
+transactions now serialize per registry within the API process; atomic writes
+use unique closed/fsynced staging files and bounded Windows sharing retries.
+
+Evidence: repository **16 passed**, backend **507 passed**, frontend **465 / 55
+files**, typecheck/build passed. The running browser changed pages while eight
+HTTP workers completed **640/640** mutations, then a fresh API retained metadata
+and a copied project reopened with portable manifest/registry paths. Gate:
+`docs/gates/project-write-01-persistence.md`; ADR 0040 records scope/limits.
+
+There are **12 scheduled rounds + 2 conditional repairs remaining** in
+`docs/GAP-PLAN-2026-10-03.md`. Exact next: **RUNTIME-VOICE-01**, diagnose the actual
+bundled worker's `voice_stream` import failure and prove protocol replies. This
+blocks Voice Changer device enumeration. Six-source archive delay, STT quality,
+physical DPI, clean-machine transfer and speaker publication remain open.

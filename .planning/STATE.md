@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-03 — Completed GAP-PLAN source/evidence reconciliation.
-last_activity_desc: Near-term capture/STT/UX queue reconciled; PROJECT-WRITE-01 next. Phase 3 publication and later phases remain open.
+last_activity: 2026-10-03 — Completed PROJECT-WRITE-01 persistence repair.
+last_activity_desc: Concurrent manifest/registry writes verified; RUNTIME-VOICE-01 next. Phase 3 publication and later phases remain open.
 ---
 
 # Project State
@@ -37,31 +37,24 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded round: `GAP-PLAN` (2026-10-03).
-`GAP-PLAN` reconciles current code, latest physical/browser evidence and
-historical queued follow-ups. The continuation plan is
-`docs/GAP-PLAN-2026-10-03.md`; local tickets are `.scratch/gap-plan/`.
-There are **13 scheduled rounds + 2 conditional repairs** for the near-term
-capture/STT/UX work. Later training/docking/Manipulator/LipSync/release milestones
-are separate and not counted as completed or as one-invocation estimates.
+Latest bounded round: `PROJECT-WRITE-01` (2026-10-03).
+`PROJECT-WRITE-01` completed the project metadata persistence seam. Windows
+stress reproduced shared staging-file access failures (7/8 workers); deterministic
+regressions proved payload collision and stale reopen overwrites. Repository
+transactions now serialize per registry within the API process; atomic writes
+use unique closed/fsynced staging files and bounded Windows sharing retries.
 
-Exact next: **PROJECT-WRITE-01**, reproduce and repair manifest/registry atomic
-write failures; UI-CONTRAST logs contain WinError 5 and the repository reuses
-fixed temporary paths. Concurrency is a hypothesis to prove, not a confirmed
-root cause. **RUNTIME-VOICE-01** follows for the actual bundled worker's
-voice_stream import failure. Then profile the six-source spool/Stop tail,
-conditionally optimize the measured bottleneck, freeze Vietnamese STT quality,
-and complete growing-MKV, export and residual physical acceptance.
+Evidence: repository **16 passed**, backend **507 passed**, frontend **465 / 55
+files**, typecheck/build passed. The running browser changed pages while eight
+HTTP workers completed **640/640** mutations, then a fresh API retained metadata
+and a copied project reopened with portable manifest/registry paths. Gate:
+`docs/gates/project-write-01-persistence.md`; ADR 0040 records scope/limits.
 
-Passed capture/label/contrast slices are retained. Six-source backlog/five-minute
-archive delay, real speech accuracy, physical 125/150% DPI, clean-machine transfer,
-calibrated speaker publication and later product phases remain open. Restored
-08N outbox recovery and consolidated historical gates have explicit criteria.
-
-Planning only: no product code/media/model/runtime changes. Documentation
-references, requirement IDs, dependency order and ledger pointers are checked;
-diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
-baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.
+There are **12 scheduled rounds + 2 conditional repairs remaining** in
+`docs/GAP-PLAN-2026-10-03.md`. Exact next: **RUNTIME-VOICE-01**, diagnose the actual
+bundled worker's `voice_stream` import failure and prove protocol replies. This
+blocks Voice Changer device enumeration. Six-source archive delay, STT quality,
+physical DPI, clean-machine transfer and speaker publication remain open.
 
 Previous UI-CONTRAST-01B observed browser acceptance remains historical evidence.
 

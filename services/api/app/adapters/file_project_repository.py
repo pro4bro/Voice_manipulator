@@ -4,18 +4,39 @@ import json
 import os
 import re
 import shutil
+import tempfile
+import time
 import unicodedata
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
+from threading import RLock
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from app.domain.models import ProjectCreate, ProjectRecord, WorkspacePage
 from app.adapters.project_activity_log import ProjectActivityLog
 
 
+# Repository instances in one API process must share the transaction boundary.
+# Weak entries disappear when the last instance for a registry is released.
+_LOCKS: WeakValueDictionary = WeakValueDictionary()
+_LOCKS_GUARD = RLock()
+
+
+def _serialized(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return call
+
+
 class FileProjectRepository:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        with _LOCKS_GUARD:
+            self._lock = _LOCKS.setdefault(self.root, RLock())
         self.registry_root = self.root / ".registry"
         self.activity = ProjectActivityLog()
         self.root.mkdir(parents=True, exist_ok=True)
@@ -46,6 +67,7 @@ class FileProjectRepository:
             json.dumps(sorted(ids), ensure_ascii=False, indent=2),
         )
 
+    @_serialized
     def list(self) -> list[ProjectRecord]:
         projects: list[ProjectRecord] = []
         metadata_paths = [
@@ -63,6 +85,7 @@ class FileProjectRepository:
                 seen.add(project.id)
         return sorted(projects, key=lambda project: project.updated_at, reverse=True)
 
+    @_serialized
     def get(self, project_id: str) -> ProjectRecord:
         metadata_path = self.registry_root / f"{project_id}.json"
         if metadata_path.is_file():
@@ -102,6 +125,7 @@ class FileProjectRepository:
             return project
         raise KeyError(project_id)
 
+    @_serialized
     def create(self, payload: ProjectCreate) -> ProjectRecord:
         project_id = self._new_id(payload.name)
         project_path = self._allocate_project_path(project_id, payload)
@@ -115,6 +139,7 @@ class FileProjectRepository:
         self.activity.append(project_path, "PROJECT_CREATED", "Project được tạo", {"projectId": project.id})
         return project
 
+    @_serialized
     def open(self, path: str | Path) -> ProjectRecord:
         """Pointing at a folder is also how a removed project rejoins the list."""
         selected = Path(path).expanduser().resolve()
@@ -129,6 +154,7 @@ class FileProjectRepository:
         self.activity.append(project.project_path, "PROJECT_OPENED", "Project được liên kết lại với Project Hub")
         return project
 
+    @_serialized
     def set_last_page(self, project_id: str, page: WorkspacePage) -> ProjectRecord:
         project = self.get(project_id).model_copy(
             update={"last_page": page, "updated_at": datetime.now(timezone.utc)}
@@ -137,6 +163,7 @@ class FileProjectRepository:
         self.activity.append(project.project_path, "WORKSPACE_CHANGED", f"Mở page {page}", {"page": page})
         return project
 
+    @_serialized
     def forget(self, project_id: str) -> ProjectRecord:
         """Drop a project from the library, leaving every file where it is.
 
@@ -149,6 +176,7 @@ class FileProjectRepository:
         self._write_forgotten(self._forgotten() | {project.id})
         return project
 
+    @_serialized
     def destroy(self, project_id: str) -> ProjectRecord:
         """Erase a project's folder as well as its registry entry.
 
@@ -274,9 +302,25 @@ class FileProjectRepository:
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_suffix(path.suffix + ".tmp")
-        temporary_path.write_text(text, encoding="utf-8")
-        temporary_path.replace(path)
+        descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        temporary_path = Path(name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Windows readers outside this repository can briefly deny replace.
+            # Retry only sharing/access errors, with a bounded 310ms total wait.
+            for attempt in range(6):
+                try:
+                    temporary_path.replace(path)
+                    break
+                except PermissionError as error:
+                    if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32, 33) or attempt == 5:
+                        raise
+                    time.sleep(.01 * 2 ** attempt)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     @staticmethod
     def _slug(value: str) -> str:
