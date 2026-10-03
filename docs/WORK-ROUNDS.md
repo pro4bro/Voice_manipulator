@@ -99,6 +99,8 @@ that gap matters, and the exact next round.
 
 | PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Complete at Windows regression, concurrent HTTP/browser and restart/copy gate | Unique staging files and serialized repository transactions prevent collision and stale updates; see persistence gate. |
 | RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Complete at actual original/copied runtime and protocol gate | Script-local bootstrap fixes isolated Python sibling imports; see worker import gate. |
+| RUNTIME-READY-01 | Owner startup timeout and detailed checkpoint scan | Measured blocking scan repaired; actual runtime restored; original intermittent cause remains unconfirmed | Cold checkpoint I/O yields to startup/health; see runtime-ready gate. |
+| RUNTIME-READY-01B | Capture full-console intermittent startup/native failure | Queued from owner incident | Verify repeated ordinary startup and live stack evidence; scan offload alone did not close the failure. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -109,7 +111,7 @@ that gap matters, and the exact next round.
 
 Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
 retain historical implementation/acceptance distinctions. Exact next:
-**LIVELINK-INGEST-18A**.
+**RUNTIME-READY-01B**.
 
 ## Round 03-03A — 2026-09-22
 
@@ -3583,3 +3585,25 @@ There are **11 scheduled rounds + 2 conditional repairs remaining** in
 six-source spool and Stop tail before tuning. The approximately five-minute
 archive delay remains; real conversion/model quality, STT accuracy, physical DPI,
 clean-machine transfer and speaker publication gates remain open.
+
+
+## RUNTIME-READY-01 — Owner startup timeout follow-up (2026-10-03)
+
+Owner PID 35832 timed out before its API listener existed; recovery scanning had
+finished in 2.721 s. The full intermittent failure did not reproduce on profiled
+retries. A regression independently proved cold PCM checkpoint scans in resumed
+detailed STT block the API event loop. Those reads now run through `to_thread`,
+with existing prefix validation and locks preserved; launcher deadlines unchanged.
+
+Actual production restart passed API readiness in **3.094 s**; health and the
+**38-project** catalog returned 200 in **15/78 ms**. Focused **6**, backend **509**,
+frontend **465 / 55 files**, typecheck/build pass. Evidence and the unresolved
+original-cause boundary: `docs/gates/runtime-ready-01-checkpoint-io.md`.
+
+This is an unplanned bounded repair, not completion of ingestion profiling.
+The full-console path still reproduced a timeout after this mitigation; a
+diagnostic launch also had a native Python access violation. Final ordinary
+console startup passed at **3.108 s**. Exact next repair is
+**RUNTIME-READY-01B**, capture these intermittent failures and verify repeated
+ordinary starts before **LIVELINK-INGEST-18A**. Six-source spool/backlog and the
+approximately five-minute Stop-to-archive delay remain open.

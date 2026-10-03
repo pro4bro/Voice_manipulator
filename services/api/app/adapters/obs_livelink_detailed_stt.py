@@ -276,7 +276,9 @@ class ObsLiveLinkDetailedStt:
             stopped = recording["status"] == "stopped"
             complete = stopped and recording.get("archiveStatus") == "ready"
             for channel_id, progress in state["tracks"].items():
-                chunks = self._read_chunks(folder, channel_id)
+                # Recovery can scan thousands of cold checkpoint files before
+                # its first STT request. Keep startup/health on the event loop.
+                chunks = await asyncio.to_thread(self._read_chunks, folder, channel_id)
                 total = _available_frames(recording, chunks)
                 start = progress["cursor"]
                 if start > total:

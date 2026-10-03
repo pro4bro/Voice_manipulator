@@ -216,3 +216,37 @@ def test_live_pcm_preview_reads_saved_track_without_project_derivative(tmp_path)
         assert client.get(f"{base}/{channels[0]}/preview", params={"durationSeconds": 31}).status_code == 422
         assert client.get(f"{base}/{channels[0]}/preview", params={"startSeconds": 5}).status_code == 422
     assert {path.relative_to(folder) for path in folder.rglob("*")} == before
+
+
+def test_resumed_chunk_scan_does_not_block_api_event_loop(tmp_path, monkeypatch):
+    import time
+
+    projects, project, folder, recording_id, channels, _ = _setup(tmp_path)
+    importer = type("Importer", (), {"ffmpeg_path": "unused-for-this-scan"})()
+    for channel in channels:
+        _chunk(folder, channel, 0, 1)
+    worker = ObsLiveLinkDetailedStt(FileMediaLibrary(projects), importer)
+    state = worker.configure(project, recording_id, 60, channels)
+    for progress in state["tracks"].values():
+        progress["cursor"] = progress["publishedCursor"] = progress["initialFrames"]
+    (folder / "detailed-stt-state.json").write_text(json.dumps(state), encoding="utf-8")
+    read = worker._read_chunks
+
+    def slow_checkpoint_read(*args):
+        # Cold filesystem / many persisted chunk files during restart recovery.
+        time.sleep(.25)
+        return read(*args)
+
+    monkeypatch.setattr(worker, "_read_chunks", slow_checkpoint_read)
+
+    async def scenario():
+        started = time.monotonic()
+        task = asyncio.create_task(worker.process_once(project, recording_id))
+        try:
+            # The server's startup/health coroutine needs the same event loop.
+            await asyncio.sleep(.01)
+            assert time.monotonic() - started < .15
+        finally:
+            await task
+
+    asyncio.run(scenario())

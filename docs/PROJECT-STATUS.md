@@ -2,6 +2,27 @@
 
 
 
+## RUNTIME-READY-01 — Owner startup timeout follow-up (2026-10-03)
+
+Owner PID 35832 timed out before its API listener existed; recovery scanning had
+finished in 2.721 s. The full intermittent failure did not reproduce on profiled
+retries. A regression independently proved cold PCM checkpoint scans in resumed
+detailed STT block the API event loop. Those reads now run through `to_thread`,
+with existing prefix validation and locks preserved; launcher deadlines unchanged.
+
+Actual production restart passed API readiness in **3.094 s**; health and the
+**38-project** catalog returned 200 in **15/78 ms**. Focused **6**, backend **509**,
+frontend **465 / 55 files**, typecheck/build pass. Evidence and the unresolved
+original-cause boundary: `docs/gates/runtime-ready-01-checkpoint-io.md`.
+
+This is an unplanned bounded repair, not completion of ingestion profiling.
+The full-console path still reproduced a timeout after this mitigation; a
+diagnostic launch also had a native Python access violation. Final ordinary
+console startup passed at **3.108 s**. Exact next repair is
+**RUNTIME-READY-01B**, capture these intermittent failures and verify repeated
+ordinary starts before **LIVELINK-INGEST-18A**. Six-source spool/backlog and the
+approximately five-minute Stop-to-archive delay remain open.
+
 ## Reconciled execution queue — 2026-10-03
 
 `RUNTIME-VOICE-01` completed bundled Voice Changer worker sibling imports.
