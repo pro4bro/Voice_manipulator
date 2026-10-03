@@ -71,7 +71,8 @@ function sourceLanes(status: ObsLiveLinkStatus | null, journal: ObsLiveLinkRecor
   const journalChannels = new Map((journal?.channels ?? []).map((channel) => [channel.channelId, channel]));
   if (live) {
     return (status?.channels ?? []).filter((channel) => channel.capture?.recordingId === recordingId &&
-      (channel.appliedForward || channel.desiredForward || (channel.capture.durableChunkCount ?? 0) > 0))
+      ((!channel.missing && (channel.appliedForward || channel.desiredForward)) ||
+        (channel.capture.durableChunkCount ?? 0) > 0))
       .map((channel) => ({ channelId: channel.channelId, label: channel.alias,
         nativeName: channel.nativeName, assetId: stems.get(channel.channelId)?.assetId ?? null,
         slot: channel.slot }));
@@ -104,8 +105,16 @@ function waveformPath(points: ObsLiveLinkWaveformPoint[], sampleRate: number | n
 
 function mergeWaveform(previous: ObsLiveLinkWaveform | undefined, incoming: ObsLiveLinkWaveform): ObsLiveLinkWaveform {
   if (!previous || incoming.source === "mka" || incoming.lastIncludedSequence < 0 ||
-      previous.recordingId !== incoming.recordingId || previous.sampleRate !== incoming.sampleRate ||
+      previous.recordingId !== incoming.recordingId || previous.channelId !== incoming.channelId ||
+      previous.source !== incoming.source || previous.sampleAxis !== incoming.sampleAxis ||
       previous.startSeconds !== incoming.startSeconds || previous.endSeconds !== incoming.endSeconds) return incoming;
+  // A sparse cursor reply can advance over chunks outside this window. It has
+  // no sample rate or replacement bins; the saved waveform is still valid.
+  if (incoming.sampleRate === null && !incoming.points.length) {
+    return { ...previous, lastDurableSequence: incoming.lastDurableSequence,
+      lastIncludedSequence: incoming.lastIncludedSequence, hasMore: incoming.hasMore };
+  }
+  if (previous.sampleRate !== incoming.sampleRate) return incoming;
   const points = new Map(previous.points.map((point) => [point.startFrame, point]));
   for (const point of incoming.points) points.set(point.startFrame, point);
   return { ...incoming, points: [...points.values()].sort((a, b) => a.startFrame - b.startFrame) };
@@ -683,7 +692,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
             const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null
               ? latest : Math.max(latest, point.endFrame / sampleRate), 0) : 0;
             const pendingSeconds = isLive && followLive && hasPcm ? Math.max(0, duration - receivedUntil) : 0;
-            const livePeak = status?.channels.find((channel) => channel.channelId === lane.channelId)?.meterPeak ?? 0;
+            const liveChannel = status?.channels.find((channel) => channel.channelId === lane.channelId);
+            const livePeak = liveChannel?.meterPeak ?? 0;
             const level = isLive ? Math.max(0, Math.min(100, Math.round(livePeak * 100))) :
               sourceLevel(waveform, currentTime);
             const gainKey = `${recordingId}:${lane.channelId}`;
@@ -761,7 +771,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 {stagedCut ? <i aria-label={`Đoạn chuẩn bị xóa ${lane.label}`} className="obs-timeline__removed-range is-staged" style={intervalPosition(stagedCut.start, stagedCut.end, windowStart, windowSpan) ?? undefined} /> : null}
                 {isLive && pendingSeconds > 2 ? <span className="obs-timeline__pending">
                   Đang nhận PCM · trễ {Math.round(pendingSeconds)}s
-                </span> : !hasPcm ? <span className="obs-timeline__empty">{isLive ? "Đang chờ PCM" : "Không có PCM"}</span> : null}
+                </span> : !hasPcm ? <span className="obs-timeline__empty">{isLive
+                  ? (liveChannel?.capture?.durableChunkCount ?? 0) > 0
+                    ? "PCM đã lưu · cửa sổ này chưa có dữ liệu" : "Đang chờ PCM"
+                  : "Không có PCM"}</span> : null}
               </div>
               <div aria-hidden="true" className="obs-timeline__overlap-markers">
                 {overlaps.map((overlap) => {

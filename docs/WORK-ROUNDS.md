@@ -78,7 +78,9 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12E | Reduce post-restart live caption delay under concurrent detailed STT and diagnose the first restart launcher failure | Complete at two-track physical data/model gate; owner viewport open | Warm model reuse reduced repeat-call time and post-restart median caption delay; detached-launch failure did not recur. |
 | LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Measured; sustained-duration gate open | Measured browser receipt and visible/offscreen row frame boundaries; PCM ingress and a long recognition request dominate peaks, while a harness request failure shortened the controlled take. |
 | LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Complete at sustained two-source data/latency gate; live waveform UI remains open | Batched native outbox ACK commits and changed-only folder persistence passed regressions; two warmed browser takes measured PCM p95 falling from 49.01/49.26 to 2.16/2.52 seconds without sample gaps. |
-| LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Queued | With low PCM receipt latency, active lanes still sometimes looked empty despite nonzero waveform API data; removed test sources also appeared as extra live lanes. |
+| LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Complete at cursor/lane and OBS/browser regression gate; sustained PCM latency remains open | Empty cursor replies retain saved waveform; missing historical sources without PCM are omitted. Two real OBS takes verified retention, source removal and archive handoff; the long take again accumulated ingress delay. |
+| LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Queued | With models resident, the 203-second 12H take reached 41.43/41.80-second p95 receipt age and 118 pending chunks, despite retaining complete PCM/STT. |
+| LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Queued | The 12H removal check retained both audio tracks and the live lane, but the journal omitted the new source's mid-take missing interval. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -2985,3 +2987,56 @@ wider source/UI/portability gates remain under `LIVELINK-08`.
 Exact next round: `LIVELINK-STT-12H` — reproduce and repair live waveform
 clearing and historical missing-source lanes, then verify the recording tail
 in the browser on the improved ingress path.
+
+## Round LIVELINK-STT-12H — 2026-10-03
+
+Completed scope:
+
+- Reproduced two failures before changing behavior: an empty cursor delta
+  cleared a saved SVG waveform, and a missing historical source with no PCM
+  in this recording appeared as an extra lane.
+- Preserve waveform bins/rate on matching empty cursor deltas; full/new-window
+  snapshots still replace them. Omit missing sources without current-take PCM,
+  retaining sources removed after capturing audio. Clarify the live empty-window
+  label when PCM is already saved elsewhere on that track.
+- Verified a 202.977-second OBS/browser take with concurrent live and detailed
+  STT, rewind to Script, returning to live, window/layout/zoom changes and
+  automatic MKA handoff. A 46.509-second take on the final build verified
+  source removal during recording and the saved-PCM label.
+
+Evidence:
+
+- Both initially failing regressions passed. The backend contract test confirms
+  that out-of-window cursor pagination can have null rate and no points.
+- The long take showed exactly two lanes despite four forwarded historical
+  missing sources. Rewind retained 600 bins per track after empty replies,
+  including 280/233 nonzero bins. The removed source in the short take kept
+  its lane; the continuing source retained a visible live waveform.
+- Long take: 292/292 contiguous chunks, zero sample gaps/overlaps, two FLAC
+  archive streams with matching hash and successful decode. Live checkpoints
+  reached both tails; 109 events, no errors/duplicate finals or open utterances.
+  Detailed STT published all 4,871,444/4,871,453 analysis frames.
+- Short take: 24/79 contiguous chunks, complete live checkpoints, 17 events
+  without errors/duplicate finals, and a verified two-track MKA retaining the
+  removed source's captured prefix. No detailed STT was requested there.
+- Studio model-load count remained 8 from preflight to cleanup, with medium
+  and large-v3 resident. Tests ran before recording, followed by model warmup.
+- Final frontend suite: 54 files / 457 tests passed. Backend suite: 493 passed
+  with two existing warnings; the extended waveform test passed separately.
+  Typecheck/build and diff check passed. Restored OBS test settings, released
+  the lease, emptied the outbox and stopped the isolated test processes.
+- Evidence: `docs/gates/livelink-stt-12h-waveform.md` and ignored
+  `.scratch/livelink-stt-12h` artifacts. Native plugin remains 0.6.7.
+
+Remaining gap: the sustained take rebuilt a PCM backlog (sampled peak 118,
+receipt p95 41.434/41.801 seconds, last receipt 36.058 seconds after Stop).
+The browser then correctly lacked PCM in a future zoomed window. The cached
+waveform fix does not resolve this transport delay, which can still postpone
+the visible live tail. The new source's mid-take missing interval was also
+absent from its journal; timing provenance is queued separately in 12J.
+Native idle/Start overflow counter attribution and the
+wider startup/reconnect/source/DPI/portability gates remain in LIVELINK-08.
+
+Exact next round: `LIVELINK-STT-12I` — reproduce/profile the renewed PCM ACK
+backlog during sustained browser waveform polling with model residency checked,
+reduce the measured bottleneck and recheck the live tail and Stop drain.

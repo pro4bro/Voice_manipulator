@@ -320,6 +320,14 @@ def test_waveform_separates_channels_and_preserves_silence_gap_and_restart(tmp_p
     assert (page_one["lastIncludedSequence"], page_one["hasMore"]) == (32, True)
     assert (page_two["lastIncludedSequence"], page_two["hasMore"]) == (35, False)
     assert len(page_one["points"]) <= 40 and len(page_two["points"]) <= 40
+    # A cursor can advance over audio outside the viewport. This is an empty
+    # delta, not an authoritative replacement for the earlier full waveform.
+    outside_window = restarted.snapshot(project.id, recording_id, identities[0][0],
+                                         start_seconds=0.1, end_seconds=0.31, max_points=21,
+                                         after_sequence=1)
+    assert outside_window["sampleRate"] is None and outside_window["points"] == []
+    assert outside_window["lastIncludedSequence"] == 33 and outside_window["hasMore"] is True
+    assert a["points"][0]["peak"] == 16000
     with pytest.raises(LiveLinkError, match="window"):
         restarted.snapshot(project.id, recording_id, identities[0][0], end_seconds=121)
     with pytest.raises(LiveLinkError, match="resolution"):

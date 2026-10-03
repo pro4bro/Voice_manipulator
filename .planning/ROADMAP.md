@@ -15,13 +15,14 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12G` completed two
-sustained warmed OBS/browser takes with concurrent live and detailed STT.
-Batched native outbox ACKs and changed-only folder persistence passed their
-regressions; PCM receipt p95 changed from 49.012/49.263 to 2.157/2.520 seconds,
-with complete PCM/MKA/STT. `LIVELINK-STT-12H` next repairs live waveform
-clearing and historical missing-source lanes found under the improved ingress
-path. Owner plugin installation, cold startup, reconnect/Script follow and
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12H` passed the
+waveform cursor/lane and OBS/browser regression gate. Two takes verified
+saved waveform retention, source removal and two-track MKA handoff with
+complete retained PCM/live STT; detailed STT completed in the long take.
+That take again accumulated PCM receipt latency (p95 41.434/41.801 seconds).
+`LIVELINK-STT-12I` next profiles/reduces the renewed PCM ACK backlog and
+rechecks the live tail. New-source absence timing is queued separately in 12J.
+Built/test plugin remains 0.6.7. Cold startup, reconnect/Script follow and
 the wider source/UI/portability matrix remain under `docs/WORK-ROUNDS.md`.
 No product phase is marked complete by this focused round.
 

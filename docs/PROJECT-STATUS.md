@@ -1,5 +1,28 @@
 # Project Status — 2026-09-22
 
+## LiveLink waveform retention and recording-owned lanes — 2026-10-03
+
+`LIVELINK-STT-12H` preserves saved waveform bins on an empty cursor update
+for the same track/window. Missing historical sources without PCM in the
+current take no longer create lanes; sources removed after recording audio
+remain visible. The empty-window label distinguishes saved PCM from a track
+that has not received any audio. No media, API or persistent format changes.
+
+Two OBS/browser takes (202.977/46.509 seconds) verified rewind retention,
+layout/window changes, source removal and automatic two-track MKA handoff.
+Both retained contiguous PCM and complete live checkpoints; detailed STT in
+the longer take published all available audio. Final frontend 457 tests,
+backend 493 plus the extended waveform regression, typecheck/build and diff
+check passed. Evidence: `docs/gates/livelink-stt-12h-waveform.md`.
+
+The long take again accumulated PCM receipt lag (p95 41.434/41.801 seconds,
+118 pending chunks, eventually 0). A future window can still be empty while
+transport catches up; the presentation fix does not resolve that delay.
+Exact next is `LIVELINK-STT-12I` to profile and reduce this renewed backlog.
+The removed new source's journal also lacked its mid-take missing interval;
+this timing-provenance gap is queued separately in `LIVELINK-STT-12J`.
+Built/test plugin remains 0.6.7; wider LIVELINK-08 acceptance is still open.
+
 ## LiveLink sustained PCM ACK optimization — 2026-10-03
 
 `LIVELINK-STT-12G` batches native outbox ACK deletion in one FULL transaction

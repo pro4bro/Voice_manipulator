@@ -129,6 +129,52 @@ it("keeps a Media Pool track choice made before live lanes arrive", async () => 
   expect(screen.queryByRole("button", { name: "VỀ LIVE" })).not.toBeInTheDocument();
 });
 
+it("retains saved waveform when a cursor reply contains no audio in the viewed window", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  const onSnapshot = mocks.subscribe.mock.calls[0]?.[2] as (next: ObsLiveLinkWaveform) => void;
+  act(() => onStatus({ appRecording: recording, channels: [{ channelId: ids[0],
+    alias: "Channel 1", nativeName: "Mic 1", slot: 1, appliedForward: true,
+    capture: { recordingId: "recording", durableChunkCount: 2 } }] } as unknown as ObsLiveLinkStatus));
+  const lane = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  act(() => onSnapshot(wave(ids[0], 12000, "pcm")));
+  const saved = lane.querySelector("path")?.getAttribute("d");
+  expect(saved).toBeTruthy();
+  // PCM beyond this window advances the cursor but supplies no replacement bins.
+  act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), sampleRate: null,
+    lastDurableSequence: 2, lastIncludedSequence: 2, points: [], gaps: [] }));
+  expect(lane.querySelector("path")).toHaveAttribute("d", saved);
+  expect(lane).not.toHaveTextContent("Đang chờ PCM");
+  act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), lastDurableSequence: 3,
+    lastIncludedSequence: 3, points: [{ startFrame: 4800, endFrame: 7200,
+      firstSampleIndex: 4800, lastSampleIndexExclusive: 7200, min: 0, max: 0, peak: 0 }] }));
+  expect(lane.querySelector("path")?.getAttribute("d")).toContain(saved);
+  expect(lane.querySelector("path")?.getAttribute("d")).toContain("V30.0");
+  // A full snapshot of a newly requested empty window must not reuse old bins.
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
+  act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), sampleRate: null,
+    endSeconds: 30, lastDurableSequence: 2, lastIncludedSequence: -1, points: [] }));
+  expect(lane.querySelector("path")).toHaveAttribute("d", "");
+  expect(lane).toHaveTextContent("PCM đã lưu · cửa sổ này chưa có dữ liệu");
+});
+
+it("omits historical missing sources without PCM and retains sources recorded earlier in this take", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  const channels = [
+    { channelId: "historical", missing: true, durableChunkCount: 0, appliedForward: true },
+    { channelId: ids[0], missing: false, durableChunkCount: 0, appliedForward: true },
+    { channelId: ids[1], missing: true, durableChunkCount: 4, appliedForward: false },
+  ].map(({ durableChunkCount, ...channel }, index) => ({ ...channel,
+    alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`, slot: index + 1,
+    desiredForward: true, capture: { recordingId: "recording", durableChunkCount } }));
+  act(() => onStatus({ appRecording: recording, channels } as unknown as ObsLiveLinkStatus));
+  expect(screen.queryByRole("img", { name: "Sóng âm Channel 1" })).not.toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Sóng âm Channel 2" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Sóng âm Channel 2" })).toHaveTextContent("Đang chờ PCM");
+  expect(screen.getByRole("img", { name: "Sóng âm Channel 3" })).toBeInTheDocument();
+});
+
 it("keeps each full channel timeline in both layouts and resizes columns independently", async () => {
   const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
