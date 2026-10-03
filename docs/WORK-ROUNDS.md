@@ -100,7 +100,7 @@ that gap matters, and the exact next round.
 | PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Complete at Windows regression, concurrent HTTP/browser and restart/copy gate | Unique staging files and serialized repository transactions prevent collision and stale updates; see persistence gate. |
 | RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Complete at actual original/copied runtime and protocol gate | Script-local bootstrap fixes isolated Python sibling imports; see worker import gate. |
 | RUNTIME-READY-01 | Owner startup timeout and detailed checkpoint scan | Measured blocking scan repaired; actual runtime restored; original intermittent cause remains unconfirmed | Cold checkpoint I/O yields to startup/health; see runtime-ready gate. |
-| RUNTIME-READY-01B | Capture full-console intermittent startup/native failure | Queued from owner incident | Verify repeated ordinary startup and live stack evidence; scan offload alone did not close the failure. |
+| RUNTIME-READY-01B | Recovery storage stalls and full-console diagnostics | Storage mitigation and bounded diagnostics verified; historical native gate remains open | Real Uvicorn regressions and ordinary starts pass; future slow startup logs Python frames. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -111,7 +111,7 @@ that gap matters, and the exact next round.
 
 Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
 retain historical implementation/acceptance distinctions. Exact next:
-**RUNTIME-READY-01B**.
+**LIVELINK-INGEST-18A**; historical native-failure acceptance remains open.
 
 ## Round 03-03A — 2026-09-22
 
@@ -3607,3 +3607,26 @@ console startup passed at **3.108 s**. Exact next repair is
 **RUNTIME-READY-01B**, capture these intermittent failures and verify repeated
 ordinary starts before **LIVELINK-INGEST-18A**. Six-source spool/backlog and the
 approximately five-minute Stop-to-archive delay remain open.
+
+## RUNTIME-READY-01B — Recovery storage waits (2026-10-04)
+
+Resumed MKV STT could block Uvicorn before socket binding while reading project,
+checkpoint or track metadata. Real Uvicorn regressions independently hold each
+storage seam: baseline **3 fail**, repaired **3 pass**, with health available
+while the read still waits and checkpoint bytes unchanged. Worker project reads
+and MKV metadata reads now use threads under existing locks. A bounded Python
+startup observer logs frame locations at 15/30/45 seconds if binding has not
+completed; no faulthandler timer is installed and readiness budgets are unchanged.
+
+Six full-console launches after the storage repair passed (API **3.184–5.023 s**)
+and **306 HTTP checks**, including a 63.750-second final monitor. Final backend
+**516**, portable media/readiness regressions **23** and diagnostics **4**,
+frontend **465 / 55 files**, typecheck/build pass. Final entrypoint and full-suite
+results: `docs/gates/runtime-ready-01b-recovery-storage.md`.
+
+The historical intermittent timeout/native crash did not naturally recur;
+its complete cause remains unconfirmed. RUNTIME-READY-01B completes the bounded
+storage mitigation/diagnostics slice, not native-failure acceptance. Exact next:
+**LIVELINK-INGEST-18A**, profile sustained six-source spool and Stop tail while
+retaining the runtime gate. New runtime failure must be repaired from captured
+evidence; the approximately five-minute Stop-to-archive gap remains open.

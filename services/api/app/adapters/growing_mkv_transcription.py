@@ -176,7 +176,9 @@ class GrowingMkvTranscription:
 
     async def process_once(self, project: ProjectRecord, parent_id: str, *, wait_for_detail: bool = True) -> dict:
         async with self._locks.setdefault(parent_id, asyncio.Lock()):
-            directory, follow, stt_path, state = self._load(project, parent_id)
+            # A recovered worker starts before Uvicorn binds its listener. Cold
+            # metadata and library locks must not hold that same event loop.
+            directory, follow, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
             root = Path(project.project_path)
             finished = bool(follow["finished"])
             detailed_enabled = bool(follow.get("sttDetailedEnabled", True))
@@ -190,7 +192,7 @@ class GrowingMkvTranscription:
             final_phase = f"final-{plan['id']}" if plan else "final"
             active = self._detailed_tasks.get(parent_id)
             if active:
-                active_asset = self.library.get(project.id, active[0][0])
+                active_asset = await asyncio.to_thread(self.library.get, project.id, active[0][0])
                 if (active[0][1] != final_phase or not active_asset.import_selected
                         or not active_asset.transcription_selected or active_asset.deleted_at or active_asset.disabled):
                     active[1].cancel()
@@ -204,7 +206,7 @@ class GrowingMkvTranscription:
             all_done = finished
             for track in follow["tracks"]:
                 asset_id = track["assetId"]
-                asset = self.library.get(project.id, asset_id)
+                asset = await asyncio.to_thread(self.library.get, project.id, asset_id)
                 if (not asset.import_selected or not asset.transcription_selected
                         or asset.deleted_at or asset.disabled):
                     continue

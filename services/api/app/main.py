@@ -462,7 +462,8 @@ def create_app(
         key = (project_id, recording_id)
         while True:
             try:
-                progress = await obs_livelink_detailed_stt.process_once(projects.get(project_id), recording_id)
+                project = await asyncio.to_thread(projects.get, project_id)
+                progress = await obs_livelink_detailed_stt.process_once(project, recording_id)
                 obs_detailed_errors.pop(key, None)
                 if progress["done"]:
                     return
@@ -488,7 +489,10 @@ def create_app(
         key = (project_id, asset_id)
         while True:
             try:
-                result = await asyncio.to_thread(growing_mkv.poll, projects.get(project_id), asset_id,
+                # Argument evaluation happens before to_thread: resolve the
+                # project separately so a repository lock cannot stall startup.
+                project = await asyncio.to_thread(projects.get, project_id)
+                result = await asyncio.to_thread(growing_mkv.poll, project, asset_id,
                                                  max_clusters=8)
             except (FileNotFoundError, KeyError, ValueError, RuntimeError, OSError) as exc:
                 mkv_watch_errors[key] = str(exc)
@@ -509,7 +513,8 @@ def create_app(
         key = (project_id, asset_id)
         while True:
             try:
-                progress = await growing_mkv_stt.process_once(projects.get(project_id), asset_id, wait_for_detail=False)
+                project = await asyncio.to_thread(projects.get, project_id)
+                progress = await growing_mkv_stt.process_once(project, asset_id, wait_for_detail=False)
                 mkv_stt_errors.pop(key, None)
                 if progress["done"]:
                     return

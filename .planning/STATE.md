@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-03 — Restored runtime and offloaded cold checkpoint scanning.
-last_activity_desc: RUNTIME-READY-01 scan mitigation verified; full-console timeout/native failure remain open. RUNTIME-READY-01B next.
+last_activity: 2026-10-04 — Repaired recovery storage waits and added startup stack evidence.
+last_activity_desc: RUNTIME-READY-01B storage mitigation and diagnostics verified; native cause unconfirmed. LIVELINK-INGEST-18A next.
 ---
 
 # Project State
@@ -36,6 +36,29 @@ completion: historical Phase 02 summaries and a seam-only Phase 07 plan count,
 while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
+
+## RUNTIME-READY-01B — Recovery storage waits (2026-10-04)
+
+Resumed MKV STT could block Uvicorn before socket binding while reading project,
+checkpoint or track metadata. Real Uvicorn regressions independently hold each
+storage seam: baseline **3 fail**, repaired **3 pass**, with health available
+while the read still waits and checkpoint bytes unchanged. Worker project reads
+and MKV metadata reads now use threads under existing locks. A bounded Python
+startup observer logs frame locations at 15/30/45 seconds if binding has not
+completed; no faulthandler timer is installed and readiness budgets are unchanged.
+
+Six full-console launches after the storage repair passed (API **3.184–5.023 s**)
+and **306 HTTP checks**, including a 63.750-second final monitor. Final backend
+**516**, portable media/readiness regressions **23** and diagnostics **4**,
+frontend **465 / 55 files**, typecheck/build pass. Final entrypoint and full-suite
+results: `docs/gates/runtime-ready-01b-recovery-storage.md`.
+
+The historical intermittent timeout/native crash did not naturally recur;
+its complete cause remains unconfirmed. RUNTIME-READY-01B completes the bounded
+storage mitigation/diagnostics slice, not native-failure acceptance. Exact next:
+**LIVELINK-INGEST-18A**, profile sustained six-source spool and Stop tail while
+retaining the runtime gate. New runtime failure must be repaired from captured
+evidence; the approximately five-minute Stop-to-archive gap remains open.
 
 ## RUNTIME-READY-01 — Owner startup timeout follow-up (2026-10-03)
 

@@ -92,3 +92,12 @@ startup stall/native failure and prove repeated ordinary launches. This precedes
 **LIVELINK-INGEST-18A**, profile
 six-source spool/Stop-tail latency; the approximately five-minute archive gap
 remains open. This unplanned repair does not consume that queue entry.
+
+## Follow-up — 2026-10-04
+
+RUNTIME-READY-01B repaired an independently reproduced project/checkpoint/library
+read stall in resumed worker startup, and added bounded Python stack evidence
+for a future long startup. Six ordinary full-console starts after that storage
+repair and 306 HTTP checks pass. The historical native cause remains unconfirmed.
+See `runtime-ready-01b-recovery-storage.md`; exact next is LIVELINK-INGEST-18A,
+with runtime failure acceptance retained under sustained load.

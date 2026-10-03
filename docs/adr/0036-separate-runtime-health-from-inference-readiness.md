@@ -67,3 +67,23 @@ incomplete take. The historical natural listener loss still did not recur.
 See `docs/gates/livelink-stt-12l-persisted-startup.md` for corpus, harness-cost,
 cache and inference limits. Matching future failure evidence remains required
 before attributing or claiming a repair of that historical trigger.
+
+## Recovery storage and startup diagnostics — RUNTIME-READY-01B
+
+Resumed worker project lookups and MKV STT metadata reads use `asyncio.to_thread`
+so repository/library locks and cold checkpoint reads cannot block listener
+binding on the event loop. Existing locks, durable checkpoint schemas and
+result-before-cursor ordering stay in force. An already running thread read
+finishes even when its awaiting coroutine is cancelled.
+
+The production entrypoint attaches a bounded Python startup observer after
+configuring existing logging. Three samples at 15/30/45 seconds record thread
+frame locations, without locals/source text, until listener-binding or terminal
+startup-failure logging. Lifespan completion alone does not mean binding. This
+uses Python frame inspection, with no native faulthandler timer or new WinAPI
+calls. Its operational evidence goes to the existing API error log and does not
+restart services, mutate projects or extend launcher deadlines. It cannot
+capture a native crash that exits before sampling.
+
+Real Uvicorn storage-wait regressions and full-console launches pass; natural
+intermittent/native failure attribution remains open. See the 01B gate.
