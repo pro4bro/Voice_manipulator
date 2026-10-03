@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — Rejected 18B writer candidate against frozen budgets.
-last_activity_desc: Full suites/build pass; 18B performance gate remains open. Reviewed LIVELINK-INGEST-18C group-durability evaluation next.
+last_activity: 2026-10-04 — Measured group durability; budget decision pending.
+last_activity_desc: 18C improves storage throughput but fails frozen ACK latency. Full suites/build pass after bounded frontend rerun. Independent LIVELINK-08N next while budget answer pending.
 ---
 
 # Project State

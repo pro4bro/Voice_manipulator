@@ -1,5 +1,20 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-INGEST-18C — group feasibility, decision pending (2026-10-04)
+
+Measured 60 six-source groups, 360 durable PCM/metadata pairs per variant;
+source and saved bytes all pass. Concurrency six cuts group wall time 53.15%
+(61.151s to 28.652s), but pair p95 increases to 635.725ms. This is storage-only
+evidence and does not meet the frozen 150ms ACK budget. No protocol/product
+integration is shipped. A conditional bounded contract is recorded in
+`docs/gates/livelink-ingest-18c-group-feasibility.md`; the human budget-choice
+question remains pending, so frozen thresholds are unchanged.
+
+Full backend 516 passed. An initial frontend run had 38 worker startup errors;
+the full serial rerun with four workers passes all 468 tests / 55 files,
+typecheck and build. Exact independent next while awaiting the decision:
+**LIVELINK-08N**. 18B/18C performance and actual OBS acceptance stay open.
+
 ## LIVELINK-INGEST-18B — rejected optimization candidate (2026-10-04)
 
 18B remains open; no product/source-media/installed-plugin changes. Tested

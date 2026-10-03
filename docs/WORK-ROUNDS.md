@@ -10,7 +10,7 @@ that gap matters, and the exact next round.
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
 | LIVELINK-INGEST-18B | Reduce durable-pair cost | Candidate rejected; acceptance open | Full replay improves only 2.58%; prevents shipping a change that fails frozen latency budgets. |
-| LIVELINK-INGEST-18C | Evaluate bounded group durability/transport contract | Reviewed follow-up queued | Tests whether independent source commits can amortize flush latency without weakening durability. |
+| LIVELINK-INGEST-18C | Evaluate bounded group durability/transport contract | Measured; budget choice/integration open | Six concurrent pairs cut group wall time 53.15% but exceed frozen ACK latency; no durability weakened. |
 | LIVELINK-INGEST-18A | Profile six-source ingress and Stop tail | Isolated measurement complete; historical live clocks unavailable | Selects durable PCM/metadata pair and freezes 18B comparisons without claiming latency improved. |
 | 03-03A | Voice Model Set persistence and lineage | Complete | Creates a portable, reproducible publication candidate without falsely claiming identity approval. |
 | 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Complete | Prevents a usable checkpoint from being published as the wrong speaker. |
@@ -3734,3 +3734,32 @@ scope's required separate review, exact next: **LIVELINK-INGEST-18C**, evaluate
 bounded independent-source group durability and its transport/API contract
 before integration. Both fsyncs and every frozen budget remain mandatory.
 Other scheduled rounds retain their order after this prerequisite work.
+
+## Round LIVELINK-INGEST-18C — 2026-10-04
+
+Measured independent-source group storage feasibility. No product/plugin/pairing
+or original media changes. Persisted 60 groups of six retained sources for
+concurrency 1/3/6; all 360 pairs per variant preserve two fsyncs and ordered
+publication and pass saved-byte/source-hash checks. Concurrency six cuts group
+wall time **53.15%**, 61.151s to 28.652s, but pair p50/p95 becomes
+**314.842/635.725ms**. Storage throughput is promising; frozen ACK budgets fail
+before any API/network/STT overhead. This is not full replay or live latency.
+
+A human budget-choice question is pending: keep all frozen thresholds, or
+evaluate actual audio-to-waveform <=3s/non-growing backlog without weakening
+durability. No answer is inferred from time; no integration is shipped and the
+old budgets remain unchanged. A conditional contract draft covers source order,
+bounded buffering/writers, per-chunk durable ACK, partial/crash/duplicate replay,
+lifecycle/Stop/finalize exclusion and old plugin/API compatibility.
+
+Full backend **516 passed**, 417.62s, two existing warnings. First frontend run
+has 38 worker startup errors (only 133 tests ran); after backend completes,
+full rerun with four workers passes **55 files / 468 tests**, 30.30s. Typecheck
+and build pass (Vite 280ms); no test filters/skips or config changes. Exact cause
+of startup timeouts is unconfirmed. Profiling scripts parse; whitespace passes.
+Evidence: `docs/gates/livelink-ingest-18c-group-feasibility.md`, group metrics,
+and ignored `.scratch/livelink-ingest-18c/groups/`.
+
+Measured scope is retained, but 18B/18C integration/actual OBS acceptance is
+open. Exact independent next while awaiting the budget answer:
+**LIVELINK-08N**, outbox health and retained-chunk recovery (depends on 18A).
