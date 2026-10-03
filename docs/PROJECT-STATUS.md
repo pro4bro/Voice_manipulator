@@ -1,5 +1,36 @@
 # Project Status — 2026-09-22
 
+## Timeline browser layout acceptance — 2026-10-03
+
+`UX-09B` passes the controlled normal/OBS Layer/Column browser comparison
+after repairing unbounded stacked Layer height, overlapping header controls and
+column keyboard resize jumps. Final screenshot review also catches normal
+transport clipping; its desktop board row now reserves enough height. A definite
+responsive module height breaks the
+viewport/60%-row feedback; headers wrap complete control groups, the selector
+shrinks within its label and UNCUT remains visible. Explicit OBS column bases
+keep actual width, separator value and 24px keyboard steps consistent.
+
+Copied real two-track UX-08B archives and one imported analysis WAV exercise
+12 browser cases at 750×884, 1280×720, 1024×576 and 853×480, all DPR 1. Header
+geometry/hit centers pass; Layer playhead reaches both rows; pointer resize,
+240px minimum and layout width retention pass. Normal and synchronized OBS
+audio play, zoom/gain work, final console is empty and six original media hashes
+remain unchanged. The smaller CSS viewports are not physical Windows DPI proof.
+Evidence: `docs/gates/ux-09b-timeline-layout.md`, ignored `.scratch/ux-09b/`.
+
+Frontend **55 files / 465 passed**, 119.38s with one worker; strengthened resize
+regression goes red/green, focused suite 31 passes, typecheck/build/diff pass.
+Backend 500 remains the carried 12L baseline, not rerun. Scratch services stop,
+test ports return to free, browser override resets and test tab closes. Owner
+registry/media, native plugin and engine source remain intact.
+
+Exact next existing round: **UX-10B**, inspect six or more live OBS sources,
+REC/PAUSE, Recorder/mixer outer scroll and physical Windows DPI. Browser archive
+geometry does not prove those active-capture and OS-scale behaviors. Sustained
+live latency, STT accuracy and the broader LIVELINK-08 matrix remain open.
+No new alphabet round or completed product phase; Voice Training is unchanged.
+
 ## OBS two-footage lifecycle and selection — 2026-10-03
 
 `UX-08B` passes the controlled two-recording footage lifecycle gate after a
@@ -720,8 +751,9 @@ gone, zoom uses the same control order and sizing, and transport uses the
 same play button and timecode format. In Layer view, vertical Gain/Level
 labels leave full-height controls below each channel name. In Column view,
 the width slider is replaced by a draggable, keyboard-operable column edge.
-Frontend tests, typecheck, and build pass; real-browser comparison at the
-owner's viewport remains open in `UX-09B`.
+Frontend tests, typecheck, and build pass; UX-09B now passes the controlled
+normal/archive browser comparison after layout/resize repairs. Physical Windows
+DPI and live six-source REC/PAUSE acceptance remain in UX-10B.
 
 `UX-08` presents each completed OBS LiveLink recording as one Media Pool
 footage backed by its multitrack MKA. Channel WAVs remain internal analysis

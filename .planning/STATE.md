@@ -37,40 +37,38 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink/UX round: `UX-08B` (2026-10-03).
-`UX-08B` passes the controlled two-recording footage lifecycle gate after a
-frontend selection repair. When Media Pool requested another recording,
-Timeline briefly echoed its previous local ID back into the workspace, causing
-selection oscillation, mismatched Script/audio and alternating requests.
-Workspace-requested identity now wins during render; active capture still takes
-precedence. A red/green regression covers both selection directions and the
-explicit Timeline selector. ADR 0038; `docs/gates/ux-08b-two-recording-lifecycle.md`.
+Latest bounded LiveLink/UX round: `UX-09B` (2026-10-03).
+`UX-09B` passes the controlled normal/OBS Layer/Column browser comparison
+after repairing unbounded stacked Layer height, overlapping header controls and
+column keyboard resize jumps. Final screenshot review also catches normal
+transport clipping; its desktop board row now reserves enough height. A definite
+responsive module height breaks the
+viewport/60%-row feedback; headers wrap complete control groups, the selector
+shrinks within its label and UNCUT remains visible. Explicit OBS column bases
+keep actual width, separator value and 24px keyboard steps consistent.
 
-Two actual native OBS sessions in one process produce separate 29.93/43.77-second
-MKA footage, each with two tracks and different channel-owned final Script text.
-After rebuilding, footage switching/reopen retains matching Script, Timeline and
-audio URLs; both tracks decode and play for each take. UI Recycle/Restore groups
-parent/children and preserves all IDs/audio hashes. API permanent deletion of
-one scratch footage leaves the other intact; browser reload/open shows no ghost.
-The UI permanent Delete confirmation flow remains UX-05B. A complete project
-backup is retained. All 126 PCM chunks are gap-free and both full MKAs decode.
+Copied real two-track UX-08B archives and one imported analysis WAV exercise
+12 browser cases at 750×884, 1280×720, 1024×576 and 853×480, all DPR 1. Header
+geometry/hit centers pass; Layer playhead reaches both rows; pointer resize,
+240px minimum and layout width retention pass. Normal and synchronized OBS
+audio play, zoom/gain work, final console is empty and six original media hashes
+remain unchanged. The smaller CSS viewports are not physical Windows DPI proof.
+Evidence: `docs/gates/ux-09b-timeline-layout.md`, ignored `.scratch/ux-09b/`.
 
-Final frontend **55 files / 465 tests**, 111.50 seconds with one worker,
-typecheck/build and diff check pass. Initial fork timeouts and a two-worker fit
-assertion failure are recorded in the gate; they are not passing runs. Backend
-500 is the carried 12L baseline, not rerun. Scratch runtime's initial model-cache
-error and live STT error events remain documented; this is not STT accuracy or
-complete-prefix acceptance. Owned test services/OBS stop, lease/spool clear,
-initially free ports return to free; no owner registry or engine source changes.
+Frontend **55 files / 465 passed**, 119.38s with one worker; strengthened resize
+regression goes red/green, focused suite 31 passes, typecheck/build/diff pass.
+Backend 500 remains the carried 12L baseline, not rerun. Scratch services stop,
+test ports return to free, browser override resets and test tab closes. Owner
+registry/media, native plugin and engine source remain intact.
 
-Remaining: owner hardware, sustained live latency, inference quality, natural
-listener/disk failures, installation, video timing and wider UI/DPI/list gates.
-Exact next existing round: **UX-09B**, compare Layer/Column controls, clipping and
-pointer hit areas at owner viewport/DPI; correct media identity does not prove
-visual interaction. No new alphabet round or completed product phase.
+Exact next existing round: **UX-10B**, inspect six or more live OBS sources,
+REC/PAUSE, Recorder/mixer outer scroll and physical Windows DPI. Browser archive
+geometry does not prove those active-capture and OS-scale behaviors. Sustained
+live latency, STT accuracy and the broader LIVELINK-08 matrix remain open.
+No new alphabet round or completed product phase; Voice Training is unchanged.
 
-Existing CAPTURE-10B, 12M reconnect, 12L startup and 12J package gates remain
-historical evidence. Voice Training status is unchanged.
+Existing UX-08B footage lifecycle, CAPTURE-10B and 12L/12M gates remain
+historical evidence.
 The historical phase baseline below remains distinct from these focused checks.
 
 - Backend: 364 passed.

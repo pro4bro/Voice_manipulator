@@ -64,7 +64,8 @@ that gap matters, and the exact next round.
 | UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented; controlled physical two-take lifecycle passes in UX-08B; broader owner matrix open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
 | UX-08B | Record two real OBS sessions and reopen each footage | Complete on controlled physical two-take/reopen/UI recycle-restore and API permanent-delete gate; owner hardware remains LIVELINK-08 | Repairs selection feedback so Media Pool, Timeline, audio and Script retain one recording identity; other footage survives deletion. |
 | UX-09 | Match normal/OBS Timeline controls, refine Layer meters, and resize Column edges | Implemented at source and test level; browser visual acceptance open | Switching capture source retains a consistent control layout while each channel remains adjustable. |
-| UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Queued | Catches spacing, clipping, and pointer-hit issues that DOM tests cannot prove. |
+| UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Complete on controlled browser/DPR-1 archive gate; physical Windows DPI remains UX-10B | Repairs runaway Layer height, control overlap and keyboard resize jumps with real archive playback and browser geometry. |
+| UX-10B | Inspect six or more live OBS sources, REC/PAUSE, outer scroll and physical Windows DPI | Queued; existing UX-10 follow-up | Archive geometry cannot prove active capture indicators or OS display scaling. |
 | LIVELINK-UX-10 | Short Track labels, truthful PCM evidence, archive-ready Media Pool refresh, and clear highlight text | Implemented at source, frontend regression and native build level; real OBS and viewport gates open | Prevents a moving source meter from implying saved audio and makes completed MKA footage visible without F5. |
 | LIVELINK-CAPTURE-10 | Repair muted-source PCM, stale source rows, and in-progress Media Pool visibility | Implemented; real muted Track 1 capture passed, browser visibility and wider source matrix remain open | A moving meter now leads to raw source PCM when Forward is on, and a stopped journal can recover its MKA without F5. |
 | LIVELINK-CAPTURE-10B | Verify live Media Pool row and several independent sources in the running app | Complete on controlled five-source physical OBS/browser gate; owner device matrix remains in LIVELINK-08 | Live row/PCM preview, automatic selected MKA handoff and five independent tone streams pass; full owner hardware/load acceptance is not claimed. |
@@ -3360,3 +3361,37 @@ visual interaction. No new alphabet round or completed product phase.
 
 Ignored `.scratch/ux-08b/` retains media assertions, before/after browser states,
 playback captures, `restored.png`, `final.png`, cleanup and project backup.
+
+## Round UX-09B — 2026-10-03
+
+Completed scope: normal/OBS archive Timeline comparison, header clipping and
+pointer/keyboard resizing, stable stacked Layer geometry and media integrity.
+
+`UX-09B` passes the controlled normal/OBS Layer/Column browser comparison
+after repairing unbounded stacked Layer height, overlapping header controls and
+column keyboard resize jumps. Final screenshot review also catches normal
+transport clipping; its desktop board row now reserves enough height. A definite
+responsive module height breaks the
+viewport/60%-row feedback; headers wrap complete control groups, the selector
+shrinks within its label and UNCUT remains visible. Explicit OBS column bases
+keep actual width, separator value and 24px keyboard steps consistent.
+
+Copied real two-track UX-08B archives and one imported analysis WAV exercise
+12 browser cases at 750×884, 1280×720, 1024×576 and 853×480, all DPR 1. Header
+geometry/hit centers pass; Layer playhead reaches both rows; pointer resize,
+240px minimum and layout width retention pass. Normal and synchronized OBS
+audio play, zoom/gain work, final console is empty and six original media hashes
+remain unchanged. The smaller CSS viewports are not physical Windows DPI proof.
+Evidence: `docs/gates/ux-09b-timeline-layout.md`, ignored `.scratch/ux-09b/`.
+
+Frontend **55 files / 465 passed**, 119.38s with one worker; strengthened resize
+regression goes red/green, focused suite 31 passes, typecheck/build/diff pass.
+Backend 500 remains the carried 12L baseline, not rerun. Scratch services stop,
+test ports return to free, browser override resets and test tab closes. Owner
+registry/media, native plugin and engine source remain intact.
+
+Exact next existing round: **UX-10B**, inspect six or more live OBS sources,
+REC/PAUSE, Recorder/mixer outer scroll and physical Windows DPI. Browser archive
+geometry does not prove those active-capture and OS-scale behaviors. Sustained
+live latency, STT accuracy and the broader LIVELINK-08 matrix remain open.
+No new alphabet round or completed product phase; Voice Training is unchanged.

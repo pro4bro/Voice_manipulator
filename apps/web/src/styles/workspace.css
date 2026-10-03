@@ -47,7 +47,7 @@
 .processor-banner b { color: var(--gold); }
 .processor-banner span { color: rgba(255,255,255,.62); }
 
-.studio-board { min-height: 0; display: grid; grid-template-columns: var(--left-column) 7px minmax(380px,1fr) 7px var(--right-column); grid-template-rows: minmax(0,1fr) minmax(220px,36%); overflow: hidden; background: var(--paper-3); }
+.studio-board { min-height: 0; display: grid; grid-template-columns: var(--left-column) 7px minmax(380px,1fr) 7px var(--right-column); grid-template-rows: minmax(0,1fr) minmax(270px,36%); overflow: hidden; background: var(--paper-3); }
 .studio-board.has-obs-timeline { grid-template-rows: minmax(0,1fr) minmax(290px,44%); }
 .studio-board.is-no-bottom { grid-template-rows: minmax(0,1fr); }
 .studio-board.is-no-bottom .module-column--bottom { display: none; }

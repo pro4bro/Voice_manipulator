@@ -285,7 +285,8 @@ it("keeps each full channel timeline in both layouts and resizes columns indepen
   const firstWidth = screen.getByRole("separator", { name: "Điều chỉnh độ rộng Timeline Channel 1" });
   expect(firstLane.querySelector(".obs-timeline__lane-label")).toHaveTextContent("Track 1 - Mic 1");
   expect(firstLane.parentElement).toHaveClass("is-columns");
-  expect(firstLane.style.flexBasis).toBe("");
+  expect(firstLane.style.flexBasis).toBe("360px");
+  expect(firstWidth).toHaveAttribute("aria-valuenow", "360");
   expect(screen.queryByRole("slider", { name: "Độ rộng Timeline Channel 1" })).toBeNull();
   vi.spyOn(firstLane, "getBoundingClientRect").mockReturnValue({ width: 400 } as DOMRect);
   fireEvent.pointerDown(firstWidth, { pointerId: 1, clientX: 400 });
@@ -298,7 +299,7 @@ it("keeps each full channel timeline in both layouts and resizes columns indepen
   expect(firstLane).toHaveStyle({ flexBasis: "240px" });
   fireEvent.keyDown(firstWidth, { key: "ArrowLeft" });
   expect(firstLane).toHaveStyle({ flexBasis: "240px" });
-  expect((screen.getByRole("img", { name: "Sóng âm Channel 2" }).closest(".obs-timeline__lane") as HTMLElement).style.flexBasis).toBe("");
+  expect((screen.getByRole("img", { name: "Sóng âm Channel 2" }).closest(".obs-timeline__lane") as HTMLElement).style.flexBasis).toBe("360px");
   fireEvent.click(screen.getByRole("button", { name: "LAYER" }));
   fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
   expect(firstLane).toHaveStyle({ flexBasis: "240px" });

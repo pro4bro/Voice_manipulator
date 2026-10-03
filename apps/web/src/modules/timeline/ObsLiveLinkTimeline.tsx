@@ -726,8 +726,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               end: part.endMonotonicNs === null ? duration : (part.endMonotonicNs - intervalOrigin) / 1e9,
             }))) : [];
             const pendingSeconds = isLive && !sourceAbsent && followLive && hasPcm ? Math.max(0, duration - receivedUntil) : 0;
+            // Keep the rendered width equal to the separator value, including lanes
+            // the user has not resized yet. Flex growth otherwise changes sibling widths.
             return <div className="obs-timeline__lane" key={lane.channelId}
-              style={layout === "columns" && columnWidths[lane.channelId] ? { flexBasis: columnWidths[lane.channelId], flexGrow: 0 } : undefined}>
+              style={layout === "columns" ? { flexBasis: columnWidths[lane.channelId] ?? defaultColumnWidth, flexGrow: 0 } : undefined}>
               <button aria-label={`Nghe kênh ${lane.label}`} aria-pressed={selectedLane?.channelId === lane.channelId}
                 className="obs-timeline__lane-label" onClick={() => setSelectedChannelId(lane.channelId)} type="button">
                 <TimelineLaneLabel text={`${obsTrackLabel(lane.label)} - ${lane.nativeName}`} />
