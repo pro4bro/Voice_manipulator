@@ -65,7 +65,7 @@ svg { width: 1.15em; fill: none; stroke: currentColor; stroke-linecap: round; st
 .runtime-offline-screen > section { width: min(520px, 100%); padding: 28px; border: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow); }
 .runtime-offline-screen .brand-mark { margin-bottom: 22px; }
 .runtime-offline-screen p { color: var(--text-muted); font-size: calc(12px * var(--font-scale)); line-height: 1.55; }
-.runtime-offline-screen > section > p:first-of-type { margin: 0; color: var(--accent); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
+.runtime-offline-screen > section > p:first-of-type { margin: 0; color: var(--accent-ink); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
 .runtime-offline-screen h1 { margin: 6px 0 14px; font-size: calc(26px * var(--font-scale)); letter-spacing: -.04em; }
 .runtime-offline-actions { margin-top: 22px; border: 1px solid var(--line); padding: 5px; }
 .runtime-offline-actions > button { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: transparent; text-align: left; }

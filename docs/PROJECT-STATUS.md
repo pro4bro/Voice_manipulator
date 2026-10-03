@@ -1,5 +1,30 @@
 # Project Status — 2026-09-22
 
+
+## Highlight-text browser acceptance — 2026-10-03
+
+`UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
+themes, clone badges, selected chips, library counts, overlap and Remove text,
+muted captions and console timestamps. Controlled browser acceptance covers
+29 observed states / 863 text readings at 1280×720, DPR 1: no reading below
+4.5:1; minimum 4.75:1. See `docs/gates/ui-contrast-01b-highlight-text.md` and
+ignored `.scratch/ui-contrast-01b/` for measurements, screenshots and limits.
+
+Frontend **55 files / 465 passed**, 114.49s; typecheck, production build and
+diff check pass. Backend **501** is carried from UX-10B, not rerun; no API
+changes. Eight source media hashes remain unchanged. Owned services are
+stopped, 18219/18220/18281 free, session removed, theme restored, tab closed.
+
+Physical Windows 125/150% DPI, native OBS/select dialogs, populated output /
+profile and model-run states, custom emotion colors and exhaustive interaction
+coverage remain open. Current Windows DPI is 96 (100%). Browser checks also
+retain isolated last-page WinError 5 and Voice Changer worker import failures
+as limitations, not audio-device acceptance. UX-10B six-source PCM backlog /
+five-minute archive delay remains unresolved; CSS does not prove STT quality.
+
+Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
+acceptance gaps into ordered rounds. No new alphabet round or completed phase.
+
 ## Recording-name and track-label browser acceptance — 2026-10-03
 
 `UX-11B` passes the controlled running-browser recording-name and track-label

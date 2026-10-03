@@ -11,17 +11,22 @@
   --accent: #ff6745;
   --accent-dark: #ce4126;
   --accent-ink: #9f2b14;
+  /* Foreground colors are separate from the brighter status/highlight fills. */
+  --lime-ink: #435718;
+  --gold-ink: #755512;
+  --red-ink: #a32b20;
+  --clone-ink: #12695f;
   --lime: #caed70;
   --lime-dark: #8fb43b;
   --gold: #eac75f;
   --red: #e34e3d;
-  --muted: #74776d;
+  --muted: #62655b;
   --line: rgba(24, 26, 22, 0.17);
   --line-dark: rgba(255, 255, 255, 0.12);
   --shadow: 0 18px 50px rgba(35, 31, 23, 0.12);
   --text: #181a16;
-  --text-muted: #74776d;
-  --text-subtle: rgba(24, 26, 22, 0.52);
+  --text-muted: #62655b;
+  --text-subtle: rgba(24, 26, 22, 0.62);
   --text-on-accent: #181a16;
   --surface-app: #e6e0d3;
   --surface-panel: #f3f0e7;
@@ -35,7 +40,7 @@
   --surface-audio: #f8f5ec;
   --audio-grid: rgba(24, 26, 22, 0.1);
   --audio-line: rgba(24, 26, 22, 0.18);
-  --audio-muted: rgba(24, 26, 22, 0.52);
+  --audio-muted: rgba(24, 26, 22, 0.62);
   --soft-fill: rgba(24, 26, 22, 0.045);
   --strong-fill: rgba(24, 26, 22, 0.085);
   --overlay: rgba(17, 19, 15, 0.68);
@@ -53,6 +58,10 @@
   color-scheme: dark;
   --ink: #f3f0e7;
   --accent-ink: #ff9e89;
+  --lime-ink: #caed70;
+  --gold-ink: #eac75f;
+  --red-ink: #ff9e89;
+  --clone-ink: #75d4c6;
   --ink-soft: #b7baaf;
   --coal: #171916;
   --coal-2: #20231f;
@@ -66,7 +75,7 @@
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
   --text: #f3f0e7;
   --text-muted: #a4a79c;
-  --text-subtle: rgba(243, 240, 231, 0.52);
+  --text-subtle: rgba(243, 240, 231, 0.62);
   --surface-app: #171a17;
   --surface-panel: #222520;
   --surface-raised: #2a2e28;
@@ -79,7 +88,7 @@
   --surface-audio: #151714;
   --audio-grid: rgba(255, 255, 255, 0.075);
   --audio-line: rgba(255, 255, 255, 0.14);
-  --audio-muted: rgba(255, 255, 255, 0.52);
+  --audio-muted: rgba(255, 255, 255, 0.62);
   --soft-fill: rgba(255, 255, 255, 0.04);
   --strong-fill: rgba(255, 255, 255, 0.08);
   --overlay: rgba(7, 8, 7, 0.8);

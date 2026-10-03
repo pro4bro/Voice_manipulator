@@ -9,7 +9,7 @@
 .workspace-topbar nav button::after { content: ""; position: absolute; left: 18px; right: 18px; bottom: 0; height: 3px; transform: scaleX(0); background: var(--accent); transition: transform 160ms ease; }
 .workspace-topbar nav button.is-active { color: var(--text); background: var(--soft-fill); }
 .workspace-topbar nav button.is-active::after { transform: scaleX(1); }
-.workspace-topbar nav button span { font-family: var(--mono); font-size: calc(10px * var(--font-scale)); color: var(--accent); }
+.workspace-topbar nav button span { font-family: var(--mono); font-size: calc(10px * var(--font-scale)); color: var(--accent-ink); }
 .workspace-topbar nav button svg { width: 16px; }
 .workspace-topbar nav button b { font-size: calc(13px * var(--font-scale)); }
 .workspace-meta { display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 13px; }
@@ -135,7 +135,7 @@
 .preferences-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 22px; background: var(--overlay); }
 .preferences-dialog { width: min(560px, 100%); display: grid; gap: 12px; padding: 18px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .preferences-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.preferences-dialog header span { display: block; color: var(--accent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
+.preferences-dialog header span { display: block; color: var(--accent-ink); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .12em; }
 .preferences-dialog h2 { margin: 4px 0 0; font-size: calc(18px * var(--font-scale)); letter-spacing: -.03em; }
 .preferences-dialog header > button { width: 30px; height: 30px; color: var(--text); background: var(--soft-fill); font-size: calc(20px * var(--font-scale)); line-height: 1; }
 .preferences-dialog > p { margin: 0; color: var(--text-muted); font-size: calc(11px * var(--font-scale)); line-height: 1.45; }
@@ -155,7 +155,7 @@
 .workspace-status-bar__activity { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; overflow: hidden; }
 .workspace-status-bar__activity > i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--lime-dark); }
 .workspace-status-bar__activity > i.is-busy { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); animation: status-pulse 900ms ease-in-out infinite alternate; }
-.workspace-status-bar__activity b { color: var(--accent-dark); }
+.workspace-status-bar__activity b { color: var(--accent-ink); }
 .workspace-status-bar__activity span { min-width: 0; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-status-bar__activity strong { flex: 0 0 auto; color: var(--text-subtle); font-size: inherit; }
 .workspace-status-bar progress { width: min(160px, 16vw); height: 5px; accent-color: var(--accent); }
@@ -168,7 +168,7 @@
 .runtime-log-dialog { width: min(920px, 100%); max-height: min(720px, 88dvh); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; overflow: hidden; padding: 14px; color: var(--text); border: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow); }
 .runtime-log-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .runtime-log-dialog header > div { display: grid; gap: 3px; }
-.runtime-log-dialog header span { color: var(--accent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .1em; }
+.runtime-log-dialog header span { color: var(--accent-ink); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .1em; }
 .runtime-log-dialog header b { font-size: calc(14px * var(--font-scale)); }
 .runtime-log-dialog header button { width: 30px; height: 30px; color: var(--text); background: var(--soft-fill); font-size: calc(17px * var(--font-scale)); }
 .runtime-log-dialog > small { overflow: hidden; color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
@@ -184,7 +184,7 @@
 .preferences-section h3 { margin: 0; color: var(--text); font-size: calc(13px * var(--font-scale)); }
 .preferences-section > p { margin: 0; color: var(--text-muted); font-size: calc(10px * var(--font-scale)); line-height: 1.45; }
 .obs-plugin-preferences__status { display: grid; gap: 3px; padding: 9px; border: 1px solid var(--line); background: var(--surface-field); font-size: calc(10px * var(--font-scale)); }
-.obs-plugin-preferences__status strong { color: var(--accent); }
+.obs-plugin-preferences__status strong { color: var(--accent-ink); }
 .obs-plugin-preferences__status span { color: var(--text-muted); }
 .obs-plugin-preferences__path { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .obs-plugin-preferences__path span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }

@@ -16,34 +16,27 @@ This roadmap distinguishes three states that older snapshots blurred:
 ## Phases
 
 LiveLink/UX acceptance follow-up (2026-10-03):
-`UX-11B` passes the controlled running-browser recording-name and track-label
-gate with two copied real OBS archives. Owned metadata fixtures exercise a
-legacy name fallback, a long Vietnamese project/source name and a short label.
-Stored recording names remain stable; dropdown and keyboard selection update
-the full selected tooltip. Script and selector retain the selected recording.
+`UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
+themes, clone badges, selected chips, library counts, overlap and Remove text,
+muted captions and console timestamps. Controlled browser acceptance covers
+29 observed states / 863 text readings at 1280×720, DPR 1: no reading below
+4.5:1; minimum 4.75:1. See `docs/gates/ui-contrast-01b-highlight-text.md` and
+ignored `.scratch/ui-contrast-01b/` for measurements, screenshots and limits.
 
-Both themes at 1280×720, 750×884 and 853×480 (DPR 1) show the selector inside
-its wrapping header and labels on one line. Label size is 11.2px times the
-existing font scale (1.08, actual 12.096px). The long label scrolls at the
-240px Column minimum; the short label stays still, and keyboard focus pauses
-scrolling. No new source repair is needed for the observed views.
-Evidence: `docs/gates/ux-11b-recording-names.md`, ignored `.scratch/ux-11b/`.
+Frontend **55 files / 465 passed**, 114.49s; typecheck, production build and
+diff check pass. Backend **501** is carried from UX-10B, not rerun; no API
+changes. Eight source media hashes remain unchanged. Owned services are
+stopped, 18219/18220/18281 free, session removed, theme restored, tab closed.
 
-Frontend **55 files / 465 passed**, 121.32s; typecheck, production build and
-diff check pass. Backend **501** is the carried UX-10B baseline, not rerun;
-backend and frontend product source are unchanged. Eight original media hashes
-remain unchanged. Scratch services are stopped, 18219/18220/18281 are free,
-the session file is removed, and browser size/theme are restored and tab closed.
+Physical Windows 125/150% DPI, native OBS/select dialogs, populated output /
+profile and model-run states, custom emotion colors and exhaustive interaction
+coverage remain open. Current Windows DPI is 96 (100%). Browser checks also
+retain isolated last-page WinError 5 and Voice Changer worker import failures
+as limitations, not audio-device acceptance. UX-10B six-source PCM backlog /
+five-minute archive delay remains unresolved; CSS does not prove STT quality.
 
-Physical Windows DPI 125/150% and an actual reduced-motion preference remain
-unverified (current system DPI 96, DPR 1, reduced-motion false). The six-source
-PCM backlog and roughly five-minute Stop-to-archive delay from UX-10B remain
-open; archived label acceptance cannot establish live latency or STT quality.
-
-Exact next existing round: **UI-CONTRAST-01B**, inspect highlighted states
-throughout the running app in both themes at the owner viewport. Name/selector
-checks do not prove inherited text contrast in every highlighted UI.
-No new alphabet round or completed product phase; Voice Training is unchanged.
+Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
+acceptance gaps into ordered rounds. No new alphabet round or completed phase.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.

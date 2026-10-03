@@ -93,7 +93,7 @@ that gap matters, and the exact next round.
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
 | MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Complete at API, restart and owner-journal inspection level; running-app check open | Permanent deletion leaves a portable ID tombstone; stale machine state and orphan journals cannot publish a pending footage row. |
-| UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Queued | Static CSS checks cannot prove inherited colors, overlays, browser selection or native OBS dialog appearance. |
+| UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Shared color repairs and observed browser gate pass; exhaustive physical/native matrix open | 29 cases / 863 readings pass in both themes; native OBS, 125/150% Windows DPI and remaining populated/model states are unverified. |
 | GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
 
@@ -3475,3 +3475,27 @@ Exact next existing round: **UI-CONTRAST-01B**, inspect highlighted states
 throughout the running app in both themes at the owner viewport. Name/selector
 checks do not prove inherited text contrast in every highlighted UI.
 No new alphabet round or completed product phase; Voice Training is unchanged.
+
+## Round UI-CONTRAST-01B — 2026-10-03
+
+`UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
+themes, clone badges, selected chips, library counts, overlap and Remove text,
+muted captions and console timestamps. Controlled browser acceptance covers
+29 observed states / 863 text readings at 1280×720, DPR 1: no reading below
+4.5:1; minimum 4.75:1. See `docs/gates/ui-contrast-01b-highlight-text.md` and
+ignored `.scratch/ui-contrast-01b/` for measurements, screenshots and limits.
+
+Frontend **55 files / 465 passed**, 114.49s; typecheck, production build and
+diff check pass. Backend **501** is carried from UX-10B, not rerun; no API
+changes. Eight source media hashes remain unchanged. Owned services are
+stopped, 18219/18220/18281 free, session removed, theme restored, tab closed.
+
+Physical Windows 125/150% DPI, native OBS/select dialogs, populated output /
+profile and model-run states, custom emotion colors and exhaustive interaction
+coverage remain open. Current Windows DPI is 96 (100%). Browser checks also
+retain isolated last-page WinError 5 and Voice Changer worker import failures
+as limitations, not audio-device acceptance. UX-10B six-source PCM backlog /
+five-minute archive delay remains unresolved; CSS does not prove STT quality.
+
+Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
+acceptance gaps into ordered rounds. No new alphabet round or completed phase.
