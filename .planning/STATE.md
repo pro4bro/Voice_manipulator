@@ -37,17 +37,19 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12J` (2026-10-03), source-absence
-reducer/native/two-take OBS/browser gate complete. Plugin/package 0.6.9 journals
-callback boundaries, retains queued PCM/counters and pads restoration silence.
-Timeline distinguishes source absence from delayed receipt without discarding
-the lane/PCM or hiding unknown holes. Both physical takes verify native journal
-boundaries, complete tails/live/detailed STT and two-track FLAC archives.
-Backend 494, frontend 458 and native 2/2 tests, typecheck/build and diff check
-passed. See ADR 0035 and `docs/gates/livelink-stt-12j-source-absence.md`.
-The natural 12H stall trigger and exact video timing remain unproven.
-Exact next is `LIVELINK-STT-12K`: isolate cold-start local listener loss from
-API/Studio/controller failure versus health-readiness delay.
+Latest bounded LiveLink round: `LIVELINK-STT-12K` (2026-10-03), readiness,
+diagnostic and controlled runtime recovery slice complete. Dedicated Studio
+health avoids Torch/CUDA status initialization; all launcher waits retain PID,
+listener, exit and elapsed-deadline evidence. Early atomic PID registration and
+changed-state controller observations distinguish live/no listener, exit and
+HTTP timeout. API/Studio injected failures recover while the controller survives.
+Backend 500, Studio 16, frontend 458 tests, typecheck/build, diff and portable
+Core 6/6 passed. ADR 0036; `docs/gates/livelink-stt-12k-runtime-readiness.md`.
+Natural cold listener loss was not reproduced in five isolated cold cycles;
+natural 12H stall trigger and exact video timing also remain unproven. The
+previous 12J native/source-absence gates and plugin/package 0.6.9 remain valid.
+Exact next is `LIVELINK-STT-12L`: replay persisted recovery backlog and
+foreground/detached cold startup in isolation with the new diagnostics.
 Owner plugin installation, reconnect/Script follow and the wider
 `LIVELINK-08` acceptance matrix remain open. This does not advance the Voice
 Training phase. The historical

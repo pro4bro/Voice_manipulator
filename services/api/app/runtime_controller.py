@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import subprocess
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from app.adapters.listening_ports import descends_from, listening_owners, parent_pids
+from app.adapters.listening_ports import descends_from, listening_owners, parent_pids, process_is_alive
 from app.domain.models import DomainModel
 
 
@@ -221,6 +222,56 @@ class RuntimeLifecycle:
             # The log is a convenience; never fail an action because it cannot be written.
             pass
 
+    def diagnostic_snapshot(self, client: httpx.Client) -> list[dict]:
+        """Keep process life, listener ownership and HTTP readiness distinct.
+
+        The UI's existing `state` contract describes port ownership. These
+        machine-local observations retain why a service stops answering without
+        turning a CUDA status query into a health probe or probing foreign ports.
+        """
+        session = self._session()
+        records = []
+        for process in self.inventory():
+            expected = os.getpid() if process.role == "controller" else session.get(f"{process.role}Pid")
+            health = "no-listener" if process.pid is None else process.state
+            if process.state == "running":
+                if process.role == "controller":
+                    health = "ok"
+                else:
+                    try:
+                        response = client.get(f"http://127.0.0.1:{process.port}/api/health")
+                        if response.status_code != 200:
+                            health = f"http-{response.status_code}"
+                        else:
+                            health = "ok" if response.json().get("status") == "ok" else "invalid-health"
+                    except (ValueError, AttributeError):
+                        health = "invalid-health"
+                    except httpx.HTTPError as exc:
+                        health = type(exc).__name__
+            records.append({
+                "role": process.role, "port": process.port, "state": process.state,
+                "listenerPid": process.pid, "expectedPid": expected,
+                "processAlive": process_is_alive(expected), "health": health,
+            })
+        return records
+
+    def observe(self, stop: threading.Event) -> None:
+        """Log changes outside lifecycle actions, including unexpected loss."""
+        previous = None
+        with httpx.Client(timeout=0.75, trust_env=False) as client:
+            while not stop.is_set():
+                snapshot = self.diagnostic_snapshot(client)
+                if snapshot != previous:
+                    try:
+                        ACTION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                        with ACTION_LOG.open("a", encoding="utf-8") as log:
+                            log.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(),
+                                                  "event": "runtime-observation", "services": snapshot}) + "\n")
+                    except OSError:
+                        pass
+                    previous = snapshot
+                stop.wait(2)
+
 
 lifecycle = RuntimeLifecycle(WORKLOAD_SCRIPT)
 
@@ -228,8 +279,15 @@ lifecycle = RuntimeLifecycle(WORKLOAD_SCRIPT)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.upstream = httpx.AsyncClient(timeout=None)
-    yield
-    await app.state.upstream.aclose()
+    stop = threading.Event()
+    observer = threading.Thread(target=lifecycle.observe, args=(stop,), daemon=True)
+    observer.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        await asyncio.to_thread(observer.join, 3)
+        await app.state.upstream.aclose()
 
 
 app = FastAPI(title="Pro4Bro Runtime Controller", version="1.0", lifespan=lifespan)

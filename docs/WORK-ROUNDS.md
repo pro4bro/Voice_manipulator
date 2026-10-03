@@ -81,7 +81,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Complete at cursor/lane and OBS/browser regression gate; sustained PCM latency remains open | Empty cursor replies retain saved waveform; missing historical sources without PCM are omitted. Two real OBS takes verified retention, source removal and archive handoff; the long take again accumulated ingress delay. |
 | LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Complete at measured cost/native/physical gate; natural-stall matrix remains open | Plugin 0.6.8 consumes larger existing queues without waiting. Fixed-delay p95 fell from 126 to 31 seconds; final quiet take reached 1.58/1.89 seconds. Arbitrary disk stalls can still postpone the live tail. |
 | LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Complete at reducer/native and two OBS/browser artifact gates | Plugin 0.6.9 retains queued PCM, journals callback boundaries and preserves restoration silence; Timeline distinguishes missing sources from receipt delay. |
-| LIVELINK-STT-12K | Reproduce cold-start local listener loss and identify the failing runtime/readiness boundary | Queued | Warm recording success does not establish reliable startup; API/Studio/controller failure must be distinguished from health-readiness delay before repair. |
+| LIVELINK-STT-12K | Distinguish cold-start listener loss from process exit and health delay | Readiness/diagnostic/recovery slice complete; natural-loss gate open | Studio status initialized CUDA inside the old probe. Dedicated health, PID-aware waits and retained transitions are verified; five isolated cold cycles did not reproduce the historical listener loss. |
+| LIVELINK-STT-12L | Replay persisted recovery backlog and foreground/detached cold startup in isolation | Queued | Empty-data cold cycles cannot establish why the historical owner-registry launch lost its listener. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -3144,3 +3145,50 @@ reconnect/Script follow and wider source/DPI/portability gates remain open.
 Exact next round: `LIVELINK-STT-12K` — reproduce cold-start local listener loss,
 distinguish API/Studio/controller failure from health-readiness delay, and
 retain recovery evidence. Warm recording success cannot prove cold startup.
+
+## Round LIVELINK-STT-12K — 2026-10-03
+
+Completed scope: isolate a reproduced Studio health delay, repair readiness,
+retain process/listener/HTTP transition evidence, and verify controlled runtime
+recovery. The historical natural-listener-loss gate remains open.
+
+Evidence:
+
+- A 0.6-second Studio status probe timed out while the three processes/listeners,
+  API, controller and proxy remained healthy. Native TCP inventory and netstat
+  agreed. Five cycles with a five-second probe budget passed; first status in
+  cycles 1–4 took 2.672–3.594 seconds because it imports Torch/probes CUDA.
+- Studio now has async health without device/model work. All three launcher
+  waits check expected-process exit before/after HTTP, require `status=ok`, use
+  elapsed deadlines and retain expected PID, process life, exit code, listener
+  and probe outcome. Session PIDs register before readiness; atomic replacement
+  prevents partial reads. Failed launch rolls back processes/session.
+- The controller logs changed snapshots approximately every two seconds outside
+  actions, distinguishing live PID/no listener, dead PID, health timeout and
+  foreign ownership. Existing UI runtime state remains a port-ownership contract.
+- Controlled launcher replay: while old device status took 3.062 seconds, new
+  health remained responsive (max 0.110 seconds). Deliberately exiting API and
+  Studio recovered through `/api/runtime/actions` in 26.068 / 22.167 seconds
+  from loss to ready snapshots, including the deliberate diagnostic hold.
+  Controller PID stayed unchanged across 37 snapshots; each recovery had ten
+  stable samples. Sixteen retained transitions distinguish startup, injected
+  failure and recovery. Cleanup leaves all three ports free, no test session.
+- Red health regressions before repair. Backend **500 passed**, 195.91 seconds,
+  two existing warnings. Studio **16 passed**, 1.11 seconds, two deprecation
+  warnings. Frontend **54 files / 458 tests**, 59.59 seconds; typecheck/build and
+  diff check passed. Portable Core **6/6**, readiness helper packaged/hashed;
+  full emitted bundle/physical-transfer acceptance is not claimed.
+- ADR 0036; `docs/gates/livelink-stt-12k-runtime-readiness.md`; ignored
+  `.scratch/livelink-stt-12k/acceptance.json` and isolated logs retain diagnostics.
+  Harness endpoint/output-pipe/failure-injection mistakes are recorded separately
+  and not counted as natural product losses. Owner projects/media/OBS unchanged.
+
+Remaining gap: no natural listener loss was reproduced in five empty-data cold
+cycles. Readiness delay explains the observed timeout, not the historical 12F
+failure. Owner-registry recovery backlog and foreground/detached topology remain
+untested with the new evidence. Natural disk-stall cause, owner plugin install,
+reconnect/workspace selection/Script follow and wider LIVELINK-08 gates remain.
+
+Exact next round: `LIVELINK-STT-12L` — replay cold startup against an isolated
+copy of the persisted recovery backlog and compare foreground/detached launch
+topology. This is needed before claiming the original cold-start failure fixed.

@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "pro4bro-process-tree.ps1")
+. (Join-Path $PSScriptRoot "pro4bro-readiness.ps1")
 
 $apiPython = Join-Path $projectRoot ".runtime\python\core\python.exe"
 $apiRoot = Join-Path $projectRoot "services\api"
@@ -50,19 +51,6 @@ function Get-WorkloadStatus {
         "partial"
     }
     [ordered]@{ overall = $overall; api = $api; studio = $studio }
-}
-
-function Wait-Endpoint([string]$Uri, [int]$Attempts, [int]$DelayMilliseconds) {
-    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
-        try {
-            if (Invoke-RestMethod -Uri $Uri -TimeoutSec 1) {
-                return $true
-            }
-        } catch {
-            Start-Sleep -Milliseconds $DelayMilliseconds
-        }
-    }
-    return $false
 }
 
 function Sync-StudioSource {
@@ -194,24 +182,31 @@ function Start-Workloads {
     $apiErr = Join-Path $logRoot "pro4bro-api.err.log"
     $studioProcess = $null
     $apiProcess = $null
+    $readinessLog = Join-Path $logRoot "pro4bro-readiness.log"
+    $startedAt = [datetime]::UtcNow.ToString("o")
+    function Write-WorkloadSession {
+        # Register launched PIDs before health waits so the controller can
+        # distinguish a managed process awaiting readiness from a foreign port.
+        $temporary = "$sessionPath.tmp"
+        [ordered]@{
+            startedAt = $startedAt
+            apiPid = if ($apiProcess) { $apiProcess.Id } else { $null }
+            studioPid = if ($studioProcess) { $studioProcess.Id } else { $null }
+            root = $projectRoot
+        } | ConvertTo-Json | Set-Content -LiteralPath $temporary -Encoding utf8
+        Move-Item -LiteralPath $temporary -Destination $sessionPath -Force
+    }
     try {
         $studioProcess = Start-Process -FilePath $studioPython -ArgumentList "-m", "studio_app.server", "--host", "127.0.0.1", "--port", "18081" -WorkingDirectory $studioRuntime -RedirectStandardOutput $studioOut -RedirectStandardError $studioErr -PassThru -WindowStyle Hidden
-        if (-not (Wait-Endpoint "$studioUrl/api/status" 300 500)) {
-            throw "OmniVoice Studio did not become ready within 150 seconds."
-        }
+        Write-WorkloadSession
+        Wait-Pro4BroReady "OmniVoice Studio" $studioProcess "$studioUrl/api/health" 150 $readinessLog 500
         $apiProcess = Start-Process -FilePath $apiPython -ArgumentList "-m", "app" -WorkingDirectory $apiRoot -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru -WindowStyle Hidden
-        if (-not (Wait-Endpoint "$apiUrl/api/health" 240 250)) {
-            throw "Pro4Bro API did not become ready within 60 seconds."
-        }
-        [ordered]@{
-            startedAt = [datetime]::UtcNow.ToString("o")
-            apiPid = $apiProcess.Id
-            studioPid = $studioProcess.Id
-            root = $projectRoot
-        } | ConvertTo-Json | Set-Content -LiteralPath $sessionPath -Encoding utf8
+        Write-WorkloadSession
+        Wait-Pro4BroReady "Pro4Bro API" $apiProcess "$apiUrl/api/health" 60 $readinessLog
     } catch {
         if ($apiProcess) { Stop-Pro4BroTree $apiProcess.Id }
         if ($studioProcess) { Stop-Pro4BroTree $studioProcess.Id }
+        Remove-Item -LiteralPath $sessionPath -Force -ErrorAction SilentlyContinue
         throw
     }
 }

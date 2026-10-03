@@ -131,7 +131,7 @@ Add-BundleTree "apps\web\dist"
 Add-BundleTree "build\obs-plugin-package" "obs-plugin-package"
 Add-SingleFile "build\obs-plugin\RelWithDebInfo\pro4bro-obs-bridge.dll"
 Add-SingleFile "plugins\obs-pro4bro-bridge\config.example.json"
-foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1")) {
+foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1", "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1")) {
     Add-SingleFile "scripts\$scriptName"
 }
 foreach ($entrypoint in @("start-pro4bro.bat", "open-pro4bro-console.bat", "restart-pro4bro.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat")) {
@@ -143,6 +143,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $destination "data") | Out-
 $criticalFiles = @(
     "start-pro4bro.bat",
     "scripts/pro4bro-workloads.ps1",
+    "scripts/pro4bro-readiness.ps1",
     "scripts/test-portable-runtime.ps1",
     "scripts/install-obs-plugin.ps1",
     "build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll",

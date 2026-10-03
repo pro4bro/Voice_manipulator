@@ -1,5 +1,28 @@
 # Project Status — 2026-09-22
 
+## LiveLink runtime readiness and failure evidence — 2026-10-03
+
+`LIVELINK-STT-12K` completes the readiness/diagnostic/controlled-recovery slice.
+Studio's old status probe initializes Torch/CUDA, measured at 2.672–3.594 seconds
+while the listener remained healthy. Dedicated async health avoids inference
+initialization; PID-aware launcher waits retain exit/deadline/listener evidence.
+PIDs register atomically before health waits; the controller retains changed
+process/listener/health snapshots outside runtime actions. Existing UI state
+continues to describe port ownership, not model success.
+
+The replay keeps health responsive during a 3.062-second device initialization
+(max health 0.110 seconds), then deliberately exits API and Studio and recovers
+each through the controller. Controller PID survives all 37 snapshots; both
+recoveries have ten stable samples. All test services stop and ports clear.
+Backend 500, Studio 16, frontend 458 tests, typecheck/build, diff and portable
+Core 6/6 pass. ADR 0036; `docs/gates/livelink-stt-12k-runtime-readiness.md`.
+
+**Natural cold-start listener loss remains unproven:** five isolated cold cycles
+did not reproduce it. Exact next is `LIVELINK-STT-12L`, persisted recovery backlog
+and foreground/detached startup replay in isolation. Owner installation,
+disk-stall diagnosis, reconnect/Script follow and broader LIVELINK-08 gates stay
+open. This round does not advance Voice Training or claim new audio quality.
+
 ## LiveLink source absence and retained PCM — 2026-10-03
 
 `LIVELINK-STT-12J` completes source-absence provenance for newly added sources.

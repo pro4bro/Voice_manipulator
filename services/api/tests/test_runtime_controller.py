@@ -1,4 +1,7 @@
 from pathlib import Path
+import json
+
+import httpx
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,9 +79,73 @@ def test_runtime_rejects_overlapping_lifecycle_actions():
         lifecycle.request("stop")
 
 
-def test_controller_health_does_not_depend_on_project_workloads():
+def test_controller_health_does_not_depend_on_project_workloads(monkeypatch):
+    monkeypatch.setattr(runtime_controller.lifecycle, "observe", lambda stop: stop.wait())
     with TestClient(app) as client:
         response = client.get("/api/runtime/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "controller": "running"}
+
+
+def test_diagnostics_distinguish_live_process_without_listener_from_health_timeout(monkeypatch):
+    lifecycle = RuntimeLifecycle(Path("workloads.ps1"))
+    _pretend(monkeypatch, {18081: 901}, {901: 900}, {"apiPid": 700, "studioPid": 900})
+    monkeypatch.setattr(runtime_controller, "process_is_alive", lambda pid: pid in (700, 900))
+
+    def timeout(request):
+        assert request.url.port == 18081
+        assert request.url.path == "/api/health"
+        raise httpx.ReadTimeout("fixture", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(timeout)) as client:
+        records = {item["role"]: item for item in lifecycle.diagnostic_snapshot(client)}
+    assert records["api"]["health"] == "no-listener"
+    assert records["api"]["processAlive"] is True
+    assert records["api"]["listenerPid"] is None
+    assert records["studio"]["health"] == "ReadTimeout"
+    assert records["studio"]["listenerPid"] == 901
+    assert records["studio"]["processAlive"] is True
+
+
+def test_diagnostics_do_not_probe_foreign_listener_or_hide_failed_health(monkeypatch):
+    lifecycle = RuntimeLifecycle(Path("workloads.ps1"))
+    _pretend(monkeypatch, {18120: 555, 18081: 901}, {901: 900}, {"apiPid": 700, "studioPid": 900})
+    monkeypatch.setattr(runtime_controller, "process_is_alive", lambda _pid: False)
+    requests = []
+
+    def unhealthy(request):
+        requests.append(request.url.port)
+        return httpx.Response(503)
+
+    with httpx.Client(transport=httpx.MockTransport(unhealthy)) as client:
+        records = {item["role"]: item for item in lifecycle.diagnostic_snapshot(client)}
+    assert requests == [18081]
+    assert records["api"]["health"] == "foreign"
+    assert records["api"]["processAlive"] is False
+    assert records["studio"]["health"] == "http-503"
+
+
+def test_observer_retains_loss_and_recovery_without_logging_every_poll(monkeypatch, tmp_path):
+    lifecycle = RuntimeLifecycle(Path("workloads.ps1"))
+    samples = iter([[{"health": "ok"}], [{"health": "ok"}],
+                    [{"health": "no-listener", "processAlive": True}],
+                    [{"health": "no-listener", "processAlive": False}], [{"health": "ok"}]])
+    monkeypatch.setattr(lifecycle, "diagnostic_snapshot", lambda _client: next(samples))
+    log = tmp_path / "runtime.log"
+    monkeypatch.setattr(runtime_controller, "ACTION_LOG", log)
+
+    class StopAfterFive:
+        calls = 0
+
+        def is_set(self):
+            return self.calls == 5
+
+        def wait(self, _seconds):
+            self.calls += 1
+
+    lifecycle.observe(StopAfterFive())
+    records = [json.loads(line) for line in log.read_text().splitlines()]
+    assert len(records) == 4
+    assert [r["services"][0]["health"] for r in records] == ["ok", "no-listener", "no-listener", "ok"]
+    assert [r["services"][0].get("processAlive") for r in records[1:3]] == [True, False]

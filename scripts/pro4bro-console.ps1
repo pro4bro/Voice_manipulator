@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "pro4bro-process-tree.ps1")
+. (Join-Path $PSScriptRoot "pro4bro-readiness.ps1")
 
 $python = Join-Path $projectRoot ".runtime\python\core\python.exe"
 $apiRoot = Join-Path $projectRoot "services\api"
@@ -221,18 +222,6 @@ function Stop-Controller {
     }
 }
 
-function Wait-Controller {
-    for ($attempt = 0; $attempt -lt 120; $attempt++) {
-        try {
-            $health = Invoke-RestMethod -Uri "$controllerUrl/api/runtime/health" -TimeoutSec 1
-            if ($health.status -eq "ok") { return $true }
-        } catch {
-            Start-Sleep -Milliseconds 250
-        }
-    }
-    return $false
-}
-
 function Open-Workspace {
     # Hand the URL to the shell rather than spawning the browser here. A browser
     # started as our child would join the kill-on-close job and be closed with the
@@ -335,9 +324,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $consoleOwnerPath)
     ConvertTo-Json | Set-Content -LiteralPath $consoleOwnerPath -Encoding utf8
 
 try {
-    if (-not (Wait-Controller)) {
-        throw "Pro4Bro controller did not become ready within 30 seconds."
-    }
+    Wait-Pro4BroReady "Runtime controller" $controllerProcess "$controllerUrl/api/runtime/health" 30 (Join-Path $logRoot "pro4bro-readiness.log")
     & $workloadScript -Action start
     Open-Workspace
     Write-Host ""

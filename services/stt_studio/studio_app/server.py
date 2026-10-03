@@ -721,6 +721,13 @@ async def live_end(session: str = Form(...)) -> dict[str, Any]:
     return {"committed": text_of(tail), "text": text_of(agreement.committed), "pending": ""}
 
 
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    # A listener can be ready while CUDA/model initialization is slow or fails.
+    # This probe must stay independent of inference and its worker thread pool.
+    return {"status": "ok", "service": "stt-studio"}
+
+
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     device, compute_type = _resolve_device()

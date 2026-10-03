@@ -100,6 +100,7 @@ if (-not [Environment]::Is64BitOperatingSystem -or $env:OS -ne "Windows_NT") {
 $selected = if ($Profile -eq "All") { @("Core", "Capture", "STT", "Training") } else { @($Profile) }
 
 if ($selected -contains "Core") {
+    Test-LocalPath "core.readiness" "scripts\pro4bro-readiness.ps1" "Runtime readiness helper"
     Test-LocalPath "core.web" "apps\web\dist\index.html" "Built web application"
     Test-LocalPath "core.ffmpeg" ".tools\ffmpeg\ffmpeg.exe" "FFmpeg"
     Test-LocalPath "core.ffprobe" ".tools\ffmpeg\ffprobe.exe" "FFprobe"

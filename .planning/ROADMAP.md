@@ -15,16 +15,17 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12J` passed the
-source-absence reducer/native and two OBS/browser artifact gates. Plugin/package
-0.6.9 retains queued PCM/counters and journals native callback boundaries with
-restoration silence. Timeline distinguishes source absence from receipt delay.
-Both takes retain complete captured tails/STT and verified two-track MKAs;
-native absence times/samples match journals, with no gap on the continuing
-track. Backend 494, frontend 458 and native 2/2 tests, typecheck/build passed.
-The natural 12H stall trigger, exact video timing and wider gates remain open.
-`LIVELINK-STT-12K` next isolates cold-start local listener loss and runtime
-readiness. Owner installation, reconnect/Script follow and
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12K` passes the
+readiness, retained diagnostics and controlled API/Studio recovery gates.
+Dedicated health avoids cold Torch/CUDA status initialization; PID-aware waits,
+early atomic PID registration and controller transitions distinguish process
+life, listener ownership and HTTP health. Backend 500, Studio 16, frontend 458
+tests, typecheck/build, diff and portable Core 6/6 pass. The previous 12J source
+absence/retained PCM and plugin/package 0.6.9 gates remain valid. Five isolated
+cold cycles did not reproduce natural listener loss; the 12H stall trigger,
+exact video timing and wider gates also remain open. `LIVELINK-STT-12L` next
+replays persisted recovery backlog and foreground/detached startup in isolation.
+Owner installation, reconnect/Script follow and
 the wider source/UI/portability matrix remain under `docs/WORK-ROUNDS.md`.
 No product phase is marked complete by this focused round.
 
