@@ -37,49 +37,34 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink/UX round: `UX-10B` (2026-10-03).
-`UX-10B` passes the real six-source REC/PAUSE/Resume/Stop and browser layout
-gate after repairing mixer clipping and a heartbeat/lifecycle ordering race.
-The heartbeat formerly advanced OBS state before its queued Pause event,
-blocking the event and later control ACKs. An open video span now advances
-through native lifecycle events; ADR 0039 records the decision.
+Latest bounded LiveLink/UX round: `UX-11B` (2026-10-03).
+`UX-11B` passes the controlled running-browser recording-name and track-label
+gate with two copied real OBS archives. Owned metadata fixtures exercise a
+legacy name fallback, a long Vietnamese project/source name and a short label.
+Stored recording names remain stable; dropdown and keyboard selection update
+the full selected tooltip. Script and selector retain the selected recording.
 
-A separate portable OBS 32.2.2/bridge 0.6.9 instance captures six muted,
-unmonitored mono PCM16/48kHz tone sources with long names and slots 1–6.
-Browser checks at 1600×1000, 1280×800 and 750×884 (DPR 1) verify six blinking
-REC, six steady two-bar PAUSE, Resume, idle after Stop, Recorder/mixer outer
-scroll, the Layer playhead reaching lane 6, and Column widths >=240px. The
-narrow desktop mixer now measures 296px instead of overflowing to 372.875px.
-Evidence: `docs/gates/ux-10b-six-source-capture.md`, ignored `.scratch/ux-10b/`.
+Both themes at 1280×720, 750×884 and 853×480 (DPR 1) show the selector inside
+its wrapping header and labels on one line. Label size is 11.2px times the
+existing font scale (1.08, actual 12.096px). The long label scrolls at the
+240px Column minimum; the short label stays still, and keyboard focus pauses
+scrolling. No new source repair is needed for the observed views.
+Evidence: `docs/gates/ux-11b-recording-names.md`, ignored `.scratch/ux-11b/`.
 
-Frontend **55 files / 465 passed**, 144.92s; backend **501 passed**, 162.92s;
-new ordering regression fails before repair and passes after; runtime suite
-24 passes, typecheck and production build pass. This is a tone-source gate,
-not physical microphone or speech-quality acceptance. No native plugin or
-engine source is changed.
+Frontend **55 files / 465 passed**, 121.32s; typecheck, production build and
+diff check pass. Backend **501** is the carried UX-10B baseline, not rerun;
+backend and frontend product source are unchanged. Eight original media hashes
+remain unchanged. Scratch services are stopped, 18219/18220/18281 are free,
+the session file is removed, and browser size/theme are restored and tab closed.
 
-Final media gate: **2,524 PCM chunks** pass sequence, size and SHA256 checks.
-The 18,239,361-byte MKA has six decodable FLAC streams with the six expected
-tone frequencies and peak 6000 (no clipping in sampled audio). Six mono/24kHz
-analysis WAVs span about 652.68s; each source has only the two declared
-app-paused sample gaps. Media Pool shows the ready six-track asset without
-a reload after Stop. The stop-to-archive delay is roughly five minutes in this
-run; it remains a performance gap. Raw artifact evidence is
-`.scratch/ux-10b/media-acceptance.json` and `final-summary.json`.
+Physical Windows DPI 125/150% and an actual reduced-motion preference remain
+unverified (current system DPI 96, DPR 1, reduced-motion false). The six-source
+PCM backlog and roughly five-minute Stop-to-archive delay from UX-10B remain
+open; archived label acceptance cannot establish live latency or STT quality.
 
-Cleanup: the native spool is empty, the owned OBS process and scratch runtime
-are stopped, ports 18119/18120/18081/4466 are free, the runtime session file is
-removed, and the browser override/tab are reset/closed. Project artifacts and
-raw evidence remain under ignored `.scratch/ux-10b/`.
-
-Physical Windows readings are 96 DPI (100%) on all three monitors. Actual
-125/150% scaling remains open; CSS viewport reductions do not prove it.
-The live run accumulates a native disk-spool backlog, so six-source waveform
-latency and loss-free-start acceptance are not claimed. Sustained latency,
-STT accuracy and the broader LIVELINK-08 matrix remain open.
-
-Exact next existing round: **UX-11B**, inspect named recording selectors and
-11.2px channel labels with multiple recordings at the owner's viewport.
+Exact next existing round: **UI-CONTRAST-01B**, inspect highlighted states
+throughout the running app in both themes at the owner viewport. Name/selector
+checks do not prove inherited text contrast in every highlighted UI.
 No new alphabet round or completed product phase; Voice Training is unchanged.
 
 Existing UX-08B footage lifecycle, CAPTURE-10B and 12L/12M gates remain

@@ -1,5 +1,37 @@
 # Project Status — 2026-09-22
 
+## Recording-name and track-label browser acceptance — 2026-10-03
+
+`UX-11B` passes the controlled running-browser recording-name and track-label
+gate with two copied real OBS archives. Owned metadata fixtures exercise a
+legacy name fallback, a long Vietnamese project/source name and a short label.
+Stored recording names remain stable; dropdown and keyboard selection update
+the full selected tooltip. Script and selector retain the selected recording.
+
+Both themes at 1280×720, 750×884 and 853×480 (DPR 1) show the selector inside
+its wrapping header and labels on one line. Label size is 11.2px times the
+existing font scale (1.08, actual 12.096px). The long label scrolls at the
+240px Column minimum; the short label stays still, and keyboard focus pauses
+scrolling. No new source repair is needed for the observed views.
+Evidence: `docs/gates/ux-11b-recording-names.md`, ignored `.scratch/ux-11b/`.
+
+Frontend **55 files / 465 passed**, 121.32s; typecheck, production build and
+diff check pass. Backend **501** is the carried UX-10B baseline, not rerun;
+backend and frontend product source are unchanged. Eight original media hashes
+remain unchanged. Scratch services are stopped, 18219/18220/18281 are free,
+the session file is removed, and browser size/theme are restored and tab closed.
+
+Physical Windows DPI 125/150% and an actual reduced-motion preference remain
+unverified (current system DPI 96, DPR 1, reduced-motion false). The six-source
+PCM backlog and roughly five-minute Stop-to-archive delay from UX-10B remain
+open; archived label acceptance cannot establish live latency or STT quality.
+
+Exact next existing round: **UI-CONTRAST-01B**, inspect highlighted states
+throughout the running app in both themes at the owner viewport. Name/selector
+checks do not prove inherited text contrast in every highlighted UI.
+No new alphabet round or completed product phase; Voice Training is unchanged.
+
+
 ## Six-source live OBS layout acceptance — 2026-10-03
 
 `UX-10B` passes the real six-source REC/PAUSE/Resume/Stop and browser layout
