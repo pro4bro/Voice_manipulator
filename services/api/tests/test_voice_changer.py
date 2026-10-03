@@ -250,3 +250,33 @@ def test_gpu_busy_is_refused_for_an_engine_that_needs_the_card(tmp_path, monkeyp
     with pytest.raises(GpuBusy):
         changer.start(project.id, VoiceChangerStartRequest(engine_id="passthrough-check", voice_id=_voice.id, input_device=0, virtual_device=5))
     lease.release(holder.token)
+
+
+def test_bundled_worker_protocol_without_developer_import_paths(tmp_path, monkeypatch):
+    from app.adapters.engine_worker import EngineWorkerProcess
+    from app.adapters.voice_changer import WORKER_SCRIPT
+
+    python = API_ROOT.parent.parent / ".runtime/python/voice-changer/python.exe"
+    if not python.is_file():
+        pytest.skip("Bundled Windows Voice Changer runtime is not installed")
+    # A foreign cwd and bogus PYTHONPATH must not provide the sibling imports.
+    monkeypatch.chdir(tmp_path)
+    worker = EngineWorkerProcess(python, WORKER_SCRIPT,
+                                 env={"PYTHONPATH": str(tmp_path), "APPDATA": str(tmp_path)},
+                                 idle_seconds=0, request_timeout=20)
+    try:
+        devices = worker.request({"command": "devices"})
+        assert devices["ok"] and isinstance(devices["devices"], list)
+        status = worker.request({"command": "status"})
+        assert status["ok"] and status["status"] == {"state": "idle"}
+        # Resolution rejects this nonexistent named device before constructing
+        # an input/output stream; checking a missing device never opens hardware.
+        rejected = worker.request({"command": "start", "engine": "passthrough", "inputDevice": -1,
+                                   "inputDeviceName": "PRO4BRO missing device regression 12f769a7",
+                                   "outputs": []})
+        assert rejected["ok"] is False
+        assert "Không thấy thiết bị" in rejected["error"]
+        assert worker.request({"command": "status"})["status"] == {"state": "idle"}
+    finally:
+        worker.shutdown()
+    assert not worker.running

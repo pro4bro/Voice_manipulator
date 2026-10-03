@@ -35,6 +35,9 @@ def main() -> None:
     import numpy as np
     import sounddevice as sd
 
+    # Embedded Windows Python's _pth isolation omits the script directory.
+    # Resolve our product-owned siblings from this file, independent of cwd.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from voice_stream import ENGINES, RingBuffer, TwoChannelRecorder, gate, level_db, resample_linear, spectrum_bands
 
     def reply(payload: dict) -> None:

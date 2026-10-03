@@ -98,7 +98,7 @@ that gap matters, and the exact next round.
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
 
 | PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Complete at Windows regression, concurrent HTTP/browser and restart/copy gate | Unique staging files and serialized repository transactions prevent collision and stale updates; see persistence gate. |
-| RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Complete at actual original/copied runtime and protocol gate | Script-local bootstrap fixes isolated Python sibling imports; see worker import gate. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -109,7 +109,7 @@ that gap matters, and the exact next round.
 
 Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
 retain historical implementation/acceptance distinctions. Exact next:
-**RUNTIME-VOICE-01**.
+**LIVELINK-INGEST-18A**.
 
 ## Round 03-03A — 2026-09-22
 
@@ -3561,3 +3561,25 @@ There are **12 scheduled rounds + 2 conditional repairs remaining** in
 bundled worker's `voice_stream` import failure and prove protocol replies. This
 blocks Voice Changer device enumeration. Six-source archive delay, STT quality,
 physical DPI, clean-machine transfer and speaker publication remain open.
+
+
+## RUNTIME-VOICE-01 — 2026-10-03
+
+`RUNTIME-VOICE-01` completed bundled Voice Changer worker sibling imports.
+Actual EngineWorkerProcess failed because embedded Python `_pth` isolation
+omits the script directory. The worker now resolves its siblings from `__file__`.
+Original and copied runtimes enumerate **66 devices**, return idle status and
+reject a missing named device before opening an audio stream; actual RVC runtime
+also returns harmless protocol replies without loading a model.
+
+Evidence: Voice Changer **12 passed**, backend **508 passed**, frontend **465 /
+55 files**, typecheck/build passed; current checkout portability audit **24/0**.
+See `docs/gates/runtime-voice-01-worker-import.md` for reproduction, moved-runtime
+proof and boundaries. Previous PROJECT-WRITE-01 persistence evidence remains in
+`docs/gates/project-write-01-persistence.md`.
+
+There are **11 scheduled rounds + 2 conditional repairs remaining** in
+`docs/GAP-PLAN-2026-10-03.md`. Exact next: **LIVELINK-INGEST-18A**, profile the
+six-source spool and Stop tail before tuning. The approximately five-minute
+archive delay remains; real conversion/model quality, STT accuracy, physical DPI,
+clean-machine transfer and speaker publication gates remain open.

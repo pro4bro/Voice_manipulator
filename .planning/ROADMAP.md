@@ -16,23 +16,25 @@ This roadmap distinguishes three states that older snapshots blurred:
 ## Phases
 
 LiveLink/STT continuation (GAP-PLAN, 2026-10-03):
-`PROJECT-WRITE-01` completed the project metadata persistence seam. Windows
-stress reproduced shared staging-file access failures (7/8 workers); deterministic
-regressions proved payload collision and stale reopen overwrites. Repository
-transactions now serialize per registry within the API process; atomic writes
-use unique closed/fsynced staging files and bounded Windows sharing retries.
+`RUNTIME-VOICE-01` completed bundled Voice Changer worker sibling imports.
+Actual EngineWorkerProcess failed because embedded Python `_pth` isolation
+omits the script directory. The worker now resolves its siblings from `__file__`.
+Original and copied runtimes enumerate **66 devices**, return idle status and
+reject a missing named device before opening an audio stream; actual RVC runtime
+also returns harmless protocol replies without loading a model.
 
-Evidence: repository **16 passed**, backend **507 passed**, frontend **465 / 55
-files**, typecheck/build passed. The running browser changed pages while eight
-HTTP workers completed **640/640** mutations, then a fresh API retained metadata
-and a copied project reopened with portable manifest/registry paths. Gate:
-`docs/gates/project-write-01-persistence.md`; ADR 0040 records scope/limits.
+Evidence: Voice Changer **12 passed**, backend **508 passed**, frontend **465 /
+55 files**, typecheck/build passed; current checkout portability audit **24/0**.
+See `docs/gates/runtime-voice-01-worker-import.md` for reproduction, moved-runtime
+proof and boundaries. Previous PROJECT-WRITE-01 persistence evidence remains in
+`docs/gates/project-write-01-persistence.md`.
 
-There are **12 scheduled rounds + 2 conditional repairs remaining** in
-`docs/GAP-PLAN-2026-10-03.md`. Exact next: **RUNTIME-VOICE-01**, diagnose the actual
-bundled worker's `voice_stream` import failure and prove protocol replies. This
-blocks Voice Changer device enumeration. Six-source archive delay, STT quality,
-physical DPI, clean-machine transfer and speaker publication remain open.
+There are **11 scheduled rounds + 2 conditional repairs remaining** in
+`docs/GAP-PLAN-2026-10-03.md`. Exact next: **LIVELINK-INGEST-18A**, profile the
+six-source spool and Stop tail before tuning. The approximately five-minute
+archive delay remains; real conversion/model quality, STT accuracy, physical DPI,
+clean-machine transfer and speaker publication gates remain open.
+
 
 
 
