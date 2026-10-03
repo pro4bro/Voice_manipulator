@@ -139,12 +139,12 @@
 
 .recorder-module .module-frame__body { display: grid; gap: 4px; padding: 7px 9px; }
 .obs-capture-module .module-frame__body { display: grid; gap: 9px; padding: 10px; }
-.obs-livelink-mixer { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--line); background: var(--surface-raised); }
+.obs-livelink-mixer { display: grid; min-width: 0; container-type: inline-size; gap: 7px; padding: 9px; border: 1px solid var(--line); background: var(--surface-raised); }
 .obs-livelink-mixer header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
 .obs-livelink-mixer header strong { color: var(--text); font-size: calc(12px * var(--font-scale)); }
 .obs-livelink-mixer header span { color: var(--accent); font-size: calc(10px * var(--font-scale)); }
 .obs-livelink-mixer header small, .obs-livelink-mixer > p { margin: 0; color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
-.obs-livelink-channels { display: grid; gap: 5px; }
+.obs-livelink-channels { display: grid; min-width: 0; gap: 5px; }
 .obs-livelink-channel { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(70px, 1fr) auto auto; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); background: var(--surface-field); }
 .obs-livelink-channel__name { display: grid; min-width: 0; }
 .obs-livelink-channel__name strong, .obs-livelink-channel__name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -154,6 +154,12 @@
 .obs-livelink-channel label { display: inline-flex; align-items: center; gap: 4px; font-size: calc(9px * var(--font-scale)); }
 .obs-livelink-channel__state { min-width: 74px; text-align: right; }
 @media (max-width: 600px) { .obs-livelink-channel { grid-template-columns: minmax(100px, 1fr) minmax(70px, 1fr); } .obs-livelink-channel__state { text-align: left; } }
+/* Respond to the mixer panel width, including narrow desktop sidebars. */
+@container (max-width: 400px) {
+  .obs-livelink-channel { grid-template-columns: minmax(0, 1fr) minmax(40px, .7fr) auto; gap: 3px 6px; }
+  .obs-livelink-channel__name, .obs-livelink-channel meter { grid-row: 1 / 3; }
+  .obs-livelink-channel__state { grid-column: 3; min-width: 0; max-width: 90px; overflow-wrap: anywhere; text-align: right; }
+}
 .obs-capture-intro, .obs-capture-live-note, .obs-capture-empty { margin: 0; color: var(--text-subtle); font-size: calc(10px * var(--font-scale)); line-height: 1.45; }
 .obs-capture-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .obs-capture-actions .button { min-height: 31px; }

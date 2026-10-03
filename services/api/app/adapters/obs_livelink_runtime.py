@@ -290,7 +290,11 @@ class ObsLiveLinkRuntime:
                 "channels": channels,
             })
             observed = snapshot.get("obsRecording")
-            if observed in {"idle", "recording", "paused"}:
+            # While a video span is open, queued lifecycle events own its state
+            # and clock boundaries. A heartbeat arrives before those events;
+            # advancing state here would make Pause/Resume reject their own
+            # transition and block the native control queue.
+            if next_state.active_span_id is None and observed in {"idle", "recording", "paused"}:
                 next_state = next_state.model_copy(update={"obs_status": observed})
             self._state = next_state
             policy_project_id = project["id"] if project else (

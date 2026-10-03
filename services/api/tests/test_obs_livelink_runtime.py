@@ -64,6 +64,28 @@ def source(channel_id, source_id, *, slot=1, forward=True, missing=False):
             "sampleRate": 48000, "audioChannels": 1, "muted": False}
 
 
+def test_heartbeat_cannot_preempt_queued_pause_resume_stop_boundaries(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    started = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 1_000_000_000, "span-1")
+    recording_id = started["appRecording"]["recordingId"]
+    # Native control sends its latest output status before its queued lifecycle
+    # events. Those observations have no sample/clock boundary of their own.
+    observed = advertise(runtime, link, token, hello, snapshot, [], recording=True, paused=True)
+    assert observed["obsRecording"] == "recording"
+    paused = lifecycle(runtime, token, hello, snapshot, 1, "obs-pause", 2_000_000_000, "span-1")
+    assert paused["appRecording"]["status"] == "paused"
+    observed = advertise(runtime, link, token, hello, snapshot, [], recording=True)
+    assert observed["obsRecording"] == "paused"
+    resumed = lifecycle(runtime, token, hello, snapshot, 2, "obs-resume", 3_000_000_000, "span-1")
+    assert resumed["appRecording"]["status"] == "recording"
+    interval = resumed["appRecording"]["capturePauseIntervals"][0]
+    assert (interval["startMonotonicNs"], interval["endMonotonicNs"]) == (2_000_000_000, 3_000_000_000)
+    advertise(runtime, link, token, hello, snapshot, [], recording=False)
+    stopped = lifecycle(runtime, token, hello, snapshot, 3, "obs-stop", 4_000_000_000, "span-1")
+    assert stopped["appRecording"] is None
+    assert stopped["recentRecordings"][-1]["recordingId"] == recording_id
+
+
 def test_source_absence_event_after_inventory_retains_native_journal_boundaries(tmp_path):
     link, runtime, project, token, hello, snapshot = setup(tmp_path)
     channel_id, source_id = str(uuid4()), str(uuid4())
