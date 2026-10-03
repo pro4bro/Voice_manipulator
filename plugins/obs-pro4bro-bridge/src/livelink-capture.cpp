@@ -11,7 +11,12 @@ namespace {
 constexpr uint64_t MAX_IDLE_SOURCE_NS = 10'000'000'000ULL;
 constexpr uint64_t MAX_RECORDING_SOURCE_NS = 120'000'000'000ULL;
 constexpr size_t MAX_CONNECTION_BYTES = 512 * 1024 * 1024;
-constexpr uint32_t MAX_BATCH_FRAMES = 48'000;
+// Consume an existing backlog in fewer durable uploads. take() still emits
+// whatever is available immediately; it never waits to fill this ceiling.
+// At eight PCM16 channels the absolute ceiling is 1,536,000 bytes, below
+// the API's 3,072,000-byte limit, including at higher OBS sample rates.
+constexpr uint32_t MAX_BATCH_FRAMES = 96'000;
+constexpr uint32_t MAX_BATCH_SECONDS = 2;
 }
 
 LiveLinkCapture::~LiveLinkCapture() { stop(); }
@@ -249,13 +254,15 @@ std::optional<LiveLinkAudioChunk> LiveLinkCapture::take()
 	chunk.plugin_monotonic_ns = first.plugin_monotonic_ns;
 	chunk.sample_rate = first.sample_rate;
 	chunk.channels = first.channels;
+	const uint32_t max_batch_frames = std::min(MAX_BATCH_FRAMES,
+		chunk.sample_rate * MAX_BATCH_SECONDS);
 	std::vector<Packet> packets;
 	while (!selected->queue.empty()) {
 		const Packet &packet = selected->queue.front();
 		if (packet.sample_rate != chunk.sample_rate || packet.channels != chunk.channels ||
 			packet.first_sample_index != chunk.first_sample_index + chunk.frames ||
 			!packet.forward ||
-			chunk.frames + packet.frames > MAX_BATCH_FRAMES ||
+			chunk.frames + packet.frames > max_batch_frames ||
 			(recording_end_ns_ && packet.plugin_monotonic_ns >= recording_end_ns_) ||
 			(paused_ && packet.plugin_monotonic_ns >= pause_boundary_ns_)) break;
 		const uint32_t accepted_frames = recording_end_ns_

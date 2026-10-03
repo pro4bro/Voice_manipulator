@@ -37,16 +37,17 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12H` (2026-10-03), cursor/lane
-and OBS/browser regression gate complete. Saved waveform survives empty
-cursor replies; missing historical sources without PCM in this take are
-omitted. Two physical takes verified retention, source removal and archive
-handoff. Backend 493, final frontend 457 and the extended waveform regression
-passed; typecheck/build passed. See `docs/gates/livelink-stt-12h-waveform.md`.
-Exact next is `LIVELINK-STT-12I`: profile/reduce the renewed sustained PCM
-ACK backlog (p95 41.434/41.801 seconds, sampled peak 118) and verify the live
-tail again. New-source absence timing is queued separately in 12J. Built/test
-plugin remains 0.6.7. Cold startup, reconnect/Script follow and the wider
+Latest bounded LiveLink round: `LIVELINK-STT-12I` (2026-10-03), measured
+receipt cost/native/physical gate complete. Plugin/package 0.6.8 consumes
+larger existing PCM queues without waiting or weakening durable ACKs.
+Four OBS/browser takes retain complete PCM/live/detailed STT and verified
+archives. Fixed-delay receipt p95 fell from about 126 to 31 seconds; final
+quiet take reached 1.577/1.885 seconds. Backend 493, frontend 457 and native
+2/2 tests, typecheck/build and diff check passed. See ADR 0034 and
+`docs/gates/livelink-stt-12i-ingress.md`. The natural 12H stall trigger is
+unproven; arbitrary disk stalls can still delay the visible tail.
+Exact next is `LIVELINK-STT-12J`: persist new-source absence timing mid-take.
+Owner plugin installation, cold startup, reconnect/Script follow and the wider
 `LIVELINK-08` acceptance matrix remain open. This does not advance the Voice
 Training phase. The historical
 phase baseline below remains distinct from this round's focused checks.

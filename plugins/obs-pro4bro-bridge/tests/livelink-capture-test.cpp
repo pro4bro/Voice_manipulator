@@ -4,11 +4,12 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <iostream>
 #include <stdexcept>
 #include <thread>
 #include <windows.h>
 
-#define CHECK(condition) do { if (!(condition)) throw std::runtime_error(#condition); } while (false)
+#define CHECK(condition) do { if (!(condition)) { std::cerr << #condition << '\n'; throw std::runtime_error(#condition); } } while (false)
 
 struct LiveLinkCaptureTestAccess {
 	static void add_track(LiveLinkCapture &capture, const std::string &id)
@@ -41,6 +42,11 @@ struct LiveLinkCaptureTestAccess {
 	}
 
 	static std::mutex &mutex(LiveLinkCapture &capture) { return capture.mutex_; }
+	static void timestamp_last(LiveLinkCapture &capture, const std::string &id, uint64_t ns)
+	{
+		auto &packet = capture.tracks_.at(id)->queue.back();
+		packet.plugin_monotonic_ns = packet.obs_timestamp_ns = ns;
+	}
 };
 
 int main()
@@ -54,6 +60,51 @@ int main()
 	auto raw_chunk = muted_source.take();
 	CHECK(raw_chunk && raw_chunk->frames == 48000);
 	CHECK(raw_chunk->pcm[0] > 0 && raw_chunk->pcm[1] < 0);
+
+	// Slow durable HTTP receipts can leave more than one second in each queue.
+	// Drain two seconds per source without waiting for more callbacks. This
+	// halves fixed per-upload flush work for an existing backlog, preserving
+	// the source's sample order and the other track's turn.
+	LiveLinkCapture backlog;
+	backlog.set_recording("backlog", 1, false, 0);
+	for (int channel = 1; channel <= 2; ++channel)
+		LiveLinkCaptureTestAccess::add_track(backlog, "channel-" + std::to_string(channel));
+	for (int packet = 0; packet < 400; ++packet)
+		for (int channel = 1; channel <= 2; ++channel)
+			LiveLinkCaptureTestAccess::capture_packet(backlog, "channel-" + std::to_string(channel));
+	std::array<int, 2> backlog_chunks{};
+	while (auto chunk = backlog.take()) {
+		const int index = chunk->channel_id.back() - '1';
+		CHECK(chunk->frames == 96000);
+		CHECK(chunk->sequence == static_cast<uint64_t>(backlog_chunks[index]));
+		CHECK(chunk->first_sample_index == static_cast<uint64_t>(backlog_chunks[index]) * 96000);
+		CHECK(chunk->pcm.size() == 192000);
+		++backlog_chunks[index];
+	}
+	CHECK(backlog_chunks[0] == 2 && backlog_chunks[1] == 2);
+
+	// A partial chunk is delivered now, without waiting for the larger ceiling.
+	LiveLinkCapture immediate;
+	immediate.set_recording("immediate", 1, false, 0);
+	LiveLinkCaptureTestAccess::add_track(immediate, "channel-1");
+	LiveLinkCaptureTestAccess::capture_packet(immediate, "channel-1");
+	auto prefix = immediate.take();
+	CHECK(prefix && prefix->frames == 480 && !immediate.take());
+
+	// A larger backlog must stop at the exact boundary inside a callback packet.
+	LiveLinkCapture stopped;
+	stopped.set_recording("stopped", 1'000'000'000ULL, false, 0);
+	LiveLinkCaptureTestAccess::add_track(stopped, "channel-1");
+	for (int packet = 0; packet < 300; ++packet) {
+		LiveLinkCaptureTestAccess::capture_packet(stopped, "channel-1");
+		LiveLinkCaptureTestAccess::timestamp_last(stopped, "channel-1",
+			1'000'000'000ULL + packet * 10'000'000ULL);
+	}
+	stopped.finish_at(3'255'000'000ULL);
+	auto full = stopped.take(), tail = stopped.take();
+	CHECK(full && full->frames == 96000 && full->first_sample_index == 0);
+	CHECK(tail && tail->frames == 12240 && tail->first_sample_index == 96000);
+	CHECK(tail->sequence == 1 && !stopped.take());
 
 	// Eight seconds of four stereo sources waited behind HTTP. The old two-second
 	// source queue discarded roughly six seconds per channel in this case.
@@ -73,12 +124,12 @@ int main()
 		const int index = chunk->channel_id.back() - '1';
 		CHECK(index >= 0 && index < 4);
 		CHECK(chunk->sequence == static_cast<uint64_t>(chunks[index]));
-		CHECK(chunk->first_sample_index == static_cast<uint64_t>(chunks[index]) * 48000);
-		CHECK(chunk->frames == 48000);
-		CHECK(chunk->pcm.size() == 2 * 48000);
+		CHECK(chunk->first_sample_index == static_cast<uint64_t>(chunks[index]) * 96000);
+		CHECK(chunk->frames == 96000);
+		CHECK(chunk->pcm.size() == 2 * 96000);
 		++chunks[index];
 	}
-	for (int count : chunks) CHECK(count == 8);
+	for (int count : chunks) CHECK(count == 4);
 
 	// A missing callback interval must split chunks so the API sees the actual
 	// first-sample jump instead of silently concatenating audio across it.

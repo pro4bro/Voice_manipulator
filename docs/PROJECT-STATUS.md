@@ -1,5 +1,28 @@
 # Project Status — 2026-09-22
 
+## LiveLink PCM receipt cost and queued chunk ceiling — 2026-10-03
+
+`LIVELINK-STT-12I` profiles PCM receipt and ships plugin/package 0.6.8 with
+up to two seconds of already queued PCM per upload (96,000-frame ceiling).
+Small prefixes still emit immediately; source/Stop boundaries and all durable
+flush/ACK requirements remain. No API, project schema, UI or engine changes.
+
+Four physical OBS/browser takes verified complete PCM, live checkpoints,
+detailed STT tails and hash/decode-valid two-track MKAs with both models
+resident. A controlled 400 ms pair-write delay reduced receipt p95 from about
+126 to 31 seconds and sampled pending peak from 182 to 43; final quiet take
+reached 1.577/1.885 seconds and peak 5, then 0. Live zoom retained waveform
+in the final minute and the saved tail appeared automatically. Backend 493,
+frontend 457 and native 2/2 tests, typecheck/build and diff check passed.
+Evidence: `docs/gates/livelink-stt-12i-ingress.md`, ADR 0034.
+
+The natural 12H severe stall did not recur in the first quiet run, so its
+precise trigger remains unproven. Controlled pressure still delayed the live
+tail; arbitrary disk stalls and the broader LIVELINK-08 matrix remain open.
+Only the isolated OBS installation uses the new DLL; the owner needs
+Preferences Install/Repair and OBS restart. Exact next: `LIVELINK-STT-12J`,
+new-source absence timing in the recording journal.
+
 ## LiveLink waveform retention and recording-owned lanes — 2026-10-03
 
 `LIVELINK-STT-12H` preserves saved waveform bins on an empty cursor update

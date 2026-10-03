@@ -79,7 +79,7 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12F | Measure remaining caption spikes at the browser viewport under sustained OBS capture and detailed STT | Measured; sustained-duration gate open | Measured browser receipt and visible/offscreen row frame boundaries; PCM ingress and a long recognition request dominate peaks, while a harness request failure shortened the controlled take. |
 | LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Complete at sustained two-source data/latency gate; live waveform UI remains open | Batched native outbox ACK commits and changed-only folder persistence passed regressions; two warmed browser takes measured PCM p95 falling from 49.01/49.26 to 2.16/2.52 seconds without sample gaps. |
 | LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Complete at cursor/lane and OBS/browser regression gate; sustained PCM latency remains open | Empty cursor replies retain saved waveform; missing historical sources without PCM are omitted. Two real OBS takes verified retention, source removal and archive handoff; the long take again accumulated ingress delay. |
-| LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Queued | With models resident, the 203-second 12H take reached 41.43/41.80-second p95 receipt age and 118 pending chunks, despite retaining complete PCM/STT. |
+| LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Complete at measured cost/native/physical gate; natural-stall matrix remains open | Plugin 0.6.8 consumes larger existing queues without waiting. Fixed-delay p95 fell from 126 to 31 seconds; final quiet take reached 1.58/1.89 seconds. Arbitrary disk stalls can still postpone the live tail. |
 | LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Queued | The 12H removal check retained both audio tracks and the live lane, but the journal omitted the new source's mid-take missing interval. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
@@ -3040,3 +3040,59 @@ wider startup/reconnect/source/DPI/portability gates remain in LIVELINK-08.
 Exact next round: `LIVELINK-STT-12I` — reproduce/profile the renewed PCM ACK
 backlog during sustained browser waveform polling with model residency checked,
 reduce the measured bottleneck and recheck the live tail and Stop drain.
+
+## Round LIVELINK-STT-12I — 2026-10-03
+
+Completed scope:
+
+- Profiled durable PCM receipt during a sustained OBS/browser take. The
+  natural 12H severe stall did not recur in the first quiet take; concurrent
+  PCM/metadata preparation consumed 85.5% of handler time.
+- Reproduced fixed-cost receipt overload with a scratch-only 400 ms delay
+  per PCM pair. Plugin/package 0.6.8 consumes up to two seconds of already
+  queued audio, capped at 96,000 frames, without waiting to fill a chunk.
+  Drain frequency, sample boundaries, API flushes and native FULL commits
+  remain. No API, project schema, UI or engine changes; ADR 0034.
+- Completed four two-source physical OBS takes with browser polling, live
+  medium and detailed large-v3 STT; verified PCM, archives and transcript
+  checkpoints. Restored isolated OBS settings and released its lease/outbox.
+
+Evidence:
+
+- Native backlog regression failed before the fix at `frames == 96000`, then
+  passed. Tests cover ordering, immediate partial delivery, Stop clipping,
+  discontinuity, capture recovery and atomic durable ACKs; CTest 2/2 passed.
+- Quiet 0.6.7 take: 202.777 seconds, PCM receipt p95 2.968/3.308 seconds,
+  pending peak 10 and last receipt 3.215 seconds after Stop.
+- Delayed before/after takes: 123.372/204.330 seconds, receipt p95
+  125.713/126.278 versus 30.985/31.477 seconds, pending peak 182 versus 43,
+  final 0. Last receipt after Stop: 134.400 versus 32.570 seconds. For the
+  first 120 seconds of audio, p95 was 122.526/123.098 versus 20.798/21.664.
+  Request costs stayed similar; audio per request rose from 0.685 to 1.277 s.
+  The before harness exceeded its archive wait; preserved PCM drained and
+  the verified archive became ready afterward. This was a controlled delay,
+  not an isolation of the owner's natural disk-stall trigger.
+- Final quiet 0.6.8 take: 201.191 seconds, p95 1.577/1.885 seconds, pending
+  peak 5 then 0; last receipt 3.307 seconds after Stop. Live zoom retained
+  waveform in the final minute; the saved final window appeared automatically.
+- All four takes retained contiguous, hash-valid 48 kHz stereo PCM with no
+  sample gaps/overlaps. All four two-track FLAC MKAs matched their journal
+  hash and decoded. Complete live checkpoints, no error events/duplicate
+  finals/open utterances, and detailed STT published every available tail.
+  Studio model-load count stayed 2 through recording cleanup with both models
+  resident; regression suites ran afterward.
+- Backend 493 passed (two existing warnings); frontend 54 files / 457 tests
+  passed; typecheck/build and diff check passed. Native package 0.6.8 matches
+  the tested isolated DLL. See `docs/gates/livelink-stt-12i-ingress.md` and
+  ignored `.scratch/livelink-stt-12i` evidence.
+
+Remaining gap: fixed-delay pressure still postponed the live tail and the
+precise natural 12H stall trigger is not established. Fewer durable uploads
+reduce the cost but cannot guarantee throughput through arbitrary storage
+stalls. Owner installation requires Preferences Install/Repair and OBS restart.
+Source-absence provenance, cold startup, reconnect/Script follow, native
+idle/Start overflow attribution and wider source/DPI/portability gates remain.
+
+Exact next round: `LIVELINK-STT-12J` — persist source-absence timing when a
+newly added source disappears mid-take, verifying its retained PCM/lane and
+the journal interval together.

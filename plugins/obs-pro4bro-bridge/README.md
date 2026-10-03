@@ -35,6 +35,14 @@ diagnosis. Callback mutex contention waits instead of discarding PCM and
 sample-index jumps are exposed between chunks. The in-memory bound still
 applies if local SQLite cannot keep up or its disk is full; overflow is logged.
 
+Version 0.6.8 consumes up to two seconds (at most 96,000 frames) of already
+queued PCM per upload to reduce per-file durable flush work when receipts are
+slow. It does not wait to fill a chunk or extend the spool drain interval.
+Format/sample discontinuities, Forward/Pause and Stop still split the data;
+known Stop boundaries clip the final callback and retained outbox tail before
+upload. Both API files and native
+source/ACK transactions retain their required durable flushes.
+
 An OBS MKV may be probed and its committed audio decoded during recording, but
 its audio tracks are configured OBS mix tracks. They are not a guaranteed
 one-to-one source archive and cannot replace the per-source PCM outbox,
