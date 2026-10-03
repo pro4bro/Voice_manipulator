@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — Measured six-source ingress and archive tail.
-last_activity_desc: LIVELINK-INGEST-18A isolated profiling complete; live clocks remain open. LIVELINK-INGEST-18B next.
+last_activity: 2026-10-04 — Rejected 18B writer candidate against frozen budgets.
+last_activity_desc: Full suites/build pass; 18B performance gate remains open. Reviewed LIVELINK-INGEST-18C group-durability evaluation next.
 ---
 
 # Project State

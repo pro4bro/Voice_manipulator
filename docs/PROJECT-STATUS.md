@@ -1,5 +1,23 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-INGEST-18B — rejected optimization candidate (2026-10-04)
+
+18B remains open; no product/source-media/installed-plugin changes. Tested
+writer reuse, coordinated pre-fsync writes, Windows write-through plus fsync,
+and staged sequential fsync. The strongest screening candidate was replayed
+against the full frozen 2,524-chunk workload: ingress 406.961s versus 417.734s
+(2.58% reduction); ACK p50/p95 119.761/302.916ms. It fails the unchanged 30%
+reduction and <=100/150ms ACK budgets. Ready tail 24.159s and all six archive
+streams/analysis PCM hashes pass; this does not constitute an accepted fix.
+
+Full backend 516 passed; frontend 468 passed / 55 files; typecheck/build pass.
+Evidence and an executable red budget comparator are in
+`docs/gates/livelink-ingest-18b-candidate.md` and comparison JSON. Native live
+acceptance is not run for this rejected candidate. Exact next:
+**LIVELINK-INGEST-18C**, separately evaluate bounded group durability and its
+transport/API contract while preserving both fsyncs and all frozen budgets.
+Do not mark 18B complete or claim a live latency improvement.
+
 ## LIVELINK-INGEST-18A — six-source measurement (2026-10-04)
 
 Complete at isolated profiling/decision scope; exact live clock acceptance

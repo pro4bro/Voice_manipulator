@@ -1,0 +1,56 @@
+{
+  "passed": false,
+  "budgets": {
+    "ackP50Ms": 100,
+    "ackP95Ms": 150,
+    "ingressSeconds": 292.4136924099985,
+    "lastAckToReadySeconds": 45
+  },
+  "gates": {
+    "catalog": true,
+    "continuity": true,
+    "sixTrackArchiveReady": true,
+    "sixAnalysesMatch": true,
+    "ackP50": false,
+    "ackP95": false,
+    "ingress": false,
+    "readyTail": true
+  },
+  "candidateAck": {
+    "count": 2524,
+    "totalMs": 376985.1435000237,
+    "p50Ms": 119.76094999772613,
+    "p95Ms": 302.91569999826606,
+    "maxMs": 966.2290000051144
+  },
+  "candidateIngressSeconds": 406.9608248000004,
+  "candidateReadyTailSeconds": 24.15888769999583,
+  "ingressReductionPercent": 2.578919949967551,
+  "analysisIntegrity": [
+    {
+      "track": "Track 3",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 2",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 5",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 6",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 1",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 4",
+      "matchesRetained": true
+    }
+  ],
+  "nativeLiveGateRun": false
+}

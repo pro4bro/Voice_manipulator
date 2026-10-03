@@ -9,6 +9,8 @@ that gap matters, and the exact next round.
 
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
+| LIVELINK-INGEST-18B | Reduce durable-pair cost | Candidate rejected; acceptance open | Full replay improves only 2.58%; prevents shipping a change that fails frozen latency budgets. |
+| LIVELINK-INGEST-18C | Evaluate bounded group durability/transport contract | Reviewed follow-up queued | Tests whether independent source commits can amortize flush latency without weakening durability. |
 | LIVELINK-INGEST-18A | Profile six-source ingress and Stop tail | Isolated measurement complete; historical live clocks unavailable | Selects durable PCM/metadata pair and freezes 18B comparisons without claiming latency improved. |
 | 03-03A | Voice Model Set persistence and lineage | Complete | Creates a portable, reproducible publication candidate without falsely claiming identity approval. |
 | 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Complete | Prevents a usable checkpoint from being published as the wrong speaker. |
@@ -3702,3 +3704,33 @@ OBS schedule/budgets are recorded before optimization. Baseline exceeds the
 ACK/ready budgets, activating 18B. Exact next: **LIVELINK-INGEST-18B**, optimize
 only the durable-pair seam and verify the frozen replay plus actual OBS gates.
 No product phase is completed and no latency improvement is claimed in 18A.
+
+## Round LIVELINK-INGEST-18B — 2026-10-04
+
+Measured four safe pair-writer alternatives, then rejected the strongest
+screening candidate against the full frozen workload. No production optimizer,
+installed plugin, pairing or original media changes. Candidate reuses two
+writers and coordinates both writes before retaining both fsyncs and ordered
+PCM/metadata publication. All 2,524 chunks and six-stream/archive/analysis
+integrity pass; every analysis PCM hash equals retained UX-10B.
+
+Ingress 406.961s versus baseline 417.734s: **2.58% lower**, not the frozen 30%.
+ACK p50/p95 **119.761/302.916ms** fail <=100/150ms; ready tail **24.159s**
+passes <=45s. Archive code is unchanged, so its elapsed variation is not
+attributed to the pair writer. Windows write-through plus fsync and staged
+sequential sync are slower in paired probes. Writer reuse/coordination does
+not remove the dominant flush cost. The budget comparator correctly returns
+exit 1 with three failed performance gates.
+
+Full backend **516 passed**, 176.06s, two existing deprecation warnings; full
+frontend **55 files / 468 passed**, 29.78s; typecheck/build pass (Vite 1.14s).
+Evidence: `docs/gates/livelink-ingest-18b-candidate.md`, comparison JSON and
+ignored `.scratch/livelink-ingest-18b/`. Reusable process-local candidate and
+budget comparator live in scripts/profiling; they are not installed product code.
+
+**18B is not complete**, no live latency improvement is claimed and the
+actual OBS gate is not run for the rejected candidate. Following the frozen
+scope's required separate review, exact next: **LIVELINK-INGEST-18C**, evaluate
+bounded independent-source group durability and its transport/API contract
+before integration. Both fsyncs and every frozen budget remain mandatory.
+Other scheduled rounds retain their order after this prerequisite work.
