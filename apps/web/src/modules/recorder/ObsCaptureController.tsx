@@ -131,10 +131,26 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
   const recording = status?.appRecording?.projectId === projectId ? status.appRecording : null;
   const state = recording?.status ?? "idle";
   const actionPending = busy || Boolean(status?.pendingAction);
+  const outbox = status?.outbox;
+  const outboxStale = !connected || outbox?.stale || Boolean(error);
   return <section aria-label="OBS LiveLink recorder" className="obs-recorder">
     <div className="obs-recorder__status">
       <strong>OBS LiveLink</strong>
       <span>{connected ? "Linked" : "Disconnected"} · {armed ? "Project armed" : "No active project"} · OBS {status?.obsRecording ?? "unknown"} · App {state}</span>
+    </div>
+    <div className="obs-recorder__outbox" aria-label="Dữ liệu OBS còn chờ gửi">
+      <strong>Outbox · tất cả bản ghi OBS</strong>
+      {!outbox ? <span>Plugin chưa báo trạng thái dữ liệu chờ gửi.</span> : <>
+        {outboxStale ? <span>Trạng thái cũ · chưa xác nhận dữ liệu chờ gửi hiện tại.</span> : null}
+        <span>{outbox.readable ? `Còn giữ ${outbox.retainedChunks} đoạn · bị từ chối ${outbox.rejectedChunks} đoạn`
+          : "Không đọc được outbox · chưa biết số đoạn còn giữ"}</span>
+        <span>Đoạn chờ lâu nhất: {outbox.readable && outbox.retainedChunks === 0 ? "không có đoạn chờ" : outbox.oldestRetainedAgeMs === null ? "chưa rõ"
+          : `${Math.floor(outbox.oldestRetainedAgeMs / 1000)} giây tại lần báo gần nhất`}</span>
+        <span>Chưa lưu đĩa: {outbox.unspooledChunks} đoạn · hàng đợi bộ nhớ: {outbox.memoryFrames} frame</span>
+        <span>Overflow: {outbox.overflowFrames} frame trong các Track của phiên plugin · có thể gồm trước khi Record</span>
+        {outbox.lastSpoolError ? <span>Lỗi lưu đĩa gần nhất: {outbox.lastSpoolError}</span> : null}
+        <small>Còn giữ bao gồm đoạn bị từ chối. Outbox trống không xác nhận mọi âm thanh đã được thu.</small>
+      </>}
     </div>
     <div className="obs-recorder__channels" aria-label="Track OBS LiveLink">
       {status?.channels.filter((channel) => !channel.missing).map((channel) => {

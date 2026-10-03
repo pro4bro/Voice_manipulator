@@ -169,6 +169,7 @@ class ObsPluginActionRequest(BaseModel):
 
 
 class ObsLiveLinkHello(BaseModel):
+    outbox: dict | None = None
     installId: str
     processInstanceId: str
     pluginVersion: str
@@ -182,6 +183,7 @@ class ObsLiveLinkHello(BaseModel):
 
 
 class ObsLiveLinkHeartbeat(BaseModel):
+    outbox: dict | None = None
     installId: str
     connectionId: str
     connectionEpoch: str

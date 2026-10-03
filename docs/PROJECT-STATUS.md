@@ -1,5 +1,25 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-08N-A — retained outbox health (2026-10-04)
+
+Native/API/UI health is complete at a bounded seam. Optional authenticated
+v3 reports show global retained/rejected PCM counts, age at last report,
+volatile memory/worker backlog, attached-Track overflow and the last SQLite
+error. Legacy plugins/rows, read failures and disconnects remain unknown/stale;
+meter activity never implies durable PCM. Nullable machine-local schema migration
+preserves legacy rejected bytes and compatibility. ACK/FULL/WAL unchanged.
+
+Native Release build and 2/2 CTest pass, including simulated SQLITE_FULL with
+retained prior PCM; final full backend 526 passed, frontend 471 / 55 files,
+typecheck/build pass. Actual browser fixture confirms stale/unreadable/legacy
+states with readable product styles. Evidence: ADR 0041 and
+`docs/gates/livelink-08n-a-outbox-health.md`.
+
+Parent 08N is open. Exact next **LIVELINK-08N-B**, scoped retry/export and
+longer isolated multi-source outage/Stop recovery. No installed plugin/package
+update or actual connected-recording acceptance is claimed here. 18B/18C
+performance and the pending budget choice remain open.
+
 ## LIVELINK-INGEST-18C — group feasibility, decision pending (2026-10-04)
 
 Measured 60 six-source groups, 360 durable PCM/metadata pairs per variant;

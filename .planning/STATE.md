@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — Measured group durability; budget decision pending.
-last_activity_desc: 18C improves storage throughput but fails frozen ACK latency. Full suites/build pass after bounded frontend rerun. Independent LIVELINK-08N next while budget answer pending.
+last_activity: 2026-10-04 — LIVELINK-08N-A outbox health complete.
+last_activity_desc: Native/API/UI retained-data health passes full suites/build. Parent 08N recovery/outage remains open; exact next 08N-B. 18B/18C budget decision remains pending.
 ---
 
 # Project State

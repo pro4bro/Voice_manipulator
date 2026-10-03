@@ -1031,6 +1031,31 @@ private:
 				obs_data_set_string(payload, "installId", pairing.install_id.c_str());
 				obs_data_set_bool(payload, "recordingActive", recording_active_);
 				obs_data_set_bool(payload, "recordingPaused", recording_paused_);
+				const auto health = spool.health();
+				obs_data_t *outbox = obs_data_create();
+				obs_data_set_bool(outbox, "readable", health.readable);
+				if (health.readable) {
+					obs_data_set_int(outbox, "retainedChunks", health.retained);
+					obs_data_set_int(outbox, "rejectedChunks", health.rejected);
+				}
+				if (health.oldest_retained_wall_ms) {
+					const auto wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+						std::chrono::system_clock::now().time_since_epoch()).count();
+					// A clock rollback is unknown, not a fabricated zero age.
+					if (wall_ms >= *health.oldest_retained_wall_ms)
+						obs_data_set_int(outbox, "oldestRetainedAgeMs", wall_ms - *health.oldest_retained_wall_ms);
+				}
+				uint64_t memory_frames = 0, overflow_frames = 0;
+				for (const auto &queue : capture_.queue_status()) {
+					memory_frames += queue.queued_frames;
+					overflow_frames += queue.overflow_frames;
+				}
+				obs_data_set_int(outbox, "memoryFrames", memory_frames);
+				obs_data_set_int(outbox, "unspooledChunks", unspooled.size());
+				obs_data_set_int(outbox, "overflowFrames", overflow_frames);
+				obs_data_set_string(outbox, "lastSpoolError", health.last_error.substr(0, 2048).c_str());
+				obs_data_set_obj(payload, "outbox", outbox);
+				obs_data_release(outbox);
 				if (connect_recording_folder_) {
 					char *output_path = obs_frontend_get_current_record_output_path();
 					if (output_path) {

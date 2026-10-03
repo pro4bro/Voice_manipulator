@@ -35,6 +35,8 @@ class ObsLiveLinkConnection:
         self._pending: dict[str, dict] = {}
         self._action_pending: dict[str, dict] = {}
         self._acked: dict[str, dict] = {}
+        self._outbox: dict | None = None
+        self._outbox_received_at = 0.0
 
     def _identity(self, authorization: str, install_id: str) -> None:
         try:
@@ -72,7 +74,47 @@ class ObsLiveLinkConnection:
             ) if online else "unknown",
             "activeProject": {"id": lease["projectId"], "name": lease["projectName"]} if lease else None,
             "leaseExpiresInSeconds": max(0, int(lease["deadline"] - now + 0.99)) if lease else 0,
+            "outbox": {**self._outbox, "reportAgeSeconds": max(0, now - self._outbox_received_at),
+                       "stale": not online} if self._outbox is not None else None,
         }
+
+    @staticmethod
+    def _validate_outbox(payload: dict) -> dict | None:
+        value = payload.get("outbox")
+        if value is None:  # Legacy plugins cannot report health; never infer an empty queue.
+            return None
+        if not isinstance(value, dict) or type(value.get("readable")) is not bool:
+            raise LiveLinkError("Invalid OBS outbox health.", 422)
+        result = {"readable": value["readable"]}
+        for field in ("retainedChunks", "rejectedChunks", "oldestRetainedAgeMs", "memoryFrames",
+                      "unspooledChunks", "overflowFrames"):
+            number = value.get(field)
+            required = field in {"memoryFrames", "unspooledChunks", "overflowFrames"} or (
+                value["readable"] and field in {"retainedChunks", "rejectedChunks"})
+            if number is None and not required:
+                result[field] = None
+            elif type(number) is not int or not 0 <= number <= 2**53 - 1:
+                raise LiveLinkError("Invalid OBS outbox health.", 422)
+            else:
+                result[field] = number
+        if not value["readable"]:
+            result.update(retainedChunks=None, rejectedChunks=None, oldestRetainedAgeMs=None)
+        elif result["rejectedChunks"] > result["retainedChunks"] or (
+            result["retainedChunks"] == 0 and result["oldestRetainedAgeMs"] is not None
+        ):
+            raise LiveLinkError("Invalid OBS outbox health.", 422)
+        error = value.get("lastSpoolError", "")
+        if not isinstance(error, str) or len(error) > 2048:
+            raise LiveLinkError("Invalid OBS outbox health.", 422)
+        result["lastSpoolError"] = error or None
+        return result
+
+    def _set_outbox(self, value: dict | None) -> None:
+        if value != self._outbox:
+            self._status_revision += 1
+            self._changed.notify_all()
+        self._outbox = value
+        self._outbox_received_at = time.monotonic()
 
     def status(self) -> dict:
         with self._lock:
@@ -158,6 +200,7 @@ class ObsLiveLinkConnection:
 
     def hello(self, authorization: str, payload: dict) -> dict:
         self._identity(authorization, payload.get("installId", ""))
+        outbox = self._validate_outbox(payload)
         if not (payload.get("protocolMin", 4) <= 3 <= payload.get("protocolMax", 2)):
             raise LiveLinkError("OBS LiveLink protocol v3 is required.", 426)
         try:
@@ -185,9 +228,11 @@ class ObsLiveLinkConnection:
                 self._pending.clear()
                 self._action_pending.clear()
                 self._acked.clear()
+                self._outbox = None
                 self._command_revision = 0
                 self._status_revision += 1
             self._sync_channels(payload)
+            self._set_outbox(outbox)
             self._changed.notify_all()
             return {**self._snapshot(), "negotiatedVersion": 3}
 
@@ -197,12 +242,14 @@ class ObsLiveLinkConnection:
                 authorization, payload.get("installId", ""), payload.get("connectionId", ""),
                 payload.get("connectionEpoch", ""),
             )
+            outbox = self._validate_outbox(payload)
             connection["deadline"] = time.monotonic() + self.CONNECTION_SECONDS
             recording = (payload.get("recordingActive", False), payload.get("recordingPaused", False))
             if recording != (connection["recordingActive"], connection["recordingPaused"]):
                 self._status_revision += 1
             connection["recordingActive"], connection["recordingPaused"] = recording
             self._sync_channels(payload)
+            self._set_outbox(outbox)
             return self._snapshot()
 
     def set_forward(self, channel_id: str, enabled: bool) -> dict:

@@ -16,6 +16,13 @@ struct LiveLinkSpoolEntry {
 	LiveLinkAudioChunk chunk;
 };
 
+struct LiveLinkSpoolHealth {
+	bool readable{};
+	uint64_t retained{}, rejected{};
+	std::optional<int64_t> oldest_retained_wall_ms;
+	std::string last_error;
+};
+
 // Machine-local outbox. A chunk stays here until the API acknowledges its durable write.
 class LiveLinkSpool {
 public:
@@ -33,8 +40,10 @@ public:
 	uint64_t pending(const std::string &recording_id = {});
 	std::vector<std::string> recordings();
 	std::string error() const;
+	LiveLinkSpoolHealth health();
 
 private:
+	friend struct LiveLinkSpoolTestAccess;
 	bool exec(const char *sql);
 	void fail(const char *action);
 	mutable std::mutex mutex_;

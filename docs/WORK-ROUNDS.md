@@ -106,7 +106,7 @@ that gap matters, and the exact next round.
 | RUNTIME-READY-01B | Recovery storage stalls and full-console diagnostics | Storage mitigation and bounded diagnostics verified; historical native gate remains open | Real Uvicorn regressions and ordinary starts pass; future slow startup logs Python frames. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
-| LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | 08N-A health complete; recovery/outage open | Exact next 08N-B; criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -3763,3 +3763,30 @@ and ignored `.scratch/livelink-ingest-18c/groups/`.
 Measured scope is retained, but 18B/18C integration/actual OBS acceptance is
 open. Exact independent next while awaiting the budget answer:
 **LIVELINK-08N**, outbox health and retained-chunk recovery (depends on 18A).
+
+## Round LIVELINK-08N-A — 2026-10-04
+
+Completed one native/API/UI health seam from the 08N ticket. Authenticated
+optional v3 hello/heartbeat exposes retained/rejected count, oldest retained
+age, worker chunks not on disk, memory frames, attached-Track overflow and
+last SQLite failure. Counts cover all recordings; rejected is a subset of
+retained. Legacy plugins/rows and unavailable storage remain unknown; expired
+reports are stale. Meter/waveform never substitute for durable acceptance.
+
+Nullable enqueue-clock migration preserves old PCM/provenance. FULL/WAL,
+ACK deletion and capture/Stop semantics remain unchanged. Native Release build
+and **2/2 CTest** pass (6.63s), including real SQLITE_FULL simulated with a
+bounded page cap and byte-preserved earlier PCM. HTTP telemetry regression
+first exposed a discarded Pydantic field, then passed after optional request
+fields were added. Final full backend **526 passed**, 164.38s, two existing
+warnings; frontend **471 / 55 files**, 35.53s; typecheck/build pass. Isolated
+real-browser fixture checks stale/unreadable/legacy states, readable wrapping,
+no horizontal overflow at 528px and no console errors/warnings. Owned Vite/tab
+closed; no owner runtime, installed plugin, source media or pairing changes.
+
+Evidence: ADR 0041 and docs/gates/livelink-08n-a-outbox-health.md. Parent
+**LIVELINK-08N stays open**: scoped retry/export and longer multi-source API
+outage/Stop recovery need their own verified write/recovery seam. Reviewed
+exact next **LIVELINK-08N-B**; this split does not reduce the parent acceptance
+criteria or near-term remaining parent count. 18B/18C performance and pending
+human budget decision remain open. No loss-free capture or latency claim.

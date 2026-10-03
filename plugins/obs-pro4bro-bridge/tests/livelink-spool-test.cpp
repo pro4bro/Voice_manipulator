@@ -1,12 +1,20 @@
 #include "../src/livelink-spool.h"
 
 #include <windows.h>
+#include <winsqlite/winsqlite3.h>
 
 #include <filesystem>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
 #define CHECK(condition) do { if (!(condition)) throw std::runtime_error(#condition); } while (false)
+
+struct LiveLinkSpoolTestAccess {
+	static void limit_capacity(LiveLinkSpool &spool) {
+		CHECK(sqlite3_exec(spool.db_, "PRAGMA max_page_count=4", nullptr, nullptr, nullptr) == SQLITE_OK);
+	}
+};
 
 int main()
 {
@@ -35,6 +43,9 @@ int main()
 		CHECK(spool.ready());
 		CHECK(spool.append({first, second}));
 		CHECK(spool.pending() == 2);
+		const auto health = spool.health();
+		CHECK(health.readable && health.retained == 2 && health.rejected == 0);
+		CHECK(health.oldest_retained_wall_ms && *health.oldest_retained_wall_ms > 0);
 		CHECK(spool.pending(first.recording_id) == 2);
 		auto entry = spool.oldest();
 		CHECK(entry && entry->chunk.pcm == first.pcm);
@@ -99,7 +110,60 @@ int main()
 		CHECK(two && two->chunk.sequence == 1);
 		CHECK(recovered.acknowledge(std::vector<int64_t>{two->id}));
 		CHECK(recovered.pending() == 1); // unrelated rejected PCM is retained
+		const auto health = recovered.health();
+		CHECK(health.readable && health.retained == 1 && health.rejected == 1);
+		CHECK(health.oldest_retained_wall_ms);
 		CHECK(!recovered.oldest());
+	}
+	// Backward-compatible migration keeps legacy bytes and reports unknown age.
+	{
+		sqlite3 *db = nullptr;
+		CHECK(sqlite3_open16(path.wstring().c_str(), &db) == SQLITE_OK);
+		CHECK(sqlite3_exec(db, "ALTER TABLE chunks DROP COLUMN enqueued_wall_ms", nullptr, nullptr, nullptr) == SQLITE_OK);
+		sqlite3_close(db);
+	}
+	{
+		LiveLinkSpool recovered(path);
+		const auto health = recovered.health();
+		CHECK(health.readable && health.retained == 1 && health.rejected == 1);
+		CHECK(!health.oldest_retained_wall_ms);
+	}
+	{
+		sqlite3 *db = nullptr;
+		CHECK(sqlite3_open16(path.wstring().c_str(), &db) == SQLITE_OK);
+		sqlite3_stmt *stmt = nullptr;
+		CHECK(sqlite3_prepare_v2(db, "SELECT pcm FROM chunks WHERE rejected_status=422", -1, &stmt, nullptr) == SQLITE_OK);
+		CHECK(sqlite3_step(stmt) == SQLITE_ROW);
+		CHECK(sqlite3_column_bytes(stmt, 0) == first.pcm.size() * sizeof(int16_t));
+		CHECK(std::memcmp(sqlite3_column_blob(stmt, 0), first.pcm.data(), first.pcm.size() * sizeof(int16_t)) == 0);
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+	}
+	// A failed write retains the preceding PCM and makes the last failure visible.
+	const auto full_path = folder / "capacity.sqlite3";
+	{
+		LiveLinkSpool spool(full_path);
+		CHECK(spool.append({first}));
+	}
+	{
+		LiveLinkSpool spool(full_path);
+		CHECK(!spool.append({first})); // duplicate identity rolls back the transaction
+		const auto health = spool.health();
+		CHECK(health.readable && health.retained == 1 && !health.last_error.empty());
+		CHECK(spool.oldest()->chunk.pcm == first.pcm);
+		LiveLinkSpoolTestAccess::limit_capacity(spool);
+		auto large = second;
+		large.frames = 1024 * 1024;
+		large.pcm.resize(static_cast<size_t>(large.frames) * large.channels, 11);
+		CHECK(!spool.append({large}));
+		CHECK(spool.health().last_error.find("full") != std::string::npos);
+		CHECK(spool.health().retained == 1);
+		CHECK(spool.oldest()->chunk.pcm == first.pcm);
+	}
+	{
+		LiveLinkSpool unavailable(folder / "capacity.sqlite3" / "cannot-open.sqlite3");
+		CHECK(!unavailable.health().readable);
+		CHECK(!unavailable.health().last_error.empty());
 	}
 	std::filesystem::remove_all(folder);
 }

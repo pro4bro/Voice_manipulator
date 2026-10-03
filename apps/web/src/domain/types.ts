@@ -901,6 +901,18 @@ export interface ObsLiveLinkStatus {
   obsRecording: "idle" | "recording" | "paused" | "unknown";
   activeProject: { id: string; name: string } | null;
   leaseExpiresInSeconds: number;
+  outbox?: {
+    readable: boolean;
+    retainedChunks: number | null;
+    rejectedChunks: number | null;
+    oldestRetainedAgeMs: number | null;
+    memoryFrames: number;
+    unspooledChunks: number;
+    overflowFrames: number;
+    lastSpoolError: string | null;
+    reportAgeSeconds: number;
+    stale: boolean;
+  } | null;
   appRecording?: ObsLiveLinkRecording | null;
   recentRecordings?: ObsLiveLinkRecording[];
   triggerPolicy?: ObsLiveLinkTriggerPolicy;

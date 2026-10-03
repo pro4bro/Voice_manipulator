@@ -3,6 +3,7 @@
 #include <winsqlite/winsqlite3.h>
 
 #include <cstring>
+#include <chrono>
 #include <limits>
 
 namespace {
@@ -39,6 +40,24 @@ LiveLinkSpool::LiveLinkSpool(const std::filesystem::path &path)
 		sqlite3_close(db_);
 		db_ = nullptr;
 	}
+	if (db_) {
+		// Legacy rows have no trustworthy wall clock, including after reboot.
+		sqlite3_stmt *columns = nullptr;
+		bool found = false;
+		bool ok = sqlite3_prepare_v2(db_, "PRAGMA table_info(chunks)", -1, &columns, nullptr) == SQLITE_OK;
+		int step = SQLITE_ERROR;
+		if (ok) while ((step = sqlite3_step(columns)) == SQLITE_ROW) {
+			const auto *name = sqlite3_column_text(columns, 1);
+			if (name && std::strcmp(reinterpret_cast<const char *>(name), "enqueued_wall_ms") == 0) found = true;
+		}
+		ok = ok && step == SQLITE_DONE;
+		if (columns) sqlite3_finalize(columns);
+		if (!ok) fail("inspect spool schema");
+		if (!ok || (!found && !exec("ALTER TABLE chunks ADD COLUMN enqueued_wall_ms INTEGER"))) {
+			sqlite3_close(db_);
+			db_ = nullptr;
+		}
+	}
 }
 
 LiveLinkSpool::~LiveLinkSpool()
@@ -65,6 +84,28 @@ std::string LiveLinkSpool::error() const
 	return error_;
 }
 
+LiveLinkSpoolHealth LiveLinkSpool::health()
+{
+	std::lock_guard lock(mutex_);
+	LiveLinkSpoolHealth result;
+	if (db_) {
+		sqlite3_stmt *stmt = nullptr;
+		// Only metadata is read; PCM BLOBs stay on disk.
+		const char *sql = "SELECT count(*), coalesce(sum(rejected_status IS NOT NULL),0), "
+			"min(enqueued_wall_ms), count(enqueued_wall_ms) FROM chunks";
+		if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+			result.readable = true;
+			result.retained = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
+			result.rejected = static_cast<uint64_t>(sqlite3_column_int64(stmt, 1));
+			if (result.retained && static_cast<uint64_t>(sqlite3_column_int64(stmt, 3)) == result.retained)
+				result.oldest_retained_wall_ms = sqlite3_column_int64(stmt, 2);
+		} else fail("spool health");
+		if (stmt) sqlite3_finalize(stmt);
+	}
+	result.last_error = error_;
+	return result;
+}
+
 bool LiveLinkSpool::append(const std::vector<LiveLinkAudioChunk> &chunks)
 {
 	if (chunks.empty()) return true;
@@ -72,8 +113,10 @@ bool LiveLinkSpool::append(const std::vector<LiveLinkAudioChunk> &chunks)
 	if (!db_ || !exec("BEGIN IMMEDIATE")) return false;
 	sqlite3_stmt *stmt = nullptr;
 	constexpr const char *sql = "INSERT INTO chunks (recording_id, channel_id, sequence, source_uuid, "
-		"first_sample_index, obs_timestamp_ns, plugin_monotonic_ns, frames, sample_rate, channels, pcm) "
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+		"first_sample_index, obs_timestamp_ns, plugin_monotonic_ns, frames, sample_rate, channels, pcm, enqueued_wall_ms) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+	const auto wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch()).count();
 	bool ok = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) == SQLITE_OK;
 	for (const auto &chunk : chunks) {
 		if (!ok) break;
@@ -91,6 +134,7 @@ bool LiveLinkSpool::append(const std::vector<LiveLinkAudioChunk> &chunks)
 			sqlite3_bind_int64(stmt, 9, chunk.sample_rate) == SQLITE_OK &&
 			sqlite3_bind_int64(stmt, 10, chunk.channels) == SQLITE_OK &&
 			sqlite3_bind_blob(stmt, 11, chunk.pcm.data(), static_cast<int>(bytes), SQLITE_TRANSIENT) == SQLITE_OK &&
+			sqlite3_bind_int64(stmt, 12, wall_ms) == SQLITE_OK &&
 			sqlite3_step(stmt) == SQLITE_DONE;
 		if (!ok) fail("append");
 		sqlite3_reset(stmt);

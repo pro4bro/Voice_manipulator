@@ -15,6 +15,16 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## LIVELINK-08N-A — visible retained outbox (2026-10-04)
+
+Completed the optional native/API/UI health seam with legacy-safe machine-local
+enqueue timestamps. Final backend 526, frontend 471 / 55 files, native 2/2,
+typecheck/build and isolated real-browser fixture pass. See ADR 0041 and
+`docs/gates/livelink-08n-a-outbox-health.md`. Parent 08N still needs scoped
+retry/export and a longer multi-source API outage/Stop recovery in exact next
+**LIVELINK-08N-B**. No product phase or installed-plugin acceptance advances;
+18B/18C optimization/budget decision remains open.
+
 ## RUNTIME-READY-01B — Recovery storage waits (2026-10-04)
 
 Resumed MKV STT could block Uvicorn before socket binding while reading project,

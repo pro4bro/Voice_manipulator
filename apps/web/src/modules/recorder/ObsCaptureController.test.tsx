@@ -35,6 +35,36 @@ beforeEach(() => {
   apiMocks.pickMediaFile.mockResolvedValue({ path: "C:\\OBS\\take.mkv" });
 });
 
+it("shows unknown outbox health for a legacy plugin instead of an empty queue", async () => {
+  render(<ObsCaptureController projectId="project" />);
+  expect(await screen.findByText("Plugin chưa báo trạng thái dữ liệu chờ gửi.")).toBeInTheDocument();
+  expect(screen.queryByText(/Còn giữ 0 đoạn/)).not.toBeInTheDocument();
+});
+
+it("keeps retained and rejected PCM independent of a quiet Track and marks stale reports", async () => {
+  apiMocks.getObsLiveLinkStatus.mockResolvedValue({ ...connected, connectionState: "disconnected",
+    outbox: { readable: true, retainedChunks: 12, rejectedChunks: 2,
+      oldestRetainedAgeMs: 30000, memoryFrames: 480, unspooledChunks: 1,
+      overflowFrames: 8192, lastSpoolError: "append: disk full", reportAgeSeconds: 16, stale: true } });
+  render(<ObsCaptureController projectId="project" />);
+  expect(await screen.findByText("Còn giữ 12 đoạn · bị từ chối 2 đoạn")).toBeInTheDocument();
+  expect(screen.getByText(/Trạng thái cũ/)).toBeInTheDocument();
+  expect(screen.getByText(/30 giây tại lần báo gần nhất/)).toBeInTheDocument();
+  expect(screen.getByText(/Lỗi lưu đĩa gần nhất: append: disk full/)).toBeInTheDocument();
+  expect(screen.getByText(/có thể gồm trước khi Record/)).toBeInTheDocument();
+});
+
+it("does not show healthy zero counts when the spool cannot be read", async () => {
+  apiMocks.getObsLiveLinkStatus.mockResolvedValue({ ...connected,
+    outbox: { readable: false, retainedChunks: null, rejectedChunks: null,
+      oldestRetainedAgeMs: null, memoryFrames: 0, unspooledChunks: 0,
+      overflowFrames: 0, lastSpoolError: "open failed", reportAgeSeconds: 0, stale: false } });
+  render(<ObsCaptureController projectId="project" />);
+  expect(await screen.findByText("Không đọc được outbox · chưa biết số đoạn còn giữ")).toBeInTheDocument();
+  expect(screen.getByText("Đoạn chờ lâu nhất: chưa rõ")).toBeInTheDocument();
+  expect(screen.queryByText(/Còn giữ 0 đoạn/)).not.toBeInTheDocument();
+});
+
 it("arms OBS recording through the backend and prevents another Start until ACK", async () => {
   render(<ObsCaptureController projectId="project" />);
   const start = await screen.findByRole("button", { name: "Record" });

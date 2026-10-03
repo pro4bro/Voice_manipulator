@@ -30,6 +30,59 @@ def channel(channel_id=None, source_uuid=None):
     }
 
 
+def outbox_health(**changes):
+    return {"readable": True, "retainedChunks": 12, "rejectedChunks": 2,
+            "oldestRetainedAgeMs": 30000, "memoryFrames": 480, "unspooledChunks": 1,
+            "overflowFrames": 8192, "lastSpoolError": "append: disk full", **changes}
+
+
+def test_outbox_health_legacy_disconnect_and_new_process(tmp_path):
+    link, identity = connection(tmp_path)
+    token = "Bearer " + identity["token"]
+    first = link.hello(token, {**hello(identity), "outbox": outbox_health()})
+    health = first["outbox"]
+    assert health["retainedChunks"] == 12 and health["rejectedChunks"] == 2
+    assert health["oldestRetainedAgeMs"] == 30000
+    assert health["lastSpoolError"] == "append: disk full"
+    assert health["reportAgeSeconds"] >= 0 and not health["stale"]
+    health["retainedChunks"] = 999  # returned dictionaries cannot mutate server state
+    assert link.status()["outbox"]["retainedChunks"] == 12
+    link._connection["deadline"] = 0
+    assert link.status()["outbox"]["stale"]
+    assert link.hello(token, hello(identity))["outbox"] is None
+
+
+def test_outbox_unreadable_counts_unknown_and_heartbeat_legacy(tmp_path):
+    link, identity = connection(tmp_path)
+    token = "Bearer " + identity["token"]
+    first = link.hello(token, {**hello(identity), "outbox": outbox_health(
+        readable=False, retainedChunks=None, rejectedChunks=None, oldestRetainedAgeMs=None)})
+    assert first["outbox"]["retainedChunks"] is None
+    payload = {"installId": identity["installId"], "connectionId": first["connectionId"],
+               "connectionEpoch": first["connectionEpoch"]}
+    assert link.heartbeat(token, {**payload, "outbox": outbox_health(oldestRetainedAgeMs=None)})[
+        "outbox"]["oldestRetainedAgeMs"] is None
+    assert link.heartbeat(token, payload)["outbox"] is None
+
+
+@pytest.mark.parametrize("changes", [
+    {"retainedChunks": True}, {"rejectedChunks": 13}, {"memoryFrames": -1},
+    {"unspooledChunks": 2**53}, {"oldestRetainedAgeMs": float("nan")},
+    {"retainedChunks": 0, "rejectedChunks": 0}, {"lastSpoolError": "x" * 2049},
+    {"readable": "yes"},
+])
+def test_invalid_outbox_does_not_replace_last_report(tmp_path, changes):
+    link, identity = connection(tmp_path)
+    token = "Bearer " + identity["token"]
+    first = link.hello(token, {**hello(identity), "outbox": outbox_health()})
+    with pytest.raises(LiveLinkError) as error:
+        link.heartbeat(token, {"installId": identity["installId"],
+            "connectionId": first["connectionId"], "connectionEpoch": first["connectionEpoch"],
+            "outbox": outbox_health(**changes)})
+    assert error.value.status == 422
+    assert link.status()["outbox"]["retainedChunks"] == 12
+
+
 def test_inventory_command_ack_and_epoch_recovery(tmp_path):
     link, identity = connection(tmp_path)
     token = "Bearer " + identity["token"]
@@ -185,8 +238,11 @@ def test_api_pairing_and_project_target(tmp_path, monkeypatch):
     heartbeat = client.post(route + "/heartbeat", json={
         "installId": identity["installId"], "connectionId": first.json()["connectionId"],
         "connectionEpoch": first.json()["connectionEpoch"],
+        "outbox": outbox_health(),
     }, headers={"Authorization": "Bearer " + "s" * 40})
     assert heartbeat.json()["activeProject"]["id"] == project.id
+    assert heartbeat.json()["outbox"]["retainedChunks"] == 12
+    assert client.get(route + "/status").json()["outbox"]["rejectedChunks"] == 2
     assert client.post(route + "/lease/release", json={"ownerId": "tab-a"}).json()["activeProject"] is None
 
 
