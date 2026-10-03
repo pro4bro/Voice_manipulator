@@ -18,19 +18,42 @@ export function ObsPluginPreferences() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [removePairing, setRemovePairing] = useState(false);
+  const [transportFailed, setTransportFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     void api.getObsPluginInstallation().then((result) => {
       if (active) { setStatus(result); setSelectedRoot(result.obsRoot ?? ""); }
-    }).catch((cause: unknown) => { if (active) setError(String(cause)); });
+    }).catch((cause: unknown) => { if (active) {
+      setError(String(cause)); setTransportFailed(cause instanceof TypeError);
+    } });
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!transportFailed || busy) return;
+    let active = true;
+    let timer: number;
+    function check() {
+      void api.getObsPluginInstallation(selectedRoot || undefined).then((result) => {
+        if (!active) return;
+        setStatus(result); setSelectedRoot(result.obsRoot ?? "");
+        setError(""); setTransportFailed(false);
+      }).catch((cause: unknown) => {
+        if (!active) return;
+        setError(String(cause));
+        if (cause instanceof TypeError) timer = window.setTimeout(check, 3000);
+        else setTransportFailed(false);
+      });
+    }
+    timer = window.setTimeout(check, 3000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [transportFailed, busy, selectedRoot]);
+
   async function refresh(root = selectedRoot) {
     setBusy(true); setError("");
-    try { setStatus(await api.getObsPluginInstallation(root || undefined)); }
-    catch (cause) { setError(String(cause)); }
+    try { setStatus(await api.getObsPluginInstallation(root || undefined)); setTransportFailed(false); }
+    catch (cause) { setError(String(cause)); setTransportFailed(cause instanceof TypeError); }
     finally { setBusy(false); }
   }
 
@@ -48,13 +71,13 @@ export function ObsPluginPreferences() {
 
   async function act(action: "install" | "repair" | "remove" | "open-obs" | "reset-pairing") {
     setBusy(true); setError("");
-    try { setStatus(await api.changeObsPluginInstallation(action, selectedRoot || undefined, action === "remove" && removePairing)); }
-    catch (cause) { setError(String(cause)); }
+    try { setStatus(await api.changeObsPluginInstallation(action, selectedRoot || undefined, action === "remove" && removePairing)); setTransportFailed(false); }
+    catch (cause) { setError(String(cause)); setTransportFailed(cause instanceof TypeError); }
     finally { setBusy(false); }
   }
 
   const ready = status && !["obs-unavailable", "package-unavailable"].includes(status.state);
-  const mutationBlocked = busy || !ready;
+  const mutationBlocked = busy || transportFailed || !ready;
   const canInstall = ready && ["not-installed", "update-available"].includes(status.state) && (!status.obsRunning || status.state === "not-installed") && !status.compatibilityWarning;
   const canRepair = ready && ["installed", "update-available", "damaged"].includes(status.state) && !status.obsRunning && !status.compatibilityWarning;
   const canRemove = ready && status.state !== "not-installed" && !status.obsRunning;
@@ -83,6 +106,6 @@ export function ObsPluginPreferences() {
     <label className="obs-plugin-preferences__remove"><input checked={removePairing} onChange={(event) => setRemovePairing(event.target.checked)} type="checkbox" /><span>Khi Remove, xóa cả cấu hình ghép nối của Windows user này</span></label>
     <small className="preferences-note">Reset pairing tạo token mới và ngắt kết nối đang dùng token cũ.</small>
     {error ? <p className="obs-plugin-preferences__error" role="alert">{error}</p> : null}
-    <small className="preferences-note">Dialog Tools trong OBS và ghép nối tự động sẽ được kích hoạt ở vòng LiveLink tiếp theo.</small>
+    <small className="preferences-note">Mở Tools → Pro4Bro LiveLink trong OBS để xem kết nối. Plugin tự nối lại khi app hoạt động.</small>
   </section>;
 }
