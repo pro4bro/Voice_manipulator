@@ -64,6 +64,51 @@ def source(channel_id, source_id, *, slot=1, forward=True, missing=False):
             "sampleRate": 48000, "audioChannels": 1, "muted": False}
 
 
+def test_source_absence_event_after_inventory_retains_native_journal_boundaries(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    started = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 1_000_000_000, "span-1")
+    recording_id = started["appRecording"]["recordingId"]
+
+    def presence(sequence, kind, ns, sample):
+        return runtime.event(token, {
+            "installId": hello["installId"], "processInstanceId": hello["processInstanceId"],
+            "connectionId": snapshot["connectionId"], "connectionEpoch": snapshot["connectionEpoch"],
+            "eventId": f"event-{sequence}", "sequence": sequence, "kind": kind,
+            "monotonicNs": ns, "channelId": channel_id, "sourceUuid": source_id,
+            "appliedSampleIndex": sample,
+        })
+
+    # Native heartbeat is sent before the queued event. Receipt time must not
+    # replace the native observation boundary or suppress the journal entry.
+    advertise(runtime, link, token, hello, snapshot,
+              [source(channel_id, source_id, missing=True)], recording=True)
+    absent = presence(1, "channel-missing", 2_000_000_000, 48000)
+    interval = absent["appRecording"]["channelIntervals"][-1]
+    assert (interval["reason"], interval["startMonotonicNs"], interval["startSampleIndex"]) == (
+        "source-missing", 2_000_000_000, 48000)
+    assert presence(1, "channel-missing", 2_000_000_000, 48000) == absent
+
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)], recording=True)
+    presence(2, "channel-restored", 3_000_000_000, 48000)
+    restored = presence(3, "channel-forward-on", 3_000_000_000, 48000)
+    assert restored["appRecording"]["channelIntervals"][0]["endMonotonicNs"] == 3_000_000_000
+    assert restored["appRecording"]["channelIntervals"][0]["endSampleIndex"] == 48000
+    assert all(item["endMonotonicNs"] is not None for item in restored["appRecording"]["channelIntervals"])
+
+    advertise(runtime, link, token, hello, snapshot,
+              [source(channel_id, source_id, missing=True)], recording=True)
+    presence(4, "channel-missing", 4_000_000_000, 96000)
+    stopped = lifecycle(runtime, token, hello, snapshot, 5, "obs-stop", 5_000_000_000, "span-1")
+    recording = stopped["recentRecordings"][-1]
+    intervals = [item for item in recording["channelIntervals"] if item["reason"] == "source-missing"]
+    assert [(item["startMonotonicNs"], item["endMonotonicNs"]) for item in intervals] == [
+        (2_000_000_000, 3_000_000_000), (4_000_000_000, 5_000_000_000)]
+    journal = Path(project.project_path) / "assets" / "obs-livelink" / recording_id / "recording.json"
+    assert json.loads(journal.read_text())["recording"]["channelIntervals"] == recording["channelIntervals"]
+
+
 def test_new_obs_process_retains_stopped_recording_for_pcm_outbox_replay(tmp_path):
     link, runtime, project, token, hello, snapshot = setup(tmp_path)
     channel_id, source_id = str(uuid4()), str(uuid4())

@@ -1,6 +1,7 @@
 #include "livelink-dialog.h"
 #include "livelink-mixer.h"
 #include "livelink-capture.h"
+#include "livelink-presence.h"
 #include "livelink-spool.h"
 
 #include <obs-module.h>
@@ -315,6 +316,7 @@ private:
 	std::array<Strip, VISIBLE_ROWS> strips_{};
 	std::unique_ptr<LiveLinkMixer> mixer_;
 	LiveLinkCapture capture_;
+	LiveLinkPresence presence_;
 	std::vector<MixerRow> rows_;
 	int scroll_{};
 	int timer_ticks_{};
@@ -740,7 +742,19 @@ private:
 		if (collection_changing_) return;
 		mixer_->refresh();
 		rows_ = mixer_->rows();
-		capture_.sync(mixer_->rows(true));
+		const auto inventory = mixer_->rows(true);
+		capture_.sync(inventory);
+		std::vector<std::pair<MixerRow, LiveLinkSourceBoundary>> transitions;
+		for (const auto &row : presence_.observe(inventory))
+			transitions.emplace_back(row, capture_.source_boundary(row.channel_id));
+		std::stable_sort(transitions.begin(), transitions.end(), [](const auto &a, const auto &b) {
+			return a.second.monotonic_ns < b.second.monotonic_ns;
+		});
+		for (const auto &[row, boundary] : transitions) {
+			queue_source_event(row, row.missing ? "channel-missing" : "channel-restored", boundary.monotonic_ns, boundary.sample_index);
+			if (!row.missing && row.forward)
+				queue_source_event(row, "channel-forward-on", boundary.monotonic_ns, boundary.sample_index);
+		}
 		scroll_ = std::clamp(scroll_, 0, std::max(0, static_cast<int>(rows_.size()) - VISIBLE_ROWS));
 		SCROLLINFO info{sizeof(info)};
 		info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
@@ -786,6 +800,27 @@ private:
 			inventory_json_ = obs_data_get_json(snapshot);
 		}
 		obs_data_release(snapshot);
+	}
+
+	void queue_source_event(const MixerRow &row, const char *kind, uint64_t at_ns, uint64_t sample)
+	{
+		obs_data_t *event = obs_data_create();
+		obs_data_set_string(event, "processInstanceId", process_id_.c_str());
+		obs_data_set_string(event, "eventId", new_uuid().c_str());
+		obs_data_set_int(event, "sequence", next_event_sequence_++);
+		obs_data_set_string(event, "kind", kind);
+		obs_data_set_int(event, "monotonicNs", static_cast<long long>(at_ns));
+		obs_data_set_string(event, "channelId", row.channel_id.c_str());
+		obs_data_set_string(event, "sourceUuid", row.uuid.c_str());
+		obs_data_set_int(event, "appliedSampleIndex", static_cast<long long>(sample));
+		{
+			std::lock_guard lock(mutex_);
+			events_.emplace_back(obs_data_get_json(event));
+		}
+		blog(LOG_INFO, "[Pro4Bro] source presence kind=%s channel=%s monotonic_ns=%llu sample=%llu",
+			kind, row.channel_id.c_str(), static_cast<unsigned long long>(at_ns),
+			static_cast<unsigned long long>(sample));
+		obs_data_release(event);
 	}
 
 	void apply_commands()
@@ -1007,7 +1042,7 @@ private:
 				Reply reply;
 				if (connection_id_.empty()) {
 					obs_data_set_string(payload, "processInstanceId", process_id_.c_str());
-					obs_data_set_string(payload, "pluginVersion", "0.6.8");
+					obs_data_set_string(payload, "pluginVersion", "0.6.9");
 					obs_data_set_string(payload, "obsVersion", obs_get_version_string());
 					obs_data_set_int(payload, "protocolMin", 3);
 					obs_data_set_int(payload, "protocolMax", 3);
@@ -1097,6 +1132,33 @@ private:
 						}
 					}
 					if (!connection_id_.empty() && active_) {
+						// Apply queued native boundaries before resumed PCM or newer command ACKs.
+						for (int event_count = 0; event_count < 64; ++event_count) {
+							std::string event_json;
+							{
+								std::lock_guard lock(mutex_);
+								if (!events_.empty()) event_json = events_.front();
+							}
+							if (event_json.empty()) break;
+							obs_data_t *event = obs_data_create_from_json(event_json.c_str());
+							if (event) {
+								obs_data_set_string(event, "installId", pairing.install_id.c_str());
+								obs_data_set_string(event, "connectionId", connection_id_.c_str());
+								obs_data_set_string(event, "connectionEpoch", epoch_.c_str());
+								Reply sent = request(pairing, L"POST", "/api/obs-livelink/v3/lifecycle", obs_data_get_json(event));
+								if (sent.status == 200) {
+									std::lock_guard lock(mutex_);
+									if (!events_.empty()) events_.pop_front();
+								}
+								obs_data_release(event);
+								if (sent.status != 200) break;
+							}
+						}
+						bool control_ready;
+						{
+							std::lock_guard lock(mutex_);
+							control_ready = events_.empty();
+						}
 						const auto burst_started = std::chrono::steady_clock::now();
 						std::vector<int64_t> durable_acks;
 						for (int sent_count = 0; sent_count < 20; ++sent_count) {
@@ -1219,30 +1281,12 @@ private:
 									}
 								}
 						}
-						std::string event_json;
-						{
-							std::lock_guard lock(mutex_);
-							if (!events_.empty()) event_json = events_.front();
-						}
-						if (!event_json.empty()) {
-							obs_data_t *event = obs_data_create_from_json(event_json.c_str());
-							if (event) {
-								obs_data_set_string(event, "installId", pairing.install_id.c_str());
-								obs_data_set_string(event, "connectionId", connection_id_.c_str());
-								obs_data_set_string(event, "connectionEpoch", epoch_.c_str());
-								Reply sent = request(pairing, L"POST", "/api/obs-livelink/v3/lifecycle", obs_data_get_json(event));
-								if (sent.status == 200) {
-									std::lock_guard lock(mutex_);
-									if (!events_.empty()) events_.pop_front();
-								}
-								obs_data_release(event);
-							}
-						}
 						std::string route = "/api/obs-livelink/v3/connections/" + connection_id_ +
 							"/commands?installId=" + pairing.install_id + "&epoch=" + epoch_ +
 							"&after=" + std::to_string(command_cursor) +
 							(outstanding ? "&waitSeconds=0" : "&waitSeconds=0.1");
-						Reply commands = request(pairing, L"GET", route.c_str());
+						Reply commands;
+						if (control_ready) commands = request(pairing, L"GET", route.c_str());
 						if (commands.status == 200) {
 							obs_data_t *result = obs_data_create_from_json(commands.body.c_str());
 							if (result) {

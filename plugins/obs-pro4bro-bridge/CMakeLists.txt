@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(pro4bro_obs_bridge VERSION 0.6.8 LANGUAGES CXX RC)
+project(pro4bro_obs_bridge VERSION 0.6.9 LANGUAGES CXX RC)
 
 if(NOT DEFINED OBS_SOURCE_DIR OR NOT DEFINED OBS_IMPORT_LIB_DIR)
   message(FATAL_ERROR "Set OBS_SOURCE_DIR and OBS_IMPORT_LIB_DIR. See README.md.")

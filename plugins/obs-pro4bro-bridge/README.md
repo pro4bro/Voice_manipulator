@@ -43,6 +43,17 @@ known Stop boundaries clip the final callback and retained outbox tail before
 upload. Both API files and native
 source/ACK transactions retain their required durable flushes.
 
+Version 0.6.9 journals source disappearance/restoration, including sources
+added during the current OBS process. Boundaries use OBS monotonic time and
+sample counters at callback detach/attach. Inventory polling observes changes
+about once per second; these are observation boundaries, not exact scene-edit
+timestamps. A missing source retains queued PCM until the current take drains.
+Restoring the same UUID preserves chunk sequences and advances the sample axis
+through the observed absence; its saved gap is classified `source-missing`.
+The Timeline retains captured lanes and distinguishes source absence from
+delayed PCM receipt. Install/Repair in app Preferences and restart OBS to load
+the updated package in an existing installation.
+
 An OBS MKV may be probed and its committed audio decoded during recording, but
 its audio tracks are configured OBS mix tracks. They are not a guaranteed
 one-to-one source archive and cannot replace the per-source PCM outbox,

@@ -15,14 +15,16 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12I` passed the
-measured receipt cost/native/physical gate. Plugin/package 0.6.8 consumes
-larger existing PCM queues while retaining durable ACKs. Four physical takes
-retain complete PCM/STT and verified two-track MKAs; controlled-delay p95
-fell from about 126 to 31 seconds and final quiet p95 reached 1.58/1.89 seconds.
-The natural 12H stall trigger remains unproven and arbitrary storage stalls
-can still delay the live tail. `LIVELINK-STT-12J` next persists new-source
-absence timing mid-take. Owner installation, cold startup, reconnect/Script follow and
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12J` passed the
+source-absence reducer/native and two OBS/browser artifact gates. Plugin/package
+0.6.9 retains queued PCM/counters and journals native callback boundaries with
+restoration silence. Timeline distinguishes source absence from receipt delay.
+Both takes retain complete captured tails/STT and verified two-track MKAs;
+native absence times/samples match journals, with no gap on the continuing
+track. Backend 494, frontend 458 and native 2/2 tests, typecheck/build passed.
+The natural 12H stall trigger, exact video timing and wider gates remain open.
+`LIVELINK-STT-12K` next isolates cold-start local listener loss and runtime
+readiness. Owner installation, reconnect/Script follow and
 the wider source/UI/portability matrix remain under `docs/WORK-ROUNDS.md`.
 No product phase is marked complete by this focused round.
 

@@ -59,6 +59,7 @@ void LiveLinkCapture::sync(const std::vector<MixerRow> &rows)
 {
 	std::lock_guard lifecycle(lifecycle_mutex_);
 	std::vector<std::unique_ptr<Track>> removed;
+	std::vector<Track *> detached;
 	{
 		std::lock_guard lock(mutex_);
 		for (auto it = tracks_.begin(); it != tracks_.end();) {
@@ -66,13 +67,26 @@ void LiveLinkCapture::sync(const std::vector<MixerRow> &rows)
 				return !row.missing && row.channel_id == it->first && row.uuid == it->second->source_uuid;
 			});
 			if (found == rows.end()) {
-				removed.push_back(std::move(it->second));
-				it = tracks_.erase(it);
+				if (!recording_id_.empty()) {
+					// Keep queued callbacks and counters until this take drains.
+					// Restoring the same UUID resumes the same sequence/sample space.
+					if (!it->second->missing) detached.push_back(it->second.get());
+					it->second->missing = true;
+					++it;
+				} else {
+					removed.push_back(std::move(it->second));
+					it = tracks_.erase(it);
+				}
 			} else {
 				it->second->forward.store(found->forward);
 				++it;
 			}
 		}
+	}
+	for (auto *track : detached) {
+		detach(*track);
+		std::lock_guard lock(mutex_);
+		track->presence_boundary = {os_gettime_ns(), track->next_sample_index.load()};
 	}
 	for (auto &track : removed) detach(*track);
 	{
@@ -86,14 +100,25 @@ void LiveLinkCapture::sync(const std::vector<MixerRow> &rows)
 		if (row.missing) continue;
 		{
 			std::lock_guard lock(mutex_);
-			if (tracks_.count(row.channel_id)) continue;
+			auto existing = tracks_.find(row.channel_id);
+			if (existing != tracks_.end() && (!existing->second->missing ||
+				existing->second->source_uuid != row.uuid)) continue;
 		}
 		obs_source_t *source = obs_get_source_by_uuid(row.uuid.c_str());
 		if (!source || !(obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO)) {
 			if (source) obs_source_release(source);
 			continue;
 		}
-		auto track = std::make_unique<Track>();
+		std::unique_lock lock(mutex_);
+		auto &track = tracks_[row.channel_id];
+		if (!track) track = std::make_unique<Track>();
+		const uint64_t restored_ns = os_gettime_ns();
+		if (track->missing && track->presence_boundary.monotonic_ns && track->sample_rate) {
+			// Detached sources produce no callbacks. Advance the media sample
+			// axis through that observed absence so saved audio is not compressed.
+			track->next_sample_index.fetch_add((restored_ns - track->presence_boundary.monotonic_ns) *
+				track->sample_rate / 1'000'000'000ULL);
+		}
 		track->owner = this;
 		track->source = source;
 		track->channel_id = row.channel_id;
@@ -101,11 +126,12 @@ void LiveLinkCapture::sync(const std::vector<MixerRow> &rows)
 		track->sample_rate = info.samples_per_sec;
 		track->channels = std::clamp(get_audio_channels(info.speakers), 1u, 8u);
 		track->forward.store(row.forward);
+		track->missing = false;
+		// Restoration precedes the first callback; disappearance follows the
+		// last callback. Buffered PCM must never fall inside the absent interval.
+		track->presence_boundary = {restored_ns, track->next_sample_index.load()};
 		Track *attached = track.get();
-		{
-			std::lock_guard lock(mutex_);
-			tracks_.emplace(row.channel_id, std::move(track));
-		}
+		lock.unlock();
 		obs_source_add_audio_capture_callback(source, callback, attached);
 	}
 }
@@ -224,6 +250,13 @@ uint64_t LiveLinkCapture::set_forward(const std::string &channel_id, bool enable
 	if (found == tracks_.end()) return 0;
 	found->second->forward.store(enabled);
 	return found->second->next_sample_index.load();
+}
+
+LiveLinkSourceBoundary LiveLinkCapture::source_boundary(const std::string &channel_id)
+{
+	std::lock_guard lock(mutex_);
+	auto found = tracks_.find(channel_id);
+	return found == tracks_.end() ? LiveLinkSourceBoundary{os_gettime_ns(), 0} : found->second->presence_boundary;
 }
 
 std::optional<LiveLinkAudioChunk> LiveLinkCapture::take()

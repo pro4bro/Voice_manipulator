@@ -175,6 +175,36 @@ it("omits historical missing sources without PCM and retains sources recorded ea
   expect(screen.getByRole("img", { name: "Sóng âm Channel 3" })).toBeInTheDocument();
 });
 
+it("distinguishes source absence from delayed receipt while keeping saved PCM and unknown gaps", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  const onSnapshot = mocks.subscribe.mock.calls[0]?.[2] as (next: ObsLiveLinkWaveform) => void;
+  const absent = { appRecording: { ...recording, startedAtUtc: new Date(Date.now() - 20_000).toISOString(),
+    channelIntervals: [
+      { channelId: ids[0], reason: "source-missing", startMonotonicNs: 1_050_000_000, endMonotonicNs: 1_100_000_000 },
+      { channelId: ids[0], reason: "source-missing", startMonotonicNs: 1_300_000_000, endMonotonicNs: null },
+    ] }, channels: [{ channelId: ids[0], alias: "Channel 1", nativeName: "Mic 1", slot: 1,
+    missing: true, appliedForward: false, desiredForward: true,
+    capture: { recordingId: "recording", durableChunkCount: 3 } }] } as unknown as ObsLiveLinkStatus;
+  act(() => onStatus(absent));
+  const waveform = wave(ids[0], 12000, "pcm");
+  act(() => onSnapshot({ ...waveform, points: [...waveform.points,
+    { ...waveform.points[0], startFrame: 4800, endFrame: 7200 },
+    { ...waveform.points[1], startFrame: 7200, endFrame: 9600 },
+    { ...waveform.points[0], startFrame: 9600, endFrame: 12000 },
+  ] }));
+  const lane = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  expect(lane.querySelector("path")?.getAttribute("d")).toBeTruthy();
+  expect(lane).toHaveTextContent("Nguồn đang vắng · PCM đã lưu");
+  expect(lane).not.toHaveTextContent("Đang nhận PCM");
+  expect(screen.getAllByLabelText("Channel 1: thiếu PCM")).toHaveLength(1);
+  expect(screen.getAllByLabelText("Channel 1: source-missing")).toHaveLength(2);
+  act(() => onStatus({ ...absent, appRecording: { ...absent.appRecording!, channelIntervals: [] },
+    channels: absent.channels.map((channel) => ({ ...channel, missing: false, appliedForward: true })) }));
+  expect(lane).not.toHaveTextContent("Nguồn đang vắng");
+  expect(lane).toHaveTextContent("Đang nhận PCM");
+});
+
 it("keeps each full channel timeline in both layouts and resizes columns independently", async () => {
   const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;

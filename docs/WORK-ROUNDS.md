@@ -80,7 +80,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12G | Profile and reduce PCM ACK latency while the browser workspace polls during sustained two-track recording | Complete at sustained two-source data/latency gate; live waveform UI remains open | Batched native outbox ACK commits and changed-only folder persistence passed regressions; two warmed browser takes measured PCM p95 falling from 49.01/49.26 to 2.16/2.52 seconds without sample gaps. |
 | LIVELINK-STT-12H | Repair live waveform clearing and historical missing-source lanes, then verify the recording tail in the browser | Complete at cursor/lane and OBS/browser regression gate; sustained PCM latency remains open | Empty cursor replies retain saved waveform; missing historical sources without PCM are omitted. Two real OBS takes verified retention, source removal and archive handoff; the long take again accumulated ingress delay. |
 | LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Complete at measured cost/native/physical gate; natural-stall matrix remains open | Plugin 0.6.8 consumes larger existing queues without waiting. Fixed-delay p95 fell from 126 to 31 seconds; final quiet take reached 1.58/1.89 seconds. Arbitrary disk stalls can still postpone the live tail. |
-| LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Queued | The 12H removal check retained both audio tracks and the live lane, but the journal omitted the new source's mid-take missing interval. |
+| LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Complete at reducer/native and two OBS/browser artifact gates | Plugin 0.6.9 retains queued PCM, journals callback boundaries and preserves restoration silence; Timeline distinguishes missing sources from receipt delay. |
+| LIVELINK-STT-12K | Reproduce cold-start local listener loss and identify the failing runtime/readiness boundary | Queued | Warm recording success does not establish reliable startup; API/Studio/controller failure must be distinguished from health-readiness delay before repair. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -3096,3 +3097,50 @@ idle/Start overflow attribution and wider source/DPI/portability gates remain.
 Exact next round: `LIVELINK-STT-12J` — persist source-absence timing when a
 newly added source disappears mid-take, verifying its retained PCM/lane and
 the journal interval together.
+
+## Round LIVELINK-STT-12J — 2026-10-03
+
+Completed scope:
+
+- Reproduced journal omission when heartbeat preceded a missing event, and
+  native queued-prefix loss on source detachment. Plugin/package 0.6.9 emits
+  native missing/restored events for newly discovered sources, retains queued
+  PCM/counters while the take drains, and pads observed restoration gaps.
+- Reducer retains native event timing despite newer inventory. Stable UUID,
+  tombstone, event fingerprint/ordering and durable ACK contracts remain.
+  Native observation boundaries follow detach and precede attach, with about
+  one-second inventory polling; no exact scene-edit time is invented. ADR 0035.
+- First physical take exposed a related UI error: an absent source looked
+  like delayed PCM. Timeline now labels source absence, keeps the lane/PCM and
+  distinguishes known absence from unknown holes. Second take verifies build.
+
+Evidence:
+
+- Red regressions before fixes, then backend 494 passed (two existing warnings),
+  frontend 54 files / 458 tests, native 2/2, typecheck/build and diff check passed.
+- Two physical two-source OBS/browser takes, 77.561 and 66.258 seconds. Every
+  native absence time/sample counter matches the journal; restoration closes
+  the first interval, Stop closes the second. A's final captured sample equals
+  the removal boundary: its queued tail remains. B has no sample gap/overlap.
+- A's only sample gap is deliberate observed absence, 780,307 / 634,252 frames,
+  classified `source-missing`. PCM format/sequence/bytes/hashes verified; both
+  two-track FLAC MKAs hash-match and decode. Outbox sampled peak 4 then 0.
+- Live checkpoints consume all 39/132 and 28/91 durable chunks; no errors,
+  duplicate finals or open utterances. Detailed large-v3 STT publishes all
+  available tails within one resampling frame. Medium and large-v3 remain
+  resident in one Studio process, model-load count 2 through cleanup.
+- Built browser UI keeps source A's lane/waveform and shows `Nguồn đang vắng
+  · PCM đã lưu`. Saved wide view has 312/600 bars and A's source-missing gap,
+  without reload. Isolated settings restored, lease/outbox cleared and test
+  services/tab closed. Gate: `docs/gates/livelink-stt-12j-source-absence.md`;
+  ignored `.scratch/livelink-stt-12j` retains projects and diagnostics.
+
+Remaining gap: owner installation requires Preferences Install/Repair and OBS
+restart. Native observation lags the actual edit by inventory polling; exact
+video synchronization and control recovery through scene changes/process
+crashes remain in LIVELINK-08. The natural disk-stall cause, cold startup,
+reconnect/Script follow and wider source/DPI/portability gates remain open.
+
+Exact next round: `LIVELINK-STT-12K` — reproduce cold-start local listener loss,
+distinguish API/Studio/controller failure from health-readiness delay, and
+retain recovery evidence. Warm recording success cannot prove cold startup.

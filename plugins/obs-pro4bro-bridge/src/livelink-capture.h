@@ -27,6 +27,10 @@ struct LiveLinkQueueStatus {
 	uint32_t sample_rate{};
 };
 
+struct LiveLinkSourceBoundary {
+	uint64_t monotonic_ns{}, sample_index{};
+};
+
 class LiveLinkCapture {
 public:
 	LiveLinkCapture() = default;
@@ -39,6 +43,7 @@ public:
 	void pause_at(uint64_t at_ns);
 	void resume_at(uint64_t at_ns);
 	uint64_t set_forward(const std::string &channel_id, bool enabled);
+	LiveLinkSourceBoundary source_boundary(const std::string &channel_id);
 	std::optional<LiveLinkAudioChunk> take();
 	std::vector<LiveLinkQueueStatus> queue_status();
 	void stop();
@@ -60,6 +65,8 @@ private:
 		uint64_t overflow_frames{}, max_callback_wait_ns{};
 		uint32_t sample_rate{}, channels{};
 		std::atomic<bool> forward{false};
+		bool missing{};
+		LiveLinkSourceBoundary presence_boundary;
 		std::deque<Packet> queue;
 	};
 	std::mutex mutex_;

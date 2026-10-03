@@ -469,11 +469,12 @@ def _apply_channel_event(state: ObsLiveLinkState, event: ObsLifecycleEvent) -> O
         closing.update({"user-disabled", "forward-pending"})
     elif kind == "channel-missing":
         updates = {"presence": "missing", "forward_applied": False}
-        if channel.presence == "active":
-            opening = "source-missing"
+        # Inventory can arrive before this sequenced native event. Presence in
+        # that snapshot must not suppress the event's media-time provenance.
+        opening = "source-missing"
     elif kind == "channel-restored":
-        if channel.presence != "missing":
-            raise ObsStateConflict("Only a missing source can be restored")
+        # A newer heartbeat may already report active. The event still closes
+        # the interval at OBS's boundary, never at server receipt time.
         updates = {"presence": "active", "forward_applied": False}
         closing.add("source-missing")
         opening = "forward-pending" if channel.forward_desired else "user-disabled"

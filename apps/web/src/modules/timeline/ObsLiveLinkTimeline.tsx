@@ -130,7 +130,8 @@ function intervalPosition(startSeconds: number, endSeconds: number, windowStart:
 }
 
 function missingPcmRanges(points: ObsLiveLinkWaveformPoint[], sampleRate: number | null,
-                          elapsedSeconds: number): Array<{ start: number; end: number }> {
+                          elapsedSeconds: number,
+                          knownAbsences: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
   if (!sampleRate) return [];
   const ranges: Array<{ start: number; end: number }> = [];
   const lastReceivedFrame = points.reduce((latest, point) => point.peak === null
@@ -144,7 +145,15 @@ function missingPcmRanges(points: ObsLiveLinkWaveformPoint[], sampleRate: number
     if (previous && start <= previous.end + 1 / sampleRate) previous.end = Math.max(previous.end, end);
     else ranges.push({ start, end });
   }
-  return ranges;
+  // Keep unknown holes visible, but don't label a journaled source absence
+  // as PCM waiting to arrive. Split partial overlaps instead of hiding them.
+  return ranges.flatMap((range) => knownAbsences.reduce((remaining, absent) => remaining.flatMap((part) => {
+    if (absent.end <= part.start || absent.start >= part.end) return [part];
+    return [
+      ...(part.start < absent.start ? [{ start: part.start, end: absent.start }] : []),
+      ...(absent.end < part.end ? [{ start: absent.end, end: part.end }] : []),
+    ];
+  }), [range]));
 }
 
 function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): number {
@@ -688,10 +697,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
             const hasPcm = points.some((point) => point.peak !== null);
             const sampleRate = waveform?.sampleRate ?? null;
             const path = waveformPath(points, sampleRate, windowStart, windowSpan);
-            const missing = isLive ? missingPcmRanges(points, sampleRate, duration) : [];
             const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null
               ? latest : Math.max(latest, point.endFrame / sampleRate), 0) : 0;
-            const pendingSeconds = isLive && followLive && hasPcm ? Math.max(0, duration - receivedUntil) : 0;
             const liveChannel = status?.channels.find((channel) => channel.channelId === lane.channelId);
             const livePeak = liveChannel?.meterPeak ?? 0;
             const level = isLive ? Math.max(0, Math.min(100, Math.round(livePeak * 100))) :
@@ -704,6 +711,13 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               ...(recording?.channelIntervals ?? []).filter((part) => part.channelId === lane.channelId)
                 .map((part) => ({ ...part, reason: part.reason })),
             ];
+            const sourceAbsences = intervals.filter((part) => part.reason === "source-missing");
+            const sourceAbsent = isLive && (liveChannel?.missing || sourceAbsences.some((part) => part.endMonotonicNs === null));
+            const missing = isLive ? missingPcmRanges(points, sampleRate, duration, sourceAbsences.map((part) => ({
+              start: (part.startMonotonicNs - intervalOrigin) / 1e9,
+              end: part.endMonotonicNs === null ? duration : (part.endMonotonicNs - intervalOrigin) / 1e9,
+            }))) : [];
+            const pendingSeconds = isLive && !sourceAbsent && followLive && hasPcm ? Math.max(0, duration - receivedUntil) : 0;
             return <div className="obs-timeline__lane" key={lane.channelId}
               style={layout === "columns" && columnWidths[lane.channelId] ? { flexBasis: columnWidths[lane.channelId], flexGrow: 0 } : undefined}>
               <button aria-label={`Nghe kênh ${lane.label}`} aria-pressed={selectedLane?.channelId === lane.channelId}
@@ -769,7 +783,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   return position ? <i aria-label={`Đoạn đã loại ${lane.label}`} className="obs-timeline__removed-range" key={cut.id} style={position} /> : null;
                 })}
                 {stagedCut ? <i aria-label={`Đoạn chuẩn bị xóa ${lane.label}`} className="obs-timeline__removed-range is-staged" style={intervalPosition(stagedCut.start, stagedCut.end, windowStart, windowSpan) ?? undefined} /> : null}
-                {isLive && pendingSeconds > 2 ? <span className="obs-timeline__pending">
+                {sourceAbsent ? <span className="obs-timeline__empty">Nguồn đang vắng · PCM đã lưu</span>
+                : isLive && pendingSeconds > 2 ? <span className="obs-timeline__pending">
                   Đang nhận PCM · trễ {Math.round(pendingSeconds)}s
                 </span> : !hasPcm ? <span className="obs-timeline__empty">{isLive
                   ? (liveChannel?.capture?.durableChunkCount ?? 0) > 0

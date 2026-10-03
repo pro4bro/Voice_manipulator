@@ -1,5 +1,6 @@
 #include "../src/livelink-capture.h"
 #include "../src/livelink-spool.h"
+#include "../src/livelink-presence.h"
 
 #include <array>
 #include <chrono>
@@ -51,6 +52,30 @@ struct LiveLinkCaptureTestAccess {
 
 int main()
 {
+	CHECK(obs_startup("en-US", nullptr, nullptr));
+	struct ObsShutdown { ~ObsShutdown() { obs_shutdown(); } } shutdown;
+	LiveLinkPresence presence;
+	MixerRow first;
+	first.channel_id = "channel-1";
+	first.uuid = "uuid-1";
+	CHECK(presence.observe({first}).empty());
+	MixerRow added = first;
+	added.channel_id = "channel-2";
+	added.uuid = "uuid-2";
+	CHECK(presence.observe({first, added}).empty());
+	added.missing = true;
+	auto vanished = presence.observe({first, added});
+	CHECK(vanished.size() == 1 && vanished[0].channel_id == "channel-2" && vanished[0].missing);
+	CHECK(presence.observe({first, added}).empty());
+	added.missing = false;
+	auto restored = presence.observe({first, added});
+	CHECK(restored.size() == 1 && restored[0].uuid == "uuid-2" && !restored[0].missing);
+	added.alias = "new alias";
+	added.muted = true;
+	CHECK(presence.observe({first, added}).empty());
+	added.uuid = "replacement-uuid";
+	added.missing = true;
+	CHECK(presence.observe({first, added}).empty());
 	// A muted OBS mixer still exposes raw source PCM to a forwarded LiveLink track.
 	LiveLinkCapture muted_source;
 	muted_source.set_recording("muted-source", 1, false, 0);
@@ -90,6 +115,25 @@ int main()
 	LiveLinkCaptureTestAccess::capture_packet(immediate, "channel-1");
 	auto prefix = immediate.take();
 	CHECK(prefix && prefix->frames == 480 && !immediate.take());
+
+	// Removing a source while its callbacks await durable spooling must retain
+	// the complete prefix, including the last partial chunk.
+	LiveLinkCapture missing_source;
+	missing_source.set_recording("missing-source", 1, false, 0);
+	LiveLinkCaptureTestAccess::add_track(missing_source, "channel-1");
+	for (int packet = 0; packet < 225; ++packet)
+		LiveLinkCaptureTestAccess::capture_packet(missing_source, "channel-1");
+	missing_source.sync({});
+	auto retained = missing_source.take(), retained_tail = missing_source.take();
+	CHECK(retained && retained->frames == 96000 && retained->first_sample_index == 0);
+	CHECK(retained_tail && retained_tail->frames == 12000 && retained_tail->first_sample_index == 96000);
+	CHECK(retained_tail->sequence == 1 && !missing_source.take());
+	CHECK(missing_source.source_boundary("channel-1").sample_index == 108000);
+	// A restored callback uses retained counters, not a second sequence zero.
+	LiveLinkCaptureTestAccess::capture_packet(missing_source, "channel-1");
+	auto resumed = missing_source.take();
+	CHECK(resumed && resumed->sequence == 2 && resumed->first_sample_index == 108000);
+	CHECK(resumed->frames == 480 && !missing_source.take());
 
 	// A larger backlog must stop at the exact boundary inside a callback packet.
 	LiveLinkCapture stopped;

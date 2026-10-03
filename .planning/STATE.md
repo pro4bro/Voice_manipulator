@@ -37,17 +37,18 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12I` (2026-10-03), measured
-receipt cost/native/physical gate complete. Plugin/package 0.6.8 consumes
-larger existing PCM queues without waiting or weakening durable ACKs.
-Four OBS/browser takes retain complete PCM/live/detailed STT and verified
-archives. Fixed-delay receipt p95 fell from about 126 to 31 seconds; final
-quiet take reached 1.577/1.885 seconds. Backend 493, frontend 457 and native
-2/2 tests, typecheck/build and diff check passed. See ADR 0034 and
-`docs/gates/livelink-stt-12i-ingress.md`. The natural 12H stall trigger is
-unproven; arbitrary disk stalls can still delay the visible tail.
-Exact next is `LIVELINK-STT-12J`: persist new-source absence timing mid-take.
-Owner plugin installation, cold startup, reconnect/Script follow and the wider
+Latest bounded LiveLink round: `LIVELINK-STT-12J` (2026-10-03), source-absence
+reducer/native/two-take OBS/browser gate complete. Plugin/package 0.6.9 journals
+callback boundaries, retains queued PCM/counters and pads restoration silence.
+Timeline distinguishes source absence from delayed receipt without discarding
+the lane/PCM or hiding unknown holes. Both physical takes verify native journal
+boundaries, complete tails/live/detailed STT and two-track FLAC archives.
+Backend 494, frontend 458 and native 2/2 tests, typecheck/build and diff check
+passed. See ADR 0035 and `docs/gates/livelink-stt-12j-source-absence.md`.
+The natural 12H stall trigger and exact video timing remain unproven.
+Exact next is `LIVELINK-STT-12K`: isolate cold-start local listener loss from
+API/Studio/controller failure versus health-readiness delay.
+Owner plugin installation, reconnect/Script follow and the wider
 `LIVELINK-08` acceptance matrix remain open. This does not advance the Voice
 Training phase. The historical
 phase baseline below remains distinct from this round's focused checks.

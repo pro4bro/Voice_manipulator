@@ -1,5 +1,28 @@
 # Project Status — 2026-09-22
 
+## LiveLink source absence and retained PCM — 2026-10-03
+
+`LIVELINK-STT-12J` completes source-absence provenance for newly added sources.
+Plugin/package 0.6.9 emits native callback detach/attach boundaries, retains
+queued PCM and counters through source removal, and pads observed restoration
+gaps. The reducer journals native time even after inventory updated presence.
+Timeline retains captured lanes and distinguishes source absence from PCM
+receipt delay, preserving unknown-hole warnings. Existing v3/project contracts.
+
+Two OBS/browser takes (77.561 / 66.258 seconds) verify complete captured tails,
+native-to-journal boundaries, source-missing gap classification, uninterrupted
+second track, full live/detailed STT and hash/decode-valid two-track FLAC MKAs.
+Built UI shows `Nguồn đang vắng · PCM đã lưu`; saved waveform/gap arrives
+without reload. Backend 494, frontend 458 and native 2/2 tests, typecheck/build
+and diff check passed. ADR 0035; `docs/gates/livelink-stt-12j-source-absence.md`.
+
+Only the isolated OBS installation used the new DLL; the owner needs
+Preferences Install/Repair and OBS restart. Inventory polling observes edits
+about once per second; exact OBS video synchronization, process/collection
+control recovery, natural disk-stall diagnosis and wider LIVELINK-08 gates
+remain. Exact next: `LIVELINK-STT-12K`, isolate cold-start listener loss before
+claiming reliable startup. Voice Training phase status is unchanged.
+
 ## LiveLink PCM receipt cost and queued chunk ceiling — 2026-10-03
 
 `LIVELINK-STT-12I` profiles PCM receipt and ships plugin/package 0.6.8 with
