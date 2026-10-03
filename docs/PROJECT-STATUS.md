@@ -1,5 +1,31 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-INGEST-18A — six-source measurement (2026-10-04)
+
+Complete at isolated profiling/decision scope; exact live clock acceptance
+remains open. Replayed retained UX-10B six-source PCM through real durable
+adapters and local HTTP: 2,524 chunks / 573,421,416 bytes, all hashes/sequences
+valid, only the twelve verified per-source Pause gaps. A real six-stream MKA
+and six mono/24kHz analyses are verified; all six analysis PCM hashes match
+the retained take. Separate real native callback and FULL/WAL spool fixtures
+verify continuity and an empty acknowledged outbox.
+
+API durable PCM/metadata publication consumes 78.63% of chunk time. HTTP ACK
+p50/p95 129.959/302.854ms; replay drain 417.734s; last ACK to ready 48.860s.
+Retained native spool peak 878 and pre-Pause growth 1.543 chunks/s. Its Stop
+to last receive is approximately 325.194s; receive to ready journal mtime is
+36.272s. These retained UTC/mtime proxies are not exact durable ACK clocks.
+99 idle overflow entries are excluded; six startup deltas remain unclassified,
+so loss-free startup is not claimed. Synthetic callback age is separately
+labeled and does not prove physical scheduler latency.
+
+No product behavior changes. Profiling tools, instrumentation-overhead limits,
+fixed workload and pre-optimization 18B budgets are in
+`docs/gates/livelink-ingest-18a-profile.md` and its metrics JSON. Focused backend
+26 passed; native profiling builds/fixtures and media integrity pass.
+Exact next: **LIVELINK-INGEST-18B**, optimize only the measured durable-pair seam
+and meet the frozen replay plus actual six-source OBS acceptance gates.
+
 
 
 ## LIVELINK-CONNECT-01 — Preferences transport recovery (2026-10-04)

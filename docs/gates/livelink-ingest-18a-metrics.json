@@ -1,0 +1,240 @@
+{
+  "round": "LIVELINK-INGEST-18A",
+  "baselineCommit": "bfb326e",
+  "productBehaviorChanged": false,
+  "input": {
+    "recordingId": "f9495cf6-1881-51ce-9f46-f01bb6d18d1c",
+    "chunkCount": 2524,
+    "inputBytes": 573421416,
+    "metadataCatalogSha256": "8aac1c0901d2b9f703c5b6ca4e5ea99e8bbe573c0a03d85392b5bed934a80fd7",
+    "tracks": 6,
+    "nativeFormat": "PCM16, 48000 Hz, 2 channels per source",
+    "ordering": "pluginMonotonicNs, channelId, sequence",
+    "continuityPassed": true,
+    "pauseGapCount": 12
+  },
+  "httpReplay": {
+    "ingressSeconds": 417.7338462999978,
+    "lastAckToReadySeconds": 48.86026529999799,
+    "finalizeSeconds": 48.67159209999954,
+    "stages": {
+      "fsyncCallsOverlappingNotAdditive": {
+        "count": 5207,
+        "totalMs": 534715.8348999999,
+        "p50Ms": 86.0618,
+        "p95Ms": 216.4783,
+        "maxMs": 683.2419
+      },
+      "atomicPublish": {
+        "count": 7769,
+        "totalMs": 5239.528999999993,
+        "p50Ms": 0.574,
+        "p95Ms": 1.1616,
+        "maxMs": 46.2402
+      },
+      "pcmAndMetadataDurable": {
+        "count": 2524,
+        "totalMs": 297839.1641999994,
+        "p50Ms": 97.3762,
+        "p95Ms": 250.4239,
+        "maxMs": 709.1667
+      },
+      "captureCheckpointPersistence": {
+        "count": 2524,
+        "totalMs": 13736.680899999992,
+        "p50Ms": 0.0179,
+        "p95Ms": 54.9639,
+        "maxMs": 402.4044
+      },
+      "apiChunkTotal": {
+        "count": 2524,
+        "totalMs": 378779.0826999992,
+        "p50Ms": 125.86925,
+        "p95Ms": 298.0489,
+        "maxMs": 1065.0467
+      },
+      "httpDurableAck": {
+        "count": 2524,
+        "totalMs": 388860.40730001696,
+        "p50Ms": 129.9586499990255,
+        "p95Ms": 302.85409999487456,
+        "maxMs": 1068.878100006259
+      },
+      "analysisFromStem": {
+        "count": 6,
+        "totalMs": 14967.48240001034,
+        "p50Ms": 1364.1579000031925,
+        "p95Ms": 8841.544399998384,
+        "maxMs": 8841.544399998384
+      },
+      "mkaMux": {
+        "count": 1,
+        "totalMs": 7878.008100000443,
+        "p50Ms": 7878.008100000443,
+        "p95Ms": 7878.008100000443,
+        "maxMs": 7878.008100000443
+      },
+      "archiveProbeAttachment": {
+        "count": 2,
+        "totalMs": 3144.130300002871,
+        "p50Ms": 1572.0651500014355,
+        "p95Ms": 2931.5397000027588,
+        "maxMs": 2931.5397000027588
+      },
+      "mkaDecodedHash": {
+        "count": 6,
+        "totalMs": 4044.6023,
+        "p50Ms": 679.2864500000001,
+        "p95Ms": 821.0186,
+        "maxMs": 821.0186
+      },
+      "mkaVerificationIncludingDecode": {
+        "count": 1,
+        "totalMs": 9299.646,
+        "p50Ms": 9299.646,
+        "p95Ms": 9299.646,
+        "maxMs": 9299.646
+      },
+      "analysisFromMka": {
+        "count": 6,
+        "totalMs": 3580.2140000014333,
+        "p50Ms": 607.9785500005528,
+        "p95Ms": 724.9432999960845,
+        "maxMs": 724.9432999960845
+      },
+      "waveformComputeAndAtomicPublish": {
+        "count": 2524,
+        "totalMs": 35921.64779999998,
+        "p50Ms": 11.579,
+        "p95Ms": 26.9311,
+        "maxMs": 799.6462
+      }
+    },
+    "hardwareStopToLastAckSeconds": null,
+    "scopeExclusions": [
+      "OBS callback",
+      "native scheduling",
+      "pairing",
+      "STT/background workers",
+      "WinHTTP client"
+    ]
+  },
+  "nativeSpool": {
+    "append": {
+      "count": 79,
+      "totalMs": 54476.499,
+      "p50Ms": 699.251,
+      "p95Ms": 846.794,
+      "maxMs": 947.137
+    },
+    "read": {
+      "count": 2524,
+      "totalMs": 884.649599999999,
+      "p50Ms": 0.33115,
+      "p95Ms": 0.6748,
+      "maxMs": 4.3706
+    },
+    "ackCommit": {
+      "count": 127,
+      "totalMs": 10766.8416,
+      "p50Ms": 58.9798,
+      "p95Ms": 159.226,
+      "maxMs": 1449.69
+    }
+  },
+  "nativeCaptureSynthetic": {
+    "callback": {
+      "count": 1500,
+      "totalMs": 110.79340000000036,
+      "p50Ms": 0.0392,
+      "p95Ms": 0.0719,
+      "maxMs": 42.0324
+    },
+    "queueAge": {
+      "count": 60,
+      "totalMs": 15699.143999999998,
+      "p50Ms": 257.80150000000003,
+      "p95Ms": 298.768,
+      "maxMs": 298.922
+    }
+  },
+  "retainedTake": {
+    "durationSeconds": 652.6798654,
+    "receiveAgeApproxMs": {
+      "count": 2524,
+      "totalMs": 517221708.19644594,
+      "p50Ms": 233704.6435308772,
+      "p95Ms": 369632.31892967736,
+      "maxMs": 384204.1404359568
+    },
+    "stopToLastReceiveSeconds": 325.19395967324215,
+    "lastReceiveToJournalMtimeReadyApproxSeconds": 36.271528482437134,
+    "clockCaveat": "receivedAtUtc is ingress time before fsync, not a durable ACK; journal mtime is retained-file evidence, not a logged ready event",
+    "peakPending": 878,
+    "prePausePendingSlopeChunksPerSecond": 1.5429726661772565,
+    "wholeTakePendingSlopeChunksPerSecond": 1.2936223367406225,
+    "recordingOverflowLogCount": 6,
+    "excludedIdleOverflowLogCount": 99,
+    "callbackWaitMaximumMsHistoricalIncludingIdle": 45.4704,
+    "callbackPeakFramesHistoricalIncludingIdle": 5020672,
+    "callbackQueueAge": null,
+    "callbackQueueAgeReason": "Old log has only peak/counts, no per-chunk enqueue/dequeue clock",
+    "httpSamplesAreWindowAveragesNotPercentiles": true
+  },
+  "instrumentation": {
+    "pairedChunks": 120,
+    "instrumentedAckTotalMs": 18329.537800047547,
+    "controlAckTotalMs": 17377.66980000015,
+    "observedWallDeltaPercent": 5.477535314011939,
+    "causalOverheadIsolated": false,
+    "caveat": "One sequential pair on real disk; timing difference includes storage/cache/scheduling variation. Initial probe has four high-level wrappers; full run additionally times fsync/replace.",
+    "timerMicrobenchmark": {
+      "iterations": 200000,
+      "incrementalNanosecondsPerCall": 304.5735,
+      "scope": "Two perf_counter_ns calls and Python dispatch only; excludes contention/list append"
+    }
+  },
+  "remainingEvidence": [
+    "Exact native Stop-to-last-durable-ACK clock",
+    "Live callback enqueue/dequeue age",
+    "Classification of six startup overflow deltas; historical totals include pre-Record loss",
+    "Six-source replay with actual WinHTTP, live STT and physical OBS scheduler"
+  ],
+  "selectedBottleneck": {
+    "stage": "API per-chunk PCM/metadata durable pair",
+    "shareOfApiChunkTotalPercent": 78.63136530057393,
+    "scope": "Measured dominant service stage in isolated replay; not a proof of sole live OBS bottleneck"
+  },
+  "analysisIntegrity": [
+    {
+      "track": "Track 3",
+      "pcmSha256": "377646f1537ae987eac6f88418f7ae1d0e5a025901c5b3362ba12a49de615452",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 2",
+      "pcmSha256": "df4caa6cf2d3257e89df2438752249a2feb9d071423299b16ad01eb78224a870",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 5",
+      "pcmSha256": "de7feeba23f514c554aa6f4f10f4d5c7abb0c32aaf128664b925749f805e317e",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 6",
+      "pcmSha256": "2753c7b328916d9adc6522ae6ec1e77b206170d5d0771571c4545463051a8833",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 1",
+      "pcmSha256": "8df846ae31b693d8ae6d21f8000e6d60fecea41569c210c152b53bf3b5758b26",
+      "matchesRetained": true
+    },
+    {
+      "track": "Track 4",
+      "pcmSha256": "edfb37c4315b76c720a88e71f64fd427417e0577668c487469573f7c77c07541",
+      "matchesRetained": true
+    }
+  ]
+}

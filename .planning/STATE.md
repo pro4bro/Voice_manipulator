@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — Repaired recovery storage waits and added startup stack evidence.
-last_activity_desc: RUNTIME-READY-01B storage mitigation and diagnostics verified; native cause unconfirmed. LIVELINK-INGEST-18A next.
+last_activity: 2026-10-04 — Measured six-source ingress and archive tail.
+last_activity_desc: LIVELINK-INGEST-18A isolated profiling complete; live clocks remain open. LIVELINK-INGEST-18B next.
 ---
 
 # Project State

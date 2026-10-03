@@ -9,6 +9,7 @@ that gap matters, and the exact next round.
 
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
+| LIVELINK-INGEST-18A | Profile six-source ingress and Stop tail | Isolated measurement complete; historical live clocks unavailable | Selects durable PCM/metadata pair and freezes 18B comparisons without claiming latency improved. |
 | 03-03A | Voice Model Set persistence and lineage | Complete | Creates a portable, reproducible publication candidate without falsely claiming identity approval. |
 | 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Complete | Prevents a usable checkpoint from being published as the wrong speaker. |
 | 03-03C | Calibrate the chosen backend and run one real manifest-to-checkpoint-to-gated-publish acceptance | Queued | Proves the local runtime, identity operating point, and real model artifacts rather than only orchestration tests. |
@@ -3658,3 +3659,46 @@ Installed binary differs from the current package but connects correctly; an
 update requires OBS closed and is not claimed performed. API startup/native
 failure acceptance and sustained capture/STT quality remain open. Exact next:
 LIVELINK-INGEST-18A, profile six-source spool and Stop tail.
+
+## Round LIVELINK-INGEST-18A — 2026-10-04
+
+Completed isolated six-source profiling and the pre-optimization decision.
+No product code, installed plugin, pairing or original project is changed.
+New standalone profiling tools replay retained UX-10B data into owned projects
+and run the actual native callback/queue and FULL/WAL spool paths separately.
+Evidence: `docs/gates/livelink-ingest-18a-profile.md`, its metrics JSON, and
+ignored `.scratch/livelink-ingest-18a/`.
+
+All **2,524 chunks / 573,421,416 bytes** pass size/hash/sequence checks. Twelve
+sample gaps equal the previously verified Pause gaps. A real six-stream MKA
+passes decoded PCM/identity/attachment verification; six mono/24kHz analyses
+have the expected duration and exactly match retained analysis PCM hashes.
+Native spool verifies all chunks and finishes empty. Synthetic callback fixture
+passes 1,500 callbacks / 720,000 continuous frames with zero overflow; its
+controlled queue hold is not physical latency.
+
+Full HTTP replay drain **417.734s**, ACK p50/p95 **129.959/302.854ms**,
+last ACK to ready **48.860s**. Durable PCM/metadata publication consumes
+**78.63%** of API chunk time (297.839s total); individual overlapping fsyncs
+p50/p95 **86.062/216.478ms**. This is the one chosen 18B seam. Native spool
+append and ACK commit totals are separately **54.476s / 10.767s**. The matched
+120-chunk probe shows a 5.48% observed wall-time delta, including storage/cache
+variation; the report does not claim it isolates causal instrumentation overhead.
+
+Retained live spool peak **878**, pre-Pause slope **1.543 chunks/s**. Stop to
+last receive **325.194s**, receive to ready journal mtime approximately
+**36.272s**; these are receive/mtime proxies, not an exact durable ACK clock.
+99 idle overflow logs are excluded; six startup deltas remain unclassified.
+The retained sample chain does not prove loss-free startup. Missing per-chunk
+callback residence and exact native Stop-to-ACK clocks remain explicit live gates.
+
+Focused backend runtime/responsiveness suite **26 passed**, 26.17s, two existing
+deprecation warnings. Native profiling Release builds and fixtures pass; Python
+scripts parse and diff whitespace passes. No production/frontend source changes,
+so full suites and plugin packaging are not rerun for this profiling round.
+
+Frozen identical replay workload, source catalog hash, and actual six-source
+OBS schedule/budgets are recorded before optimization. Baseline exceeds the
+ACK/ready budgets, activating 18B. Exact next: **LIVELINK-INGEST-18B**, optimize
+only the durable-pair seam and verify the frozen replay plus actual OBS gates.
+No product phase is completed and no latency improvement is claimed in 18A.
