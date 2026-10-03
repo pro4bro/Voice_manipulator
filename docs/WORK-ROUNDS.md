@@ -51,7 +51,7 @@ that gap matters, and the exact next round.
 | MEDIA-STAGES-02 | Materialize an omitted source track after import and align physical import state | Queued | An existing footage must be able to add a previously skipped stream without reimporting the whole source. |
 | MEDIA-VIEW-01 | Withdraw/re-add imported footage and tracks from the workspace, fit full-file zoom, render detailed waveform | Implemented at UI regression level; owner viewport check open | The Import checkbox controls visible work, the left zoom edge fits any duration, and PCM detail replaces sparse bars at close zoom. |
 | MEDIA-VIEW-02 | Put Timeline Channel and Track names on one scrolling line | Implemented at UI regression level; physical viewport check open | Narrow Layer labels and resizable Columns remain readable without taking height from meters or waveform. |
-| MEDIA-VIEW-02B | Verify label motion at minimum Column width and owner DPI | Queued | Confirms animation, clipping and reduced-motion behavior in the running app. |
+| MEDIA-VIEW-02B | Verify label motion at minimum Column width and owner DPI | Browser scope covered by UX-11B; remaining DPI/reduced-motion consolidated into UI-CONTRAST-01C | Avoids duplicating label acceptance while retaining physical gates. |
 | LIVELINK-08 | Final integrated OBS matrix, time reconciliation, portability, and clean-machine acceptance | Open; final gate follows LIVELINK-08M | Accept only after channel Record state, waveform, live transcript, overlap review and real media artifacts are visible and verified together. |
 | UX-01 | Remove redundant page headings, simplify Media Pool context actions, and apply the supplied Pro4Bro logo | Complete in source and packaged plugin; physical UI review open | Restores workspace height and carries the owner's mark into the app and OBS plugin. |
 | UX-02 | Shared range/toggle/select-all behavior and Media Pool batch operations | Complete at UI and project API test level | Establishes predictable multi-selection and safe action targets before applying it across lists. |
@@ -63,7 +63,7 @@ that gap matters, and the exact next round.
 | UX-06B | Physical OBS Stop and Timeline layout acceptance | Queued | Checks app Stop, OBS Stop with and without Ignore Stop, transcript tail, and layer/column sizes with real channels. |
 | UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented; controlled physical two-take lifecycle passes in UX-08B; broader owner matrix open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
 | UX-08B | Record two real OBS sessions and reopen each footage | Complete on controlled physical two-take/reopen/UI recycle-restore and API permanent-delete gate; owner hardware remains LIVELINK-08 | Repairs selection feedback so Media Pool, Timeline, audio and Script retain one recording identity; other footage survives deletion. |
-| UX-09 | Match normal/OBS Timeline controls, refine Layer meters, and resize Column edges | Implemented at source and test level; browser visual acceptance open | Switching capture source retains a consistent control layout while each channel remains adjustable. |
+| UX-09 | Match normal/OBS Timeline controls, refine Layer meters, and resize Column edges | Implemented; browser gate covered by UX-09B, physical DPI remains UI-CONTRAST-01C | Switching capture source retains a consistent control layout while each channel remains adjustable. |
 | UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Complete on controlled browser/DPR-1 archive gate; physical Windows DPI remains UX-10B | Repairs runaway Layer height, control overlap and keyboard resize jumps with real archive playback and browser geometry. |
 | UX-10B | Inspect six or more live OBS sources, REC/PAUSE, outer scroll and physical Windows DPI | Live six-source and browser gate passes; physical 125/150% DPI remains open | Repairs mixer clipping and heartbeat-before-Pause control blockage with real native capture. |
 | UX-11B | Inspect named recording selectors and 11.2px channel labels with multiple recordings | Complete on controlled two-recording browser gate; physical 125/150% DPI remains open | Verifies full-name tooltips, keyboard selection, font scale, one-line labels and motion/focus at 240px without new source changes. |
@@ -94,8 +94,22 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
 | MEDIA-DELETE-17 | Remove a permanently deleted OBS recording from journal-backed Media Pool discovery | Complete at API, restart and owner-journal inspection level; running-app check open | Permanent deletion leaves a portable ID tombstone; stale machine state and orphan journals cannot publish a pending footage row. |
 | UI-CONTRAST-01B | Inspect every highlighted state in both themes at owner viewport and DPI | Shared color repairs and observed browser gate pass; exhaustive physical/native matrix open | 29 cases / 863 readings pass in both themes; native OBS, 125/150% Windows DPI and remaining populated/model states are unverified. |
-| GAP-PLAN | Re-plan remaining code gaps from verified repository state | Queued | Turns the plan/reality comparison into ordered implementation rounds. |
+| GAP-PLAN | Re-plan remaining code gaps from verified repository state | Complete at source/evidence reconciliation and documentation level | Current near-term queue: 13 scheduled rounds and 2 conditional repairs; later phases remain open. |
 | LIC-01 | Audit every borrowed repository at its pinned revision | Queued | Records license, notice/source obligations, model-weight terms, and distribution risk before release. |
+
+| PROJECT-WRITE-01 | Concurrent project manifest and registry writes | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+
+Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
+retain historical implementation/acceptance distinctions. Exact next:
+**PROJECT-WRITE-01**.
 
 ## Round 03-03A — 2026-09-22
 
@@ -3499,3 +3513,30 @@ five-minute archive delay remains unresolved; CSS does not prove STT quality.
 
 Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
 acceptance gaps into ordered rounds. No new alphabet round or completed phase.
+
+## Round GAP-PLAN — 2026-10-03
+
+`GAP-PLAN` reconciles current code, latest physical/browser evidence and
+historical queued follow-ups. The continuation plan is
+`docs/GAP-PLAN-2026-10-03.md`; local tickets are `.scratch/gap-plan/`.
+There are **13 scheduled rounds + 2 conditional repairs** for the near-term
+capture/STT/UX work. Later training/docking/Manipulator/LipSync/release milestones
+are separate and not counted as completed or as one-invocation estimates.
+
+Exact next: **PROJECT-WRITE-01**, reproduce and repair manifest/registry atomic
+write failures; UI-CONTRAST logs contain WinError 5 and the repository reuses
+fixed temporary paths. Concurrency is a hypothesis to prove, not a confirmed
+root cause. **RUNTIME-VOICE-01** follows for the actual bundled worker's
+voice_stream import failure. Then profile the six-source spool/Stop tail,
+conditionally optimize the measured bottleneck, freeze Vietnamese STT quality,
+and complete growing-MKV, export and residual physical acceptance.
+
+Passed capture/label/contrast slices are retained. Six-source backlog/five-minute
+archive delay, real speech accuracy, physical 125/150% DPI, clean-machine transfer,
+calibrated speaker publication and later product phases remain open. Restored
+08N outbox recovery and consolidated historical gates have explicit criteria.
+
+Planning only: no product code/media/model/runtime changes. Documentation
+references, requirement IDs, dependency order and ledger pointers are checked;
+diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
+baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.

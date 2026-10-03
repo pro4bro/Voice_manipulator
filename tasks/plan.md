@@ -1,5 +1,10 @@
 # Implementation Plan: OBS Capture in Speech to Text
 
+> Current continuation (2026-10-03): `docs/GAP-PLAN-2026-10-03.md`.
+> Exact next: **PROJECT-WRITE-01**. The OBS history below is retained;
+> `docs/WORK-ROUNDS.md` and current ledgers own execution priority.
+
+
 Status: OBS-01 through OBS-08 complete; portable distribution and automatic
 session finalization are in progress. This plan is a new feature track; it does not advance
 the current `03-03C` pointer in `docs/WORK-ROUNDS.md`. Execute one round per
@@ -185,10 +190,22 @@ FFmpeg hard-subtitle derivative. Validate font rendering for Vietnamese text.
 | Live model delay and backpressure | Bounded queue, drop/gap report, no blocking OBS audio thread; final STT owns publishable cues. |
 | Large project copy | Report required disk space and import progress before ingest; preserve project-relative storage. |
 
-## Next action
+## Historical next action (superseded by GAP-PLAN below)
 
 Run PORT-03B next with the prepared folder documented in
 `docs/PORT-03-PORTABLE-BUNDLE.md`: physically copy it to another Windows
 machine, rerun `Profile All`, install/restart OBS, and record separate mic and
 meeting-application sources. Then perform OBS-09 and OBS-10 before the
 30-minute multi-source acceptance.
+
+
+## GAP-PLAN continuation — 2026-10-03
+
+The current continuation of this OBS/STT plan is
+`docs/GAP-PLAN-2026-10-03.md`: 13 scheduled rounds and 2 conditional repairs.
+Local tickets: `.scratch/gap-plan/`. Durable round state remains in
+`docs/WORK-ROUNDS.md`. Original contracts and later GSD plans above are retained.
+
+Exact next: **PROJECT-WRITE-01**, reproduce and repair the observed concurrent
+manifest/registry write failure before further capture/quality acceptance.
+No implementation is performed by this planning round.

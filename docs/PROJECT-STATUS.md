@@ -1,6 +1,34 @@
 # Project Status — 2026-09-22
 
 
+
+## Reconciled execution queue — 2026-10-03
+
+`GAP-PLAN` reconciles current code, latest physical/browser evidence and
+historical queued follow-ups. The continuation plan is
+`docs/GAP-PLAN-2026-10-03.md`; local tickets are `.scratch/gap-plan/`.
+There are **13 scheduled rounds + 2 conditional repairs** for the near-term
+capture/STT/UX work. Later training/docking/Manipulator/LipSync/release milestones
+are separate and not counted as completed or as one-invocation estimates.
+
+Exact next: **PROJECT-WRITE-01**, reproduce and repair manifest/registry atomic
+write failures; UI-CONTRAST logs contain WinError 5 and the repository reuses
+fixed temporary paths. Concurrency is a hypothesis to prove, not a confirmed
+root cause. **RUNTIME-VOICE-01** follows for the actual bundled worker's
+voice_stream import failure. Then profile the six-source spool/Stop tail,
+conditionally optimize the measured bottleneck, freeze Vietnamese STT quality,
+and complete growing-MKV, export and residual physical acceptance.
+
+Passed capture/label/contrast slices are retained. Six-source backlog/five-minute
+archive delay, real speech accuracy, physical 125/150% DPI, clean-machine transfer,
+calibrated speaker publication and later product phases remain open. Restored
+08N outbox recovery and consolidated historical gates have explicit criteria.
+
+Planning only: no product code/media/model/runtime changes. Documentation
+references, requirement IDs, dependency order and ledger pointers are checked;
+diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
+baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.
+
 ## Highlight-text browser acceptance — 2026-10-03
 
 `UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
@@ -1122,7 +1150,7 @@ It does not replace a **Voice Model Set**. The set is a later aggregate over
 compatible Voice Models plus anchor, lineage, and identity-gate evidence. See
 ADR 0011. This preserves all current APIs while keeping plans 03-03/03-04 honest.
 
-## Recommended Execution Order
+## Historical milestone order (near-term order superseded by GAP-PLAN)
 
 1. Calibrate the chosen `SpeakerEmbedder` and complete one real gated publish; persistence, lineage, and gate enforcement are now complete.
 2. Finish or explicitly defer the durable 03-04 capture/QC/finalization slice.

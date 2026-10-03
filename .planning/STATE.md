@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-09-22 — Completed Round 03-03B SpeakerEmbedder identity gate.
-last_activity_desc: Model Sets now have a fail-closed, evidence-bearing identity gate; threshold calibration and the real acceptance run remain.
+last_activity: 2026-10-03 — Completed GAP-PLAN source/evidence reconciliation.
+last_activity_desc: Near-term capture/STT/UX queue reconciled; PROJECT-WRITE-01 next. Phase 3 publication and later phases remain open.
 ---
 
 # Project State
@@ -37,28 +37,33 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink/UX round: `UI-CONTRAST-01B` (2026-10-03).
-`UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
-themes, clone badges, selected chips, library counts, overlap and Remove text,
-muted captions and console timestamps. Controlled browser acceptance covers
-29 observed states / 863 text readings at 1280×720, DPR 1: no reading below
-4.5:1; minimum 4.75:1. See `docs/gates/ui-contrast-01b-highlight-text.md` and
-ignored `.scratch/ui-contrast-01b/` for measurements, screenshots and limits.
+Latest bounded round: `GAP-PLAN` (2026-10-03).
+`GAP-PLAN` reconciles current code, latest physical/browser evidence and
+historical queued follow-ups. The continuation plan is
+`docs/GAP-PLAN-2026-10-03.md`; local tickets are `.scratch/gap-plan/`.
+There are **13 scheduled rounds + 2 conditional repairs** for the near-term
+capture/STT/UX work. Later training/docking/Manipulator/LipSync/release milestones
+are separate and not counted as completed or as one-invocation estimates.
 
-Frontend **55 files / 465 passed**, 114.49s; typecheck, production build and
-diff check pass. Backend **501** is carried from UX-10B, not rerun; no API
-changes. Eight source media hashes remain unchanged. Owned services are
-stopped, 18219/18220/18281 free, session removed, theme restored, tab closed.
+Exact next: **PROJECT-WRITE-01**, reproduce and repair manifest/registry atomic
+write failures; UI-CONTRAST logs contain WinError 5 and the repository reuses
+fixed temporary paths. Concurrency is a hypothesis to prove, not a confirmed
+root cause. **RUNTIME-VOICE-01** follows for the actual bundled worker's
+voice_stream import failure. Then profile the six-source spool/Stop tail,
+conditionally optimize the measured bottleneck, freeze Vietnamese STT quality,
+and complete growing-MKV, export and residual physical acceptance.
 
-Physical Windows 125/150% DPI, native OBS/select dialogs, populated output /
-profile and model-run states, custom emotion colors and exhaustive interaction
-coverage remain open. Current Windows DPI is 96 (100%). Browser checks also
-retain isolated last-page WinError 5 and Voice Changer worker import failures
-as limitations, not audio-device acceptance. UX-10B six-source PCM backlog /
-five-minute archive delay remains unresolved; CSS does not prove STT quality.
+Passed capture/label/contrast slices are retained. Six-source backlog/five-minute
+archive delay, real speech accuracy, physical 125/150% DPI, clean-machine transfer,
+calibrated speaker publication and later product phases remain open. Restored
+08N outbox recovery and consolidated historical gates have explicit criteria.
 
-Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
-acceptance gaps into ordered rounds. No new alphabet round or completed phase.
+Planning only: no product code/media/model/runtime changes. Documentation
+references, requirement IDs, dependency order and ledger pointers are checked;
+diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
+baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.
+
+Previous UI-CONTRAST-01B observed browser acceptance remains historical evidence.
 
 Previous UX-11B recording-name gate remains historical evidence.
 

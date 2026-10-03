@@ -15,28 +15,31 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink/UX acceptance follow-up (2026-10-03):
-`UI-CONTRAST-01B` repairs shared status/highlight foreground colors in both
-themes, clone badges, selected chips, library counts, overlap and Remove text,
-muted captions and console timestamps. Controlled browser acceptance covers
-29 observed states / 863 text readings at 1280×720, DPR 1: no reading below
-4.5:1; minimum 4.75:1. See `docs/gates/ui-contrast-01b-highlight-text.md` and
-ignored `.scratch/ui-contrast-01b/` for measurements, screenshots and limits.
+LiveLink/STT continuation (GAP-PLAN, 2026-10-03):
+`GAP-PLAN` reconciles current code, latest physical/browser evidence and
+historical queued follow-ups. The continuation plan is
+`docs/GAP-PLAN-2026-10-03.md`; local tickets are `.scratch/gap-plan/`.
+There are **13 scheduled rounds + 2 conditional repairs** for the near-term
+capture/STT/UX work. Later training/docking/Manipulator/LipSync/release milestones
+are separate and not counted as completed or as one-invocation estimates.
 
-Frontend **55 files / 465 passed**, 114.49s; typecheck, production build and
-diff check pass. Backend **501** is carried from UX-10B, not rerun; no API
-changes. Eight source media hashes remain unchanged. Owned services are
-stopped, 18219/18220/18281 free, session removed, theme restored, tab closed.
+Exact next: **PROJECT-WRITE-01**, reproduce and repair manifest/registry atomic
+write failures; UI-CONTRAST logs contain WinError 5 and the repository reuses
+fixed temporary paths. Concurrency is a hypothesis to prove, not a confirmed
+root cause. **RUNTIME-VOICE-01** follows for the actual bundled worker's
+voice_stream import failure. Then profile the six-source spool/Stop tail,
+conditionally optimize the measured bottleneck, freeze Vietnamese STT quality,
+and complete growing-MKV, export and residual physical acceptance.
 
-Physical Windows 125/150% DPI, native OBS/select dialogs, populated output /
-profile and model-run states, custom emotion colors and exhaustive interaction
-coverage remain open. Current Windows DPI is 96 (100%). Browser checks also
-retain isolated last-page WinError 5 and Voice Changer worker import failures
-as limitations, not audio-device acceptance. UX-10B six-source PCM backlog /
-five-minute archive delay remains unresolved; CSS does not prove STT quality.
+Passed capture/label/contrast slices are retained. Six-source backlog/five-minute
+archive delay, real speech accuracy, physical 125/150% DPI, clean-machine transfer,
+calibrated speaker publication and later product phases remain open. Restored
+08N outbox recovery and consolidated historical gates have explicit criteria.
 
-Exact next existing round: **GAP-PLAN**, reconcile verified remaining code and
-acceptance gaps into ordered rounds. No new alphabet round or completed phase.
+Planning only: no product code/media/model/runtime changes. Documentation
+references, requirement IDs, dependency order and ledger pointers are checked;
+diff hygiene passes. Frontend **465 / 55 files** and backend **501** are carried
+baselines, not rerun. See the validation evidence in `.scratch/gap-plan/`.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.
@@ -75,9 +78,10 @@ Plans:
 Plans:
 - [x] 02-01: Capture, finalized STT, Media Pool, transcript review, timing stabilization, and diarization.
 
-Remaining outside the completed plan artifact: chunked realtime transcript
-handoff and the final per-word candidate confirmation UX. Phase 2 therefore
-remains open even though its written plan and stabilization rounds completed.
+Durable chunked live transcript handoff and recovery are implemented slices.
+Remaining outside the completed plan artifact: the final per-word candidate
+confirmation UX, frozen real-speech quality and wider capture/MKV acceptance
+in GAP-PLAN. Phase 2 stays open despite its completed written plan artifact.
 
 ### Phase 3: Voice Training
 **Goal**: Compile selected, attributed audio into deterministic manifests; execute real model jobs; publish identity-safe project voices with reproducible lineage.
