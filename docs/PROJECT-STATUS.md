@@ -1,5 +1,32 @@
 # Project Status — 2026-09-22
 
+## LiveLink physical live Media Pool — 2026-10-03
+
+`LIVELINK-CAPTURE-10B` passes the controlled five-source physical OBS/browser
+and media gate. During a native 77.86-second recording, Media Pool opens the
+provisional footage and all five track controls; Track 9 saved-PCM preview plays
+while OBS remains recording. Stop automatically publishes one selected MKA
+footage with five tracks, preserving selection without F5 or project reopen.
+All 342 PCM chunks pass identity/hash/frame checks with zero interchunk gaps;
+five full FLAC streams decode and retain their distinct 330–770 Hz tone mapping.
+First callback lag is 28–78 ms; this is not a zero-start-latency claim.
+The live screenshot still reports PCM about 13 seconds behind; final chunk
+continuity does not close the live latency gap.
+
+No product repair is needed. Raw recording-labelled overflow warnings remain in
+the evidence: cumulative idle counters cannot establish per-recording loss.
+Owner runtime PIDs stay unchanged; the scratch test project/media are retained,
+portable test OBS and isolated services are stopped, lease/spool cleared.
+Frontend 55 files / 464 tests (18.03 seconds), typecheck/build pass. Backend 500
+is the carried 12L baseline, not rerun. Gate:
+`docs/gates/livelink-capture-10b-live-media.md`.
+
+This controlled scene does not close the owner's physical-device/load matrix,
+STT quality, natural listener loss, disk stalls, installation or video timing.
+Exact next existing round: **UX-08B**, record two actual OBS sessions and reopen
+each footage to verify separate media/Script identity and delete/restore. A
+single take cannot prove that lifecycle. Voice Training status is unchanged.
+
 ## LiveLink workspace reconnect — 2026-10-03
 
 `LIVELINK-STT-12M` completes the lifecycle and isolated real-browser reconnect

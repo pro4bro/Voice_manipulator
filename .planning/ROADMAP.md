@@ -15,20 +15,33 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12M` passes workspace
-lifecycle and isolated real-browser reconnect gates. The same workspace retains
-footage/track, selected Script word, scroll, recording, zoom and transcript
-revision through two deliberate API exits and UI Restart all. Recovered polling
-clears stale Timeline alerts; archived track audio plays. Owner listeners remain
-unchanged and test services/tab are cleaned up. Frontend 464 tests, typecheck,
-build and diff check pass; backend 500 is the carried 12L baseline. ADR 0037;
-`docs/gates/livelink-stt-12m-workspace-reconnect.md`. Prior 12L startup and 12K
-readiness evidence do not establish historical natural listener-loss cause.
-Exact next: `LIVELINK-CAPTURE-10B`, the existing queued live Media Pool and
-independent-source gate. Archived same-document review cannot establish ongoing
-physical OBS/STT behavior or F5 persistence. Natural disk stalls, owner install,
-exact video timing and wider source/UI/portability gates remain under
-`docs/WORK-ROUNDS.md`. No product phase is marked complete by this focused round.
+LiveLink acceptance follow-up (2026-10-03):
+`LIVELINK-CAPTURE-10B` passes the controlled five-source physical OBS/browser
+and media gate. During a native 77.86-second recording, Media Pool opens the
+provisional footage and all five track controls; Track 9 saved-PCM preview plays
+while OBS remains recording. Stop automatically publishes one selected MKA
+footage with five tracks, preserving selection without F5 or project reopen.
+All 342 PCM chunks pass identity/hash/frame checks with zero interchunk gaps;
+five full FLAC streams decode and retain their distinct 330–770 Hz tone mapping.
+First callback lag is 28–78 ms; this is not a zero-start-latency claim.
+The live screenshot still reports PCM about 13 seconds behind; final chunk
+continuity does not close the live latency gap.
+
+No product repair is needed. Raw recording-labelled overflow warnings remain in
+the evidence: cumulative idle counters cannot establish per-recording loss.
+Owner runtime PIDs stay unchanged; the scratch test project/media are retained,
+portable test OBS and isolated services are stopped, lease/spool cleared.
+Frontend 55 files / 464 tests (18.03 seconds), typecheck/build pass. Backend 500
+is the carried 12L baseline, not rerun. Gate:
+`docs/gates/livelink-capture-10b-live-media.md`.
+
+This controlled scene does not close the owner's physical-device/load matrix,
+STT quality, natural listener loss, disk stalls, installation or video timing.
+Exact next existing round: **UX-08B**, record two actual OBS sessions and reopen
+each footage to verify separate media/Script identity and delete/restore. A
+single take cannot prove that lifecycle. Voice Training status is unchanged.
+
+No product phase is marked complete by this focused acceptance round.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.

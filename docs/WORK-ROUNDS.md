@@ -67,7 +67,7 @@ that gap matters, and the exact next round.
 | UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Queued | Catches spacing, clipping, and pointer-hit issues that DOM tests cannot prove. |
 | LIVELINK-UX-10 | Short Track labels, truthful PCM evidence, archive-ready Media Pool refresh, and clear highlight text | Implemented at source, frontend regression and native build level; real OBS and viewport gates open | Prevents a moving source meter from implying saved audio and makes completed MKA footage visible without F5. |
 | LIVELINK-CAPTURE-10 | Repair muted-source PCM, stale source rows, and in-progress Media Pool visibility | Implemented; real muted Track 1 capture passed, browser visibility and wider source matrix remain open | A moving meter now leads to raw source PCM when Forward is on, and a stopped journal can recover its MKA without F5. |
-| LIVELINK-CAPTURE-10B | Verify live Media Pool row and several independent sources in the running app | Queued | Confirms the visual recording-to-MKA transition and each selected source on the owner's full OBS setup. |
+| LIVELINK-CAPTURE-10B | Verify live Media Pool row and several independent sources in the running app | Complete on controlled five-source physical OBS/browser gate; owner device matrix remains in LIVELINK-08 | Live row/PCM preview, automatic selected MKA handoff and five independent tone streams pass; full owner hardware/load acceptance is not claimed. |
 | LIVELINK-TIMELINE-11 | Keep the live waveform window current and simplify overlap review/playback | Complete at frontend regression level; real long-take viewport gate open | Prevents stale window cursors and responses from blanking the tail, distinguishes pending PCM from gaps, and restores drag/Space controls. |
 | LIVELINK-INGEST-11B | Remove per-chunk take scan and amortize PCM transport controls | Implemented at replay, API test and native-build level; physical load gate open | The owner's gap-free two-track take accumulated 153 pending chunks and about 50 seconds of tail delay by Stop. |
 | LIVELINK-INGEST-11C | Install and measure sustained two-track OBS capture with simultaneous live and detailed STT | Measured; PCM/archive passed, latency and realtime STT gaps open | A real OBS take shows zero PCM sample gaps and a valid two-track MKA, but p95 ingest lag is about 16 seconds and realtime STT drops queued work. |
@@ -86,7 +86,7 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12M | Preserve selected project/footage and Script follow through API restart | Complete at lifecycle regression and isolated real-browser reconnect gate; live OBS matrix open | The same workspace, selected footage/word, scroll, zoom and transcript cursor survive restart; recovered polling clears stale transport alerts. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
-| LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
+| LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented; controlled physical viewport/PCM/MKA handoff passes in CAPTURE-10B; wider owner matrix open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
 | LIVELINK-OVERLAP-15 | Link Script and Timeline overlap interval selection in both directions | Implemented at frontend regression level; running OBS viewport gate open | Script and Timeline share a selected interval for live and detailed STT, with source-specific highlighting and no autoplay. |
 | MEDIA-SCRIPT-01C | Keep concurrent track rows intact and retain timed overlap after detailed STT | Implemented at frontend regression and owner recording fixture level; viewport acceptance open | An interjecting track no longer splits continuing speech, and detailed word timing remains inspectable in parent Script. |
 | LIVELINK-STT-16 | Snapshot in-progress OBS PCM for detailed per-track STT, then process configurable blocks with 10-second padding | Implemented at API/UI, generated PCM and archived owner PCM level; physical recording gate open | A journal-backed job now follows durable PCM independently of the one-shot batch queue. |
@@ -3286,3 +3286,38 @@ LIVELINK-08 gates remain open; successful injected recovery cannot close them.
 Exact next round: **LIVELINK-CAPTURE-10B**, the existing queued live Media Pool
 and independent-source running-app gate. Ongoing capture behavior requires
 physical evidence beyond this archived reconnect. No extra 12N round introduced.
+
+## Round LIVELINK-CAPTURE-10B — 2026-10-03
+
+Completed scope: physical provisional-footage interaction, automatic Stop handoff
+and five independent-source routing in the running app.
+
+`LIVELINK-CAPTURE-10B` passes the controlled five-source physical OBS/browser
+and media gate. During a native 77.86-second recording, Media Pool opens the
+provisional footage and all five track controls; Track 9 saved-PCM preview plays
+while OBS remains recording. Stop automatically publishes one selected MKA
+footage with five tracks, preserving selection without F5 or project reopen.
+All 342 PCM chunks pass identity/hash/frame checks with zero interchunk gaps;
+five full FLAC streams decode and retain their distinct 330–770 Hz tone mapping.
+First callback lag is 28–78 ms; this is not a zero-start-latency claim.
+The live screenshot still reports PCM about 13 seconds behind; final chunk
+continuity does not close the live latency gap.
+
+No product repair is needed. Raw recording-labelled overflow warnings remain in
+the evidence: cumulative idle counters cannot establish per-recording loss.
+Owner runtime PIDs stay unchanged; the scratch test project/media are retained,
+portable test OBS and isolated services are stopped, lease/spool cleared.
+Frontend 55 files / 464 tests (18.03 seconds), typecheck/build pass. Backend 500
+is the carried 12L baseline, not rerun. Gate:
+`docs/gates/livelink-capture-10b-live-media.md`.
+
+This controlled scene does not close the owner's physical-device/load matrix,
+STT quality, natural listener loss, disk stalls, installation or video timing.
+Exact next existing round: **UX-08B**, record two actual OBS sessions and reopen
+each footage to verify separate media/Script identity and delete/restore. A
+single take cannot prove that lifecycle. Voice Training status is unchanged.
+
+Evidence detail: browser `live.json`/`after.json`, screenshots and final media
+assertions are retained under ignored `.scratch/livelink-capture-10b/`. Only one
+live track is auditioned; all five final streams decode and all five browser
+audio elements reach readyState 4. No backend/native/engine source changed.
