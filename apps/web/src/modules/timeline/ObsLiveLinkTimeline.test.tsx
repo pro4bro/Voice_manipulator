@@ -93,6 +93,28 @@ it("clears the journal-list error when that same polling request recovers", asyn
   } finally { vi.useRealTimers(); }
 });
 
+it("does not echo the previous footage when the workspace requests another recording", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue(["recording", "recording-2"].map((recordingId) => ({
+    recording: { ...recording, recordingId, status: "stopped", archiveStatus: "ready",
+      endedMonotonicNs: 31_000_000_000 }, channels: [], sourceStems: [],
+  })));
+  const onRecordingIdChange = vi.fn();
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+    onRecordingIdChange={onRecordingIdChange} />);
+  await screen.findAllByRole("option", { name: /recordin/ });
+  onRecordingIdChange.mockClear();
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording-2"
+    onRecordingIdChange={onRecordingIdChange} />);
+  expect(screen.getByRole("combobox", { name: "Bản ghi OBS" })).toHaveValue("recording-2");
+  expect(onRecordingIdChange).not.toHaveBeenCalled();
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+    onRecordingIdChange={onRecordingIdChange} />);
+  expect(screen.getByRole("combobox", { name: "Bản ghi OBS" })).toHaveValue("recording");
+  expect(onRecordingIdChange).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole("combobox", { name: "Bản ghi OBS" }), { target: { value: "recording-2" } });
+  expect(onRecordingIdChange).toHaveBeenCalledWith("recording-2");
+});
+
 it("names each OBS recording with its local start time and project name", async () => {
   const firstStart = new Date(2026, 8, 29, 11, 22, 27).toISOString();
   const secondStart = new Date(2026, 8, 29, 11, 25, 4).toISOString();

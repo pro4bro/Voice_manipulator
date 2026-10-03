@@ -1,5 +1,38 @@
 # Project Status — 2026-09-22
 
+## OBS two-footage lifecycle and selection — 2026-10-03
+
+`UX-08B` passes the controlled two-recording footage lifecycle gate after a
+frontend selection repair. When Media Pool requested another recording,
+Timeline briefly echoed its previous local ID back into the workspace, causing
+selection oscillation, mismatched Script/audio and alternating requests.
+Workspace-requested identity now wins during render; active capture still takes
+precedence. A red/green regression covers both selection directions and the
+explicit Timeline selector. ADR 0038; `docs/gates/ux-08b-two-recording-lifecycle.md`.
+
+Two actual native OBS sessions in one process produce separate 29.93/43.77-second
+MKA footage, each with two tracks and different channel-owned final Script text.
+After rebuilding, footage switching/reopen retains matching Script, Timeline and
+audio URLs; both tracks decode and play for each take. UI Recycle/Restore groups
+parent/children and preserves all IDs/audio hashes. API permanent deletion of
+one scratch footage leaves the other intact; browser reload/open shows no ghost.
+The UI permanent Delete confirmation flow remains UX-05B. A complete project
+backup is retained. All 126 PCM chunks are gap-free and both full MKAs decode.
+
+Final frontend **55 files / 465 tests**, 111.50 seconds with one worker,
+typecheck/build and diff check pass. Initial fork timeouts and a two-worker fit
+assertion failure are recorded in the gate; they are not passing runs. Backend
+500 is the carried 12L baseline, not rerun. Scratch runtime's initial model-cache
+error and live STT error events remain documented; this is not STT accuracy or
+complete-prefix acceptance. Owned test services/OBS stop, lease/spool clear,
+initially free ports return to free; no owner registry or engine source changes.
+
+Remaining: owner hardware, sustained live latency, inference quality, natural
+listener/disk failures, installation, video timing and wider UI/DPI/list gates.
+Exact next existing round: **UX-09B**, compare Layer/Column controls, clipping and
+pointer hit areas at owner viewport/DPI; correct media identity does not prove
+visual interaction. No new alphabet round or completed product phase.
+
 ## LiveLink physical live Media Pool — 2026-10-03
 
 `LIVELINK-CAPTURE-10B` passes the controlled five-source physical OBS/browser

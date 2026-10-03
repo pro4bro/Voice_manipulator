@@ -248,7 +248,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     (reason) => setStatusError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS.")), [projectId]);
 
   const active = status?.appRecording?.projectId === projectId ? status.appRecording : null;
-  const recordingId = active?.recordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
+  // A workspace selection must win before the local state sync effect runs;
+  // otherwise the previous footage is echoed back and both selections oscillate.
+  const recordingId = active?.recordingId ?? requestedRecordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
   const journal = journals.find((item) => item.recording.recordingId === recordingId);
   const recording = active ?? journal?.recording ?? null;
   useEffect(() => {

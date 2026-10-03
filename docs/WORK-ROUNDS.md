@@ -61,8 +61,8 @@ that gap matters, and the exact next round.
 | UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Queued | Checks layout, shortcuts, real deletion refresh, and PCM waveform stability in the running app. |
 | UX-06 | OBS Stop boundary and per-channel Timeline layouts | Implemented at source, regression-test and plugin-build level; physical OBS gate open | Prevents PCM/STT crossing Stop and makes layer/column Timeline controls usable. |
 | UX-06B | Physical OBS Stop and Timeline layout acceptance | Queued | Checks app Stop, OBS Stop with and without Ignore Stop, transcript tail, and layer/column sizes with real channels. |
-| UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented at source and test level; physical OBS acceptance open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
-| UX-08B | Record two real OBS sessions and reopen each footage | Queued | Confirms Media Pool grouping, channel/audio/Script identity, and delete/restore in the running app. |
+| UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented; controlled physical two-take lifecycle passes in UX-08B; broader owner matrix open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
+| UX-08B | Record two real OBS sessions and reopen each footage | Complete on controlled physical two-take/reopen/UI recycle-restore and API permanent-delete gate; owner hardware remains LIVELINK-08 | Repairs selection feedback so Media Pool, Timeline, audio and Script retain one recording identity; other footage survives deletion. |
 | UX-09 | Match normal/OBS Timeline controls, refine Layer meters, and resize Column edges | Implemented at source and test level; browser visual acceptance open | Switching capture source retains a consistent control layout while each channel remains adjustable. |
 | UX-09B | Compare both Timeline modes in the running app at owner viewport and DPI | Queued | Catches spacing, clipping, and pointer-hit issues that DOM tests cannot prove. |
 | LIVELINK-UX-10 | Short Track labels, truthful PCM evidence, archive-ready Media Pool refresh, and clear highlight text | Implemented at source, frontend regression and native build level; real OBS and viewport gates open | Prevents a moving source meter from implying saved audio and makes completed MKA footage visible without F5. |
@@ -3321,3 +3321,42 @@ Evidence detail: browser `live.json`/`after.json`, screenshots and final media
 assertions are retained under ignored `.scratch/livelink-capture-10b/`. Only one
 live track is auditioned; all five final streams decode and all five browser
 audio elements reach readyState 4. No backend/native/engine source changed.
+
+## Round UX-08B — 2026-10-03
+
+Completed scope: two physical OBS recordings, per-footage reopen/playback/Script,
+group recycle/restore, permanent-delete rediscovery and selection-race repair.
+
+`UX-08B` passes the controlled two-recording footage lifecycle gate after a
+frontend selection repair. When Media Pool requested another recording,
+Timeline briefly echoed its previous local ID back into the workspace, causing
+selection oscillation, mismatched Script/audio and alternating requests.
+Workspace-requested identity now wins during render; active capture still takes
+precedence. A red/green regression covers both selection directions and the
+explicit Timeline selector. ADR 0038; `docs/gates/ux-08b-two-recording-lifecycle.md`.
+
+Two actual native OBS sessions in one process produce separate 29.93/43.77-second
+MKA footage, each with two tracks and different channel-owned final Script text.
+After rebuilding, footage switching/reopen retains matching Script, Timeline and
+audio URLs; both tracks decode and play for each take. UI Recycle/Restore groups
+parent/children and preserves all IDs/audio hashes. API permanent deletion of
+one scratch footage leaves the other intact; browser reload/open shows no ghost.
+The UI permanent Delete confirmation flow remains UX-05B. A complete project
+backup is retained. All 126 PCM chunks are gap-free and both full MKAs decode.
+
+Final frontend **55 files / 465 tests**, 111.50 seconds with one worker,
+typecheck/build and diff check pass. Initial fork timeouts and a two-worker fit
+assertion failure are recorded in the gate; they are not passing runs. Backend
+500 is the carried 12L baseline, not rerun. Scratch runtime's initial model-cache
+error and live STT error events remain documented; this is not STT accuracy or
+complete-prefix acceptance. Owned test services/OBS stop, lease/spool clear,
+initially free ports return to free; no owner registry or engine source changes.
+
+Remaining: owner hardware, sustained live latency, inference quality, natural
+listener/disk failures, installation, video timing and wider UI/DPI/list gates.
+Exact next existing round: **UX-09B**, compare Layer/Column controls, clipping and
+pointer hit areas at owner viewport/DPI; correct media identity does not prove
+visual interaction. No new alphabet round or completed product phase.
+
+Ignored `.scratch/ux-08b/` retains media assertions, before/after browser states,
+playback captures, `restored.png`, `final.png`, cleanup and project backup.

@@ -15,33 +15,37 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03):
-`LIVELINK-CAPTURE-10B` passes the controlled five-source physical OBS/browser
-and media gate. During a native 77.86-second recording, Media Pool opens the
-provisional footage and all five track controls; Track 9 saved-PCM preview plays
-while OBS remains recording. Stop automatically publishes one selected MKA
-footage with five tracks, preserving selection without F5 or project reopen.
-All 342 PCM chunks pass identity/hash/frame checks with zero interchunk gaps;
-five full FLAC streams decode and retain their distinct 330–770 Hz tone mapping.
-First callback lag is 28–78 ms; this is not a zero-start-latency claim.
-The live screenshot still reports PCM about 13 seconds behind; final chunk
-continuity does not close the live latency gap.
+LiveLink/UX acceptance follow-up (2026-10-03):
+`UX-08B` passes the controlled two-recording footage lifecycle gate after a
+frontend selection repair. When Media Pool requested another recording,
+Timeline briefly echoed its previous local ID back into the workspace, causing
+selection oscillation, mismatched Script/audio and alternating requests.
+Workspace-requested identity now wins during render; active capture still takes
+precedence. A red/green regression covers both selection directions and the
+explicit Timeline selector. ADR 0038; `docs/gates/ux-08b-two-recording-lifecycle.md`.
 
-No product repair is needed. Raw recording-labelled overflow warnings remain in
-the evidence: cumulative idle counters cannot establish per-recording loss.
-Owner runtime PIDs stay unchanged; the scratch test project/media are retained,
-portable test OBS and isolated services are stopped, lease/spool cleared.
-Frontend 55 files / 464 tests (18.03 seconds), typecheck/build pass. Backend 500
-is the carried 12L baseline, not rerun. Gate:
-`docs/gates/livelink-capture-10b-live-media.md`.
+Two actual native OBS sessions in one process produce separate 29.93/43.77-second
+MKA footage, each with two tracks and different channel-owned final Script text.
+After rebuilding, footage switching/reopen retains matching Script, Timeline and
+audio URLs; both tracks decode and play for each take. UI Recycle/Restore groups
+parent/children and preserves all IDs/audio hashes. API permanent deletion of
+one scratch footage leaves the other intact; browser reload/open shows no ghost.
+The UI permanent Delete confirmation flow remains UX-05B. A complete project
+backup is retained. All 126 PCM chunks are gap-free and both full MKAs decode.
 
-This controlled scene does not close the owner's physical-device/load matrix,
-STT quality, natural listener loss, disk stalls, installation or video timing.
-Exact next existing round: **UX-08B**, record two actual OBS sessions and reopen
-each footage to verify separate media/Script identity and delete/restore. A
-single take cannot prove that lifecycle. Voice Training status is unchanged.
+Final frontend **55 files / 465 tests**, 111.50 seconds with one worker,
+typecheck/build and diff check pass. Initial fork timeouts and a two-worker fit
+assertion failure are recorded in the gate; they are not passing runs. Backend
+500 is the carried 12L baseline, not rerun. Scratch runtime's initial model-cache
+error and live STT error events remain documented; this is not STT accuracy or
+complete-prefix acceptance. Owned test services/OBS stop, lease/spool clear,
+initially free ports return to free; no owner registry or engine source changes.
 
-No product phase is marked complete by this focused acceptance round.
+Remaining: owner hardware, sustained live latency, inference quality, natural
+listener/disk failures, installation, video timing and wider UI/DPI/list gates.
+Exact next existing round: **UX-09B**, compare Layer/Column controls, clipping and
+pointer hit areas at owner viewport/DPI; correct media identity does not prove
+visual interaction. No new alphabet round or completed product phase.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.
