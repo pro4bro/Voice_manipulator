@@ -15,19 +15,19 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12K` passes the
-readiness, retained diagnostics and controlled API/Studio recovery gates.
-Dedicated health avoids cold Torch/CUDA status initialization; PID-aware waits,
-early atomic PID registration and controller transitions distinguish process
-life, listener ownership and HTTP health. Backend 500, Studio 16, frontend 458
-tests, typecheck/build, diff and portable Core 6/6 pass. The previous 12J source
-absence/retained PCM and plugin/package 0.6.9 gates remain valid. Five isolated
-cold cycles did not reproduce natural listener loss; the 12H stall trigger,
-exact video timing and wider gates also remain open. `LIVELINK-STT-12L` next
-replays persisted recovery backlog and foreground/detached startup in isolation.
-Owner installation, reconnect/Script follow and
-the wider source/UI/portability matrix remain under `docs/WORK-ROUNDS.md`.
-No product phase is marked complete by this focused round.
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12L` passes the isolated
+persisted-startup/topology gate: six successful takes from 37 copied projects /
+58 journals, final foreground/detached readiness 5.500/6.093 seconds with 60
+stable seconds each. Startup logs retain scan duration/PID and queued recovery
+counts; they do not certify inference completion. Backend 500, frontend 458
+tests, typecheck/build and diff check pass. Initial harness cost/cache variation
+and one project-list timeout are retained separately. Historical natural listener
+loss did not recur and its cause remains open. Prior 12K health/controlled recovery
+and 12J source-absence/plugin 0.6.9 gates remain valid. Exact next is
+`LIVELINK-STT-12M`: preserve selected project/footage and Script follow through
+API restart in the running browser. Natural 12H disk stalls, owner installation,
+exact video timing and wider source/UI/portability gates remain under
+`docs/WORK-ROUNDS.md`. No product phase is marked complete by this focused round.
 
 - [x] **Phase 1: Foundation** - Portable project shell and reusable application modules.
 - [ ] **Phase 2: Speech to Text** - Trustworthy capture, transcription, review, timing, and diarization.

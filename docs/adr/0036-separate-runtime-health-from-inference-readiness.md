@@ -52,3 +52,18 @@ workloads, change project state, or prove transcription quality.
 Five isolated cold cycles did not reproduce natural listener loss. Persisted
 project recovery backlog and the historical foreground/detached launch topology
 remain a separate diagnostic gate; see the 12K acceptance record.
+
+## Persisted recovery evidence — LIVELINK-STT-12L
+
+Startup logs recovery scan start/finish through `pro4bro.activity`, including
+PID, elapsed seconds, project count and queued live/MKV/detailed worker counts.
+These rows distinguish discovery/scheduling from listener readiness; they do
+not certify inference or transcript completion. No project identity, media path
+or transcript content is added. Recovery behavior and deadlines are unchanged.
+
+Six isolated persisted-project takes kept listeners/health stable; one additional
+project-list request exceeded a two-second harness budget and is retained as an
+incomplete take. The historical natural listener loss still did not recur.
+See `docs/gates/livelink-stt-12l-persisted-startup.md` for corpus, harness-cost,
+cache and inference limits. Matching future failure evidence remains required
+before attributing or claiming a repair of that historical trigger.

@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -527,7 +528,12 @@ def create_app(
             mkv_stt_workers[key] = asyncio.create_task(transcribe_growing_mkv(project_id, asset_id))
 
     async def resume_mkv_watchers() -> None:
-        for project in projects.list():
+        recovery_log = logging.getLogger("pro4bro.activity")
+        started = time.perf_counter()
+        recovery_log.info("Runtime recovery scan started; pid=%s", os.getpid())
+        recovery_projects = projects.list()
+        live_tracks = 0
+        for project in recovery_projects:
             media_root = Path(project.project_path) / "assets" / "media"
             for checkpoint in media_root.glob("asset-*/follow-state.json"):
                 try:
@@ -556,10 +562,16 @@ def create_app(
                 if journal.parent.name in deleted_ids:
                     continue
                 try:
-                    obs_livelink_stt.resume_recording(project.id, journal.parent.name)
+                    live_tracks += obs_livelink_stt.resume_recording(project.id, journal.parent.name)
                 except (OSError, ValueError, KeyError) as exc:
                     logging.getLogger(__name__).warning(
                         "LiveLink STT could not resume %s: %s", journal.parent.name, exc)
+        recovery_log.info(
+            "Runtime recovery scan finished; pid=%s elapsedSeconds=%.3f projects=%s "
+            "liveTracksQueued=%s mkvWatchersQueued=%s mkvSttWorkersQueued=%s obsDetailedWorkersQueued=%s",
+            os.getpid(), time.perf_counter() - started, len(recovery_projects),
+            live_tracks, len(mkv_watchers), len(mkv_stt_workers), len(obs_detailed_workers),
+        )
 
     async def stop_mkv_watchers() -> None:
         tasks = list(mkv_watchers.values()) + list(mkv_stt_workers.values()) + list(obs_detailed_workers.values())

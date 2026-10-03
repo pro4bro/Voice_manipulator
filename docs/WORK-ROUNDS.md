@@ -82,7 +82,8 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12I | Reproduce and reduce renewed PCM ACK backlog under sustained browser waveform polling | Complete at measured cost/native/physical gate; natural-stall matrix remains open | Plugin 0.6.8 consumes larger existing queues without waiting. Fixed-delay p95 fell from 126 to 31 seconds; final quiet take reached 1.58/1.89 seconds. Arbitrary disk stalls can still postpone the live tail. |
 | LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Complete at reducer/native and two OBS/browser artifact gates | Plugin 0.6.9 retains queued PCM, journals callback boundaries and preserves restoration silence; Timeline distinguishes missing sources from receipt delay. |
 | LIVELINK-STT-12K | Distinguish cold-start listener loss from process exit and health delay | Readiness/diagnostic/recovery slice complete; natural-loss gate open | Studio status initialized CUDA inside the old probe. Dedicated health, PID-aware waits and retained transitions are verified; five isolated cold cycles did not reproduce the historical listener loss. |
-| LIVELINK-STT-12L | Replay persisted recovery backlog and foreground/detached cold startup in isolation | Queued | Empty-data cold cycles cannot establish why the historical owner-registry launch lost its listener. |
+| LIVELINK-STT-12L | Replay persisted recovery backlog and foreground/detached cold startup in isolation | Isolated topology/recovery replay complete; natural-loss cause open | Six passing takes restore scheduling from 37 copied projects; startup scan logs retain evidence, but historical listener loss did not recur. |
+| LIVELINK-STT-12M | Preserve selected project/footage and Script follow through API restart | Queued | Healthy restarted services must reconnect the browser to the same recording and review position. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -3192,3 +3193,54 @@ reconnect/workspace selection/Script follow and wider LIVELINK-08 gates remain.
 Exact next round: `LIVELINK-STT-12L` — replay cold startup against an isolated
 copy of the persisted recovery backlog and compare foreground/detached launch
 topology. This is needed before claiming the original cold-start failure fixed.
+
+## Round LIVELINK-STT-12L — 2026-10-03
+
+Completed scope: replay foreground/detached startup against an independent copy
+of the current persisted registry/backlog and retain startup recovery scan
+diagnostics. The historical natural-listener-loss cause remains open.
+
+Evidence:
+
+- Copied 37 projects, 58 recording journals, ten live checkpoints, seven detailed
+  checkpoints and four MKV follow checkpoints: 43,763 files / 10,475,132,414 bytes,
+  no hard links. Registry/media locators point inside the isolated corpus;
+  preferences are empty and models use existing local offline runtimes.
+- Existing recovery eligibility skips 42 legacy-ready journals and ten completed
+  tracks. Final product logs report nine live tracks, one MKV watcher, four MKV
+  STT workers and seven OBS detailed workers queued. These are scheduling counts,
+  not successful recognizer artifacts or finished transcript tails.
+- Six full takes passed: initial foreground/detached ready in 61.922/11.312
+  seconds, then corrected-harness controls in 5.547/6.156 seconds and final
+  product takes in 5.500/6.093 seconds. Initial takes stayed healthy 90 seconds,
+  others 60 seconds. Detached launchers exit zero while API listeners survive.
+  No post-readiness listener/health loss occurred in passing takes.
+- Initial audit guard resolved every read path unnecessarily; controls remove
+  that cost. OS filesystem warmth is uncontrolled, so the slow first take cannot
+  prove a product regression. One additional final detached take timed out on
+  `/api/projects` with a two-second harness budget after healthy readiness. It is
+  retained as incomplete, not declared a listener loss. Fresh retry measured
+  project-list latency 0.110 seconds using a 15-second diagnostic budget.
+- Product startup logs scan PID, elapsed time and queued counts through existing
+  activity stdout. Final scans took 0.277/0.343 seconds. No scheduling, checkpoint,
+  public API or deadline changes. No private project/transcript fields added.
+- Write audit found no escaped writes; all ports free after every take. Original
+  metadata for 43,763 files and hashes for 27,885 JSON inputs remain unchanged.
+  No owner OBS/plugin changes. Gate: `docs/gates/livelink-stt-12l-persisted-startup.md`;
+  ADR 0036 addendum; ignored `.scratch/livelink-stt-12l/acceptance.json` retains
+  each take's samples, failure and cleanup.
+- Backend **500 passed**, 182.90 seconds, two existing deprecation warnings.
+  Frontend **54 files / 458 tests**, 50.96 seconds; typecheck/build and diff check
+  passed. No new audio/model quality or physical viewport acceptance claimed.
+
+Remaining gap: this current snapshot does not reproduce the historical natural
+listener loss; neither its original byte state nor a truly cold OS cache is
+available. The isolated corpus does not prove sustained inference load. The
+single project-list timeout is also unattributed. Future matching failure logs
+are needed; repeating successful copies cannot establish those causes. Natural
+12H disk stalls, owner plugin installation, exact video timing and wider
+LIVELINK-08 source/UI/portability gates remain open.
+
+Exact next round: `LIVELINK-STT-12M` — retain and verify selected project/footage
+and Script follow through API restart in the running browser. Runtime health
+alone does not prove the owner can continue reviewing the same recording.

@@ -37,23 +37,23 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12K` (2026-10-03), readiness,
-diagnostic and controlled runtime recovery slice complete. Dedicated Studio
-health avoids Torch/CUDA status initialization; all launcher waits retain PID,
-listener, exit and elapsed-deadline evidence. Early atomic PID registration and
-changed-state controller observations distinguish live/no listener, exit and
-HTTP timeout. API/Studio injected failures recover while the controller survives.
-Backend 500, Studio 16, frontend 458 tests, typecheck/build, diff and portable
-Core 6/6 passed. ADR 0036; `docs/gates/livelink-stt-12k-runtime-readiness.md`.
-Natural cold listener loss was not reproduced in five isolated cold cycles;
-natural 12H stall trigger and exact video timing also remain unproven. The
-previous 12J native/source-absence gates and plugin/package 0.6.9 remain valid.
-Exact next is `LIVELINK-STT-12L`: replay persisted recovery backlog and
-foreground/detached cold startup in isolation with the new diagnostics.
-Owner plugin installation, reconnect/Script follow and the wider
-`LIVELINK-08` acceptance matrix remain open. This does not advance the Voice
-Training phase. The historical
-phase baseline below remains distinct from this round's focused checks.
+Latest bounded LiveLink round: `LIVELINK-STT-12L` (2026-10-03), isolated
+persisted-startup/topology replay complete; historical natural-loss cause open.
+Six passing takes load 37 copied projects / 58 journals. Final foreground and
+detached API readiness is 5.500/6.093 seconds with 60 stable seconds each.
+Recovery logs retain PID, scan duration and queued worker counts (nine live
+tracks, one MKV watcher, four MKV STT and seven OBS detailed workers); no
+transcript completion claim. Initial guard overhead/cache variation and one
+project-list timeout are recorded separately rather than attributed to listener
+loss. Owner metadata/JSON hashes unchanged, ports clear, no denied writes.
+Backend 500, frontend 458 tests, typecheck/build and diff check passed. ADR 0036
+addendum; `docs/gates/livelink-stt-12l-persisted-startup.md`. Existing 12K health,
+controlled recovery and portable Core gates and 12J plugin/package 0.6.9 remain
+valid; they are not new rerun claims. Natural listener loss, 12H disk-stall cause,
+owner installation, exact video timing and wider LIVELINK-08 gates remain open.
+Exact next is `LIVELINK-STT-12M`: retain selected project/footage and Script follow
+through API restart in the running browser. This does not advance Voice Training.
+The historical phase baseline below remains distinct from these focused checks.
 
 - Backend: 364 passed.
 - Frontend: 288 passed.

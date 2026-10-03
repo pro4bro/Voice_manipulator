@@ -1,5 +1,31 @@
 # Project Status — 2026-09-22
 
+## LiveLink persisted startup and recovery backlog — 2026-10-03
+
+`LIVELINK-STT-12L` completes the isolated persisted-startup/topology replay.
+An independent copy of 37 projects / 58 recording journals produces six passing
+foreground/detached takes. Final readiness is 5.500/6.093 seconds, stable for
+60 seconds each. Product scan logs retain PID, elapsed time and queued counts:
+nine live tracks, one MKV watcher, four MKV STT workers and seven detailed OBS
+workers. Scheduling counts do not imply transcript or model success.
+
+The first 61.922-second take used an unnecessarily costly read-path audit guard;
+OS filesystem cache is uncontrolled. One extra take timed out on the project
+list after healthy readiness; it is retained separately, with no stable gate
+claim. Neither anomaly establishes the historical listener-loss cause, which
+did not recur. Existing recovery behavior/deadlines remain unchanged.
+
+Owner file metadata/JSON hashes remain unchanged, no denied writes, all test
+ports cleared. Backend 500, frontend 458 tests, typecheck/build and diff check
+pass. ADR 0036 addendum; `docs/gates/livelink-stt-12l-persisted-startup.md`.
+No new physical OBS, audio quality, sustained inference or browser gate claimed.
+
+Exact next is `LIVELINK-STT-12M`: preserve selected project/footage and Script
+follow through API restart in the running browser. Matching future failure logs
+are needed for natural listener loss; natural disk stalls, owner installation,
+exact video timing and wider LIVELINK-08 acceptance remain open. This round
+does not advance Voice Training.
+
 ## LiveLink runtime readiness and failure evidence — 2026-10-03
 
 `LIVELINK-STT-12K` completes the readiness/diagnostic/controlled-recovery slice.
