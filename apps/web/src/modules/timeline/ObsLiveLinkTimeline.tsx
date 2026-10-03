@@ -188,6 +188,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [recordingsError, setRecordingsError] = useState<string | null>(null);
+  const visibleError = statusError ?? recordingsError ?? error;
   const [archiveRetry, setArchiveRetry] = useState(0);
   const [layout, setLayout] = useState<Layout>("layers");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
@@ -218,9 +221,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   useEffect(() => {
     let active = true;
     setJournals([]);
+    setRecordingsError(null);
     const refresh = () => void api.listObsLiveLinkRecordings(projectId)
-      .then((records) => { if (active) setJournals(records); })
-      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Không đọc được bản ghi OBS."); });
+      .then((records) => { if (active) { setJournals(records); setRecordingsError(null); } })
+      .catch((reason) => { if (active) setRecordingsError(reason instanceof Error ? reason.message : "Không đọc được bản ghi OBS."); });
     refresh();
     const timer = window.setInterval(refresh, 3_000);
     return () => { active = false; window.clearInterval(timer); };
@@ -237,9 +241,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     (reason) => setError(reason instanceof Error ? reason.message : "Không tải được waveform OBS."),
     (next) => {
       setStatus(next);
+      setStatusError(null);
       const liveId = next.appRecording?.projectId === projectId ? next.appRecording.recordingId : null;
-      if (liveId) { setError(null); recordingIdRef.current = liveId; setSelectedRecordingId(liveId); }
-    }), [projectId]);
+      if (liveId) { recordingIdRef.current = liveId; setSelectedRecordingId(liveId); }
+    },
+    (reason) => setStatusError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS.")), [projectId]);
 
   const active = status?.appRecording?.projectId === projectId ? status.appRecording : null;
   const recordingId = active?.recordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
@@ -664,7 +670,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       </div>
     </div>}>
     <div className="obs-timeline__main">
-      {error ? <p className="obs-timeline__error" role="alert">{error}</p> : null}
+      {visibleError ? <p className="obs-timeline__error" role="alert">{visibleError}</p> : null}
       <div className="obs-timeline__viewport" ref={viewportRef}>
         <div className={`obs-timeline__track-scroll is-${layout}`} aria-label="Timeline đa kênh OBS"
           style={{ "--obs-layer-height": `${Math.max(110, Math.round(viewportHeight * 0.6))}px` } as CSSProperties}>

@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ObsLiveLinkTranscriptEvent } from "../../domain/types";
-import { mergeObsTranscriptRows, obsTranscriptText } from "./obs-transcript-feed";
+import { mergeObsTranscriptRows, obsTranscriptText, useObsLiveLinkTranscript } from "./obs-transcript-feed";
+
+const getEvents = vi.hoisted(() => vi.fn());
+vi.mock("../../api/client", () => ({ api: { getObsLiveLinkTranscriptEvents: getEvents } }));
 
 const event = (revision: number, channelId: string, utteranceId: string,
                startSeconds: number, status: ObsLiveLinkTranscriptEvent["status"],
@@ -12,6 +16,35 @@ const event = (revision: number, channelId: string, utteranceId: string,
   lastSampleIndexExclusive: (startSeconds + 1) * 48000, sampleRate: 48000,
   startSeconds, endSeconds: startSeconds + 1, status, text, pending,
   timingTrust: "segment", lagSeconds: 0.1, error: null,
+});
+
+describe("live transcript reconnect", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it("retains rows and revision across transport loss, then resumes updates without duplicates", async () => {
+    vi.useFakeTimers();
+    getEvents.mockReset();
+    const first = event(1, "A", "a-1", 0, "partial", "Đã lưu");
+    getEvents.mockResolvedValue({ recordingId: "recording", revision: 1, events: [first] });
+    const { result } = renderHook(() => useObsLiveLinkTranscript("project", "recording", true));
+    await act(async () => {});
+    expect(result.current.rows).toHaveLength(1);
+    getEvents.mockRejectedValue(new Error("API offline"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(result.current.error).toBe("API offline");
+    expect(result.current.rows[0].text).toBe("Đã lưu");
+    const final = { ...event(2, "A", "a-1", 0, "final", "Đã lưu đầy đủ"), revision: 2 };
+    const second = event(3, "B", "b-1", 2, "final", "Track thứ hai");
+    getEvents.mockResolvedValue({ recordingId: "recording", revision: 3, events: [final, second] });
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(getEvents.mock.calls.at(-1)).toEqual(["project", "recording", 1]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.rows.map((row) => row.text)).toEqual(["Đã lưu đầy đủ", "Track thứ hai"]);
+    expect(result.current.rows[0].firstEventRevision).toBe(1);
+    getEvents.mockResolvedValue({ recordingId: "recording", revision: 3, events: [] });
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(getEvents.mock.calls.at(-1)).toEqual(["project", "recording", 3]);
+    expect(result.current.rows).toHaveLength(2);
+  });
 });
 
 describe("OBS channel transcript rows", () => {

@@ -17,6 +17,24 @@ class FakeEventSource {
   emit(status: ObsLiveLinkStatus) { this.onmessage?.({ data: JSON.stringify(status) }); }
 }
 
+it("reports status transport loss separately and accepts the recovered idle status", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const onWaveformError = vi.fn();
+  const onStatusError = vi.fn();
+  const onStatus = vi.fn();
+  vi.mocked(api.getObsLiveLinkStatus).mockRejectedValue(new Error("API offline"));
+  const stop = subscribeObsLiveLinkWaveforms("project", () => ({ startSeconds: 0, endSeconds: 60 }),
+    vi.fn(), onWaveformError, onStatus, onStatusError);
+  await Promise.resolve(); await Promise.resolve();
+  expect(onStatusError).toHaveBeenCalledWith(expect.objectContaining({ message: "API offline" }));
+  expect(onWaveformError).not.toHaveBeenCalled();
+  const recovered = { appRecording: null, channels: [] } as unknown as ObsLiveLinkStatus;
+  FakeEventSource.instance.emit(recovered);
+  expect(onStatus).toHaveBeenCalledWith(recovered);
+  stop();
+});
+
 const status = (sequence: number): ObsLiveLinkStatus => ({
   appRecording: { recordingId: "rec", projectId: "project", status: "recording" },
   channels: [{ channelId: "channel", capture: {

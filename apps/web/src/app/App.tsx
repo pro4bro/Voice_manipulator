@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { api } from "../api/client";
 import type { EngineStatus, Project, ProjectCreate, RuntimeAction, RuntimeWorkloadState, ThemeMode, WorkspacePage } from "../domain/types";
@@ -167,16 +167,24 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
     return updated;
   }
 
+  // Runtime availability does not end the editing session. Unmounting here
+  // discards footage selection, Script follow, scroll and transcript cursors.
+  if (activeProject) {
+    const reconnecting = Boolean(runtime && (runtime.busy || runtime.overall !== "running"));
+    return <>
+      <div className="workspace-runtime-content" inert={reconnecting}>
+        <WorkspaceShell key={activeProject.id} engine={engine} onBack={() => setActiveProject(null)} onPageChange={changePage} onRuntimeAction={controlRuntime} onToggleTheme={toggleTheme} project={activeProject} runtime={runtime} theme={theme} />
+      </div>
+      {reconnecting && runtime ? <RuntimeRecoveryOverlay error={error} onAction={controlRuntime} onToggleTheme={toggleTheme} runtime={runtime} theme={theme} /> : null}
+    </>;
+  }
+
   if (loading) {
     return <main className="boot-screen"><img alt="Pro4Bro" className="brand-mark" src="/pro4bro-logo.png" /><b>Đang khởi động local workspace</b><div><i /><i /><i /></div></main>;
   }
 
   if (runtime && !runtime.busy && runtime.overall !== "running") {
     return <RuntimeOfflineScreen error={error} onAction={controlRuntime} onToggleTheme={toggleTheme} runtime={runtime} theme={theme} />;
-  }
-
-  if (activeProject) {
-    return <WorkspaceShell engine={engine} onBack={() => setActiveProject(null)} onPageChange={changePage} onRuntimeAction={controlRuntime} onToggleTheme={toggleTheme} project={activeProject} runtime={runtime} theme={theme} />;
   }
 
   return (
@@ -200,6 +208,34 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
   );
 }
 
+function RuntimeRecoveryOverlay(props: Parameters<typeof RuntimeOfflineScreen>[0]) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    dialog.current?.focus();
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, []);
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Workspace shortcuts must not act on the retained editing surface.
+    event.stopPropagation();
+    if (event.key !== "Tab") return;
+    const buttons = dialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+    const first = buttons?.[0];
+    const last = buttons?.[buttons.length - 1];
+    const focused = document.activeElement;
+    if (!first || !last) { event.preventDefault(); return; }
+    if (focused === dialog.current || (event.shiftKey ? focused === first : focused === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+  return <div aria-label="Kết nối lại runtime" aria-modal="true" className="runtime-recovery-overlay" onKeyDown={handleKeyDown} ref={dialog} role="dialog" tabIndex={-1}>
+    <RuntimeOfflineScreen {...props} />
+  </div>;
+}
+
 function RuntimeOfflineScreen({ runtime, error, theme, onAction, onToggleTheme }: {
   runtime: RuntimeWorkloadState;
   error: string | null;
@@ -212,8 +248,8 @@ function RuntimeOfflineScreen({ runtime, error, theme, onAction, onToggleTheme }
       <section>
         <img alt="Pro4Bro" className="brand-mark" src="/pro4bro-logo.png" />
         <p>WINDOWS / RUNTIME CONTROL</p>
-        <h1>Project workloads are off</h1>
-        <p>API, STT engine, model workers và background tasks đã dừng. Runtime controller siêu nhẹ vẫn giữ màn hình này để có thể bật lại toàn bộ hệ thống.</p>
+        <h1>{runtime.busy ? "Đang kết nối lại runtime" : "Runtime chưa sẵn sàng"}</h1>
+        <p>{runtime.busy ? "Đang xử lý yêu cầu runtime. Workspace sẽ tiếp tục khi các dịch vụ sẵn sàng." : "Một hoặc nhiều dịch vụ đang dừng hoặc không khả dụng. Bật lại hoặc restart để tiếp tục."} Project và lựa chọn trong workspace đang mở được giữ lại.</p>
         <div className="runtime-offline-actions" role="menu"><RuntimeMenuItems onAction={onAction} runtime={runtime} /></div>
         {runtime.lastError || error ? <small role="alert">{runtime.lastError ?? error}</small> : null}
         <button className="runtime-theme-button" onClick={onToggleTheme} type="button">{theme === "light" ? "Dark mode" : "Light mode"}</button>

@@ -37,22 +37,24 @@ while user-visible success criteria in Phases 2-7 remain open.
 
 ## Verification Baseline
 
-Latest bounded LiveLink round: `LIVELINK-STT-12L` (2026-10-03), isolated
-persisted-startup/topology replay complete; historical natural-loss cause open.
-Six passing takes load 37 copied projects / 58 journals. Final foreground and
-detached API readiness is 5.500/6.093 seconds with 60 stable seconds each.
-Recovery logs retain PID, scan duration and queued worker counts (nine live
-tracks, one MKV watcher, four MKV STT and seven OBS detailed workers); no
-transcript completion claim. Initial guard overhead/cache variation and one
-project-list timeout are recorded separately rather than attributed to listener
-loss. Owner metadata/JSON hashes unchanged, ports clear, no denied writes.
-Backend 500, frontend 458 tests, typecheck/build and diff check passed. ADR 0036
-addendum; `docs/gates/livelink-stt-12l-persisted-startup.md`. Existing 12K health,
-controlled recovery and portable Core gates and 12J plugin/package 0.6.9 remain
-valid; they are not new rerun claims. Natural listener loss, 12H disk-stall cause,
-owner installation, exact video timing and wider LIVELINK-08 gates remain open.
-Exact next is `LIVELINK-STT-12M`: retain selected project/footage and Script follow
-through API restart in the running browser. This does not advance Voice Training.
+Latest bounded LiveLink round: `LIVELINK-STT-12M` (2026-10-03), workspace
+lifecycle and isolated real-browser reconnect gate complete. Selected project
+workspace stays mounted behind an inert recovery dialog during outage/restart
+and delayed refresh. Status/journal polling clears its own recovered transport
+alerts without hiding real waveform failures. Two deliberate API exits recover
+through UI Restart all; footage/track, selected Script word, scroll 122px,
+recording and zoom 2 remain. Transcript requests resume afterRevision144.
+Actual archived track audio plays after reconnect; final alert disappears.
+Independent 2,434-file corpus metadata unchanged, owner listeners unchanged,
+test ports free, no test session, tab closed. Frontend 464 tests, typecheck/build
+and diff check pass; backend 500 remains the carried 12L baseline. ADR 0037;
+`docs/gates/livelink-stt-12m-workspace-reconnect.md`. Existing 12L startup, 12K
+health/controlled recovery and 12J plugin/package 0.6.9 gates are historical,
+not new rerun claims. Natural listener loss, 12H disk stalls, owner installation,
+exact video timing and wider LIVELINK-08 gates remain open. This same-document
+archived gate does not prove active OBS/STT capture or F5 persistence.
+Exact next: `LIVELINK-CAPTURE-10B`, the existing live Media Pool and independent
+source running-app gate. No new 12N round; Voice Training status is unchanged.
 The historical phase baseline below remains distinct from these focused checks.
 
 - Backend: 364 passed.

@@ -65,6 +65,34 @@ const captionRow = (channelId: string, startSeconds: number, text: string,
   timingTrust: "segment", lagSeconds: 0.1, error: null,
 });
 
+it("clears a status transport error after reconnect without a new live recording", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const args = mocks.subscribe.mock.calls[0];
+  await act(async () => {
+    (args[5] ?? args[3])(new Error("API offline"));
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("API offline");
+  await act(async () => { args[4]({ appRecording: null, channels: [] }); });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  await act(async () => { args[3](new Error("Waveform invalid")); });
+  await act(async () => { args[4]({ appRecording: null, channels: [] }); });
+  expect(screen.getByRole("alert")).toHaveTextContent("Waveform invalid");
+});
+
+it("clears the journal-list error when that same polling request recovers", async () => {
+  vi.useFakeTimers();
+  try {
+    render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+    await act(async () => {});
+    mocks.listObsLiveLinkRecordings.mockRejectedValue(new Error("Journal request offline"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(screen.getByRole("alert")).toHaveTextContent("Journal request offline");
+    mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
+});
+
 it("names each OBS recording with its local start time and project name", async () => {
   const firstStart = new Date(2026, 8, 29, 11, 22, 27).toISOString();
   const secondStart = new Date(2026, 8, 29, 11, 25, 4).toISOString();

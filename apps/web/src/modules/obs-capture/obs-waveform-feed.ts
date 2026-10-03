@@ -14,6 +14,7 @@ export function subscribeObsLiveLinkWaveforms(
   onSnapshot: (snapshot: ObsLiveLinkWaveform) => void,
   onError?: (reason: unknown) => void,
   onStatus?: (status: ObsLiveLinkStatus) => void,
+  onStatusError?: (reason: unknown) => void,
 ): () => void {
   let active = true;
   let fallback = typeof EventSource === "undefined";
@@ -78,7 +79,7 @@ export function subscribeObsLiveLinkWaveforms(
     fetchChanged(status);
   };
   const refresh = () => void api.getObsLiveLinkStatus().then(accept)
-    .catch((reason) => { if (active) onError?.(reason); });
+    .catch((reason) => { if (active) (onStatusError ?? onError)?.(reason); });
   refresh();
   const events = fallback ? null : new EventSource("/api/obs-livelink/v3/events");
   if (events) {

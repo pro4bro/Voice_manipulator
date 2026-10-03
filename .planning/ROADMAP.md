@@ -15,17 +15,18 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
-LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12L` passes the isolated
-persisted-startup/topology gate: six successful takes from 37 copied projects /
-58 journals, final foreground/detached readiness 5.500/6.093 seconds with 60
-stable seconds each. Startup logs retain scan duration/PID and queued recovery
-counts; they do not certify inference completion. Backend 500, frontend 458
-tests, typecheck/build and diff check pass. Initial harness cost/cache variation
-and one project-list timeout are retained separately. Historical natural listener
-loss did not recur and its cause remains open. Prior 12K health/controlled recovery
-and 12J source-absence/plugin 0.6.9 gates remain valid. Exact next is
-`LIVELINK-STT-12M`: preserve selected project/footage and Script follow through
-API restart in the running browser. Natural 12H disk stalls, owner installation,
+LiveLink acceptance follow-up (2026-10-03): `LIVELINK-STT-12M` passes workspace
+lifecycle and isolated real-browser reconnect gates. The same workspace retains
+footage/track, selected Script word, scroll, recording, zoom and transcript
+revision through two deliberate API exits and UI Restart all. Recovered polling
+clears stale Timeline alerts; archived track audio plays. Owner listeners remain
+unchanged and test services/tab are cleaned up. Frontend 464 tests, typecheck,
+build and diff check pass; backend 500 is the carried 12L baseline. ADR 0037;
+`docs/gates/livelink-stt-12m-workspace-reconnect.md`. Prior 12L startup and 12K
+readiness evidence do not establish historical natural listener-loss cause.
+Exact next: `LIVELINK-CAPTURE-10B`, the existing queued live Media Pool and
+independent-source gate. Archived same-document review cannot establish ongoing
+physical OBS/STT behavior or F5 persistence. Natural disk stalls, owner install,
 exact video timing and wider source/UI/portability gates remain under
 `docs/WORK-ROUNDS.md`. No product phase is marked complete by this focused round.
 

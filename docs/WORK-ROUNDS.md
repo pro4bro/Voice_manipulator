@@ -83,7 +83,7 @@ that gap matters, and the exact next round.
 | LIVELINK-STT-12J | Persist source-absence timing when a newly added source disappears during a take | Complete at reducer/native and two OBS/browser artifact gates | Plugin 0.6.9 retains queued PCM, journals callback boundaries and preserves restoration silence; Timeline distinguishes missing sources from receipt delay. |
 | LIVELINK-STT-12K | Distinguish cold-start listener loss from process exit and health delay | Readiness/diagnostic/recovery slice complete; natural-loss gate open | Studio status initialized CUDA inside the old probe. Dedicated health, PID-aware waits and retained transitions are verified; five isolated cold cycles did not reproduce the historical listener loss. |
 | LIVELINK-STT-12L | Replay persisted recovery backlog and foreground/detached cold startup in isolation | Isolated topology/recovery replay complete; natural-loss cause open | Six passing takes restore scheduling from 37 copied projects; startup scan logs retain evidence, but historical listener loss did not recur. |
-| LIVELINK-STT-12M | Preserve selected project/footage and Script follow through API restart | Queued | Healthy restarted services must reconnect the browser to the same recording and review position. |
+| LIVELINK-STT-12M | Preserve selected project/footage and Script follow through API restart | Complete at lifecycle regression and isolated real-browser reconnect gate; live OBS matrix open | The same workspace, selected footage/word, scroll, zoom and transcript cursor survive restart; recovered polling clears stale transport alerts. |
 | LIVELINK-STT-12 | Improve LiveLink recognition quality and reduce redundant model passes | Implemented at API test and archived two-track replay level; physical OBS gate open | Replaces the inaccurate tiny/2-second profile with medium/4-second passes and uses the project language when set. |
 | VOICE-EXPORT-13 | Export Voice Manipulator output audio and word/line SRT | Implemented at generated-artifact, API and UI test level; running-browser download gate open | A selected Voice Output downloads its WAV, while SRT cues use trusted word timing or exact Script-row assembly bounds. |
 | LIVELINK-MEDIA-14 | Make provisional OBS footage interactive during recording | Implemented at API/UI and owner PCM replay level; physical OBS viewport gate open | A journal-only Media Pool row opens its tracks and live Timeline/Script, can preview saved PCM, and hands selection to the completed MKA. |
@@ -3244,3 +3244,45 @@ LIVELINK-08 source/UI/portability gates remain open.
 Exact next round: `LIVELINK-STT-12M` — retain and verify selected project/footage
 and Script follow through API restart in the running browser. Runtime health
 alone does not prove the owner can continue reviewing the same recording.
+
+## Round LIVELINK-STT-12M — 2026-10-03
+
+Completed scope: preserve the selected project's workspace through unavailable,
+busy and post-restart loading states; clear recovered Timeline polling alerts;
+verify the same-document archived review in the real browser.
+
+Evidence:
+
+- Two App regressions reproduced workspace unmounting before repair. A stable
+  project-keyed workspace now remains mounted beneath an inert recovery dialog
+  with bounded keyboard focus. No persistent format or audio algorithm changes.
+- Initial browser recovery exposed a stale stopped Timeline alert. Two further
+  red regressions reproduce status/journal polling errors; each now clears on
+  its own successful response without suppressing real waveform failures.
+- Independent real 12D two-track copy: 2,434 files / 138,097,106 bytes, no hard
+  links. Two deliberate API exits recover through UI Restart all. Final API
+  69092→33876, Studio 37516; controller 68748 stays unchanged. Track 18, recording
+  ID, selected Script word, scroll 122px and zoom 2 remain; final transport alert
+  disappears. Transcript polling resumes afterRevision144, no initial revision
+  request in the restarted log. Browser console has no warn/error entries.
+- Muted post-reconnect playback decodes both tracks and reaches about 25 seconds;
+  first/last word selection scrolls the Script 0/122px. Automatic word highlight
+  during playback is not claimed. Offline media probes find one two-stream FLAC
+  MKA and two mono PCM16 analysis WAVs; all are inside the copied project.
+- Source metadata for 2,434 inputs unchanged. Owner service listener PIDs remain
+  unchanged; all isolated test ports clear, test session removed, tab closed.
+  ADR 0037; `docs/gates/livelink-stt-12m-workspace-reconnect.md`; ignored
+  `.scratch/livelink-stt-12m/acceptance.json`, browser snapshots and `final.png`.
+- Frontend **55 files / 464 tests**, 20.90 seconds; typecheck/build and diff check
+  pass. Backend 500 is the carried 12L baseline, not rerun this frontend round.
+  Backend/Studio/native/engine source unchanged. No new inference quality claim.
+
+Remaining gap: archived paused review does not prove provisional footage
+interaction during actual OBS recording or the full independent-source matrix.
+Same-document retention does not add F5 persistence. Historical natural listener
+loss, 12H disk stalls, owner plugin install, exact video timing and wider
+LIVELINK-08 gates remain open; successful injected recovery cannot close them.
+
+Exact next round: **LIVELINK-CAPTURE-10B**, the existing queued live Media Pool
+and independent-source running-app gate. Ongoing capture behavior requires
+physical evidence beyond this archived reconnect. No extra 12N round introduced.

@@ -1,5 +1,29 @@
 # Project Status — 2026-09-22
 
+## LiveLink workspace reconnect — 2026-10-03
+
+`LIVELINK-STT-12M` completes the lifecycle and isolated real-browser reconnect
+gate. A selected project's workspace remains mounted through API outage,
+runtime restart and post-restart project refresh. An inert recovery dialog
+blocks interaction and contains focus until readiness returns. Timeline clears
+status/journal transport errors when their own polling recovers; real waveform
+errors retain their separate state.
+
+Two deliberate API-exit/recovery cases use an independent real two-track 12D
+project copy. Track/footage, selected Script word, scroll 122px, recording ID and
+zoom 2 remain; transcript polling resumes afterRevision144. Final replay clears
+the stale Timeline stopped alert. Both track audio elements decode and play
+after reconnect. Owner runtime listeners remain unchanged; test ports/session
+and browser tab are cleaned up. Frontend 464 tests, typecheck/build and diff check
+pass; backend 500 is the carried 12L baseline, not a new run. ADR 0037;
+`docs/gates/livelink-stt-12m-workspace-reconnect.md`.
+
+This archived same-document review does not prove ongoing OBS/STT capture or F5
+state restoration. Natural listener loss, disk stalls, owner installation and
+wider final gates remain open. Exact next: **LIVELINK-CAPTURE-10B**, the existing
+live Media Pool/independent-source gate, needed to verify interaction while
+recording. No further alphabet round introduced; Voice Training is unchanged.
+
 ## LiveLink persisted startup and recovery backlog — 2026-10-03
 
 `LIVELINK-STT-12L` completes the isolated persisted-startup/topology replay.
