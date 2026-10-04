@@ -1,0 +1,59 @@
+{
+  "candidate": "medium beam_size=5 instead of 1; private Studio seam, actual model",
+  "candidateScore": {
+    "phase": "live",
+    "budget": {
+      "cer": 0.15,
+      "wer": 0.3
+    },
+    "tracks": [
+      {
+        "track": 1,
+        "referenceCharacters": 837,
+        "characterEdits": 154,
+        "referenceSyllables": 264,
+        "syllableEdits": 64,
+        "cer": 0.18399044205495818,
+        "wer": 0.24242424242424243,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      },
+      {
+        "track": 2,
+        "referenceCharacters": 1166,
+        "characterEdits": 290,
+        "referenceSyllables": 352,
+        "syllableEdits": 96,
+        "cer": 0.24871355060034306,
+        "wer": 0.2727272727272727,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      }
+    ],
+    "referenceCharacters": 2003,
+    "characterEdits": 444,
+    "referenceSyllables": 616,
+    "syllableEdits": 160,
+    "silenceInsertions": 0,
+    "cer": 0.2216674987518722,
+    "wer": 0.2597402597402597,
+    "textBudgetPassed": false,
+    "timingAccuracyPassed": null
+  },
+  "elapsedSeconds": 132.93700000000536,
+  "errorCount": 0,
+  "sourceHashesUnchanged": true,
+  "productionChanged": false,
+  "decision": "rejected: CER budget failed",
+  "fullAcceptanceComplete": false
+}

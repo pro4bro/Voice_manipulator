@@ -15,6 +15,16 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## LIVELINK-STT-19B2 — beam-search candidate rejected (2026-10-04)
+
+Medium beam search 5 on the unchanged 19A corpus yields CER 22.17%, WER 25.97%,
+still failing <=15% CER. The candidate is rejected; production beam 1/medium is
+unchanged. Source hashes match. No physical/timing or phase acceptance advances.
+Evidence: `docs/gates/livelink-stt-19b2-beam-candidate.md` and companion JSON.
+19B recognition acceptance remains open; further context/segmentation diagnosis
+must use a separate scope instead of lowering budgets. Exact next independent
+queued work is **MEDIA-STAGES-02**; it does not depend on 19B acceptance.
+
 ## LIVELINK-STT-19B — larger model candidate rejected (2026-10-04)
 
 Real large-v3 live candidate on frozen 19A speech reduces CER to 20.87% and

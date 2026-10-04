@@ -108,7 +108,7 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
 | LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Baseline measured; timing/physical acceptance open | Two real-model runs fail LiveLink live CER; see `docs/gates/livelink-stt-19a-speech-quality.md`. |
-| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Large-v3 candidate rejected; repair acceptance open | CER 20.87% still fails; exact next STT-19B2 beam search. |
+| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Large-v3 candidate rejected; repair acceptance open | CER 20.87% still fails; beam 5 also rejected (19B2); next independent MEDIA-STAGES-02. |
 | VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 
@@ -3864,3 +3864,12 @@ physical or phase acceptance advances. See
 Exact next **LIVELINK-STT-19B2**, one medium beam-search candidate. The owner
 requested sequential rounds in this session; commit each before proceeding.
 
+## LIVELINK-STT-19B2 — beam-search candidate rejected (2026-10-04)
+
+Medium beam search 5 on the unchanged 19A corpus yields CER 22.17%, WER 25.97%,
+still failing <=15% CER. The candidate is rejected; production beam 1/medium is
+unchanged. Source hashes match. No physical/timing or phase acceptance advances.
+Evidence: `docs/gates/livelink-stt-19b2-beam-candidate.md` and companion JSON.
+19B recognition acceptance remains open; further context/segmentation diagnosis
+must use a separate scope instead of lowering budgets. Exact next independent
+queued work is **MEDIA-STAGES-02**; it does not depend on 19B acceptance.

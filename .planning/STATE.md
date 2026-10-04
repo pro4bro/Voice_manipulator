@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-STT-19B larger model candidate rejected.
-last_activity_desc: CER 20.87% still fails 15%; production medium unchanged. Exact next STT-19B2 beam search candidate; original timing/physical acceptance stays open.
+last_activity: 2026-10-04 — LIVELINK-STT-19B2 beam candidate rejected.
+last_activity_desc: CER 22.17% fails 15%; medium/beam1 unchanged. STT acceptance stays open; exact next independent MEDIA-STAGES-02.
 ---
 
 # Project State
