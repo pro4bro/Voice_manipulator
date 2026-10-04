@@ -1,5 +1,15 @@
 # Project Status — 2026-09-22
 
+## WAVEFORM-VOLUME-01 — gain-responsive waveform (2026-10-05)
+
+OBS/imported multitrack envelopes now reflect their per-track gain/mute while
+retaining detailed PCM, gaps and original media. Main Timeline draft/committed
+gain is regression covered. Frontend 497/57 files, backend 564, typecheck/build
+pass. Actual copied OBS waveform halves amplitude at 50%, mute becomes zero,
+and another track remains unchanged. See `docs/gates/waveform-volume-01.md`.
+The owner authorized continuing all remaining rounds serially; phase gates
+remain open until their own required evidence passes.
+
 ## UX-CONSISTENCY-01 — consolidated UI consistency (2026-10-05)
 
 Delivered Hub bulk Delete, one filled waveform envelope design across Timeline

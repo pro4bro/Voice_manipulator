@@ -505,6 +505,33 @@ it("draws separate live source paths under one ruler and playhead", async () => 
   expect(screen.getByRole("button", { name: "Phát track OBS" })).toBeDisabled();
 });
 
+it("updates OBS channel waveform geometry with the live gain preview and mute state", async () => {
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
+  const onSnapshot = mocks.subscribe.mock.calls[0]?.[2] as (next: ObsLiveLinkWaveform) => void;
+  act(() => onStatus({ appRecording: recording, channels: ids.map((channelId, index) => ({
+    channelId, alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`, slot: index + 1,
+    appliedForward: true, desiredForward: true,
+    capture: { recordingId: "recording", projectId: "project", durableChunkCount: 1 },
+  })) } as unknown as ObsLiveLinkStatus));
+  const firstLane = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const secondLane = screen.getByRole("img", { name: "Sóng âm Channel 2" });
+  act(() => { onSnapshot(wave(ids[0], 12000, "pcm")); onSnapshot(wave(ids[1], 3000, "pcm")); });
+  await waitFor(() => expect(firstLane.querySelector("path")?.getAttribute("d")).toBeTruthy());
+  const firstPath = firstLane.querySelector("path")!;
+  const secondPath = secondLane.querySelector("path")!;
+  const firstOriginal = firstPath.getAttribute("d");
+  const secondOriginal = secondPath.getAttribute("d");
+  const gain = screen.getByRole("slider", { name: "Gain nghe lại Channel 1" });
+  fireEvent.pointerDown(gain);
+  fireEvent.change(gain, { target: { value: "50" } });
+  expect(firstPath.getAttribute("d")).not.toBe(firstOriginal);
+  expect(secondPath.getAttribute("d")).toBe(secondOriginal);
+  const gained = firstPath.getAttribute("d");
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  expect(firstPath.getAttribute("d")).not.toBe(gained);
+});
+
 it("reopens a stopped MKA recording with source-owned playback and seek", async () => {
   const stopped = { ...recording, status: "stopped", archiveStatus: "ready",
     endedMonotonicNs: 7_000_000_000,

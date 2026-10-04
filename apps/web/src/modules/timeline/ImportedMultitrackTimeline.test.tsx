@@ -157,6 +157,25 @@ it("keeps the waveform mounted while dragging and mutes one track independently"
   expect(screen.getByRole("slider", { name: "Gain Channel 1" })).toHaveValue("100");
 });
 
+it("updates each imported waveform envelope with the gain preview and mute state", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    duration: 60, points: [{ min: -.25, max: .25 }],
+  }) }));
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId="a"
+    onSelectTrack={() => undefined} onCutsChange={async () => true} />);
+  await waitFor(() => expect(view.container.querySelectorAll(".obs-timeline__wave path[d^=\"M\"]")).toHaveLength(2));
+  const waves = [...view.container.querySelectorAll(".obs-timeline__wave path")];
+  const original = waves.map((path) => path.getAttribute("d"));
+  const gain = screen.getByRole("slider", { name: "Gain Channel 1" });
+  fireEvent.pointerDown(gain);
+  fireEvent.change(gain, { target: { value: "200" } });
+  expect(waves[0].getAttribute("d")).not.toBe(original[0]);
+  expect(waves[1].getAttribute("d")).toBe(original[1]);
+  const gained = waves[0].getAttribute("d");
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  expect(waves[0].getAttribute("d")).not.toBe(gained);
+});
+
 it("fits the full long footage at minimum zoom and reaches 0.01 seconds per 10 pixels", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 4000, points: [{ min: 0, max: 0 }] }) }));
   render(<ImportedMultitrackTimeline parent={{ ...parent, duration: 4000 }} tracks={tracks.map((track) => ({ ...track, duration: 4000 }))}

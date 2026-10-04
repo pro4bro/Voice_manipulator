@@ -23,7 +23,7 @@ function intervalStyle(start: number, end: number, windowStart: number, span: nu
   return right > left ? { left: `${left * 100}%`, width: `${(right - left) * 100}%` } : null;
 }
 
-function waveformPath(envelope: Envelope | undefined, windowStart: number, span: number): string {
+function waveformPath(envelope: Envelope | undefined, windowStart: number, span: number, gain = 1): string {
   if (!envelope?.points.length || !envelope.duration) return "";
   const sourceStart = envelope.start ?? 0;
   const sourceSpan = (envelope.end ?? envelope.duration) - sourceStart;
@@ -42,7 +42,7 @@ function waveformPath(envelope: Envelope | undefined, windowStart: number, span:
     const x = (sourceStart + index / envelope.points.length * sourceSpan - windowStart) / span * 1000;
     visible.push({ x, min: minimum, max: maximum });
   }
-  return waveformEnvelopePath(visible);
+  return waveformEnvelopePath(visible, 60, gain);
 }
 
 interface Props {
@@ -318,7 +318,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
               </button>
               {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>
-                <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span)} /></svg>
+                <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
                 {sharedCuts.map((cut) => { const style = intervalStyle(cut.start, cut.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại" className="obs-timeline__removed-range" key={cut.id} style={style} /> : null; })}
                 {stagedCut && intervalStyle(stagedCut.start, stagedCut.end, windowStart, span) ? <i className="obs-timeline__removed-range is-staged" style={intervalStyle(stagedCut.start, stagedCut.end, windowStart, span)!} /> : null}
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ? <i aria-label={`Playhead Channel ${index + 1}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}

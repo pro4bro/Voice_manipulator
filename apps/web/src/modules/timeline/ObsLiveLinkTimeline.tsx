@@ -92,7 +92,7 @@ function sourceLanes(status: ObsLiveLinkStatus | null, journal: ObsLiveLinkRecor
 }
 
 function waveformPath(points: ObsLiveLinkWaveformPoint[], sampleRate: number | null,
-                      windowStart: number, windowSpan: number): string {
+                      windowStart: number, windowSpan: number, gain = 1): string {
   if (!sampleRate) return "";
   const visible: Array<{ x: number; min: number; max: number }> = [];
   points.forEach((point, index) => {
@@ -110,7 +110,7 @@ function waveformPath(points: ObsLiveLinkWaveformPoint[], sampleRate: number | n
       max: point.max / 32768,
     });
   });
-  return waveformEnvelopePath(visible);
+  return waveformEnvelopePath(visible, 60, gain);
 }
 
 function mergeWaveform(previous: ObsLiveLinkWaveform | undefined, incoming: ObsLiveLinkWaveform): ObsLiveLinkWaveform {
@@ -714,7 +714,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               waveform.endSeconds === windowStart + windowSpan ? waveform.points : [];
             const hasPcm = points.some((point) => point.peak !== null);
             const sampleRate = waveform?.sampleRate ?? null;
-            const path = waveformPath(points, sampleRate, windowStart, windowSpan);
+            const path = waveformPath(points, sampleRate, windowStart, windowSpan,
+              mutedByChannel[`${recordingId}:${lane.channelId}`] ? 0 : (gainByChannel[`${recordingId}:${lane.channelId}`] ?? 100) / 100);
             const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null
               ? latest : Math.max(latest, point.endFrame / sampleRate), 0) : 0;
             const liveChannel = status?.channels.find((channel) => channel.channelId === lane.channelId);

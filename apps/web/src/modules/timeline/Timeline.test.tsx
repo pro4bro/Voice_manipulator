@@ -27,6 +27,42 @@ describe("Timeline", () => {
     expect(screen.getByRole("combobox", { name: "Tốc độ phát" })).toHaveValue("8");
   });
 
+  it("repaints the detailed PCM canvas using draft gain while the slider is held", async () => {
+    const starts: number[] = [];
+    const context = {
+      beginPath: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillRect: vi.fn(), lineTo: vi.fn(),
+      moveTo: vi.fn((_: number, y: number) => starts.push(y)),
+    } as unknown as CanvasRenderingContext2D;
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() { this.callback([], this as unknown as ResizeObserver); }
+      disconnect() {}
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      start: 0, end: 10, duration: 10, resolution: .001,
+      points: Array.from({ length: 20 }, () => ({ min: -.25, max: .25 })),
+    }) }));
+    try {
+      const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
+        take={{ id: "gain-canvas", name: "gain.wav", url: "/api/projects/p/media/gain-canvas/audio", duration: 10 }} />);
+      const scroller = container.querySelector(".timeline-scroll") as HTMLDivElement;
+      const canvas = container.querySelector(".timeline-canvas") as HTMLDivElement;
+      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1000 });
+      Object.defineProperty(canvas, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, top: 0, width: 2000, height: 100, right: 2000, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) });
+      fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
+      await waitFor(() => expect(screen.getByLabelText("PCM waveform at zoom")).toBeInTheDocument());
+      const initialTop = starts[starts.length - 1];
+      const gain = screen.getByRole("slider", { name: "Source gain" });
+      fireEvent.pointerDown(gain);
+      fireEvent.change(gain, { target: { value: "6" } });
+      expect(starts[starts.length - 1]).toBeLessThan(initialTop);
+    } finally {
+      canvasContext.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("exposes a fast timeline zoom slider", () => {
     render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "test.wav", url: "/audio.wav", duration: 10 }} />);
     const slider = screen.getByRole("slider", { name: "Zoom timeline" });

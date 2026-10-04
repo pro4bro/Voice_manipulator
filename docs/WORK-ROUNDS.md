@@ -5,6 +5,11 @@ one bounded round, verifies it, records what the round means, and stops. The
 closing report must always name: completed scope, evidence, remaining gap, why
 that gap matters, and the exact next round.
 
+Owner override, 2026-10-05: continue all remaining planned rounds after the UI
+work and repair waveform volume. Execute bounded rounds serially with separate
+evidence/commits; do not stop between executable rounds. Acceptance budgets and
+physical/human evidence requirements retain their meaning.
+
 ## Queue
 
 | Round | Scope | State | Why it matters |
@@ -4060,3 +4065,16 @@ Normal launcher start restored the stopped controller and reclaimed two orphan
 workload trees; readiness controller/Studio/API 2.909/3.302/3.611 seconds, health
 ok. No new physical capture/model run, phase completion or independent gate
 advances. Earlier cold-start profiling and unrelated UAT gaps remain open.
+
+## WAVEFORM-VOLUME-01 — waveform follows track volume (2026-10-05)
+
+Fixed OBS/imported multitrack SVG envelopes ignoring gain and mute. Shared
+geometry applies per-track linear amplitude before clipping; other tracks,
+gaps and detailed viewport PCM remain intact. Main Timeline's existing draft
+3/12 and committed dB gain behavior is covered by a canvas regression.
+Two SVG regressions failed before the fix. Final focused suite 103/7 files,
+full frontend 497/57 files, backend 564, typecheck/build/diff check pass.
+Real copied OBS browser displacement 22.99 -> 11.50 at 50% gain; mute -> 0;
+other track unchanged. See `docs/gates/waveform-volume-01.md`.
+No source PCM was edited or new hardware capture claimed. Next executable
+round UX-05B3 pending-footage navigation; STT-19B3 context candidate follows.
