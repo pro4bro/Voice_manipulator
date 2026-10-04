@@ -414,6 +414,13 @@ export const api = {
     });
     return assets.map(normalizeMediaAsset);
   },
+  importExistingAudioTrack: async (projectId: string, assetId: string, streamIndex: number) => {
+    const asset = await request<ProjectMediaAsset>(
+      `/api/projects/${projectId}/media/${assetId}/audio-tracks/${streamIndex}/import`,
+      { method: "POST" },
+    );
+    return normalizeMediaAsset(asset);
+  },
   setMediaTrainingSelected: async (projectId: string, assetId: string, selected: boolean) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/training-selection`, {
       method: "PATCH",

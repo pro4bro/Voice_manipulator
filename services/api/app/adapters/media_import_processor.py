@@ -65,6 +65,64 @@ class MediaImportProcessor:
         self.ffmpeg_path = ffmpeg_path or shutil.which("ffmpeg")
         self.ffprobe_path = self._find_ffprobe(self.ffmpeg_path)
         self.local_sources = local_sources
+        self._track_locks: dict[tuple[str, str], asyncio.Lock] = {}
+
+    async def materialize_audio_track(self, project: ProjectRecord, parent_id: str,
+                                      stream_index: int) -> ProjectMediaAsset:
+        """Add an omitted completed-container stream without replacing the source."""
+        key = project.id, parent_id
+        async with self._track_locks.setdefault(key, asyncio.Lock()):
+            parent = self.library.get(project.id, parent_id)
+            if parent.source_archive_asset_id or parent.deleted_at or parent.disabled:
+                raise ValueError("Chọn footage đang hoạt động để thêm track.")
+            if parent.growing_mkv_follow and not parent.source_path.endswith("source-final.mkv"):
+                raise ValueError("Finish MKV sau khi OBS dừng trước khi thêm track.")
+            choice = next((track for track in parent.available_audio_tracks
+                           if track.stream_index == stream_index), None)
+            if choice is None:
+                raise ValueError("Track audio không thuộc footage này.")
+            existing = next((asset for asset in self.library.list(project.id) if
+                             asset.source_archive_asset_id == parent_id and
+                             asset.source_archive_stream_index == stream_index), None)
+            if existing:
+                if existing.deleted_at or existing.disabled:
+                    raise ValueError("Khôi phục và bật track trước khi Import.")
+                return self.library.set_import_selected(project.id, existing.id, True)
+            if not self.ffmpeg_path or not self.ffprobe_path:
+                raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để thêm track.")
+            root = Path(project.project_path).resolve()
+            source = (root / parent.source_path).resolve()
+            if not source.is_relative_to(root):
+                raise ValueError("Đường dẫn nguồn ngoài project.")
+            if parent.has_external_source and not parent.local_cache_enabled:
+                original = self.local_sources.get(project.id, parent_id) if self.local_sources else None
+                if not original:
+                    raise FileNotFoundError("Không tìm thấy file gốc. Bật Local File Cache hoặc kết nối lại nguồn.")
+                source = Path(original)
+            if not source.is_file():
+                raise FileNotFoundError("Không tìm thấy file media nguồn.")
+            probe = await asyncio.to_thread(self._probe, source)
+            if not any(stream.get("index") == stream_index and stream.get("codec_type") == "audio"
+                       for stream in probe.get("streams", [])):
+                raise ValueError("Nguồn hiện tại không còn track audio đã chọn.")
+            child_id = f"asset-{uuid4().hex[:12]}"
+            folder = root / "assets" / "media" / child_id
+            folder.mkdir(parents=True, exist_ok=False)
+            analysis = folder / "analysis.wav"
+            # A failed decode leaves only an unpublished derivative; retry gets a
+            # fresh file, and the source/parent selection remains untouched.
+            await asyncio.to_thread(self._extract_audio_streams, source, [(analysis, stream_index)])
+            duration = await asyncio.to_thread(self._audio_duration, analysis)
+            return self.library.publish_audio_track(project.id, parent_id, MediaAssetCreate(
+                name=f"{parent.name} · {choice.title}"[:512], source_extension=".wav",
+                media_kind="audio", source_path=analysis.relative_to(root).as_posix(),
+                analysis_path=analysis.relative_to(root).as_posix(),
+                source_archive_asset_id=parent_id, source_archive_stream_index=stream_index,
+                url=f"/api/projects/{project.id}/media/{child_id}/audio",
+                duration=duration, sample_rate=24000, audio_codec="pcm_s16le",
+                origin=parent.origin, capture_tier=parent.capture_tier,
+                transcription_status="skipped", import_selected=True,
+            ), child_id)
 
     async def process(
         self,

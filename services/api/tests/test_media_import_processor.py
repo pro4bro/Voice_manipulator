@@ -123,6 +123,23 @@ def test_import_preserves_each_audio_track_under_one_footage(tmp_path, extension
         (1, False), (2, True),
     ]
 
+    original_bytes = source.read_bytes()
+    first_analysis = (root / selected_track.analysis_path).read_bytes()
+    added = asyncio.run(processor.materialize_audio_track(project, chosen.asset.id, 1))
+    assert added.source_archive_asset_id == chosen.asset.id
+    assert added.source_archive_stream_index == 1
+    assert added.duration == pytest.approx(selected_track.duration, abs=0.05)
+    assert added.sample_rate == 24000 and added.transcription_status == "skipped"
+    assert source.read_bytes() == original_bytes
+    assert (root / selected_track.analysis_path).read_bytes() == first_analysis
+    assert asyncio.run(processor.materialize_audio_track(project, chosen.asset.id, 1)).id == added.id
+    library.set_import_selected(project.id, added.id, False)
+    assert asyncio.run(processor.materialize_audio_track(project, chosen.asset.id, 1)).import_selected
+    reopened = FileMediaLibrary(FileProjectRepository(tmp_path / "registry"))
+    assert all(track.imported for track in reopened.get(project.id, chosen.asset.id).available_audio_tracks)
+    assert len([asset for asset in reopened.list(project.id)
+                if asset.source_archive_asset_id == chosen.asset.id]) == 2
+
 def test_long_audio_uses_99_percent_of_the_ninety_minute_stt_ceiling_with_overlap():
     duration = STT_CHUNK_SECONDS + 1.0
     chunks = MediaImportProcessor._stt_chunks(duration)

@@ -15,6 +15,25 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## MEDIA-STAGES-02 — materialize omitted tracks (2026-10-04)
+
+Complete at completed-container scope. A previously omitted audio stream can
+be added from Media Pool Import under the same footage. API deduplicates repeat/
+concurrent requests; new WAV and parent selection publish in one index write.
+Original source and existing analyses are preserved. Decode/index failure stays
+retryable; edited Script/selected child are retained across list refresh.
+
+Real MKV/MOV/MP4, local cache/original, concurrent/retry and move/Open Existing
+checks pass. Browser adds Track 2 immediately, shows two waveforms under one
+footage, and retains both after reload/reopen; console clean. Generated tracks
+are mono24k PCM16/4 seconds, 440/880 Hz, no clipping; source/cache bytes match.
+Final backend 552, frontend 475 in 55 files, typecheck/build pass. Owned services
+and tab close. Evidence: ADR 0043 and `docs/gates/media-stages-02-track-addition.md`
+with metrics JSON. Still-growing MKV must Finish before adding an omitted track;
+uncached sources need their original locator; unpublished failed derivatives may
+remain. No STT quality or phase completion is claimed.
+Exact next **MKV-FOLLOW-03**. 19A timing/physical and 19B accuracy stay open.
+
 ## LIVELINK-STT-19B2 — beam-search candidate rejected (2026-10-04)
 
 Medium beam search 5 on the unchanged 19A corpus yields CER 22.17%, WER 25.97%,

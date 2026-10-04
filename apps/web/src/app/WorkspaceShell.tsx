@@ -1400,7 +1400,22 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setMediaBusy(false);
     }
   }
-  async function toggleImportAsset(assetId: string, selected: boolean) {
+  async function toggleImportAsset(assetId: string, selected: boolean, streamIndex?: number) {
+    if (streamIndex !== undefined) {
+      setMediaBusy(true);
+      try {
+        await api.importExistingAudioTrack(project.id, assetId, streamIndex);
+        const assets = await api.listProjectMedia(project.id);
+        setMediaAssets(assets);
+        void refreshDatasetReadiness();
+        setNotice("Đã thêm track vào footage.");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Không thêm được track. Anh có thể thử lại.");
+      } finally {
+        setMediaBusy(false);
+      }
+      return;
+    }
     const children = mediaAssets.filter((asset) => asset.sourceArchiveAssetId === assetId);
     const targets = children.length ? children : mediaAssets.filter((asset) => asset.id === assetId);
     const targetIds = new Set(targets.map((asset) => asset.id));
@@ -2152,7 +2167,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onTimelineEditsChange: (ranges, gainKeyframes) => { if (!blockedByRecycleBin()) void updateTimelineEdits(ranges, gainKeyframes); },
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
-    onToggleImport: (assetId, selected) => void toggleImportAsset(assetId, selected),
+    onToggleImport: (assetId, selected, streamIndex) => void toggleImportAsset(assetId, selected, streamIndex),
     onToggleDiarization: (assetId, selected) => void toggleDiarizationAsset(assetId, selected),
     onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
     onControlTranscriptions: (action, assetIds) => void controlTranscriptions(action, assetIds),

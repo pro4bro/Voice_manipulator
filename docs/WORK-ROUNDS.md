@@ -51,7 +51,7 @@ that gap matters, and the exact next round.
 | MKV-STT-01 | Live transcript and configurable one-minute-per-track final STT backlog | Implemented at generated-media/test level; real OBS and STT engine gate open | Fast previews use checkpointed PCM; final segments use the closed MKV, persist results before cursors, and drain the short tail after Finish. |
 | MKV-ACCEPT-01 | Real OBS growing-MKV and STT engine acceptance | Queued after MKV-STT-01 | Check multi-track source timing, live backlog, Stop-tail completion, transcript quality and UI responsiveness on actual hardware. |
 | MEDIA-STAGES-01 | Four persisted workflow selections on Media Pool footage and imported tracks | Implemented at API/UI test level; owner viewport gate open | Footage and materialized tracks expose Import, STT, Speaker Diarization and Train; parent checkboxes summarize and apply to children. |
-| MEDIA-STAGES-02 | Materialize an omitted source track after import and align physical import state | Queued | An existing footage must be able to add a previously skipped stream without reimporting the whole source. |
+| MEDIA-STAGES-02 | Materialize an omitted source track after import and align physical import state | Complete at completed-container API/media/browser gate | Same parent, idempotent publication, retry and move pass; active follow requires Finish. |
 | MEDIA-VIEW-01 | Withdraw/re-add imported footage and tracks from the workspace, fit full-file zoom, render detailed waveform | Implemented at UI regression level; owner viewport check open | The Import checkbox controls visible work, the left zoom edge fits any duration, and PCM detail replaces sparse bars at close zoom. |
 | MEDIA-VIEW-02 | Put Timeline Channel and Track names on one scrolling line | Implemented at UI regression level; physical viewport check open | Narrow Layer labels and resizable Columns remain readable without taking height from meters or waveform. |
 | MEDIA-VIEW-02B | Verify label motion at minimum Column width and owner DPI | Browser scope covered by UX-11B; remaining DPI/reduced-motion consolidated into UI-CONTRAST-01C | Avoids duplicating label acceptance while retaining physical gates. |
@@ -3873,3 +3873,22 @@ Evidence: `docs/gates/livelink-stt-19b2-beam-candidate.md` and companion JSON.
 19B recognition acceptance remains open; further context/segmentation diagnosis
 must use a separate scope instead of lowering budgets. Exact next independent
 queued work is **MEDIA-STAGES-02**; it does not depend on 19B acceptance.
+
+## MEDIA-STAGES-02 — materialize omitted tracks (2026-10-04)
+
+Complete at completed-container scope. A previously omitted audio stream can
+be added from Media Pool Import under the same footage. API deduplicates repeat/
+concurrent requests; new WAV and parent selection publish in one index write.
+Original source and existing analyses are preserved. Decode/index failure stays
+retryable; edited Script/selected child are retained across list refresh.
+
+Real MKV/MOV/MP4, local cache/original, concurrent/retry and move/Open Existing
+checks pass. Browser adds Track 2 immediately, shows two waveforms under one
+footage, and retains both after reload/reopen; console clean. Generated tracks
+are mono24k PCM16/4 seconds, 440/880 Hz, no clipping; source/cache bytes match.
+Final backend 552, frontend 475 in 55 files, typecheck/build pass. Owned services
+and tab close. Evidence: ADR 0043 and `docs/gates/media-stages-02-track-addition.md`
+with metrics JSON. Still-growing MKV must Finish before adding an omitted track;
+uncached sources need their original locator; unpublished failed derivatives may
+remain. No STT quality or phase completion is claimed.
+Exact next **MKV-FOLLOW-03**. 19A timing/physical and 19B accuracy stay open.

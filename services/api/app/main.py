@@ -1212,6 +1212,20 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
 
+    @app.post("/api/projects/{project_id}/media/{asset_id}/audio-tracks/{stream_index}/import",
+              response_model=ProjectMediaAsset)
+    async def import_existing_audio_track(project_id: str, asset_id: str,
+                                          stream_index: int) -> ProjectMediaAsset:
+        try:
+            return await media_importer.materialize_audio_track(
+                projects.get(project_id), asset_id, stream_index)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Media asset not found") from exc
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.patch(
         "/api/projects/{project_id}/media/{asset_id}/diarization-selection",
         response_model=ProjectMediaAsset,

@@ -85,7 +85,7 @@ interface MediaPoolProps {
   onSelect: (assetId: string) => void;
   onClearSelection?: () => void;
   onSelectTrack?: (assetId: string) => void;
-  onToggleImport?: (assetId: string, selected: boolean) => void;
+  onToggleImport?: (assetId: string, selected: boolean, streamIndex?: number) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onToggleDiarization?: (assetId: string, selected: boolean) => void;
@@ -708,10 +708,10 @@ export function MediaPool({
             <div className="media-track-options__heading"><span>TRACK</span><span>IMPORT</span><span>STT</span></div>
             {contextAsset.availableAudioTracks.map((track) => { const child = childrenOf(contextAsset).find((item) => item.sourceArchiveStreamIndex === track.streamIndex) ?? (contextAsset.availableAudioTracks?.length === 1 ? contextAsset : undefined); return <div className="media-track-options__row" key={track.streamIndex}>
               <span title={track.title}><b>#{track.streamIndex} · {track.title}</b><small>{track.codec ?? "audio"}{track.channels ? ` · ${track.channels} ch` : ""}</small></span>
-              <input aria-label={`Đã import track ${track.streamIndex} ${track.title}`} checked={track.imported} disabled title="Lựa chọn Import được giữ từ lúc tạo footage" type="checkbox" />
+              <input aria-label={`Đã import track ${track.streamIndex} ${track.title}`} checked={child ? child.importSelected !== false : track.imported} disabled={busy || (!child && contextAsset.growingMkvFollow && !contextAsset.sourcePath.endsWith("source-final.mkv"))} onChange={(event) => { if (child) onToggleImport(child.id, event.target.checked); else if (event.target.checked) onToggleImport(contextAsset.id, true, track.streamIndex); }} type="checkbox" />
               <input aria-label={`STT track ${track.streamIndex} ${track.title}`} checked={Boolean(child?.transcriptionSelected)} disabled={!child || busy} onChange={(event) => { if (child) onToggleTranscription(child.id, event.target.checked); }} type="checkbox" />
             </div>; })}
-          </div><p>Muốn thay đổi track Import, chọn lại file gốc. STT có thể đổi cho từng track đã import.</p></section> : null}
+          </div><p>Tick Import để thêm track hoặc đưa track trở lại workspace. MKV đang ghi cần Finish trước khi thêm track đã bỏ qua.</p></section> : null}
           <footer>
             <button onClick={() => { setContextMenu(null); onReveal(contextAsset); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button>
             {contextAsset.hasExternalSource ? <button onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}

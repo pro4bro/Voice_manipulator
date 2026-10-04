@@ -214,6 +214,21 @@ describe("MediaPool", () => {
     expect(onToggleDiarization).toHaveBeenCalledWith("desk", true);
   });
 
+  it("adds an omitted completed track and withdraws a materialized track without reimporting", () => {
+    const parent = { ...asset, id: "parent", name: "video.mkv", availableAudioTracks: [
+      { streamIndex: 1, title: "Mic", imported: false },
+      { streamIndex: 2, title: "Desktop", imported: true },
+    ] };
+    const child = { ...asset, id: "child", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, importSelected: true };
+    const onToggleImport = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, child], onToggleImport })} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^video\.mkv/ }));
+    fireEvent.click(screen.getByLabelText("Đã import track 1 Mic"));
+    expect(onToggleImport).toHaveBeenCalledWith("parent", true, 1);
+    fireEvent.click(screen.getByLabelText("Đã import track 2 Desktop"));
+    expect(onToggleImport).toHaveBeenCalledWith("child", false);
+  });
+
   it("starts detailed STT during a growing MKV with a minutes and seconds dialog", () => {
     const parent = { ...asset, id: "parent", name: "recording.mkv", growingMkvFollow: true };
     const child = { ...asset, id: "mic", sourceArchiveAssetId: "parent", transcriptionSelected: true };

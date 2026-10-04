@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-STT-19B2 beam candidate rejected.
-last_activity_desc: CER 22.17% fails 15%; medium/beam1 unchanged. STT acceptance stays open; exact next independent MEDIA-STAGES-02.
+last_activity: 2026-10-04 — MEDIA-STAGES-02 omitted completed-container tracks complete.
+last_activity_desc: API/UI add under same footage; retry/concurrency/move/browser pass. Backend 552/frontend 475/typecheck/build pass. Exact next MKV-FOLLOW-03; STT recognition/timing acceptance remains open.
 ---
 
 # Project State

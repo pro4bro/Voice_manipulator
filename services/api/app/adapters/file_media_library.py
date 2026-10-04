@@ -616,6 +616,45 @@ class FileMediaLibrary:
             "IMPORT_SELECTION_CHANGED", "Import",
         )
 
+    def publish_audio_track(self, project_id: str, parent_id: str,
+                            payload: MediaAssetCreate, asset_id: str) -> ProjectMediaAsset:
+        """Publish the analysis and its parent selection in one index transaction."""
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            parent = next((asset for asset in assets if asset.id == parent_id), None)
+            if parent is None:
+                raise KeyError(parent_id)
+            if parent.deleted_at or parent.disabled:
+                raise ValueError("Khôi phục và bật footage trước khi thêm track.")
+            stream = payload.source_archive_stream_index
+            choice = next((track for track in parent.available_audio_tracks
+                           if track.stream_index == stream), None)
+            if choice is None or payload.source_archive_asset_id != parent_id:
+                raise ValueError("Track không thuộc footage này.")
+            existing = next((asset for asset in assets if
+                             asset.source_archive_asset_id == parent_id and
+                             asset.source_archive_stream_index == stream), None)
+            if existing:
+                if existing.deleted_at or existing.disabled:
+                    raise ValueError("Khôi phục và bật track trước khi Import.")
+                return self.set_import_selected(project_id, existing.id, True)
+            analysis = self._portable_path(root, payload.analysis_path)
+            if not analysis or not (root / analysis).is_file():
+                raise ValueError("Chưa có analysis audio để thêm track.")
+            child = ProjectMediaAsset.create(asset_id, payload.model_copy(update={
+                "source_path": analysis, "analysis_path": analysis,
+            }))
+            updated = parent.model_copy(update={
+                "available_audio_tracks": [track.model_copy(update={"imported": True})
+                    if track.stream_index == stream else track
+                    for track in parent.available_audio_tracks],
+                "updated_at": datetime.now(timezone.utc),
+            })
+            self._store.write_index(root, project_id,
+                [child, *(updated if asset.id == parent_id else asset for asset in assets)])
+            return child
+
     def set_diarization_selected(
         self, project_id: str, asset_id: str, selected: bool
     ) -> ProjectMediaAsset:

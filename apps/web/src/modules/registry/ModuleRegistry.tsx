@@ -149,7 +149,7 @@ export interface StudioContext {
   onLiveTranscript: (text: string, active: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
-  onToggleImport: (assetId: string, selected: boolean) => void;
+  onToggleImport: (assetId: string, selected: boolean, streamIndex?: number) => void;
   onToggleDiarization: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
   onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;

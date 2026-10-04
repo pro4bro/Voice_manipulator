@@ -27,7 +27,7 @@ interface LibraryPanelProps {
   onStartGrowingMkvDetailedStt?: (assetId: string, segmentSeconds: number) => void;
   onSelect: (assetId: string) => void;
   onSelectTrack?: (assetId: string) => void;
-  onToggleImport?: (assetId: string, selected: boolean) => void;
+  onToggleImport?: (assetId: string, selected: boolean, streamIndex?: number) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onToggleDiarization?: (assetId: string, selected: boolean) => void;

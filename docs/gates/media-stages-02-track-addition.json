@@ -1,0 +1,36 @@
+{
+  "sourceEqualsProjectCopy": true,
+  "sourceSha256": "fc0a2f8268f63d2af98dd100b3bc08be8c9fadcc8badb66e2d3309d8c8b093dd",
+  "parentId": "asset-d5c46a694608",
+  "footageCount": 1,
+  "tracks": [
+    {
+      "stream": 0,
+      "id": "asset-846caa9faf88",
+      "channels": 1,
+      "sampleRate": 24000,
+      "width": 2,
+      "duration": 4.0,
+      "frequencyHz": 439.75,
+      "peak": 4095,
+      "clippedSamples": 0,
+      "pcmSha256": "e2f4054344c97562f56e5349a1a92e0838ec1d1360aafd1fad82d5d11f3e0b6d"
+    },
+    {
+      "stream": 1,
+      "id": "asset-298906d57fe6",
+      "channels": 1,
+      "sampleRate": 24000,
+      "width": 2,
+      "duration": 4.0,
+      "frequencyHz": 879.75,
+      "peak": 4096,
+      "clippedSamples": 0,
+      "pcmSha256": "3aea0bcea4c5d668649a91a66f31941526c6ee2460dbc1bc65092e2c1b64b803"
+    }
+  ],
+  "browserAddedWithoutRefresh": true,
+  "browserReopenRetainsTwoTracks": true,
+  "browserConsoleWarningsErrors": [],
+  "fullBackendPassed": 552
+}
