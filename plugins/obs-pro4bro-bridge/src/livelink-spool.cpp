@@ -33,6 +33,9 @@ LiveLinkSpool::LiveLinkSpool(const std::filesystem::path &path)
 		db_ = nullptr;
 		return;
 	}
+	// Recovery UI may briefly hold a scoped write transaction. Audio callbacks
+	// never enter this worker-side database wait.
+	sqlite3_busy_timeout(db_, 2000);
 	if (!exec("PRAGMA journal_mode=WAL") || !exec("PRAGMA synchronous=FULL") ||
 		!exec(CREATE_CHUNKS) ||
 		!exec("CREATE INDEX IF NOT EXISTS chunks_pending ON chunks(rejected_status, id)") ||

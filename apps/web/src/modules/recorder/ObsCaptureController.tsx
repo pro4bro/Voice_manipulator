@@ -28,6 +28,8 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const actionRevision = useRef(0);
   const actionInFlight = useRef(false);
   const refreshedArchives = useRef(new Set<string>());
@@ -100,6 +102,22 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo lại archive từ PCM đã lưu.");
+    } finally { setBusy(false); }
+  }
+
+  async function recoverOutbox(recordingId: string, exportFile = false) {
+    setBusy(true); setRecoveryMessage(null); setRecoveryError(null);
+    try {
+      if (exportFile) {
+        await api.exportObsLiveLinkOutbox(projectId, recordingId);
+        setRecoveryMessage("Đã xuất bản sao PCM và metadata; dữ liệu gốc vẫn trong outbox.");
+      } else {
+        const result = await api.retryObsLiveLinkOutbox(projectId, recordingId);
+        setRecoveryMessage(`${result.retriedChunks} đoạn được mở lại để gửi. Chưa xác nhận đã lưu vào project; cần OBS kết nối.`);
+      }
+      setError(null);
+    } catch (reason) {
+      setRecoveryError(reason instanceof Error ? reason.message : "Không phục hồi được outbox; dữ liệu gốc vẫn được giữ.");
     } finally { setBusy(false); }
   }
 
@@ -192,10 +210,16 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
     </fieldset>
     {recording ? <p>{recording.videoSpanIds.length} OBS video span · {recording.pauseCauses.join(", ") || "không tạm dừng"}</p> : null}
     {error ? <p role="alert">{error}</p> : null}
+    {recoveryMessage ? <p role="status">{recoveryMessage}</p> : null}
+    {recoveryError ? <p role="alert">{recoveryError}</p> : null}
     <div className="obs-recorder__history">
       {journals.filter((journal) => journal.recording.projectId === projectId).slice(0, 5).map((journal) => <div key={journal.recording.recordingId}>
         <strong>{journal.recording.recordingId.slice(0, 8)}</strong>
         <span>{journal.recording.status} · {journal.recording.videoSpanIds.length} video span · {journal.sourceStems?.length ?? 0} track · MKA {journal.recording.archiveStatus}</span>
+        {journal.recording.status === "stopped" ? <div>
+          <button disabled={busy} onClick={() => void recoverOutbox(journal.recording.recordingId)} type="button">Thử gửi lại PCM</button>
+          <button disabled={busy} onClick={() => void recoverOutbox(journal.recording.recordingId, true)} type="button">Export outbox</button>
+        </div> : null}
         {onOpenRecording ? <button onClick={() => onOpenRecording(journal.recording.recordingId)} type="button">Mở toàn bộ trong Timeline</button> : null}
         {journal.recording.status === "stopped" && journal.recording.archiveStatus !== "ready" ?
           <button disabled={busy} onClick={() => void retryArchive(journal.recording.recordingId)} type="button">Thử tạo lại MKA</button> : null}

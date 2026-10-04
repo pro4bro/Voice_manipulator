@@ -1067,7 +1067,7 @@ private:
 				Reply reply;
 				if (connection_id_.empty()) {
 					obs_data_set_string(payload, "processInstanceId", process_id_.c_str());
-					obs_data_set_string(payload, "pluginVersion", "0.6.9");
+					obs_data_set_string(payload, "pluginVersion", "0.6.10");
 					obs_data_set_string(payload, "obsVersion", obs_get_version_string());
 					obs_data_set_int(payload, "protocolMin", 3);
 					obs_data_set_int(payload, "protocolMax", 3);

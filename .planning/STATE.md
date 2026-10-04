@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-08N-A outbox health complete.
-last_activity_desc: Native/API/UI retained-data health passes full suites/build. Parent 08N recovery/outage remains open; exact next 08N-B. 18B/18C budget decision remains pending.
+last_activity: 2026-10-04 — LIVELINK-08N-B scoped recovery and outage gate complete.
+last_activity_desc: Parent 08N completes measured health/recovery scope; plugin 0.6.10 installed with pairing unchanged. Backend 536/frontend 473/native 2 pass. Exact next STT-19A; 18B/18C latency decision remains open.
 ---
 
 # Project State

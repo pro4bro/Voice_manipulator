@@ -254,6 +254,15 @@ export const api = {
     request<{ artifactReady: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/archive/retry`, {
       method: "POST",
     }),
+  retryObsLiveLinkOutbox: async (projectId: string, recordingId: string) => {
+    const path = `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/outbox`;
+    const snapshot = await request<{ rejectedDigest: string }>(path);
+    return request<{ retriedChunks: number; durablyAccepted: false }>(`${path}/retry`, {
+      method: "POST", body: JSON.stringify({ rejectedDigest: snapshot.rejectedDigest }),
+    });
+  },
+  exportObsLiveLinkOutbox: (projectId: string, recordingId: string) =>
+    downloadFile(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/outbox/export`, `${recordingId}--outbox.zip`, { method: "POST" }),
   savePreferences: (preferences: AppPreferences) =>
     request<AppPreferences>("/api/preferences", { method: "PUT", body: JSON.stringify(preferences) }),
   getSystemStatus: () => request<SystemMetrics>("/api/system/status"),

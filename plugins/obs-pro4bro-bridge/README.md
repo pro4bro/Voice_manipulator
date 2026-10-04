@@ -4,6 +4,18 @@ This OBS 32 Windows plugin captures each configured audio source while OBS recor
 
 ## Runtime configuration
 
+Version 0.6.10 adds native outbox health reports and a bounded SQLite busy wait
+for recording-scoped recovery from the app. Stopped recordings offer **Thử gửi
+lại PCM** and **Export outbox**. Retry clears rejected flags only after a current
+snapshot check; the worker still needs a durable API ACK before removing PCM.
+Export creates a project-owned recovery ZIP containing exact raw PCM, clocks,
+identities, rejection statuses, hashes and the recording journal. It does not
+consume pending audio or register a new Media Pool item. Limits are 10,000 rows,
+256 MiB total PCM and 32 MiB per row; failures retain the source database.
+Legacy rows have unknown waiting age. Health counts cover all retained recordings
+and include rejected rows; overflow can include idle/pre-Record queues. Install
+the rebuilt package and restart OBS to receive native health telemetry.
+
 Place `config.json` in OBS' `plugin_config/pro4bro-obs-bridge` directory. Copy `config.example.json`, then set:
 
 - `apiBase`: loopback Pro4Bro API URL.

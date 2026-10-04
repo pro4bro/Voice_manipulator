@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   getObsLiveLinkStatus: vi.fn(), listObsLiveLinkRecordings: vi.fn(),
   actOnObsLiveLinkRecording: vi.fn(), setObsLiveLinkTriggerPolicy: vi.fn(),
   retryObsLiveLinkArchive: vi.fn(),
+  retryObsLiveLinkOutbox: vi.fn(), exportObsLiveLinkOutbox: vi.fn(),
   setObsLiveLinkRecordingFolder: vi.fn(), importObsLiveLinkVideoSpan: vi.fn(), pickMediaFile: vi.fn(),
 }));
 vi.mock("../../api/client", () => ({ api: apiMocks }));
@@ -30,6 +31,8 @@ beforeEach(() => {
     ...connected, triggerPolicy: policy,
   }));
   apiMocks.retryObsLiveLinkArchive.mockResolvedValue({ artifactReady: true });
+  apiMocks.retryObsLiveLinkOutbox.mockResolvedValue({ retriedChunks: 2, durablyAccepted: false });
+  apiMocks.exportObsLiveLinkOutbox.mockResolvedValue(undefined);
   apiMocks.setObsLiveLinkRecordingFolder.mockImplementation(async (enabled) => ({ ...connected, connectRecordingFolder: enabled }));
   apiMocks.importObsLiveLinkVideoSpan.mockResolvedValue({ id: "video-asset" });
   apiMocks.pickMediaFile.mockResolvedValue({ path: "C:\\OBS\\take.mkv" });
@@ -39,6 +42,32 @@ it("shows unknown outbox health for a legacy plugin instead of an empty queue", 
   render(<ObsCaptureController projectId="project" />);
   expect(await screen.findByText("Plugin chưa báo trạng thái dữ liệu chờ gửi.")).toBeInTheDocument();
   expect(screen.queryByText(/Còn giữ 0 đoạn/)).not.toBeInTheDocument();
+});
+
+it("scopes retry and export to the stopped recording and never reports retry as accepted PCM", async () => {
+  apiMocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: {
+    recordingId: "stopped-rec", projectId: "project", status: "stopped", archiveStatus: "ready",
+    videoSpanIds: [], pauseCauses: [],
+  } }]);
+  render(<ObsCaptureController projectId="project" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Thử gửi lại PCM" }));
+  await waitFor(() => expect(apiMocks.retryObsLiveLinkOutbox).toHaveBeenCalledWith("project", "stopped-rec"));
+  expect(await screen.findByText(/2 đoạn được mở lại để gửi. Chưa xác nhận đã lưu vào project/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Export outbox" }));
+  await waitFor(() => expect(apiMocks.exportObsLiveLinkOutbox).toHaveBeenCalledWith("project", "stopped-rec"));
+  expect(await screen.findByText(/dữ liệu gốc vẫn trong outbox/)).toBeInTheDocument();
+});
+
+it("retains recovery errors while normal status polling succeeds", async () => {
+  apiMocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: {
+    recordingId: "stopped-rec", projectId: "project", status: "stopped", archiveStatus: "ready", videoSpanIds: [],
+  } }]);
+  apiMocks.exportObsLiveLinkOutbox.mockRejectedValue(new Error("Export failed; original PCM retained"));
+  render(<ObsCaptureController projectId="project" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Export outbox" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Export failed; original PCM retained");
+  await waitFor(() => expect(apiMocks.getObsLiveLinkStatus.mock.calls.length).toBeGreaterThan(1), { timeout: 2500 });
+  expect(screen.getByRole("alert")).toHaveTextContent("Export failed; original PCM retained");
 });
 
 it("keeps retained and rejected PCM independent of a quiet Track and marks stale reports", async () => {

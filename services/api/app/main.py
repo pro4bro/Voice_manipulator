@@ -24,6 +24,7 @@ from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_growing_mkv_follower import FileGrowingMkvFollower
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
 from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt
+from app.adapters.obs_livelink_outbox import ObsLiveLinkOutbox
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
 from app.adapters.file_training_runs import FileTrainingRuns
@@ -2075,6 +2076,33 @@ def create_app(
     @app.get("/api/obs-livelink/v3/status")
     def obs_livelink_status() -> dict:
         return obs_livelink_runtime.status()
+
+    @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/outbox")
+    def obs_outbox_snapshot(project_id: str, recording_id: str):
+        return recover_obs_outbox("snapshot", project_id, recording_id)
+
+    @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/outbox/retry")
+    def obs_outbox_retry(project_id: str, recording_id: str, payload: dict):
+        return recover_obs_outbox("retry", project_id, recording_id, payload.get("rejectedDigest"))
+
+    @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/outbox/export")
+    def obs_outbox_export(project_id: str, recording_id: str):
+        path = recover_obs_outbox("export", project_id, recording_id)
+        return FileResponse(path, media_type="application/zip", filename=path.name)
+
+    outbox_recovery = ObsLiveLinkOutbox(obs_livelink_audio)
+
+    def recover_obs_outbox(action, project_id, recording_id, digest=None):
+        try:
+            if action == "retry":
+                return outbox_recovery.retry(project_id, recording_id, digest)
+            return getattr(outbox_recovery, action)(project_id, recording_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except LiveLinkError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail="Outbox export failed; original PCM is retained.") from exc
 
     @app.get("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/waveform")
     def obs_livelink_waveform(project_id: str, recording_id: str, channelId: str,

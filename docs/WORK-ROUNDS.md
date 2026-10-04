@@ -106,7 +106,7 @@ that gap matters, and the exact next round.
 | RUNTIME-READY-01B | Recovery storage stalls and full-console diagnostics | Storage mitigation and bounded diagnostics verified; historical native gate remains open | Real Uvicorn regressions and ordinary starts pass; future slow startup logs Python frames. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
-| LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | 08N-A health complete; recovery/outage open | Exact next 08N-B; criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
 | LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
@@ -3790,3 +3790,37 @@ outage/Stop recovery need their own verified write/recovery seam. Reviewed
 exact next **LIVELINK-08N-B**; this split does not reduce the parent acceptance
 criteria or near-term remaining parent count. 18B/18C performance and pending
 human budget decision remain open. No loss-free capture or latency claim.
+
+## Round LIVELINK-08N-B — 2026-10-04
+
+Completed the bounded recovery seam and parent 08N's measured acceptance.
+Stopped-record scoped snapshot/digest prevents stale retry; retry clears only
+rejected flags and explicitly does not imply durable acceptance. Recovery ZIP
+preserves exact PCM/metadata/hash/journal under project exports. Deleted/project/
+active-record guards, existing recording locks, SQLite FULL/BEGIN IMMEDIATE and
+bounded busy waits retain originals on failure. Native waits occur off callbacks.
+UI recovery errors survive successful status polling; no footage is recreated.
+
+Actual private OBS 32.2.2/package 0.6.10 six-tone fixture records through API
+outage (93.859s to readiness, 75s recorded offline), then Stop and OBS/API
+restart. Controlled quarantined PCM exports while OBS is offline, remains
+retained after reconnect, retries one row and drains to ACKed outbox 0. 343
+retained in-record rows match exact bytes, six boundary prefixes match, 102
+outside-Stop rows are explicitly trimmed. No internal sample gaps or recording-
+attributed overflow log; exclude 265 idle overflow entries / 13,112,832 frames.
+Initial source-absence intervals remain visible; no loss-free startup claim.
+Six FLAC streams and six mono/24kHz PCM16 analyses have correct 330-880Hz tones,
+peaks 6000-6332/no clipping, durations within 1ms. STT is stubbed only in this
+resilience fixture, so no quality/performance claim. Harness bootstrap/config
+and cached-outstanding injection failures are retained and explained in the gate.
+
+Final backend **536 passed**, 193.91s/two existing warnings; frontend **473 / 55
+files**, 30.92s; typecheck/build pass (274ms); native **2/2**, 6.03s. Native package
+0.6.10/fixture/installed hashes verify. Owned processes close/ports free; ordinary
+installer Repair updates closed owner OBS with pairing bytes unchanged and no
+Admin prompt. Owner OBS is not opened. Evidence: ADR 0042, 08N-B gate and metrics.
+
+Exact next **LIVELINK-STT-19A**, reviewed Vietnamese multitrack speech accuracy,
+word timing/turn/padding/overlap evidence for LiveLink and growing MKV. Remaining
+18B/18C latency/integration/budget decision stays open. This round completes no
+product phase and does not treat tone recovery as recognizer-quality evidence.

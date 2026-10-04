@@ -1,5 +1,27 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-08N-B — scoped recovery and isolated outage (2026-10-04)
+
+Parent 08N completes its measured health/recovery/outage scope. Stopped-record
+UI actions retry only current rejected PCM and export byte-preserving recovery
+ZIPs without consuming source rows. Stale/deleted/project/active-record guards,
+FULL/transaction/busy waits and staged fsync publication retain originals on
+storage failure. Recovery errors remain visible across successful status polls.
+
+Actual private six-source OBS 32.2.2 with package 0.6.10 survives a 93.859s API
+outage and stopped-record OBS/API restart. Controlled rejection is exported,
+retried and ACKed; 343 retained in-record rows match exact PCM, six boundary
+prefixes match, 102 after-Stop rows are explicitly trimmed, no internal gaps.
+MKA has six FLAC streams; six mono24k WAVs have correct tone frequencies and no
+clipping. Idle overflow/startup source-absence remain distinct; STT is stubbed
+only in this resilience fixture and no speech-quality/latency claim is made.
+
+Final full backend 536, frontend 473 / 55 files, native 2/2, typecheck/build pass.
+Owned processes/ports close. Installed owner plugin updates to 0.6.10 with package
+hashes verified and pairing bytes unchanged; owner OBS is not opened. Evidence:
+ADR 0042 and `docs/gates/livelink-08n-b-outbox-recovery.md` plus metrics JSON.
+Exact next **LIVELINK-STT-19A**; 18B/18C budgets/integration remain open.
+
 ## LIVELINK-08N-A — retained outbox health (2026-10-04)
 
 Native/API/UI health is complete at a bounded seam. Optional authenticated

@@ -1,0 +1,802 @@
+{
+  "timeline": [
+    {
+      "event": "api-ready",
+      "monotonic": 84001.203,
+      "pid": 46808
+    },
+    {
+      "event": "export-while-obs-offline",
+      "monotonic": 84006.281,
+      "chunks": 432,
+      "bytes": 109402033
+    },
+    {
+      "event": "scoped-retry",
+      "monotonic": 84022.328,
+      "recordingId": "063bc7f1-2c8b-5c15-8104-e10b50a9c194",
+      "retriedChunks": 1,
+      "durablyAccepted": false
+    },
+    {
+      "event": "verified",
+      "monotonic": 84073.968,
+      "matchedRetainedChunks": 343,
+      "discardedAfterStopChunks": 102,
+      "clippedStopChunks": 6,
+      "outbox": 0,
+      "archiveStreams": 6,
+      "internalGaps": 0
+    }
+  ],
+  "recordingId": "063bc7f1-2c8b-5c15-8104-e10b50a9c194",
+  "projectId": "08n-isolated-six-source-outage-74efc279",
+  "apiOutageSecondsToReadiness": 93.85900000001129,
+  "recordedDuringOutageSeconds": 75,
+  "catalogChunks": 445,
+  "matchedRetainedChunks": 343,
+  "discardedAfterStopChunks": 102,
+  "clippedStopChunks": 6,
+  "internalGaps": [],
+  "exportChunks": 432,
+  "exportSha256": "e854983a1032690a899c96c49cf77fe25c2535733f2f15850553c07a7a7c94a5",
+  "projectPath": "E:\\AI_RND\\PRO4BRO\\VOICE_MANIPULATOR\\PRO4BRO_VOICE_MANIPULATOR\\.scratch\\livelink-08n-b\\data\\projects\\08n-isolated-six-source-outage-74efc279",
+  "journal": {
+    "protocolVersion": 3,
+    "recording": {
+      "recordingId": "063bc7f1-2c8b-5c15-8104-e10b50a9c194",
+      "connectionId": "44e78a55-4451-469f-9a85-cbd2957383dc",
+      "projectId": "08n-isolated-six-source-outage-74efc279",
+      "startedMonotonicNs": 83673463906800,
+      "startedAtUtc": "2026-10-04T01:49:09.927968Z",
+      "displayName": "2026-10-04_08-49-09_08N-isolated-six-source-outage_LIV_063bc7f1",
+      "endedMonotonicNs": 83759440320100,
+      "status": "stopped",
+      "archiveStatus": "ready",
+      "pauseCauses": [],
+      "capturePauseIntervals": [],
+      "videoSpanIds": [
+        "8419087B-F00C-46C5-B402-290D3E4D8F0D"
+      ],
+      "channelIntervals": [
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029074600,
+          "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029076600,
+          "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029077600,
+          "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029078700,
+          "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029080700,
+          "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83673463906800,
+          "endMonotonicNs": 83674029081500,
+          "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+          "reason": "source-missing",
+          "startSampleIndex": null,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029074600,
+          "endMonotonicNs": 83674029074600,
+          "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029076600,
+          "endMonotonicNs": 83674029076600,
+          "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029077600,
+          "endMonotonicNs": 83674029077600,
+          "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029078700,
+          "endMonotonicNs": 83674029078700,
+          "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029080700,
+          "endMonotonicNs": 83674029080700,
+          "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        },
+        {
+          "startMonotonicNs": 83674029081500,
+          "endMonotonicNs": 83674029081500,
+          "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+          "reason": "forward-pending",
+          "startSampleIndex": 0,
+          "endSampleIndex": 0
+        }
+      ],
+      "sourceArchive": {
+        "parentAssetId": "asset-live-5b7733482cc8",
+        "sourcePath": "assets/obs-livelink/063bc7f1-2c8b-5c15-8104-e10b50a9c194/source.mka",
+        "tracks": [
+          {
+            "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+            "sourceUuid": "63d712ff-96f2-4fba-9235-a5106ad1de06",
+            "streamIndex": 0,
+            "trackUid": 139690993913264816,
+            "relayLabel": "Track 3",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-01f048380685/analysis.wav"
+          },
+          {
+            "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+            "sourceUuid": "9c86a01a-e21b-4ac0-9bd6-4ae09e9398cc",
+            "streamIndex": 1,
+            "trackUid": 15612498544229920108,
+            "relayLabel": "Track 2",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-d8aabcb51920/analysis.wav"
+          },
+          {
+            "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+            "sourceUuid": "76d2bd2c-7ecb-4e5c-9b69-f747aed1d8fc",
+            "streamIndex": 2,
+            "trackUid": 1170611265696987040,
+            "relayLabel": "Track 5",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-103ed8be75f0/analysis.wav"
+          },
+          {
+            "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+            "sourceUuid": "558292f2-9484-4453-adb9-87668ea89196",
+            "streamIndex": 3,
+            "trackUid": 17895970924898962329,
+            "relayLabel": "Track 6",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-f85b42bd4152/analysis.wav"
+          },
+          {
+            "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+            "sourceUuid": "cd5cdff7-d391-4a45-9a4a-454a34c7e1fe",
+            "streamIndex": 4,
+            "trackUid": 8740166648283855252,
+            "relayLabel": "Track 1",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-794b4f425cac/analysis.wav"
+          },
+          {
+            "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+            "sourceUuid": "8cf90b43-c576-47cd-9b63-966e55e809d3",
+            "streamIndex": 5,
+            "trackUid": 4889560874045677397,
+            "relayLabel": "Track 4",
+            "aliasRevision": 0,
+            "analysisPath": "assets/media/asset-live-43db35b57d24/analysis.wav"
+          }
+        ]
+      }
+    },
+    "videoSpans": [],
+    "channels": [
+      {
+        "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+        "sourceUuid": "cd5cdff7-d391-4a45-9a4a-454a34c7e1fe",
+        "nativeName": "UX10B Source 1 330Hz long name readability",
+        "relayLabel": "Track 1",
+        "aliasRevision": 0,
+        "slot": 1,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      },
+      {
+        "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+        "sourceUuid": "9c86a01a-e21b-4ac0-9bd6-4ae09e9398cc",
+        "nativeName": "UX10B Source 2 440Hz long name readability",
+        "relayLabel": "Track 2",
+        "aliasRevision": 0,
+        "slot": 2,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      },
+      {
+        "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+        "sourceUuid": "63d712ff-96f2-4fba-9235-a5106ad1de06",
+        "nativeName": "UX10B Source 3 550Hz long name readability",
+        "relayLabel": "Track 3",
+        "aliasRevision": 0,
+        "slot": 3,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      },
+      {
+        "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+        "sourceUuid": "8cf90b43-c576-47cd-9b63-966e55e809d3",
+        "nativeName": "UX10B Source 4 660Hz long name readability",
+        "relayLabel": "Track 4",
+        "aliasRevision": 0,
+        "slot": 4,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      },
+      {
+        "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+        "sourceUuid": "76d2bd2c-7ecb-4e5c-9b69-f747aed1d8fc",
+        "nativeName": "UX10B Source 5 770Hz long name readability",
+        "relayLabel": "Track 5",
+        "aliasRevision": 0,
+        "slot": 5,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      },
+      {
+        "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+        "sourceUuid": "558292f2-9484-4453-adb9-87668ea89196",
+        "nativeName": "UX10B Source 6 880Hz long name readability",
+        "relayLabel": "Track 6",
+        "aliasRevision": 0,
+        "slot": 6,
+        "presence": "active",
+        "forwardDesired": true,
+        "forwardApplied": true
+      }
+    ],
+    "liveSttRecoveryVersion": 1,
+    "sourceStems": [
+      {
+        "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+        "sourceUuid": "63d712ff-96f2-4fba-9235-a5106ad1de06",
+        "alias": "Track 3",
+        "assetId": "asset-live-01f048380685",
+        "sourcePath": "assets/media/asset-live-01f048380685/source.wav",
+        "analysisPath": "assets/media/asset-live-01f048380685/analysis.wav",
+        "gaps": []
+      },
+      {
+        "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+        "sourceUuid": "9c86a01a-e21b-4ac0-9bd6-4ae09e9398cc",
+        "alias": "Track 2",
+        "assetId": "asset-live-d8aabcb51920",
+        "sourcePath": "assets/media/asset-live-d8aabcb51920/source.wav",
+        "analysisPath": "assets/media/asset-live-d8aabcb51920/analysis.wav",
+        "gaps": []
+      },
+      {
+        "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+        "sourceUuid": "76d2bd2c-7ecb-4e5c-9b69-f747aed1d8fc",
+        "alias": "Track 5",
+        "assetId": "asset-live-103ed8be75f0",
+        "sourcePath": "assets/media/asset-live-103ed8be75f0/source.wav",
+        "analysisPath": "assets/media/asset-live-103ed8be75f0/analysis.wav",
+        "gaps": []
+      },
+      {
+        "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+        "sourceUuid": "558292f2-9484-4453-adb9-87668ea89196",
+        "alias": "Track 6",
+        "assetId": "asset-live-f85b42bd4152",
+        "sourcePath": "assets/media/asset-live-f85b42bd4152/source.wav",
+        "analysisPath": "assets/media/asset-live-f85b42bd4152/analysis.wav",
+        "gaps": []
+      },
+      {
+        "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+        "sourceUuid": "cd5cdff7-d391-4a45-9a4a-454a34c7e1fe",
+        "alias": "Track 1",
+        "assetId": "asset-live-794b4f425cac",
+        "sourcePath": "assets/media/asset-live-794b4f425cac/source.wav",
+        "analysisPath": "assets/media/asset-live-794b4f425cac/analysis.wav",
+        "gaps": []
+      },
+      {
+        "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+        "sourceUuid": "8cf90b43-c576-47cd-9b63-966e55e809d3",
+        "alias": "Track 4",
+        "assetId": "asset-live-43db35b57d24",
+        "sourcePath": "assets/media/asset-live-43db35b57d24/source.wav",
+        "analysisPath": "assets/media/asset-live-43db35b57d24/analysis.wav",
+        "gaps": []
+      }
+    ],
+    "durableChannelIds": [
+      "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+      "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+      "62F95117-0C82-486E-AD5C-1CD6C935310E",
+      "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+      "E319C2A6-D09E-47DB-BC89-C490B4592830",
+      "FCD4853A-8E8C-4002-A70E-C69EABD5009F"
+    ]
+  },
+  "streamProbe": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 3"
+        }
+      },
+      {
+        "index": 1,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 2"
+        }
+      },
+      {
+        "index": 2,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 5"
+        }
+      },
+      {
+        "index": 3,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 6"
+        }
+      },
+      {
+        "index": 4,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 1"
+        }
+      },
+      {
+        "index": 5,
+        "codec_name": "flac",
+        "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+        "codec_type": "audio",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "sample_fmt": "s16",
+        "sample_rate": "48000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/1000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "bits_per_raw_sample": "16",
+        "extradata_size": 34,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "title": "Track 4"
+        }
+      },
+      {
+        "index": 6,
+        "codec_type": "attachment",
+        "codec_tag_string": "[0][0][0][0]",
+        "codec_tag": "0x0000",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/90000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 7737930,
+        "duration": "85.977000",
+        "extradata_size": 4630,
+        "disposition": {
+          "default": 0,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "filename": "pro4bro-session.json",
+          "mimetype": "application/json"
+        }
+      }
+    ]
+  },
+  "stt": "disabled only in fixture; speech quality not measured",
+  "originalHarnessFailure": "Injected first row was already cached in native outstanding; it ACKed normally. Quarantine moved to a retained row before restarting OBS; no product code changed.",
+  "analyses": [
+    {
+      "channelId": "09CEA8C1-ACB3-4A5A-8E4D-EDA768C2A842",
+      "path": "assets/media/asset-live-01f048380685/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063411,
+      "frequencyHz": 550.0,
+      "peak": 6332,
+      "sha256": "cf24ea62a4b67a9c072f6e9bcdacd2816d073bcd81bc4e9c839875bd7fb48f69"
+    },
+    {
+      "channelId": "2DC6B6D2-42F0-4B74-AFAC-BB532EF999B0",
+      "path": "assets/media/asset-live-d8aabcb51920/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063424,
+      "frequencyHz": 440.0,
+      "peak": 6000,
+      "sha256": "83f147dbae703e8779eb9ed594f14b4c3b086215c331b3988d2610f80f5aa44a"
+    },
+    {
+      "channelId": "62F95117-0C82-486E-AD5C-1CD6C935310E",
+      "path": "assets/media/asset-live-103ed8be75f0/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063434,
+      "frequencyHz": 770.0,
+      "peak": 6000,
+      "sha256": "def9120220dbe1fd0d529c4198db238a35e8b96d644971c643e186dbeb3c2c5d"
+    },
+    {
+      "channelId": "B50ECD8E-826C-4F63-AFA1-E5BFF93B8DC9",
+      "path": "assets/media/asset-live-f85b42bd4152/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063440,
+      "frequencyHz": 880.0,
+      "peak": 6000,
+      "sha256": "0c95873fd5bcc8f5937b09a91b299ef37cfab7adf4910d056cefe88a2b9a73b1"
+    },
+    {
+      "channelId": "E319C2A6-D09E-47DB-BC89-C490B4592830",
+      "path": "assets/media/asset-live-794b4f425cac/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063433,
+      "frequencyHz": 330.0,
+      "peak": 6000,
+      "sha256": "8f901cdd6e7fccb7725e08b0a81d85f9eab908f7cee4ecb9fca264c39290a207"
+    },
+    {
+      "channelId": "FCD4853A-8E8C-4002-A70E-C69EABD5009F",
+      "path": "assets/media/asset-live-43db35b57d24/analysis.wav",
+      "sampleRate": 24000,
+      "channels": 1,
+      "sampleWidth": 2,
+      "frames": 2063415,
+      "frequencyHz": 660.0,
+      "peak": 6000,
+      "sha256": "4d3a7f1348466a85c2736f6fff8fa3a03acad90eb0e6bb9be26450b6ef3dfb6e"
+    }
+  ],
+  "recordingOverflowFrames": 0,
+  "idleOverflowFramesExcluded": 13112832,
+  "idleOverflowLogEntriesExcluded": 265,
+  "catalogSha256": "702aa1e5f8a44472bf25890f435f16e4ca4fb5784513d96b0da0e9ea9746b482",
+  "pluginManifest": {
+    "schemaVersion": 1,
+    "pluginId": "pro4bro-obs-bridge",
+    "pluginVersion": "0.6.10",
+    "obsBuildVersion": "32.2.2",
+    "architecture": "x64",
+    "files": [
+      {
+        "source": "bin/64bit/pro4bro-obs-bridge.dll",
+        "standard": "bin/64bit/pro4bro-obs-bridge.dll",
+        "portable": "obs-plugins/64bit/pro4bro-obs-bridge.dll",
+        "sha256": "3d47d598c9c8f4b0750e1e014d4b36c8034814141894ef105da463cee1c502a9"
+      },
+      {
+        "source": "data/locale/en-US.ini",
+        "standard": "data/locale/en-US.ini",
+        "portable": "data/obs-plugins/pro4bro-obs-bridge/locale/en-US.ini",
+        "sha256": "35dd60c40473ea1fcd09a10d2726751247b460f10116fe96c65d28f083478fba"
+      },
+      {
+        "source": "data/brand/pro4bro-livelink.svg",
+        "standard": "data/brand/pro4bro-livelink.svg",
+        "portable": "data/obs-plugins/pro4bro-obs-bridge/brand/pro4bro-livelink.svg",
+        "sha256": "fdced257da668fef8999ebb9eea8df5fea219366a770651ae784e5fc8d368b66"
+      }
+    ]
+  },
+  "originalCaptureTimeline": [
+    {
+      "event": "api-ready",
+      "monotonic": 83668.109
+    },
+    {
+      "event": "recording-observed",
+      "monotonic": 83673.828
+    },
+    {
+      "event": "api-offline",
+      "monotonic": 83683.828
+    },
+    {
+      "event": "obs-stop-request-returned",
+      "monotonic": 83758.828
+    },
+    {
+      "event": "retained-offline",
+      "monotonic": 83775.218,
+      "chunks": 403,
+      "pcmBytes": 103654400
+    },
+    {
+      "event": "api-ready-after-outage",
+      "monotonic": 83777.687
+    },
+    {
+      "event": "first-recovery-harness-closed",
+      "monotonic": 83786.625
+    }
+  ],
+  "installedStatus": {
+    "state": "installed",
+    "message": "",
+    "obsRoot": "C:\\Program Files\\obs-studio",
+    "layout": "standard",
+    "obsRunning": false,
+    "pairingReady": true,
+    "pluginVersion": "0.6.10",
+    "obsBuildVersion": "32.2.2",
+    "detectedObsVersion": "32.2.2.0",
+    "compatibilityWarning": false,
+    "restartObsRequired": false,
+    "pairingBytesUnchanged": true
+  },
+  "recordingDurationSeconds": 85.9764133
+}

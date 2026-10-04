@@ -15,6 +15,15 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## LIVELINK-08N-B — retained PCM recovery (2026-10-04)
+
+Scoped retry/export and a real private six-source outage/restart complete parent
+08N at health/recovery scope. Exact source PCM, Stop trimming and verified six
+FLAC/WAV artifacts pass; final backend 536, frontend 473, native 2/2,
+typecheck/build pass. Plugin 0.6.10 is installed with pairing unchanged. See ADR
+0042 and `docs/gates/livelink-08n-b-outbox-recovery.md`. Exact next STT-19A;
+speech quality and 18B/18C latency remain open. No product phase advances.
+
 ## LIVELINK-08N-A — visible retained outbox (2026-10-04)
 
 Completed the optional native/API/UI health seam with legacy-safe machine-local
