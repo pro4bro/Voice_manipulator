@@ -282,6 +282,15 @@ storage mitigation/diagnostics slice, not native-failure acceptance. Exact next:
 retaining the runtime gate. New runtime failure must be repaired from captured
 evidence; the approximately five-minute Stop-to-archive gap remains open.
 
+## RUNTIME-READY-01C — Controller late bind (2026-10-04)
+
+The owner controller timed out alive at 31.126 seconds with no listener, then
+bound port 18119 and answered health about 0.6 seconds later. The controller
+readiness budget is 60 seconds while process and HTTP health checks remain in
+force. Focused tests passed (11); a normal full-stack launch returned `ok` for
+controller, Studio and API. The cold delay source and a >60-second startup gate
+remain open; see the current WORK-ROUNDS ledger and ADR 0036 amendment.
+
 ## RUNTIME-READY-01 — Owner startup timeout follow-up (2026-10-03)
 
 Owner PID 35832 timed out before its API listener existed; recovery scanning had

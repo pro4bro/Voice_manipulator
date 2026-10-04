@@ -104,6 +104,7 @@ that gap matters, and the exact next round.
 | RUNTIME-VOICE-01 | Bundled Voice Changer worker import | Complete at actual original/copied runtime and protocol gate | Script-local bootstrap fixes isolated Python sibling imports; see worker import gate. |
 | RUNTIME-READY-01 | Owner startup timeout and detailed checkpoint scan | Measured blocking scan repaired; actual runtime restored; original intermittent cause remains unconfirmed | Cold checkpoint I/O yields to startup/health; see runtime-ready gate. |
 | RUNTIME-READY-01B | Recovery storage stalls and full-console diagnostics | Storage mitigation and bounded diagnostics verified; historical native gate remains open | Real Uvicorn regressions and ordinary starts pass; future slow startup logs Python frames. |
+| RUNTIME-READY-01C | Controller cold-start readiness deadline | Complete at launcher and live health gate; delay source open | A healthy controller bound just after the former 30-second deadline; a 60-second wait retains process and HTTP checks. |
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
@@ -3958,3 +3959,23 @@ Evidence docs/gates/livelink-ingest-18c2-width-two.md and JSON. 18B/18C stay ope
 ten scheduled rounds remain. Budget question is pending, no threshold relaxed.
 Next ingestion scope proposed LIVELINK-INGEST-18D design/candidate after explicit
 budget disposition; physical OBS and full HTTP gate remain. No phase advances.
+
+## RUNTIME-READY-01C — controller startup deadline (2026-10-04)
+
+Completed a bounded launcher repair after owner PID 19904 timed out alive with
+no listener at 31.126 seconds. The controller error log shows Uvicorn completed
+startup; the action observer recorded the same PID owning port 18119 with
+health `ok` about 0.6 seconds after the deadline. A prior same-day controller
+launch needed 20.680 seconds. Raised only the controller readiness budget from
+30 to 60 seconds, retaining the process-exit and HTTP health requirements.
+
+Focused launcher/controller tests: 11 passed, one existing Starlette warning.
+Normal full-stack launch passed: controller 3.615 seconds, Studio 6.896 seconds,
+API 16.756 seconds; all three health endpoints returned `ok`. This warm launch
+does not reproduce the cold delay or identify its underlying cause. The stack
+is running for owner use. `git diff --check` passed. No product phase advances.
+
+Remaining gap: a controller startup exceeding 60 seconds, or a repeatable
+profile of the cold delay, remains unverified. If it recurs, exact next runtime
+round is RUNTIME-READY-01D: capture pre-bind import and host I/O timing before
+changing another deadline. The independent queued UX-05B round remains open.

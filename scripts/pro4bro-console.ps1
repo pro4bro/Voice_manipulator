@@ -324,7 +324,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $consoleOwnerPath)
     ConvertTo-Json | Set-Content -LiteralPath $consoleOwnerPath -Encoding utf8
 
 try {
-    Wait-Pro4BroReady "Runtime controller" $controllerProcess "$controllerUrl/api/runtime/health" 30 (Join-Path $logRoot "pro4bro-readiness.log")
+    Wait-Pro4BroReady "Runtime controller" $controllerProcess "$controllerUrl/api/runtime/health" 60 (Join-Path $logRoot "pro4bro-readiness.log")
     & $workloadScript -Action start
     Open-Workspace
     Write-Host ""

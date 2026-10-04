@@ -87,3 +87,13 @@ capture a native crash that exits before sampling.
 
 Real Uvicorn storage-wait regressions and full-console launches pass; natural
 intermittent/native failure attribution remains open. See the 01B gate.
+
+## Controller startup budget amendment — RUNTIME-READY-01C
+
+On 2026-10-04, controller PID 19904 remained alive without a listener at the
+30-second deadline, then bound port 18119 and answered health about 0.6 seconds
+later. A prior same-day cold start took 20.680 seconds. The controller launch
+budget is now 60 seconds; process-exit, listener and HTTP evidence remain
+unchanged. This prevents the observed healthy late bind from being rolled back.
+The transient startup delay itself is not attributed to a specific import,
+disk operation or host load without a captured profile.
