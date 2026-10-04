@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-STT-19A speech baseline measured; full acceptance open.
-last_activity_desc: Real two-track speech CER fails LiveLink live/detailed and MKV live proposed budgets. Backend 547/frontend 473/typecheck/build pass. Exact next STT-19B recognition accuracy; timing anchors/physical clocks and 18B/18C decision remain open.
+last_activity: 2026-10-04 — LIVELINK-STT-19B larger model candidate rejected.
+last_activity_desc: CER 20.87% still fails 15%; production medium unchanged. Exact next STT-19B2 beam search candidate; original timing/physical acceptance stays open.
 ---
 
 # Project State

@@ -1,5 +1,16 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-STT-19B — larger model candidate rejected (2026-10-04)
+
+Real large-v3 live candidate on frozen 19A speech reduces CER to 20.87% and
+WER to 22.56%, still failing <=15% CER. Warm cadence plus drain takes 159.516s
+versus 117.391s medium baseline; no exact latency percentile is inferred. Zero
+request errors and original hashes unchanged. Product remains medium; no timing,
+physical or phase acceptance advances. See
+`docs/gates/livelink-stt-19b-model-candidate.md` and metrics JSON.
+Exact next **LIVELINK-STT-19B2**, one medium beam-search candidate. The owner
+requested sequential rounds in this session; commit each before proceeding.
+
 ## LIVELINK-STT-19A — measured Vietnamese speech baseline (2026-10-04)
 
 Frozen historical curated references on two tracks were processed by real

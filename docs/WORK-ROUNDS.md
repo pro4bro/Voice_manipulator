@@ -108,7 +108,7 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
 | LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Baseline measured; timing/physical acceptance open | Two real-model runs fail LiveLink live CER; see `docs/gates/livelink-stt-19a-speech-quality.md`. |
-| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Activated by 19A measured failure; exact next bounded repair | Select LiveLink live recognition accuracy; preserve frozen corpus and timing trust. |
+| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Large-v3 candidate rejected; repair acceptance open | CER 20.87% still fails; exact next STT-19B2 beam search. |
 | VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 
@@ -3852,3 +3852,15 @@ Evidence: `docs/gates/livelink-stt-19a-speech-quality.md` and metrics JSON.
 Exact next **LIVELINK-STT-19B** selects one LiveLink live recognition accuracy
 candidate on this corpus. MKV, cold-start and row/overlap failures need separate
 bounded scopes; 18B/18C human latency decision remains open. Stop after this round.
+
+## LIVELINK-STT-19B — larger model candidate rejected (2026-10-04)
+
+Real large-v3 live candidate on frozen 19A speech reduces CER to 20.87% and
+WER to 22.56%, still failing <=15% CER. Warm cadence plus drain takes 159.516s
+versus 117.391s medium baseline; no exact latency percentile is inferred. Zero
+request errors and original hashes unchanged. Product remains medium; no timing,
+physical or phase acceptance advances. See
+`docs/gates/livelink-stt-19b-model-candidate.md` and metrics JSON.
+Exact next **LIVELINK-STT-19B2**, one medium beam-search candidate. The owner
+requested sequential rounds in this session; commit each before proceeding.
+

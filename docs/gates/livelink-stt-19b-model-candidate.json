@@ -1,0 +1,109 @@
+{
+  "candidate": "large-v3 instead of medium; all other settings unchanged",
+  "baseline": {
+    "phase": "live",
+    "budget": {
+      "cer": 0.15,
+      "wer": 0.3
+    },
+    "tracks": [
+      {
+        "track": 1,
+        "referenceCharacters": 837,
+        "characterEdits": 160,
+        "referenceSyllables": 264,
+        "syllableEdits": 61,
+        "cer": 0.1911589008363202,
+        "wer": 0.23106060606060605,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      },
+      {
+        "track": 2,
+        "referenceCharacters": 1166,
+        "characterEdits": 300,
+        "referenceSyllables": 352,
+        "syllableEdits": 103,
+        "cer": 0.25728987993138935,
+        "wer": 0.29261363636363635,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      }
+    ],
+    "referenceCharacters": 2003,
+    "characterEdits": 460,
+    "referenceSyllables": 616,
+    "syllableEdits": 164,
+    "silenceInsertions": 0,
+    "cer": 0.22965551672491263,
+    "wer": 0.2662337662337662,
+    "textBudgetPassed": false,
+    "timingAccuracyPassed": null
+  },
+  "candidateScore": {
+    "phase": "live",
+    "budget": {
+      "cer": 0.15,
+      "wer": 0.3
+    },
+    "tracks": [
+      {
+        "track": 1,
+        "referenceCharacters": 837,
+        "characterEdits": 98,
+        "referenceSyllables": 264,
+        "syllableEdits": 37,
+        "cer": 0.11708482676224612,
+        "wer": 0.14015151515151514,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      },
+      {
+        "track": 2,
+        "referenceCharacters": 1166,
+        "characterEdits": 320,
+        "referenceSyllables": 352,
+        "syllableEdits": 102,
+        "cer": 0.274442538593482,
+        "wer": 0.2897727272727273,
+        "silenceInsertions": 0,
+        "timing": {
+          "words": 0,
+          "invalid": 0,
+          "structurallyValid": false,
+          "accuracy": "unmeasured-without-reviewed-word-anchors"
+        }
+      }
+    ],
+    "referenceCharacters": 2003,
+    "characterEdits": 418,
+    "referenceSyllables": 616,
+    "syllableEdits": 139,
+    "silenceInsertions": 0,
+    "cer": 0.20868696954568147,
+    "wer": 0.22564935064935066,
+    "textBudgetPassed": false,
+    "timingAccuracyPassed": null
+  },
+  "elapsedSeconds": 159.51600000000326,
+  "errors": [],
+  "decision": "rejected: frozen CER budget failed",
+  "sourceHashesUnchanged": true,
+  "productionChanged": false,
+  "fullAcceptanceComplete": false
+}
