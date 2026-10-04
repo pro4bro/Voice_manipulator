@@ -188,6 +188,7 @@ def test_voice_output_exports_wav_and_one_srt_cue_per_script_row_without_word_al
     assert audio.status_code == 200
     assert audio.content == outputs.audio_path(project.id, output.id).read_bytes()
     assert lines.status_code == 200
+    assert lines.headers["x-pro4bro-skipped-cues"] == "0"
     assert lines.headers["content-disposition"].endswith(f'{output.id}--line.srt"')
     assert lines.text.count("-->") == 2
     assert "00:00:00,000 --> 00:00:00,500" in lines.text
@@ -195,6 +196,15 @@ def test_voice_output_exports_wav_and_one_srt_cue_per_script_row_without_word_al
     assert "Xin chào" in lines.text and "Tạm biệt" in lines.text
     assert (Path(project.project_path) / "exports" / "subtitles" / f"{output.id}--line.srt").is_file()
     assert client.get(f"{route}/subtitles", params={"mode": "word"}).status_code == 400
+    output.words = [
+        {"text": "Xin", "start": 0.1, "end": 0.3, "timingTrusted": True},
+        {"text": "unsafe", "start": 0.3, "end": 0.4, "timingTrusted": False},
+    ]
+    outputs.save(project.id, output)
+    words = client.get(f"{route}/subtitles", params={"mode": "word"})
+    assert words.status_code == 200
+    assert words.headers["x-pro4bro-skipped-cues"] == "1"
+    assert words.text.count("-->") == 1 and "unsafe" not in words.text
 
 
 def test_reading_again_speaks_only_the_rows_that_changed(tmp_path):

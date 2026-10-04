@@ -80,11 +80,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 
-async function downloadSrt(path: string, fallbackFilename: string): Promise<void> {
+async function downloadSrt(path: string, fallbackFilename: string): Promise<{ skippedCues: number }> {
   return downloadFile(path, fallbackFilename);
 }
 
-async function downloadFile(path: string, fallbackFilename: string, init?: RequestInit): Promise<void> {
+async function downloadFile(path: string, fallbackFilename: string, init?: RequestInit): Promise<{ skippedCues: number }> {
   const response = await fetch(path, init);
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -101,6 +101,8 @@ async function downloadFile(path: string, fallbackFilename: string, init?: Reque
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  const skippedCues = Number(response.headers.get("X-Pro4Bro-Skipped-Cues") ?? 0);
+  return { skippedCues: Number.isSafeInteger(skippedCues) && skippedCues > 0 ? skippedCues : 0 };
 }
 function normalizeWord(word: StudioWord & Record<string, unknown>): StudioWord {
   return {

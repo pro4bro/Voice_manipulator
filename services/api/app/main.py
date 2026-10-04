@@ -1815,6 +1815,7 @@ def create_app(
             project = projects.get(project_id)
             output = voice_outputs.get(project_id, output_id)
             speakers = training_catalogs.get(project_id).speakers
+            skipped_cues = 0
             if mode == "line":
                 subtitle_path = subtitle_exporter.export_voice_output_lines(project, output, speakers)
             else:
@@ -1823,11 +1824,13 @@ def create_app(
                 # The exporter reads footage; generated speech has the same words,
                 # duration and name, and nothing cut from its timeline.
                 speech = SimpleNamespace(id=output.id, name=output.id, words=output.words, duration=output.duration, removed_ranges=[])
+                skipped_cues = subtitle_exporter.skipped_cue_count(speech, mode)  # type: ignore[arg-type]
                 subtitle_path = subtitle_exporter.export(project, speech, mode, speakers)  # type: ignore[arg-type]
             return FileResponse(
                 subtitle_path,
                 media_type="text/csv; charset=utf-8" if mode == "table" else "application/x-subrip",
                 filename=subtitle_path.name,
+                headers={"X-Pro4Bro-Skipped-Cues": str(skipped_cues)},
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Voice Output không tồn tại") from exc

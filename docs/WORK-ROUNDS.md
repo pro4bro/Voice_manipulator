@@ -3910,3 +3910,15 @@ pass. Final full backend: **557 passed**, 167.31s, two existing deprecation warn
 `docs/gates/mkv-follow-03-backlog.md` with metrics JSON. No phase advances.
 Exact next **MKV-ACCEPT-01**, physical writer/A-V/speech acceptance. Full 19A
 reviewed timing and 19B accuracy prerequisites remain open, as do 18B/18C budgets.
+
+## VOICE-EXPORT-13B1 — truthful export handoff (2026-10-04)
+
+Completed bounded repair: browser handoff is no longer reported as a confirmed
+saved download; Voice Output SRT displays the count of cues omitted for untrusted
+timing. Selected-output identity, API WAV bytes and word/line cues verified.
+Backend 557, frontend 477/56 files, typecheck/build pass. Actual browser download
+artifact/cancel/move evidence remains open after browser interruption; parent
+VOICE-EXPORT-13B is not accepted. See docs/gates/voice-export-13b-handoff.md.
+Next bounded work VOICE-EXPORT-13B2 export interval validation; MKV-ACCEPT-01
+reviewed timing/recognition prerequisites remain open. No phase advances.
+

@@ -1,5 +1,17 @@
 # Project Status — 2026-09-22
 
+## VOICE-EXPORT-13B1 — truthful export handoff (2026-10-04)
+
+Completed bounded repair: browser handoff is no longer reported as a confirmed
+saved download; Voice Output SRT displays the count of cues omitted for untrusted
+timing. Selected-output identity, API WAV bytes and word/line cues verified.
+Backend 557, frontend 477/56 files, typecheck/build pass. Actual browser download
+artifact/cancel/move evidence remains open after browser interruption; parent
+VOICE-EXPORT-13B is not accepted. See docs/gates/voice-export-13b-handoff.md.
+Next bounded work VOICE-EXPORT-13B2 export interval validation; MKV-ACCEPT-01
+reviewed timing/recognition prerequisites remain open. No phase advances.
+
+
 ## MKV-FOLLOW-03 — selected-stream Cluster decode (2026-10-04)
 
 Complete at measured decoder scope. Probe/decode all selected streams once per

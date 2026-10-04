@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — MKV-FOLLOW-03 selected-stream decode measured and accepted.
-last_activity_desc: Backlog wall time drops 33.63% generated /50.08% retained OBS prefix, exact PCM and restart/Finish pass. Exact next MKV-ACCEPT-01; reviewed timing/recognition and full writer acceptance remain open.
+last_activity: 2026-10-04 — VOICE-EXPORT-13B1 truthful handoff repair.
+last_activity_desc: Backend 557/frontend 477/typecheck/build pass. Browser saved-file gate stays open; next bounded VOICE-EXPORT-13B2 interval validation.
 ---
 
 # Project State

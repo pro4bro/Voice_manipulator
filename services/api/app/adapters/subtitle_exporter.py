@@ -83,6 +83,14 @@ class SubtitleExporter:
         )
         return destination
 
+    def skipped_cue_count(self, asset: ProjectMediaAsset, mode: SubtitleExportMode) -> int:
+        """Count omissions using the same cue construction as the written export."""
+        if mode == "table":
+            return 0
+        words = self._timed_words(asset)
+        cues = self._word_cues(words) if mode == "word" else self._sentence_cues(words)
+        return sum(not cue.timing_trusted for cue in cues)
+
     def export_voice_output_lines(
         self, project: ProjectRecord, output: VoiceOutput,
         speakers: list[SpeakerProfile] | None = None,

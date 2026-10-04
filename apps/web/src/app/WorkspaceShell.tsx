@@ -1913,11 +1913,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       return;
     }
     try {
-      if (mode === "audio") await api.downloadVoiceOutputAudio(project.id, output.id);
-      else await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
-      setNotice(mode === "audio" ? `Đã tải WAV: ${output.name}.`
-        : mode === "table" ? "Đã tải bảng Script CSV."
-          : `Đã tải SRT ${mode === "line" ? "từng dòng" : mode === "word" ? "từng từ" : "theo câu"} của ${output.name}.`);
+      const result = mode === "audio"
+        ? await api.downloadVoiceOutputAudio(project.id, output.id)
+        : await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
+      const skipped = result?.skippedCues ? ` Đã bỏ ${result.skippedCues} cue có timing không đáng tin.` : "";
+      setNotice((mode === "audio" ? `Đã gửi WAV của ${output.name} tới trình duyệt.`
+        : mode === "table" ? "Đã gửi bảng Script CSV tới trình duyệt."
+          : `Đã gửi SRT ${mode === "line" ? "từng dòng" : mode === "word" ? "từng từ" : "theo câu"} của ${output.name} tới trình duyệt.`) + skipped);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không thể xuất Voice Output.");
     }
