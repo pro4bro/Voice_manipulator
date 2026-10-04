@@ -1,5 +1,14 @@
 # Project Status — 2026-09-22
 
+## UI-CONTRAST-01C1 — populated states (2026-10-05)
+
+Repaired inactive library tab/count text, normal Timeline words, advanced profile
+labels and fixed white Speaker-card fills. Real copied output, populated profiles
+and Properties checked in both themes: six samples/1,668 repeated DOM readings,
+minimum4.615:1, zero under4.5 after fixes. Frontend497/typecheck/final build pass;
+backend565 for STT repair. Parent01C physical/native/model/emotion/motion scope
+remains open. See `docs/gates/ui-contrast-01c1-populated.md`.
+
 ## LIVELINK-STT-19B4 — internal quiet PCM repair (2026-10-05)
 
 Live recognizer WAVs now retain short internal quiet PCM when speech resumes,

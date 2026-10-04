@@ -91,7 +91,7 @@
 
 .voice-vault-module { flex: 1 1 auto; }
 .voice-vault__list { display: grid; gap: 6px; }
-.voice-card { width: 100%; display: grid; grid-template-columns: 38px minmax(0,1fr) 9px; align-items: center; gap: 9px; position: relative; padding: 8px; text-align: left; border: 1px solid transparent; background: rgba(255,255,255,.37); }
+.voice-card { width: 100%; display: grid; grid-template-columns: 38px minmax(0,1fr) 9px; align-items: center; gap: 9px; position: relative; padding: 8px; text-align: left; border: 1px solid transparent; background: var(--surface-raised); }
 .voice-card:hover { border-color: var(--line); }
 .voice-card.is-active { border-color: var(--ink); background: var(--cream); }
 .voice-card.is-active::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); }
@@ -530,7 +530,7 @@
 .timeline-empty svg { width: 22px; color: var(--accent); }
 .timeline-empty b { font-size: calc(10px * var(--font-scale)); }.timeline-empty span { font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
 .word-track { position: relative; overflow: hidden; border-top: 1px solid var(--audio-line); background: var(--soft-fill); cursor: text; touch-action: none; user-select: none; }
-.timeline-word { position: absolute; top: 3px; min-width: 0; height: 21px; overflow: hidden; padding: 4px 1px; color: var(--audio-muted); border: 1px solid var(--audio-line); background: var(--soft-fill); font-family: var(--editorial); font-size: calc(10px * var(--font-scale)); line-height: 1; pointer-events: none; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-word { position: absolute; top: 3px; min-width: 0; height: 21px; overflow: hidden; padding: 4px 1px; color: var(--text); border: 1px solid var(--audio-line); background: var(--soft-fill); font-family: var(--editorial); font-size: calc(10px * var(--font-scale)); line-height: 1; pointer-events: none; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 /* The word body stays untouchable so a sweep runs across the track uninterrupted
    and a word only a few pixels wide cannot swallow the gesture; the track works
    out which word the pointer is over from its position instead. The grips are the
@@ -781,11 +781,11 @@
 .library-panel-tabs,
 .sound-library-tabs { display: flex; gap: 2px; padding: 4px; background: var(--surface-sunken); border: 1px solid var(--line); }
 .library-panel-tabs button,
-.sound-library-tabs button { min-width: 0; flex: 1; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; color: var(--text-muted); background: transparent; font-size: calc(10.8px * var(--font-scale)); font-weight: 800; }
+.sound-library-tabs button { min-width: 0; flex: 1; min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; color: var(--text); background: transparent; font-size: calc(10.8px * var(--font-scale)); font-weight: 800; }
 .library-panel-tabs button svg,
 .sound-library-tabs button svg { width: 18px; }
 .library-panel-tabs button b,
-.sound-library-tabs button b { padding: 1px 4px; color: var(--text-muted); background: var(--strong-fill); font-family: var(--mono); font-size: calc(9.6px * var(--font-scale)); }
+.sound-library-tabs button b { padding: 1px 4px; color: var(--text); background: var(--strong-fill); font-family: var(--mono); font-size: calc(9.6px * var(--font-scale)); }
 .library-panel-tabs button.is-active,
 .sound-library-tabs button.is-active { color: var(--text); background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .library-panel > .module-frame { border-top: 0; }
@@ -892,7 +892,8 @@
 /* Profile fields can be completed on a small screen without losing the confirm action. */
 .sound-profile-form { max-height: min(66dvh, 560px); overflow-y: auto; padding-bottom: 10px; }
 .profile-advanced { grid-column: 1 / -1; display: grid; gap: 7px; padding: 7px; border: 1px solid var(--line); background: var(--surface-sunken); }
-.profile-advanced summary { cursor: pointer; color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .07em; }
+.profile-advanced summary { cursor: pointer; color: var(--text); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .07em; }
+.speaker-profile-form .profile-advanced label > span, .profile-advanced .profile-field-hint { color: var(--text); }
 .profile-advanced__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .profile-field-hint { margin: 0; color: var(--text-muted); font-size: calc(8px * var(--font-scale)); line-height: 1.35; }
 .speaker-profile-actions { position: sticky; z-index: 2; bottom: -9px; padding-top: 8px; padding-bottom: 1px; background: var(--soft-fill); }

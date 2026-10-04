@@ -12,6 +12,14 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
+### 2026-10-05 — UI-CONTRAST-01C1
+
+Populated real output/profile/Properties browser samples pass after four shared
+CSS repairs; minimum4.615:1 across1,668 repeated DOM readings. Frontend497,
+typecheck/build pass; no media or saved profile change, dark theme restored.
+Parent01C remains open for physical DPI/native/motion/model/custom-emotion gates.
+Gate: `docs/gates/ui-contrast-01c1-populated.md`.
+
 ### 2026-10-05 — LIVELINK-STT-19B4
 
 Preserve short internal quiet PCM in Live STT recognizer WAVs; keep last-voice
