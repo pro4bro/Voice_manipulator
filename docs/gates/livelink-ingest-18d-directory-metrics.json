@@ -1,0 +1,50 @@
+{
+  "round": "LIVELINK-INGEST-18D",
+  "candidate": "omit per-pair mkdir after channel directory preparation",
+  "productChanged": false,
+  "sourceCatalogSha256": "60805281fadd1f8e717b4bdf011a757cb5ea757b330cf2c635380e1c6b888fd4",
+  "sourceGroups": 60,
+  "pairsPerVariant": 360,
+  "sourceAndOutputBytesVerified": true,
+  "originalPairsUnchanged": true,
+  "fsyncsPerPair": 2,
+  "publication": "PCM before metadata",
+  "directoryContract": "Both variants use fresh per-channel directories prepared before timing; candidate omits per-pair mkdir after preparation.",
+  "variants": {
+    "current": {
+      "count": 360,
+      "totalMs": 40149.8108,
+      "p50Ms": 89.8246,
+      "p95Ms": 268.676,
+      "maxMs": 591.476
+    },
+    "preparedDirectory": {
+      "count": 360,
+      "totalMs": 38837.2427,
+      "p50Ms": 86.90965,
+      "p95Ms": 248.9444,
+      "maxMs": 545.2124
+    }
+  },
+  "reductionPercent": 3.269176302071042,
+  "frozenStorageScreen": {
+    "pairP50AtMost100Ms": true,
+    "pairP95AtMost150Ms": false,
+    "totalReductionAtLeast30Percent": false,
+    "plausibleUnderAllThree": false
+  },
+  "frozen18ABaseline": {
+    "httpDrainSeconds": 417.7338463,
+    "maximumDrainSecondsAt70Percent": 292.41369241,
+    "requiredReductionSeconds": 125.32015389,
+    "durablePairStageSeconds": 297.8391642
+  },
+  "projection": {
+    "method": "Scale the measured 360-pair total delta by 2524/360; this is a feasibility estimate, not a replay result.",
+    "estimatedSavingsSecondsAt2524Pairs": 9.203, 
+    "estimatedDrainReductionPercent": 2.203,
+    "requiredDrainReductionPercent": 30,
+    "candidateGapSeconds": 116.117
+  },
+  "scopeLimit": "Storage-only pair screen; not HTTP ACK, full replay, archive, native, or physical OBS acceptance."
+}

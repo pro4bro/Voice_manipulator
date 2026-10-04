@@ -12,6 +12,16 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
+### 2026-10-05 — LIVELINK-INGEST-18D
+
+Screened prepared channel directories on the immutable six-source catalog:
+360 pairs per variant, 3.27% lower wall time, candidate p95 248.944ms. Rejected
+under frozen 150ms/30% limits; no product change. Two fsyncs, ordered publication
+and source/output bytes verified; helper safety suite 8 passed. Parent 18B/18C
+remain open. Continue STT19B4 and available browser contrast acceptance while
+physical OBS, reviewed anchors and second-machine gates need their prerequisites.
+Gate: `docs/gates/livelink-ingest-18d-directory.md`.
+
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
 | LIVELINK-INGEST-18B | Reduce durable-pair cost | Original and 18B2 candidates rejected; acceptance open | Full replay improves only 2.58%; raw descriptor screen is 9.34% slower. |

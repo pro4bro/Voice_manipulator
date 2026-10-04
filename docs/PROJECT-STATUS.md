@@ -1,5 +1,13 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-INGEST-18D — directory candidate rejected (2026-10-05)
+
+Prepared-directory pair writes reduce the same-volume storage screen by 3.27%,
+with p95 248.944ms. This fails the frozen 150ms/30% screening limits; no product
+integration. Eight helper safety tests pass, source/output bytes match, and
+two fsyncs plus PCM-before-metadata publication remain. See
+`docs/gates/livelink-ingest-18d-directory.md`. Parent 18B/18C remain open.
+
 ## LIVELINK-STT-19B3 — recognition candidate rejected (2026-10-05)
 
 Longer silence threshold reduces final spans29->16 but worsens real frozen

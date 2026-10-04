@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import livelink_pair_io_probe as pair_probe
 import livelink_group_durability as group_probe
+import livelink_pair_directory_probe as directory_probe
 
 
 def test_raw_pair_handles_short_writes_and_syncs_before_ordered_publication(tmp_path, monkeypatch):
@@ -63,3 +64,34 @@ def test_group_probe_cannot_write_inside_original_recording(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["probe", "--output", str(group_probe.SOURCE), "--widths", "1", "2"])
     with pytest.raises(ValueError, match="outside original recording"):
         group_probe.main()
+
+
+def test_prepared_directory_pair_retains_two_syncs_and_ordered_publication(tmp_path, monkeypatch):
+    folder = tmp_path / "prepared"
+    folder.mkdir()
+    sync = os.fsync
+    replace = os.replace
+    synced, published = [], []
+
+    def counted_sync(fd):
+        sync(fd)
+        synced.append(fd)
+
+    def publish(source, destination):
+        assert len(synced) == 2
+        published.append(destination.name)
+        replace(source, destination)
+
+    monkeypatch.setattr(os, "fsync", counted_sync)
+    monkeypatch.setattr(os, "replace", publish)
+    directory_probe.prepared_pair(folder / "chunk.pcm", b"pcm", folder / "chunk.json", b"metadata")
+    assert (folder / "chunk.pcm").read_bytes() == b"pcm"
+    assert (folder / "chunk.json").read_bytes() == b"metadata"
+    assert published == ["chunk.pcm", "chunk.json"]
+
+
+def test_prepared_directory_pair_requires_the_channel_directory(tmp_path):
+    folder = tmp_path / "missing"
+    with pytest.raises(ValueError, match="prepared channel directory"):
+        directory_probe.prepared_pair(folder / "chunk.pcm", b"pcm", folder / "chunk.json", b"metadata")
+    assert not folder.exists()
