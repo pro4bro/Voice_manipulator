@@ -138,8 +138,8 @@ class SubtitleExporter:
             end = self._number(raw.get("end"))
             if not text or start is None or end is None or end <= start:
                 continue
-            start = max(0.0, start)
-            end = min(end, asset.duration) if asset.duration > 0 else end
+            if start < 0 or (asset.duration > 0 and end > asset.duration):
+                raise ValueError("Mốc thời gian từ nằm ngoài audio; cần căn chỉnh lại trước khi xuất.")
             if self._is_removed((start + end) / 2, asset):
                 continue
             diarization_speaker_id = self._optional_id(raw.get("diarizationSpeakerId") or raw.get("diarization_speaker_id"))
@@ -271,8 +271,9 @@ class SubtitleExporter:
     ) -> str:
         blocks = []
         for index, cue in enumerate(cues, start=1):
-            end = max(cue.end, cue.start + 0.001)
-            blocks.append(f"{index}\n{self._format_timestamp(cue.start)} --> {self._format_timestamp(end)}\n{self._render_cue_text(cue, profiles)}")
+            if round(cue.end * 1000) <= round(cue.start * 1000):
+                raise ValueError("Mốc thời gian quá ngắn cho SRT; cần căn chỉnh lại trước khi xuất.")
+            blocks.append(f"{index}\n{self._format_timestamp(cue.start)} --> {self._format_timestamp(cue.end)}\n{self._render_cue_text(cue, profiles)}")
         body = "\n\n".join(blocks) + "\n"
         if not skipped_cues:
             return body

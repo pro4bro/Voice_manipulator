@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — VOICE-EXPORT-13B1 truthful handoff repair.
-last_activity_desc: Backend 557/frontend 477/typecheck/build pass. Browser saved-file gate stays open; next bounded VOICE-EXPORT-13B2 interval validation.
+last_activity: 2026-10-04 — VOICE-EXPORT-13B2 subtitle bounds repair.
+last_activity_desc: Backend 561 passed; API moved exports/hash and invalid-timing rejection pass. Parent browser gate remains open. Next independent UX-05B needs browser control.
 ---
 
 # Project State

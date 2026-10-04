@@ -1,0 +1,12 @@
+{
+  "reopenId": "voice-export-13b-owned-gate-93f597a4",
+  "downloads": {
+    "audio": "66de87320b7174b7e140cbd2c146bee8bfdc7d927d91b83fb3c13c8f9acfbe41",
+    "word": "af4ec4b31fab0f38ef8dc3d3f055fc66d8a275aebd75d271db91512f002c35f7",
+    "line": "ff57442c01ec3b34ab070d289f43b0926d68ffb3f4e8b14fc3eb2e7198b6b6f1"
+  },
+  "invalidTimingStatus": 400,
+  "invalidTimingDetail": "Mốc thời gian từ nằm ngoài audio; cần căn chỉnh lại trước khi xuất.",
+  "allOriginalAudioHashesMatch": true,
+  "scope": "actual API files and owned move/Open Existing, not browser saved-file acceptance"
+}

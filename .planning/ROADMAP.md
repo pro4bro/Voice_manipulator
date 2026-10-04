@@ -1,5 +1,20 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## VOICE-EXPORT-13B2 — subtitle timing bounds (2026-10-04)
+
+Completed bounded repair: refuse words outside playable audio and cues collapsing
+to equal SRT milliseconds, without inventing timestamps. Failed export preserves
+prior valid SRT. Four observed regressions repaired. Actual API move/Open Existing
+keeps WAV/word/line hashes and all source audio; invalid timing returns HTTP 400.
+Full backend 561 passed; final exporter 10 passed after strengthening artifact
+preservation checks. Unchanged frontend 477/typecheck/build carries from 13B1.
+See docs/gates/voice-export-13b-bounds.md and companion JSON. Browser saved-file,
+cancel and real speech evidence remain open; parent 13B is not accepted.
+Exact next independent queued round UX-05B requires functioning browser control;
+MKV-ACCEPT-01 retains reviewed 19A timing/recognition prerequisites. No phase or
+scheduled queue completion count advances.
+
+
 ## VOICE-EXPORT-13B1 — truthful export handoff (2026-10-04)
 
 Completed bounded repair: browser handoff is no longer reported as a confirmed

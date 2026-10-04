@@ -143,3 +143,18 @@ def test_script_table_export_groups_contiguous_speaker_rows(tmp_path: Path):
     assert "Speaker,Content,Start,End" in rendered
     assert "Speaker 1,Một hai,0.000,0.400" in rendered
     assert "Speaker 2,ba,0.400,0.700" in rendered
+
+
+@pytest.mark.parametrize("start,end", [(-0.1, 0.2), (3.2, 3.5), (2.8, 3.2), (2.9996, 3.0)])
+def test_srt_refuses_outside_audio_or_unrepresentable_word_timing(tmp_path, start, end):
+    asset = make_asset().model_copy(update={"removed_ranges": [], "words": [
+        {"text": "unsafe", "start": start, "end": end, "timingTrusted": True},
+    ]})
+    project = make_project(tmp_path)
+    exporter = SubtitleExporter()
+    previous = exporter.export(project, make_asset(), "word")
+    previous_bytes = previous.read_bytes()
+    with pytest.raises(ValueError, match="thời gian"):
+        exporter.export(project, asset, "word")
+    assert previous.read_bytes() == previous_bytes
+    assert list((Path(project.project_path) / "exports").rglob("*.srt")) == [previous]
