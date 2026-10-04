@@ -107,8 +107,8 @@ that gap matters, and the exact next round.
 | LIVELINK-INGEST-18A | Profile six-source spool and Stop tail | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-INGEST-18B | Reduce the measured six-source bottleneck | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
-| LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
-| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Conditional on preceding measured failure | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Baseline measured; timing/physical acceptance open | Two real-model runs fail LiveLink live CER; see `docs/gates/livelink-stt-19a-speech-quality.md`. |
+| LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Activated by 19A measured failure; exact next bounded repair | Select LiveLink live recognition accuracy; preserve frozen corpus and timing trust. |
 | VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 | UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 
@@ -3824,3 +3824,31 @@ Exact next **LIVELINK-STT-19A**, reviewed Vietnamese multitrack speech accuracy,
 word timing/turn/padding/overlap evidence for LiveLink and growing MKV. Remaining
 18B/18C latency/integration/budget decision stays open. This round completes no
 product phase and does not treat tone recovery as recognizer-quality evidence.
+
+## LIVELINK-STT-19A — Vietnamese speech baseline (2026-10-04)
+
+Completed this invocation: frozen scoring and two real-model runs on 16
+historical curated owner-voice clips split across two tracks. Source media is
+read only. LiveLink uses actual adapter cadence; growing MKV publishes an
+initial complete-cluster prefix, appends new bytes and drains detailed blocks
+with 10 seconds of leading context. No production tuning or model change.
+
+Warm CER/WER: LiveLink live 22.97%/26.62%, detailed 11.88%/13.15%; MKV live
+51.72%/70.45%, detailed 9.19%/10.71%. Cold LiveLink has one request timeout;
+warm still fails CER without errors. Proposed budgets were frozen beforehand,
+not approved by the owner. Original hashes and final lossless PCM match;
+mono24k/PCM16, 116.454 seconds each, no clipping.
+
+Browser: two Timeline instances, detailed words, shared seek without autoplay.
+Script rows span inserted silence; overlap survives but is fragmented; MKV
+Timeline range highlight is unproved. Full 19A acceptance stays open: reviewed
+word anchors, temporal silence/seam review, physical OBS/capture clocks,
+row/overlap and budget acceptance. No measured latency percentile is invented.
+
+Validation: scorer 11; backend 547 (two existing warnings), frontend 473 in
+55 files, typecheck/build and Python compilation pass. Owned services/ports/tab
+close; owner runtimes/media remain intact. No product phase advances.
+Evidence: `docs/gates/livelink-stt-19a-speech-quality.md` and metrics JSON.
+Exact next **LIVELINK-STT-19B** selects one LiveLink live recognition accuracy
+candidate on this corpus. MKV, cold-start and row/overlap failures need separate
+bounded scopes; 18B/18C human latency decision remains open. Stop after this round.

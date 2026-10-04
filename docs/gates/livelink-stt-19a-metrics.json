@@ -1,0 +1,733 @@
+{
+  "budgets": {
+    "live": {
+      "cer": 0.15,
+      "wer": 0.3
+    },
+    "detailed": {
+      "cer": 0.1,
+      "wer": 0.2
+    },
+    "silenceInsertions": 0,
+    "wordBoundaryP95Seconds": 0.25,
+    "liveFinalLagP95Seconds": 8.0,
+    "detailedReadyLagSeconds": 30.0,
+    "duplicateSeamWords": 0,
+    "paddingSeconds": 10
+  },
+  "scope": "Two tracks from one historical curated owner-voice corpus; no physical OBS or reviewed word anchors",
+  "runs": {
+    "run-1": {
+      "timelineSeconds": 116.454,
+      "speechSourceSeconds": 172.745,
+      "utterances": 16,
+      "scores": {
+        "livelink-live": {
+          "phase": "live",
+          "budget": {
+            "cer": 0.15,
+            "wer": 0.3
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 207,
+              "referenceSyllables": 264,
+              "syllableEdits": 75,
+              "cer": 0.24731182795698925,
+              "wer": 0.2840909090909091,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 0,
+                "invalid": 0,
+                "structurallyValid": false,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 300,
+              "referenceSyllables": 352,
+              "syllableEdits": 103,
+              "cer": 0.25728987993138935,
+              "wer": 0.29261363636363635,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 0,
+                "invalid": 0,
+                "structurallyValid": false,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 507,
+          "referenceSyllables": 616,
+          "syllableEdits": 178,
+          "silenceInsertions": 0,
+          "cer": 0.2531203195207189,
+          "wer": 0.288961038961039,
+          "textBudgetPassed": false,
+          "timingAccuracyPassed": null
+        },
+        "livelink-detailed": {
+          "phase": "detailed",
+          "budget": {
+            "cer": 0.1,
+            "wer": 0.2
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 71,
+              "referenceSyllables": 264,
+              "syllableEdits": 26,
+              "cer": 0.08482676224611709,
+              "wer": 0.09848484848484848,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 255,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 167,
+              "referenceSyllables": 352,
+              "syllableEdits": 55,
+              "cer": 0.1432246998284734,
+              "wer": 0.15625,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 336,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 238,
+          "referenceSyllables": 616,
+          "syllableEdits": 81,
+          "silenceInsertions": 0,
+          "cer": 0.11882176734897654,
+          "wer": 0.1314935064935065,
+          "textBudgetPassed": false,
+          "timingAccuracyPassed": null
+        },
+        "mkv-detailed": {
+          "phase": "detailed",
+          "budget": {
+            "cer": 0.1,
+            "wer": 0.2
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 73,
+              "referenceSyllables": 264,
+              "syllableEdits": 27,
+              "cer": 0.08721624850657109,
+              "wer": 0.10227272727272728,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 254,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 111,
+              "referenceSyllables": 352,
+              "syllableEdits": 39,
+              "cer": 0.09519725557461406,
+              "wer": 0.11079545454545454,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 348,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 184,
+          "referenceSyllables": 616,
+          "syllableEdits": 66,
+          "silenceInsertions": 0,
+          "cer": 0.09186220668996506,
+          "wer": 0.10714285714285714,
+          "textBudgetPassed": true,
+          "timingAccuracyPassed": null
+        }
+      },
+      "liveEventErrors": [
+        {
+          "revision": 3,
+          "error": ""
+        }
+      ],
+      "liveFinalRows": 29,
+      "liveElapsedSeconds": 170.81299999999464,
+      "liveLagMetricInterpretation": "lagSeconds includes utterance duration; no p95 final latency claim",
+      "livelinkBlocks": {
+        "88ed8deb-a7d1-4dc5-bb96-4c3599ba97b2": [
+          {
+            "startSeconds": 0.0,
+            "endSeconds": 20.0,
+            "audioStartSeconds": 0.0,
+            "mergeStartSeconds": 0.0
+          },
+          {
+            "startSeconds": 20.0,
+            "endSeconds": 80.0,
+            "audioStartSeconds": 10.0,
+            "mergeStartSeconds": 15.0
+          },
+          {
+            "startSeconds": 80.0,
+            "endSeconds": 116.454,
+            "audioStartSeconds": 70.0,
+            "mergeStartSeconds": 75.0
+          }
+        ],
+        "20841a76-3709-4032-b950-990909c98a76": [
+          {
+            "startSeconds": 0.0,
+            "endSeconds": 20.0,
+            "audioStartSeconds": 0.0,
+            "mergeStartSeconds": 0.0
+          },
+          {
+            "startSeconds": 20.0,
+            "endSeconds": 80.0,
+            "audioStartSeconds": 10.0,
+            "mergeStartSeconds": 15.0
+          },
+          {
+            "startSeconds": 80.0,
+            "endSeconds": 116.454,
+            "audioStartSeconds": 70.0,
+            "mergeStartSeconds": 75.0
+          }
+        ]
+      },
+      "mkvInitialFrames": {
+        "asset-95cf265cc360": 481536,
+        "asset-d946ab63f9fe": 479232
+      },
+      "mkvBlocks": {
+        "asset-95cf265cc360": [
+          {
+            "startFrame": 0.0,
+            "endFrame": 20.064,
+            "audioStartFrame": 0.0,
+            "mergeStartFrame": 0.0
+          },
+          {
+            "startFrame": 20.064,
+            "endFrame": 80.064,
+            "audioStartFrame": 10.064,
+            "mergeStartFrame": 15.064
+          },
+          {
+            "startFrame": 80.064,
+            "endFrame": 116.454,
+            "audioStartFrame": 70.064,
+            "mergeStartFrame": 75.064
+          }
+        ],
+        "asset-d946ab63f9fe": [
+          {
+            "startFrame": 0.0,
+            "endFrame": 19.968,
+            "audioStartFrame": 0.0,
+            "mergeStartFrame": 0.0
+          },
+          {
+            "startFrame": 19.968,
+            "endFrame": 79.968,
+            "audioStartFrame": 9.968,
+            "mergeStartFrame": 14.968
+          },
+          {
+            "startFrame": 79.968,
+            "endFrame": 116.454,
+            "audioStartFrame": 69.968,
+            "mergeStartFrame": 74.968
+          }
+        ]
+      },
+      "mkvFinalAudio": [
+        {
+          "frames": 2794896,
+          "rate": 24000,
+          "channels": 1,
+          "width": 2,
+          "pcmSha256": "25f3a77bb546bcf512a553731cc7941a3e8fd7a017745008db1caa9573a7b9aa",
+          "peak": 21304,
+          "clippedSamples": 0,
+          "matchesTimelinePcm": true
+        },
+        {
+          "frames": 2794896,
+          "rate": 24000,
+          "channels": 1,
+          "width": 2,
+          "pcmSha256": "a8825b806e6ee0f4481ad9308cd45aa07c4e2a888c4a8dff5ca5b7fa27c9b43d",
+          "peak": 30262,
+          "clippedSamples": 0,
+          "matchesTimelinePcm": true
+        }
+      ]
+    },
+    "run-2": {
+      "timelineSeconds": 116.454,
+      "speechSourceSeconds": 172.745,
+      "utterances": 16,
+      "scores": {
+        "livelink-live": {
+          "phase": "live",
+          "budget": {
+            "cer": 0.15,
+            "wer": 0.3
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 160,
+              "referenceSyllables": 264,
+              "syllableEdits": 61,
+              "cer": 0.1911589008363202,
+              "wer": 0.23106060606060605,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 0,
+                "invalid": 0,
+                "structurallyValid": false,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 300,
+              "referenceSyllables": 352,
+              "syllableEdits": 103,
+              "cer": 0.25728987993138935,
+              "wer": 0.29261363636363635,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 0,
+                "invalid": 0,
+                "structurallyValid": false,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 460,
+          "referenceSyllables": 616,
+          "syllableEdits": 164,
+          "silenceInsertions": 0,
+          "cer": 0.22965551672491263,
+          "wer": 0.2662337662337662,
+          "textBudgetPassed": false,
+          "timingAccuracyPassed": null
+        },
+        "livelink-detailed": {
+          "phase": "detailed",
+          "budget": {
+            "cer": 0.1,
+            "wer": 0.2
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 71,
+              "referenceSyllables": 264,
+              "syllableEdits": 26,
+              "cer": 0.08482676224611709,
+              "wer": 0.09848484848484848,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 255,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 167,
+              "referenceSyllables": 352,
+              "syllableEdits": 55,
+              "cer": 0.1432246998284734,
+              "wer": 0.15625,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 336,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 238,
+          "referenceSyllables": 616,
+          "syllableEdits": 81,
+          "silenceInsertions": 0,
+          "cer": 0.11882176734897654,
+          "wer": 0.1314935064935065,
+          "textBudgetPassed": false,
+          "timingAccuracyPassed": null
+        },
+        "mkv-detailed": {
+          "phase": "detailed",
+          "budget": {
+            "cer": 0.1,
+            "wer": 0.2
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 73,
+              "referenceSyllables": 264,
+              "syllableEdits": 27,
+              "cer": 0.08721624850657109,
+              "wer": 0.10227272727272728,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 254,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 111,
+              "referenceSyllables": 352,
+              "syllableEdits": 39,
+              "cer": 0.09519725557461406,
+              "wer": 0.11079545454545454,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 348,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 184,
+          "referenceSyllables": 616,
+          "syllableEdits": 66,
+          "silenceInsertions": 0,
+          "cer": 0.09186220668996506,
+          "wer": 0.10714285714285714,
+          "textBudgetPassed": true,
+          "timingAccuracyPassed": null
+        },
+        "mkv-live": {
+          "phase": "live",
+          "budget": {
+            "cer": 0.15,
+            "wer": 0.3
+          },
+          "tracks": [
+            {
+              "track": 1,
+              "referenceCharacters": 837,
+              "characterEdits": 412,
+              "referenceSyllables": 264,
+              "syllableEdits": 169,
+              "cer": 0.4922341696535245,
+              "wer": 0.6401515151515151,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 260,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            },
+            {
+              "track": 2,
+              "referenceCharacters": 1166,
+              "characterEdits": 624,
+              "referenceSyllables": 352,
+              "syllableEdits": 265,
+              "cer": 0.5351629502572899,
+              "wer": 0.7528409090909091,
+              "silenceInsertions": 0,
+              "timing": {
+                "words": 360,
+                "invalid": 0,
+                "structurallyValid": true,
+                "accuracy": "unmeasured-without-reviewed-word-anchors"
+              }
+            }
+          ],
+          "referenceCharacters": 2003,
+          "characterEdits": 1036,
+          "referenceSyllables": 616,
+          "syllableEdits": 434,
+          "silenceInsertions": 0,
+          "cer": 0.5172241637543684,
+          "wer": 0.7045454545454546,
+          "textBudgetPassed": false,
+          "timingAccuracyPassed": null
+        }
+      },
+      "liveEventErrors": [],
+      "liveFinalRows": 29,
+      "liveElapsedSeconds": 117.39100000000326,
+      "liveLagMetricInterpretation": "lagSeconds includes utterance duration; no p95 final latency claim",
+      "livelinkBlocks": {
+        "94925ce2-77ac-4008-9fbe-01c969fdadb3": [
+          {
+            "startSeconds": 0.0,
+            "endSeconds": 20.0,
+            "audioStartSeconds": 0.0,
+            "mergeStartSeconds": 0.0
+          },
+          {
+            "startSeconds": 20.0,
+            "endSeconds": 80.0,
+            "audioStartSeconds": 10.0,
+            "mergeStartSeconds": 15.0
+          },
+          {
+            "startSeconds": 80.0,
+            "endSeconds": 116.454,
+            "audioStartSeconds": 70.0,
+            "mergeStartSeconds": 75.0
+          }
+        ],
+        "ad8e626c-8bc7-4c26-8cf5-0745c11b6bbb": [
+          {
+            "startSeconds": 0.0,
+            "endSeconds": 20.0,
+            "audioStartSeconds": 0.0,
+            "mergeStartSeconds": 0.0
+          },
+          {
+            "startSeconds": 20.0,
+            "endSeconds": 80.0,
+            "audioStartSeconds": 10.0,
+            "mergeStartSeconds": 15.0
+          },
+          {
+            "startSeconds": 80.0,
+            "endSeconds": 116.454,
+            "audioStartSeconds": 70.0,
+            "mergeStartSeconds": 75.0
+          }
+        ]
+      },
+      "mkvInitialFrames": {
+        "asset-bc2a8a3ae895": 481536,
+        "asset-2d9c99ad4515": 479232
+      },
+      "mkvBlocks": {
+        "asset-bc2a8a3ae895": [
+          {
+            "startFrame": 0.0,
+            "endFrame": 20.064,
+            "audioStartFrame": 0.0,
+            "mergeStartFrame": 0.0
+          },
+          {
+            "startFrame": 20.064,
+            "endFrame": 80.064,
+            "audioStartFrame": 10.064,
+            "mergeStartFrame": 15.064
+          },
+          {
+            "startFrame": 80.064,
+            "endFrame": 116.454,
+            "audioStartFrame": 70.064,
+            "mergeStartFrame": 75.064
+          }
+        ],
+        "asset-2d9c99ad4515": [
+          {
+            "startFrame": 0.0,
+            "endFrame": 19.968,
+            "audioStartFrame": 0.0,
+            "mergeStartFrame": 0.0
+          },
+          {
+            "startFrame": 19.968,
+            "endFrame": 79.968,
+            "audioStartFrame": 9.968,
+            "mergeStartFrame": 14.968
+          },
+          {
+            "startFrame": 79.968,
+            "endFrame": 116.454,
+            "audioStartFrame": 69.968,
+            "mergeStartFrame": 74.968
+          }
+        ]
+      },
+      "mkvFinalAudio": [
+        {
+          "frames": 2794896,
+          "rate": 24000,
+          "channels": 1,
+          "width": 2,
+          "pcmSha256": "25f3a77bb546bcf512a553731cc7941a3e8fd7a017745008db1caa9573a7b9aa",
+          "peak": 21304,
+          "clippedSamples": 0,
+          "matchesTimelinePcm": true
+        },
+        {
+          "frames": 2794896,
+          "rate": 24000,
+          "channels": 1,
+          "width": 2,
+          "pcmSha256": "a8825b806e6ee0f4481ad9308cd45aa07c4e2a888c4a8dff5ca5b7fa27c9b43d",
+          "peak": 30262,
+          "clippedSamples": 0,
+          "matchesTimelinePcm": true
+        }
+      ],
+      "recognizerCalls": {
+        "mkv": {
+          "count": 96,
+          "wallSeconds": 136.1420000000071,
+          "maxRequestSeconds": 10.51600000000326
+        },
+        "livelink-detailed": {
+          "count": 6,
+          "wallSeconds": 39.485000000015134,
+          "maxRequestSeconds": 10.40700000000652
+        }
+      }
+    }
+  },
+  "models": {
+    "medium": {
+      "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f"
+    },
+    "large-v3": {
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478"
+    },
+    "tiny": {
+      "revision": "d90ca5fe260221311c53c58e660288d3deb8d356"
+    }
+  },
+  "sourceHashesUnchanged": true,
+  "browser": {
+    "audio": [
+      {
+        "currentTime": 0,
+        "paused": true
+      },
+      {
+        "currentTime": 17.628,
+        "paused": true
+      },
+      {
+        "currentTime": 17.628,
+        "paused": true
+      }
+    ],
+    "overlapButtons": [
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:17.63 đến 00:18.08",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:20.30 đến 00:20.80",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:28.92 đến 00:29.44",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:17.63 đến 00:18.08",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:20.30 đến 00:20.80",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:28.92 đến 00:29.44",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:44.97 đến 00:45.42",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:53.34 đến 00:53.75",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 00:59.72 đến 01:00.18",
+      "Đến đoạn chồng tiếng growing.mkv · Track 2 từ 01:00.27 đến 01:01.07",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:44.97 đến 00:45.42",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:53.34 đến 00:53.75",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 00:59.72 đến 01:00.18",
+      "Đến đoạn chồng tiếng growing.mkv · Track 1 từ 01:00.27 đến 01:01.07"
+    ],
+    "rows": [
+      {
+        "label": "growing.mkv · Track 100:02.59–00:08.13",
+        "timedWords": 14
+      },
+      {
+        "label": "growing.mkv · Track 200:07.36–00:34.19",
+        "timedWords": 94
+      },
+      {
+        "label": "growing.mkv · Track 100:11.90–00:24.94",
+        "timedWords": 48
+      },
+      {
+        "label": "growing.mkv · Track 100:26.64–00:36.78",
+        "timedWords": 39
+      },
+      {
+        "label": "growing.mkv · Track 200:35.95–01:01.97",
+        "timedWords": 85
+      },
+      {
+        "label": "growing.mkv · Track 100:40.18–00:48.66",
+        "timedWords": 33
+      },
+      {
+        "label": "growing.mkv · Track 100:50.66–01:03.46",
+        "timedWords": 43
+      },
+      {
+        "label": "growing.mkv · Track 201:03.09–01:51.89",
+        "timedWords": 169
+      },
+      {
+        "label": "growing.mkv · Track 101:06.64–01:28.90",
+        "timedWords": 77
+      }
+    ],
+    "timelineCount": 2
+  },
+  "reviewedWordBoundaryP95Seconds": null,
+  "latencyBudgetsAccepted": null,
+  "fullAcceptanceComplete": false,
+  "budgetApproval": "proposed-before-inference; owner acceptance pending",
+  "insertedSilenceReviewPassed": null,
+  "semanticSeamReviewPassed": null,
+  "silenceCounterScope": "Empty-reference accounting only; zero for a nonempty full-track reference does not prove temporal silence suppression",
+  "cleanup": {
+    "ownedProcessesStopped": [
+      78040,
+      85308,
+      76488
+    ],
+    "ownedPortsReleased": [
+      18091,
+      18219,
+      18220
+    ],
+    "ownedBrowserTabClosed": true
+  }
+}

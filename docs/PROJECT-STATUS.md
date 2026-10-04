@@ -1,5 +1,23 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-STT-19A — measured Vietnamese speech baseline (2026-10-04)
+
+Frozen historical curated references on two tracks were processed by real
+recognizers through LiveLink and an append-only growing MKV. No production
+setting changes. Warm LiveLink live CER/WER is 22.97%/26.62%, detailed
+11.88%/13.15%; MKV live 51.72%/70.45%, detailed 9.19%/10.71%. Cold LiveLink
+has one request timeout; warm run has none but still fails proposed live CER.
+Original hashes and lossless final mono24k PCM match, without clipping.
+
+Browser shows two timelines and words; overlap click seeks both without playing.
+Rows still span inserted silence and overlap is fragmented. Reviewed word
+anchors, silence/seam review, physical OBS/capture latency and owner acceptance
+of proposed budgets remain open; full 19A is not accepted. Backend 547, frontend
+473, typecheck/build pass. Owned services/tab close. Evidence:
+`docs/gates/livelink-stt-19a-speech-quality.md` and companion metrics JSON.
+Exact next **LIVELINK-STT-19B**, one LiveLink recognition accuracy candidate on
+the frozen corpus. No product phase advances; 18B/18C decision remains open.
+
 ## LIVELINK-08N-B — scoped recovery and isolated outage (2026-10-04)
 
 Parent 08N completes its measured health/recovery/outage scope. Stopped-record

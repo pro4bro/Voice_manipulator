@@ -15,6 +15,17 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## LIVELINK-STT-19A — real speech baseline (2026-10-04)
+
+Two real-model runs freeze normalization, proposed budgets and curated
+two-track Vietnamese references. Warm LiveLink live CER 22.97% and detailed
+11.88% fail proposed CER budgets; growing MKV live 51.72% fails, detailed
+9.19% passes text only. Original PCM/hash checks and browser seek pass.
+Timing anchors, physical clocks, row/overlap and silence/seam acceptance remain
+open. Full backend 547/frontend 473/typecheck/build pass. See
+`docs/gates/livelink-stt-19a-speech-quality.md`. Exact next STT-19B is activated
+for one measured LiveLink recognition accuracy failure. No phase advances.
+
 ## LIVELINK-08N-B — retained PCM recovery (2026-10-04)
 
 Scoped retry/export and a real private six-source outage/restart complete parent
