@@ -50,3 +50,29 @@ not infer the outcome from API or unit tests. Exact next bounded UX scope is
 UX-05B2 after that approval: perform the UI deletion, restart/reopen, verify
 the surviving recording's media/transcript, then cover a pending-footage
 fixture without mutating owner media.
+
+## UX-05B2 follow-up — deletion and restart (2026-10-04)
+
+The owner approved permanent deletion of recording `55224012` in this copied
+project at action time. The browser's `Delete` click timed out while its tab
+stopped responding, but the API completed the deletion. A fresh browser tab and
+an API/Studio workload restart confirmed the result: only recording `fa1f74e5`
+appears in Media Pool; no Recycle Bin row or `55224012` index entry remains.
+The copied `55224012` OBS directory is gone, while the original retained source
+still contains it. All 225 files under surviving `fa1f74e5` OBS directory match
+their originals by SHA-256, including retained transcript/media sidecars.
+The restart returned API and Studio to `running` (PIDs 46012/52520).
+
+The owner separately approved deletion of the three disposable one-second tone
+Voice Outputs. Shift selection marked only outputs 3, 2 and 1, leaving the real
+output unselected. The inline confirmation explicitly said three outputs and
+their audio files would be removed. The UI then showed `Voice Output 1` and
+`Đã xoá 3 Voice Output`; only the copied real output directory remains and its
+audio SHA-256 still equals its source project. No owner source output was edited.
+
+Parent UX-05B remains open for pending-footage navigation; no native-path
+pending item was staged in this round. Separately, the Hub's Open Existing
+folder picker failed with `No module named 'tkinter'` in the portable core
+runtime; media file picking has a Windows Forms fallback and was not exercised
+here. The two-track overlap/drag/Space and theme checks carry from 05B1.
+No product code changed in 05B2.
