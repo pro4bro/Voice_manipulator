@@ -61,8 +61,10 @@ that gap matters, and the exact next round.
 | UX-03 | Extend multi-selection and bulk actions to Sound Library, Voice Output, Script rows, and other lists | Implemented in primary editable lists; specialized OBS track actions and physical UI sweep remain | Lets users edit and remove selected objects together in each module. |
 | UX-04 | Diagnose and stop repeated PCM viewport waveform loading | Complete at regression-test level; physical playback check remains | Prevents the waveform from flashing and repeatedly reporting loading after media settles. |
 | UX-05 | Repair Recycle Bin bulk deletion and stale rows, preserve full Script UI in OBS mode, complete remaining editable list actions | Implemented at source and test level; physical UX review remains | Makes deletion truthful and keeps Script tools available during LiveLink. |
-| UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Queued | Checks layout, shortcuts, real deletion refresh, and PCM waveform stability in the running app. |
-| UX-05B1 | Copied-project browser list and playback sweep | Complete for selection, bulk color/speaker, recycle/restore and replay; parent open | Permanent-delete/restart and pending-footage gates still require separate evidence. |
+| UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Copied-project selection, recycle/restore/delete and restart pass; pending native-footage navigation open | Pending-item navigation still needs a running-UI fixture. |
+| UX-05B1 | Copied-project browser list and playback sweep | Complete for selection, bulk color/speaker, recycle/restore and replay; parent open | Pending-footage navigation still needs separate evidence. |
+| UX-05B2 | Copied-project permanent deletion and restart | Complete for recording and synthetic Voice Output deletion; parent open | Removed recording stays absent after API restart; surviving media hashes match source. |
+| RUNTIME-FOLDER-PICKER-01 | Restore Hub Open Existing in portable Python | Implemented; native dialog selection gate open | Windows Forms fallback replaces the unavailable Tk dialog without changing project paths. |
 | UX-06 | OBS Stop boundary and per-channel Timeline layouts | Implemented at source, regression-test and plugin-build level; physical OBS gate open | Prevents PCM/STT crossing Stop and makes layer/column Timeline controls usable. |
 | UX-06B | Physical OBS Stop and Timeline layout acceptance | Queued | Checks app Stop, OBS Stop with and without Ignore Stop, transcript tail, and layer/column sizes with real channels. |
 | UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented; controlled physical two-take lifecycle passes in UX-08B; broader owner matrix open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
@@ -111,7 +113,8 @@ that gap matters, and the exact next round.
 | LIVELINK-08N | Visible outbox health and safe retained-chunk recovery | Complete at scoped recovery and isolated outage gate | 0.6.10 installed with pairing unchanged; exact next STT-19A; see 08N-B gate. |
 | LIVELINK-STT-19A | Freeze multitrack speech accuracy and timing evidence | Baseline measured; timing/physical acceptance open | Two real-model runs fail LiveLink live CER; see `docs/gates/livelink-stt-19a-speech-quality.md`. |
 | LIVELINK-STT-19B | Improve the measured recognition or stitching failure | Large-v3 candidate rejected; repair acceptance open | CER 20.87% still fails; beam 5 also rejected (19B2); next independent MEDIA-STAGES-02. |
-| VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
+| VOICE-EXPORT-13B | Running-browser WAV and word/line SRT download | Browser handoff and real SRT artifacts pass; saved-file/cancel open | In-app browser emitted no download event; see `docs/gates/voice-export-13b-browser-real.md`. |
+| VOICE-EXPORT-13B3 | Real-output browser handoff | Complete for UI status and project-owned SRT artifacts; parent open | 12 line/333 word cues fit audio; 18 untrusted cues skipped. |
 | UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 
 Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
@@ -3998,3 +4001,40 @@ footage navigation and Voice Output bulk deletion are open. The irreversible
 browser step awaits action-time approval for the copied recording. Exact next
 bounded UX round is **UX-05B2** for those gates; see
 `docs/gates/ux-05b-list-browser.md`. Parent UX-05B is not accepted.
+
+## UX-05B2 — copied-project permanent deletion and restart (2026-10-04)
+
+After owner approval, UI Delete removed copied recording `55224012`. Its tab
+timed out, so the result was verified independently after API/Studio restart:
+the browser lists only the surviving `fa1f74e5` recording, the deleted OBS
+directory and Media Pool index entries are absent, and the original retained
+project still has them. All 225 surviving OBS files match the original by
+SHA-256. Separate owner approval allowed bulk removal of three synthetic tone
+Voice Outputs; UI confirmed three and left the real copied output untouched
+with matching audio SHA-256. No product code changed. UX-05B remains open for
+pending native-footage navigation. Separately, Hub Open Existing's folder picker
+fails because portable core Python lacks `tkinter`; media file picking has a
+Windows Forms fallback that was not exercised. See
+`docs/gates/ux-05b-list-browser.md`.
+
+## VOICE-EXPORT-13B3 — real-output browser handoff (2026-10-04)
+
+A copied real 78.746-second output produced 12 line SRT cues and 333 word SRT
+cues, all within audio bounds; UI reported 18 untrusted word cues skipped.
+The output WAV matches its source by SHA-256. UI reported each format sent to
+the browser, but the in-app browser emitted no download event, so saved-file
+and cancel acceptance remain open. Product code unchanged. See
+`docs/gates/voice-export-13b-browser-real.md`.
+
+## RUNTIME-FOLDER-PICKER-01 — portable Open Existing fallback (2026-10-04)
+
+The running Hub's Open Existing folder picker failed with `No module named
+'tkinter'` in the isolated core runtime. The folder picker now uses the same
+Windows Forms fallback approach already used by the media file picker. Three
+focused tests cover a Unicode selected path, cancel, and dialog error; the
+existing media-picker test also passes. A local Windows Forms dialog object was
+constructed and disposed. Full backend 564 passed; frontend 477/56 files,
+typecheck and build passed. Controller, API and Studio health are `ok` after
+workload restart.
+Actual native folder selection through the running portable process remains
+unverified. See `docs/gates/runtime-folder-picker-01.md`.
