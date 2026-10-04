@@ -1,5 +1,14 @@
 # Project Status — 2026-09-22
 
+## UX-05B3 — pending footage browser acceptance (2026-10-05)
+
+Fixed returning from a pending OBS track to its parent leaving a stale channel
+filter. Actual copied journal-only browser fixture restores all four turns,
+shows two waveforms and a paused 30-second saved PCM preview; 72 media hashes
+unchanged. Parent UX-05B browser scope closes with prior list/delete/restart
+evidence. Frontend497/backend564/typecheck/build pass. Native picker/owner
+hardware/phase gates remain open. See `docs/gates/ux-05b3-pending-navigation.md`.
+
 ## WAVEFORM-VOLUME-01 — gain-responsive waveform (2026-10-05)
 
 OBS/imported multitrack envelopes now reflect their per-track gain/mute while

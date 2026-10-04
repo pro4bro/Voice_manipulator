@@ -293,6 +293,8 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByTestId("obs-recording")).toHaveTextContent("live-take:true");
     fireEvent.click(screen.getByRole("button", { name: "open live OBS track" }));
     expect(screen.getByTestId("obs-track-request")).toHaveTextContent("mic-1:true");
+    fireEvent.click(screen.getByRole("button", { name: "open live OBS take" }));
+    expect(screen.getByTestId("obs-track-request")).toHaveTextContent("none:false");
   });
 
   it("adds a newly archived OBS recording to Media Pool without reloading the project", async () => {

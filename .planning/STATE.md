@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-05 — UX-CONSISTENCY-01 consolidated UI requests delivered.
-last_activity_desc: Hub bulk Delete, unified waveform, selection-driven Script, row Speaker assignment, Train filter and timing popup. Frontend 491/backend 564/typecheck/build pass; copied real-media browser evidence retained. Independent phase and ingestion gates remain open.
+last_activity: 2026-10-05 — WAVEFORM-VOLUME-01 and UX-05B3 delivered; continuous queue authorized.
+last_activity_desc: Gain/mute now scale multitrack/OBS waveforms; pending footage parent clears stale track filter. Frontend497/backend564/typecheck/build pass. Nine near-term parents remain; continue STT19B3/ingestion18D without relaxing gates.
 ---
 
 # Project State

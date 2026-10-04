@@ -818,6 +818,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setObsTimelineActive(true);
     if (channelId) setObsSeekRequest((current) => ({ recordingId, channelId, seconds: 0,
       selectOnly: true, serial: (current?.serial ?? 0) + 1 }));
+    else setObsSeekRequest(null);
   }
 
   async function openObsAsset(assetId: string) {

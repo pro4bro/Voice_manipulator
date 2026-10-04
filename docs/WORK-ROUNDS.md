@@ -66,7 +66,7 @@ physical/human evidence requirements retain their meaning.
 | UX-03 | Extend multi-selection and bulk actions to Sound Library, Voice Output, Script rows, and other lists | Implemented in primary editable lists; specialized OBS track actions and physical UI sweep remain | Lets users edit and remove selected objects together in each module. |
 | UX-04 | Diagnose and stop repeated PCM viewport waveform loading | Complete at regression-test level; physical playback check remains | Prevents the waveform from flashing and repeatedly reporting loading after media settles. |
 | UX-05 | Repair Recycle Bin bulk deletion and stale rows, preserve full Script UI in OBS mode, complete remaining editable list actions | Implemented at source and test level; physical UX review remains | Makes deletion truthful and keeps Script tools available during LiveLink. |
-| UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Copied-project selection, recycle/restore/delete and restart pass; pending native-footage navigation open | Pending-item navigation still needs a running-UI fixture. |
+| UX-05B | Browser UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Complete at owned-fixture browser scope through 05B1/05B2/05B3 | Journal-only pending navigation, delete/restart and surviving media verified; owner hardware remains separate. |
 | UX-05B1 | Copied-project browser list and playback sweep | Complete for selection, bulk color/speaker, recycle/restore and replay; parent open | Pending-footage navigation still needs separate evidence. |
 | UX-05B2 | Copied-project permanent deletion and restart | Complete for recording and synthetic Voice Output deletion; parent open | Removed recording stays absent after API restart; surviving media hashes match source. |
 | RUNTIME-FOLDER-PICKER-01 | Restore Hub Open Existing in portable Python | Implemented; native dialog selection gate open | Windows Forms fallback replaces the unavailable Tk dialog without changing project paths. |
@@ -4078,3 +4078,18 @@ Real copied OBS browser displacement 22.99 -> 11.50 at 50% gain; mute -> 0;
 other track unchanged. See `docs/gates/waveform-volume-01.md`.
 No source PCM was edited or new hardware capture claimed. Next executable
 round UX-05B3 pending-footage navigation; STT-19B3 context candidate follows.
+
+## UX-05B3 — pending OBS navigation (2026-10-05)
+
+Owned journal-only copy opens real saved PCM/Script with two waveform lanes.
+Track selection works; returning to the parent reproduced a stale selectOnly
+channel filter. Red regression mic-1:true versus none:false; clear transient
+seek request on parent open fixes it. Browser restores 1 track row -> 4 parent
+turns, 30-second PCM preview remains paused/readyState4, two themes pass.
+All 72 copied audio/PCM hashes match the source. Full frontend497/backend564,
+typecheck/build/diff check pass. See `docs/gates/ux-05b3-pending-navigation.md`.
+Parent UX-05B controlled browser acceptance is complete with 05B1/05B2.
+Native picker and fresh owner-device capture are separate open gates. Next
+executable STT-19B3 context candidate and ingestion18D feasibility; no phase
+advances. Nine near-term parent rounds remain; partial candidate work does not
+reduce that count until acceptance succeeds.
