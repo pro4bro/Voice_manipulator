@@ -1,5 +1,13 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-STT-19B3 — recognition candidate rejected (2026-10-05)
+
+Longer silence threshold reduces final spans29->16 but worsens real frozen
+corpus CER22.97->27.26%, WER26.62->31.33% and paced lag. No integration or
+budget relaxation. Source hashes unchanged. Next19B4 isolates short internal
+quiet PCM preservation; full19A/19B acceptance remains open. See
+`docs/gates/livelink-stt-19b3-context.md`.
+
 ## UX-05B3 — pending footage browser acceptance (2026-10-05)
 
 Fixed returning from a pending OBS track to its parent leaving a stale channel

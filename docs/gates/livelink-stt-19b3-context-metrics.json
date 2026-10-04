@@ -1,0 +1,259 @@
+{
+  "round": "LIVELINK-STT-19B3",
+  "date": "2026-10-05",
+  "source": {
+    "baseline": "docs/gates/livelink-stt-19a-speech-quality.md; .scratch/livelink-stt-19a/run-2",
+    "corpus": "16 curated self utterances / 2,003 characters / 616 whitespace syllables",
+    "originalMediaChanged": false,
+    "candidateSourceHashCount": 16,
+    "candidateSourceHashMismatches": 0
+  },
+  "frozenBudget": {
+    "cer": 0.15,
+    "wer": 0.3
+  },
+  "diagnosis": {
+    "events": {
+      "listening": 29,
+      "partial": 55,
+      "final": 29
+    },
+    "eventErrors": 0,
+    "finalSpans": 29,
+    "inferredRecognizerRequests": 84,
+    "requestCountEvidence": "partial + final event count; direct live HTTP request rows were not persisted by 19A",
+    "score": {
+      "referenceCharacters": 2003,
+      "characterEdits": 460,
+      "referenceSyllables": 616,
+      "syllableEdits": 164,
+      "silenceInsertions": 0,
+      "cer": 0.22965551672491263,
+      "wer": 0.2662337662337662,
+      "textBudgetPassed": false
+    },
+    "finalEventLagP95Seconds": 14.344,
+    "utteranceMapping": {
+      "turnCount": 16,
+      "turnsWithMultipleFinalSpans": 9,
+      "extraFinalSpansOverOnePerTurn": 13,
+      "finalSpanCountsByTurn": [
+        {
+          "track": 1,
+          "turnId": "self-00",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-02",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-04",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-06",
+          "count": 2
+        },
+        {
+          "track": 1,
+          "turnId": "self-08",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-10",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-12",
+          "count": 2
+        },
+        {
+          "track": 1,
+          "turnId": "self-14",
+          "count": 2
+        },
+        {
+          "track": 2,
+          "turnId": "self-01",
+          "count": 3
+        },
+        {
+          "track": 2,
+          "turnId": "self-03",
+          "count": 2
+        },
+        {
+          "track": 2,
+          "turnId": "self-05",
+          "count": 2
+        },
+        {
+          "track": 2,
+          "turnId": "self-07",
+          "count": 5
+        },
+        {
+          "track": 2,
+          "turnId": "self-09",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-11",
+          "count": 2
+        },
+        {
+          "track": 2,
+          "turnId": "self-13",
+          "count": 2
+        },
+        {
+          "track": 2,
+          "turnId": "self-15",
+          "count": 1
+        }
+      ]
+    },
+    "maxInternalQuietSecondsByTurn": 1.0,
+    "sourceTurnCount": 16,
+    "insertedInterTurnSilenceSeconds": 1.5
+  },
+  "candidate": {
+    "selectionFrozenBeforeInference": true,
+    "silenceSeconds": 1.1,
+    "baselineSilenceSeconds": 0.5,
+    "windowSeconds": 4.0,
+    "model": "medium",
+    "language": "vi",
+    "pcmCadenceMs": 250,
+    "otherRecognizerSettingsChanged": false,
+    "productionSourceChanged": false,
+    "studio": {
+      "url": "http://127.0.0.1:18081",
+      "healthBeforeInference": "ok",
+      "device": "cuda",
+      "computeType": "float16",
+      "loadedModelsAfterInference": [
+        "tiny",
+        "medium"
+      ],
+      "modelLoadError": null
+    },
+    "score": {
+      "referenceCharacters": 2003,
+      "characterEdits": 546,
+      "referenceSyllables": 616,
+      "syllableEdits": 193,
+      "silenceInsertions": 0,
+      "cer": 0.272591113330005,
+      "wer": 0.3133116883116883,
+      "textBudgetPassed": false
+    },
+    "events": {
+      "listening": 16,
+      "partial": 47,
+      "final": 16
+    },
+    "eventErrors": 0,
+    "finalSpans": 16,
+    "finalEventLagP95Seconds": 18.641,
+    "elapsedSeconds": 116.578,
+    "audioTimelineSeconds": 116.454,
+    "utteranceMapping": {
+      "turnCount": 16,
+      "turnsWithMultipleFinalSpans": 0,
+      "extraFinalSpansOverOnePerTurn": 0,
+      "finalSpanCountsByTurn": [
+        {
+          "track": 1,
+          "turnId": "self-00",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-02",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-04",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-06",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-08",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-10",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-12",
+          "count": 1
+        },
+        {
+          "track": 1,
+          "turnId": "self-14",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-01",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-03",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-05",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-07",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-09",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-11",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-13",
+          "count": 1
+        },
+        {
+          "track": 2,
+          "turnId": "self-15",
+          "count": 1
+        }
+      ]
+    },
+    "sourceHashesPassed": true,
+    "artifactDirectory": ".scratch/livelink-stt-19b3/run-1/candidate"
+  },
+  "disposition": "rejected; do not integrate or relax budgets"
+}

@@ -4093,3 +4093,17 @@ Native picker and fresh owner-device capture are separate open gates. Next
 executable STT-19B3 context candidate and ingestion18D feasibility; no phase
 advances. Nine near-term parent rounds remain; partial candidate work does not
 reduce that count until acceptance succeeds.
+
+## LIVELINK-STT-19B3 — silence/context candidate rejected (2026-10-05)
+
+Baseline29 final spans for16 reviewed-reference turns;9 turns fragmented.
+Private threshold1.1s candidate removes fragmentation (16 final spans) but
+raises CER22.97 ->27.26% and WER26.62 ->31.33%; paced final-event lag proxy
+14.344 ->18.641s. Frozen15%/30%/8s budgets fail; reject candidate, no production
+setting or threshold changes. All16 source hashes pass; real cachedmediumCUDA
+inference on existingStudio, no restart. Script parse/diff checks pass;
+frontend497/backend564 remains the integrated UI baseline.
+See `docs/gates/livelink-stt-19b3-context.md` and aggregate metrics. Full19A
+timing/physical evidence and19B recognition remain open; nine parent rounds
+remain. Next19B4 tests a concrete internal-quiet-PCM compaction hypothesis
+without also changing the silence/window settings.
