@@ -62,6 +62,7 @@ that gap matters, and the exact next round.
 | UX-04 | Diagnose and stop repeated PCM viewport waveform loading | Complete at regression-test level; physical playback check remains | Prevents the waveform from flashing and repeatedly reporting loading after media settles. |
 | UX-05 | Repair Recycle Bin bulk deletion and stale rows, preserve full Script UI in OBS mode, complete remaining editable list actions | Implemented at source and test level; physical UX review remains | Makes deletion truthful and keeps Script tools available during LiveLink. |
 | UX-05B | Physical UX acceptance of Recycle Bin, Script LiveLink, and remaining list actions | Queued | Checks layout, shortcuts, real deletion refresh, and PCM waveform stability in the running app. |
+| UX-05B1 | Copied-project browser list and playback sweep | Complete for selection, bulk color/speaker, recycle/restore and replay; parent open | Permanent-delete/restart and pending-footage gates still require separate evidence. |
 | UX-06 | OBS Stop boundary and per-channel Timeline layouts | Implemented at source, regression-test and plugin-build level; physical OBS gate open | Prevents PCM/STT crossing Stop and makes layer/column Timeline controls usable. |
 | UX-06B | Physical OBS Stop and Timeline layout acceptance | Queued | Checks app Stop, OBS Stop with and without Ignore Stop, transcript tail, and layer/column sizes with real channels. |
 | UX-08 | One OBS recording as one MKA footage with internal channels and Script | Implemented; controlled physical two-take lifecycle passes in UX-08B; broader owner matrix open | A second recording creates a second selectable footage, while each footage retains all of its channels and transcript. |
@@ -3979,3 +3980,21 @@ Remaining gap: a controller startup exceeding 60 seconds, or a repeatable
 profile of the cold delay, remains unverified. If it recurs, exact next runtime
 round is RUNTIME-READY-01D: capture pre-bind import and host I/O timing before
 changing another deadline. The independent queued UX-05B round remains open.
+
+## UX-05B1 — copied-project list and playback browser sweep (2026-10-04)
+
+Three populated Sound Library, Voice Output and Script lists pass Shift range,
+Ctrl toggle and Ctrl+A in the running browser. Bulk profile color and Script
+speaker assignment apply to all selected rows. A copied two-track OBS footage
+passes recycle, view/play while recycled and Restore; the other remains intact.
+Overlap selection seeks without autoplay; Space plays/pauses both tracks and
+Timeline drag seeks them while paused, in both themes. All 132 copied media
+files match the untouched source by SHA-256. Synthetic Voice Outputs are list
+fixtures only. Full backend **561**, frontend **477 / 56 files**, typecheck and
+build pass. No product source changed or phase advanced.
+
+Remaining gap: permanent-delete UI confirmation/restart tombstone, pending
+footage navigation and Voice Output bulk deletion are open. The irreversible
+browser step awaits action-time approval for the copied recording. Exact next
+bounded UX round is **UX-05B2** for those gates; see
+`docs/gates/ux-05b-list-browser.md`. Parent UX-05B is not accepted.
