@@ -1,8 +1,10 @@
 import asyncio
 import hashlib
+import io
 import json
 import struct
 import time
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -566,6 +568,59 @@ def test_stop_drains_recorded_audio_once_and_rejects_late_live_stt(tmp_path):
         assert events[-1]["lastSampleIndexExclusive"] == 480
         assert len(calls) == 2
         assert not stt._queues
+
+    asyncio.run(run())
+
+
+def test_live_recognizer_keeps_internal_quiet_pcm_but_trims_trailing_silence(tmp_path):
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Live STT internal silence"))
+    recording_id, channel_id, source_uuid = str(uuid4()), str(uuid4()), str(uuid4())
+    folder = Path(project.project_path) / "assets" / "obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "recording.json").write_text("{}", encoding="utf-8")
+    frames = 12_000  # 250 ms at 48 kHz
+    first_voice = struct.pack("<" + "h" * frames, *([2_000] * frames))
+    internal_quiet = b"\0\0" * frames
+    second_voice = struct.pack("<" + "h" * frames, *([3_000] * frames))
+    trailing_quiet = b"\0\0" * (2 * frames)
+    recognizer_audio = []
+
+    async def recognize(_session, audio, _language):
+        recognizer_audio.append(audio)
+        return {"text": "speech", "pending": ""}
+
+    async def run():
+        stt = ObsLiveLinkTranscription(
+            projects, "http://unused", lambda: False, recognize,
+            window_seconds=1.0, silence_seconds=0.5,
+        )
+        chunks = [first_voice, internal_quiet, second_voice,
+                  trailing_quiet[:len(first_voice)], trailing_quiet[len(first_voice):]]
+        for sequence, pcm in enumerate(chunks):
+            stt.offer(
+                project_id=project.id, recording_id=recording_id,
+                channel_id=channel_id, source_uuid=source_uuid, alias="Mic",
+                sequence=sequence, first_sample=sequence * frames,
+                sample_rate=48_000, channels=1,
+                plugin_monotonic_ns=sequence * 250_000_000,
+                recording_started_ns=0, pcm=pcm,
+            )
+        stt.finish(recording_id)
+        await asyncio.wait_for(asyncio.gather(*list(stt._tasks.values())), timeout=5)
+
+        wave_calls = [audio for audio in recognizer_audio if audio is not None]
+        assert len(wave_calls) == 1
+        with wave.open(io.BytesIO(wave_calls[0]), "rb") as audio:
+            assert (audio.getnchannels(), audio.getsampwidth(), audio.getframerate()) == (1, 2, 48_000)
+            assert audio.getnframes() == 3 * frames
+            assert audio.readframes(audio.getnframes()) == first_voice + internal_quiet + second_voice
+
+        events = stt.snapshot(project.id, recording_id)["events"]
+        final = next(event for event in events if event["status"] == "final")
+        assert final["firstSampleIndex"] == 0
+        assert final["lastSampleIndexExclusive"] == 3 * frames
+        assert (final["startSeconds"], final["endSeconds"]) == (0, 0.75)
 
     asyncio.run(run())
 

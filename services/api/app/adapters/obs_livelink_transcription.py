@@ -61,6 +61,7 @@ class _Utterance:
     session: str
     language: str
     pcm: bytearray = field(default_factory=bytearray)
+    pending_silence_pcm: bytearray = field(default_factory=bytearray)
     buffered_frames: int = 0
     silence_frames: int = 0
     posted: bool = False
@@ -415,6 +416,7 @@ class ObsLiveLinkTranscription:
                     if not voiced:
                         if utterance:
                             utterance.silence_frames += frames
+                            utterance.pending_silence_pcm.extend(item.pcm)
                             if utterance.silence_frames >= item.sample_rate * self.silence_seconds:
                                 await self._complete(item, utterance)
                                 utterance = None
@@ -435,6 +437,13 @@ class ObsLiveLinkTranscription:
                             queued_at=item.queued_at,
                         )
                         await self._append_event(item, utterance, status="listening")
+                    elif utterance.pending_silence_pcm:
+                        # Silence below the existing utterance boundary is source
+                        # audio if speech resumes. Keep it pending so trailing
+                        # boundary silence remains trimmed from recognition input.
+                        utterance.pcm.extend(utterance.pending_silence_pcm)
+                        utterance.buffered_frames += utterance.silence_frames
+                        utterance.pending_silence_pcm.clear()
                     utterance.alias = item.alias
                     utterance.pcm.extend(item.pcm)
                     utterance.buffered_frames += frames

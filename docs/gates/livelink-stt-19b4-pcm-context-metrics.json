@@ -1,0 +1,199 @@
+{
+  "round": "LIVELINK-STT-19B4",
+  "date": "2026-10-05",
+  "regression": {
+    "preFixRecognizerFrames": 24000,
+    "expectedRecognizerFrames": 36000,
+    "sampleRate": 48000,
+    "preFixAudioSeconds": 0.5,
+    "expectedAudioSeconds": 0.75,
+    "trailingSilenceSeconds": 0.5
+  },
+  "settings": {
+    "adapter": "current product ObsLiveLinkTranscription defaults",
+    "windowSeconds": 4.0,
+    "silenceBoundarySeconds": 0.5,
+    "model": "medium",
+    "language": "vi",
+    "cadenceMilliseconds": 250
+  },
+  "budgets": {
+    "liveCer": 0.15,
+    "liveWhitespaceSyllableWer": 0.3,
+    "liveFinalLagP95Seconds": 8.0
+  },
+  "baseline": {
+    "source": "LIVELINK-STT-19A warm run-2 persisted events",
+    "score": {
+      "referenceCharacters": 2003,
+      "characterEdits": 460,
+      "referenceSyllables": 616,
+      "syllableEdits": 164,
+      "silenceInsertions": 0,
+      "cer": 0.22965551672491263,
+      "wer": 0.2662337662337662,
+      "textBudgetPassed": false
+    },
+    "tracks": [
+      {
+        "track": 1,
+        "referenceCharacters": 837,
+        "characterEdits": 160,
+        "cer": 0.1911589008363202,
+        "referenceSyllables": 264,
+        "syllableEdits": 61,
+        "wer": 0.23106060606060605
+      },
+      {
+        "track": 2,
+        "referenceCharacters": 1166,
+        "characterEdits": 300,
+        "cer": 0.25728987993138935,
+        "referenceSyllables": 352,
+        "syllableEdits": 103,
+        "wer": 0.29261363636363635
+      }
+    ],
+    "eventCounts": {
+      "listening": 29,
+      "partial": 55,
+      "final": 29
+    },
+    "finalEventLagP95Seconds": 14.344,
+    "directLiveRequestRowsPersisted": false,
+    "inferredLiveRequests": 84
+  },
+  "fixedAdapter": {
+    "score": {
+      "referenceCharacters": 2003,
+      "characterEdits": 393,
+      "referenceSyllables": 616,
+      "syllableEdits": 149,
+      "silenceInsertions": 0,
+      "cer": 0.19620569146280578,
+      "wer": 0.2418831168831169,
+      "textBudgetPassed": false
+    },
+    "tracks": [
+      {
+        "track": 1,
+        "referenceCharacters": 837,
+        "characterEdits": 179,
+        "cer": 0.21385902031063322,
+        "referenceSyllables": 264,
+        "syllableEdits": 68,
+        "wer": 0.25757575757575757
+      },
+      {
+        "track": 2,
+        "referenceCharacters": 1166,
+        "characterEdits": 214,
+        "cer": 0.1835334476843911,
+        "referenceSyllables": 352,
+        "syllableEdits": 81,
+        "wer": 0.23011363636363635
+      }
+    ],
+    "eventCounts": {
+      "listening": 29,
+      "partial": 56,
+      "final": 29
+    },
+    "eventErrorCount": 0,
+    "finalEventLagP95Seconds": 21.015,
+    "elapsedSeconds": 119.39,
+    "audioTimelineSeconds": 116.454
+  },
+  "integrity": {
+    "curatedSourceClipCount": 16,
+    "allSourceHashesUnchanged": true,
+    "recognizerWavInputCount": 56,
+    "finalFlushCalls": 29,
+    "requestErrors": 0,
+    "allRecognizerWavsMonoPcm16_24kHz": true,
+    "totalRecognizerInputFrames": 3930000,
+    "clippedInputSamples": 0,
+    "maximumAbsoluteInputSample": 30262,
+    "recognizerInputPcmHashes": [
+      "12b399e2cc794aa8b5584893a1fd32f5e7ddcb54fdf33114a3249c60d2a6aa8a",
+      "882c920cb46f2ad6463f5acf7fcf89ee63c2a364ec0161357cdb5b47905384cb",
+      "8e4f6e7374873073f4ec50338b76ccdab916377ccd286258d2f7bc4118749c2c",
+      "9238682d58cee2c6e8d5cdad99a0d54eec648d395e60539b68e40795f9061b38",
+      "eb71dcf674f8636e67574ebced48eddfa1b0d399887f83f5138deda09618a304",
+      "dd09ffef219cf007ebf04bec5bbe71423812ba059f0b0d1bda78182d0335cb7a",
+      "8c02dd7166972b3915ed386d31b35007b30ed5e3168577619f685d93e08b7b70",
+      "037a95ff7016d0234fb0e494101c3f61934fb510f086842d300b29cac2b6e150",
+      "748a188192e57b0baa4988fa0a29b691915958a39a3a0608b2c0fb4b6b179b6b",
+      "c6e9216124c6e99e2e9778b55c2bdf09ce12161784c1e2ddfd98845eb61d69e6",
+      "2c0091707da22881f7c561b1a9beecf1e3c80c18c5048b6bd46dae1bb162ec0e",
+      "bbdf2fa3b233c4197ff83395aa29dc4aa6663faf46297c2e43c27cc8dc51c1f9",
+      "bafe5085f02704eb111aada16c87974ee9c4818a8ed15b953fea7e767b9d42e1",
+      "314748975e14cf0fbbe2c2eeaee2fa48bd8302745fe85e70e151734f003c049f",
+      "f6de6ad0e4a2e3780d73fb9ddd738635505833d195fcee1cf427f0b334ba430a",
+      "07607c65a40d8bd1bd4c06214aea346cacfefd2efc051025bdde9f08e65969e2",
+      "090ccbcefdb4c1902b3923923a89e14a9969cc861b4f437b1527cb54ed346b72",
+      "f6e122be59f0775de154fec61267a7c7ecf56aaad14d95d57c5538c4a4838906",
+      "55b417e24b2deb4b44042b9bfb8f16cd3e466c6e58b705f04a228ceecea08ab5",
+      "d6ed215eee761fff6541a04af4a28b1625d9a20c9feddba3f2665882d303a3cd",
+      "af0a46f17cd3e76948ba9c5ec9e811b8cb670bdbdaa345c2997551e34cad2b36",
+      "c747ae9d28f56489a29a8d8801e93a914bf9e742fde84c2dee098e6aec385328",
+      "cb4fd3d1fd35b959b8ca5c5932d555d010e824ab74dc5011fd3ca00c3dccedbb",
+      "b9e9f5d951619c96b9971824ee7d5bf50241eae816c31d69212e3c9284413675",
+      "d47026b55ade5df09e26771d5efc53552133b50c6fce9f27c6847b45761b42d0",
+      "9e0cc37678ec9119e9d3f47e7381ae89c9edb2665d453731e25a952dc037acc1",
+      "8173acb077bf85b6d1ba36497ca740e81bb9ed6770cad7cebc70b9abd4466cf5",
+      "c11e05fa81d34e3ebb0ed6d37e201f6bbc2929529ee099180022b9cd56163a85",
+      "b3cac0b98d1454e123cf2a867027ef131fd06d2b5a006ca1f81d6c5396b7a096",
+      "f0552a6cd09e075e2206ee44cca1d63c71c0898cd35becb54269f8044ed22370",
+      "cc7764dba85e30892ef524f9da25d70aaa62363eb88a54d11bcae9f7ec2d0f74",
+      "d930b8754ccee4694e6c21c213060fbba2c568a05af58eab19a9563b99ffb574",
+      "46439bf356761610fee230ee77cf67f739d30d35170ef505d042c13d794ffc1c",
+      "5e0833f57a22d7e31e91bc68ee963f66af413f54552d0e40ea27d6f2c85d2e60",
+      "98fa57125f983af243bd1f70a51928decae7670b5e4b2915483046e8edcff2b0",
+      "a69412d11156605a363f0e160e8f039ce03bbfc42b8459abff90f7ca414a41d1",
+      "19687b5e16b649d477e24d6758084762068f30d38112df2e48eafeaf5532bb41",
+      "599c44e2119f9c83731dfc4803354a4b4a7afb29b3595b45dd3d6fb4ccf354a4",
+      "2cc0988efe0be9b4d840b45a2d4c5bb159a987806f764507d9ad845191dcb2a7",
+      "f5305213c863e3a24cfde1b40efbba25a1491a620133b9f63b413dd529438a50",
+      "7a827d8a6c9ed42524b07a296e7603eb6ac48dd3959185b55349b43d7b5b5cbe",
+      "c9025eec4ab938516b3cbaa600b8ffc2c7c97de241a8776a7f5665806bbd8db5",
+      "d713513f272df698ef62b5d55a1b3408426cde6b3be66de387da3548a199c084",
+      "9807fbc9a39da691f7fa884f39ce6c790410ea93b583813d3fa51c43bdfbf705",
+      "3d295f6d32b42edb9926676d1f23e1bc77a542d89d44e2f1ec3d3939aed78a77",
+      "95b5c64fb983c8a2b904421fb63e6f1c5a0352666cbdb55c5db1cab48bfd3ec7",
+      "7fb9865710785508fe79c1881958e4a419d481a401a7fe55a992ae941eeb3bf1",
+      "44605ba45e8615b30e5a76c818a639a33ab62c842ba374334776f19fb0fe8217",
+      "a9569982db60149178ace1abea11314bd668a9d79730844975d438351174a081",
+      "148532d57055daf2863a6fd0590d1b47dc1dedeee42ea34c015699fff8cd52a0",
+      "d4d88016fb7a5e91a19558328f44df70dfb371e802d52338d65dc6365c91cb05",
+      "577e9e15109632b104845d406257b112fc942ecbaa00afbafa81cda85d26eb49",
+      "d062bb8d8c7c81b3a69e548f60aa67bba4cc5ffc05ba5790a67947be36b68bf6",
+      "324623ad651bc9eaa70a132d791ca12b12c15b951189592a9384e3566f0e02d0",
+      "df00063bb2c962c72a52863624cd7f39d6738a866219811eb0276fb89ec19174",
+      "b630dd87388f5020cdd0338c234fba92dbc4167dc32a90a54896ee750a8ae368"
+    ],
+    "finalSourceSpanChecks": {
+      "count": 29,
+      "matches": 29,
+      "allMatch": true
+    }
+  },
+  "studio": {
+    "url": "http://127.0.0.1:18081",
+    "healthBefore": {
+      "status": "ok",
+      "service": "stt-studio"
+    },
+    "device": "cuda",
+    "computeType": "float16",
+    "modelLoadedAfter": [
+      "tiny",
+      "medium"
+    ],
+    "loadError": null,
+    "restarted": false,
+    "isolatedStudioLaunched": false
+  },
+  "scratchArtifacts": ".scratch/livelink-stt-19b4/run-1/",
+  "disposition": "PCM-preservation repair verified; 19A remains open because live CER and final-event lag budgets fail."
+}

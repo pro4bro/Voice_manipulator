@@ -12,6 +12,17 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
+### 2026-10-05 — LIVELINK-STT-19B4
+
+Preserve short internal quiet PCM in Live STT recognizer WAVs; keep last-voice
+endpoints, trailing silence trim, 4s windows and 0.5s boundary. Regression fails
+before/fixes after; adapter14 and full backend565 pass. Frozen real medium replay
+CER19.62%, WER24.19%, paced lag p95 21.015s; 29/29 input/source extents match,
+16 source hashes unchanged. Data-loss repair complete; parent19A/19B acceptance
+still fails CER/lag. Next recognition scope is measured request/queue latency
+diagnosis on the retained19B4 trace, with settings/budgets frozen.
+Gate: `docs/gates/livelink-stt-19b4-pcm-context.md`.
+
 ### 2026-10-05 — LIVELINK-INGEST-18D
 
 Screened prepared channel directories on the immutable six-source catalog:

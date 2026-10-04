@@ -1,5 +1,16 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-STT-19B4 — internal quiet PCM repair (2026-10-05)
+
+Live recognizer WAVs now retain short internal quiet PCM when speech resumes,
+with trailing silence still trimmed at the unchanged 0.5s boundary. Red regression
+reproduced 24,000 instead of 36,000 frames; fixed byte-exact regression and 14
+adapter tests pass. Full backend 565 passed (150.26s), two existing warnings.
+Real frozen medium replay improves CER22.97->19.62%, WER26.62->24.19%; 29/29 final
+spans match recognizer input length and 16 source hashes remain unchanged.
+CER and paced final lag still fail; parent19A/19B remain open. See
+`docs/gates/livelink-stt-19b4-pcm-context.md`.
+
 ## LIVELINK-INGEST-18D — directory candidate rejected (2026-10-05)
 
 Prepared-directory pair writes reduce the same-volume storage screen by 3.27%,
