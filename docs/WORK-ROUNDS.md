@@ -4038,3 +4038,25 @@ typecheck and build passed. Controller, API and Studio health are `ok` after
 workload restart.
 Actual native folder selection through the running portable process remains
 unverified. See `docs/gates/runtime-folder-picker-01.md`.
+
+## UX-CONSISTENCY-01 — consolidated owner UI requests (2026-10-05)
+
+Completed the owner-requested group in one round: Hub bulk Delete, uniform
+filled waveform envelopes based on Conviction, selection-driven Script with
+no track/original switches, per-row and multi-row Speaker assignment, readable
+profile dropdowns in both themes, Train-only footage/track visibility, and
+floating word-time tooltips. Retained the table/prose display choice and renamed
+it DẠNG BẢNG in both Script surfaces. Row selection moved beside Speaker.
+
+Frontend 491/57 files passed; final Voice Script label follow-up 12 passed.
+Backend 564 passed with two existing deprecation warnings; typecheck/build and
+diff check passed. Browser verified real copied Conviction rows: single-row
+assignment changed exactly 27 words and preserved text/timing/raw diarization;
+bulk rows, multi-footage/empty selection, Train filtering, themes and tooltip
+geometry passed. Copied OBS and real TTS waveforms verified. Owner source media
+and word data preserved. Evidence: `docs/gates/ux-consistency-01.md`.
+
+Normal launcher start restored the stopped controller and reclaimed two orphan
+workload trees; readiness controller/Studio/API 2.909/3.302/3.611 seconds, health
+ok. No new physical capture/model run, phase completion or independent gate
+advances. Earlier cold-start profiling and unrelated UAT gaps remain open.

@@ -1,5 +1,16 @@
 # Project Status — 2026-09-22
 
+## UX-CONSISTENCY-01 — consolidated UI consistency (2026-10-05)
+
+Delivered Hub bulk Delete, one filled waveform envelope design across Timeline
+renderers, Script following footage/track selection, per-row/multi-row Speaker
+assignment, theme-readable profile controls, Train-only footage visibility and
+floating word-time popups. The table/prose switch remains, named DẠNG BẢNG.
+Frontend 491/57 files, backend 564, typecheck/build/diff check passed; final
+label-only Voice Script follow-up 12 passed. Real copied Conviction/OBS/TTS
+browser evidence is in `docs/gates/ux-consistency-01.md`. Portable stack is
+running; no physical capture/model or product phase gate advances.
+
 ## LIVELINK-INGEST-18C2 — width-two candidate rejected (2026-10-04)
 
 Sixty same-catalog groups/360 pairs per variant: two-pair width cuts group wall

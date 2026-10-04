@@ -217,7 +217,7 @@ it("shows what the app is making under the Script, whatever started it", () => {
     const onRows = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "BẢNG SCRIPT" }));
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const text = screen.getByLabelText("Script dạng văn bản");
     expect(text).toHaveValue("Anh Vũ: Xin chào");
     fireEvent.change(text, { target: { value: "Anh Vũ: Xin chào\nKhoa Trịnh: Chào anh" } });

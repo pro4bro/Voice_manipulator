@@ -487,7 +487,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
         <button aria-pressed={bold} onClick={() => setBold((value) => !value)} type="button"><b>B</b></button>
         <button aria-pressed={italic} onClick={() => setItalic((value) => !value)} type="button"><i>I</i></button>
         <button aria-pressed={underline} onClick={() => setUnderline((value) => !value)} type="button"><u>U</u></button>
-        <button aria-pressed={view === "table"} onClick={toggleView} title="Bảng theo lượt nói, hoặc Text Edit dạng “Tên: lời thoại”" type="button">BẢNG SCRIPT</button>
+        <button aria-pressed={view === "table"} onClick={toggleView} title="Dạng bảng: Speaker, nội dung và timestamp; tắt để sửa văn bản dạng “Tên: lời thoại”" type="button">DẠNG BẢNG</button>
       </div>
       {timingNote ? <div className="script-timing-warning" role="status">{timingNote}</div> : null}
       {findOpen ? <div aria-label="Tìm và thay thế" className="script-find-replace"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}

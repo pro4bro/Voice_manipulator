@@ -19,6 +19,7 @@ interface ProjectHubProps {
   /** `permanent` erases the folder; otherwise the project only leaves the list. */
   onRemoveProject: (project: Project, permanent: boolean) => void;
   onRemoveProjects?: (projects: Project[]) => void;
+  onDeleteProjects?: (projects: Project[]) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
@@ -31,7 +32,7 @@ function projectInitials(name: string) {
   return name.split(/\s+/u).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, onRevealProject, onRemoveProject, onRemoveProjects, theme, onToggleTheme }: ProjectHubProps) {
+export function ProjectHub({ projects, engine, defaultLocation, busy, error, onCreate, onOpen, onOpenExisting, onPickLocation, onRetry, onRevealProject, onRemoveProject, onRemoveProjects, onDeleteProjects, theme, onToggleTheme }: ProjectHubProps) {
   const [menu, setMenu] = useState<{ project: Project; left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [showCreate, setShowCreate] = useState(projects.length === 0);
@@ -79,6 +80,14 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
     if (selectedProjects.length < 2 || !onRemoveProjects) return;
     if (!window.confirm(`Bỏ ${selectedProjects.length} project khỏi danh sách? Các thư mục project vẫn được giữ trên ổ đĩa.`)) return;
     onRemoveProjects(selectedProjects);
+    setMenu(null);
+  }
+
+  function deleteSelectedProjects() {
+    if (selectedProjects.length < 2 || !onDeleteProjects) return;
+    const names = selectedProjects.map((project) => `• ${project.name}`).join("\n");
+    if (!window.confirm(`Xóa vĩnh viễn ${selectedProjects.length} project và toàn bộ thư mục trên ổ đĩa?\n\n${names}\n\nKhông thể khôi phục sau khi xóa.`)) return;
+    onDeleteProjects(selectedProjects);
     setMenu(null);
   }
 
@@ -187,7 +196,9 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
             <header><span>PROJECT</span><b>{menu.project.name}</b></header>
             <button onClick={() => { const target = menu.project; setMenu(null); onRevealProject(target); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button>
             {selectedIds.includes(menu.project.id) && selectedProjects.length > 1 ? <button onClick={removeSelectedProjects} role="menuitem" type="button"><Icon name="back" /> Remove Project ({selectedProjects.length})</button> : <button onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, false); }} role="menuitem" type="button"><Icon name="back" /> Remove Project</button>}
-            {selectedProjects.length <= 1 || !selectedIds.includes(menu.project.id) ? <button className="project-context-menu__danger" onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, true); }} role="menuitem" type="button"><Icon name="trash" /> Delete Project</button> : null}
+            {selectedIds.includes(menu.project.id) && selectedProjects.length > 1
+              ? <button className="project-context-menu__danger" disabled={!onDeleteProjects} onClick={deleteSelectedProjects} role="menuitem" type="button"><Icon name="trash" /> Delete Projects ({selectedProjects.length})</button>
+              : <button className="project-context-menu__danger" onClick={() => { const target = menu.project; setMenu(null); onRemoveProject(target, true); }} role="menuitem" type="button"><Icon name="trash" /> Delete Project</button>}
             <small>Remove chỉ bỏ khỏi danh sách, file vẫn còn trên ổ. Delete xóa cả thư mục project.</small>
           </div> : null}
 

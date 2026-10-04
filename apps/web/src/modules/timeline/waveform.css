@@ -1,0 +1,12 @@
+/* Match the imported and live SVG envelopes to Timeline's filled canvas wave. */
+.obs-timeline__wave svg.timeline-waveform__svg path {
+  fill: var(--accent);
+  opacity: .84;
+  stroke: none;
+}
+
+.obs-timeline__lane-label[aria-pressed="true"] ~ .obs-timeline__wave svg.timeline-waveform__svg path {
+  fill: var(--lime);
+  opacity: .94;
+  stroke: none;
+}

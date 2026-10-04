@@ -4,6 +4,7 @@ import { publishPlaybackWord } from "../../domain/playback-sync";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { rulerMarks } from "./ruler";
+import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, type WordDragMode } from "./word-timing";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
@@ -98,8 +99,6 @@ function paintEnvelopeRange(
   const start = Math.max(0, Math.floor(range.start));
   const end = Math.min(points.length, Math.ceil(range.end));
   if (end <= start) return;
-  const center = PATH_HEIGHT / 2;
-  const amplitude = PATH_HEIGHT * 0.46;
   const coordinate = (point: EnvelopePoint, index: number, edge: "min" | "max") => {
     const x = points.length === 1 ? 0 : (index / (points.length - 1)) * PATH_WIDTH;
     const peak = Math.max(Math.abs(point.min * gain), Math.abs(point.max * gain));
@@ -107,7 +106,7 @@ function paintEnvelopeRange(
       ? AUTO_CALIBRATE_CEILING / peak
       : 1;
     const value = Math.max(-1, Math.min(1, point[edge] * gain * calibration));
-    return { x, y: center - value * amplitude };
+    return { x, y: waveformY(value, PATH_HEIGHT) };
   };
   const first = coordinate(points[start], start, "max");
   context.beginPath();

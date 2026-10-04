@@ -633,10 +633,15 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn) {
     if (column.builtin === "speaker") {
       return <div className="script-table__speaker" role="gridcell">
+        <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
         <i style={{ background: row.profile?.color ?? "var(--text-muted)" }} />
         <div>
           <b style={{ color: row.profile?.color }}>{row.diarizationLabel}</b>
-          <small>{row.profile ? "Profile đã gán" : "Chuột phải trên từ để gán Profile"}</small>
+          <select aria-label={`Speaker Profile của row ${rows.indexOf(row) + 1}`} value={row.profileId ?? ""}
+            onChange={(event) => onAssignWords(row.words.map(({ index }) => index), event.target.value || null)}>
+            <option value="">Chưa gán Profile</option>
+            {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
+          </select>
         </div>
       </div>;
     }
@@ -672,7 +677,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
           {rows.map((row) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns }}>
             {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column)}</div>)}
             <i aria-hidden="true" className="script-table__add-space" />
-            <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
+            {!columns.some((column) => column.builtin === "speaker") ? <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button> : null}
         </div>)}
       </div>
     </div>

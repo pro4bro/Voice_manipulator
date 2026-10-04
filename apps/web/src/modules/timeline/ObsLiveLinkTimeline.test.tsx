@@ -190,6 +190,8 @@ it("retains saved waveform when a cursor reply contains no audio in the viewed w
   act(() => onSnapshot(wave(ids[0], 12000, "pcm")));
   const saved = lane.querySelector("path")?.getAttribute("d");
   expect(saved).toBeTruthy();
+  expect(saved).toMatch(/Z$/u);
+  expect(lane.querySelector("svg")).toHaveClass("timeline-waveform__svg");
   // PCM beyond this window advances the cursor but supplies no replacement bins.
   act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), sampleRate: null,
     lastDurableSequence: 2, lastIncludedSequence: 2, points: [], gaps: [] }));
@@ -199,7 +201,7 @@ it("retains saved waveform when a cursor reply contains no audio in the viewed w
     lastIncludedSequence: 3, points: [{ startFrame: 4800, endFrame: 7200,
       firstSampleIndex: 4800, lastSampleIndexExclusive: 7200, min: 0, max: 0, peak: 0 }] }));
   expect(lane.querySelector("path")?.getAttribute("d")).toContain(saved);
-  expect(lane.querySelector("path")?.getAttribute("d")).toContain("V30.0");
+  expect(lane.querySelector("path")?.getAttribute("d")).toContain("30.00");
   // A full snapshot of a newly requested empty window must not reuse old bins.
   fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
   act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), sampleRate: null,

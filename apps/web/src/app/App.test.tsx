@@ -8,12 +8,12 @@ import { App } from "./App";
 
 const apiMocks = vi.hoisted(() => ({
   getRuntimeStatus: vi.fn(), listProjects: vi.fn(), getOmniVoiceStatus: vi.fn(),
-  getSystemPaths: vi.fn(), controlRuntime: vi.fn(),
+  getSystemPaths: vi.fn(), controlRuntime: vi.fn(), destroyProject: vi.fn(),
 }));
 vi.mock("../api/client", () => ({ api: apiMocks }));
-vi.mock("./ProjectHub", () => ({ ProjectHub: ({ projects, onOpen }: {
-  projects: Project[]; onOpen: (project: Project) => void;
-}) => <button onClick={() => onOpen(projects[0])}>Open project</button> }));
+vi.mock("./ProjectHub", () => ({ ProjectHub: ({ projects, onOpen, onDeleteProjects }: {
+  projects: Project[]; onOpen: (project: Project) => void; onDeleteProjects?: (projects: Project[]) => void;
+}) => <><button onClick={() => onOpen(projects[0])}>Open project</button><button onClick={() => onDeleteProjects?.(projects)}>Delete selected projects ({projects.length})</button><span>Hub project count {projects.length}</span></> }));
 // Exercise App's lifecycle boundary: state below it must survive reconnect.
 // The real media/Script components are checked in the running-browser gate.
 vi.mock("./WorkspaceShell", () => ({ WorkspaceShell: ({ project }: { project: Project }) => {
@@ -85,5 +85,21 @@ describe("workspace lifetime across runtime recovery", () => {
     expect(screen.getByTestId("workspace")).toBe(workspace);
     expect(screen.getByLabelText("Selected footage")).toHaveValue("recording-two");
     expect(screen.getByText("Follow false")).toBeInTheDocument();
+  });
+
+  it("permanently deletes every selected project from the Hub after API success", async () => {
+    const secondProject = { ...project, id: "project-two", name: "Second project" };
+    apiMocks.listProjects.mockResolvedValue([project, secondProject]);
+    apiMocks.destroyProject.mockResolvedValue(undefined);
+    render(<App />);
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected projects (2)" }));
+    await act(async () => {});
+
+    expect(apiMocks.destroyProject).toHaveBeenCalledTimes(2);
+    expect(apiMocks.destroyProject).toHaveBeenNthCalledWith(1, project.id);
+    expect(apiMocks.destroyProject).toHaveBeenNthCalledWith(2, secondProject.id);
+    expect(screen.getByText("Hub project count 0")).toBeInTheDocument();
   });
 });

@@ -3,8 +3,44 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 
-import type { ProjectMediaAsset } from "../../domain/types";
+import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
 import { ChannelScript } from "./ChannelScript";
+
+it("shows word timing outside the transcript flow and dismisses it on scroll", () => {
+  const tracks = [{ id: "a", name: "Mic", text: "Một", words: [{ text: "Một", start: 1, end: 2 }] }] as ProjectMediaAsset[];
+  render(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} />);
+  const word = screen.getByRole("button", { name: "Một · 00:01.000–00:02.000" });
+  fireEvent.mouseEnter(word);
+  const popup = screen.getByRole("tooltip");
+  expect(popup).toHaveTextContent("00:01.000–00:02.000");
+  expect(popup.parentElement).toBe(document.body);
+  expect(word).toHaveTextContent(/^Một$/);
+  fireEvent.scroll(screen.getByRole("list", { name: "Lượt nói theo thời gian" }));
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("does not invent speech overlaps between independently selected footage", () => {
+  const tracks = ["a", "b"].map((id) => ({ id, name: `Footage ${id}`, text: id,
+    words: [{ text: id, start: 1, end: 2, timingTrusted: true }] })) as ProjectMediaAsset[];
+  render(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} recordingId="unrelated-obs-recording" />);
+  expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: /Đến đoạn chồng tiếng/ })).not.toBeInTheDocument();
+});
+
+it("assigns individual and selected rows to profiles across selected tracks", () => {
+  const tracks = ["a", "b"].map((id) => ({ id, name: id, importSelected: true, text: id,
+    words: [{ text: id, start: 0, end: 1, speakerId: "s1" }] })) as ProjectMediaAsset[];
+  const speakers = [{ id: "s1", name: "An" }, { id: "s2", name: "Bình" }] as SpeakerProfile[];
+  const onAssignWords = vi.fn();
+  render(<ChannelScript tracks={tracks} speakers={speakers} onAssignWords={onAssignWords} onSelectTrack={vi.fn()} />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của a row 1" }), { target: { value: "s2" } });
+  expect(onAssignWords).toHaveBeenLastCalledWith("a", [0], "s2");
+  onAssignWords.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Chọn row 1 của a" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chọn row 2 của b" }), { shiftKey: true });
+  fireEvent.change(screen.getByRole("combobox", { name: "Gán speaker cho channel rows" }), { target: { value: "s2" } });
+  expect(onAssignWords.mock.calls).toEqual([["a", [0], "s2"], ["b", [0], "s2"]]);
+});
 
 it("shows compact OBS labels, timed rows and word-level overlap after detailed STT", () => {
   const tracks = [

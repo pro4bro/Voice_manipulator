@@ -16,6 +16,15 @@ function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
 }
 
 describe("ScriptEditor", () => {
+  it("offers a Speaker Profile dropdown on every diarized row and assigns only that row", () => {
+    const onWordsChange = vi.fn();
+    const speakers = [{ id: "an", name: "An", color: "#ff8000" }, { id: "binh", name: "Bình", color: "#80ff00" }] as Parameters<typeof ScriptEditor>[0]["speakers"];
+    const words = [{ text: "Xin", start: 0, end: 1, diarizationSpeakerId: "speaker-1", speakerId: "an" }, { text: "chào", start: 1, end: 2, diarizationSpeakerId: "speaker-2", speakerId: "binh" }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={speakers} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của row 1" }), { target: { value: "binh" } });
+    expect(onWordsChange).toHaveBeenCalledWith([{ ...words[0], speakerId: "binh" }, words[1]]);
+    expect(screen.getByRole("combobox", { name: "Speaker Profile của row 2" })).toHaveValue("binh");
+  });
 it("assigns the whole take to a Speaker Profile without running diarization", () => {
     const onSpeakerProfileChange = vi.fn();
     const speakers = [
@@ -277,7 +286,7 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
   it("switches from the table to compact speaker blocks and keeps Text Edit available", () => {
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }, { text: "bạn", start: 0.8, end: 1.1, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={() => undefined} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
-    fireEvent.click(screen.getByRole("button", { name: "BẢNG SCRIPT" }));
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     expect(screen.getByLabelText("Transcript theo người nói")).toBeInTheDocument();
     expect(screen.getByText("Speaker 1")).toBeInTheDocument();
     expect(screen.getByText("Speaker 2")).toBeInTheDocument();

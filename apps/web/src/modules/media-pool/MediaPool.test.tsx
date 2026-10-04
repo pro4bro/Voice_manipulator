@@ -21,6 +21,22 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("publishes footage and multi-track Script selection without opening modifier-clicked tracks", async () => {
+    const tracks = ["a", "b"].map((id) => ({ ...asset, id, name: `Mic ${id}`, sourceArchiveAssetId: asset.id }));
+    const onScriptSelectionChange = vi.fn();
+    const onSelectTrack = vi.fn();
+    render(<MediaPool {...props({ assets: [asset, ...tracks], onScriptSelectionChange, onSelectTrack })} />);
+    fireEvent.click(screen.getByRole("button", { name: `Xổ track của ${asset.name}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic a" }));
+    await waitFor(() => expect(onScriptSelectionChange).toHaveBeenLastCalledWith(["a"]));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic b" }), { shiftKey: true });
+    await waitFor(() => expect(onScriptSelectionChange).toHaveBeenLastCalledWith(["a", "b"]));
+    expect(onSelectTrack).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic a" }), { ctrlKey: true });
+    await waitFor(() => expect(onScriptSelectionChange).toHaveBeenLastCalledWith(["b"]));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic b" }), { ctrlKey: true });
+    await waitFor(() => expect(onScriptSelectionChange).toHaveBeenLastCalledWith([]));
+  });
   it("opens live OBS tracks and previews acknowledged PCM before the MKA exists", async () => {
     const live = { recording: { recordingId: "take-live", projectId: "project", displayName: "Lesson",
       status: "recording", archiveStatus: "pending" }, durableChannelIds: ["mic"], channels: [

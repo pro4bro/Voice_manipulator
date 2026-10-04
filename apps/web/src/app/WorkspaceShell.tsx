@@ -177,6 +177,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   // Full-list requests started before a permanent delete must not reinsert it.
   const permanentlyRemovedMediaIds = useRef(new Set<string>());
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedScriptAssetIds, setSelectedScriptAssetIds] = useState<string[] | null>(null);
   const [selectedImportedTrackId, setSelectedImportedTrackId] = useState<string | null>(null);
   const scriptAssetId = selectedImportedTrackId ?? selectedAssetId;
   // Owned here rather than in either module, so Script and Timeline agree on
@@ -675,7 +676,20 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (activePage !== "voice-training") return;
+    const selected = mediaAssets.find((asset) => asset.id === (selectedImportedTrackId ?? selectedAssetId));
+    const children = selected ? mediaAssets.filter((asset) => asset.sourceArchiveAssetId === selected.id) : [];
+    if (selected && !(children.length ? children.some((asset) => asset.trainingSelected) : selected.trainingSelected)) clearMediaSelection();
+  }, [activePage, mediaAssets, selectedAssetId, selectedImportedTrackId]);
+
   async function selectPage(page: WorkspacePage) {
+    if (page === "voice-training") {
+      const selected = mediaAssets.find((asset) => asset.id === (selectedImportedTrackId ?? selectedAssetId));
+      const children = selected ? mediaAssets.filter((asset) => asset.sourceArchiveAssetId === selected.id) : [];
+      if (selected && !(children.length ? children.some((asset) => asset.trainingSelected) : selected.trainingSelected)) clearMediaSelection();
+      setSelectedScriptAssetIds(null);
+    }
     setActivePage(page);
     // Word indexes point into one take's words; carried to another page they
     // would highlight unrelated words.
@@ -774,6 +788,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function clearMediaSelection() {
+    setSelectedScriptAssetIds([]);
     flushCurrentMediaDraft();
     selectedAssetIdRef.current = null;
     scriptAssetIdRef.current = null;
@@ -917,6 +932,25 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không lưu được nhãn theo từ");
     }
+  }
+
+  async function assignScriptWords(assetId: string, indexes: number[], speakerProfileId: string | null) {
+    const asset = mediaAssetsRef.current.find((item) => item.id === assetId);
+    if (!asset || asset.deletedAt) { setNotice("Restore footage trước khi sửa Speaker."); return; }
+    if (!indexes.length) { await assignAssetSpeaker(assetId, speakerProfileId); return; }
+    const selected = new Set(indexes);
+    const words = asset.words.map((word, index) => {
+      if (!selected.has(index)) return word;
+      const next = { ...word, speakerId: speakerProfileId ?? undefined };
+      delete next.manualDiarizationSpeakerId;
+      return next;
+    });
+    try {
+      const updated = await api.updateMediaScript(project.id, assetId, asset.text, "user", words);
+      storeMediaAsset(updated);
+      if (scriptAssetIdRef.current === assetId) setTake((current) => current ? { ...current, words } : current);
+      void refreshDatasetReadiness();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Không lưu được Speaker của row."); }
   }
 
   async function controlTranscriptions(action: "pause" | "resume" | "stop", assetIds?: string[]) {
@@ -2008,6 +2042,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     mediaAssets,
     selectedAssetId,
     selectedImportedTrackId,
+    selectedScriptAssetIds,
+    onScriptSelectionChange: setSelectedScriptAssetIds,
+    onAssignScriptWords: (assetId, indexes, speakerProfileId) => { void assignScriptWords(assetId, indexes, speakerProfileId); },
     onSelectImportedTrack: selectImportedTrack,
     mediaBusy,
     recordingPreview,
@@ -2194,7 +2231,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

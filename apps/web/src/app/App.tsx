@@ -60,6 +60,17 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
     }
   }
 
+  async function deleteProjects(projectsToDelete: Project[]) {
+    const results = await Promise.allSettled(projectsToDelete.map((project) => api.destroyProject(project.id)));
+    const deleted = projectsToDelete.filter((_, index) => results[index].status === "fulfilled");
+    const deletedIds = new Set(deleted.map((project) => project.id));
+    if (deletedIds.size) setProjects((current) => current.filter((project) => !deletedIds.has(project.id)));
+    if (deleted.length !== projectsToDelete.length) {
+      const failedNames = projectsToDelete.filter((_, index) => results[index].status === "rejected").map((project) => project.name);
+      setError(`Đã xóa ${deleted.length}/${projectsToDelete.length} project. Không thể xóa: ${failedNames.join(", ")}.`);
+    }
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -201,6 +212,7 @@ Toàn bộ thư mục ${project.projectPath} sẽ bị xóa khỏi ổ cứng v�
       onRevealProject={(project) => void revealProject(project)}
       onRemoveProject={(project, permanent) => void removeProject(project, permanent)}
       onRemoveProjects={(projectsToForget) => void removeProjects(projectsToForget)}
+      onDeleteProjects={(projectsToDelete) => void deleteProjects(projectsToDelete)}
       projects={projects}
       onToggleTheme={toggleTheme}
       theme={theme}

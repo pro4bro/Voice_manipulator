@@ -69,7 +69,7 @@ export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: Sp
         </div>)}
         {!labels.length ? <p>{speakers.length ? "Chạy Nhận diện Speaker để tạo các nhãn Speaker 1, Speaker 2… rồi map từng nhãn vào Profile." : "Chưa có Speaker Profile hoặc nhãn diarization. Tạo Profile trong Sound Library rồi chạy Nhận diện Speaker."}</p> : null}
       </div>
-      {diarizedWords.length ? <p className="speaker-isolation-empty">Mapping ở đây là mặc định ban đầu cho cả nhãn máy. Bật BẢNG SCRIPT để đổi một row hoặc kéo từng word sang row khác; timestamp subtitle không đổi.</p> : null}
+      {diarizedWords.length ? <p className="speaker-isolation-empty">Mapping ở đây là mặc định ban đầu cho cả nhãn máy. Chọn Speaker ngay trên từng row hoặc chọn nhiều row để gán cùng lúc; kéo từng word sang row khác; timestamp subtitle không đổi.</p> : null}
       <button className="button button--quiet button--full" disabled={!asset || isBusy} onClick={() => setShowRunNotice(true)} type="button">{isBusy ? "Đang nhận diện speaker..." : "Nhận diện Speaker"}</button>
       {showRunNotice ? <div aria-label="Lưu ý Speaker Diarization" className="speaker-isolation-run-notice" role="alertdialog">
         <p>Speaker Diarization chỉ hữu ích khi footage hoặc track có nhiều người cùng nói. Với một người nói, bước này dùng thêm tài nguyên mà không cần thiết. Chạy cho tất cả mục đã tick DIA?</p>

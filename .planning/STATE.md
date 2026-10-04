@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-INGEST-18C2 width-two screening rejected.
-last_activity_desc: 18B2 slower 9.34%; 18C2 group improves 15.23%, pair p95 282ms fails. Six helper tests pass; production unchanged. Proposed next 18D after budget disposition.
+last_activity: 2026-10-05 — UX-CONSISTENCY-01 consolidated UI requests delivered.
+last_activity_desc: Hub bulk Delete, unified waveform, selection-driven Script, row Speaker assignment, Train filter and timing popup. Frontend 491/backend 564/typecheck/build pass; copied real-media browser evidence retained. Independent phase and ingestion gates remain open.
 ---
 
 # Project State

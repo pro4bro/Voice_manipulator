@@ -12,6 +12,8 @@ import { Icon } from "../../ui/Icon";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
+import { waveformEnvelopePath } from "./waveform-path";
+import "./waveform.css";
 
 const WINDOW_OPTIONS = [15, 30, 60, 120] as const;
 const DEFAULT_WINDOW_SECONDS = 60;
@@ -92,15 +94,23 @@ function sourceLanes(status: ObsLiveLinkStatus | null, journal: ObsLiveLinkRecor
 function waveformPath(points: ObsLiveLinkWaveformPoint[], sampleRate: number | null,
                       windowStart: number, windowSpan: number): string {
   if (!sampleRate) return "";
-  const commands: string[] = [];
-  for (const point of points) {
-    if (point.min === null || point.max === null) continue;
-    const x = Math.max(0, Math.min(1_000, ((point.startFrame / sampleRate - windowStart) / windowSpan) * 1_000));
-    const top = 30 - (point.max / 32768) * 27;
-    const bottom = 30 - (point.min / 32768) * 27;
-    commands.push(`M${x.toFixed(1)} ${top.toFixed(1)}V${bottom.toFixed(1)}`);
-  }
-  return commands.join("");
+  const visible: Array<{ x: number; min: number; max: number }> = [];
+  points.forEach((point, index) => {
+    const previous = points[index - 1];
+    if (previous && point.startFrame > previous.endFrame) {
+      visible.push({ x: Number.NaN, min: Number.NaN, max: Number.NaN });
+    }
+    if (point.min === null || point.max === null) {
+      visible.push({ x: Number.NaN, min: Number.NaN, max: Number.NaN });
+      return;
+    }
+    visible.push({
+      x: ((point.startFrame / sampleRate - windowStart) / windowSpan) * 1_000,
+      min: point.min / 32768,
+      max: point.max / 32768,
+    });
+  });
+  return waveformEnvelopePath(visible);
 }
 
 function mergeWaveform(previous: ObsLiveLinkWaveform | undefined, incoming: ObsLiveLinkWaveform): ObsLiveLinkWaveform {
@@ -782,7 +792,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   return position ? <i aria-label={`Đoạn chồng tiếng đang chọn ${lane.label} ${obsOverlapTime(range.startSeconds)}–${obsOverlapTime(range.endSeconds)}`}
                     className="obs-timeline__selected-overlap" key={`${range.startSeconds}-${range.endSeconds}`} style={position} /> : null;
                 })}
-                <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>
+                <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ?
                   <i aria-label={`Playhead ${lane.label}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}
                 {markInPosition !== null && markInPosition >= 0 && markInPosition <= 100 ?

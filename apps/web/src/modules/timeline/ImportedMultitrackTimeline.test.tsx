@@ -177,6 +177,7 @@ it("requests source PCM detail for the visible window instead of stretching spar
   for (let index = 0; index < 8; index += 1) fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline" }));
   await waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url).includes("start=0") && String(url).includes("end=") && String(url).includes("points="))).toBe(true));
   await waitFor(() => expect((view.container.querySelector(".obs-timeline__wave path")?.getAttribute("d")?.match(/L/g) ?? []).length).toBeGreaterThan(100));
+  expect(view.container.querySelector(".obs-timeline__wave svg")).toHaveClass("timeline-waveform__svg");
   expect(view.container.querySelector(".obs-timeline__wave path")?.getAttribute("d")).toMatch(/Z$/u);
 });
 

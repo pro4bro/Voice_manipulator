@@ -44,6 +44,9 @@ export interface StudioContext {
   mediaAssets: ProjectMediaAsset[];
   selectedAssetId: string | null;
   selectedImportedTrackId: string | null;
+  selectedScriptAssetIds?: string[] | null;
+  onScriptSelectionChange?: (assetIds: string[]) => void;
+  onAssignScriptWords?: (assetId: string, indexes: number[], speakerProfileId: string | null) => void;
   onSelectImportedTrack: (assetId: string) => void;
   mediaBusy: boolean;
   recordingPreview: RecordingWaveformPreview | null;
@@ -196,13 +199,13 @@ interface ModuleRegistryProps {
 
 function mediaPoolProps(context: StudioContext) {
   return {
-    projectId: context.projectId,
-    assets: context.mediaAssets,
+    projectId: context.workflow === "voice-training" ? undefined : context.projectId,
+    assets: workflowMediaAssets(context),
     busy: context.mediaBusy,
     environments: context.trainingCatalog.environmentProfiles,
     onImport: context.onImportMedia,
     onImportLocal: context.onImportLocalMedia,
-    pendingLocalMedia: context.pendingLocalMedia,
+    pendingLocalMedia: context.workflow === "voice-training" ? null : context.pendingLocalMedia,
     onPendingLocalTrackChange: context.onPendingLocalTrackChange,
     onConfirmPendingLocalMedia: context.onConfirmPendingLocalMedia,
     onCancelPendingLocalMedia: context.onCancelPendingLocalMedia,
@@ -219,6 +222,7 @@ function mediaPoolProps(context: StudioContext) {
     onSelect: context.onSelectAsset,
     onClearSelection: context.onClearMediaSelection,
     onSelectTrack: context.onSelectImportedTrack,
+    onScriptSelectionChange: context.onScriptSelectionChange,
     selectedImportedTrackId: context.selectedImportedTrackId,
     onSendToTraining: context.onSendToTraining,
     onToggleTraining: context.onToggleTraining,
@@ -238,10 +242,19 @@ function mediaPoolProps(context: StudioContext) {
   };
 }
 
+function workflowMediaAssets(context: StudioContext) {
+  if (context.workflow !== "voice-training") return context.mediaAssets;
+  const parents = new Set(context.mediaAssets.map((asset) => asset.sourceArchiveAssetId).filter(Boolean));
+  const trainedParents = new Set(context.mediaAssets.filter((asset) => asset.sourceArchiveAssetId && asset.trainingSelected && !asset.deletedAt && !asset.disabled && asset.importSelected !== false).map((asset) => asset.sourceArchiveAssetId));
+  return context.mediaAssets.filter((asset) => !asset.deletedAt && !asset.disabled &&
+    (parents.has(asset.id) ? trainedParents.has(asset.id) : asset.trainingSelected === true));
+}
+
 export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
+  const pageAssets = workflowMediaAssets(context);
   const parentsWithTracks = new Set(context.mediaAssets.map((asset) => asset.sourceArchiveAssetId).filter((id): id is string => Boolean(id)));
   const parentsWithImportedTracks = new Set(context.mediaAssets.filter((asset) => asset.sourceArchiveAssetId && asset.importSelected !== false).map((asset) => asset.sourceArchiveAssetId));
-  const workingAssets = context.mediaAssets.filter((asset) => {
+  const workingAssets = pageAssets.filter((asset) => {
     if (asset.sourceArchiveAssetId) return asset.importSelected !== false;
     return parentsWithTracks.has(asset.id) ? parentsWithImportedTracks.has(asset.id) : asset.importSelected !== false;
   });
@@ -254,19 +267,28 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceVault onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} assets={workingAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
       const selectedAsset = workingAssets.find((asset) => asset.id === (context.selectedImportedTrackId ?? context.selectedAssetId));
-      const childTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === context.selectedAssetId);
-      const parentFeed = context.workflow === "speech-to-text" && !context.selectedImportedTrackId && childTracks.length > 0 &&
-        (!context.obsTimelineActive || childTracks.some((track) => track.words?.length || (track.transcriptionStatus === "complete" && track.text?.trim())))
-        ? <ChannelScript tracks={childTracks} onSelectTrack={context.onSelectImportedTrack}
+      const selectedIds = context.selectedScriptAssetIds ?? [context.selectedImportedTrackId ?? context.selectedAssetId].filter((id): id is string => Boolean(id));
+      const selectedTracks = [...new Map(selectedIds.flatMap((id) => {
+        const children = workingAssets.filter((asset) => asset.sourceArchiveAssetId === id);
+        return children.length ? children : workingAssets.filter((asset) => asset.id === id);
+      }).map((asset) => [asset.id, asset])).values()];
+      const singleOpen = selectedTracks.length === 1 && selectedTracks[0].id === selectedAsset?.id;
+      const showSelectedFeed = selectedTracks.length > 0 && !singleOpen;
+      const parentFeed = showSelectedFeed
+        ? <ChannelScript tracks={selectedTracks} speakers={context.trainingCatalog.speakers} onAssignWords={context.onAssignScriptWords}
+          onSelectTrack={(id) => { const asset = workingAssets.find((item) => item.id === id); if (asset?.sourceArchiveAssetId) context.onSelectImportedTrack(id); else context.onSelectAsset(id); }}
           recordingId={context.obsTimelineActive ? context.obsTimelineRecordingId : null}
           selectedOverlap={context.obsOverlapSelection}
           onSelectOverlap={context.obsTimelineActive ? context.onObsArchivedOverlapSelect : undefined} /> : null;
-      const liveFeed = context.workflow === "speech-to-text" && context.obsTimelineActive && !context.selectedImportedTrackId && !parentFeed
+      // Pending recordings have no archived Media Pool asset yet, but the
+      // selected recording itself still owns the live Script.
+      const pendingObsSelected = context.obsTimelineActive && !context.selectedAssetId && Boolean(context.obsTimelineRecordingId);
+      const liveFeed = context.workflow === "speech-to-text" && context.obsTimelineActive && !context.selectedImportedTrackId && !parentFeed && (pendingObsSelected || selectedTracks.some((asset) => asset.obsRecordingId))
         ? <ObsLiveLinkScript embedded error={context.obsTranscriptError} onSeek={context.onObsTranscriptSeek}
           onSelectOverlap={context.onObsOverlapSelect} selectedOverlap={context.obsOverlapSelection}
-          playheadSeconds={context.obsPlayheadSeconds} recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows} />
+          playheadSeconds={context.obsPlayheadSeconds} recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows.filter((row) => (!context.obsTimelineRecordingId || row.recordingId === context.obsTimelineRecordingId) && (!context.obsSeekRequest?.selectOnly || row.channelId === context.obsSeekRequest.channelId))} />
         : null;
-      return <ScriptEditor key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={context.take?.name ?? null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={context.script} words={context.take?.words} workflow={context.workflow} />;
+      return <ScriptEditor key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={singleOpen && selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={singleOpen ? context.take?.name ?? null : parentFeed ? `${selectedTracks.length} track đã chọn` : null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={parentFeed ? selectedTracks.map((asset) => asset.text).join("\n") : singleOpen || pendingObsSelected || context.liveTranscriptActive || context.readingSession ? context.script : ""} words={singleOpen ? context.take?.words : []} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;

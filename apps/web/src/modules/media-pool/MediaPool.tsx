@@ -85,6 +85,7 @@ interface MediaPoolProps {
   onSelect: (assetId: string) => void;
   onClearSelection?: () => void;
   onSelectTrack?: (assetId: string) => void;
+  onScriptSelectionChange?: (assetIds: string[]) => void;
   onToggleImport?: (assetId: string, selected: boolean, streamIndex?: number) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
   onToggleTranscription: (assetId: string, selected: boolean) => void;
@@ -369,6 +370,7 @@ export function MediaPool({
   onSelect,
   onClearSelection = () => undefined,
   onSelectTrack = () => undefined,
+  onScriptSelectionChange,
   onToggleImport = () => undefined,
   onToggleTraining,
   onToggleTranscription,
@@ -409,6 +411,8 @@ export function MediaPool({
   const childrenOf = (asset: ProjectMediaAsset) => assets.filter((item) => item.sourceArchiveAssetId === asset.id);
   const liveAssets = footageAssets.filter((asset) => !asset.deletedAt);
   const liveIds = liveAssets.map((asset) => asset.id);
+  const selectableIds = liveAssets.flatMap((asset) => [asset.id, ...childrenOf(asset).filter((track) => track.importSelected !== false).map((track) => track.id)]);
+  const selectedListIds = reconcileListSelection(selection, selectableIds).ids;
   const selectedIds = reconcileListSelection(selection, liveIds).ids;
   // Newest first inside the bin; the bin itself is pinned last in the list.
   const recycledAssets = footageAssets
@@ -463,8 +467,22 @@ export function MediaPool({
   }
 
   useEffect(() => {
-    setSelection((current) => reconcileListSelection(current, liveIds));
-  }, [liveIds.join("\0")]);
+    setSelection((current) => reconcileListSelection(current, selectableIds));
+  }, [selectableIds.join("\0")]);
+  const selectionListener = useRef(onScriptSelectionChange);
+  selectionListener.current = onScriptSelectionChange;
+  const scriptSelectionIds = selectedBinIds.length ? selectedBinIds : selectedListIds;
+  useEffect(() => { selectionListener.current?.(scriptSelectionIds); }, [scriptSelectionIds.join("\0")]);
+  useEffect(() => {
+    const opened = selectedImportedTrackId ?? selectedAssetId;
+    if (opened && assets.some((asset) => asset.id === opened)) {
+      if (recycledIds.includes(opened)) setBinSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
+      else setSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
+    } else if (!selectedObsRecordingId) {
+      setSelection({ ids: [], anchorId: null });
+      setBinSelection({ ids: [], anchorId: null });
+    }
+  }, [selectedAssetId, selectedImportedTrackId]);
   useEffect(() => {
     setBinSelection((current) => reconcileListSelection(current, recycledIds));
   }, [recycledIds.join("\0")]);
@@ -600,7 +618,7 @@ export function MediaPool({
           <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => onToggleTraining(asset.id, value)} selected={training.selected} stage="Train" /></>}
         </div>
         {channels.length && expandedAssets.includes(asset.id) && !recycled ? <div className="media-pool-item__channels">{channels.map((track) => <div className={`media-pool-item__channel ${track.importSelected === false ? "is-not-imported" : ""}`} key={track.id}>
-          <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={track.id === selectedImportedTrackId} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={() => { setSelection({ ids: [asset.id], anchorId: asset.id }); onSelectTrack(track.id); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
+          <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={selectedListIds.includes(track.id)} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={(event) => { setBinSelection({ ids: [], anchorId: null }); setSelection((current) => selectListItem(current, selectableIds, track.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey })); if (!event.ctrlKey && !event.metaKey && !event.shiftKey) onSelectTrack(track.id); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
           <div className="media-pool-item__toggles">
             <StageToggle name={track.name} onChange={(value) => onToggleImport(track.id, value)} selected={track.importSelected !== false} stage="Import" />
             <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => onToggleTranscription(track.id, value)} selected={track.transcriptionSelected} stage="STT" />

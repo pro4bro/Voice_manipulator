@@ -5,6 +5,8 @@ import { ModuleFrame } from "../../ui/ModuleFrame";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
 import type { WordSelection } from "../../domain/word-selection";
+import { waveformEnvelopePath } from "./waveform-path";
+import "./waveform.css";
 
 const MAX_WAVEFORM_PIXELS_PER_SECOND = 1000;
 type Layout = "layers" | "columns";
@@ -29,8 +31,7 @@ function waveformPath(envelope: Envelope | undefined, windowStart: number, span:
   const first = Math.max(0, Math.floor((windowStart - sourceStart) / sourceSpan * envelope.points.length));
   const last = Math.min(envelope.points.length, Math.ceil((windowStart + span - sourceStart) / sourceSpan * envelope.points.length));
   const step = Math.max(1, Math.ceil((last - first) / 1200));
-  const upper: string[] = [];
-  const lower: string[] = [];
+  const visible: Array<{ x: number; min: number; max: number }> = [];
   for (let index = first; index < last; index += step) {
     let minimum = 0;
     let maximum = 0;
@@ -39,12 +40,9 @@ function waveformPath(envelope: Envelope | undefined, windowStart: number, span:
       maximum = Math.max(maximum, envelope.points[sample]?.max ?? 0);
     }
     const x = (sourceStart + index / envelope.points.length * sourceSpan - windowStart) / span * 1000;
-    upper.push(`${x.toFixed(2)} ${(30 - maximum * 27).toFixed(2)}`);
-    lower.push(`${x.toFixed(2)} ${(30 - minimum * 27).toFixed(2)}`);
+    visible.push({ x, min: minimum, max: maximum });
   }
-  if (!upper.length) return "";
-  if (upper.length === 1) return `M${upper[0]}L${lower[0]}`;
-  return `M${upper.join("L")}L${lower.reverse().join("L")}Z`;
+  return waveformEnvelopePath(visible);
 }
 
 interface Props {
@@ -320,7 +318,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
               </button>
               {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>
-                <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span)} /></svg>
+                <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span)} /></svg>
                 {sharedCuts.map((cut) => { const style = intervalStyle(cut.start, cut.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại" className="obs-timeline__removed-range" key={cut.id} style={style} /> : null; })}
                 {stagedCut && intervalStyle(stagedCut.start, stagedCut.end, windowStart, span) ? <i className="obs-timeline__removed-range is-staged" style={intervalStyle(stagedCut.start, stagedCut.end, windowStart, span)!} /> : null}
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ? <i aria-label={`Playhead Channel ${index + 1}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}

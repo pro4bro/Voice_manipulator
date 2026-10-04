@@ -7,6 +7,45 @@ import { EMPTY_SELECTION } from "../../domain/word-selection";
 import type { ProjectMediaAsset } from "../../domain/types";
 import { ModuleRegistry, type StudioContext } from "./ModuleRegistry";
 
+it("shows no stale transcript or track switch when nothing is selected", () => {
+  const context = { workflow: "speech-to-text", script: "stale", selectedAssetId: null, selectedImportedTrackId: null,
+    mediaAssets: [], take: { words: [{ text: "stale", start: 0, end: 1 }] }, trainingCatalog: { speakers: [], environmentProfiles: [] },
+    readingSession: null, wordSelection: EMPTY_SELECTION, obsTimelineActive: false, onScriptChange: vi.fn() } as unknown as StudioContext;
+  render(<ModuleRegistry context={context} id="script" />);
+  expect(screen.queryByText("stale")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /MỞ SCRIPT/ })).not.toBeInTheDocument();
+});
+
+it("shows only selected footage transcripts together", () => {
+  const assets = ["a", "b", "c"].map((id) => ({ id, name: id, text: `Transcript ${id}`, words: [], duration: 4, importSelected: true }));
+  const context = { workflow: "speech-to-text", script: "Transcript a", selectedAssetId: "a", selectedScriptAssetIds: ["a", "b"], selectedImportedTrackId: null,
+    mediaAssets: assets, take: null, trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null,
+    wordSelection: EMPTY_SELECTION, obsTimelineActive: false, onScriptChange: vi.fn(), onSelectImportedTrack: vi.fn() } as unknown as StudioContext;
+  render(<ModuleRegistry context={context} id="script" />);
+  expect(screen.getByText("Transcript b")).toBeInTheDocument();
+  expect(screen.getByText("Transcript a")).toBeInTheDocument();
+  expect(screen.queryByText("Transcript c")).not.toBeInTheDocument();
+});
+
+it("does not fall back to live OBS rows after deselecting archived footage", () => {
+  const context = { workflow: "speech-to-text", script: "stale OBS", selectedAssetId: "archive", selectedImportedTrackId: null,
+    selectedScriptAssetIds: [], mediaAssets: [{ id: "archive", obsRecordingId: "recording", words: [], text: "stale OBS" }], take: null,
+    trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null, wordSelection: EMPTY_SELECTION,
+    obsTimelineActive: true, obsTimelineRecordingId: "recording", obsTranscriptRows: [], onScriptChange: vi.fn() } as unknown as StudioContext;
+  render(<ModuleRegistry context={context} id="script" />);
+  expect(screen.queryByRole("region", { name: "Lượt nói OBS LiveLink" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("");
+});
+
+it("excludes untrained footage from Voice Training Media Pool", () => {
+  const asset = { duration: 4, text: "", words: [], revisions: [], speakerProfileIds: [], environmentProfileIds: [], emotion: "normal", sourceExtension: ".wav", mediaKind: "audio", status: "ready", importSelected: true };
+  const context = { workflow: "voice-training", mediaAssets: [{ ...asset, id: "a", name: "Train me", trainingSelected: true }, { ...asset, id: "b", name: "Do not train", trainingSelected: false }],
+    selectedAssetId: null, mediaBusy: false, trainingCatalog: { speakers: [], environmentProfiles: [] }, sttEngines: [], asrAdapters: [] } as unknown as StudioContext;
+  render(<ModuleRegistry context={context} id="media-pool" />);
+  expect(screen.getByText("Train me")).toBeInTheDocument();
+  expect(screen.queryByText("Do not train")).not.toBeInTheDocument();
+});
+
 it("keeps the full Script editor while OBS LiveLink rows are visible", () => {
   const context = {
     workflow: "speech-to-text",
@@ -28,13 +67,11 @@ it("keeps the full Script editor while OBS LiveLink rows are visible", () => {
 
   render(<ModuleRegistry context={context} id="script" />);
   expect(screen.getByRole("region", { name: "Lượt nói OBS LiveLink" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "LIVE DRAFT · MỞ SCRIPT" }));
-  expect(screen.queryByRole("region", { name: "Lượt nói OBS LiveLink" })).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("Nội dung Script đang mở");
-  expect(screen.getByRole("button", { name: "Clear Text" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /MỞ SCRIPT|MỞ LIVE DRAFT/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Script transcript" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Clear Text" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "FIND / REPLACE" }));
   expect(screen.getByRole("textbox", { name: "Tìm text" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "MỞ LIVE DRAFT" }));
   expect(screen.getByRole("region", { name: "Lượt nói OBS LiveLink" })).toBeInTheDocument();
 });
 
