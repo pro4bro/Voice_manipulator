@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## LIVELINK-INGEST-18C2 — width-two candidate rejected (2026-10-04)
+
+Sixty same-catalog groups/360 pairs per variant: two-pair width cuts group wall
+15.23% (38.666s ->32.776s), pair p50/p95 137.801/282.156ms. Frozen throughput and
+ACK screening fail; no API/native integration. All source/output bytes verified,
+two fsyncs and ordered publication retained. Six profiling safety tests pass.
+Unchanged product validation carries backend 561/frontend 477/typecheck/build.
+Evidence docs/gates/livelink-ingest-18c2-width-two.md and JSON. 18B/18C stay open;
+ten scheduled rounds remain. Budget question is pending, no threshold relaxed.
+Next ingestion scope proposed LIVELINK-INGEST-18D design/candidate after explicit
+budget disposition; physical OBS and full HTTP gate remain. No phase advances.
+
+
 ## LIVELINK-INGEST-18B2 — descriptor writer rejected (2026-10-04)
 
 60-pair interleaved E: probe preserves two fsyncs and PCM-before-metadata; all

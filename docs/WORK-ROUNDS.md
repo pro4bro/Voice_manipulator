@@ -9,8 +9,8 @@ that gap matters, and the exact next round.
 
 | Round | Scope | State | Why it matters |
 | --- | --- | --- | --- |
-| LIVELINK-INGEST-18B | Reduce durable-pair cost | Candidate rejected; acceptance open | Full replay improves only 2.58%; prevents shipping a change that fails frozen latency budgets. |
-| LIVELINK-INGEST-18C | Evaluate bounded group durability/transport contract | Measured; budget choice/integration open | Six concurrent pairs cut group wall time 53.15% but exceed frozen ACK latency; no durability weakened. |
+| LIVELINK-INGEST-18B | Reduce durable-pair cost | Original and 18B2 candidates rejected; acceptance open | Full replay improves only 2.58%; raw descriptor screen is 9.34% slower. |
+| LIVELINK-INGEST-18C | Evaluate bounded group durability/transport contract | Width-six/two measured; budget choice/integration open | Width two cuts group wall 15.23% with pair p95 282ms; frozen thresholds still fail. |
 | LIVELINK-INGEST-18A | Profile six-source ingress and Stop tail | Isolated measurement complete; historical live clocks unavailable | Selects durable PCM/metadata pair and freezes 18B comparisons without claiming latency improved. |
 | 03-03A | Voice Model Set persistence and lineage | Complete | Creates a portable, reproducible publication candidate without falsely claiming identity approval. |
 | 03-03B | `SpeakerEmbedder` port, adapters, frozen protocol, threshold and reject path | Complete | Prevents a usable checkpoint from being published as the wrong speaker. |
@@ -3946,3 +3946,15 @@ docs/gates/livelink-ingest-18b2-raw-pair.md and JSON. Product validation carries
 from 9c88c92 (backend 561/frontend 477/typecheck/build); helper checks follow in
 18C2. Exact next requested scope 18C2 two-pair concurrency screening. No phase
 or scheduled-round completion advances.
+
+## LIVELINK-INGEST-18C2 — width-two candidate rejected (2026-10-04)
+
+Sixty same-catalog groups/360 pairs per variant: two-pair width cuts group wall
+15.23% (38.666s ->32.776s), pair p50/p95 137.801/282.156ms. Frozen throughput and
+ACK screening fail; no API/native integration. All source/output bytes verified,
+two fsyncs and ordered publication retained. Six profiling safety tests pass.
+Unchanged product validation carries backend 561/frontend 477/typecheck/build.
+Evidence docs/gates/livelink-ingest-18c2-width-two.md and JSON. 18B/18C stay open;
+ten scheduled rounds remain. Budget question is pending, no threshold relaxed.
+Next ingestion scope proposed LIVELINK-INGEST-18D design/candidate after explicit
+budget disposition; physical OBS and full HTTP gate remain. No phase advances.

@@ -21,15 +21,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--groups", type=int, default=60)
+    parser.add_argument("--widths", type=int, nargs="+", choices=(1, 2, 3, 6), default=[1, 3, 6])
     args = parser.parse_args()
     if not 1 <= args.groups <= 120:
         raise ValueError("Bounded group count required")
+    widths = tuple(args.widths)
+    if len(set(widths)) != len(widths) or 1 not in widths or len(widths) < 2:
+        raise ValueError("Unique widths including serial control and a candidate required")
     output = args.output.resolve()
+    if output.drive.lower() != SOURCE.drive.lower() or output.is_relative_to(SOURCE.resolve()):
+        raise ValueError("Fresh output on source volume outside original recording required")
     output.mkdir(parents=True, exist_ok=False)
     folders = sorted((SOURCE / "channels").iterdir())
     if len(folders) != 6:
         raise ValueError("Six-source fixture required")
     samples = []
+    source_pairs = []
     input_hash = hashlib.sha256()
     for sequence in range(args.groups):
         group = []
@@ -43,8 +50,9 @@ def main():
             input_hash.update(folder.name.encode())
             input_hash.update(metadata)
             group.append((folder.name, pcm, metadata))
+            source_pairs.append((path, pcm, metadata))
         samples.append(group)
-    timings = {width: {"group": [], "pair": []} for width in (1, 3, 6)}
+    timings = {width: {"group": [], "pair": []} for width in widths}
 
     def persist(folder, pcm, metadata):
         start = time.perf_counter_ns()
@@ -57,9 +65,9 @@ def main():
 
     for index, group in enumerate(samples):
         # Rotate order to reduce a fixed warm-cache/scheduling bias.
-        widths = (1, 3, 6)
-        widths = widths[index % 3:] + widths[:index % 3]
-        for width in widths:
+        offset = index % len(widths)
+        order = widths[offset:] + widths[:offset]
+        for width in order:
             root = output / f"width-{width}" / f"{index:03d}"
             begin = time.perf_counter_ns()
             with ThreadPoolExecutor(max_workers=width) as workers:
@@ -70,15 +78,24 @@ def main():
             timings[width]["pair"].extend(values)
         if index % 10 == 0:
             print(f"{index+1}/{len(samples)} independent-source groups verified", flush=True)
+    for path, pcm, metadata in source_pairs:
+        if path.read_bytes() != metadata or path.with_suffix(".pcm").read_bytes() != pcm:
+            raise ValueError("Original source pair changed")
     result = {"productChanged": False, "sourceGroups": args.groups,
               "pairsPerVariant": args.groups * 6, "inputCatalogSha256": input_hash.hexdigest(),
               "pairsVerified": True, "fsyncsPerPair": 2,
-              "publication": "PCM before metadata", "maximumConcurrentPairs": 6,
+              "originalPairsUnchanged": True,
+              "publication": "PCM before metadata", "maximumConcurrentPairs": max(widths),
               "variants": {str(width): {stage: summary(values) for stage, values in stages.items()}
                            for width, stages in timings.items()},
               "limits": "Storage feasibility only; no API lock, native scheduling, STT, network or hardware Stop evidence"}
     baseline = sum(timings[1]["group"])
-    result["groupWallReductionPercent"] = {str(width): 100*(1-sum(timings[width]["group"])/baseline) for width in (3,6)}
+    result["groupWallReductionPercent"] = {str(width): 100*(1-sum(timings[width]["group"])/baseline) for width in widths if width != 1}
+    result["frozenStorageScreenPassed"] = {
+        str(width): result["variants"][str(width)]["pair"]["p50Ms"] <= 100
+        and result["variants"][str(width)]["pair"]["p95Ms"] <= 150
+        and result["groupWallReductionPercent"][str(width)] >= 30
+        for width in widths if width != 1}
     (output / "report.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2), flush=True)
 

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — LIVELINK-INGEST-18B2 descriptor writer rejected.
-last_activity_desc: 60-pair candidate slower 9.34%; production unchanged. Next requested 18C2 width-two screening; frozen ACK budgets retained.
+last_activity: 2026-10-04 — LIVELINK-INGEST-18C2 width-two screening rejected.
+last_activity_desc: 18B2 slower 9.34%; 18C2 group improves 15.23%, pair p95 282ms fails. Six helper tests pass; production unchanged. Proposed next 18D after budget disposition.
 ---
 
 # Project State
