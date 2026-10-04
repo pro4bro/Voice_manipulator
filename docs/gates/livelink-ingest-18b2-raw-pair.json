@@ -1,0 +1,29 @@
+{
+  "productChanged": false,
+  "sourceCatalogSha256": "1fb37a64bd702ba9132551572276f5e0a7459daa1e700efba2653b21ba98c7e8",
+  "pairsPerVariant": 60,
+  "sourceAndOutputBytesVerified": true,
+  "fsyncsPerPair": 2,
+  "publication": "PCM before metadata",
+  "variants": {
+    "baseline": {
+      "count": 60,
+      "totalMs": 4663.4208,
+      "p50Ms": 77.2065,
+      "p95Ms": 107.6694,
+      "maxMs": 141.0963
+    },
+    "rawDescriptor": {
+      "count": 60,
+      "totalMs": 5098.944599999998,
+      "p50Ms": 78.18135000000001,
+      "p95Ms": 123.8437,
+      "maxMs": 188.8525
+    }
+  },
+  "reductionPercent": -9.339148635267879,
+  "screeningPassed": false,
+  "limits": "Pair storage subset only, not full HTTP replay, archive or physical OBS gate",
+  "startingCommit": "9c88c92",
+  "round": "LIVELINK-INGEST-18B2"
+}

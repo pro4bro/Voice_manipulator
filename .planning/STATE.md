@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — VOICE-EXPORT-13B2 subtitle bounds repair.
-last_activity_desc: Backend 561 passed; API moved exports/hash and invalid-timing rejection pass. Parent browser gate remains open. Next independent UX-05B needs browser control.
+last_activity: 2026-10-04 — LIVELINK-INGEST-18B2 descriptor writer rejected.
+last_activity_desc: 60-pair candidate slower 9.34%; production unchanged. Next requested 18C2 width-two screening; frozen ACK budgets retained.
 ---
 
 # Project State

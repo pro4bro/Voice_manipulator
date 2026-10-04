@@ -3935,3 +3935,14 @@ cancel and real speech evidence remain open; parent 13B is not accepted.
 Exact next independent queued round UX-05B requires functioning browser control;
 MKV-ACCEPT-01 retains reviewed 19A timing/recognition prerequisites. No phase or
 scheduled queue completion count advances.
+
+## LIVELINK-INGEST-18B2 — descriptor writer rejected (2026-10-04)
+
+60-pair interleaved E: probe preserves two fsyncs and PCM-before-metadata; all
+persisted/source bytes exact. Raw descriptor writer takes 5098.945ms vs current
+4663.421ms (9.34% slower); candidate rejected before full HTTP/live OBS gate.
+Production is unchanged; 18B acceptance remains open. Evidence:
+docs/gates/livelink-ingest-18b2-raw-pair.md and JSON. Product validation carries
+from 9c88c92 (backend 561/frontend 477/typecheck/build); helper checks follow in
+18C2. Exact next requested scope 18C2 two-pair concurrency screening. No phase
+or scheduled-round completion advances.
