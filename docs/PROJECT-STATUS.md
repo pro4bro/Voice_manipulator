@@ -1,5 +1,12 @@
 # Project Status — 2026-09-22
 
+## LIVELINK-STT-19B5 — latency trace diagnosis (2026-10-05)
+
+Existing lagSeconds is onset-to-event duration, not post-source-end latency.
+Offline analyzer reconciles29 finals/85 requests; lock/event clocks were absent.
+No budget or product change. Next19B6 adds profiling-harness clocks to attribute
+real delay. See `docs/gates/livelink-stt-19b5-latency.md`.
+
 ## UI-CONTRAST-01C1 — populated states (2026-10-05)
 
 Repaired inactive library tab/count text, normal Timeline words, advanced profile

@@ -12,6 +12,16 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
+### 2026-10-05 — LIVELINK-STT-19B5
+
+Offline attribution finds existing lagSeconds includes utterance duration;
+onset-to-final median9.906s/p9521.015s cannot establish post-source-end latency.
+85 successful calls reconcile, but semaphore waits/event wall clocks were absent.
+No performance change justified; no product change. Next19B6 measures actual
+offer/end/persist clocks and semaphore waits in the profiling harness, leaving
+source PCM/settings/scorer/budgets frozen. Gate:
+`docs/gates/livelink-stt-19b5-latency.md`.
+
 ### 2026-10-05 — UI-CONTRAST-01C1
 
 Populated real output/profile/Properties browser samples pass after four shared
