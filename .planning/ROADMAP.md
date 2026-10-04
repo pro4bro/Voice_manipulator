@@ -15,6 +15,24 @@ This roadmap distinguishes three states that older snapshots blurred:
 
 ## Phases
 
+## MKV-FOLLOW-03 — selected-stream Cluster decode (2026-10-04)
+
+Complete at measured decoder scope. Probe/decode all selected streams once per
+complete Cluster while retaining original per-stream first PTS, PCM alignment,
+fsync and per-Cluster checkpoint. Generated six-track/ten-minute backlog improves
+99.213s -> 65.851s (33.63%, 9.11x timeline realtime). Retained actual OBS prefix
+12 Clusters/49.92s improves serial control 20.430s -> 10.197s (50.08%). Decoder
+calls drop 83.33%; all PCM/frame/gap metadata remain exact. Existing tiny AAC gaps
+are preserved, not claimed fixed. Sampled process-tree RSS stays below 72 MiB;
+not a hard bound for arbitrary Clusters. Owner source is read only/hash unchanged.
+
+Generated six-track restart and Finish hashes pass; focused follower 19 tests
+pass. Final full backend: **557 passed**, 167.31s, two existing deprecation warnings. Unchanged frontend
+475/typecheck/build evidence carries from MEDIA-STAGES-02. See ADR 0044 and
+`docs/gates/mkv-follow-03-backlog.md` with metrics JSON. No phase advances.
+Exact next **MKV-ACCEPT-01**, physical writer/A-V/speech acceptance. Full 19A
+reviewed timing and 19B accuracy prerequisites remain open, as do 18B/18C budgets.
+
 ## MEDIA-STAGES-02 — materialize omitted tracks (2026-10-04)
 
 Complete at completed-container scope. A previously omitted audio stream can

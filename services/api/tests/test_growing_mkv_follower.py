@@ -43,6 +43,69 @@ def _frames(path):
         return source.getnframes()
 
 
+def test_cluster_batch_matches_independent_aac_decodes_and_first_pts(tmp_path, two_track_mkv):
+    ffmpeg, source = two_track_mkv
+    ffprobe = str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe"))
+    follower = FileGrowingMkvFollower(None, None, ffmpeg, ffprobe)
+    scanned = scan_committed(source)
+    payload = source.read_bytes()
+    fragment = tmp_path / "fragment.mkv"
+    # Include a later Cluster to exercise nonzero source time.
+    cluster = scanned.clusters[1]
+    fragment.write_bytes(payload[:scanned.header_end] + payload[cluster.start:cluster.end])
+    tracks = [{"streamIndex": i} for i in (0, 1)]
+    decoded = follower._decode_cluster(fragment, tracks)
+    assert len(decoded) == 2
+    for track, pts, pcm in decoded:
+        index = track["streamIndex"]
+        packets = json.loads(subprocess.run([ffprobe, "-v", "error", "-select_streams",
+            str(index), "-show_packets", "-show_entries", "packet=pts_time", "-of", "json",
+            str(fragment)], check=True, capture_output=True).stdout)["packets"]
+        assert pts == float(packets[0]["pts_time"])
+        expected = subprocess.run([ffmpeg, "-v", "error", "-i", str(fragment), "-map",
+            f"0:{index}", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le",
+            "-f", "s16le", "pipe:1"], check=True, capture_output=True).stdout
+        assert pcm == expected
+
+
+@pytest.mark.parametrize("pts", [None, "nan", "inf"])
+def test_cluster_batch_rejects_selected_packet_without_finite_pts(tmp_path, monkeypatch, pts):
+    follower = FileGrowingMkvFollower(None, None, "ffmpeg", "ffprobe")
+    calls = []
+    def probe(command):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({"packets": [
+            {"stream_index": 1, "pts_time": pts}]}).encode(), b"")
+    monkeypatch.setattr(follower, "_run", probe)
+    with pytest.raises(ValueError, match="PTS"):
+        follower._decode_cluster(tmp_path / "fragment.mkv", [{"streamIndex": 1}])
+    assert len(calls) == 1  # Never decode/publish audio after missing timing.
+
+
+def test_cluster_batch_failed_decode_does_not_advance_and_retry_preserves_all_tracks(tmp_path, two_track_mkv, monkeypatch):
+    ffmpeg, source = two_track_mkv
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Batch decode retry"))
+    library = FileMediaLibrary(projects)
+    follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"),
+        ffmpeg, str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
+    result = follower.start(project, str(source))
+    before = follower.status(project, result.asset.id)
+    original = follower._run
+    def fail(command):
+        if command[0] == ffmpeg:
+            raise ValueError("decoder failed")
+        return original(command)
+    monkeypatch.setattr(follower, "_run", fail)
+    with pytest.raises(ValueError, match="decoder failed"):
+        follower.poll(project, result.asset.id)
+    assert follower.status(project, result.asset.id) == before
+    monkeypatch.setattr(follower, "_run", original)
+    complete = follower.poll(project, result.asset.id)
+    assert complete["clusters"] == len(scan_committed(source).clusters)
+    assert all(track["frames"] > 0 for track in complete["tracks"])
+
+
 def test_overlap_replaces_previous_tail_in_absolute_time_without_duplicate_words():
     results = [
         {"startFrame": 0, "endFrame": 1790 * 24000, "item": {"text": "old tail", "words": [

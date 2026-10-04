@@ -46,7 +46,7 @@ that gap matters, and the exact next round.
 | MEDIA-MULTITRACK-02 | Show imported tracks as synchronized Timeline instances and channel Script | Complete at source and frontend test level; owner viewport acceptance open | Selection exposes every track with shared scrub/zoom/edit controls and per-track Script, gain and level. |
 | MKV-FOLLOW-01 | Follow a growing local MKV into durable per-track audio chunks | Complete at generated-MKV/API test level; real OBS writer gate open | Reads complete clusters only, persists a byte/sample cursor, auto-resumes on API restart, and reconciles final audio from the closed MKV. |
 | MKV-FOLLOW-02 | Make growing-MKV import discoverable from IMPORT and return footage before backlog decode | Implemented at UI, generated-media and live OBS-file read level; full-session throughput gate open | The active MKV appears promptly while a bounded watcher drains previously recorded clusters. |
-| MKV-FOLLOW-03 | Measure and improve long-session multitrack backlog throughput | Queued | A recording already hours long can exceed realtime processing speed when each Cluster is decoded separately per track. |
+| MKV-FOLLOW-03 | Measure and improve long-session multitrack backlog throughput | Complete at measured decoder scope | Ten-minute/retained prefix improves 33.63%/50.08%, exact PCM; full writer acceptance remains MKV-ACCEPT-01. |
 | MKV-CHANNEL-01 | Media Pool right-click per-channel Import and Live Transcribe/STT checkboxes | Complete at generated-media/API/UI test level; owner viewport gate open | Native MKV/MOV/MP4 inspection offers per-track choices before import or MKV follow; imported footage retains available and selected tracks. |
 | MKV-STT-01 | Live transcript and configurable one-minute-per-track final STT backlog | Implemented at generated-media/test level; real OBS and STT engine gate open | Fast previews use checkpointed PCM; final segments use the closed MKV, persist results before cursors, and drain the short tail after Finish. |
 | MKV-ACCEPT-01 | Real OBS growing-MKV and STT engine acceptance | Queued after MKV-STT-01 | Check multi-track source timing, live backlog, Stop-tail completion, transcript quality and UI responsiveness on actual hardware. |
@@ -3892,3 +3892,21 @@ with metrics JSON. Still-growing MKV must Finish before adding an omitted track;
 uncached sources need their original locator; unpublished failed derivatives may
 remain. No STT quality or phase completion is claimed.
 Exact next **MKV-FOLLOW-03**. 19A timing/physical and 19B accuracy stay open.
+
+## MKV-FOLLOW-03 — selected-stream Cluster decode (2026-10-04)
+
+Complete at measured decoder scope. Probe/decode all selected streams once per
+complete Cluster while retaining original per-stream first PTS, PCM alignment,
+fsync and per-Cluster checkpoint. Generated six-track/ten-minute backlog improves
+99.213s -> 65.851s (33.63%, 9.11x timeline realtime). Retained actual OBS prefix
+12 Clusters/49.92s improves serial control 20.430s -> 10.197s (50.08%). Decoder
+calls drop 83.33%; all PCM/frame/gap metadata remain exact. Existing tiny AAC gaps
+are preserved, not claimed fixed. Sampled process-tree RSS stays below 72 MiB;
+not a hard bound for arbitrary Clusters. Owner source is read only/hash unchanged.
+
+Generated six-track restart and Finish hashes pass; focused follower 19 tests
+pass. Final full backend: **557 passed**, 167.31s, two existing deprecation warnings. Unchanged frontend
+475/typecheck/build evidence carries from MEDIA-STAGES-02. See ADR 0044 and
+`docs/gates/mkv-follow-03-backlog.md` with metrics JSON. No phase advances.
+Exact next **MKV-ACCEPT-01**, physical writer/A-V/speech acceptance. Full 19A
+reviewed timing and 19B accuracy prerequisites remain open, as do 18B/18C budgets.

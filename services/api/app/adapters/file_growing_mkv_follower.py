@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import struct
@@ -99,24 +100,46 @@ class FileGrowingMkvFollower:
         return json.loads(self._run([self.ffprobe, "-v", "error", "-show_streams",
                                      "-of", "json", str(path)]).stdout)
 
-    def _first_pts(self, path: Path, stream_index: int) -> float | None:
-        payload = json.loads(self._run([self.ffprobe, "-v", "error", "-select_streams",
-                                        str(stream_index), "-show_packets", "-show_entries",
-                                        "packet=pts_time", "-of", "json", str(path)]).stdout)
-        packets = payload.get("packets", [])
-        for packet in packets:
+    def _decode_cluster(self, path: Path, tracks: list[dict]) -> list[tuple[dict, float, bytes]]:
+        """Probe/decode all selected streams once; retain one-cluster checkpoints."""
+        payload = json.loads(self._run([self.ffprobe, "-v", "error", "-select_streams", "a",
+            "-show_packets", "-show_entries", "packet=stream_index,pts_time",
+            "-of", "json", str(path)]).stdout)
+        selected = {track["streamIndex"] for track in tracks}
+        present, first = set(), {}
+        for packet in payload.get("packets", []):
+            index = packet.get("stream_index")
+            if index not in selected:
+                continue
+            present.add(index)
+            if index in first:
+                continue
             try:
-                return float(packet["pts_time"])
+                pts = float(packet["pts_time"])
+                if math.isfinite(pts):
+                    first[index] = pts
             except (KeyError, TypeError, ValueError):
                 continue
-        if packets:
-            raise ValueError(f"Track {stream_index} có packet nhưng thiếu PTS; giữ nguyên checkpoint")
-        return None
-
-    def _decode(self, path: Path, stream_index: int) -> bytes:
-        return self._run([self.ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(path),
-                          "-map", f"0:{stream_index}", "-vn", "-ac", "1", "-ar", str(RATE),
-                          "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"]).stdout
+        if present - first.keys():
+            raise ValueError("Track có packet nhưng thiếu PTS; giữ nguyên checkpoint")
+        active = [track for track in tracks if track["streamIndex"] in first]
+        if not active:
+            return []
+        command = [self.ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(path)]
+        destinations = []
+        for track in active:
+            index = track["streamIndex"]
+            output = path.parent / f"{index}.s16"
+            destinations.append((track, output))
+            command.extend(["-map", f"0:{index}", "-vn", "-ac", "1", "-ar", str(RATE),
+                            "-c:a", "pcm_s16le", "-f", "s16le", str(output)])
+        self._run(command)
+        decoded = []
+        for track, output in destinations:
+            pcm = output.read_bytes()
+            if pcm:
+                decoded.append((track, first[track["streamIndex"]], pcm))
+        return decoded
 
     def _decode_to_wav(self, source: Path, stream_index: int, destination: Path) -> None:
         self._run([self.ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
@@ -343,15 +366,7 @@ class FileGrowingMkvFollower:
                 with tempfile.TemporaryDirectory() as temporary:
                     fragment = Path(temporary) / "fragment.mkv"
                     fragment.write_bytes(header_bytes + cluster_bytes)
-                    decoded = []
-                    for track in state["tracks"]:
-                        pts = self._first_pts(fragment, track["streamIndex"])
-                        if pts is None:
-                            continue
-                        pcm = self._decode(fragment, track["streamIndex"])
-                        if not pcm:
-                            continue
-                        decoded.append((track, pts, pcm))
+                    decoded = self._decode_cluster(fragment, state["tracks"])
                 sequence = state["sequence"] + 1
                 for track, pts, pcm in decoded:
                     chunk_dir = directory / "chunks" / str(track["streamIndex"])

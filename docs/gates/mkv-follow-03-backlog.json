@@ -1,0 +1,515 @@
+{
+  "machine": "Intel Core i9-10900X @ 3.70 GHz; Windows; same checkout/hardware",
+  "baselineCheckout": "00ddfd3",
+  "scope": "Follower poll/decode only; startup, hashing, STT and finalization excluded from wall-time measurement",
+  "memoryMethod": "Working set samples every 50ms via Windows Process32/GetProcessMemoryInfo; not a hard bound",
+  "runs": {
+    "baseline": {
+      "name": "baseline",
+      "elapsedSeconds": 99.21259520000604,
+      "timelineSeconds": 600.0,
+      "tracks": [
+        {
+          "stream": 0,
+          "frames": 14400000,
+          "pcmSha256": "413cc7d78b1650d38e7f65d51ee73b95fdf58463ce6f9850666315e058ee7be5",
+          "gaps": []
+        },
+        {
+          "stream": 1,
+          "frames": 14400000,
+          "pcmSha256": "247fd366925eb4369af42c867be9169aaa52fd9813a0d179287620c2733e0b63",
+          "gaps": []
+        },
+        {
+          "stream": 2,
+          "frames": 14400000,
+          "pcmSha256": "543192a393285d5923c77ef29e2baad4d12b2042fafa34649d1a6167ade5a3e3",
+          "gaps": []
+        },
+        {
+          "stream": 3,
+          "frames": 14400000,
+          "pcmSha256": "4d783c970337512a3e0e4099777d618bc2db5dda670a8f9d7523aba4bac8d791",
+          "gaps": []
+        },
+        {
+          "stream": 4,
+          "frames": 14400000,
+          "pcmSha256": "a9de183a568dda2e2b956ca967950b3b69fe9b5934a7e95f73ec5c445495cf41",
+          "gaps": []
+        },
+        {
+          "stream": 5,
+          "frames": 14400000,
+          "pcmSha256": "97bd2ceeb0477e1224377bed83391dc7f64debbbeae696b1855b599c350409ed",
+          "gaps": []
+        }
+      ],
+      "processCalls": {
+        "ffmpeg": 366,
+        "ffprobe": 366
+      },
+      "memory": {
+        "parentRss": 39976960,
+        "treeRss": 66940928
+      },
+      "clusters": 61,
+      "sourceSha256": "0636849dfbe18510ce2cd5ed166349bd983eeaf9ada014d6129ea8b56d551dba",
+      "sourceUnchanged": true,
+      "parentId": "asset-fe2e824c4e05",
+      "timelineSpeed": 6.047619244214302
+    },
+    "candidate": {
+      "name": "candidate",
+      "elapsedSeconds": 65.85128309999709,
+      "timelineSeconds": 600.0,
+      "tracks": [
+        {
+          "stream": 0,
+          "frames": 14400000,
+          "pcmSha256": "413cc7d78b1650d38e7f65d51ee73b95fdf58463ce6f9850666315e058ee7be5",
+          "gaps": []
+        },
+        {
+          "stream": 1,
+          "frames": 14400000,
+          "pcmSha256": "247fd366925eb4369af42c867be9169aaa52fd9813a0d179287620c2733e0b63",
+          "gaps": []
+        },
+        {
+          "stream": 2,
+          "frames": 14400000,
+          "pcmSha256": "543192a393285d5923c77ef29e2baad4d12b2042fafa34649d1a6167ade5a3e3",
+          "gaps": []
+        },
+        {
+          "stream": 3,
+          "frames": 14400000,
+          "pcmSha256": "4d783c970337512a3e0e4099777d618bc2db5dda670a8f9d7523aba4bac8d791",
+          "gaps": []
+        },
+        {
+          "stream": 4,
+          "frames": 14400000,
+          "pcmSha256": "a9de183a568dda2e2b956ca967950b3b69fe9b5934a7e95f73ec5c445495cf41",
+          "gaps": []
+        },
+        {
+          "stream": 5,
+          "frames": 14400000,
+          "pcmSha256": "97bd2ceeb0477e1224377bed83391dc7f64debbbeae696b1855b599c350409ed",
+          "gaps": []
+        }
+      ],
+      "processCalls": {
+        "ffmpeg": 61,
+        "ffprobe": 61
+      },
+      "memory": {
+        "parentRss": 40906752,
+        "treeRss": 74858496
+      },
+      "clusters": 61,
+      "sourceSha256": "0636849dfbe18510ce2cd5ed166349bd983eeaf9ada014d6129ea8b56d551dba",
+      "sourceUnchanged": true,
+      "parentId": "asset-0441dee8dca4",
+      "timelineSpeed": 9.111439773905127
+    },
+    "retained-baseline": {
+      "name": "retained-baseline",
+      "elapsedSeconds": 19.04934549999598,
+      "timelineSeconds": 49.92,
+      "tracks": [
+        {
+          "stream": 1,
+          "frames": 1198584,
+          "pcmSha256": "7611672708add5ad78866e09743ecfd1352190e5cf07e12e7a9f63e4a174ddd1",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 2,
+          "frames": 1198584,
+          "pcmSha256": "35dacbce84f9bf3facdb87bd6d5055a92f4fe6284bf1fc57176d4184a1d5974d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 3,
+          "frames": 1198584,
+          "pcmSha256": "f0739cd50c21d0a242e9bc5ac64c68a5b44865d5d1cad48abc305d8da4ac8511",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 4,
+          "frames": 1198584,
+          "pcmSha256": "c23fcfac815437c0e989cce76e12954186d546c1d26758baa40d8186ebe13e8d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 5,
+          "frames": 1198584,
+          "pcmSha256": "25b31b83c1bf942e5fbd03eba162faba2b46c50010577445a7eeb4411a96e29c",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 6,
+          "frames": 1198080,
+          "pcmSha256": "4884f701434b9d22ec638be8566351e0f27c7204f62679fb43213b63ce31fe42",
+          "gaps": [
+            {
+              "startFrame": 198136,
+              "frames": 8
+            },
+            {
+              "startFrame": 515576,
+              "frames": 16
+            },
+            {
+              "startFrame": 798200,
+              "frames": 16
+            }
+          ]
+        }
+      ],
+      "processCalls": {
+        "ffmpeg": 72,
+        "ffprobe": 72
+      },
+      "memory": {
+        "parentRss": 38096896,
+        "treeRss": 67297280
+      },
+      "clusters": 12,
+      "sourceSha256": "3b8f0d8b673e7e29d1af1c61222b729963cc31aee78d3425314b80fe501f6197",
+      "sourceUnchanged": true,
+      "parentId": "asset-17208e5a193c",
+      "timelineSpeed": 2.6205624754934775
+    },
+    "retained-control": {
+      "name": "retained-control",
+      "elapsedSeconds": 20.429534400012926,
+      "timelineSeconds": 49.92,
+      "tracks": [
+        {
+          "stream": 1,
+          "frames": 1198584,
+          "pcmSha256": "7611672708add5ad78866e09743ecfd1352190e5cf07e12e7a9f63e4a174ddd1",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 2,
+          "frames": 1198584,
+          "pcmSha256": "35dacbce84f9bf3facdb87bd6d5055a92f4fe6284bf1fc57176d4184a1d5974d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 3,
+          "frames": 1198584,
+          "pcmSha256": "f0739cd50c21d0a242e9bc5ac64c68a5b44865d5d1cad48abc305d8da4ac8511",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 4,
+          "frames": 1198584,
+          "pcmSha256": "c23fcfac815437c0e989cce76e12954186d546c1d26758baa40d8186ebe13e8d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 5,
+          "frames": 1198584,
+          "pcmSha256": "25b31b83c1bf942e5fbd03eba162faba2b46c50010577445a7eeb4411a96e29c",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 6,
+          "frames": 1198080,
+          "pcmSha256": "4884f701434b9d22ec638be8566351e0f27c7204f62679fb43213b63ce31fe42",
+          "gaps": [
+            {
+              "startFrame": 198136,
+              "frames": 8
+            },
+            {
+              "startFrame": 515576,
+              "frames": 16
+            },
+            {
+              "startFrame": 798200,
+              "frames": 16
+            }
+          ]
+        }
+      ],
+      "processCalls": {
+        "ffmpeg": 72,
+        "ffprobe": 72
+      },
+      "memory": {
+        "parentRss": 38653952,
+        "treeRss": 68567040
+      },
+      "clusters": 12,
+      "sourceSha256": "3b8f0d8b673e7e29d1af1c61222b729963cc31aee78d3425314b80fe501f6197",
+      "sourceUnchanged": true,
+      "parentId": "asset-be47de0a5944",
+      "timelineSpeed": 2.443521179805665
+    },
+    "retained-candidate": {
+      "name": "retained-candidate",
+      "elapsedSeconds": 10.197477199995774,
+      "timelineSeconds": 49.92,
+      "tracks": [
+        {
+          "stream": 1,
+          "frames": 1198584,
+          "pcmSha256": "7611672708add5ad78866e09743ecfd1352190e5cf07e12e7a9f63e4a174ddd1",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 2,
+          "frames": 1198584,
+          "pcmSha256": "35dacbce84f9bf3facdb87bd6d5055a92f4fe6284bf1fc57176d4184a1d5974d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 3,
+          "frames": 1198584,
+          "pcmSha256": "f0739cd50c21d0a242e9bc5ac64c68a5b44865d5d1cad48abc305d8da4ac8511",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 4,
+          "frames": 1198584,
+          "pcmSha256": "c23fcfac815437c0e989cce76e12954186d546c1d26758baa40d8186ebe13e8d",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 5,
+          "frames": 1198584,
+          "pcmSha256": "25b31b83c1bf942e5fbd03eba162faba2b46c50010577445a7eeb4411a96e29c",
+          "gaps": [
+            {
+              "startFrame": 398840,
+              "frames": 16
+            },
+            {
+              "startFrame": 598528,
+              "frames": 8
+            }
+          ]
+        },
+        {
+          "stream": 6,
+          "frames": 1198080,
+          "pcmSha256": "4884f701434b9d22ec638be8566351e0f27c7204f62679fb43213b63ce31fe42",
+          "gaps": [
+            {
+              "startFrame": 198136,
+              "frames": 8
+            },
+            {
+              "startFrame": 515576,
+              "frames": 16
+            },
+            {
+              "startFrame": 798200,
+              "frames": 16
+            }
+          ]
+        }
+      ],
+      "processCalls": {
+        "ffmpeg": 12,
+        "ffprobe": 12
+      },
+      "memory": {
+        "parentRss": 38899712,
+        "treeRss": 74907648
+      },
+      "clusters": 12,
+      "sourceSha256": "3b8f0d8b673e7e29d1af1c61222b729963cc31aee78d3425314b80fe501f6197",
+      "sourceUnchanged": true,
+      "parentId": "asset-e8b4b5672b6c",
+      "timelineSpeed": 4.895328424957958
+    }
+  },
+  "generatedTimeReduction": 0.3362608551137559,
+  "retainedTimeReduction": 0.5008463237424872,
+  "allPcmAndGapMetadataEquivalent": true,
+  "generatedFinal": {
+    "restartPollIdempotent": true,
+    "finishIdempotent": true,
+    "finalPcmMatchesProvisional": true,
+    "tracks": [
+      {
+        "stream": 0,
+        "frames": 14400000,
+        "pcmSha256": "413cc7d78b1650d38e7f65d51ee73b95fdf58463ce6f9850666315e058ee7be5"
+      },
+      {
+        "stream": 1,
+        "frames": 14400000,
+        "pcmSha256": "247fd366925eb4369af42c867be9169aaa52fd9813a0d179287620c2733e0b63"
+      },
+      {
+        "stream": 2,
+        "frames": 14400000,
+        "pcmSha256": "543192a393285d5923c77ef29e2baad4d12b2042fafa34649d1a6167ade5a3e3"
+      },
+      {
+        "stream": 3,
+        "frames": 14400000,
+        "pcmSha256": "4d783c970337512a3e0e4099777d618bc2db5dda670a8f9d7523aba4bac8d791"
+      },
+      {
+        "stream": 4,
+        "frames": 14400000,
+        "pcmSha256": "a9de183a568dda2e2b956ca967950b3b69fe9b5934a7e95f73ec5c445495cf41"
+      },
+      {
+        "stream": 5,
+        "frames": 14400000,
+        "pcmSha256": "97bd2ceeb0477e1224377bed83391dc7f64debbbeae696b1855b599c350409ed"
+      }
+    ]
+  },
+  "fullSessionObsReplay": false,
+  "liveWriterAvSpeechAcceptance": false,
+  "validation": {
+    "focusedBackendPassed": 19,
+    "fullBackendPassed": 557,
+    "fullBackendSeconds": 167.31,
+    "existingWarnings": 2,
+    "frontendUnchangedFrom": "00ddfd3",
+    "frontendPassed": 475,
+    "frontendFiles": 55,
+    "typecheck": "passed in MEDIA-STAGES-02",
+    "build": "passed in MEDIA-STAGES-02"
+  }
+}

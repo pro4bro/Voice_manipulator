@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-04 — MEDIA-STAGES-02 omitted completed-container tracks complete.
-last_activity_desc: API/UI add under same footage; retry/concurrency/move/browser pass. Backend 552/frontend 475/typecheck/build pass. Exact next MKV-FOLLOW-03; STT recognition/timing acceptance remains open.
+last_activity: 2026-10-04 — MKV-FOLLOW-03 selected-stream decode measured and accepted.
+last_activity_desc: Backlog wall time drops 33.63% generated /50.08% retained OBS prefix, exact PCM and restart/Finish pass. Exact next MKV-ACCEPT-01; reviewed timing/recognition and full writer acceptance remain open.
 ---
 
 # Project State
