@@ -1,0 +1,141 @@
+{
+  "round": "LIVELINK-STT-19B7",
+  "date": "2026-10-05",
+  "disposition": "reject-candidate-no-product-default-change",
+  "validRun": ".scratch/livelink-stt-19b7/run-1-1s-pcm",
+  "hypothesis": "A 1.1-second utterance boundary combined with the 19B4 PCM-preserving adapter may reduce segmentation without losing recognition quality.",
+  "settings": {
+    "corpus": "same frozen LIVELINK-STT-19A corpus as 19B6",
+    "sourceUtterances": 16,
+    "tracks": 2,
+    "windowSeconds": 4.0,
+    "silenceBoundarySeconds": 1.1,
+    "model": "medium",
+    "language": "vi",
+    "cadenceMilliseconds": 250,
+    "recognizerWav": "mono PCM16 at 24000 Hz",
+    "productDefaultChanged": false
+  },
+  "score": {
+    "referenceCharacters": 2003,
+    "characterEdits": 419,
+    "cer": 0.2091862206689965,
+    "cerBudget": 0.15,
+    "cerBudgetPassed": false,
+    "referenceSyllables": 616,
+    "syllableEdits": 161,
+    "wer": 0.26136363636363635,
+    "werBudget": 0.3,
+    "werBudgetPassed": true,
+    "track1Cer": 0.23297491039426524,
+    "track2Cer": 0.19210977701543738,
+    "silenceInsertions": 0,
+    "timingAccuracy": "unmeasured-without-reviewed-word-anchors"
+  },
+  "comparisonWith19B6": {
+    "baselineRun": ".scratch/livelink-stt-19b6/run-3-corrected",
+    "fragmentEvents": {
+      "19B6": 29,
+      "19B7": 16,
+      "change": -13,
+      "changePercent": -44.827586206896555
+    },
+    "partialEvents": {
+      "19B6": 56,
+      "19B7": 52
+    },
+    "recognizerCalls": {
+      "19B6": 85,
+      "19B7": 68,
+      "change": -17
+    },
+    "characterEdits": {
+      "19B6": 393,
+      "19B7": 419,
+      "change": 26
+    },
+    "cer": {
+      "19B6": 0.19620569146280578,
+      "19B7": 0.2091862206689965,
+      "changePercentagePoints": 1.298052920169072
+    },
+    "syllableEdits": {
+      "19B6": 149,
+      "19B7": 161,
+      "change": 12
+    },
+    "wer": {
+      "19B6": 0.2418831168831169,
+      "19B7": 0.26136363636363635,
+      "changePercentagePoints": 1.948051948051945
+    }
+  },
+  "events": {
+    "listening": 16,
+    "partial": 52,
+    "final": 16,
+    "errors": 0
+  },
+  "recognizerSourceSpanChecks": {
+    "count": 16,
+    "matches": 16,
+    "allMatch": true
+  },
+  "timing": {
+    "status": "confounded-by-concurrent-backend-pytest",
+    "interpretation": "Do not claim a latency improvement or regression from this candidate. The backend suite overlapped part of the replay; the Studio later reported tiny and medium models loaded.",
+    "elapsedSeconds": 143.953,
+    "audioTimelineSeconds": 116.454,
+    "postLastSampleOfferToPersistedFinalSeconds": {
+      "count": 16,
+      "p50": 12.5395,
+      "p95": 32.859,
+      "max": 32.859
+    },
+    "intendedSourceClockEndToPersistedFinalSeconds": {
+      "count": 16,
+      "p50": 12.594,
+      "p95": 33.234,
+      "max": 33.234
+    },
+    "semaphoreWaitSummedPerFinalSessionSeconds": {
+      "count": 16,
+      "p50": 1.242,
+      "p95": 10.609,
+      "max": 10.609
+    },
+    "recognizerHttpElapsedSummedPerFinalSessionSeconds": {
+      "count": 16,
+      "p50": 4.305,
+      "p95": 20.422,
+      "max": 20.422
+    },
+    "offerScheduleSourceClockSkewSeconds": {
+      "count": 932,
+      "p50": 0.031,
+      "p95": 0.281,
+      "max": 0.781
+    }
+  },
+  "artifactIntegrity": {
+    "sourceClips": 16,
+    "sourceHashesUnchanged": true,
+    "eventErrorCount": 0,
+    "recognizerInputSpansMatch": 16
+  },
+  "studio": {
+    "device": "cuda",
+    "computeType": "float16",
+    "finalLoadedModels": ["tiny", "medium"],
+    "finalModelLoadCount": 2
+  },
+  "artifacts": {
+    "driver": "scripts/profiling/livelink_stt_19b_1s_pcm_context.py",
+    "timedHarness": "scripts/profiling/livelink_stt_19b_timed_context.py",
+    "runMetrics": ".scratch/livelink-stt-19b7/run-1-1s-pcm/metrics.json",
+    "finalEvents": ".scratch/livelink-stt-19b7/run-1-1s-pcm/events.json",
+    "recognizerTimings": ".scratch/livelink-stt-19b7/run-1-1s-pcm/recognizer-timings.json",
+    "eventPersistence": ".scratch/livelink-stt-19b7/run-1-1s-pcm/event-persistence.json",
+    "offerSchedule": ".scratch/livelink-stt-19b7/run-1-1s-pcm/offer-schedule.json"
+  }
+}

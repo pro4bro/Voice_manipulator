@@ -47,6 +47,16 @@ physical OBS timing claim. See `docs/gates/livelink-stt-19b6-timed.md`.
 Nine near-term parent rounds remain. Next19B7 isolates1.1s boundary with
 preserved quiet PCM; 03-04A durable-session implementation proceeds separately.
 
+## LIVELINK-STT-19B7 — preserved-context boundary rejected (2026-10-05)
+
+One1.1s boundary candidate with repaired quiet PCM reduces final spans29->16,
+but CER19.62->20.92% and WER24.19->26.14%; reject, retain0.5s default.
+16/16 source spans and hashes match, no errors. Timing is confounded by the
+concurrent fullbackend suite and additional Studio model load; no causal speed
+claim or repeat. See `docs/gates/livelink-stt-19b7-1s-pcm.md`.
+Full19A/19B CER, reviewed word anchors and physical OBS timing remain open.
+Nine near-term parent rounds remain; no phase advance or budget relaxation.
+
 ## Verification Baseline
 
 ## LIVELINK-CONNECT-01 — Preferences transport recovery (2026-10-04)
