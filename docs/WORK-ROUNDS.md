@@ -4146,3 +4146,15 @@ See `docs/gates/livelink-stt-19b3-context.md` and aggregate metrics. Full19A
 timing/physical evidence and19B recognition remain open; nine parent rounds
 remain. Next19B4 tests a concrete internal-quiet-PCM compaction hypothesis
 without also changing the silence/window settings.
+
+## LIVELINK-STT-19B6 — corrected latency attribution (2026-10-05)
+
+Completed paced replay with in-memory timing probes: post-last-offer p95
+6.734s, intended source-end p95 6.891s, semaphore wait/session p95 1.578s,
+HTTP/session p95 4.610s, event persistence p95 0.188s. CER19.62% still fails
+15%; WER24.19% passes30%. Zero errors,29 final spans/input lengths agree,
+16 source hashes unchanged. Run1 timing invalid; interrupted run2 retained,
+cause unknown. Cachedmedium CUDA inference; no product setting change or
+physical OBS timing claim. See `docs/gates/livelink-stt-19b6-timed.md`.
+Nine near-term parent rounds remain. Next19B7 isolates1.1s boundary with
+preserved quiet PCM; 03-04A durable-session implementation proceeds separately.

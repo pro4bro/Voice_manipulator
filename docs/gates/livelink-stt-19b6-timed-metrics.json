@@ -1,0 +1,136 @@
+{
+  "round": "LIVELINK-STT-19B6",
+  "date": "2026-10-05",
+  "disposition": "timing-attribution-complete-text-acceptance-open",
+  "validRun": ".scratch/livelink-stt-19b6/run-3-corrected",
+  "settings": {
+    "corpus": "frozen LIVELINK-STT-19A corpus",
+    "sourceUtterances": 16,
+    "tracks": 2,
+    "windowSeconds": 4.0,
+    "silenceBoundarySeconds": 0.5,
+    "model": "medium",
+    "language": "vi",
+    "cadenceMilliseconds": 250,
+    "recognizerWav": "mono PCM16 at 24000 Hz"
+  },
+  "score": {
+    "referenceCharacters": 2003,
+    "characterEdits": 393,
+    "cer": 0.19620569146280578,
+    "cerBudget": 0.15,
+    "cerBudgetPassed": false,
+    "referenceSyllables": 616,
+    "syllableEdits": 149,
+    "wer": 0.2418831168831169,
+    "werBudget": 0.3,
+    "werBudgetPassed": true,
+    "track1Cer": 0.21385902031063322,
+    "track2Cer": 0.1835334476843911,
+    "silenceInsertions": 0,
+    "timingAccuracy": "unmeasured-without-reviewed-word-anchors"
+  },
+  "events": {
+    "listening": 29,
+    "partial": 56,
+    "final": 29,
+    "errors": 0
+  },
+  "recognizerSourceSpanChecks": {
+    "count": 29,
+    "matches": 29,
+    "allMatch": true
+  },
+  "latencySeconds": {
+    "onsetToFinalEvent": {
+      "count": 29,
+      "p50": 8.797,
+      "p95": 16.516,
+      "max": 19.563
+    },
+    "lastSourceChunkOfferToPersistedFinal": {
+      "count": 29,
+      "p50": 4.032,
+      "p95": 6.734,
+      "max": 7.828
+    },
+    "intendedSourceClockEndToPersistedFinal": {
+      "count": 29,
+      "p50": 4.11,
+      "p95": 6.891,
+      "max": 7.875,
+      "budget": 8.0,
+      "budgetPassed": true
+    },
+    "semaphoreWaitSummedPerFinalSession": {
+      "count": 29,
+      "p50": 0.64,
+      "p95": 1.578,
+      "max": 1.906
+    },
+    "recognizerHttpElapsedSummedPerFinalSession": {
+      "count": 29,
+      "p50": 2.047,
+      "p95": 4.61,
+      "max": 4.937
+    },
+    "finalEventAppendElapsed": {
+      "count": 29,
+      "p50": 0.078,
+      "p95": 0.188,
+      "max": 0.328
+    },
+    "offerScheduleSourceClockSkew": {
+      "count": 932,
+      "p50": 0.032,
+      "p95": 0.313,
+      "max": 0.61
+    },
+    "recognizerCallSemaphoreWait": {
+      "count": 85,
+      "p50": 0.0,
+      "p95": 0.89,
+      "max": 1.25
+    },
+    "recognizerCallHttpElapsed": {
+      "count": 85,
+      "p50": 0.766,
+      "p95": 1.36,
+      "max": 2.172
+    }
+  },
+  "replay": {
+    "elapsedSeconds": 116.61,
+    "audioTimelineSeconds": 116.454,
+    "sourceClips": 16,
+    "sourceHashesUnchanged": true,
+    "studioDevice": "cuda",
+    "studioComputeType": "float16",
+    "mediumModelLoadCount": 1
+  },
+  "attempts": [
+    {
+      "path": ".scratch/livelink-stt-19b6/run-1",
+      "status": "timing-invalid",
+      "reason": "synchronous full JSON snapshots were written inside the capture/replay hot path and materially stalled paced timing; retain as diagnostic only"
+    },
+    {
+      "path": ".scratch/livelink-stt-19b6/run-2-batched",
+      "status": "incomplete",
+      "reason": "replay and Studio processes were absent at inspection; retained artifacts ended at 26 final events and 50 partial events, with cause unknown"
+    },
+    {
+      "path": ".scratch/livelink-stt-19b6/run-3-corrected",
+      "status": "complete",
+      "reason": "in-memory probe capture during replay, probe files saved after completion, full corpus and artifact checks passed"
+    }
+  ],
+  "artifacts": {
+    "harness": "scripts/profiling/livelink_stt_19b_timed_context.py",
+    "runMetrics": ".scratch/livelink-stt-19b6/run-3-corrected/metrics.json",
+    "finalEvents": ".scratch/livelink-stt-19b6/run-3-corrected/events.json",
+    "recognizerTimings": ".scratch/livelink-stt-19b6/run-3-corrected/recognizer-timings.json",
+    "eventPersistence": ".scratch/livelink-stt-19b6/run-3-corrected/event-persistence.json",
+    "offerSchedule": ".scratch/livelink-stt-19b6/run-3-corrected/offer-schedule.json"
+  }
+}
