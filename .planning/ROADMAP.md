@@ -1,5 +1,23 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## 03-04A — durable Reading Session recovery (2026-10-05)
+
+Server-owned pack/Speaker/card snapshot, revisions, take receipts, measured
+coverage, skip/end and reopen now persist with the project. Stable capture IDs
+recover lost upload results without duplicate assets; unpublished intents retire
+without trapping the card. UI restores HQ in IDLE, requires explicit Speaker,
+holds uncertain takes for exact retry and keeps card text instead of live ASR.
+Real synthetic3s WAV/API and browser proof survives Unicode folder move,
+Open Existing and official API restart with identical source/audio hashes.
+Frontend507/58 files, backend570/twoexistingwarnings, typecheck/build/diff pass.
+See `docs/gates/03-04a-durable-session.md` and ADR0045.
+03-04 remains open for QC, flow segmentation, emotion blocks, references, tier
+policy and identity acceptance; per-take Media Pool receipts are intermediate.
+Nine near-term parents remain. Exact next acceptance requires reviewed19A
+word/video anchors and physical OBS clocks, or trusted03-03C speaker labels
+(owner question pending); no phase or budget advance is claimed.
+
+
 ## LIVELINK-STT-19B7 — preserved-context boundary rejected (2026-10-05)
 
 One1.1s boundary candidate with repaired quiet PCM reduces final spans29->16,

@@ -229,6 +229,10 @@ export interface ProjectMediaAsset {
   aiReviewStatus: AIReviewStatus;
   trainingSelected: boolean;
   captureTier: CaptureTier;
+  readingSessionId?: string | null;
+  readingCardId?: string | null;
+  captureId?: string | null;
+  sourceContentHash?: string | null;
   speakerProfileIds: string[];
   environmentProfileIds: string[];
   emotion: EmotionLabel;
@@ -548,6 +552,27 @@ export interface ReadingPackSummary {
 
 export interface ReadingPack extends ReadingPackSummary {
   passages: ReadingPassage[];
+}
+
+export interface ReadingSession {
+  id: string;
+  schemaVersion: 1;
+  revision: number;
+  status: "in_progress" | "completed" | "ended";
+  speakerProfileId: string;
+  speakerName: string;
+  packTitle: string;
+  packVersion: number;
+  plan: import("./reading-plan").ReadingPlan;
+  cardIndex: number;
+  recordedSecondsByCard: Record<string, number>;
+  secondsSinceBreak: number;
+  skippedCardIds: string[];
+  takes: Array<{ captureId: string; cardId: string; assetId: string; durationSeconds: number }>;
+  pendingCaptures?: Array<{ captureId: string; cardId: string; sourceContentHash: string; expectedRevision?: number }>;
+  retiredCaptures?: Array<{ captureId: string; cardId: string; sourceContentHash: string; expectedRevision?: number }>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ReadingAudienceOption {

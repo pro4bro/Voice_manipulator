@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Recorder } from "./Recorder";
 
 describe("Recorder", () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -14,6 +15,7 @@ describe("Recorder", () => {
         ]),
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        getUserMedia: vi.fn(),
       },
     });
   });
@@ -54,6 +56,7 @@ describe("Recorder", () => {
 
   function session(overrides = {}) {
     return {
+      id: "session-1", revision: 3, speakerName: "Người đọc",
       packTitle: PACK.title,
       mode: "flow" as const,
       card: CARD,
@@ -84,17 +87,95 @@ describe("Recorder", () => {
     expect(screen.getByRole("checkbox", { name: "Sad" })).toBeDisabled();
   });
 
-  it("will not open a session before a pack and an emotion are chosen", () => {
+  it("requires an explicit Speaker Profile before opening a session", () => {
     const onStart = vi.fn();
-    render(<Recorder onRecordingReady={() => undefined} onStartReadingSession={onStart} readingPacks={[{ ...PACK, emotions: [...PACK.emotions] }]} />);
+    render(<Recorder onRecordingReady={() => undefined} onStartReadingSession={onStart} readingSpeakers={[{ id: "speaker-1", name: "Người đọc" }]} readingPacks={[{ ...PACK, emotions: [...PACK.emotions] }]} />);
     fireEvent.click(screen.getByRole("button", { name: "HQ" }));
 
     expect(screen.getByRole("button", { name: "Bắt đầu phiên đọc" })).toBeDisabled();
 
     fireEvent.change(screen.getByRole("combobox", { name: "Bộ bài đọc" }), { target: { value: "vi-core-v1" } });
+    expect(screen.getByRole("button", { name: "Bắt đầu phiên đọc" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("combobox", { name: "Speaker của phiên đọc" }), { target: { value: "speaker-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Bắt đầu phiên đọc" }));
 
-    expect(onStart).toHaveBeenCalledWith("vi-core-v1", ["normal"], "flow");
+    expect(onStart).toHaveBeenCalledWith("vi-core-v1", ["normal"], "flow", "speaker-1");
+  });
+
+  it("restores a session in HQ while leaving the microphone idle", () => {
+    render(<Recorder onRecordingReady={() => undefined} readingSession={session()} />);
+    expect(screen.getByRole("button", { name: "Thu thẻ 4" })).toBeEnabled();
+    expect(screen.getByText("IDLE")).toBeInTheDocument();
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("holds the current card until an uncertain upload can be retried", () => {
+    const retry = vi.fn();
+    render(<Recorder onRecordingReady={() => undefined} readingSession={session()} readingPending onRetryReadingTake={retry} />);
+    expect(screen.getByRole("button", { name: "Thu thẻ 4" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Bỏ thẻ này" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Kết thúc phiên" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu lại bản thu" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("files a recording under the card frozen when Record was pressed", async () => {
+    let pcmTap: { onaudioprocess?: (event: unknown) => void };
+    const node = () => ({ connect: (other: unknown) => other, disconnect: vi.fn() });
+    class PcmContext {
+      sampleRate = 24000;
+      destination = node();
+      createGain() { return { ...node(), gain: { value: 1 } }; }
+      createAnalyser() { return { ...node(), fftSize: 4096, smoothingTimeConstant: 0, getFloatTimeDomainData: (data: Float32Array) => data.fill(0) }; }
+      createMediaStreamSource() { return node(); }
+      createMediaStreamDestination() { return { ...node(), stream: {} }; }
+      createScriptProcessor() { pcmTap = { ...node(), onaudioprocess: undefined }; return pcmTap; }
+      close() { return Promise.resolve(); }
+    }
+    vi.stubGlobal("AudioContext", PcmContext);
+    class BrowserRecorder {
+      static isTypeSupported() { return true; }
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable?: (event: { data: Blob }) => void;
+      onstop?: () => void;
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal("MediaRecorder", BrowserRecorder);
+    vi.stubGlobal("URL", class extends URL { static createObjectURL() { return "blob:take"; } });
+    const stopTrack = vi.fn();
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue({
+      getAudioTracks: () => [{ label: "Test mic", stop: stopTrack }],
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream);
+    const onReady = vi.fn();
+    const view = render(<Recorder onRecordingReady={onReady} readingSession={session()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Thu thẻ 4" }));
+    await screen.findByRole("button", { name: "Dừng thu" });
+    pcmTap!.onaudioprocess?.({ inputBuffer: { getChannelData: () => new Float32Array(2400).fill(0.1) } });
+    view.rerender(<Recorder onRecordingReady={onReady} readingSession={session({ revision: 4, card: { ...CARD, cardId: "next-card" } })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dừng thu" }));
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce());
+    expect(onReady.mock.calls[0][0]).toMatchObject({
+      readingSessionId: "session-1", readingSessionRevision: 3, readingCardId: CARD.cardId, knownText: CARD.text,
+      captureId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
+    expect(stopTrack).toHaveBeenCalled();
+    expect(onReady.mock.calls[0][0].file.name).toMatch(/\.wav$/);
+    expect(onReady.mock.calls[0][0].duration).toBe(0.1);
+  });
+
+  it("does not open the microphone for HQ when lossless WAV capture is unavailable", () => {
+    vi.stubGlobal("AudioContext", undefined);
+    render(<Recorder onRecordingReady={vi.fn()} readingSession={session()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Thu thẻ 4" }));
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Phiên đọc cần trình duyệt hỗ trợ thu WAV/)).toBeInTheDocument();
   });
 
   it("shows the card, its direction, and what each emotion still owes", () => {

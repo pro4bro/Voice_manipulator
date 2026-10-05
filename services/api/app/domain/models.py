@@ -67,7 +67,7 @@ MediaTranscriptionStatus = Literal[
 MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error"]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
 WordTimingQuality = Literal["unverified", "source", "partial", "needs-alignment"]
-MediaRevisionSource = Literal["stt", "ai", "user", "record", "import"]
+MediaRevisionSource = Literal["stt", "ai", "user", "record", "import", "guided"]
 EmotionLabel = Literal[
     "exciting",
     "funny",
@@ -165,6 +165,13 @@ class MediaAssetCreate(DomainModel):
     # what once left most of a workspace's projects unopenable.
     deleted_at: datetime | None = None
     capture_tier: CaptureTier = "import"
+    # Stable guided-reading capture identity. Ordinary media imports leave
+    # these fields empty; together they let a retried request reconcile an
+    # already-published asset without importing its bytes twice.
+    reading_session_id: str | None = None
+    reading_card_id: str | None = None
+    capture_id: str | None = None
+    source_content_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="before")
     @classmethod
@@ -194,7 +201,9 @@ class ProjectMediaAsset(MediaAssetCreate):
     def create(cls, asset_id: str, payload: MediaAssetCreate) -> "ProjectMediaAsset":
         now = datetime.now(timezone.utc)
         initial_source: MediaRevisionSource = (
-            "record"
+            "guided"
+            if payload.capture_tier == "guided"
+            else "record"
             if payload.origin == "record" and payload.transcription_status in {"queued", "processing"}
             else "stt"
         )
@@ -807,6 +816,116 @@ class ReadingPackSummary(DomainModel):
 
 class ReadingPack(ReadingPackSummary):
     passages: list[ReadingPassage] = Field(default_factory=list)
+
+
+class ReadingPlanCard(DomainModel):
+    card_id: str
+    passage_id: str
+    passage_title: str
+    direction: str
+    emotion: EmotionLabel
+    text: str
+    estimated_seconds: float = Field(ge=0, allow_inf_nan=False)
+
+
+class ReadingPlanSnapshot(DomainModel):
+    pack_id: str
+    language: str
+    mode: Literal["flow", "take"]
+    emotions: list[EmotionLabel]
+    cards: list[ReadingPlanCard]
+
+
+class ReadingTake(DomainModel):
+    capture_id: str
+    card_id: str
+    asset_id: str
+    duration_seconds: float = Field(ge=0, allow_inf_nan=False)
+
+
+class ReadingCaptureIntent(DomainModel):
+    capture_id: str
+    card_id: str
+    source_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_revision: int = Field(ge=1)
+
+
+class ReadingSession(DomainModel):
+    id: str
+    schema_version: Literal[1] = 1
+    revision: int = Field(default=1, ge=1)
+    status: Literal["in_progress", "completed", "ended"] = "in_progress"
+    speaker_profile_id: str
+    speaker_name: str
+    pack_title: str
+    pack_version: int = Field(ge=1)
+    plan: ReadingPlanSnapshot
+    card_index: int = Field(default=0, ge=0)
+    recorded_seconds_by_card: dict[str, float] = Field(default_factory=dict)
+    seconds_since_break: float = Field(default=0, ge=0, allow_inf_nan=False)
+    skipped_card_ids: list[str] = Field(default_factory=list)
+    takes: list[ReadingTake] = Field(default_factory=list)
+    # A durable upload intent is written before importing. It is intentionally
+    # not a take and never advances the cursor until the media index contains a
+    # verified asset with the same capture ID and source hash.
+    pending_captures: list[ReadingCaptureIntent] = Field(default_factory=list)
+    # Retired means no Media Pool artifact existed when the session was next
+    # opened. Keep the request identity so a late exact retry remains safe.
+    retired_captures: list[ReadingCaptureIntent] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def _valid_progress_state(self) -> "ReadingSession":
+        import math
+
+        card_ids = [card.card_id for card in self.plan.cards]
+        if len(set(card_ids)) != len(card_ids):
+            raise ValueError("Reading Session snapshot contains duplicate card IDs.")
+        if self.card_index > len(card_ids):
+            raise ValueError("Reading Session cursor exceeds its snapshotted plan.")
+        if any(card_id not in card_ids or not math.isfinite(seconds) or seconds < 0
+               for card_id, seconds in self.recorded_seconds_by_card.items()):
+            raise ValueError("Reading Session recorded coverage must reference cards and finite nonnegative seconds.")
+        take_ids = [take.capture_id for take in self.takes]
+        pending_ids = [capture.capture_id for capture in self.pending_captures]
+        retired_ids = [capture.capture_id for capture in self.retired_captures]
+        if len(set(take_ids)) != len(take_ids) or len(set(pending_ids)) != len(pending_ids):
+            raise ValueError("Reading Session capture IDs must be unique.")
+        if set(take_ids) & (set(pending_ids) | set(retired_ids)) or set(pending_ids) & set(retired_ids):
+            raise ValueError("Reading Session capture cannot be linked, pending, and retired at once.")
+        if any(take.card_id not in card_ids for take in self.takes):
+            raise ValueError("Reading Session take references an unknown snapshotted card.")
+        if len(set(retired_ids)) != len(retired_ids):
+            raise ValueError("Reading Session retired capture IDs must be unique.")
+        return self
+
+
+class ReadingSessionCreate(DomainModel):
+    session_id: str
+    pack_id: str
+    speaker_profile_id: str
+    emotions: list[EmotionLabel] = Field(min_length=1)
+    mode: Literal["flow", "take"]
+
+
+class ReadingSessionSkip(DomainModel):
+    expected_revision: int = Field(ge=1)
+    card_id: str
+
+
+class ReadingSessionEnd(DomainModel):
+    expected_revision: int = Field(ge=1)
+
+
+class ReadingSessionTakeResult(DomainModel):
+    session: ReadingSession
+    asset: ProjectMediaAsset
+
+
+class ReadingSessionPage(DomainModel):
+    items: list[ReadingSession]
+    total: int = Field(ge=0)
 
 
 # ---------------------------------------------------------------------------

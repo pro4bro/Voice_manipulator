@@ -129,6 +129,8 @@ export interface StudioContext {
   readingPacks: ReadingPackSummary[];
   readingSession: ReadingSessionView | null;
   readingBusy: boolean;
+  readingPending: boolean;
+  onRetryReadingTake: () => void;
   onScriptChange: (value: string) => void;
   onVoiceChange: (voiceId: string) => void;
   onSpeedChange: (value: number) => void;
@@ -174,7 +176,7 @@ export interface StudioContext {
   onRunAiReview: () => void;
   onRunDiarization: () => void;
   onWordSelectionChange: (selection: WordSelection) => void;
-  onStartReadingSession: (packId: string, emotions: EmotionLabel[], mode: ReadingMode) => void;
+  onStartReadingSession: (packId: string, emotions: EmotionLabel[], mode: ReadingMode, speakerProfileId: string) => void;
   onEndReadingSession: () => void;
   onSkipCard: () => void;
   onCompileDataset: () => void;
@@ -293,7 +295,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder readingSpeakers={context.trainingCatalog.speakers} readingPending={context.readingPending} onRetryReadingTake={context.onRetryReadingTake} onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "obs-capture":
       return <ObsCapture onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {

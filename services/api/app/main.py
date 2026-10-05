@@ -4,12 +4,15 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
+from datetime import datetime, timezone
+from uuid import UUID
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -27,6 +30,7 @@ from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt
 from app.adapters.obs_livelink_outbox import ObsLiveLinkOutbox
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
+from app.adapters.file_reading_sessions import FileReadingSessions
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
@@ -142,6 +146,14 @@ from app.domain.models import (
     ReadingAudienceVocabulary,
     ReadingPack,
     ReadingPackSummary,
+    ReadingSession,
+    ReadingSessionCreate,
+    ReadingSessionEnd,
+    ReadingSessionPage,
+    ReadingSessionSkip,
+    ReadingSessionTakeResult,
+    ReadingCaptureIntent,
+    ReadingTake,
     ReadingPassageDraft,
     SystemLog,
     TrainingProgressLine,
@@ -390,6 +402,8 @@ def create_app(
     reading_packs = FileReadingPacks(
         settings.reading_packs_root, settings.authored_reading_packs_root
     )
+    reading_sessions = FileReadingSessions(projects)
+    reading_session_locks: dict[str, asyncio.Lock] = {}
     runtime_status = RuntimeStatus(settings.data_root)
     vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu, python=vibevoice_python)
 
@@ -601,6 +615,7 @@ def create_app(
             await obs_livelink_stt.close()
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.state.reading_sessions = reading_sessions
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -2055,6 +2070,415 @@ def create_app(
             return reading_packs.get(pack_id)
         except ReadingPackError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    def reading_lock(project_id: str) -> asyncio.Lock:
+        return reading_session_locks.setdefault(project_id, asyncio.Lock())
+
+    def reading_card(session: ReadingSession, card_id: str):
+        return next((card for card in session.plan.cards if card.card_id == card_id), None)
+
+    async def capture_asset(project_id: str, capture_id: str) -> ProjectMediaAsset | None:
+        indexed = await asyncio.to_thread(media.list, project_id)
+        matches = [asset for asset in indexed if asset.capture_id == capture_id]
+        if len(matches) > 1:
+            raise ValueError("More than one media asset uses this capture ID.")
+        return matches[0] if matches else None
+
+    async def session_get(project_id: str, session_id: str) -> ReadingSession:
+        return await asyncio.to_thread(reading_sessions.get, project_id, session_id)
+
+    async def session_list(project_id: str, status_filter: str | None = None) -> list[ReadingSession]:
+        return await asyncio.to_thread(reading_sessions.list, project_id, status_filter)
+
+    async def session_save(project_id: str, session: ReadingSession) -> ReadingSession:
+        return await asyncio.to_thread(reading_sessions.save, project_id, session)
+
+    async def verify_reading_asset(
+        project_id: str, session: ReadingSession, intent: ReadingCaptureIntent,
+        asset: ProjectMediaAsset,
+    ) -> float:
+        if (asset.reading_session_id != session.id or asset.reading_card_id != intent.card_id
+                or asset.capture_id != intent.capture_id
+                or asset.source_content_hash != intent.source_content_hash
+                or asset.capture_tier != "guided" or asset.origin != "record"):
+            raise ValueError("Indexed guided capture metadata does not match its durable intent.")
+        card = reading_card(session, intent.card_id)
+        if card is None or asset.text != card.text:
+            raise ValueError("Indexed guided capture text does not match the snapshotted Reading Card.")
+        if asset.speaker_profile_ids != [session.speaker_profile_id] or asset.emotion != card.emotion:
+            raise ValueError("Indexed guided capture speaker or emotion does not match the session snapshot.")
+        project = await asyncio.to_thread(projects.get, project_id)
+        root = Path(project.project_path).resolve()
+        source_path = (root / asset.source_path).resolve()
+        audio_path = (root / str(asset.analysis_path or "")).resolve()
+        if not source_path.is_relative_to(root) or not audio_path.is_relative_to(root):
+            raise ValueError("Guided capture artifact path escapes its project folder.")
+        if not source_path.is_file() or not audio_path.is_file():
+            raise ValueError("Guided capture audio artifact is missing.")
+        actual_hash = await asyncio.to_thread(MediaImportProcessor._sha256_file, source_path)
+        if actual_hash != intent.source_content_hash:
+            raise ValueError("Guided capture source bytes do not match its durable intent.")
+        probe = await asyncio.to_thread(media_importer._probe, audio_path)
+        audio_streams = [stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"]
+        if len(audio_streams) != 1 or audio_streams[0].get("channels") != 1:
+            raise ValueError("Guided capture analysis artifact must be mono audio.")
+        duration = await asyncio.to_thread(media_importer._audio_duration, audio_path)
+        if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+            raise ValueError("Guided capture audio duration is not finite and positive.")
+        return float(duration)
+
+    async def reconcile_reading_session(project_id: str, session: ReadingSession) -> ReadingSession:
+        changed = False
+        linked = {take.capture_id for take in session.takes}
+        remaining: list[ReadingCaptureIntent] = []
+        retired = list(session.retired_captures)
+        for intent in session.pending_captures:
+            asset = await capture_asset(project_id, intent.capture_id)
+            if asset is None:
+                # The project lock proves no upload from this API process is
+                # currently publishing. The client may have disappeared with
+                # its volatile File, so reopen releases the card while keeping
+                # a tombstone that protects the capture ID from payload reuse.
+                if not any(item.capture_id == intent.capture_id for item in retired):
+                    retired.append(intent)
+                changed = True
+                continue
+            duration = await verify_reading_asset(project_id, session, intent, asset)
+            if intent.capture_id not in linked:
+                session = _append_reading_session_take(session, intent, asset.id, duration)
+                linked.add(intent.capture_id)
+                changed = True
+            changed = True
+        if changed:
+            session = session.model_copy(update={
+                "pending_captures": remaining,
+                "retired_captures": retired,
+                "revision": session.revision + 1,
+                "updated_at": datetime.now(timezone.utc),
+            })
+            await session_save(project_id, session)
+        return session
+
+    def _append_reading_session_take(
+        session: ReadingSession, intent: ReadingCaptureIntent, asset_id: str, duration: float,
+    ) -> ReadingSession:
+        recorded = dict(session.recorded_seconds_by_card)
+        recorded[intent.card_id] = round(recorded.get(intent.card_id, 0.0) + duration, 6)
+        next_index = min(len(session.plan.cards), max(session.card_index, session.plan.cards.index(reading_card(session, intent.card_id)) + 1))
+        completed = next_index >= len(session.plan.cards)
+        return session.model_copy(update={
+            "status": "completed" if completed else session.status,
+            "card_index": next_index,
+            "recorded_seconds_by_card": recorded,
+            "seconds_since_break": round(session.seconds_since_break + duration, 6),
+            "takes": [*session.takes, ReadingTake(
+                capture_id=intent.capture_id,
+                card_id=intent.card_id,
+                asset_id=asset_id,
+                duration_seconds=duration,
+            )],
+        })
+
+    def check_canonical_uuid(value: str, label: str) -> str:
+        try:
+            canonical = str(UUID(value))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError(f"{label} must be a UUID.") from exc
+        if canonical != value:
+            raise ValueError(f"{label} must be a canonical UUID.")
+        return canonical
+
+    @app.get(
+        "/api/projects/{project_id}/reading-sessions",
+        response_model=ReadingSessionPage,
+    )
+    async def list_reading_sessions(
+        project_id: str,
+        status_filter: Literal["in_progress", "completed", "ended"] | None = Query(default=None, alias="status"),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> ReadingSessionPage:
+        try:
+            await asyncio.to_thread(projects.get, project_id)
+            async with reading_lock(project_id):
+                sessions = await session_list(project_id)
+                sessions = [await reconcile_reading_session(project_id, item) for item in sessions]
+                if status_filter:
+                    sessions = [item for item in sessions if item.status == status_filter]
+                return ReadingSessionPage(items=sessions[offset:offset + limit], total=len(sessions))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or Reading Session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/reading-sessions",
+        response_model=ReadingSession,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_reading_session(project_id: str, payload: ReadingSessionCreate) -> ReadingSession:
+        try:
+            check_canonical_uuid(payload.session_id, "sessionId")
+            async with reading_lock(project_id):
+                await asyncio.to_thread(projects.get, project_id)
+                try:
+                    existing = await session_get(project_id, payload.session_id)
+                except KeyError:
+                    existing = None
+                if existing is not None:
+                    same_request = (
+                        existing.plan.pack_id == payload.pack_id
+                        and existing.speaker_profile_id == payload.speaker_profile_id
+                        and existing.plan.emotions == payload.emotions
+                        and existing.plan.mode == payload.mode
+                    )
+                    if not same_request:
+                        raise HTTPException(status_code=409, detail="Session ID already belongs to a different request.")
+                    return await reconcile_reading_session(project_id, existing)
+                if await session_list(project_id, "in_progress"):
+                    raise HTTPException(status_code=409, detail="This project already has an active Reading Session.")
+                catalog = await asyncio.to_thread(training_catalogs.get, project_id)
+                speaker = next((item for item in catalog.speakers if item.id == payload.speaker_profile_id), None)
+                if speaker is None:
+                    raise HTTPException(status_code=400, detail="Choose a Speaker Profile from this project.")
+                pack = await asyncio.to_thread(reading_packs.get, payload.pack_id)
+                if len(set(payload.emotions)) != len(payload.emotions) or "mix" in payload.emotions:
+                    raise HTTPException(status_code=400, detail="Select each performable emotion only once.")
+                if any(emotion not in pack.emotions for emotion in payload.emotions):
+                    raise HTTPException(status_code=400, detail="The selected emotion is not available in this Reading Pack.")
+                cards = []
+                for emotion in payload.emotions:
+                    for passage in pack.passages:
+                        if passage.emotion != emotion:
+                            continue
+                        cards.extend({
+                            "card_id": card.id,
+                            "passage_id": passage.id,
+                            "passage_title": passage.title,
+                            "direction": passage.direction,
+                            "emotion": passage.emotion,
+                            "text": card.text,
+                            "estimated_seconds": card.estimated_seconds,
+                        } for card in passage.cards)
+                if not cards:
+                    raise HTTPException(status_code=400, detail="The selected Reading Pack has no cards for these emotions.")
+                now = datetime.now(timezone.utc)
+                session = ReadingSession(
+                    id=payload.session_id,
+                    speaker_profile_id=speaker.id,
+                    speaker_name=speaker.name,
+                    pack_title=pack.title,
+                    pack_version=pack.version,
+                    plan={
+                        "pack_id": pack.pack_id,
+                        "language": pack.language,
+                        "mode": payload.mode,
+                        "emotions": payload.emotions,
+                        "cards": cards,
+                    },
+                    created_at=now,
+                    updated_at=now,
+                )
+                return await asyncio.to_thread(reading_sessions.create, project_id, session)
+        except ReadingPackError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail="Session ID already exists.") from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/projects/{project_id}/reading-sessions/{session_id}",
+        response_model=ReadingSession,
+    )
+    async def get_reading_session(project_id: str, session_id: str) -> ReadingSession:
+        try:
+            async with reading_lock(project_id):
+                session = await session_get(project_id, session_id)
+                return await reconcile_reading_session(project_id, session)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or Reading Session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/reading-sessions/{session_id}/skip",
+        response_model=ReadingSession,
+    )
+    async def skip_reading_card(project_id: str, session_id: str, payload: ReadingSessionSkip) -> ReadingSession:
+        try:
+            async with reading_lock(project_id):
+                session = await session_get(project_id, session_id)
+                if payload.expected_revision != session.revision:
+                    raise HTTPException(status_code=409, detail="Reading Session revision changed; reload before continuing.")
+                if session.status != "in_progress" or session.card_index >= len(session.plan.cards):
+                    raise HTTPException(status_code=409, detail="This Reading Session has no active card.")
+                card = session.plan.cards[session.card_index]
+                if payload.card_id != card.card_id:
+                    raise HTTPException(status_code=409, detail="Only the current Reading Card can be skipped.")
+                if any(item.card_id == card.card_id for item in session.pending_captures):
+                    raise HTTPException(status_code=409, detail="Resolve the current recording upload before skipping its card.")
+                index = session.card_index + 1
+                updated = session.model_copy(update={
+                    "card_index": index,
+                    "status": "completed" if index >= len(session.plan.cards) else "in_progress",
+                    "skipped_card_ids": [*session.skipped_card_ids, card.card_id],
+                    "revision": session.revision + 1,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+                return await session_save(project_id, updated)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or Reading Session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/reading-sessions/{session_id}/end",
+        response_model=ReadingSession,
+    )
+    async def end_reading_session(project_id: str, session_id: str, payload: ReadingSessionEnd) -> ReadingSession:
+        try:
+            async with reading_lock(project_id):
+                session = await session_get(project_id, session_id)
+                if payload.expected_revision != session.revision:
+                    raise HTTPException(status_code=409, detail="Reading Session revision changed; reload before continuing.")
+                if session.status != "in_progress":
+                    return session
+                if session.pending_captures:
+                    raise HTTPException(status_code=409, detail="Resolve pending capture uploads before ending this session.")
+                updated = session.model_copy(update={
+                    "status": "ended",
+                    "revision": session.revision + 1,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+                return await session_save(project_id, updated)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or Reading Session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/reading-sessions/{session_id}/takes",
+        response_model=ReadingSessionTakeResult,
+    )
+    async def upload_reading_take(
+        project_id: str,
+        session_id: str,
+        file: UploadFile = File(...),
+        capture_id: str = Form(...),
+        card_id: str = Form(...),
+        expected_revision: int = Form(...),
+    ) -> ReadingSessionTakeResult:
+        try:
+            check_canonical_uuid(session_id, "sessionId")
+            check_canonical_uuid(capture_id, "captureId")
+            digest = hashlib.sha256()
+            total_bytes = 0
+            while chunk := await file.read(1024 * 1024):
+                total_bytes += len(chunk)
+                if total_bytes > 1_500_000_000:
+                    raise HTTPException(status_code=413, detail="Recording exceeds the 1.5 GB media limit.")
+                digest.update(chunk)
+            await file.seek(0)
+            source_hash = digest.hexdigest()
+            async with reading_lock(project_id):
+                session = await session_get(project_id, session_id)
+                existing_intent = next((item for item in session.pending_captures if item.capture_id == capture_id), None)
+                retired_intent = next((item for item in session.retired_captures if item.capture_id == capture_id), None)
+                existing_asset = await capture_asset(project_id, capture_id)
+                if retired_intent is not None:
+                    if retired_intent.card_id != card_id or retired_intent.source_content_hash != source_hash:
+                        raise HTTPException(status_code=409, detail="Capture ID already belongs to different audio or a different card.")
+                    if existing_intent is None:
+                        existing_intent = retired_intent
+                if existing_intent is not None and (existing_intent.card_id != card_id or existing_intent.source_content_hash != source_hash):
+                    raise HTTPException(status_code=409, detail="Capture ID already belongs to different audio or a different card.")
+                if existing_asset is not None:
+                    if (existing_asset.reading_session_id != session_id
+                            or existing_asset.reading_card_id != card_id
+                            or existing_asset.source_content_hash != source_hash):
+                        raise HTTPException(status_code=409, detail="Capture ID already belongs to different audio or a different card.")
+                    intent = existing_intent or ReadingCaptureIntent(
+                        capture_id=capture_id, card_id=card_id, source_content_hash=source_hash,
+                        expected_revision=expected_revision,
+                    )
+                    duration = await verify_reading_asset(project_id, session, intent, existing_asset)
+                    if intent.card_id != card_id or intent.source_content_hash != source_hash:
+                        raise HTTPException(status_code=409, detail="Capture ID already belongs to different audio or a different card.")
+                    if any(take.capture_id == capture_id for take in session.takes):
+                        return ReadingSessionTakeResult(session=session, asset=existing_asset)
+                    if existing_intent is None:
+                        session = session.model_copy(update={
+                            "pending_captures": [*session.pending_captures, intent],
+                        })
+                    elif existing_intent not in session.pending_captures:
+                        session = session.model_copy(update={"pending_captures": [*session.pending_captures, intent]})
+                    session = _append_reading_session_take(session, intent, existing_asset.id, duration)
+                    session = session.model_copy(update={
+                        "pending_captures": [item for item in session.pending_captures if item.capture_id != capture_id],
+                        "revision": session.revision + 1,
+                        "updated_at": datetime.now(timezone.utc),
+                    })
+                    await session_save(project_id, session)
+                    return ReadingSessionTakeResult(session=session, asset=existing_asset)
+                retry_intent = retired_intent or existing_intent
+                retired_retry_matches_original_revision = (
+                    retry_intent is not None
+                    and expected_revision == retry_intent.expected_revision
+                    and session.status == "in_progress"
+                    and session.card_index < len(session.plan.cards)
+                    and session.plan.cards[session.card_index].card_id == card_id
+                )
+                if expected_revision != session.revision and not retired_retry_matches_original_revision:
+                    raise HTTPException(status_code=409, detail="Reading Session revision changed; reload before recording.")
+                if session.status != "in_progress" or session.card_index >= len(session.plan.cards):
+                    raise HTTPException(status_code=409, detail="This Reading Session has no active card.")
+                card = session.plan.cards[session.card_index]
+                if card.card_id != card_id:
+                    raise HTTPException(status_code=409, detail="Recording must match the current Reading Card.")
+                if existing_intent is None:
+                    intent = ReadingCaptureIntent(
+                        capture_id=capture_id, card_id=card_id, source_content_hash=source_hash,
+                        expected_revision=expected_revision,
+                    )
+                    session = session.model_copy(update={"pending_captures": [*session.pending_captures, intent]})
+                    await session_save(project_id, session)
+                elif retired_intent is not None:
+                    intent = existing_intent
+                    session = session.model_copy(update={
+                        "retired_captures": [item for item in session.retired_captures if item.capture_id != capture_id],
+                        "pending_captures": [*session.pending_captures, intent],
+                    })
+                    await session_save(project_id, session)
+                else:
+                    intent = existing_intent
+                result = await media_importer.process(
+                    await asyncio.to_thread(projects.get, project_id), file, "record", card.text,
+                    transcribe=False, queue_for_transcription=False, capture_tier="guided",
+                    reading_session_id=session_id, reading_card_id=card_id,
+                    capture_id=capture_id, source_content_hash=source_hash,
+                    reading_speaker_profile_id=session.speaker_profile_id,
+                    reading_emotion=card.emotion,
+                )
+                duration = await verify_reading_asset(project_id, session, intent, result.asset)
+                session = _append_reading_session_take(session, intent, result.asset.id, duration)
+                session = session.model_copy(update={
+                    "pending_captures": [item for item in session.pending_captures if item.capture_id != capture_id],
+                    "revision": session.revision + 1,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+                await session_save(project_id, session)
+                return ReadingSessionTakeResult(session=session, asset=result.asset)
+        except HTTPException:
+            raise
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or Reading Session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}", response_model=ProjectRecord)
     def get_project(project_id: str) -> ProjectRecord:

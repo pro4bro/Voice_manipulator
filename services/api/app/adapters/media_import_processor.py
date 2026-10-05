@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import shutil
 import subprocess
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 TranscriptionProgressCallback = Callable[[float], Awaitable[None]]
 
@@ -133,6 +134,12 @@ class MediaImportProcessor:
         transcribe: bool = True,
         queue_for_transcription: bool = False,
         capture_tier: str | None = None,
+        reading_session_id: str | None = None,
+        reading_card_id: str | None = None,
+        capture_id: str | None = None,
+        source_content_hash: str | None = None,
+        reading_speaker_profile_id: str | None = None,
+        reading_emotion: str | None = None,
     ) -> MediaImportResult:
         started = time.perf_counter()
         filename = Path(upload.filename or "media.wav").name
@@ -143,6 +150,22 @@ class MediaImportProcessor:
             raise ValueError("Nguồn media không hợp lệ.")
         if capture_tier is not None and capture_tier not in {"guided", "record", "import"}:
             raise ValueError("Capture tier không hợp lệ.")
+        capture_values = (
+            reading_session_id, reading_card_id, capture_id, source_content_hash,
+            reading_speaker_profile_id, reading_emotion,
+        )
+        if any(value is not None for value in capture_values):
+            if not all(capture_values):
+                raise ValueError("Guided capture metadata must be supplied together.")
+            try:
+                if str(UUID(reading_session_id)) != reading_session_id or str(UUID(capture_id)) != capture_id:
+                    raise ValueError("Guided capture IDs must be canonical UUIDs.")
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise ValueError("Guided capture IDs must be canonical UUIDs.") from exc
+            if len(source_content_hash) != 64 or any(char not in "0123456789abcdef" for char in source_content_hash):
+                raise ValueError("Guided capture source hash must be lowercase SHA-256.")
+            if extension != ".wav":
+                raise ValueError("Guided Reading Session takes must be uploaded as WAV audio.")
         if not self.ffmpeg_path or not self.ffprobe_path:
             raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
 
@@ -151,6 +174,10 @@ class MediaImportProcessor:
         asset_dir.mkdir(parents=True, exist_ok=False)
         source_path = asset_dir / f"source{extension}"
         await self._save_upload(upload, source_path)
+        if source_content_hash is not None:
+            actual_hash = await asyncio.to_thread(self._sha256_file, source_path)
+            if actual_hash != source_content_hash:
+                raise ValueError("Guided capture bytes do not match the declared source hash.")
         portable_source_path = source_path.relative_to(Path(project.project_path)).as_posix()
 
         probe = await asyncio.to_thread(self._probe, source_path)
@@ -165,6 +192,9 @@ class MediaImportProcessor:
         )
         duration = self._duration(probe)
         media_kind = self._media_kind(extension, audio_stream, video_stream)
+
+        if reading_session_id and (len(audio_streams) != 1 or video_stream is not None):
+            raise ValueError("Guided Reading Session takes must contain one audio stream and no video.")
 
         if len(audio_streams) > 1:
             return await self._import_multitrack(
@@ -212,6 +242,15 @@ class MediaImportProcessor:
             "capture_tier": capture_tier or origin,
             "status": "ready",
         }
+        if reading_session_id:
+            common.update({
+                "reading_session_id": reading_session_id,
+                "reading_card_id": reading_card_id,
+                "capture_id": capture_id,
+                "source_content_hash": source_content_hash,
+                "speaker_profile_ids": [reading_speaker_profile_id],
+                "emotion": reading_emotion,
+            })
         if not transcribe:
             asset = self.library.create(
                 project.id,
@@ -699,6 +738,14 @@ class MediaImportProcessor:
                 if size > 1_500_000_000:
                     raise ValueError("File media lớn hơn giới hạn 1,5 GB.")
                 output.write(chunk)
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     def _probe(self, source: Path) -> dict[str, Any]:
         result = subprocess.run(

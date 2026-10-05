@@ -23,6 +23,7 @@ from .models import (
     ProjectMediaAsset,
     ProjectRecord,
     ReadingPack,
+    ReadingSession,
     SpeakerProfile,
     SpeakerEmbedderInfo,
     ReadingPackSummary,
@@ -125,6 +126,16 @@ class ReadingPackLibrary(Protocol):
     def list(self) -> list[ReadingPackSummary]: ...
 
     def get(self, pack_id: str) -> ReadingPack: ...
+
+
+class ReadingSessionRepository(Protocol):
+    def list(self, project_id: str, status: str | None = None) -> list[ReadingSession]: ...
+
+    def get(self, project_id: str, session_id: str) -> ReadingSession: ...
+
+    def create(self, project_id: str, session: ReadingSession) -> ReadingSession: ...
+
+    def save(self, project_id: str, session: ReadingSession) -> ReadingSession: ...
 
 
 # ---------------------------------------------------------------------------

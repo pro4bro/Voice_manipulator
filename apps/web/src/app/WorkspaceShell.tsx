@@ -5,8 +5,8 @@ import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
 import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
-import { buildReadingPlan, coverageFor, nextCardIndex } from "../domain/reading-plan";
-import type { ReadingMode, ReadingPlan } from "../domain/reading-plan";
+import { coverageFor } from "../domain/reading-plan";
+import { useReadingSession } from "./useReadingSession";
 import type {
   AppPreferences,
   EmotionLabel,
@@ -91,21 +91,6 @@ const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
 // page name the top navigation already shows, and the Manipulator's mode tabs
 // switched nothing (Voice Patch sits in the right column; the rest are planned).
 const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer"]);
-
-/**
- * A guided reading run, held for as long as the workspace is open.
- *
- * `secondsSinceBreak` counts speech, not wall clock: a session left open over
- * lunch has not tired anyone's voice, and speech time is what the break warning
- * is actually about.
- */
-interface ReadingSessionState {
-  plan: ReadingPlan;
-  packTitle: string;
-  cardIndex: number;
-  recordedSecondsByCard: Record<string, number>;
-  secondsSinceBreak: number;
-}
 
 function emptyTrainingCatalog(): TrainingCatalog {
   return {
@@ -240,14 +225,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   });
   const [readingPacks, setReadingPacks] = useState<ReadingPackSummary[]>([]);
-  const [readingSession, setReadingSession] = useState<ReadingSessionState | null>(null);
-  const [readingBusy, setReadingBusy] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [windowsMenuOpen, setWindowsMenuOpen] = useState(false);
   const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [catalogRevision, setCatalogRevision] = useState(0);
   const catalogRevisionRef = useRef(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const reading = useReadingSession(project.id, setNotice);
+  const readingSession = reading.session;
+  const readingBusy = reading.busy;
   const [job, setJob] = useState<string | null>(null);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   // What the whole app is doing, and its log: one stream from the API.
@@ -972,29 +958,6 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  async function startReadingSession(packId: string, emotions: EmotionLabel[], mode: ReadingMode) {
-    setReadingBusy(true);
-    try {
-      const pack = await api.getReadingPack(packId);
-      const plan = buildReadingPlan(pack, emotions, mode);
-      if (!plan.cards.length) {
-        setNotice("Bộ bài đọc này không có thẻ nào cho các cảm xúc đã chọn.");
-        return;
-      }
-      setReadingSession({
-        plan,
-        packTitle: pack.title,
-        cardIndex: 0,
-        recordedSecondsByCard: {},
-        secondsSinceBreak: 0,
-      });
-      setNotice(`Phiên đọc mở với ${plan.cards.length} thẻ. Script đang hiện bài để đọc theo.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không mở được bộ bài đọc");
-    } finally {
-      setReadingBusy(false);
-    }
-  }
 
   async function refreshProjectVoices() {
     if (typeof api.listAsrAdapters === "function") {
@@ -1226,14 +1189,6 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
 
-  function skipReadingCard() {
-    setReadingSession((current) => {
-      if (!current) return current;
-      const next = nextCardIndex(current.plan, current.recordedSecondsByCard, current.cardIndex + 1);
-      return { ...current, cardIndex: next === -1 ? current.plan.cards.length : next };
-    });
-  }
-
   async function processCapturedAudio(captured: CapturedAudio) {
     setTake(captured);
     setMediaBusy(true);
@@ -1244,39 +1199,20 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       // Pool and press Speech to text.
       // In HQ mode the card is the transcript, not a guess, and the take
       // is filed as guided. Verification stays a later, deliberate pass.
-      const knownText = captured.knownText ?? "";
-      const result = await api.importProjectMedia(
-        project.id,
-        captured.file,
-        "record",
-        knownText || captured.realtimeText,
-        false,
-        false,
-        captured.readingCardId ? "guided" : null,
-      );
-      if (captured.readingCardId) {
-        const cardId = captured.readingCardId;
-        setReadingSession((current) => {
-          if (!current) return current;
-          const recordedSecondsByCard = { ...current.recordedSecondsByCard, [cardId]: captured.duration };
-          const next = nextCardIndex(current.plan, recordedSecondsByCard, current.cardIndex + 1);
-          return {
-            ...current,
-            recordedSecondsByCard,
-            cardIndex: next === -1 ? current.plan.cards.length : next,
-            secondsSinceBreak: current.secondsSinceBreak + captured.duration,
-          };
-        });
-      }
+      const guided = Boolean(captured.readingSessionId);
+      const assetReceipt = guided
+        ? await reading.saveTake(captured)
+        : (await api.importProjectMedia(project.id, captured.file, "record", captured.realtimeText, false, false, null)).asset;
+      if (!assetReceipt) return;
       flushCurrentMediaDraft();
-      let asset = result.asset;
-      if (captured.words.length) {
+      let asset = assetReceipt;
+      if (!guided && captured.words.length) {
         // The live transcript is the recording's subtitle until STT replaces it.
         asset = await api.updateMediaScript(project.id, asset.id, captured.realtimeText, "record", captured.words);
       }
       storeMediaAsset(asset);
       applyMediaAsset(asset);
-      setNotice("Bản thu đã vào Media Pool cùng live transcript. Tick STT rồi bấm Speech to text khi muốn chạy nhận dạng kỹ.");
+      setNotice(guided ? "Đã lưu bản thu theo thẻ, Speaker và cảm xúc. Tiến độ phiên đọc đã lưu." : "Bản thu đã vào Media Pool cùng live transcript. Tick STT rồi bấm Speech to text khi muốn chạy nhận dạng kỹ.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không xử lý được audio");
     } finally {
@@ -2168,6 +2104,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     readingPacks,
     readingSession: readingSession
       ? {
+          id: readingSession.id, revision: readingSession.revision, speakerName: readingSession.speakerName,
           packTitle: readingSession.packTitle,
           mode: readingSession.plan.mode,
           card: readingSession.plan.cards[readingSession.cardIndex] ?? null,
@@ -2178,9 +2115,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         }
       : null,
     readingBusy,
-    onStartReadingSession: (packId, emotions, mode) => void startReadingSession(packId, emotions, mode),
-    onEndReadingSession: () => setReadingSession(null),
-    onSkipCard: skipReadingCard,
+    readingPending: Boolean(reading.pendingTake),
+    onRetryReadingTake: () => { if (reading.pendingTake) void processCapturedAudio(reading.pendingTake); },
+    onStartReadingSession: (packId, emotions, mode, speakerProfileId) => void reading.start(packId, emotions, mode, speakerProfileId),
+    onEndReadingSession: () => void reading.end(),
+    onSkipCard: () => void reading.skip(),
     wordSelection,
     onWordSelectionChange: setWordSelection,
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
@@ -2232,7 +2171,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

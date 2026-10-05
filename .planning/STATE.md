@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-05 — Waveform/UX fixes and STT19B4 PCM repair delivered; continuous queue authorized.
-last_activity_desc: Frontend497/backend565/typecheck/build pass. Ingestion18D rejected; STT19B4 improves recognition but fails CER/lag. Nine near-term parents remain; retain physical and human gates.
+last_activity: 2026-10-05 — 03-04A persistence/recovery and correctedSTT19B6 timing delivered; 19B7 rejected.
+last_activity_desc: Frontend507/backend570/typecheck/build pass; real session move/restart proof. STT replay post-end p956.891s; CER19.62% fails. Nine near-term parents retain human/physical gates.
 ---
 
 # Project State
@@ -56,6 +56,23 @@ concurrent fullbackend suite and additional Studio model load; no causal speed
 claim or repeat. See `docs/gates/livelink-stt-19b7-1s-pcm.md`.
 Full19A/19B CER, reviewed word anchors and physical OBS timing remain open.
 Nine near-term parent rounds remain; no phase advance or budget relaxation.
+
+## 03-04A — durable Reading Session recovery (2026-10-05)
+
+Server-owned pack/Speaker/card snapshot, revisions, take receipts, measured
+coverage, skip/end and reopen now persist with the project. Stable capture IDs
+recover lost upload results without duplicate assets; unpublished intents retire
+without trapping the card. UI restores HQ in IDLE, requires explicit Speaker,
+holds uncertain takes for exact retry and keeps card text instead of live ASR.
+Real synthetic3s WAV/API and browser proof survives Unicode folder move,
+Open Existing and official API restart with identical source/audio hashes.
+Frontend507/58 files, backend570/twoexistingwarnings, typecheck/build/diff pass.
+See `docs/gates/03-04a-durable-session.md` and ADR0045.
+03-04 remains open for QC, flow segmentation, emotion blocks, references, tier
+policy and identity acceptance; per-take Media Pool receipts are intermediate.
+Nine near-term parents remain. Exact next acceptance requires reviewed19A
+word/video anchors and physical OBS clocks, or trusted03-03C speaker labels
+(owner question pending); no phase or budget advance is claimed.
 
 ## Verification Baseline
 

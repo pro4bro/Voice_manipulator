@@ -1,5 +1,14 @@
 # Remaining Roadmap Prerequisites — 2026-10-05
 
+Update after the audit: 03-04A durable Reading Session persistence/recovery is
+now implemented and verified (frontend507/backend570, real API/browser Unicode
+move/restart proof). The audit below records the earlier inspection; its statement
+that the session was in-memory is superseded by `03-04a-durable-session.md`.
+QC, Flow segmentation, emotion-block registration and the other03-04 gates remain
+open. Trusted speaker labels/consent for03-03C calibration remain a pending owner
+input; the threshold has not been guessed or relaxed.
+
+
 ## Scope and method
 
 Read-only audit of the remaining executable roadmap after the current near-term

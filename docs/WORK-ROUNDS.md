@@ -12,6 +12,18 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
+### 2026-10-05 — current: 03-04A / STT19B6–19B7
+
+03-04A persistence/recovery accepted at its bounded slice; frontend507/backend570,
+real API/browser/move/restart proof pass. 19B6 corrected replay post-source-end
+p956.891s; 19B7 longer boundary rejected for CER20.92% vs19.62%. Its timings are
+confounded by concurrent tests. Product defaults and phase gates unchanged.
+See the three latest gate files. Nine near-term parent rounds remain; physical
+OBS/native/DPI/download/second-machine evidence and reviewed word/speaker labels
+retain their prerequisites. 03-04 QC/flow/block/reference/tier work is separate
+later roadmap scope, not part of the near-term nine-parent completion count.
+
+
 ### 2026-10-05 — LIVELINK-STT-19B5
 
 Offline attribution finds existing lagSeconds includes utterance duration;
@@ -4168,3 +4180,20 @@ concurrent fullbackend suite and additional Studio model load; no causal speed
 claim or repeat. See `docs/gates/livelink-stt-19b7-1s-pcm.md`.
 Full19A/19B CER, reviewed word anchors and physical OBS timing remain open.
 Nine near-term parent rounds remain; no phase advance or budget relaxation.
+
+## 03-04A — durable Reading Session recovery (2026-10-05)
+
+Server-owned pack/Speaker/card snapshot, revisions, take receipts, measured
+coverage, skip/end and reopen now persist with the project. Stable capture IDs
+recover lost upload results without duplicate assets; unpublished intents retire
+without trapping the card. UI restores HQ in IDLE, requires explicit Speaker,
+holds uncertain takes for exact retry and keeps card text instead of live ASR.
+Real synthetic3s WAV/API and browser proof survives Unicode folder move,
+Open Existing and official API restart with identical source/audio hashes.
+Frontend507/58 files, backend570/twoexistingwarnings, typecheck/build/diff pass.
+See `docs/gates/03-04a-durable-session.md` and ADR0045.
+03-04 remains open for QC, flow segmentation, emotion blocks, references, tier
+policy and identity acceptance; per-take Media Pool receipts are intermediate.
+Nine near-term parents remain. Exact next acceptance requires reviewed19A
+word/video anchors and physical OBS clocks, or trusted03-03C speaker labels
+(owner question pending); no phase or budget advance is claimed.

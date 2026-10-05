@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Project, ProjectMediaAsset } from "../domain/types";
+import type { Project, ProjectMediaAsset, ReadingSession } from "../domain/types";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 const apiMocks = vi.hoisted(() => ({
@@ -14,6 +14,9 @@ const apiMocks = vi.hoisted(() => ({
   listProjectMedia: vi.fn(),
   listProjectMediaTranscriptionStatus: vi.fn(),
   listReadingPacks: vi.fn(),
+  listReadingSessions: vi.fn(),
+  appendReadingTake: vi.fn(),
+  importProjectMedia: vi.fn(),
   getDatasetReadiness: vi.fn(),
   listTrainingRuns: vi.fn(),
   recycleProjectMedia: vi.fn(),
@@ -50,7 +53,7 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
         startSeconds: number; endSeconds: number; sourceIds: string[] }) => void };
       return <><output data-testid="timeline-take">{context.take?.name ?? "trống"}</output><output data-testid="obs-recording">{context.obsTimelineRecordingId ?? "none"}:{String(context.obsTimelineActive)}</output><output data-testid="obs-track-request">{request?.channelId ?? "none"}:{String(request?.selectOnly ?? false)}</output><output data-testid="obs-asset-request">{request?.assetId ?? "none"}</output><button onClick={() => overlap.onObsOverlapSelect({ recordingId: "take-one", startSeconds: 2, endSeconds: 5, sourceIds: ["asset-a", "asset-b"] })} type="button">select Timeline overlap</button></>;
     }
-    if (id === "recorder") return <><button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsRecording("take-new")} type="button">open new OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button></>;
+    if (id === "recorder") return <><button type="button" onClick={() => (context as unknown as { onTakeChange: (capture: unknown) => void }).onTakeChange({ name: "hq.wav", url: "blob:hq", duration: 999, file: new File(["wav"], "hq.wav"), origin: "record", realtimeText: "ASR khác bài đọc", words: [{ text: "ASR", start: 0, end: 1 }], readingSessionId: "session-1", readingSessionRevision: 0, readingCardId: "card-1", captureId: "capture-1", knownText: "Lời bài đọc." })}>deliver HQ take</button><button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsRecording("take-new")} type="button">open new OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button></>;
     if (id === "manipulator-library") {
       return <button onClick={() => context.onOpenVoiceOutput(GENERATED)} type="button">mở voice output</button>;
     }
@@ -123,6 +126,7 @@ describe("WorkspaceShell STT synchronization", () => {
     vi.clearAllMocks();
     localStorage.clear();
     apiMocks.listReadingPacks.mockResolvedValue([]);
+    apiMocks.listReadingSessions.mockResolvedValue({ items: [], total: 0 });
     apiMocks.getDatasetReadiness.mockResolvedValue(null);
     apiMocks.listTrainingRuns.mockResolvedValue([]);
     apiMocks.getTrainingRunProgress.mockResolvedValue([]);
@@ -149,6 +153,32 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
+  });
+
+  it("keeps a guided take's snapshot text instead of replacing it with live ASR", async () => {
+    const session: ReadingSession = {
+      id: "session-1", schemaVersion: 1, revision: 0, status: "in_progress",
+      speakerProfileId: "speaker-1", speakerName: "Người đọc", packTitle: "Bài đọc", packVersion: 1,
+      plan: { packId: "pack-1", language: "vi", mode: "take", emotions: ["normal"], cards: [
+        { cardId: "card-1", passageId: "passage-1", passageTitle: "Đầu", direction: "Tự nhiên", emotion: "normal", text: "Lời bài đọc.", estimatedSeconds: 2 },
+      ] }, cardIndex: 0, recordedSecondsByCard: {}, secondsSinceBreak: 0, skippedCardIds: [], takes: [],
+      createdAt: "2026-10-05T00:00:00Z", updatedAt: "2026-10-05T00:00:00Z",
+    };
+    apiMocks.listReadingSessions.mockResolvedValue({ items: [session], total: 1 });
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    const asset = { ...mediaAsset("skipped", "Lời bài đọc.", "2026-10-05T00:00:01Z"), name: "hq.wav", speakerProfileIds: ["speaker-1"] };
+    apiMocks.appendReadingTake.mockResolvedValue({ session: { ...session, revision: 1, cardIndex: 1, status: "completed", recordedSecondsByCard: { "card-1": 2.25 } }, asset });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(apiMocks.listReadingSessions).toHaveBeenCalled());
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "deliver HQ take" }));
+    await waitFor(() => expect(screen.getByTestId("script-value")).toHaveTextContent("Lời bài đọc."));
+    expect(apiMocks.updateMediaScript).not.toHaveBeenCalled();
+    expect(apiMocks.importProjectMedia).not.toHaveBeenCalled();
+    expect(apiMocks.appendReadingTake).toHaveBeenCalledWith(project.id, "session-1", expect.any(File), "capture-1", "card-1", 0);
   });
 
   it("starts without a footage and clears Script, waveform and OBS feed on deselect", async () => {

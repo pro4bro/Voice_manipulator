@@ -1,0 +1,52 @@
+{
+  "round": "03-04A",
+  "projectId": "03-04a-session-proof-ab914e0d",
+  "sessionId": "d864e5c8-1a1c-4a74-bd04-8360d8e34951",
+  "schemaVersion": 1,
+  "revision": 4,
+  "status": "ended",
+  "cardIndex": 2,
+  "cardCount": 32,
+  "takeCount": 1,
+  "skippedCardIds": [
+    "vi-coverage-01-c02"
+  ],
+  "checks": {
+    "idempotentAssetId": "asset-998e0aecda37",
+    "conflictingBytesStatus": 409,
+    "mediaCount": 1,
+    "sourceSha256": "a4c09c39d1e3ac54f9bb4523e3dc549a7e6f8a4060aace09e2d8063fa0cd7a5f",
+    "analysisSha256": "aebf0fa67082bdbeb0ec394b9f2a9ce87bf259d01cbaf2b80b7332db307db76d",
+    "analysis": {
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "sampleRate": 24000,
+      "frames": 72000
+    },
+    "syntheticToneNotSpeech": true,
+    "moveReopen": "same ID/card/takes/coverage and audio hashes",
+    "relativeSessionSnapshot": true,
+    "apiRestart": "exact session equality and identical served audio after second official runtime restart"
+  },
+  "uiChecks": {
+    "restoredCard": 2,
+    "idleOnReopen": true,
+    "skipAdvancedToCard": 3,
+    "endStatus": "ended",
+    "retainedAssetCount": 1,
+    "noPhysicalMicrophoneCapture": true
+  },
+  "artifacts": {
+    "localProof": ".scratch/03-04a/final-proof.json",
+    "screenshot": ".scratch/03-04a/moved-restored-card-2.png"
+  },
+  "validation": {
+    "frontend": 507,
+    "frontendFiles": 58,
+    "backend": 570,
+    "backendWarnings": 2,
+    "backendSeconds": 156.67,
+    "typecheck": "passed",
+    "build": "passed"
+  }
+}

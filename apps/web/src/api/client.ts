@@ -35,6 +35,7 @@ import type {
   ReadingAudienceVocabulary,
   ReadingPack,
   ReadingPackSummary,
+  ReadingSession,
   ReadingPassageDraft,
   RuntimeAction,
   RuntimeWorkloadState,
@@ -524,6 +525,23 @@ export const api = {
     return normalizeMediaAsset(asset);
   },
   listReadingPacks: () => request<ReadingPackSummary[]>("/api/reading-packs"),
+  listReadingSessions: (projectId: string) =>
+    request<{ items: ReadingSession[]; total: number }>(`/api/projects/${projectId}/reading-sessions?status=in_progress`),
+  createReadingSession: (projectId: string, payload: { sessionId: string; packId: string; speakerProfileId: string; emotions: EmotionLabel[]; mode: "flow" | "take" }) =>
+    request<ReadingSession>(`/api/projects/${projectId}/reading-sessions`, { method: "POST", body: JSON.stringify(payload) }),
+  skipReadingCard: (projectId: string, sessionId: string, expectedRevision: number, cardId: string) =>
+    request<ReadingSession>(`/api/projects/${projectId}/reading-sessions/${sessionId}/skip`, { method: "POST", body: JSON.stringify({ expectedRevision, cardId }) }),
+  endReadingSession: (projectId: string, sessionId: string, expectedRevision: number) =>
+    request<ReadingSession>(`/api/projects/${projectId}/reading-sessions/${sessionId}/end`, { method: "POST", body: JSON.stringify({ expectedRevision }) }),
+  appendReadingTake: async (projectId: string, sessionId: string, file: File, captureId: string, cardId: string, expectedRevision: number) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("capture_id", captureId);
+    body.append("card_id", cardId);
+    body.append("expected_revision", String(expectedRevision));
+    const result = await request<{ session: ReadingSession; asset: ProjectMediaAsset }>(`/api/projects/${projectId}/reading-sessions/${sessionId}/takes`, { method: "POST", body });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
   getReadingPack: (packId: string) => request<ReadingPack>(`/api/reading-packs/${packId}`),
   getReadingAudience: () => request<ReadingAudienceVocabulary>("/api/reading-packs/audience"),
   addReadingPassage: (draft: ReadingPassageDraft) =>

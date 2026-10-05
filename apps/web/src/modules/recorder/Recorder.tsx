@@ -23,12 +23,18 @@ export interface CapturedAudio {
   words: StudioWord[];
   /** Set only in HQ mode: the card this take answers. */
   readingCardId?: string | null;
+  readingSessionId?: string;
+  readingSessionRevision?: number;
+  captureId?: string;
   /** The card's exact text. In HQ mode this is ground truth, not a guess. */
   knownText?: string;
 }
 
 /** What Recorder needs to show about a live session. The session itself is owned upstream. */
 export interface ReadingSessionView {
+  id: string;
+  revision: number;
+  speakerName: string;
   packTitle: string;
   mode: ReadingMode;
   card: ReadingPlanCard | null;
@@ -53,7 +59,10 @@ interface RecorderProps {
   readingPacks?: ReadingPackSummary[];
   readingSession?: ReadingSessionView | null;
   readingBusy?: boolean;
-  onStartReadingSession?: (packId: string, emotions: EmotionLabel[], mode: ReadingMode) => void;
+  readingSpeakers?: Array<{ id: string; name: string }>;
+  readingPending?: boolean;
+  onRetryReadingTake?: () => void;
+  onStartReadingSession?: (packId: string, emotions: EmotionLabel[], mode: ReadingMode, speakerProfileId: string) => void;
   onEndReadingSession?: () => void;
   onSkipCard?: () => void;
 }
@@ -115,6 +124,9 @@ export function Recorder({
   readingPacks = [],
   readingSession = null,
   readingBusy = false,
+  readingSpeakers = [],
+  readingPending = false,
+  onRetryReadingTake,
   onStartReadingSession,
   onEndReadingSession,
   onSkipCard,
@@ -122,6 +134,7 @@ export function Recorder({
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [captureMode, setCaptureMode] = useState<"normal" | "hq">("normal");
   const [packId, setPackId] = useState("");
+  const [speakerProfileId, setSpeakerProfileId] = useState("");
   const [wantedEmotions, setWantedEmotions] = useState<EmotionLabel[]>(["normal"]);
   const [readingMode, setReadingMode] = useState<ReadingMode>("flow");
   const [authoringOpen, setAuthoringOpen] = useState(false);
@@ -169,16 +182,13 @@ export function Recorder({
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const speechFinalRef = useRef("");
   const speechInterimRef = useRef("");
-  // `recorder.onstop` closes over the render that started the take, so the card
-  // has to reach it through a ref or a fast reader would file it under the next one.
-  const cardRef = useRef<ReadingPlanCard | null>(null);
   // The take itself, tapped losslessly off the graph. MediaRecorder stays as a
   // fallback for a browser that gives us no audio graph at all.
   const takePcmRef = useRef<Int16Array[]>([]);
   const takeRateRef = useRef(0);
   const takeTapRef = useRef<ScriptProcessorNode | null>(null);
-  const session = captureMode === "hq" ? readingSession : null;
-  cardRef.current = session?.card ?? null;
+  const effectiveMode = readingSession ? "hq" : captureMode;
+  const session = readingSession;
   const busy = status === "recording" || status === "finalizing";
   const packEmotions = readingPacks.find((pack) => pack.packId === packId)?.emotions ?? [];
   const chosenEmotions = wantedEmotions.filter((emotion) => packEmotions.includes(emotion));
@@ -475,12 +485,22 @@ export function Recorder({
   }
 
   async function start() {
+    if (readingBusy || readingPending || (effectiveMode === "hq" && !session?.card)) return;
+    const readingAtStart = session;
+    const card = readingAtStart?.card;
+    const captureId = crypto.randomUUID();
+    if (readingAtStart && !window.AudioContext) {
+      setStatus("error");
+      setMessage("Phiên đọc cần trình duyệt hỗ trợ thu WAV bằng AudioContext.");
+      return;
+    }
     if (!navigator.mediaDevices || !window.MediaRecorder) {
       setStatus("error");
       setMessage("Trình duyệt không hỗ trợ MediaRecorder");
       return;
     }
     try {
+      setStatus("finalizing");
       let stream: MediaStream;
       let sourceLabel = "Microphone";
       if (captureSource === "display") {
@@ -538,7 +558,6 @@ export function Recorder({
           ? frames / rate
           : Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
-        const card = cardRef.current;
         stopResources();
         onRecordingReady({
           name: file.name,
@@ -549,12 +568,15 @@ export function Recorder({
           realtimeText,
           words: liveTranscriptWords(liveSegmentsRef.current, duration),
           readingCardId: card?.cardId ?? null,
+          readingSessionId: readingAtStart?.id,
+          readingSessionRevision: readingAtStart?.revision,
+          captureId,
           knownText: card?.text,
         });
         onRecordingPreview?.({ active: false, duration, samples: liveSamplesRef.current.slice() });
         onLiveTranscript?.(realtimeText, false);
         setStatus("idle");
-        setMessage("Đã thu xong · STT kỹ và AI review đang chạy nền");
+        setMessage("Đã thu xong · đang lưu bản thu");
         setPeakDb(-60);
       };
       recorder.start(250);
@@ -602,7 +624,7 @@ export function Recorder({
     }
   }
 
-  if (captureMode === "normal" && captureSource === "obs-livelink" && projectId) {
+  if (effectiveMode === "normal" && captureSource === "obs-livelink" && projectId) {
     return <ModuleFrame eyebrow="RECORDER · OBS LIVELINK" title="Thu âm" index="01" tone="dark" className="recorder-module">
       <label className="obs-recorder__source"><span>CAPTURE SOURCE</span><select aria-label="Nguồn thu âm" onChange={(event) => chooseCaptureSource(event.target.value as CaptureSource)} value={captureSource}>
         <option value="microphone">Microphone / audio input</option>
@@ -615,25 +637,26 @@ export function Recorder({
 
   return (
     <ModuleFrame
-      eyebrow={captureMode === "hq" ? "RECORDER · HIGH QUALITY" : "RECORDER"}
+      eyebrow={effectiveMode === "hq" ? "RECORDER · HIGH QUALITY" : "RECORDER"}
       title="Thu âm"
       index="01"
       tone="dark"
       className="recorder-module"
       action={
         <div className="capture-mode-toggle" role="group" aria-label="Chế độ thu">
-          <button aria-pressed={captureMode === "normal"} className={captureMode === "normal" ? "is-active" : ""} disabled={busy || Boolean(readingSession)} onClick={() => setCaptureMode("normal")} type="button">Thường</button>
-          <button aria-pressed={captureMode === "hq"} className={captureMode === "hq" ? "is-active" : ""} disabled={busy} onClick={() => setCaptureMode("hq")} type="button">HQ</button>
+          <button aria-pressed={effectiveMode === "normal"} className={effectiveMode === "normal" ? "is-active" : ""} disabled={busy || readingBusy || Boolean(readingSession)} onClick={() => setCaptureMode("normal")} type="button">Thường</button>
+          <button aria-pressed={effectiveMode === "hq"} className={effectiveMode === "hq" ? "is-active" : ""} disabled={busy || readingBusy} onClick={() => setCaptureMode("hq")} type="button">HQ</button>
         </div>
       }
     >
-      {captureMode === "hq" && !session ? (
+      {effectiveMode === "hq" && !session ? (
         <div className="hq-setup">
           <p className="hq-intro">Chọn bộ bài đọc và cảm xúc. Script sẽ hiện bài để bạn đọc theo, và highlight chạy theo từng từ.</p>
           <label><span>READING PACK</span><select aria-label="Bộ bài đọc" onChange={(event) => setPackId(event.target.value)} value={packId}><option value="">Chưa chọn</option>{readingPacks.map((pack) => <option key={pack.packId} value={pack.packId}>{pack.title} · {pack.cardCount} thẻ</option>)}</select></label>
-          <label><span>CÁCH ĐỌC</span><select aria-label="Cách đọc" onChange={(event) => setReadingMode(event.target.value as ReadingMode)} value={readingMode}><option value="flow">Liền mạch · đọc cả bài, app tự cắt</option><option value="take">Từng thẻ · mỗi câu một lần bấm</option></select></label>
+          <label><span>SPEAKER</span><select aria-label="Speaker của phiên đọc" onChange={(event) => setSpeakerProfileId(event.target.value)} value={speakerProfileId}><option value="">Chọn người đọc</option>{readingSpeakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label>
+          <label><span>CÁCH ĐỌC</span><select aria-label="Cách đọc" onChange={(event) => setReadingMode(event.target.value as ReadingMode)} value={readingMode}><option value="flow">Liền mạch · hiện lưu từng thẻ</option><option value="take">Từng thẻ · mỗi câu một lần bấm</option></select></label>
           <div className="hq-emotions"><span>CẢM XÚC</span><div>{PERFORMABLE_EMOTIONS.map((option) => <label aria-disabled={!packEmotions.includes(option.id)} key={option.id}><input checked={chosenEmotions.includes(option.id)} disabled={!packEmotions.includes(option.id)} onChange={(event) => toggleEmotion(option.id, event.target.checked)} type="checkbox" /><span>{option.label}</span></label>)}</div></div>
-          <button className="button button--accent button--full" disabled={!packId || !chosenEmotions.length || readingBusy} onClick={() => onStartReadingSession?.(packId, chosenEmotions, readingMode)} type="button">{readingBusy ? "Đang mở phiên..." : "Bắt đầu phiên đọc"}</button>
+          <button className="button button--accent button--full" disabled={!packId || !readingSpeakers.some((speaker) => speaker.id === speakerProfileId) || !chosenEmotions.length || readingBusy} onClick={() => onStartReadingSession?.(packId, chosenEmotions, readingMode, speakerProfileId)} type="button">{readingBusy ? "Đang mở phiên..." : "Bắt đầu phiên đọc"}</button>
           <button className="button button--quiet button--full" onClick={() => setAuthoringOpen(true)} type="button">Add Training Script</button>
         </div>
       ) : null}
@@ -641,10 +664,14 @@ export function Recorder({
       {session ? (
         <div className="hq-session">
           <div className="hq-session__head"><b>{session.packTitle}</b><span>{session.mode === "flow" ? "LIỀN MẠCH" : "TỪNG THẺ"} · THẺ {session.cardNumber}/{session.cardTotal}</span></div>
+          <p>Speaker: {session.speakerName} · Tiến độ đã lưu theo project</p>
+          <p>Bấm Dừng thu để lưu thẻ và chuyển sang thẻ tiếp theo.</p>
           {session.card ? <p className="hq-direction"><b>{emotionLabel(session.card.emotion)}</b>{session.card.direction}</p> : <p className="hq-direction">Đã thu hết thẻ trong phiên này.</p>}
           <ul className="hq-coverage">{session.coverage.map((item) => <li key={item.emotion}><span>{emotionLabel(item.emotion)}</span><i><b style={{ width: `${Math.round(item.progress * 100)}%` }} /></i><small>còn {formatDuration(item.remainingSeconds)}</small></li>)}</ul>
           {needsBreak(session.secondsSinceBreak) ? <p className="hq-warning">Đã thu {formatDuration(session.secondsSinceBreak)} liên tục. Nghỉ một lát — giọng mệt sẽ lệch so với phần đã thu.</p> : null}
-          <div className="hq-session__actions"><button className="button button--quiet" disabled={busy || !session.card} onClick={() => onSkipCard?.()} type="button">Bỏ thẻ này</button><button className="button button--quiet" disabled={busy} onClick={() => onEndReadingSession?.()} type="button">Kết thúc phiên</button></div>
+          {readingPending ? <p role="status">Bản thu chưa được xác nhận lưu. Giữ nguyên thẻ này và thử lưu lại.</p> : null}
+          {readingPending ? <button className="button button--accent" disabled={readingBusy} onClick={onRetryReadingTake} type="button">Lưu lại bản thu</button> : null}
+          <div className="hq-session__actions"><button className="button button--quiet" disabled={busy || readingBusy || readingPending || !session.card} onClick={() => onSkipCard?.()} type="button">Bỏ thẻ này</button><button className="button button--quiet" disabled={busy || readingBusy || readingPending} onClick={() => onEndReadingSession?.()} type="button">Kết thúc phiên</button></div>
         </div>
       ) : null}
       <div className="recorder-device-grid" hidden={Boolean(session)}>
@@ -665,7 +692,7 @@ export function Recorder({
       <div className="recorder-time"><strong>{String(Math.floor(elapsed / 60)).padStart(2, "0")}:{(elapsed % 60).toFixed(3).padStart(6, "0")}</strong><span className={`status-pill status-pill--${status}`}>{status.toUpperCase()}</span></div>
       <p>{message}</p>
       <div className="recorder-actions recorder-actions--single">
-        <button className={`record-button ${status === "recording" ? "is-live" : ""}`} disabled={status === "finalizing" || (captureMode === "hq" && !session?.card)} onClick={status === "recording" ? stop : start} type="button"><span />{status === "recording" ? "Dừng thu" : session?.card ? `Thu thẻ ${session.cardNumber}` : "Bắt đầu thu"}</button>
+        <button className={`record-button ${status === "recording" ? "is-live" : ""}`} disabled={status === "finalizing" || (status !== "recording" && (readingBusy || readingPending || (effectiveMode === "hq" && !session?.card)))} onClick={status === "recording" ? stop : start} type="button"><span />{status === "recording" ? "Dừng thu" : session?.card ? `Thu thẻ ${session.cardNumber}` : "Bắt đầu thu"}</button>
       </div>
       <audio ref={monitorRef} hidden />
     </ModuleFrame>
