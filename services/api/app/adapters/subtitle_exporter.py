@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.domain.timeline_intervals import excluded_intervals
+
 import csv
 import html
 import io
@@ -158,7 +160,7 @@ class SubtitleExporter:
 
     @staticmethod
     def _is_removed(time: float, asset: ProjectMediaAsset) -> bool:
-        return any(item.start <= time < item.end for item in asset.removed_ranges)
+        return any(item.start <= time < item.end for item in excluded_intervals(asset))
 
     def _sentence_cues(self, words: list[TimedWord]) -> list[SubtitleCue]:
         cues: list[SubtitleCue] = []

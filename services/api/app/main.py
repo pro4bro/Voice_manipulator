@@ -1211,7 +1211,7 @@ def create_app(
         project_id: str, asset_id: str, payload: MediaTimelineEditsUpdate
     ) -> ProjectMediaAsset:
         try:
-            return media.update_timeline_edits(project_id, asset_id, payload.removed_ranges, payload.gain_keyframes)
+            return media.update_timeline_edits(project_id, asset_id, payload.removed_ranges, payload.gain_keyframes, payload.working_range, payload.cut_points)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
         except ValueError as exc:
@@ -2314,6 +2314,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="Session ID already exists.") from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

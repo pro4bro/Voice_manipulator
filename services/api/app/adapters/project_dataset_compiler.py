@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.domain.timeline_intervals import excluded_intervals
+
 import hashlib
 import json
 from bisect import bisect_right
@@ -159,6 +161,7 @@ class _SpeakerContext:
             if end > start:
                 intervals.append((start, end, _EVERYONE_ELSE))
 
+        intervals.extend((item.start, item.end, _EVERYONE_ELSE) for item in excluded_intervals(asset))
         intervals.sort(key=lambda item: item[0])
         return cls(
             assignments=assignments,
@@ -500,7 +503,7 @@ class ProjectDatasetCompiler:
     def _segments_for(
         self, asset: ProjectMediaAsset, context: "_SpeakerContext"
     ) -> tuple[list[DatasetSegment], "_Drops"]:
-        if asset.capture_tier == "guided":
+        if asset.capture_tier == "guided" and not excluded_intervals(asset):
             return self._guided_segment(asset), _Drops()
         return self._segments_from_words(asset, context)
 
@@ -545,6 +548,7 @@ class ProjectDatasetCompiler:
         current: list[dict[str, Any]] = []
         current_walled = False
         pending_wall = False
+        excluded = excluded_intervals(asset)
 
         def close() -> None:
             nonlocal current
@@ -558,6 +562,10 @@ class ProjectDatasetCompiler:
                 pending_wall = True
                 continue
             start, end = float(raw["start"]), float(raw["end"])
+            if any(start < interval.end and end > interval.start for interval in excluded):
+                close()
+                pending_wall = True
+                continue
             owner = context.owner(raw)
             if owner is None:
                 drops.unassigned += end - start
@@ -585,7 +593,7 @@ class ProjectDatasetCompiler:
                 intruded = (
                     context.foreign_seconds(float(previous["end"]), start, owner)
                     >= OVERLAP_GAP_SECONDS
-                )
+                ) or any(float(previous["end"]) < interval.end and start > interval.start for interval in excluded)
                 if changed or intruded or gap >= BOUNDARY_GAP_SECONDS or would_run > SEGMENT_MAX_SECONDS:
                     close()
                     pending_wall = pending_wall or intruded

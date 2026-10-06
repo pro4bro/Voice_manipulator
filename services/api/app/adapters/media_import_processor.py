@@ -34,6 +34,7 @@ from fastapi import UploadFile
 from app.domain.models import MediaAssetCreate, MediaAudioTrackChoice, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
 from app.adapters.word_timing_quality import reconcile_word_timing_quality, space_recognized_words
+from app.domain.timeline_intervals import excluded_intervals
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 
 
@@ -569,10 +570,10 @@ class MediaImportProcessor:
                 model=model,
             )
         if kept_ranges:
-            item = self._restore_original_timeline(item, kept_ranges, asset.duration)
-        item = self._attach_timing_quality(item, asset.duration)
+            item = await asyncio.to_thread(self._restore_original_timeline, item, kept_ranges, asset.duration)
+        item = await asyncio.to_thread(self._attach_timing_quality, item, asset.duration)
         item = await asyncio.to_thread(self._write_and_read_stt_artifacts, analysis_path.parent, item)
-        updated = self.library.apply_transcription(project.id, asset.id, item, asset.duration)
+        updated = await asyncio.to_thread(self.library.apply_transcription, project.id, asset.id, item, asset.duration)
         return updated, elapsed
 
     @staticmethod
@@ -655,7 +656,7 @@ class MediaImportProcessor:
         self, analysis_path: Path, asset: ProjectMediaAsset
     ) -> tuple[Path, list[tuple[float, float]] | None]:
         """Create compact STT input and keep its inverse mapping to the original Timeline."""
-        removed = sorted(asset.removed_ranges, key=lambda item: (item.start, item.end))
+        removed = excluded_intervals(asset)
         if not removed:
             return analysis_path, None
         duration = max(0.0, asset.duration)
@@ -702,7 +703,7 @@ class MediaImportProcessor:
         """Map compacted STT word offsets back to the original, playable audio timeline."""
         restored = dict(item)
 
-        def original_time(value: Any) -> float:
+        def original_time(value: Any, *, is_start: bool = False) -> float:
             try:
                 compact_time = max(0.0, float(value))
             except (TypeError, ValueError):
@@ -710,7 +711,7 @@ class MediaImportProcessor:
             consumed = 0.0
             for start, end in kept_ranges:
                 span = max(0.0, end - start)
-                if compact_time <= consumed + span:
+                if compact_time < consumed + span or (not is_start and compact_time == consumed + span):
                     return min(end, max(start, start + compact_time - consumed))
                 consumed += span
             return kept_ranges[-1][1]
@@ -720,7 +721,7 @@ class MediaImportProcessor:
             if not isinstance(raw_word, dict):
                 continue
             word = dict(raw_word)
-            start = original_time(word.get("start", 0.0))
+            start = original_time(word.get("start", 0.0), is_start=True)
             end = original_time(word.get("end", word.get("start", 0.0)))
             word["start"] = start
             word["end"] = max(start, end)

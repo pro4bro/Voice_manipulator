@@ -20,6 +20,7 @@ from app.domain.models import (
     ProjectCreate,
     SpeakerProfile,
     TrainingCatalog,
+    TimelineEditRange,
 )
 
 
@@ -97,6 +98,18 @@ def test_only_selected_footage_is_compiled(tmp_path):
 
     assert manifest.source_asset_ids == ["asset-in"]
     assert {segment.asset_id for segment in manifest.segments} == {"asset-in"}
+
+
+@pytest.mark.parametrize("guided", [False, True])
+def test_training_never_reintroduces_audio_outside_marks_or_inside_deleted_sections(tmp_path, guided):
+    fixture = Fixture(tmp_path)
+    asset = fixture.add("asset-edited", words=steady_words(40), capture_tier="guided" if guided else "import")
+    fixture.library.update_timeline_edits(fixture.project.id, asset.id,
+        [TimelineEditRange(start=8, end=12)], [], TimelineEditRange(start=2, end=18), [8, 12])
+    manifest = fixture.compiler.compile(fixture.project.id)
+    assert manifest.segments
+    assert all(segment.start >= 2 and segment.end <= 18 for segment in manifest.segments)
+    assert all(segment.end <= 8 or segment.start >= 12 for segment in manifest.segments)
 
 
 def test_every_segment_lands_inside_the_engines_duration_window(tmp_path):

@@ -125,6 +125,8 @@ class MediaAssetCreate(DomainModel):
     has_external_source: bool = False
     local_cache_enabled: bool = False
     local_cache_updated_at: datetime | None = None
+    working_range: TimelineEditRange | None = None
+    cut_points: list[float] = Field(default_factory=list)
     removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
     gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
     studio_item_id: str | None = None
@@ -231,6 +233,8 @@ class MediaTranscriptReviewResult(DomainModel):
 
 
 class MediaTimelineEditsUpdate(DomainModel):
+    working_range: TimelineEditRange | None = None
+    cut_points: list[float] = Field(default_factory=list)
     removed_ranges: list[TimelineEditRange] = Field(default_factory=list)
     gain_keyframes: list[TimelineGainKeyframe] = Field(default_factory=list)
 

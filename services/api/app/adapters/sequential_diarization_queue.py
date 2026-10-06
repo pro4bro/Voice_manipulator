@@ -11,6 +11,8 @@ from app.adapters.activity_logging import job_failed, job_finished, job_progress
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
+from app.adapters.timeline_audio import prepare_diarization_audio
+from app.domain.timeline_intervals import restore_span
 from app.domain.ports import ProjectRepository
 
 
@@ -321,15 +323,22 @@ class SequentialDiarizationQueue:
                 self.media.set_diarization_progress(task.project_id, task.asset_id, value)
                 job_tick("diarization", task.project_id, task.asset_id, value, f"{value:.0f}% · {asset.name}")
 
+            processing_path, kept = await asyncio.to_thread(prepare_diarization_audio,
+                Path(project.project_path) / str(asset.analysis_path), asset)
             result = await self.studio.diarize(
-                Path(project.project_path) / str(asset.analysis_path),
+                processing_path,
                 token=settings.huggingface_token,
                 model=settings.model,
                 expected_speakers=task.expected_speakers,
                 on_progress=report,
             )
-            spans = result.spans
-            self._store_spans(project.project_path, task.asset_id, spans, settings.model, result.overlaps)
+            def restore(spans):
+                if kept is None:
+                    return spans
+                return [{**span, "start": a, "end": b} for span in spans
+                        for a, b in restore_span(float(span["start"]), float(span["end"]), kept)]
+            spans = restore(result.spans)
+            self._store_spans(project.project_path, task.asset_id, spans, settings.model, restore(result.overlaps or []))
             # Re-read words instead of reusing the snapshot taken before the job.
             # Diarization runs for minutes; Script edits made in the meantime were
             # silently overwritten by the stale copy.

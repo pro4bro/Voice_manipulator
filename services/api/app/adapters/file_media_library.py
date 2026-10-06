@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import threading
 from difflib import SequenceMatcher
@@ -537,6 +538,8 @@ class FileMediaLibrary:
         asset_id: str,
         removed_ranges: list[TimelineEditRange],
         gain_keyframes: list[TimelineGainKeyframe] | None = None,
+        working_range: TimelineEditRange | None = None,
+        cut_points: list[float] | None = None,
     ) -> ProjectMediaAsset:
         ordered = sorted(removed_ranges, key=lambda item: (item.start, item.end))
         ordered_keyframes = sorted(gain_keyframes or [], key=lambda item: item.time)
@@ -549,6 +552,11 @@ class FileMediaLibrary:
             previous_end = item.end
         with self._lock(project_id):
             asset = self._require(project_id, asset_id)
+            if working_range and not (0 <= working_range.start < working_range.end <= asset.duration):
+                raise ValueError("Vùng làm việc phải có IN < OUT và nằm trong footage.")
+            points = sorted(set(cut_points or []))
+            if any(not math.isfinite(point) or not 0 < point < asset.duration for point in points):
+                raise ValueError("Điểm cut phải nằm bên trong footage.")
             bounded = [
                 item.model_copy(
                     update={
@@ -567,7 +575,8 @@ class FileMediaLibrary:
             return self._update_asset(
                 project_id,
                 asset_id,
-                {"removed_ranges": bounded, "gain_keyframes": bounded_keyframes},
+                {"removed_ranges": bounded, "gain_keyframes": bounded_keyframes,
+                 "working_range": working_range, "cut_points": points},
                 event="TIMELINE_EDITS_CHANGED",
                 details={
                     "removedRangeCount": len(bounded),
