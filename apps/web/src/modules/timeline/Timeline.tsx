@@ -54,7 +54,7 @@ interface TimelineProps {
   workingRange?: TimelineEditRange | null;
   cutPoints?: number[];
   onEditStateChange?: (state: TimelineEditState) => void;
-  editRequest?: { wordIndex?: number; insertTime?: number; promoteIndex?: number; serial: number } | null;
+  editRequest?: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } | null;
   gainKeyframes?: TimelineGainKeyframe[];
   onGainChange: (value: number) => void;
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
@@ -554,6 +554,10 @@ export function Timeline({
   useEffect(() => {
     if (!editRequest) return;
     if (editRequest.promoteIndex !== undefined) promoteTimestampWord(take?.id ?? null, editRequest.promoteIndex);
+    if (editRequest.contextIndex !== undefined && words[editRequest.contextIndex]) {
+      const bounds = wordTrackRef.current?.getBoundingClientRect();
+      openSpeakerMenu(editRequest.contextIndex, Math.max(8, bounds?.left ?? 8), Math.max(8, (bounds?.top ?? 8) - 80));
+    }
     if (editRequest.wordIndex !== undefined && words[editRequest.wordIndex]) {
       const word = words[editRequest.wordIndex];
       setWordEditor({ index: editRequest.wordIndex, time: word.start, text: word.text });

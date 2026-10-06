@@ -641,7 +641,7 @@ it("keeps archive seek and each preview gain across layout and zoom changes", as
   expect((container.querySelector("audio") as HTMLAudioElement).volume).toBeCloseTo(.42);
 });
 
-it("marks and cuts one shared time range across every archived channel", async () => {
+it("persists work marks, cuts at playhead and restores selected shared sections", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
     recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
     channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
@@ -649,52 +649,40 @@ it("marks and cuts one shared time range across every archived channel", async (
     sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`,
       alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
   }]);
-  const onCutsChange = vi.fn();
-  const assets = ids.map((_, index) => ({ id: `asset-${index}`, removedRanges: [] })) as unknown as ProjectMediaAsset[];
-  const view = render(<ObsLiveLinkTimeline assets={assets} onCutsChange={onCutsChange} projectId="project" requestedRecordingId="recording" />);
-  const waveA = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
-  const waveB = screen.getByRole("img", { name: "Sóng âm Channel 2" });
-  vi.spyOn(waveA, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
-  vi.spyOn(waveB, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
-  fireEvent.click(waveA, { clientX: 25 });
+  let assets = ids.map((_, index) => ({ id: `asset-${index}`, removedRanges: [], cutPoints: [] })) as unknown as ProjectMediaAsset[];
+  const save = vi.fn(async (assetId: string, state: import("../../domain/timeline-editing").TimelineEditState) => {
+    assets = assets.map((asset) => asset.id === assetId ? { ...asset, ...state } : asset);
+  });
+  const view = render(<ObsLiveLinkTimeline assets={assets} onAssetTimelineStateChange={save} projectId="project" requestedRecordingId="recording" />);
+  const refresh = () => view.rerender(<ObsLiveLinkTimeline assets={assets} onAssetTimelineStateChange={save} projectId="project" requestedRecordingId="recording" />);
+  const wave = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(wave, { clientX: 25 });
   fireEvent.click(screen.getByRole("button", { name: "MARK IN" }));
-  fireEvent.click(waveB, { clientX: 50 });
-  expect((view.container.querySelector("audio") as HTMLAudioElement).src).toContain("asset-0/audio");
-  fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
-  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "50%" });
-  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "50%" });
-  const rulerB = screen.getByLabelText("Ruler Channel 2");
-  vi.spyOn(rulerB, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
-  fireEvent.click(rulerB, { clientX: 75 });
-  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "75%" });
-  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "75%" });
-  const transport = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
-  vi.spyOn(transport, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
-  fireEvent.click(transport, { clientX: 25 });
-  expect(screen.getByLabelText("Playhead Channel 1")).toHaveStyle({ left: "25%" });
-  expect(screen.getByLabelText("Playhead Channel 2")).toHaveStyle({ left: "25%" });
-  fireEvent.click(waveB, { clientX: 50 });
+  fireEvent.click(wave, { clientX: 50 });
   fireEvent.click(screen.getByRole("button", { name: "MARK OUT" }));
-  expect(screen.getAllByLabelText(/^Mark In Channel/)).toHaveLength(2);
-  expect(screen.getAllByLabelText(/^Mark Out Channel/)).toHaveLength(2);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(assets.every((asset) => asset.workingRange?.start === 10 && asset.workingRange.end === 20)).toBe(true);
+  refresh();
+  expect(screen.getAllByLabelText(/^Đoạn đã loại Channel/)).toHaveLength(4);
+  fireEvent.click(wave, { clientX: 37.5 });
   fireEvent.click(screen.getByRole("button", { name: "CUT" }));
-  expect(screen.getAllByLabelText(/^Đoạn chuẩn bị xóa Channel/)).toHaveLength(2);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(4));
+  expect(assets.every((asset) => asset.cutPoints?.[0] === 15)).toBe(true);
+  refresh();
+  fireEvent.click(screen.getByRole("button", { name: "00:00–00:15" }));
   fireEvent.click(screen.getByRole("button", { name: "DELETE" }));
-  expect(onCutsChange).toHaveBeenCalledWith(["asset-0", "asset-1"], [expect.objectContaining({ start: 10, end: 20 })]);
-  await waitFor(() => expect(screen.queryByLabelText("Đoạn chuẩn bị xóa Channel 1")).not.toBeInTheDocument());
-  const cut = onCutsChange.mock.calls[0][1][0];
-  view.rerender(<ObsLiveLinkTimeline assets={assets.map((asset) => ({ ...asset, removedRanges: [cut] }))}
-    onCutsChange={onCutsChange} projectId="project" requestedRecordingId="recording" />);
-  expect(screen.getAllByLabelText(/^Đoạn đã loại Channel/)).toHaveLength(2);
-  onCutsChange.mockResolvedValueOnce(false);
-  fireEvent.click(screen.getByRole("button", { name: "RESET" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "RESET" })).toBeEnabled());
-  expect(screen.getAllByLabelText(/^Đoạn đã loại Channel/)).toHaveLength(2);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(6));
+  expect(assets.every((asset) => asset.removedRanges?.[0].end === 15)).toBe(true);
+  refresh();
+  const audio = view.container.querySelector("audio") as HTMLAudioElement;
+  audio.currentTime = 5;
+  fireEvent.timeUpdate(audio);
+  expect(audio.currentTime).toBe(15);
+  fireEvent.click(screen.getByRole("button", { name: "00:00–00:15" }));
   fireEvent.click(screen.getByRole("button", { name: "UNCUT" }));
-  expect(onCutsChange).toHaveBeenLastCalledWith(["asset-0", "asset-1"], []);
-  view.rerender(<ObsLiveLinkTimeline assets={assets} visibleAssetId="asset-0" onCutsChange={onCutsChange}
-    projectId="project" requestedRecordingId="recording" />);
-  expect(screen.getAllByRole("img", { name: /Sóng âm Channel/ })).toHaveLength(1);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(8));
+  expect(assets.every((asset) => !asset.removedRanges?.length && !asset.cutPoints?.length && asset.workingRange?.start === 10)).toBe(true);
 });
 
 it("edits timestamped words from an archived OBS track in the shared Timeline editor", async () => {
@@ -719,6 +707,25 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
   await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("asset-0", [
     expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), asset.words[1],
   ], "Hi world"));
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
+  await screen.findByRole("button", { name: /hello ·/ });
+  const promotion = vi.fn();
+  window.addEventListener("pro4bro:timestamp-promotion", promotion);
+  act(() => window.dispatchEvent(new CustomEvent("pro4bro:timestamp-promotion", { detail: { assetId: "asset-0", index: 0 } })));
+  expect(await screen.findByText(/GÁN TIMESTAMP · hello/)).toBeInTheDocument();
+  // Original request plus the shared editor's one replay; no feedback loop.
+  expect(promotion.mock.calls.filter(([event]) => event.detail.index !== null)).toHaveLength(2);
+  expect(promotion).toHaveBeenCalledTimes(3); // Includes the mount's reset event.
+  window.removeEventListener("pro4bro:timestamp-promotion", promotion);
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
+  fireEvent.contextMenu(await screen.findByRole("button", { name: /world ·/ }));
+  expect(await screen.findByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Xóa text đã chọn" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
+  const subtitle = await screen.findByLabelText("Subtitle Channel 1");
+  vi.spyOn(subtitle, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(subtitle, { ctrlKey: true, clientX: 50 });
+  expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
 });
 
 it("shows the actual visible time span for a short archive", async () => {
