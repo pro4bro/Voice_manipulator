@@ -599,8 +599,9 @@ def test_retranscription_replaces_timing_but_keeps_matching_word_annotations(tmp
     assert "emotion" not in updated.words[2]
     assert updated.words[3]["diarizationSpeakerId"] == "speaker-1"
     assert [(word["start"], word["end"]) for word in updated.words] == [
-        (0.1, 0.3), (0.3, 0.6), (0.6, 0.8), (0.8, 1.0)
+        (0.1, 0.29), (0.3, 0.59), (0.6, 0.79), (0.8, 1.0)
     ]
+    assert updated.words[0]["sourceTiming"]["end"] == 0.3
 
 
 def _asset_payload(**overrides) -> MediaAssetCreate:
