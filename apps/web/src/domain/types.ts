@@ -201,6 +201,8 @@ export interface ProjectMediaAsset {
   hasExternalSource?: boolean;
   localCacheEnabled?: boolean;
   localCacheUpdatedAt?: string | null;
+  workingRange?: TimelineEditRange | null;
+  cutPoints?: number[];
   removedRanges?: TimelineEditRange[];
   gainKeyframes?: TimelineGainKeyframe[];
   studioItemId: string | null;

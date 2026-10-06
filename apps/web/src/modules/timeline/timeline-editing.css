@@ -1,0 +1,17 @@
+.timeline-module.timeline-module > .module-frame__body { display: flex; flex-direction: column; }
+.timeline-module.timeline-module > .module-frame__body > .timeline-stage { flex: 1 1 auto; }
+.timeline-module.timeline-module > .module-frame__body > .transport-bar { flex: 0 0 32px; }
+.timeline-section-strip { display: flex; flex: 0 0 22px; height: 22px; background: var(--surface-audio); }
+.timeline-section-strip button { min-width: 0; padding: 0; border: 0; border-right: 1px solid var(--line); color: var(--text-muted); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
+.timeline-section-strip button.is-selected { background: var(--lime); color: var(--text-on-accent); }
+.timeline-section-strip button.is-removed { background: var(--surface-sunken); opacity: .55; text-decoration: line-through; }
+.timeline-cut-point { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--lime); pointer-events: none; }
+.timeline-module .timeline-word { pointer-events: auto; }
+.timeline-word.is-promoted { outline: 2px solid var(--lime); z-index: 5; }
+.timeline-promotion-status { flex: 0 0 auto; padding: 4px 8px; color: var(--lime-ink); font-size: 11px; }
+.timeline-word-edit { position: absolute; z-index: 8; top: 0; min-width: 100px; height: 100%; border: 1px solid var(--lime); background: var(--surface-field); color: var(--text); }
+.word-track > .timeline-removed-range { top: 0; bottom: 0; pointer-events: none; }
+.timeline-word[data-timing-note] { animation: script-time-estimate-pulse 1.5s ease-in-out 3; outline: 1px dashed var(--accent); }
+.timeline-word[data-timing-note]:hover::after { content: attr(data-timing-note); position: fixed; transform: translateY(-28px); z-index: 50; background: var(--surface-field); color: var(--text); padding: 4px 8px; border: 1px solid var(--line); white-space: nowrap; opacity: 0; animation: timeline-note-show 0s 2s forwards; pointer-events: none; }
+@keyframes timeline-note-show { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .timeline-word[data-timing-note] { animation: none; } }

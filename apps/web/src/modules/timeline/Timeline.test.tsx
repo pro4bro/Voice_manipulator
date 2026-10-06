@@ -166,10 +166,9 @@ describe("Timeline", () => {
     const timings = normalizeWordTimings([{ text: "một", start: 1, end: 1.01 }, { text: "câu", start: 1.01, end: 1.02 }, { text: "dài", start: 1.02, end: 1.03 }, { text: "tiếp", start: 2, end: 2.2 }], 3);
     expect(timings.map((word) => [word.start, word.end])).toEqual([[1, 1.01], [1.01, 1.02], [1.02, 1.03], [2, 2.2]]);
   });
-  it("hides unaligned recognizer subtitle boxes so they cannot be edited as source timing", async () => {
-    render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "review.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "needs-alignment", words: [{ text: "vẫn", start: 1, end: 1.3 }, { text: "hiện", start: 1.3, end: 1.6 }] }} />);
-    expect(screen.queryByRole("button", { name: "Subtitle word vẫn" })).not.toBeInTheDocument();
-    expect(screen.getByText(/chưa có nguồn căn chỉnh đáng tin/i)).toBeInTheDocument();
+  it("keeps unaligned words reviewable without promoting their timing", async () => {
+    render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "review.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "needs-alignment", words: [{ text: "vẫn", start: 1, end: 1.3, timingTrusted: false }, { text: "hiện", start: 1.3, end: 1.6, timingTrusted: false }] }} />);
+    expect(screen.getByRole("button", { name: "Subtitle word vẫn" })).toHaveClass("timeline-word--untrusted");
   });
 
   it("shows unverified timing as an explicitly warned word instead of hiding it", () => {

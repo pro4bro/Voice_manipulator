@@ -67,6 +67,7 @@ import { mergeEvents } from "../domain/activity";
 import { Icon, type IconName } from "../ui/Icon";
 import { RuntimeMenuItems } from "./RuntimeMenuItems";
 import { ModuleErrorBoundary } from "./ModuleErrorBoundary";
+import { reconcileScriptTextEdit } from "../modules/script/script-text-reconciliation";
 
 interface WorkspaceShellProps {
   project: Project;
@@ -160,6 +161,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const pageTake = activePageTake();
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
+  const wordWriteQueues = useRef(new Map<string, Promise<void>>());
+  const wordWriteVersions = useRef(new Map<string, number>());
+  const timelineWriteQueues = useRef(new Map<string, Promise<boolean>>());
+  const timelineWriteVersions = useRef(new Map<string, number>());
   // Full-list requests started before a permanent delete must not reinsert it.
   const permanentlyRemovedMediaIds = useRef(new Set<string>());
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -258,6 +263,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const activitySeq = useRef(0);
   const [scriptDirty, setScriptDirty] = useState(false);
   const scriptRef = useRef("");
+  const scriptDraftBases = useRef(new Map<string, { text: string; words: StudioWord[] }>());
   const scratchStorageKey = `pro4bro:${project.id}:scratch-script`;
   const [script, setScript] = useState("");
   const manifest = workspaceManifest(activePage);
@@ -660,10 +666,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const pendingAssetId = scriptAssetId;
     const pendingText = script;
     const timer = window.setTimeout(() => {
-      void api.updateMediaScript(project.id, pendingAssetId, pendingText, "user").then((updated) => {
-        setMediaAssets((current) => current.map((asset) => asset.id !== updated.id ? asset : scriptRef.current === pendingText ? updated : { ...updated, text: asset.text }));
-        if (scriptRef.current === pendingText) setScriptDirty(false);
-      }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "Không lưu được revision Script"));
+      saveScriptDraft(pendingAssetId, pendingText);
     }, 850);
     return () => window.clearTimeout(timer);
   }, [project.id, script, scriptDirty, scriptAssetId, liveTranscriptActive]);
@@ -776,9 +779,14 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   function flushCurrentMediaDraft() {
     if (!scriptDirty || !scriptAssetId) return;
-    const assetId = scriptAssetId;
-    const text = scriptRef.current;
-    void api.updateMediaScript(project.id, assetId, text, "user").then(storeMediaAsset).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "Không lưu được revision Script trước khi đổi asset"));
+    saveScriptDraft(scriptAssetId, scriptRef.current);
+  }
+
+  function saveScriptDraft(assetId: string, text: string) {
+    const base = scriptDraftBases.current.get(assetId);
+    if (!base) return;
+    const edit = reconcileScriptTextEdit(base.text, text, base.words);
+    void changeWordAnnotations(edit.words, edit.text, assetId);
   }
 
   function selectMediaAsset(assetId: string) {
@@ -838,9 +846,12 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   function changeScript(value: string) {
     setScript(value);
+    scriptRef.current = value;
     // In Voice Manipulator the Script is text to speak, not the transcript of
     // whatever footage happens to be selected; typing there must not rewrite it.
     if (!scriptAssetId || liveTranscriptActive || activePage === "voice-manipulator") return;
+    const asset = mediaAssetsRef.current.find((item) => item.id === scriptAssetId);
+    if (asset && !scriptDraftBases.current.has(asset.id)) scriptDraftBases.current.set(asset.id, { text: asset.text, words: asset.words });
     setMediaAssets((current) => current.map((asset) => asset.id === scriptAssetId ? { ...asset, text: value } : asset));
     setScriptDirty(true);
   }
@@ -851,20 +862,35 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setCatalogRevision(catalogRevisionRef.current);
   }
 
-  async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[], assetId = selectedAssetId) {
-    if (!assetId) return;
+  async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[], assetId = selectedAssetId, workingRange?: TimelineEditRange | null, cutPoints?: number[]) {
+    if (!assetId) return false;
     const previous = mediaAssets.find((asset) => asset.id === assetId);
-    if (!previous) return;
+    if (!previous) return false;
     const nextKeyframes = gainKeyframes ?? previous.gainKeyframes ?? [];
-    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, removedRanges: ranges, gainKeyframes: nextKeyframes } : asset));
-    try {
-      const updated = await api.updateMediaTimelineEdits(project.id, assetId, ranges, nextKeyframes);
-      setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
-      setNotice(nextKeyframes.length ? `Đã lưu ${nextKeyframes.length} keyframe Auto Calibration.` : ranges.length ? `${ranges.length} đoạn đã được loại khỏi audio xử lý STT/training.` : "Đã reset timeline; STT/training sẽ dùng lại toàn bộ audio.");
-    } catch (error) {
-      setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? previous : asset));
-      setNotice(error instanceof Error ? error.message : "Không lưu được timeline edits");
-    }
+    const nextWorking = workingRange === undefined ? previous.workingRange ?? null : workingRange;
+    const nextPoints = cutPoints ?? previous.cutPoints ?? [];
+    setMediaAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, removedRanges: ranges, gainKeyframes: nextKeyframes, workingRange: nextWorking, cutPoints: nextPoints } : asset));
+    const version = (timelineWriteVersions.current.get(assetId) ?? 0) + 1;
+    timelineWriteVersions.current.set(assetId, version);
+    const predecessor = timelineWriteQueues.current.get(assetId) ?? Promise.resolve(true);
+    const write = predecessor.catch(() => false).then(async () => {
+      try {
+        const updated = await api.updateMediaTimelineEdits(project.id, assetId, ranges, nextKeyframes, nextWorking, nextPoints);
+        if (timelineWriteVersions.current.get(assetId) === version) {
+          setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? { ...asset, removedRanges: updated.removedRanges, gainKeyframes: updated.gainKeyframes, workingRange: updated.workingRange, cutPoints: updated.cutPoints } : asset));
+          setNotice("Đã lưu vùng làm việc và điểm cắt. Phát/STT/diarization/training sẽ bỏ qua vùng gray out.");
+        }
+        return true;
+      } catch (error) {
+        if (timelineWriteVersions.current.get(assetId) === version) setMediaAssets((current) => current.map((asset) => asset.id === previous.id ? { ...asset, removedRanges: previous.removedRanges, gainKeyframes: previous.gainKeyframes, workingRange: previous.workingRange, cutPoints: previous.cutPoints } : asset));
+        setNotice(error instanceof Error ? error.message : "Không lưu được timeline edits");
+        return false;
+      }
+    });
+    timelineWriteQueues.current.set(assetId, write);
+    const saved = await write;
+    if (timelineWriteQueues.current.get(assetId) === write) timelineWriteQueues.current.delete(assetId);
+    return saved;
   }
   async function updateMediaAnnotations(assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) {
     const previous = mediaAssets.find((asset) => asset.id === assetId);
@@ -908,9 +934,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  async function changeWordAnnotations(words: StudioWord[], text?: string) {
-    if (!scriptAssetId) return;
-    const asset = mediaAssets.find((item) => item.id === scriptAssetId);
+  async function changeWordAnnotations(words: StudioWord[], text?: string, assetId = scriptAssetId) {
+    if (!assetId) return;
+    const asset = mediaAssetsRef.current.find((item) => item.id === assetId) ?? mediaAssets.find((item) => item.id === assetId);
     if (!asset) return;
     const wordSpeakerIds = words.map((word) => word.speakerId).filter((id): id is string => Boolean(id));
     const wordEnvironmentIds = words.flatMap((word) => word.environmentProfileIds ?? []);
@@ -918,23 +944,35 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const environmentProfileIds = [...new Set([...asset.environmentProfileIds, ...wordEnvironmentIds])];
     const emotions = [...new Set(words.map((word) => word.emotion ?? asset.emotion))];
     const emotion = emotions.length > 1 ? "mix" : emotions[0] ?? asset.emotion;
-    const nextText = text ?? scriptRef.current;
-    if (text !== undefined) {
+    const nextText = text ?? (assetId === scriptAssetId ? scriptRef.current : asset.text);
+    scriptDraftBases.current.delete(assetId);
+    if (text !== undefined && assetId === scriptAssetId) {
       setScript(nextText);
       scriptRef.current = nextText;
       setScriptDirty(false);
     }
-    setTake((current) => current ? { ...current, text: nextText, words } : current);
+    if (assetId === scriptAssetId) setTake((current) => current ? { ...current, text: nextText, words } : current);
+    mediaAssetsRef.current = mediaAssetsRef.current.map((item) => item.id === asset.id ? { ...item, text: nextText, words, speakerProfileIds, environmentProfileIds, emotion } : item);
     setMediaAssets((current) => current.map((item) => item.id === asset.id ? { ...item, text: nextText, words, speakerProfileIds, environmentProfileIds, emotion } : item));
-    try {
-      await api.updateMediaScript(project.id, asset.id, nextText, "user", words);
-      const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, environmentProfileIds, emotion);
-      setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
-      void refreshDatasetReadiness();
-      setNotice(`Đã gán ${speakerProfileIds.length} speaker · ${environmentProfileIds.length} environment.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không lưu được nhãn theo từ");
-    }
+    const version = (wordWriteVersions.current.get(asset.id) ?? 0) + 1;
+    wordWriteVersions.current.set(asset.id, version);
+    const previousWrite = wordWriteQueues.current.get(asset.id) ?? Promise.resolve();
+    const write = previousWrite.catch(() => undefined).then(async () => {
+      try {
+        await api.updateMediaScript(project.id, asset.id, nextText, "user", words);
+        const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, environmentProfileIds, emotion);
+        if (wordWriteVersions.current.get(asset.id) !== version) return;
+        setMediaAssets((current) => current.map((item) => item.id === updated.id ? { ...item, text: updated.text, words: updated.words, speakerProfileIds: updated.speakerProfileIds, environmentProfileIds: updated.environmentProfileIds, emotion: updated.emotion, wordTimingQuality: updated.wordTimingQuality, wordTimingNote: updated.wordTimingNote, revisions: updated.revisions } : item));
+        if (scriptAssetIdRef.current === asset.id) setTake((current) => current ? { ...current, words: updated.words, text: updated.text, wordTimingQuality: updated.wordTimingQuality, wordTimingNote: updated.wordTimingNote } : current);
+        void refreshDatasetReadiness();
+        setNotice("Đã lưu text, timestamp và nhãn theo từ.");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Không lưu được text/timestamp");
+      }
+    });
+    wordWriteQueues.current.set(asset.id, write);
+    await write;
+    if (wordWriteQueues.current.get(asset.id) === write) wordWriteQueues.current.delete(asset.id);
   }
 
   async function assignScriptWords(assetId: string, indexes: number[], speakerProfileId: string | null) {
@@ -2227,6 +2265,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onObsImportReady: (assetId) => void openObsAsset(assetId),
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
+    onAssetTimelineStateChange: async (assetId, state) => { if (blockedByRecycleBin()) throw new Error("Footage đang ở Recycle Bin."); if (!await updateTimelineEdits(state.removedRanges, undefined, assetId, state.workingRange, state.cutPoints)) throw new Error("Không lưu được vùng làm việc."); },
+    onTimelineStateChange: (state) => { if (!blockedByRecycleBin()) void updateTimelineEdits(state.removedRanges, undefined, scriptAssetId, state.workingRange, state.cutPoints); },
     onTimelineEditsChange: (ranges, gainKeyframes) => { if (!blockedByRecycleBin()) void updateTimelineEdits(ranges, gainKeyframes); },
     onToggleTraining: (assetId, selected) => void toggleTrainingAsset(assetId, selected),
     onToggleTranscription: (assetId, selected) => void toggleTranscriptionAsset(assetId, selected),
@@ -2243,6 +2283,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     projectLanguage: project.language ?? null,
     onUpdateAnnotations: (assetId, speakerProfileIds, environmentProfileIds, emotion) => { if (!blockedByRecycleBin()) void updateMediaAnnotations(assetId, speakerProfileIds, environmentProfileIds, emotion); },
     onUpdateDiarizationAssignments: (assetId, assignments) => { if (!blockedByRecycleBin()) void updateDiarizationAssignments(assetId, assignments); },
+    onAssetWordsChange: (assetId, words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text, assetId); },
     onWordsChange: (words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text); },
     onCatalogChange: changeCatalog,
     onSendToTraining: sendSelectedToTraining,

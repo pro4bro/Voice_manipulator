@@ -1,0 +1,93 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { act, useState } from "react";
+import { Timeline } from "./Timeline";
+import type { TimelineEditState } from "../../domain/timeline-editing";
+import { promoteTimestampWord } from "../../domain/timestamp-promotion";
+
+const words = [{ text: "xin", start: 1, end: 2, timingSource: "dtw", timingTrusted: true }, { text: "chào", start: 3, end: 4, timingSource: "dtw", timingTrusted: true }];
+const take = { id: "editing", name: "editing.wav", url: "/audio.wav", duration: 10, text: "xin chào", words };
+function Editable() {
+  const [state, setState] = useState<TimelineEditState>({ removedRanges: [], workingRange: null, cutPoints: [] });
+  return <Timeline {...state} gain={0} onGainChange={() => undefined} onEditStateChange={setState} take={take} />;
+}
+function geometry(container: HTMLElement) {
+  const canvas = container.querySelector(".timeline-canvas")!;
+  vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, right: 1000, width: 1000, top: 0, bottom: 100, height: 100, x: 0, y: 0, toJSON: () => ({}) });
+}
+describe("time-aware timeline editing", () => {
+  it("marks a work region, cuts at playhead and deletes/restores selected sections", () => {
+    const { container } = render(<Editable />);
+    const audio = container.querySelector("audio")!;
+    audio.currentTime = 2; fireEvent.timeUpdate(audio); fireEvent.click(screen.getByText("MARK IN"));
+    audio.currentTime = 8; fireEvent.timeUpdate(audio); fireEvent.click(screen.getByText("MARK OUT"));
+    expect(screen.getByLabelText("Đoạn đã loại 0.00 đến 2.00 giây")).toBeInTheDocument();
+    audio.currentTime = 5; fireEvent.timeUpdate(audio); fireEvent.click(screen.getByText("CUT"));
+    fireEvent.click(screen.getByLabelText("Đoạn footage 0.00 đến 5.00"));
+    fireEvent.click(screen.getByText("DELETE"));
+    expect(screen.getByLabelText("Đoạn đã loại 0.00 đến 5.00 giây")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("UNCUT"));
+    expect(screen.getByLabelText("Đoạn đã loại 0.00 đến 2.00 giây")).toBeInTheDocument();
+  });
+  it("doubleclicks a subtitle to edit without changing the module view", () => {
+    const change = vi.fn(); render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Subtitle word xin" }));
+    fireEvent.change(screen.getByLabelText("Sửa subtitle"), { target: { value: "xin mới" } });
+    fireEvent.keyDown(screen.getByLabelText("Sửa subtitle"), { key: "Enter" });
+    expect(change.mock.calls[0][1]).toBe("xin mới chào");
+    expect(change.mock.calls[0][0].some((word: { timingSource?: string }) => word.timingSource === "user-interpolated")).toBe(true);
+  });
+  it("assigns a promoted word IN/OUT on middle drag and advances to the next word", () => {
+    const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    geometry(container);
+    act(() => promoteTimestampWord("editing", 0));
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(waveform, { buttons: 4, clientX: 250, pointerId: 1 });
+    fireEvent.pointerUp(waveform, { button: 1, clientX: 250, pointerId: 1 });
+    expect(change).toHaveBeenCalled();
+    expect(change.mock.calls[0][0][0]).toMatchObject({ start: 1, end: 2.5, timingSource: "manual" });
+    expect(container.querySelector(".timeline-promotion-status")).toHaveTextContent("chào");
+    fireEvent.pointerDown(waveform, { button: 0, clientX: 300, pointerId: 1 });
+    expect(container.querySelector(".timeline-promotion-status")).not.toBeInTheDocument();
+  });
+  it("deletes selected subtitle text and its word interval together", () => {
+    const change = vi.fn(); render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Subtitle word xin" }), { clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Xóa text đã chọn" }));
+    expect(change.mock.calls[0][1].trim()).toBe("chào");
+    expect(change.mock.calls[0][0]).toEqual([words[1]]);
+  });
+  it("discards Escape edits and prevents a later blur from committing them", () => {
+    const change = vi.fn(); render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Subtitle word xin" }));
+    const input = screen.getByLabelText("Sửa subtitle");
+    fireEvent.change(input, { target: { value: "discard me" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.blur(input);
+    expect(change).not.toHaveBeenCalled();
+  });
+  it("inserts text at the Ctrl-click source time and leaves it promoted for alignment", () => {
+    const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    geometry(container);
+    fireEvent.pointerDown(container.querySelector(".word-track")!, { button: 0, ctrlKey: true, clientX: 250 });
+    const input = screen.getByLabelText("Sửa subtitle");
+    fireEvent.change(input, { target: { value: "mới" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(change.mock.calls[0][1]).toBe("xin mới chào");
+    expect(change.mock.calls[0][0][1]).toMatchObject({ text: "mới", start: 2.5, timingTrusted: false });
+    expect(container.querySelector(".timeline-promotion-status")).toBeInTheDocument();
+  });
+  it("Escape aborts promoted drag without assigning timestamps", () => {
+    const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    geometry(container); act(() => promoteTimestampWord("editing", 0));
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, clientX: 100, pointerId: 1 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerMove(waveform, { buttons: 4, clientX: 250, pointerId: 1 });
+    fireEvent.pointerUp(waveform, { button: 1, clientX: 250, pointerId: 1 });
+    expect(change).not.toHaveBeenCalled();
+  });
+});

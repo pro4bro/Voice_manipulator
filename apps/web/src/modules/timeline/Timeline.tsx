@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
+import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections, type TimelineEditState } from "../../domain/timeline-editing";
+import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
+import "./timeline-editing.css";
+import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/script-text-reconciliation";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { rulerMarks } from "./ruler";
@@ -47,12 +51,16 @@ interface TimelineProps {
   gain: number;
   recordingPreview?: RecordingWaveformPreview | null;
   removedRanges?: TimelineEditRange[];
+  workingRange?: TimelineEditRange | null;
+  cutPoints?: number[];
+  onEditStateChange?: (state: TimelineEditState) => void;
+  editRequest?: { wordIndex?: number; insertTime?: number; promoteIndex?: number; serial: number } | null;
   gainKeyframes?: TimelineGainKeyframe[];
   onGainChange: (value: number) => void;
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
   onGainKeyframesChange?: (keyframes: TimelineGainKeyframe[]) => void;
   speakers?: SpeakerProfile[];
-  onWordsChange?: (words: StudioWord[]) => void;
+  onWordsChange?: (words: StudioWord[], text?: string) => void;
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
   /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
@@ -219,6 +227,10 @@ export function Timeline({
   gain,
   recordingPreview = null,
   removedRanges = [],
+  workingRange = null,
+  cutPoints = [],
+  onEditStateChange,
+  editRequest = null,
   gainKeyframes = [],
   onGainChange,
   onRemovedRangesChange,
@@ -244,6 +256,14 @@ export function Timeline({
   const [markIn, setMarkIn] = useState<number | null>(null);
   const [markOut, setMarkOut] = useState<number | null>(null);
   const [stagedCut, setStagedCut] = useState<TimelineEditRange | null>(null);
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
+  const [promotedIndex, setPromotedIndex] = useState<number | null>(null);
+  const promotedRef = useRef<number | null>(null);
+  const promotionDragRef = useRef<{ start: number; index: number } | null>(null);
+  const pendingPromotionRef = useRef<number | null>(null);
+  const [wordEditor, setWordEditor] = useState<{ index: number | null; time: number; text: string } | null>(null);
+  const wordEditorRef = useRef(wordEditor);
+  wordEditorRef.current = wordEditor;
   const [draftGain, setDraftGain] = useState(gain);
   const [isGainPreviewing, setIsGainPreviewing] = useState(false);
   const [autoCalibrate, setAutoCalibrate] = useState(false);
@@ -309,7 +329,9 @@ export function Timeline({
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
-  const timingIsTrusted = Boolean(take && take.wordTimingQuality !== "needs-alignment");
+  const excludedRanges = useMemo(() => excludedTimelineRanges(duration, removedRanges, workingRange), [duration, removedRanges, workingRange]);
+  const sections = useMemo(() => timelineSections(duration, cutPoints), [duration, cutPoints]);
+  const timingIsTrusted = Boolean(take && words.length);
   const timingUnavailable = Boolean(take && !timingIsTrusted && (words.length || take.wordTimingNote));
   // W2 keeps reviewable intervals visible. The asset summary blocks only the
   // unsafe >=5% case; individual bad words carry their own warning class.
@@ -510,10 +532,45 @@ export function Timeline({
     setMediaDuration(0);
     setDetailEnvelope(null);
     setDetailWaveformState("idle");
-    setMarkIn(null);
-    setMarkOut(null);
+    setMarkIn(workingRange?.start ?? null);
+    setMarkOut(workingRange?.end ?? null);
     setStagedCut(null);
+    setSelectedSections([]);
+    promoteTimestampWord(null, null);
   }, [take?.id, take?.url]);
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<TimestampPromotion>).detail;
+      const requested = detail.assetId === (take?.id ?? null) ? detail.index : null;
+      const index = requested !== null && requested === promotedRef.current ? null : requested;
+      promotedRef.current = index;
+      setPromotedIndex(index);
+    };
+    window.addEventListener(TIMESTAMP_PROMOTION_EVENT, receive);
+    return () => window.removeEventListener(TIMESTAMP_PROMOTION_EVENT, receive);
+  }, [take?.id]);
+
+  useEffect(() => {
+    if (!editRequest) return;
+    if (editRequest.promoteIndex !== undefined) promoteTimestampWord(take?.id ?? null, editRequest.promoteIndex);
+    if (editRequest.wordIndex !== undefined && words[editRequest.wordIndex]) {
+      const word = words[editRequest.wordIndex];
+      setWordEditor({ index: editRequest.wordIndex, time: word.start, text: word.text });
+    } else if (editRequest.insertTime !== undefined) setWordEditor({ index: null, time: editRequest.insertTime, text: "" });
+  }, [editRequest?.serial, take?.id]);
+
+  useEffect(() => {
+    const cancel = (event: globalThis.PointerEvent) => {
+      if (event.button !== 0 && event.button !== 2) return;
+      if (promotedRef.current !== null) promoteTimestampWord(null, null);
+      if (promotionDragRef.current) { promotionDragRef.current = null; audioRef.current?.pause(); }
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; audioRef.current?.pause(); } };
+    window.addEventListener("pointerdown", cancel, true);
+    window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", escape); };
+  }, []);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -551,7 +608,12 @@ export function Timeline({
 
   function syncPlaybackClock(audio = audioRef.current, forceState = true) {
     if (!audio) return;
-    const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    let nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    if (!audio.paused && !promotionDragRef.current) {
+      nextTime = nextPlayableTime(nextTime, duration, excludedRanges);
+      if (nextTime !== audio.currentTime) audio.currentTime = nextTime;
+      if (nextTime >= duration) audio.pause();
+    }
     paintPlayhead(nextTime);
     const now = performance.now();
     if (!forceState && now - lastClockStateUpdateRef.current < CLOCK_STATE_INTERVAL_MS) return;
@@ -762,41 +824,48 @@ export function Timeline({
 
   function markTimelinePoint(kind: "in" | "out") {
     if (isRecording || !take?.url) return;
-    if (kind === "in") setMarkIn(currentTime);
-    else setMarkOut(currentTime);
+    const start = kind === "in" ? currentTime : markIn;
+    const end = kind === "out" ? currentTime : markOut;
+    if (kind === "in") setMarkIn(start);
+    else setMarkOut(end);
+    if (start !== null && end !== null && end > start) {
+      onEditStateChange?.({ removedRanges, cutPoints, workingRange: { id: "working", start, end } });
+    }
     setStagedCut(null);
   }
 
   function cutMarkedRange() {
-    if (markIn === null || markOut === null || Math.abs(markOut - markIn) < 0.05) return;
-    const start = Math.min(markIn, markOut);
-    const end = Math.max(markIn, markOut);
-    setStagedCut({ id: `cut-preview-${start}-${end}`, start, end });
+    if (currentTime <= 0 || currentTime >= duration) return;
+    const next = [...new Set([...cutPoints, currentTime])].sort((a, b) => a - b);
+    onEditStateChange?.({ removedRanges, workingRange, cutPoints: next });
   }
 
   function uncut() {
-    if (stagedCut) {
-      setStagedCut(null);
-      return;
-    }
-    if (removedRanges.length) onRemovedRangesChange?.(removedRanges.slice(0, -1));
+    const selected = sections.filter((section) => selectedSections.includes(section.id));
+    const edges = new Set(selected.flatMap((section) => [section.start, section.end]));
+    const remaining = selected.length ? cutPoints.filter((point) => !edges.has(point)) : [];
+    const removed = selected.length ? restoreTimelineSections(removedRanges, selected) : [];
+    if (onEditStateChange) onEditStateChange({ removedRanges: removed, workingRange, cutPoints: remaining });
+    else onRemovedRangesChange?.(removed);
+    setSelectedSections([]);
   }
 
   function deleteStagedCut() {
-    if (!stagedCut) return;
-    const next = [...removedRanges, { ...stagedCut, id: `cut-${crypto.randomUUID().slice(0, 12)}` }]
-      .sort((left, right) => left.start - right.start);
-    onRemovedRangesChange?.(next);
+    const selected = sections.filter((section) => selectedSections.includes(section.id));
+    if (!selected.length) return;
+    const next = excludedTimelineRanges(duration, [...removedRanges, ...selected], null);
+    if (onEditStateChange) onEditStateChange({ removedRanges: next, workingRange, cutPoints });
+    else onRemovedRangesChange?.(next);
     setStagedCut(null);
-    setMarkIn(null);
-    setMarkOut(null);
   }
 
   function resetTimelineEdits() {
     setStagedCut(null);
     setMarkIn(null);
     setMarkOut(null);
-    onRemovedRangesChange?.([]);
+    setSelectedSections([]);
+    if (onEditStateChange) onEditStateChange({ removedRanges: [], workingRange: null, cutPoints: [] });
+    else onRemovedRangesChange?.([]);
   }
 
   function updateTimelineViewport(event: UIEvent<HTMLDivElement>) {
@@ -877,6 +946,7 @@ export function Timeline({
     if (event.button !== 0 && event.button !== -1) return;
     event.preventDefault();
     event.stopPropagation();
+    promoteTimestampWord(null, null);
     wordSelectionDraggingRef.current = true;
     const next = selectWord(selectionRef.current, index, modifiersOf(event));
     sweepOriginRef.current = index;
@@ -953,6 +1023,86 @@ export function Timeline({
     try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* drag still works */ }
   }
 
+  function sourceTimeAt(clientX: number) {
+    const bounds = timelineCanvasRef.current?.getBoundingClientRect();
+    return bounds ? Math.max(0, Math.min(duration, (clientX - bounds.left) / Math.max(1, bounds.width) * duration)) : currentTime;
+  }
+
+  function promoteWord(index: number) {
+    promoteTimestampWord(take?.id ?? null, index);
+  }
+
+  function beginPromotionDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 1 || promotedRef.current === null || isRecording) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const start = sourceTimeAt(event.clientX);
+    promotionDragRef.current = { start, index: promotedRef.current };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = start;
+      void preparePlayback(audio).catch(() => undefined).then(() => {
+        if (promotionDragRef.current) void audio.play().catch(() => undefined);
+      });
+    }
+    setCurrentTime(start);
+    return true;
+  }
+
+  function movePromotionDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!promotionDragRef.current) return false;
+    event.preventDefault();
+    const time = sourceTimeAt(event.clientX);
+    if (audioRef.current) audioRef.current.currentTime = time;
+    paintPlayhead(time);
+    setCurrentTime(time);
+    return true;
+  }
+
+  function endPromotionDrag(event: PointerEvent<HTMLDivElement>, cancel = false) {
+    const drag = promotionDragRef.current;
+    if (!drag) return false;
+    event.preventDefault();
+    promotionDragRef.current = null;
+    audioRef.current?.pause();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (!cancel) {
+      const end = sourceTimeAt(event.clientX);
+      const start = Math.min(drag.start, end);
+      const out = Math.max(drag.start, end);
+      if (out - start >= .001) {
+        const moved = applyWordDrag(words, [drag.index], "move", start - words[drag.index].start, { duration, edges: [] });
+        const next = applyWordDrag(moved, [drag.index], "trim-end", out - moved[drag.index].end, { duration, edges: [] });
+        onWordsChange?.(next);
+        const following = drag.index + 1 < words.length ? drag.index + 1 : null;
+        promotedRef.current = following;
+        setPromotedIndex(following);
+        // Do not redispatch the same index: listeners toggle an existing promote.
+      }
+    }
+    return true;
+  }
+
+  function commitWordEditor() {
+    const wordEditor = wordEditorRef.current;
+    if (!wordEditor) return;
+    wordEditorRef.current = null;
+    const text = take?.text ?? words.map((word) => word.text).join(" ");
+    if (wordEditor.index !== null) {
+      const edit = replaceScriptWord(text, wordEditor.index, wordEditor.text, words);
+      onWordsChange?.(edit.words, edit.text);
+    } else if (wordEditor.text.trim()) {
+      const boundary = words.findIndex((word) => word.start >= wordEditor.time);
+      const index = boundary < 0 ? words.length : boundary;
+      const edit = insertScriptTextAtWordBoundary(text, index, wordEditor.text, words, wordEditor.time);
+      onWordsChange?.(edit.words, edit.text);
+      setPromotedIndex(index);
+      promotedRef.current = index;
+    }
+    setWordEditor(null);
+  }
+
   function dragWord(event: PointerEvent<HTMLElement>) {
     const drag = wordDragRef.current;
     if (!drag) return;
@@ -973,6 +1123,8 @@ export function Timeline({
     setDraftWords(null);
     // Releasing is what commits: the draft was preview only until now.
     if (drag?.moved && draft) onWordsChange?.(draft);
+    else if (pendingPromotionRef.current !== null) promoteWord(pendingPromotionRef.current);
+    pendingPromotionRef.current = null;
   }
 
   function assignSpeakerToSelectedWords(profileId: string | null) {
@@ -1067,7 +1219,7 @@ export function Timeline({
   }
 
   function beginScrub(event: PointerEvent<HTMLDivElement>) {
-    if (isRecording || !take?.url) return;
+    if (event.button !== 0 || isRecording || !take?.url) return;
     event.preventDefault();
     scrubbingRef.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -1100,9 +1252,9 @@ export function Timeline({
           <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>
-            <button disabled={markIn === null || markOut === null || isRecording} onClick={cutMarkedRange} type="button">CUT</button>
-            <button disabled={(!stagedCut && !removedRanges.length) || isRecording} onClick={uncut} type="button">UNCUT</button>
-            <button className="is-delete" disabled={!stagedCut || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
+            <button disabled={isRecording || !take?.url || currentTime <= 0 || currentTime >= duration} onClick={cutMarkedRange} type="button">CUT</button>
+            <button disabled={(!cutPoints.length && !removedRanges.length) || isRecording} onClick={uncut} type="button">UNCUT</button>
+            <button className="is-delete" disabled={!selectedSections.length || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
             <button disabled={!removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={resetTimelineEdits} type="button">RESET</button>
           </div>
           <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
@@ -1125,6 +1277,8 @@ export function Timeline({
         </div>
       }
     >
+      {promotedIndex !== null ? <div className="timeline-promotion-status" role="status">GÁN TIMESTAMP · {words[promotedIndex]?.text} · giữ chuột giữa trên waveform: IN → OUT · chuột trái/phải để kết thúc</div> : null}
+      <div className="timeline-section-strip" aria-label="Các đoạn footage đã chia">{sections.map((section) => <button type="button" key={section.id} aria-label={`Đoạn footage ${section.start.toFixed(2)} đến ${section.end.toFixed(2)}`} aria-pressed={selectedSections.includes(section.id)} className={`${selectedSections.includes(section.id) ? "is-selected" : ""} ${removedRanges.some((range) => range.start <= section.start && range.end >= section.end) ? "is-removed" : ""}`} style={{ width: `${(section.end - section.start) / duration * 100}%` }} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id] : [section.id])}>{section.start.toFixed(1)}–{section.end.toFixed(1)}</button>)}</div>
       <div className="timeline-stage">
         <div className="timeline-controls">
           <label className="timeline-gain">
@@ -1182,10 +1336,10 @@ export function Timeline({
             <div
               className="waveform"
               aria-label="Waveform timeline"
-              onPointerCancel={endScrub}
-              onPointerDown={beginScrub}
-              onPointerMove={scrubTimeline}
-              onPointerUp={endScrub}
+              onPointerCancel={(event) => { if (!endPromotionDrag(event, true)) endScrub(event); }}
+              onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
+              onPointerMove={(event) => { if (!movePromotionDrag(event)) scrubTimeline(event); }}
+              onPointerUp={(event) => { if (!endPromotionDrag(event)) endScrub(event); }}
             >
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
@@ -1194,13 +1348,14 @@ export function Timeline({
               {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
               {gainOverflows.map((range, index) => { const start = gainWindowStart + (range.start / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; const end = gainWindowStart + (range.end / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; return <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.08, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }} />; })}
               {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
-              {removedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
+              {excludedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
+              {cutPoints.map((point) => <i className="timeline-cut-point" key={point} style={{ left: `${point / duration * 100}%` }} />)}
               {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
               {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
-            <div className="word-track" onContextMenu={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) beginWordDrag(event, index, "move"); else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            <div className="word-track" onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
@@ -1208,11 +1363,13 @@ export function Timeline({
                   <button
                     aria-label={`Subtitle word ${word.text}`}
                     aria-pressed={selectedWordIndexes.has(index)}
-                    className={`timeline-word ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setWordEditor({ index, time: word.start, text: word.text }); }}
+                    className={`timeline-word ${promotedIndex === index ? "is-promoted" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
                     style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
-                    title={word.timingTrusted === false ? "Timestamp của từ này cần căn chỉnh" : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
+                    data-timing-note={word.timingTrusted === false ? "Từ vừa sửa · timestamp nội suy, cần căn chỉnh" : undefined}
+                    title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
                   >
                     <i
@@ -1235,6 +1392,8 @@ export function Timeline({
                   </button>
                 );
               }) : <em className={timingUnavailable ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingUnavailable ? take?.wordTimingNote ?? "WORD TIMING · chưa có nguồn căn chỉnh đáng tin; cần chạy lại STT" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
+              {excludedRanges.map((range) => <i key={range.id} className="timeline-removed-range" style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}
+              {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" style={{ left: `${wordEditor.time / duration * 100}%` }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); } }} /> : null}
             </div>
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
@@ -1244,7 +1403,7 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>ĐỔI SPEAKER · {speakerMenu.indexes.length} TỪ</strong><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
+      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>TEXT · {speakerMenu.indexes.length} TỪ</strong><button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button><button role="menuitem" type="button" onClick={() => { let edit = { words, text: take?.text ?? words.map((word) => word.text).join(" ") }; for (const index of [...speakerMenu.indexes].sort((a, b) => b - a)) edit = replaceScriptWord(edit.text, index, "", edit.words); onWordsChange?.(edit.words, edit.text); setSpeakerMenu(null); }}>Xóa text đã chọn</button><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
         </button>

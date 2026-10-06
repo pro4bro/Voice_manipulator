@@ -27,6 +27,7 @@ const apiMocks = vi.hoisted(() => ({
   releaseObsLiveLinkTarget: vi.fn(),
   getObsLiveLinkTranscriptEvents: vi.fn(),
   updateMediaScript: vi.fn(),
+  updateMediaAnnotations: vi.fn(),
   pickMediaFiles: vi.fn(),
   inspectLocalMediaTracks: vi.fn(),
   startGrowingMkvFollow: vi.fn(),
@@ -126,6 +127,10 @@ describe("WorkspaceShell STT synchronization", () => {
     vi.clearAllMocks();
     localStorage.clear();
     apiMocks.listReadingPacks.mockResolvedValue([]);
+    apiMocks.updateMediaAnnotations.mockImplementation(async (_projectId: string, id: string) => {
+      const assets = await apiMocks.listProjectMedia();
+      return assets.find((asset: ProjectMediaAsset) => asset.id === id);
+    });
     apiMocks.listReadingSessions.mockResolvedValue({ items: [], total: 0 });
     apiMocks.getDatasetReadiness.mockResolvedValue(null);
     apiMocks.listTrainingRuns.mockResolvedValue([]);
@@ -365,7 +370,7 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByTestId("script-value")).toHaveTextContent("Second transcript");
     expect(screen.getByTestId("timeline-take")).toHaveTextContent("Mic");
     fireEvent.click(screen.getByRole("button", { name: "edit imported script" }));
-    await waitFor(() => expect(apiMocks.updateMediaScript).toHaveBeenCalledWith(project.id, "channel-b", "Edited channel B", "user"), { timeout: 2000 });
+    await waitFor(() => expect(apiMocks.updateMediaScript).toHaveBeenCalledWith(project.id, "channel-b", "Edited channel B", "user", expect.arrayContaining([expect.objectContaining({ text: "Edited", timingTrusted: false })])), { timeout: 2000 });
     fireEvent.click(screen.getByRole("button", { name: "open imported parent" }));
     expect(screen.getByTestId("script-track")).toHaveTextContent("none");
     expect(screen.getByTestId("timeline-take")).toHaveTextContent("interview.mkv");

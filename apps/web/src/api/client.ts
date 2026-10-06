@@ -415,10 +415,10 @@ export const api = {
     });
     return { ...result, asset: normalizeMediaAsset(result.asset) };
   },
-  updateMediaTimelineEdits: async (projectId: string, assetId: string, removedRanges: TimelineEditRange[], gainKeyframes: TimelineGainKeyframe[] = []) => {
+  updateMediaTimelineEdits: async (projectId: string, assetId: string, removedRanges: TimelineEditRange[], gainKeyframes: TimelineGainKeyframe[] = [], workingRange: TimelineEditRange | null = null, cutPoints: number[] = []) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/timeline-edits`, {
       method: "PATCH",
-      body: JSON.stringify({ removedRanges, gainKeyframes }),
+      body: JSON.stringify({ removedRanges, gainKeyframes, workingRange, cutPoints }),
     });
     return normalizeMediaAsset(asset);
   },
