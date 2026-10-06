@@ -33,7 +33,7 @@ from fastapi import UploadFile
 
 from app.domain.models import MediaAssetCreate, MediaAudioTrackChoice, MediaImportResult, ProjectMediaAsset, ProjectRecord
 from app.domain.ports import MediaLibrary
-from app.adapters.word_timing_quality import reconcile_word_timing_quality
+from app.adapters.word_timing_quality import reconcile_word_timing_quality, space_recognized_words
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 
 
@@ -643,7 +643,7 @@ class MediaImportProcessor:
         inspection = reconcile_word_timing_quality(
             str(item.get("word_timing_quality", "unverified")),
             item.get("word_timing_note"),
-            list(item.get("words", [])),
+            space_recognized_words(list(item.get("words", []))),
             duration,
         )
         enriched = dict(item)

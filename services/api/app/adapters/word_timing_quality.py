@@ -12,6 +12,33 @@ _PARTIAL_LIMIT = 0.05
 _LEGACY_STRUCTURAL_NOTE_PREFIX = "Word timing chưa đáng tin ("
 
 
+def space_recognized_words(raw_words: list[dict[str, Any]], gap: float = 0.01) -> list[dict[str, Any]]:
+    """Leave edit grips apart, retaining measured boundaries as provenance.
+
+    Only touching/overlapping neighbours are shortened. Never move an onset,
+    extend a word, or erase a malformed/zero interval to make it look aligned.
+    Repeated application is idempotent, including for sub-millisecond words.
+    """
+    words = [dict(word) for word in raw_words]
+    for current, following in zip(words, words[1:]):
+        if current.get("sourceTiming") or current.get("timingSource") in {"manual", "user-interpolated"}:
+            continue
+        try:
+            start, end, next_start = float(current["start"]), float(current["end"]), float(following["start"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for value in (start, end, next_start)):
+            continue
+        if next_start <= start or end <= start or next_start - end >= gap:
+            continue
+        editable_end = min(end, next_start - min(gap, (next_start - start) / 5))
+        if editable_end <= start:
+            continue
+        current["sourceTiming"] = {"start": start, "end": end, "source": current.get("timingSource")}
+        current["end"] = round(editable_end, 6)
+    return words
+
+
 @dataclass(frozen=True)
 class WordTimingInspection:
     """Structural validation only; it never invents or redistributes word timing."""
@@ -117,7 +144,7 @@ def inspect_word_timings(raw_words: list[object], duration: float) -> WordTiming
         word = dict(raw)
         text = str(raw.get("text", "")).strip()
         word["text"] = text
-        trusted = bool(text)
+        trusted = bool(text) and raw.get("timingSource") not in {"user-interpolated", "user-untimed"}
         try:
             start = float(raw.get("start"))
             end = float(raw.get("end"))

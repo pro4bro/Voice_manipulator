@@ -15,6 +15,7 @@ from app.adapters.project_activity_log import ProjectActivityLog
 from app.adapters.word_timing_quality import (
     WORD_TIMING_TRUST_VERSION,
     reconcile_word_timing_quality,
+    space_recognized_words,
 )
 from app.domain.models import (
     AIReviewStatus,
@@ -332,7 +333,7 @@ class FileMediaLibrary:
         preserve_user_text: bool = False,
     ) -> ProjectMediaAsset:
         text = str(item.get("text", ""))
-        words = list(item.get("words", []))
+        words = space_recognized_words(list(item.get("words", [])))
         with self._lock(project_id):
             asset = self._require(project_id, asset_id)
             previous_words = self._store.read_words(
