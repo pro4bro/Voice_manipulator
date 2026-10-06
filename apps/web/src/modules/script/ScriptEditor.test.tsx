@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,45 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     render(<ScriptEditor onChange={onChange} value="Bản nhận diện ban đầu" workflow="speech-to-text" />);
     fireEvent.change(screen.getByRole("textbox", { name: "Script transcript" }), { target: { value: "Bản đã được người dùng sửa" } });
     expect(onChange).toHaveBeenCalledWith("Bản đã được người dùng sửa");
+  });
+  it("commits native text edits against the pre-edit timing snapshot when focus leaves the editor", () => {
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.5, end: 0.8 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" });
+    fireEvent.focus(editor);
+    fireEvent.change(editor, { target: { value: "Xin rất chào" } });
+    fireEvent.blur(editor);
+    expect(onWordsChange).toHaveBeenCalledWith([
+      words[0],
+      expect.objectContaining({ text: "rất", timingSource: "user-interpolated", timingTrusted: false }),
+      words[1],
+    ], "Xin rất chào");
+  });
+  it("offers copy and paste for a selected Script text range", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const readText = vi.fn().mockResolvedValue("rất tốt");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText, readText } });
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.5, end: 0.8 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    editor.setSelectionRange(4, 8);
+    fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("chào"));
+
+    editor.setSelectionRange(4, 8);
+    fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Paste thay đoạn chọn" }));
+    await waitFor(() => expect(readText).toHaveBeenCalledOnce());
+    expect(onWordsChange).toHaveBeenLastCalledWith([
+      words[0],
+      expect.objectContaining({ text: "rất", timingSource: "user-interpolated", timingTrusted: false }),
+      expect.objectContaining({ text: "tốt", timingSource: "user-interpolated", timingTrusted: false }),
+    ], "Xin rất tốt");
   });
 
   it("clears transcript text and timed words together after confirmation", () => {
@@ -182,7 +221,7 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: "speaker-profile-2" }]);
   });
 
-  it("edits one selected word in a popup without changing its timestamp or annotations", () => {
+  it("edits one selected word and keeps its profile and emotion while dropping replaced timing", () => {
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0.12, end: 0.34, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good" as const }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin" words={words} workflow="speech-to-text" />);
@@ -193,8 +232,47 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     fireEvent.change(editor, { target: { value: "Chào" } });
     fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
     expect(onWordsChange).toHaveBeenCalledWith([
-      expect.objectContaining({ text: "Chào", start: 0.12, end: 0.34, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
+      expect.objectContaining({ text: "Chào", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
     ], "Chào");
+  });
+  it("commits an inline table word edit when the user clicks outside the editor", () => {
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.5, end: 0.8 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Chọn từ Xin" }));
+    const editor = screen.getByRole("textbox", { name: "Sửa từ Xin" });
+    fireEvent.change(editor, { target: { value: "Thưa" } });
+    fireEvent.blur(editor);
+    expect(onWordsChange).toHaveBeenCalledWith([
+      expect.objectContaining({ text: "Thưa", timingSource: "user-interpolated", timingTrusted: false }),
+      words[1],
+    ], "Thưa chào");
+  });
+  it("promotes the middle-clicked word and cancels promotion on a normal click", () => {
+    const handler = vi.fn();
+    window.addEventListener("pro4bro:timestamp-promotion", handler);
+    render(<ScriptEditor onChange={vi.fn()} playbackAssetId="asset-17" value="Xin chào" words={[{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.4, end: 0.8 }]} workflow="speech-to-text" />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Chọn từ chào" }), { button: 1, pointerId: 2 });
+    expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({ detail: { assetId: "asset-17", index: 1 } }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Chọn từ chào" }), { button: 0, pointerId: 3 });
+    expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({ detail: { assetId: "asset-17", index: null } }));
+    window.removeEventListener("pro4bro:timestamp-promotion", handler);
+  });
+  it("explains an estimated word timestamp only after the pointer pauses for two seconds", () => {
+    vi.useFakeTimers();
+    render(<ScriptEditor onChange={vi.fn()} value="Xin rất chào" words={[
+      { text: "Xin", start: 0, end: 0.3 },
+      { text: "rất", start: 0.4, end: 0.6, timingSource: "user-interpolated", timingTrusted: false },
+      { text: "chào", start: 0.7, end: 1 },
+    ]} workflow="speech-to-text" />);
+    const estimated = screen.getByRole("button", { name: "Chọn từ rất" });
+    fireEvent.pointerEnter(estimated, { clientX: 40, clientY: 50 });
+    expect(screen.queryByText(/Timestamp ước lượng/)).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1999));
+    expect(screen.queryByText(/Timestamp ước lượng/)).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText(/Timestamp ước lượng/)).toHaveTextContent(/ước lượng · cần kiểm tra/i);
+    vi.useRealTimers();
   });
 
   it("shows replaced Live Transcript text struck through and the STT alternative in pale yellow", () => {
@@ -263,6 +341,22 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     expect(screen.getByLabelText("Tìm text")).toBeInTheDocument();
     expect(screen.getByLabelText("Thay bằng text")).toBeInTheDocument();
   });
+  it("find-and-replace updates timed words and marks inserted text as estimated", () => {
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 0.3 }, { text: "sai", start: 0.5, end: 0.8 }, { text: "chào", start: 1, end: 1.3 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin sai chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    fireEvent.click(screen.getByRole("button", { name: "FIND / REPLACE" }));
+    fireEvent.change(screen.getByLabelText("Tìm text"), { target: { value: "sai" } });
+    fireEvent.change(screen.getByLabelText("Thay bằng text"), { target: { value: "rất tốt" } });
+    fireEvent.click(screen.getByRole("button", { name: "ALL" }));
+    expect(onWordsChange).toHaveBeenCalledWith([
+      words[0],
+      expect.objectContaining({ text: "rất", timingSource: "user-interpolated", timingTrusted: false }),
+      expect.objectContaining({ text: "tốt", timingSource: "user-interpolated", timingTrusted: false }),
+      words[2],
+    ], "Xin rất tốt chào");
+  });
   it("offers both SRT export modes after word timing is available", () => {
     const onDeferredAction = vi.fn();
     render(<ScriptEditor onChange={() => undefined} onDeferredAction={onDeferredAction} value="Xin chào" words={[{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.3, end: 0.7 }]} workflow="speech-to-text" />);
@@ -283,14 +377,16 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     expect([editor.selectionStart, editor.selectionEnd]).toEqual([4, 9]);
   });
 
-  it("switches from the table to compact speaker blocks and keeps Text Edit available", () => {
+  it("switches between table and plain text only with DẠNG BẢNG", () => {
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }, { text: "bạn", start: 0.8, end: 1.1, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={() => undefined} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
+    expect(screen.getByRole("grid", { name: "Bảng Script theo người nói" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
-    expect(screen.getByLabelText("Transcript theo người nói")).toBeInTheDocument();
-    expect(screen.getByText("Speaker 1")).toBeInTheDocument();
-    expect(screen.getByText("Speaker 2")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByLabelText("Transcript theo người nói"));
     expect(screen.getByRole("textbox", { name: "Script transcript" })).toBeInTheDocument();
+    fireEvent.doubleClick(screen.getByRole("textbox", { name: "Script transcript" }));
+    expect(screen.getByRole("textbox", { name: "Script transcript" })).toBeInTheDocument();
+    expect(screen.queryByRole("grid", { name: "Bảng Script theo người nói" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    expect(screen.getByRole("grid", { name: "Bảng Script theo người nói" })).toBeInTheDocument();
   });
 });

@@ -127,6 +127,12 @@
 .script-editor-stack.is-tracking .script-editor { color: transparent; caret-color: var(--ink); }
 .script-editor-stack.is-tracking .script-playback-layer { color: var(--ink); }
 .script-playback-layer span.is-active { color: #1b2630; background: #b9dcff; box-shadow: 0 0 0 3px rgba(185,220,255,.30); }
+.script-playback-layer span.is-edited { color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 20%, transparent); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+.script-playback-layer span.is-time-estimated { animation: script-time-estimate-pulse 1.5s ease-in-out 3; }
+@keyframes script-time-estimate-pulse { 0%,100% { background-color: color-mix(in srgb, var(--accent) 14%, transparent); } 45% { background-color: color-mix(in srgb, var(--accent) 58%, transparent); } }
+.script-table__word.is-time-estimated { animation: script-time-estimate-pulse 1.5s ease-in-out 3; outline: 1px dashed var(--accent); }
+.script-table__timing-status { position: fixed; z-index: 80; max-width: 250px; padding: 5px 8px; color: var(--text); border: 1px solid var(--accent); background: var(--surface-raised); box-shadow: var(--shadow); font-size: calc(10px * var(--font-scale)); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .script-playback-layer span.is-time-estimated, .script-table__word.is-time-estimated { animation: none; } }
 .script-editor:focus { border-color: var(--accent); }
 .script-module__footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .script-stats { display: flex; gap: 9px; color: var(--muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
@@ -1963,6 +1969,12 @@
 .imported-timeline__words { position: relative; display: block; padding: 0; }
 .imported-timeline__word { position: absolute; top: 0; bottom: 0; min-width: 0; padding: 0 2px; overflow: hidden; white-space: nowrap; text-align: left; border: 0; border-left: 1px solid var(--audio-line); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .channel-script-word { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.channel-script-word.is-time-estimated { animation: script-time-estimate-pulse 1.5s ease-in-out 3; outline: 1px dashed var(--accent); }
+.channel-script-word-editor { display: inline-flex; vertical-align: baseline; }
+.channel-script-word-editor input { width: 12ch; min-height: 22px; padding: 1px 4px; color: var(--text); border: 1px solid var(--accent); background: var(--surface-field); font: inherit; }
+.channel-script-word-menu { position: fixed; z-index: 1010; padding: 4px; border: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow); }
+.channel-script-word-menu button { min-height: 26px; padding: 4px 8px; color: var(--text); border: 0; background: transparent; font: inherit; text-align: left; }
+.channel-script-word-menu button:hover { color: var(--text-on-accent); background: var(--accent); }
 .channel-script__profile, .channel-script__profile option { color: var(--text); background: var(--surface-panel); }
 .channel-script__profile { max-width: 140px; min-height: 25px; border: 1px solid var(--line); font: inherit; }
 .channel-script-time-popup { position: fixed; z-index: 1000; pointer-events: none; color: var(--text); background: var(--surface-raised); border: 1px solid var(--line); padding: 3px 5px; max-width: 172px; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); white-space: nowrap; box-shadow: 0 2px 6px var(--line); }

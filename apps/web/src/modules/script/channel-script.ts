@@ -46,7 +46,7 @@ function mergeIntervals(intervals: ChannelScriptOverlap[], tolerance = 0): Chann
 }
 
 function isTimed(word: StudioWord): boolean {
-  return Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start && Boolean(word.text.trim());
+  return Number.isFinite(word.start) && Number.isFinite(word.end) && word.end >= word.start && Boolean(word.text.trim());
 }
 
 /** Keep a track's continuing speech open through another track's interjection. */

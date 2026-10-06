@@ -1,10 +1,12 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
+import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { channelScriptRows, type ChannelScriptRow } from "./channel-script";
 import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
 import { obsOverlapSelectionMatches, type ObsOverlapSelection } from "../obs-capture/obs-overlap";
+import { promoteTimestampWord } from "../../domain/timestamp-promotion";
+import { replaceScriptWord } from "./script-text-reconciliation";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -14,10 +16,13 @@ function timecode(seconds: number | null, precision = 2) {
   return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}.${String(rounded % units).padStart(precision, "0")}`;
 }
 
-function ChannelWords({ row }: { row: ChannelScriptRow }) {
+function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; row: ChannelScriptRow; onEditWord?: (index: number, text: string) => void }) {
   const active = usePlaybackWord(row.trackId);
   const tooltipId = useId();
   const [tooltip, setTooltip] = useState<{ index: number; text: string; left: number; top: number; above: boolean } | null>(null);
+  const [editing, setEditing] = useState<{ index: number; text: string } | null>(null);
+  const [wordMenu, setWordMenu] = useState<{ index: number; left: number; top: number } | null>(null);
+  const editCommittedRef = useRef(false);
   function showTiming(button: HTMLButtonElement, index: number, text: string) {
     const rect = button.getBoundingClientRect();
     const above = rect.top >= 40;
@@ -32,20 +37,24 @@ function ChannelWords({ row }: { row: ChannelScriptRow }) {
     return () => { window.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
   }, [tooltip]);
   return <span className="obs-script__content">{row.words.length ? row.words.map(({ word, index }) =>
-    <span key={index}><button type="button" className={`channel-script-word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+    <span key={index}><button type="button" className={`channel-script-word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
       aria-describedby={tooltip?.index === index ? tooltipId : undefined}
       onMouseEnter={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
       onFocus={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
       onMouseLeave={() => setTooltip(null)} onBlur={() => setTooltip(null)}
+      onDoubleClick={(event) => { if (!onEditWord) return; event.preventDefault(); event.stopPropagation(); editCommittedRef.current = false; setWordMenu(null); setEditing({ index, text: word.text }); }}
+      onContextMenu={(event) => { if (!onEditWord) return; event.preventDefault(); event.stopPropagation(); setWordMenu({ index, left: event.clientX, top: event.clientY }); }}
+      onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); promoteTimestampWord(track.id, index); } else if (event.button === 0 || event.button === 2) promoteTimestampWord(track.id, null); }}
       onKeyDown={(event) => { if (event.key === "Escape") setTooltip(null); }}
-      onClick={() => requestPlaybackSeek(row.trackId, word.start)}>{word.text}</button>{" "}</span>) : row.text}
+      onClick={() => requestPlaybackSeek(row.trackId, word.start)}>{word.text}</button>{editing?.index === index ? <form aria-label={`Sửa text ${word.text}`} className="channel-script-word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !editCommittedRef.current) { editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); } }} onSubmit={(event) => { event.preventDefault(); if (editCommittedRef.current) return; editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); }}><input aria-label={`Sửa text ${word.text}`} autoFocus onChange={(event) => setEditing({ index, text: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); editCommittedRef.current = true; setEditing(null); } }} value={editing.text} /></form> : null}{" "}</span>) : row.text}
     {tooltip ? createPortal(<span id={tooltipId} role="tooltip" className="channel-script-time-popup"
       style={{ left: tooltip.left, top: tooltip.top, transform: tooltip.above ? "translateY(-100%)" : undefined }}>{tooltip.text}</span>, document.body) : null}
+    {wordMenu ? createPortal(<div className="channel-script-word-menu" role="menu" style={{ left: wordMenu.left, top: wordMenu.top }}><button onClick={() => { editCommittedRef.current = false; setEditing({ index: wordMenu.index, text: track.words?.[wordMenu.index]?.text ?? "" }); setWordMenu(null); }} role="menuitem" type="button">Sửa text</button></div>, document.body) : null}
   </span>;
 }
 
-export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords }: {
+export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords, onWordsChange }: {
   tracks: ProjectMediaAsset[];
   onSelectTrack: (id: string) => void;
   recordingId?: string | null;
@@ -53,6 +62,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
   onSelectOverlap?: (trackId: string, selection: ObsOverlapSelection) => void;
   speakers?: SpeakerProfile[];
   onAssignWords?: (trackId: string, indexes: number[], profileId: string | null) => void;
+  onWordsChange?: (assetId: string, words: StudioWord[], text?: string) => void;
 }) {
   // Timings from separate footage do not share a clock. Detect interruptions
   // and overlaps only between channels of the same recording/archive.
@@ -74,6 +84,12 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     });
     byTrack.forEach((indexes, trackId) => onAssignWords?.(trackId, indexes, profileId));
   }
+  function updateTrackWord(trackId: string, index: number, text: string) {
+    const track = tracks.find((item) => item.id === trackId);
+    if (!track || !onWordsChange) return;
+    const result = replaceScriptWord(track.text, index, text, track.words ?? []);
+    onWordsChange(trackId, result.words, result.text);
+  }
   return <section aria-label="Script theo channel" className="obs-script obs-script--embedded">
     {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn">
       <b>{selected.length} row đã chọn</b>
@@ -94,7 +110,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
               }}>Chọn row {index + 1}</button> : null}
             <button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button"><b>{row.trackName}</b><small>{timecode(row.start)}–{timecode(row.end)}</small></button>
           </div>
-          <ChannelWords row={row} />
+          <ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={row} track={tracks.find((track) => track.id === row.trackId)!} />
           {onAssignWords ? <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
             value={speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
             onChange={(event) => onAssignWords(row.trackId, row.words.map((item) => item.index), event.target.value || null)}>

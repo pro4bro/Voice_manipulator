@@ -42,6 +42,23 @@ it("assigns individual and selected rows to profiles across selected tracks", ()
   expect(onAssignWords.mock.calls).toEqual([["a", [0], "s2"], ["b", [0], "s2"]]);
 });
 
+it("edits an archived channel word on double-click and retains the track's timed-word identity", () => {
+  const track = { id: "a", name: "Mic", text: "Xin chào", words: [
+    { text: "Xin", start: 0.1, end: 0.4, speakerId: "s1" },
+    { text: "chào", start: 0.6, end: 0.9, speakerId: "s1" },
+  ] } as ProjectMediaAsset;
+  const onWordsChange = vi.fn();
+  render(<ChannelScript tracks={[track]} onWordsChange={onWordsChange} onSelectTrack={vi.fn()} />);
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Xin · 00:00.100–00:00.400" }));
+  const editor = screen.getByRole("textbox", { name: "Sửa text Xin" });
+  fireEvent.change(editor, { target: { value: "Thưa" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Sửa text Xin" }));
+  expect(onWordsChange).toHaveBeenCalledWith("a", [
+    expect.objectContaining({ text: "Thưa", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false, speakerId: "s1" }),
+    track.words[1],
+  ], "Thưa chào");
+});
+
 it("shows compact OBS labels, timed rows and word-level overlap after detailed STT", () => {
   const tracks = [
     { id: "a", name: "OBS LiveLink · Channel 1", sourceArchiveStreamIndex: 0,

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
+import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
 
 export interface ScriptTableColumn {
@@ -153,6 +154,7 @@ export function updateWordText(words: StudioWord[], index: number, text: string)
 }
 
 interface ScriptTableProps {
+  assetId?: string | null;
   words: StudioWord[];
   speakers: SpeakerProfile[];
   activeWordIndex: number;
@@ -164,7 +166,6 @@ interface ScriptTableProps {
   /** The profile the whole take belongs to, for words nobody named. */
   defaultSpeakerId?: string | null;
   onUpdateWordText: (index: number, text: string) => void;
-  onOpenTextEditor: () => void;
   storageKey: string;
   selection: WordSelection;
   onSelectionChange: (selection: WordSelection) => void;
@@ -188,7 +189,6 @@ interface SpeakerTextProps {
   words: StudioWord[];
   speakers: SpeakerProfile[];
   activeWordIndex: number;
-  onOpenTextEditor: () => void;
   selection: WordSelection;
   onSelectionChange: (selection: WordSelection) => void;
 }
@@ -216,7 +216,7 @@ export function keepWordInView(view: HTMLElement, target: HTMLElement): number |
   return next;
 }
 
-export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenTextEditor, selection, onSelectionChange, defaultSpeakerId = null }: SpeakerTextProps) {
+export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection, onSelectionChange, defaultSpeakerId = null }: SpeakerTextProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
@@ -287,7 +287,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenText
 
   if (!rows.length) return null;
   const held = new Set(selection.indexes);
-  return <div aria-label="Transcript theo người nói" className="script-speaker-text" onDoubleClick={onOpenTextEditor} onPointerDown={beginSweep} ref={viewRef} title="Quét để chọn nhiều từ · Ctrl/Shift/Alt để cộng trừ · double-click để mở Text Edit">
+  return <div aria-label="Transcript theo người nói" className="script-speaker-text" onPointerDown={beginSweep} ref={viewRef} title="Quét để chọn nhiều từ · Ctrl/Shift/Alt để cộng trừ">
     {rows.map((row) => {
       const color = row.profile?.color ?? "var(--text-muted)";
       return <article className={row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} key={row.id}>
@@ -297,7 +297,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, onOpenText
     })}
   </div>;
 }
-export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, onOpenTextEditor, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
+export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -311,7 +311,10 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   const rowIds = rows.map((row) => row.id);
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
+  const wordEditCommittedRef = useRef(false);
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
+  const [hoveredEstimate, setHoveredEstimate] = useState<{ index: number; x: number; y: number } | null>(null);
+  const estimateHoverTimerRef = useRef<number | null>(null);
   // A sweep is measured from where it began, against the selection as it stood
   // then, so dragging back over the run shrinks it instead of piling up.
   const sweepOriginRef = useRef<number | null>(null);
@@ -505,6 +508,13 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   }
 
   function beginWordSelection(event: ReactPointerEvent<HTMLButtonElement>, index: number) {
+    if (event.button === 1) {
+      event.preventDefault();
+      event.stopPropagation();
+      promoteTimestampWord(assetId, index);
+      return;
+    }
+    if (event.button === 0 || event.button === 2) promoteTimestampWord(assetId, null);
     if (event.button !== 0 && event.button !== -1) return;
     event.stopPropagation();
     wordSelectionExtendedRef.current = false;
@@ -596,16 +606,29 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
   }
 
   function confirmWordEdit() {
-    if (!wordEdit) return;
+    if (!wordEdit || wordEditCommittedRef.current) return;
+    wordEditCommittedRef.current = true;
     onUpdateWordText(wordEdit.index, wordEdit.value);
     setWordEdit(null);
+  }
+
+  function beginEstimateHover(event: React.PointerEvent<HTMLButtonElement>, index: number, word: StudioWord) {
+    if (estimateHoverTimerRef.current !== null) window.clearTimeout(estimateHoverTimerRef.current);
+    if (word.timingSource !== "user-interpolated") return;
+    const { clientX: x, clientY: y } = event;
+    estimateHoverTimerRef.current = window.setTimeout(() => setHoveredEstimate({ index, x, y }), 2000);
+  }
+  function clearEstimateHover() {
+    if (estimateHoverTimerRef.current !== null) window.clearTimeout(estimateHoverTimerRef.current);
+    estimateHoverTimerRef.current = null;
+    setHoveredEstimate(null);
   }
 
   function renderWord(index: number, word: StudioWord) {
     const selected = selectedWordIndexes.has(index);
     const editing = wordEdit?.index === index;
     return <span className="script-table__word-wrap" key={`${word.start}-${word.end}-${index}`}>
-      <button aria-label={`Chọn từ ${word.text}`} aria-pressed={selected} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.reviewState === "manual" ? "is-manual" : ""}`} data-script-word-index={index} onClick={(event) => {
+      <button aria-label={`Chọn từ ${word.text}`} aria-pressed={selected} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.reviewState === "manual" ? "is-manual" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`} data-script-word-index={index} onPointerEnter={(event) => { beginEstimateHover(event, index, word); extendWordSelection(index, modifiersOf(event)); }} onPointerLeave={clearEstimateHover} onClick={(event) => {
         event.stopPropagation();
         if (wordSelectionExtendedRef.current) {
           wordSelectionExtendedRef.current = false;
@@ -622,10 +645,11 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
         // form then swallowed it.
         event.stopPropagation();
         setSpeakerMenu(null);
+        wordEditCommittedRef.current = false;
         setWordEdit({ index, value: word.text });
-      }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerEnter={(event) => extendWordSelection(index, modifiersOf(event))} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event))} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Quét hoặc Ctrl/Shift để chọn nhiều từ · kéo phần đầu hoặc cuối row sang row kề · double-click để sửa chữ · chuột phải để gán Speaker" type="button">{word.text}</button>{" "}
-      {editing ? <form aria-label={`Trình sửa từ ${word.text}`} className="script-table__word-editor" onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
-        <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setWordEdit(null); } }} value={wordEdit.value} />
+      }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event))} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Quét hoặc Ctrl/Shift để chọn nhiều từ · kéo phần đầu hoặc cuối row sang row kề · double-click để sửa chữ · chuột phải để gán Speaker" type="button">{word.text}</button>{" "}
+      {editing ? <form aria-label={`Trình sửa từ ${word.text}`} className="script-table__word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) confirmWordEdit(); }} onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
+        <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); wordEditCommittedRef.current = true; setWordEdit(null); } }} value={wordEdit.value} />
       </form> : null}
     </span>;
   }
@@ -646,7 +670,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
       </div>;
     }
     if (column.builtin === "content") {
-      return <div className="script-table__content" onDoubleClick={onOpenTextEditor} role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
+      return <div className="script-table__content" role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
         {row.words.map(({ index, word }) => renderWord(index, word))}
       </div>;
     }
@@ -686,6 +710,7 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
     </div>
     {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
+      {speakerMenu.indexes.length === 1 ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes[0], value: words[speakerMenu.indexes[0]].text }); setSpeakerMenu(null); }} role="menuitem" type="button">Sửa text</button> : null}
       <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
       {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
       {(() => {
@@ -699,5 +724,6 @@ export function ScriptTable({ words, speakers, activeWordIndex, emotionStyle, ge
         </>;
       })()}
     </div> : null}
+    {hoveredEstimate ? <div className="script-table__timing-status" role="status" style={{ left: hoveredEstimate.x + 12, top: hoveredEstimate.y + 16 }}>Timestamp ước lượng · cần kiểm tra trên waveform</div> : null}
   </div>;
 }
