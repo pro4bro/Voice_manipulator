@@ -423,6 +423,10 @@ export function MediaPool({
   const [newFolderName, setNewFolderName] = useState("");
   const [organizationError, setOrganizationError] = useState<string | null>(null);
   const organizationSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const organizationProjectIdRef = useRef(projectId);
+  organizationProjectIdRef.current = projectId;
+  const organizationProjectGeneration = useRef(0);
+  const organizationSaveRevision = useRef(0);
   const draggedAssetId = useRef<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
@@ -440,15 +444,25 @@ export function MediaPool({
     setNativeCacheChoiceOpen(pendingNativeMediaPaths.length > 0);
   }, [pendingNativeMediaPaths.join("\0")]);
   useEffect(() => {
+    const generation = ++organizationProjectGeneration.current;
+    const revision = organizationSaveRevision.current;
     setOrganization(EMPTY_MEDIA_POOL_ORGANIZATION);
     setActiveFolderId(null);
     setOrganizationError(null);
     if (!projectId) return;
     let current = true;
     void api.getMediaPoolOrganization(projectId).then((result) => {
-      if (current) setOrganization(result);
+      if (current
+        && organizationProjectIdRef.current === projectId
+        && organizationProjectGeneration.current === generation
+        && organizationSaveRevision.current === revision) setOrganization(result);
     }).catch((error: unknown) => {
-      if (current) setOrganizationError(error instanceof Error ? error.message : "Không tải được cấu trúc Media Pool.");
+      if (current
+        && organizationProjectIdRef.current === projectId
+        && organizationProjectGeneration.current === generation
+        && organizationSaveRevision.current === revision) {
+        setOrganizationError(error instanceof Error ? error.message : "Không tải được cấu trúc Media Pool.");
+      }
     });
     return () => { current = false; };
   }, [projectId]);
@@ -508,12 +522,17 @@ export function MediaPool({
     setOrganizationError(null);
     if (!projectId) return;
     const requestedProjectId = projectId;
+    const generation = organizationProjectGeneration.current;
+    const revision = ++organizationSaveRevision.current;
+    const isCurrentSave = () => requestedProjectId === organizationProjectIdRef.current
+      && generation === organizationProjectGeneration.current
+      && revision === organizationSaveRevision.current;
     const save = () => api.updateMediaPoolOrganization(requestedProjectId, next);
     const pending = organizationSaveQueue.current.then(save, save);
     organizationSaveQueue.current = pending.then((saved) => {
-      if (requestedProjectId === projectId) setOrganization(saved);
+      if (isCurrentSave()) setOrganization(saved);
     }).catch((error: unknown) => {
-      if (requestedProjectId === projectId)
+      if (isCurrentSave())
         setOrganizationError(error instanceof Error ? error.message : "Không lưu được thứ tự Media Pool.");
     });
   }

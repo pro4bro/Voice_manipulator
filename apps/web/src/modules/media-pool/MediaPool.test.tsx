@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { api } from "../../api/client";
 import type { ObsLiveLinkRecordingJournal, ProjectMediaAsset, SpeakerProfile, TrainingModelOption } from "../../domain/types";
 import { MediaPool, sttChoices } from "./MediaPool";
+import type { MediaPoolOrganization } from "./media-organization";
 
 const asset: ProjectMediaAsset = {
   id: "asset-1", name: "interview.mov", sourceExtension: ".mov", mediaKind: "video", sourcePath: "assets/media/asset-1/source.mov",
@@ -181,7 +182,7 @@ describe("MediaPool", () => {
   });
 
   it("creates nested folders and moves footage in and back out without moving its source", async () => {
-    const organization = {
+    const organization: MediaPoolOrganization = {
       schemaVersion: 1 as const,
       folders: [{ id: "folder-a", name: "Audio", parentFolderId: null, order: 0 }],
       assets: [{ assetId: asset.id, folderId: null, order: 0 }],
@@ -221,6 +222,56 @@ describe("MediaPool", () => {
       view.unmount();
     }
   });
+
+  it("keeps optimistic organization changes when an older queued save responds", async () => {
+    const organization = {
+      schemaVersion: 1 as const,
+      folders: [],
+      assets: [{ assetId: asset.id, folderId: null, order: 0 }],
+    };
+    const read = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue(organization);
+    const saves: Array<{ organization: MediaPoolOrganization; resolve: (value: MediaPoolOrganization) => void }> = [];
+    const save = vi.spyOn(api, "updateMediaPoolOrganization").mockImplementation(async (_projectId, next) => {
+      return await new Promise((resolve) => saves.push({ organization: structuredClone(next), resolve }));
+    });
+    const view = render(<MediaPool {...props({ projectId: "project", assets: [asset] })} />);
+    try {
+      await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
+
+      const addFolder = async (name: string) => {
+        fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder" }));
+        fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: name } });
+        fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
+      };
+      await addFolder("Folder One");
+      await addFolder("Folder Two");
+      expect(saves).toHaveLength(1);
+
+      await act(async () => saves[0].resolve(saves[0].organization));
+      await waitFor(() => expect(saves).toHaveLength(2));
+      expect(screen.getByRole("button", { name: "Mở thư mục Folder Two" })).toBeInTheDocument();
+
+      const assetRow = view.container.querySelector(".media-pool-item[draggable='true']") as HTMLElement;
+      const transfer = { setData: vi.fn(), getData: vi.fn(() => asset.id), effectAllowed: "", dropEffect: "" };
+      fireEvent.dragStart(assetRow, { dataTransfer: transfer });
+      fireEvent.drop(screen.getByRole("button", { name: "Mở thư mục Folder Two" }), { dataTransfer: transfer });
+      await act(async () => saves[1].resolve(saves[1].organization));
+      await waitFor(() => expect(saves).toHaveLength(3));
+      expect(saves[2].organization).toEqual(expect.objectContaining({
+        folders: expect.arrayContaining([
+          expect.objectContaining({ name: "Folder One" }),
+          expect.objectContaining({ name: "Folder Two" }),
+        ]),
+        assets: [expect.objectContaining({ assetId: asset.id, folderId: expect.any(String) })],
+      }));
+      await act(async () => saves[2].resolve(saves[2].organization));
+    } finally {
+      read.mockRestore();
+      save.mockRestore();
+      view.unmount();
+    }
+  });
+
   it("clears the open footage when the empty part of the list is clicked", () => {
     const onSelect = vi.fn();
     const onClearSelection = vi.fn();
