@@ -697,6 +697,30 @@ it("marks and cuts one shared time range across every archived channel", async (
   expect(screen.getAllByRole("img", { name: /Sóng âm Channel/ })).toHaveLength(1);
 });
 
+it("edits timestamped words from an archived OBS track in the shared Timeline editor", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const asset = { id: "asset-0", name: "OBS Mic 1", duration: 41, text: "hello world", removedRanges: [], words: [
+    { text: "hello", start: 1, end: 2 }, { text: "world", start: 3, end: 4 },
+  ] } as unknown as ProjectMediaAsset;
+  const onAssetWordsChange = vi.fn();
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
+  render(<ObsLiveLinkTimeline assets={[asset]} onAssetWordsChange={onAssetWordsChange}
+    onAssetTimelineStateChange={onAssetTimelineStateChange} projectId="project" requestedRecordingId="recording" />);
+  fireEvent.doubleClick(await screen.findByRole("button", { name: /hello ·/ }));
+  expect(await screen.findByRole("button", { name: "← TẤT CẢ TRACK OBS" })).toBeInTheDocument();
+  const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  fireEvent.change(editor, { target: { value: "Hi" } });
+  fireEvent.keyDown(editor, { key: "Enter" });
+  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("asset-0", [
+    expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), asset.words[1],
+  ], "Hi world"));
+});
+
 it("shows the actual visible time span for a short archive", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
     recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 7_000_000_000 },

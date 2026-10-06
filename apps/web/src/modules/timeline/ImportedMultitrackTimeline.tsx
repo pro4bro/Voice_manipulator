@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import type { ProjectMediaAsset, TimelineEditRange, WaveformPoint } from "../../domain/types";
+import type { ProjectMediaAsset, SpeakerProfile, TimelineEditRange, WaveformPoint } from "../../domain/types";
+import type { TimelineEditState } from "../../domain/timeline-editing";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
+import { Timeline } from "./Timeline";
 import "./waveform.css";
 
 const MAX_WAVEFORM_PIXELS_PER_SECOND = 1000;
@@ -54,9 +56,12 @@ interface Props {
   onCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
   readOnly?: boolean;
   wordSelection?: WordSelection;
+  speakers?: SpeakerProfile[];
+  onAssetWordsChange?: (assetId: string, words: ProjectMediaAsset["words"], text?: string) => void;
+  onAssetTimelineStateChange?: (assetId: string, state: TimelineEditState) => Promise<void>;
 }
 
-export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, onSelectTrack, onCutsChange, readOnly = false, wordSelection }: Props) {
+export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, onSelectTrack, onCutsChange, readOnly = false, wordSelection, speakers = [], onAssetWordsChange, onAssetTimelineStateChange }: Props) {
   const [layout, setLayout] = useState<Layout>("layers");
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
@@ -81,8 +86,16 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [viewportHeight, setViewportHeight] = useState(220);
   const [viewportWidth, setViewportWidth] = useState(1000);
   const [measuredWaveWidth, setMeasuredWaveWidth] = useState(0);
+  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; serial: number } } | null>(null);
   const duration = Math.max(parent.duration, ...tracks.map((track) => track.duration), 0);
   const selected = tracks.find((track) => track.id === selectedTrackId) ?? tracks[0];
+
+  function focusTrack(track: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number }) {
+    if (readOnly || !onAssetWordsChange || !onAssetTimelineStateChange) return;
+    audioRefs.current.forEach((audio) => audio.pause());
+    setPlaying(false);
+    setEditFocus({ assetId: track.id, request: { ...request, serial: Date.now() } });
+  }
   const estimatedWaveWidth = layout === "columns"
     ? columnWidths[selected?.id] ?? Math.max(240, (viewportWidth - 12 - Math.max(0, tracks.length - 1) * 6) / Math.max(1, tracks.length))
     : Math.max(240, viewportWidth - 140);
@@ -271,6 +284,22 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const zoomResolution = `${secondsPerTenPixels >= 1 ? secondsPerTenPixels.toFixed(1) : secondsPerTenPixels.toFixed(2)}s / 10px`;
 
   const playhead = (currentTime - windowStart) / span * 100;
+  if (editFocus) {
+    const track = orderedTracks.find((item) => item.id === editFocus.assetId);
+    if (track) return <Timeline
+      editRequest={editFocus.request}
+      gain={gains[track.id] ?? 100}
+      onGainChange={(value) => setGains((current) => ({ ...current, [track.id]: value }))}
+      onEditStateChange={(state) => { void (async () => { for (const item of orderedTracks) await onAssetTimelineStateChange?.(item.id, state); })().catch((reason) => setError(reason instanceof Error ? reason.message : "Không lưu được chỉnh sửa Timeline cho các channel.")); }}
+      onWordsChange={(words, text) => onAssetWordsChange?.(track.id, words, text)}
+      speakers={speakers}
+      take={{ id: track.id, name: track.name, url: track.url ?? undefined, duration: track.duration, text: track.text, words: track.words }}
+      workingRange={track.workingRange ?? null} removedRanges={track.removedRanges ?? []} cutPoints={track.cutPoints ?? []}
+      wordSelection={wordSelection}
+      leadingActions={<>{error ? <span role="alert">{error}</span> : null}<button onClick={() => { setError(null); setEditFocus(null); }} type="button">← TẤT CẢ CHANNEL</button></>}
+    />;
+  }
+
   return <ModuleFrame title="Timeline" eyebrow={`${orderedTracks.length} CHANNEL · ${parent.name}`} index="A1" tone="dark" className="timeline-module obs-timeline imported-timeline"
     action={<div className="timeline-header-actions obs-timeline__header-actions">
       <div aria-label="Kiểu hiển thị Timeline" className="obs-timeline__layout" role="group">
@@ -332,7 +361,18 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
                     className={`imported-timeline__word ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
-                    onClick={() => seek(word.start)}>{word.text}</button> : null;
+                    onClick={(event) => {
+                      if (event.ctrlKey || event.metaKey) {
+                        event.preventDefault(); event.stopPropagation();
+                        const rect = event.currentTarget.parentElement?.getBoundingClientRect();
+                        const ratio = rect ? Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) : 0;
+                        focusTrack(track, { insertTime: Math.max(0, Math.min(duration, windowStart + ratio * span)) });
+                      }
+                      else seek(word.start);
+                    }}
+                    onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); focusTrack(track, { wordIndex }); }}
+                    onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); focusTrack(track, { promoteIndex: wordIndex }); } }}
+                    >{word.text}</button> : null;
                 }) : <span>{track.text ? "Transcript chưa có word timestamp" : "Chưa có lời nói"}</span>}
               </div>
               <div className="obs-timeline__lane-controls">

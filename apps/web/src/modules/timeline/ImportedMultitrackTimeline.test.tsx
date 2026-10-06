@@ -31,6 +31,45 @@ it("positions timed subtitle words on the same axis as each waveform", () => {
   expect(word).toHaveClass("is-active");
 });
 
+it("opens the shared timeline editor for an archived multitrack word and writes only to its asset", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const words = [{ text: "hello", start: 15, end: 18 }, { text: "world", start: 30, end: 33 }];
+  const onAssetWordsChange = vi.fn();
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
+  render(<ImportedMultitrackTimeline parent={parent}
+    tracks={[{ ...tracks[0], text: "hello world", words }]}
+    selectedTrackId="a" singleTrackView onSelectTrack={() => undefined} onCutsChange={async () => true}
+    onAssetWordsChange={onAssetWordsChange} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+  fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  expect(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" })).toBeInTheDocument();
+  const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  fireEvent.change(editor, { target: { value: "Hi" } });
+  fireEvent.keyDown(editor, { key: "Enter" });
+  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("a", [
+    expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), words[1],
+  ], "Hi world"));
+});
+
+it("opens insertion and timestamp-promotion requests from subtitle gestures", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const words = [{ text: "hello", start: 15, end: 18 }];
+  const onAssetWordsChange = vi.fn();
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
+  const view = render(<ImportedMultitrackTimeline parent={parent}
+    tracks={[{ ...tracks[0], text: "hello", words }]} selectedTrackId="a" singleTrackView
+    onSelectTrack={() => undefined} onCutsChange={async () => true}
+    onAssetWordsChange={onAssetWordsChange} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+  const word = screen.getByRole("button", { name: "hello · 00:15–00:18" });
+  fireEvent.click(word, { ctrlKey: true, clientX: 1 });
+  expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  const listener = vi.fn();
+  window.addEventListener("pro4bro:timestamp-promotion", listener);
+  fireEvent.pointerDown(screen.getByRole("button", { name: "hello · 00:15–00:18" }), { button: 1 });
+  await waitFor(() => expect(listener).toHaveBeenCalledWith(expect.objectContaining({ detail: { assetId: "a", index: 0 } })));
+  window.removeEventListener("pro4bro:timestamp-promotion", listener);
+});
+
 it("keeps each Script word and both subtitle lanes synchronized without opening a child", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const timed = tracks.map((track) => ({ ...track, text: "hello world", words: [
