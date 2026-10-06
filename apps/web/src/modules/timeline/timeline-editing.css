@@ -11,6 +11,7 @@
 .timeline-promotion-status { flex: 0 0 auto; padding: 4px 8px; color: var(--lime-ink); font-size: 11px; }
 .timeline-word-edit { position: absolute; z-index: 8; top: 0; min-width: 100px; height: 100%; border: 1px solid var(--lime); background: var(--surface-field); color: var(--text); }
 .word-track > .timeline-removed-range { top: 0; bottom: 0; pointer-events: none; }
+.timeline-module .timeline-removed-range:not(.is-staged) { background: color-mix(in srgb, var(--text-muted) 35%, transparent); border-color: var(--text-muted); }
 .timeline-word[data-timing-note] { animation: script-time-estimate-pulse 1.5s ease-in-out 3; outline: 1px dashed var(--accent); }
 .timeline-word[data-timing-note]:hover::after { content: attr(data-timing-note); position: fixed; transform: translateY(-28px); z-index: 50; background: var(--surface-field); color: var(--text); padding: 4px 8px; border: 1px solid var(--line); white-space: nowrap; opacity: 0; animation: timeline-note-show 0s 2s forwards; pointer-events: none; }
 @keyframes timeline-note-show { to { opacity: 1; } }
