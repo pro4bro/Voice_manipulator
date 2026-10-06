@@ -1,3 +1,11 @@
+.media-pool-module.media-pool-module > .module-frame__body {
+  grid-template-rows: auto auto minmax(70px, 1fr);
+}
+
+.library-panel > .media-pool-module.media-pool-module > .module-frame__body {
+  grid-template-rows: auto auto minmax(90px, 1fr);
+}
+
 .media-organization-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
