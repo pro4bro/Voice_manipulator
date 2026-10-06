@@ -51,6 +51,31 @@ export function sttChoices(engines: TrainingModelOption[], adapters: ProjectAsrA
     return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, engine }, ...trained];
   });
 }
+
+function reconcileOrganizationAssets(
+  organization: MediaPoolOrganization,
+  assetIds: string[],
+): MediaPoolOrganization {
+  const currentIds = new Set(assetIds);
+  const nextAssets = organization.assets.filter((placement) => currentIds.has(placement.assetId));
+  const placedIds = new Set(nextAssets.map((placement) => placement.assetId));
+  let nextRootOrder = nextAssets
+    .filter((placement) => placement.folderId === null)
+    .reduce((maximum, placement) => Math.max(maximum, placement.order), -1) + 1;
+  for (const assetId of assetIds) {
+    if (placedIds.has(assetId)) continue;
+    nextAssets.push({ assetId, folderId: null, order: nextRootOrder++ });
+    placedIds.add(assetId);
+  }
+  const changed = nextAssets.length !== organization.assets.length
+    || nextAssets.some((placement, index) => {
+      const existing = organization.assets[index];
+      return !existing || placement.assetId !== existing.assetId
+        || placement.folderId !== existing.folderId || placement.order !== existing.order;
+    });
+  return changed ? { ...organization, assets: nextAssets } : organization;
+}
+
 const MEDIA_ACCEPT = [
   "audio/*", "video/*", ".mov", ".mp4", ".mkv", ".avi", ".webm", ".mxf",
   ".h264", ".h265", ".hevc", ".av1", ".prores", ".mp3", ".wav", ".aac",
@@ -422,11 +447,37 @@ export function MediaPool({
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const organizationRef = useRef(organization);
+  organizationRef.current = organization;
   const organizationSaveQueue = useRef<Promise<void>>(Promise.resolve());
   const organizationProjectIdRef = useRef(projectId);
-  organizationProjectIdRef.current = projectId;
   const organizationProjectGeneration = useRef(0);
   const organizationSaveRevision = useRef(0);
+  const lastOrganizationAssetIds = useRef<string[] | null>(null);
+  const organizationReadyProject = useRef<string | null>(null);
+  const assetListReady = useRef(false);
+  const mediaBusyCycleSeen = useRef(false);
+  const projectRequiresBusyCycle = useRef(false);
+  const projectChanged = organizationProjectIdRef.current !== projectId;
+  if (projectChanged) {
+    organizationProjectIdRef.current = projectId;
+    lastOrganizationAssetIds.current = null;
+    organizationReadyProject.current = null;
+    assetListReady.current = false;
+    mediaBusyCycleSeen.current = false;
+    projectRequiresBusyCycle.current = true;
+  }
+  const mediaAssetIds = assets.map((asset) => asset.id);
+  const mediaAssetIdsKey = mediaAssetIds.slice().sort().join("\0");
+  const mediaAssetIdsRef = useRef(mediaAssetIds);
+  mediaAssetIdsRef.current = mediaAssetIds;
+  if (busy) mediaBusyCycleSeen.current = true;
+  else if (mediaBusyCycleSeen.current) {
+    assetListReady.current = true;
+    projectRequiresBusyCycle.current = false;
+  } else if (!projectRequiresBusyCycle.current && !projectChanged && mediaAssetIds.length > 0) {
+    assetListReady.current = true;
+  }
   const draggedAssetId = useRef<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
@@ -446,6 +497,8 @@ export function MediaPool({
   useEffect(() => {
     const generation = ++organizationProjectGeneration.current;
     const revision = organizationSaveRevision.current;
+    lastOrganizationAssetIds.current = null;
+    organizationReadyProject.current = null;
     setOrganization(EMPTY_MEDIA_POOL_ORGANIZATION);
     setActiveFolderId(null);
     setOrganizationError(null);
@@ -455,7 +508,11 @@ export function MediaPool({
       if (current
         && organizationProjectIdRef.current === projectId
         && organizationProjectGeneration.current === generation
-        && organizationSaveRevision.current === revision) setOrganization(result);
+        && organizationSaveRevision.current === revision) {
+        organizationReadyProject.current = projectId;
+        lastOrganizationAssetIds.current = result.assets.map((placement) => placement.assetId).sort();
+        setOrganization(result);
+      }
     }).catch((error: unknown) => {
       if (current
         && organizationProjectIdRef.current === projectId
@@ -466,6 +523,16 @@ export function MediaPool({
     });
     return () => { current = false; };
   }, [projectId]);
+  useEffect(() => {
+    if (!projectId || organizationReadyProject.current !== projectId || busy || !assetListReady.current) return;
+    const previousIds = lastOrganizationAssetIds.current;
+    const currentAssetIds = mediaAssetIdsRef.current;
+    lastOrganizationAssetIds.current = currentAssetIds;
+    if (previousIds === null) return;
+    const currentOrganization = organizationRef.current;
+    const next = reconcileOrganizationAssets(currentOrganization, currentAssetIds);
+    if (next !== currentOrganization) persistOrganization(next);
+  }, [busy, mediaAssetIdsKey, organization, projectId]);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const footageAssets = assets.filter((asset) => !asset.sourceArchiveAssetId && !(asset.obsRecordingId && asset.sourceExtension !== ".mka"));
   const childrenOf = (asset: ProjectMediaAsset) => assets.filter((item) => item.sourceArchiveAssetId === asset.id);
@@ -518,7 +585,10 @@ export function MediaPool({
     ?? (!selectedIds.length && growingMkvCandidates.length === 1 ? growingMkvCandidates[0] : null);
 
   function persistOrganization(next: MediaPoolOrganization) {
-    setOrganization(next);
+    const saveOrganization = assetListReady.current
+      ? reconcileOrganizationAssets(next, mediaAssetIdsRef.current)
+      : next;
+    setOrganization(saveOrganization);
     setOrganizationError(null);
     if (!projectId) return;
     const requestedProjectId = projectId;
@@ -527,10 +597,14 @@ export function MediaPool({
     const isCurrentSave = () => requestedProjectId === organizationProjectIdRef.current
       && generation === organizationProjectGeneration.current
       && revision === organizationSaveRevision.current;
-    const save = () => api.updateMediaPoolOrganization(requestedProjectId, next);
+    const save = () => api.updateMediaPoolOrganization(requestedProjectId, saveOrganization);
     const pending = organizationSaveQueue.current.then(save, save);
     organizationSaveQueue.current = pending.then((saved) => {
-      if (isCurrentSave()) setOrganization(saved);
+      if (isCurrentSave()) {
+        organizationReadyProject.current = requestedProjectId;
+        lastOrganizationAssetIds.current = saved.assets.map((placement) => placement.assetId).sort();
+        setOrganization(saved);
+      }
     }).catch((error: unknown) => {
       if (isCurrentSave())
         setOrganizationError(error instanceof Error ? error.message : "Không lưu được thứ tự Media Pool.");

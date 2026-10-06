@@ -272,6 +272,80 @@ describe("MediaPool", () => {
     }
   });
 
+  it("prunes permanently deleted assets from the saved organization before the next folder edit", async () => {
+    const second = { ...asset, id: "asset-2", name: "second.wav", sourcePath: "assets/media/asset-2/source.wav" };
+    const imported = { ...asset, id: "asset-3", name: "new-import.wav", sourcePath: "assets/media/asset-3/source.wav" };
+    const organization: MediaPoolOrganization = {
+      schemaVersion: 1,
+      folders: [],
+      assets: [
+        { assetId: asset.id, folderId: null, order: 0 },
+        { assetId: second.id, folderId: null, order: 1 },
+      ],
+    };
+    const read = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue(organization);
+    const save = vi.spyOn(api, "updateMediaPoolOrganization").mockImplementation(async (_projectId, next) => next);
+    const view = render(<MediaPool {...props({ projectId: "project", assets: [asset, second] })} />);
+    try {
+      await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
+      view.rerender(<MediaPool {...props({ projectId: "project", assets: [second] })} />);
+      await waitFor(() => expect(save).toHaveBeenCalledWith("project", expect.objectContaining({
+        assets: [expect.objectContaining({ assetId: second.id })],
+      })));
+      expect(save.mock.calls.at(-1)?.[1].assets.map((placement) => placement.assetId)).not.toContain(asset.id);
+
+      view.rerender(<MediaPool {...props({ projectId: "project", assets: [second, imported] })} />);
+      await waitFor(() => expect(save.mock.calls.at(-1)?.[1].assets).toEqual(expect.arrayContaining([
+        expect.objectContaining({ assetId: second.id }),
+        expect.objectContaining({ assetId: imported.id, folderId: null }),
+      ])));
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder" }));
+      fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: "Clean Folder" } });
+      fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Mở thư mục Clean Folder" })).toBeInTheDocument());
+
+      const row = screen.getByRole("button", { name: /new-import\.wav/ }).closest(".media-pool-item") as HTMLElement;
+      const transfer = { setData: vi.fn(), getData: vi.fn(() => imported.id), effectAllowed: "", dropEffect: "" };
+      fireEvent.dragStart(row, { dataTransfer: transfer });
+      fireEvent.drop(screen.getByRole("button", { name: "Mở thư mục Clean Folder" }), { dataTransfer: transfer });
+      await waitFor(() => expect(save.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+        folders: expect.arrayContaining([expect.objectContaining({ name: "Clean Folder" })]),
+        assets: expect.arrayContaining([
+          expect.objectContaining({ assetId: second.id }),
+          expect.objectContaining({ assetId: imported.id, folderId: expect.any(String) }),
+        ]),
+      })));
+      expect(save.mock.calls.at(-1)?.[1].assets.map((placement) => placement.assetId)).not.toContain(asset.id);
+    } finally {
+      read.mockRestore();
+      save.mockRestore();
+      view.unmount();
+    }
+  });
+
+  it("preserves loaded folder placements while the initial asset list is still empty", async () => {
+    const organization: MediaPoolOrganization = {
+      schemaVersion: 1,
+      folders: [{ id: "saved-folder", name: "Saved Folder", parentFolderId: null, order: 0 }],
+      assets: [{ assetId: asset.id, folderId: "saved-folder", order: 0 }],
+    };
+    const read = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue(organization);
+    const save = vi.spyOn(api, "updateMediaPoolOrganization").mockImplementation(async (_projectId, next) => next);
+    const view = render(<MediaPool {...props({ projectId: "project", assets: [], busy: false })} />);
+    try {
+      await screen.findByRole("button", { name: "Mở thư mục Saved Folder" });
+      view.rerender(<MediaPool {...props({ projectId: "project", assets: [asset], busy: false })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Saved Folder" }));
+      expect(screen.getByRole("button", { name: /interview\.mov/ })).toBeInTheDocument();
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      save.mockRestore();
+      view.unmount();
+    }
+  });
+
   it("clears the open footage when the empty part of the list is clicked", () => {
     const onSelect = vi.fn();
     const onClearSelection = vi.fn();
