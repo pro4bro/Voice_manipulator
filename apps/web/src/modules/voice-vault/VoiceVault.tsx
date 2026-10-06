@@ -5,6 +5,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import "../../ui/list-canvas.css";
 
 interface VoiceVaultProps {
   catalog: TrainingCatalog;
@@ -237,7 +238,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
         </form>
       ) : null}
       {!editingSpeaker && !editingEnvironment ? (
-        <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
+        <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("button, input, .voice-card")) { setProfileSelection({ ids: [], anchorId: null }); setVoiceSelection({ ids: [], anchorId: null }); setProfileMenu(null); } }} onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
           {selectedProfileIds.length ? <div className="sound-library-bulk-actions"><b>{selectedProfileIds.length} profile đã chọn</b>{activeType === "speaker" ? <><label>Màu chung<input aria-label="Màu cho Speaker Profiles đã chọn" onChange={(event) => setBulkSpeakerColor(event.target.value)} type="color" value={bulkSpeakerColor} /></label><button className="button button--quiet" onClick={updateSelectedSpeakerColor} type="button">Áp dụng màu</button></> : null}<button className="button button--quiet is-danger" onClick={deleteSelectedProfiles} type="button">Xoá profiles đã chọn</button><button className="button button--quiet" onClick={() => setProfileSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn profiles</button></div> : null}
           {activeType === "speaker" && selectedVoiceIds.length ? <div className="sound-library-bulk-actions"><b>{selectedVoiceIds.length} voice đã chọn</b><button className="button button--quiet is-danger" onClick={deleteSelectedVoices} type="button">Xoá voices đã chọn</button><button className="button button--quiet" onClick={() => setVoiceSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn voices</button></div> : null}
           {activeType === "speaker" ? catalog.speakers.map((speaker) => {

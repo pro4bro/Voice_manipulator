@@ -1,0 +1,15 @@
+/* The scroll owner spans the panel; inner padding remains a deselection canvas. */
+.media-pool-module.media-pool-module > .module-frame__body,
+.voice-vault-module.voice-vault-module > .module-frame__body,
+.voice-output-module.voice-output-module > .module-frame__body { padding-inline: 0; }
+.media-pool-module.media-pool-module > .module-frame__body > :not(.media-pool-list.media-pool-list),
+.voice-vault-module.voice-vault-module > .module-frame__body > :not(.sound-library-list.sound-library-list):not(.voice-vault__list.voice-vault__list),
+.voice-output-module.voice-output-module > .module-frame__body > :not(.voice-output-list-region.voice-output-list-region) { margin-inline: 10px; }
+.media-pool-list.media-pool-list,
+.sound-library-list.sound-library-list,
+.voice-vault__list.voice-vault__list,
+.voice-output-list-region.voice-output-list-region { box-sizing: border-box; width: 100%; padding-inline: 10px; scrollbar-gutter: stable; }
+.library-panel > .voice-vault-module.voice-vault-module > .module-frame__body { overflow: hidden; display: flex; flex-direction: column; }
+.sound-library-list.sound-library-list { min-height: 60px; max-height: none; flex: 1 1 auto; overflow-y: auto; }
+.voice-output-module.voice-output-module > .module-frame__body { overflow: hidden; display: flex; flex-direction: column; }
+.voice-output-list-region.voice-output-list-region { min-height: 60px; flex: 1 1 auto; overflow-y: auto; }

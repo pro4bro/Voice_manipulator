@@ -38,6 +38,13 @@ function show(props: Partial<Parameters<typeof VoiceVault>[0]> = {}) {
 }
 
 describe("Sound Library", () => {
+  it("clears profile selection from the blank side canvas", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
+    expect(screen.getByText("1 profile đã chọn")).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("region", { name: "Danh sách Sound Library" }));
+    expect(screen.queryByText("1 profile đã chọn")).not.toBeInTheDocument();
+  });
   it("lists the voices a Speaker Profile has, each with a way to remove it", () => {
     const onDeleteVoice = vi.fn();
     show({ voices: [voice("voice-1", "An · LoRA", "speaker-an"), voice("voice-2", "An · nhái giọng", "speaker-an")], onDeleteVoice });

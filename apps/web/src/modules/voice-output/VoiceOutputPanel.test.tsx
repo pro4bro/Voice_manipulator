@@ -97,4 +97,12 @@ describe("VoiceOutputPanel", () => {
 
     expect(screen.getByText(/không lẫn vào Media Pool/)).toBeInTheDocument();
   });
+  it("clears selection and pending bulk deletion from the blank list canvas", () => {
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[output()]} speakers={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn An · Xin chào" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xoá đã chọn" }));
+    fireEvent.pointerDown(screen.getByRole("region", { name: "Danh sách Voice Output" }));
+    expect(screen.queryByText("1 đã chọn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xác nhận xoá 1" })).not.toBeInTheDocument();
+  });
 });

@@ -4,6 +4,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import type { SpeakerProfile, VoiceOutput, VoiceOutputExportMode } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import "../../ui/list-canvas.css";
 
 interface VoiceOutputPanelProps {
   outputs: VoiceOutput[];
@@ -50,7 +51,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
   return (
     <ModuleFrame className="voice-output-module" eyebrow="GENERATED SPEECH" index="VO" title="Voice Output" action={<span className="voice-output-count">{outputs.length}</span>}>
       {outputs.length ? (
-        <div aria-label="Danh sách Voice Output" className="voice-output-list-region" onKeyDown={selectAll} role="region" tabIndex={0}>
+        <div aria-label="Danh sách Voice Output" className="voice-output-list-region" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("li, button, input")) { setSelection({ ids: [], anchorId: null }); setConfirming(null); setExporting(null); } }} onKeyDown={selectAll} role="region" tabIndex={0}>
         {selected.length ? <div className="voice-output-bulk-actions"><span>{selected.length} đã chọn</span><button className="voice-output-delete is-confirming" onClick={() => setConfirming("bulk")} type="button">Xoá đã chọn</button>{confirming === "bulk" ? <><span role="status">Xoá {selected.length} Voice Output cùng file âm thanh?</span><button onClick={() => { setConfirming(null); if (onDeleteMany) onDeleteMany(selectedOutputs); else selectedOutputs.forEach(onDelete); setSelection({ ids: [], anchorId: null }); }} type="button">Xác nhận xoá {selected.length}</button><button onClick={() => setConfirming(null)} type="button">Huỷ</button></> : null}</div> : null}
         <ul className="voice-output-list">
           {outputs.map((output) => (
