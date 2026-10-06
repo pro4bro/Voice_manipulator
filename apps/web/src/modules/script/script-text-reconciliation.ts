@@ -123,7 +123,7 @@ function estimatedWords(words: StudioWord[], insertedIndexes: number[], left: St
  * transcript. Deleted words disappear; inserted words are evenly estimated
  * only between two surviving anchors and remain explicitly untrusted.
  */
-export function reconcileScriptTextEdit(previousText: string, nextText: string, previousWords: StudioWord[]): ReconciledScriptEdit {
+function reconcileScriptTextEditWithAnchors(previousText: string, nextText: string, previousWords: StudioWord[], forcedMatches = new Map<number, number>()): ReconciledScriptEdit {
   const old = sourceWordTokens(previousText, previousWords);
   const nextTokens = tokenize(nextText);
   const oldWordByToken = new Map<number, number>();
@@ -133,6 +133,14 @@ export function reconcileScriptTextEdit(previousText: string, nextText: string, 
     if (tokenIndex !== undefined) oldWordByToken.set(tokenIndex, wordIndex);
   }
   const tokenMatches = tokenLcsMatches(old.sourceTokens, nextTokens);
+  // Exact range edits know the identity of untouched words. Override ambiguous
+  // LCS choices for duplicate words with their source offsets after the edit.
+  for (const [nextIndex, oldIndex] of forcedMatches) {
+    for (const [matchedNextIndex, matchedOldIndex] of tokenMatches) {
+      if (matchedOldIndex === oldIndex || matchedNextIndex === nextIndex) tokenMatches.delete(matchedNextIndex);
+    }
+    tokenMatches.set(nextIndex, oldIndex);
+  }
   const newWordByToken = new Map<number, { word: StudioWord; changed: boolean }>();
   const preservedOldWordIndexes = new Set<number>();
   for (const [nextIndex, oldIndex] of tokenMatches) {
@@ -140,8 +148,16 @@ export function reconcileScriptTextEdit(previousText: string, nextText: string, 
     if (oldWordIndex === undefined || preservedOldWordIndexes.has(oldWordIndex)) continue;
     const sourceWord = previousWords[oldWordIndex];
     const token = nextTokens[nextIndex];
-    const changed = token.text !== sourceWord.text;
-    const updated = changed ? { ...sourceWord, text: token.text, reviewState: "manual" as const, selectedVariant: "manual" as const } : sourceWord;
+    const sourceToken = old.sourceTokens[oldIndex];
+    // Compare lexical text with the original transcript token. `StudioWord.text`
+    // may include its trailing punctuation (for example "mới."); replacing an
+    // unrelated word must not strip that punctuation or mark this word edited.
+    const changed = token.text !== sourceToken.text;
+    const localToken = tokenize(sourceWord.text).find((part) => part.normalized === sourceToken.normalized);
+    const updatedText = changed && localToken
+      ? sourceWord.text.slice(0, localToken.start) + token.text + sourceWord.text.slice(localToken.end)
+      : changed ? token.text : sourceWord.text;
+    const updated = changed ? { ...sourceWord, text: updatedText, reviewState: "manual" as const, selectedVariant: "manual" as const } : sourceWord;
     newWordByToken.set(nextIndex, { word: updated, changed });
     preservedOldWordIndexes.add(oldWordIndex);
   }
@@ -197,12 +213,32 @@ export function reconcileScriptTextEdit(previousText: string, nextText: string, 
   return { text: nextText, words: resultWords, changedWordIndexes, };
 }
 
+export function reconcileScriptTextEdit(previousText: string, nextText: string, previousWords: StudioWord[]): ReconciledScriptEdit {
+  return reconcileScriptTextEditWithAnchors(previousText, nextText, previousWords);
+}
+
 /** Replace a known selection in Script while using its exact word indexes. */
 export function replaceScriptTextRange(previousText: string, range: ScriptTextRange, replacement: string, words: StudioWord[]) {
   const start = Math.max(0, Math.min(previousText.length, range.start));
   const end = Math.max(start, Math.min(previousText.length, range.end));
   const nextText = previousText.slice(0, start) + replacement + previousText.slice(end);
-  return reconcileScriptTextEdit(previousText, nextText, words);
+  const old = sourceWordTokens(previousText, words);
+  const nextTokenByStart = new Map(tokenize(nextText).map((token, index) => [token.start, index]));
+  const oldTokenIndexByStart = new Map(old.sourceTokens.map((token, index) => [token.start, index]));
+  const delta = replacement.length - (end - start);
+  const forcedMatches = new Map<number, number>();
+  for (const tokens of old.tokensByWord.values()) {
+    if (!tokens.length) continue;
+    const before = tokens[tokens.length - 1].end <= start;
+    const after = tokens[0].start >= end;
+    if (!before && !after) continue;
+    for (const token of tokens) {
+      const oldIndex = oldTokenIndexByStart.get(token.start);
+      const nextIndex = nextTokenByStart.get(token.start + (after ? delta : 0));
+      if (oldIndex !== undefined && nextIndex !== undefined) forcedMatches.set(nextIndex, oldIndex);
+    }
+  }
+  return reconcileScriptTextEditWithAnchors(previousText, nextText, words, forcedMatches);
 }
 
 /** Replace one known timed word. The explicit index keeps repeated words unambiguous. */

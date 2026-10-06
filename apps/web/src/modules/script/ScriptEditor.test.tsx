@@ -70,6 +70,31 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
       words[1],
     ], "Xin rất chào");
   });
+  it("shows a delayed estimated-timing note over plain prose without moving native selection", () => {
+    vi.useFakeTimers();
+    try {
+      const words = [
+        { text: "Xin", start: 0, end: 0, timingSource: "user-interpolated" as const, timingTrusted: false },
+        { text: "chào", start: 0.2, end: 0.4 },
+      ];
+      const view = render(<ScriptEditor onChange={vi.fn()} value="Xin chào" words={words} workflow="speech-to-text" />);
+      fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+      const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+      editor.setSelectionRange(0, 3);
+      const estimatedSpan = view.container.querySelector<HTMLElement>('[data-script-word-index="0"][data-time-estimated="true"]');
+      expect(estimatedSpan).not.toBeNull();
+      vi.spyOn(estimatedSpan!, "getClientRects").mockReturnValue([{ left: 0, right: 80, top: 0, bottom: 30 } as DOMRect] as unknown as DOMRectList);
+      fireEvent.pointerMove(editor, { clientX: 12, clientY: 12 });
+      act(() => { vi.advanceTimersByTime(1999); });
+      expect(screen.queryByRole("status", { name: /Timestamp ước lượng/ })).not.toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(view.container.querySelector(".script-table__timing-status")).toHaveTextContent("Timestamp ước lượng · Xin · cần kiểm tra trên waveform");
+      expect(editor.selectionStart).toBe(0);
+      expect(editor.selectionEnd).toBe(3);
+      fireEvent.pointerLeave(editor);
+      expect(view.container.querySelector(".script-table__timing-status")).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
   it("offers copy and paste for a selected Script text range", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const readText = vi.fn().mockResolvedValue("rất tốt");

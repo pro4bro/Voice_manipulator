@@ -41,6 +41,25 @@ describe("script text timing reconciliation", () => {
     expect(result.words[0].timingSource).toBeUndefined();
   });
 
+  it("preserves punctuation on untouched words when another word changes", () => {
+    const before: StudioWord[] = [
+      { text: "mới.", start: 0.1, end: 0.3 },
+      { text: "toi", start: 0.4, end: 0.7 },
+    ];
+    const result = reconcileScriptTextEdit("mới. toi", "mới. tôi", before);
+    expect(result.words[0]).toBe(before[0]);
+    expect(result.words[0].text).toBe("mới.");
+    expect(result.words[1]).toMatchObject({ text: "tôi", reviewState: "manual", selectedVariant: "manual" });
+    expect(result.changedWordIndexes).toEqual([1]);
+  });
+
+  it("marks case edits as manual while retaining punctuation from the same word", () => {
+    const before: StudioWord[] = [{ text: "Mới.", start: 0.1, end: 0.3 }];
+    const result = reconcileScriptTextEdit("Mới.", "mới.", before);
+    expect(result.words[0]).toMatchObject({ text: "mới.", reviewState: "manual", selectedVariant: "manual" });
+    expect(result.changedWordIndexes).toEqual([0]);
+  });
+
   it("uses the explicit word index when replacing one of two identical words", () => {
     const before: StudioWord[] = [
       { text: "rồi", start: 0.1, end: 0.3 },
@@ -52,6 +71,17 @@ describe("script text timing reconciliation", () => {
     expect(result.words[0]).toBe(before[0]);
     expect(result.words[1]).toMatchObject({ text: "về", timingSource: "user-interpolated", timingTrusted: false });
     expect(result.words[2]).toBe(before[2]);
+  });
+
+  it("deletes the indexed copy of a repeated word and keeps the other copy's timing", () => {
+    const before: StudioWord[] = [
+      { text: "xin", start: 0.1, end: 0.3 },
+      { text: "xin", start: 1.1, end: 1.3 },
+      { text: "chào", start: 1.4, end: 1.6 },
+    ];
+    const result = replaceScriptWord("xin xin chào", 0, "", before);
+    expect(result.words).toEqual([before[1], before[2]]);
+    expect(result.words[0].start).toBe(1.1);
   });
 
   it("inserts subtitle text at an explicit word boundary with a provisional chosen time", () => {
