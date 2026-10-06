@@ -27,7 +27,7 @@ const apiMocks = vi.hoisted(() => ({
   releaseObsLiveLinkTarget: vi.fn(),
   getObsLiveLinkTranscriptEvents: vi.fn(),
   updateMediaScript: vi.fn(),
-  pickMediaFile: vi.fn(),
+  pickMediaFiles: vi.fn(),
   inspectLocalMediaTracks: vi.fn(),
   startGrowingMkvFollow: vi.fn(),
   getGrowingMkvAssets: vi.fn().mockResolvedValue([]),
@@ -207,7 +207,7 @@ describe("WorkspaceShell STT synchronization", () => {
       id: "mkv-track-2", sourceArchiveAssetId: "mkv-parent", sourceArchiveStreamIndex: 2 };
     apiMocks.listProjectMedia.mockResolvedValueOnce([]).mockResolvedValue([parent, child]);
     apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
-    apiMocks.pickMediaFile.mockResolvedValue({ path: "C:/captures/recording.mkv" });
+    apiMocks.pickMediaFiles.mockResolvedValue({ paths: ["C:/captures/recording.mkv"] });
     apiMocks.inspectLocalMediaTracks.mockResolvedValue({ tracks: [
       { streamIndex: 1, title: "Mic", codec: "aac", channels: 2 },
       { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2 },

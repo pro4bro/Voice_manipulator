@@ -101,6 +101,7 @@ from app.domain.models import (
     GrowingMkvDetailedSttStart,
     MediaFilePickRequest,
     MediaFilePickResult,
+    MediaFilesPickResult,
     MediaDiarizationAssignmentsUpdate,
     MediaDiarizationEnqueue,
     MediaDiarizationSelection,
@@ -2979,6 +2980,15 @@ def create_app(
     def pick_media_file(payload: MediaFilePickRequest) -> MediaFilePickResult:
         try:
             return MediaFilePickResult(path=media_files.pick(payload.initial_path))
+        except (OSError, RuntimeError, ImportError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Không mở được trình chọn media: {exc}"
+            ) from exc
+
+    @app.post("/api/system/pick-media-files", response_model=MediaFilesPickResult)
+    def pick_media_files(payload: MediaFilePickRequest) -> MediaFilesPickResult:
+        try:
+            return MediaFilesPickResult(paths=media_files.pick_many(payload.initial_path))
         except (OSError, RuntimeError, ImportError) as exc:
             raise HTTPException(
                 status_code=503, detail=f"Không mở được trình chọn media: {exc}"

@@ -715,6 +715,9 @@ class MediaFilePickRequest(DomainModel):
 class MediaFilePickResult(DomainModel):
     path: str | None = None
 
+class MediaFilesPickResult(DomainModel):
+    paths: list[str] = Field(default_factory=list)
+
 class EngineStatus(DomainModel):
     id: str
     name: str

@@ -13,6 +13,7 @@ import type {
   EngineProfileSchema,
   EngineStatus,
   MediaImportChoice,
+  ProjectMediaImportResult,
   ModuleId,
   PendingLocalMedia,
   MediaTranscriptionProgress,
@@ -51,7 +52,7 @@ import type {
   WorkspacePage,
 } from "../domain/types";
 import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
-import type { MediaBatchAction } from "../modules/media-pool/MediaPool";
+import type { MediaBatchAction, PendingMediaImportRow } from "../modules/media-pool/MediaPool";
 import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-feed";
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../modules/obs-capture/obs-overlap";
 import { categoryOf, parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
@@ -174,6 +175,21 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const liveTranscriptActiveRef = useRef(false);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [pendingLocalMedia, setPendingLocalMedia] = useState<PendingLocalMedia | null>(null);
+  const [pendingNativeMediaPaths, setPendingNativeMediaPaths] = useState<string[]>([]);
+  const [pendingMediaImports, setPendingMediaImports] = useState<PendingMediaImportRow[]>([]);
+  const activeMediaProjectId = useRef(project.id);
+  const mediaImportQueue = useRef<Promise<void>>(Promise.resolve());
+  const failedMediaImports = useRef(new Map<string, {
+    name: string;
+    run: () => Promise<ProjectMediaImportResult>;
+    transcribe: boolean;
+    cacheLocal: boolean;
+  }>());
+  useEffect(() => {
+    activeMediaProjectId.current = project.id;
+    setPendingNativeMediaPaths([]);
+    setPendingMediaImports([]);
+  }, [project.id]);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [obsTimelineActive, setObsTimelineActive] = useState(false);
   const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
@@ -1220,70 +1236,135 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
 
+  function queueMediaImports(jobs: Array<{
+    name: string;
+    run: () => Promise<ProjectMediaImportResult>;
+    transcribe: boolean;
+    cacheLocal: boolean;
+  }>) {
+    if (!jobs.length) return;
+    const projectId = project.id;
+    const queued = jobs.map((job) => ({ id: `import-${Date.now()}-${Math.random().toString(16).slice(2)}`, ...job }));
+    queued.forEach(({ id, name, run, transcribe, cacheLocal }) => {
+      failedMediaImports.current.set(id, { name, run, transcribe, cacheLocal });
+    });
+    setPendingMediaImports((current) => [...current, ...queued.map(({ id, name }) => ({ id, name, status: "queued" as const }))]);
+    const task = async () => {
+      let imported = 0;
+      for (const job of queued) {
+        if (activeMediaProjectId.current === projectId) {
+          setPendingMediaImports((current) => current.map((row) => row.id === job.id
+            ? { ...row, status: job.cacheLocal ? "caching" : "importing", detail: undefined }
+            : row));
+        }
+        try {
+          const result = await job.run();
+          const targetIds = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
+          if (job.transcribe) await Promise.all(targetIds.map((id) => api.setMediaTranscriptionSelected(projectId, id, true)));
+          const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
+          if (activeMediaProjectId.current === projectId) {
+            flushCurrentMediaDraft();
+            setMediaAssets(assets);
+            setPendingMediaImports((current) => current.filter((row) => row.id !== job.id));
+          }
+          failedMediaImports.current.delete(job.id);
+          imported += 1;
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Import media thất bại";
+          if (activeMediaProjectId.current === projectId) {
+            setPendingMediaImports((current) => current.map((row) => row.id === job.id
+              ? { ...row, status: "error", detail, retryable: true }
+              : row));
+          }
+        }
+      }
+      if (activeMediaProjectId.current === projectId && imported) {
+        setNotice(`Đã import ${imported}/${queued.length} footage. Các footage đã tick STT sẵn sàng trong hàng chờ.`);
+      }
+    };
+    const next = mediaImportQueue.current.then(task, task);
+    mediaImportQueue.current = next.catch(() => undefined);
+  }
+
   async function importMedia(choices: MediaImportChoice[]) {
-    setMediaBusy(true);
-    let imported = 0;
-    let lastAsset: ProjectMediaAsset | null = null;
-    let lastAssets: ProjectMediaAsset[] = [];
-    try {
-      for (const choice of choices) {
-        const result = await api.importProjectMedia(project.id, choice.file, "import", "", false, false);
-        const targets = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
-        if (choice.transcribe) await Promise.all(targets.map((id) => api.setMediaTranscriptionSelected(project.id, id, true)));
-        const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
-        lastAssets = assets;
-        setMediaAssets(assets);
-        const asset = assets.find((item) => item.id === result.asset.id) ?? result.asset;
-        lastAsset = asset;
-        imported += 1;
-      }
-      if (lastAsset) {
-        flushCurrentMediaDraft();
-        applyMediaAsset(lastAsset, lastAssets);
-      }
-      setNotice(`Đã import ${imported} asset. Các footage đã tick STT sẵn sàng trong hàng chờ.`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Import media thất bại";
-      setNotice(imported ? `Đã import ${imported}/${choices.length} asset. File tiếp theo lỗi: ${detail}` : detail);
-    } finally {
-      setMediaBusy(false);
-    }
+    queueMediaImports(choices.map((choice) => ({
+      name: choice.file.name,
+      run: () => api.importProjectMedia(project.id, choice.file, "import", "", false, false),
+      transcribe: choice.transcribe,
+      cacheLocal: false,
+    })));
   }
 
   async function importLocalMedia() {
-    setMediaBusy(true);
+    const projectId = project.id;
     try {
-      const picked = await api.pickMediaFile();
-      if (!picked.path) { setNotice("Đã hủy chọn file gốc."); return; }
-      const extension = picked.path.split(".").pop()?.toLowerCase();
-      if (["mkv", "mov", "mp4"].includes(extension ?? "")) {
-        const inspection = await api.inspectLocalMediaTracks(project.id, picked.path);
-        if (inspection.tracks.length && (inspection.tracks.length > 1 || extension === "mkv")) {
-          setPendingLocalMedia({
-            sourcePath: picked.path,
-            name: picked.path.split(/[\\/]/).pop() ?? "media",
-            tracks: inspection.tracks.map((track) => ({ ...track, imported: true, transcribe: false })),
-          });
-          setNotice("File đang chờ trong Media Pool. Bấm mục chờ để chọn track, rồi chọn Theo dõi MKV đang ghi.");
-          return;
+      const picked = await api.pickMediaFiles();
+      if (!picked.paths.length) { setNotice("Đã hủy chọn file gốc."); return; }
+      if (picked.paths.length === 1) {
+        const path = picked.paths[0];
+        const extension = path.split(".").pop()?.toLowerCase();
+        if (["mkv", "mov", "mp4"].includes(extension ?? "")) {
+          const inspection = await api.inspectLocalMediaTracks(projectId, path);
+          if (activeMediaProjectId.current !== projectId) return;
+          if (inspection.tracks.length && (inspection.tracks.length > 1 || extension === "mkv")) {
+            setPendingLocalMedia({
+              sourcePath: path,
+              name: path.split(/[\\/]/).pop() ?? "media",
+              tracks: inspection.tracks.map((track) => ({ ...track, imported: true, transcribe: false })),
+            });
+            setNotice("File đang chờ trong Media Pool. Chọn cache nếu cần, rồi chọn track và STT.");
+            return;
+          }
         }
       }
-      const cacheLocal = window.confirm(
-        "Bật Local File Caching?\n\nOK: copy file vào project để xử lý nhanh.\nCancel: giữ file gốc làm nguồn xử lý.",
-      );
-      const result = await api.importLocalProjectMedia(project.id, picked.path, cacheLocal);
-      flushCurrentMediaDraft();
-      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
-      setMediaAssets(assets);
-      applyMediaAsset(assets.find((asset) => asset.id === result.asset.id) ?? result.asset, assets);
-      setNotice(cacheLocal
-        ? "Đã import và cache file vào project. Chuột phải footage để refresh cache khi file gốc thay đổi."
-        : "Đã import theo link file gốc. Bật Local File Caching từ menu chuột phải khi cần.");
+      if (activeMediaProjectId.current === projectId) setPendingNativeMediaPaths(picked.paths);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không import được file gốc");
-    } finally {
-      setMediaBusy(false);
+      if (activeMediaProjectId.current === projectId)
+        setNotice(error instanceof Error ? error.message : "Không mở được trình chọn file gốc");
     }
+  }
+
+  function cancelNativeMediaImport() { setPendingNativeMediaPaths([]); }
+
+  function confirmNativeMediaImport(paths: string[], cacheLocal: boolean) {
+    setPendingNativeMediaPaths([]);
+    queueMediaImports(paths.map((path) => ({
+      name: path.split(/[\\/]/).pop() ?? path,
+      run: () => api.importLocalProjectMedia(project.id, path, cacheLocal),
+      transcribe: false,
+      cacheLocal,
+    })));
+  }
+
+  function retryPendingMediaImport(id: string) {
+    const job = failedMediaImports.current.get(id);
+    if (!job) return;
+    setPendingMediaImports((current) => current.map((row) => row.id === id
+      ? { ...row, status: "queued", detail: undefined, retryable: false }
+      : row));
+    const projectId = project.id;
+    const task = async () => {
+      setPendingMediaImports((current) => current.map((row) => row.id === id
+        ? { ...row, status: job.cacheLocal ? "caching" : "importing" }
+        : row));
+      try {
+        const result = await job.run();
+        const targets = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
+        if (job.transcribe) await Promise.all(targets.map((target) => api.setMediaTranscriptionSelected(projectId, target, true)));
+        const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
+        if (activeMediaProjectId.current === projectId) {
+          setMediaAssets(assets);
+          setPendingMediaImports((current) => current.filter((row) => row.id !== id));
+        }
+        failedMediaImports.current.delete(id);
+      } catch (error) {
+        if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.map((row) => row.id === id
+          ? { ...row, status: "error", detail: error instanceof Error ? error.message : "Import media thất bại", retryable: true }
+          : row));
+      }
+    };
+    const next = mediaImportQueue.current.then(task, task);
+    mediaImportQueue.current = next.catch(() => undefined);
   }
 
   function changePendingLocalTrack(streamIndex: number, field: "imported" | "transcribe", selected: boolean) {
@@ -1297,7 +1378,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } : null);
   }
 
-  async function confirmPendingLocalMedia(mode: "import" | "follow", sttSegmentSeconds = 60) {
+  async function confirmPendingLocalMedia(mode: "import" | "follow", sttSegmentSeconds = 60, cacheChoice = true) {
     const pending = pendingLocalMedia;
     if (!pending) return;
     const streamIndexes = pending.tracks.filter((track) => track.imported).map((track) => track.streamIndex);
@@ -1305,9 +1386,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     if (!streamIndexes.length) { setNotice("Hãy chọn ít nhất một track để import."); return; }
     setMediaBusy(true);
     try {
-      const cacheLocal = mode === "import" ? window.confirm(
-        "Bật Local File Caching?\n\nOK: copy file vào project.\nCancel: giữ file gốc làm nguồn xử lý.",
-      ) : true;
+      const cacheLocal = mode === "import" ? cacheChoice : true;
       const result = mode === "follow"
         ? await api.startGrowingMkvFollow(project.id, pending.sourcePath, streamIndexes, transcribeStreamIndexes, sttSegmentSeconds)
         : await api.importLocalProjectMedia(project.id, pending.sourcePath, cacheLocal, streamIndexes, transcribeStreamIndexes);
@@ -2131,6 +2210,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onImportMedia: (choices) => void importMedia(choices),
     onImportLocalMedia: () => void importLocalMedia(),
     pendingLocalMedia,
+    pendingNativeMediaPaths,
+    pendingMediaImports,
+    onConfirmNativeMediaImport: confirmNativeMediaImport,
+    onCancelNativeMediaImport: cancelNativeMediaImport,
+    onRetryPendingImport: retryPendingMediaImport,
     onPendingLocalTrackChange: changePendingLocalTrack,
     onConfirmPendingLocalMedia: (mode, sttSegmentSeconds) => void confirmPendingLocalMedia(mode, sttSegmentSeconds),
     onCancelPendingLocalMedia: () => setPendingLocalMedia(null),
@@ -2171,7 +2255,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

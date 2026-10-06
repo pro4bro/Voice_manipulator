@@ -9,6 +9,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ObsLiveLinkRecordingJournal, PendingLocalMedia, ProjectAsrAdapter, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import "./media-pool-import.css";
 
 const STT_MODELS = [
   { id: "tiny", label: "Tiny · nhanh nhất / yếu nhất" },
@@ -60,6 +61,14 @@ export type MediaBatchAction =
   | { kind: "selection"; target: "import" | "stt" | "diarization" | "training"; assetIds: string[]; selected: boolean }
   | { kind: "recycle" | "restore" | "delete"; assetIds: string[] };
 
+export interface PendingMediaImportRow {
+  id: string;
+  name: string;
+  status: "queued" | "importing" | "caching" | "error";
+  detail?: string;
+  retryable?: boolean;
+}
+
 interface MediaPoolProps {
   projectId?: string;
   assets: ProjectMediaAsset[];
@@ -77,7 +86,7 @@ interface MediaPoolProps {
   onImportLocal?: () => void;
   pendingLocalMedia?: PendingLocalMedia | null;
   onPendingLocalTrackChange?: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
-  onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number) => void;
+  onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;
   onCancelPendingLocalMedia?: () => void;
   onFinishGrowingMkv?: (assetId: string) => void;
   onStartGrowingMkvDetailedStt?: (assetId: string, segmentSeconds: number) => void;
@@ -103,6 +112,11 @@ interface MediaPoolProps {
   onOpenObsTrack?: (recordingId: string, channelId: string) => void;
   selectedObsRecordingId?: string | null;
   onObsArchiveReady?: (recordingId: string) => Promise<void>;
+  pendingNativeMediaPaths?: string[];
+  pendingMediaImports?: PendingMediaImportRow[];
+  onConfirmNativeMediaImport?: (paths: string[], cacheLocal: boolean) => void;
+  onCancelNativeMediaImport?: () => void;
+  onRetryPendingImport?: (id: string) => void;
 }
 
 function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOpenTrack, selectedRecordingId, onArchiveReady }: {
@@ -388,12 +402,19 @@ export function MediaPool({
   onOpenObsTrack,
   selectedObsRecordingId,
   onObsArchiveReady,
+  pendingNativeMediaPaths = [],
+  pendingMediaImports = [],
+  onConfirmNativeMediaImport = () => undefined,
+  onCancelNativeMediaImport = () => undefined,
+  onRetryPendingImport = () => undefined,
 }: MediaPoolProps) {
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
   const pendingGrowingMkv = pendingImports.length === 1 && /\.mkv$/iu.test(pendingImports[0].file.name);
   const [mkvSttDialogOpen, setMkvSttDialogOpen] = useState(false);
   const [mkvSttTargetId, setMkvSttTargetId] = useState<string | null>(null);
   const [mkvSttSegmentSeconds, setMkvSttSegmentSeconds] = useState(60);
+  const [nativeCacheChoiceOpen, setNativeCacheChoiceOpen] = useState(false);
+  const [localCacheChoiceOpen, setLocalCacheChoiceOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
   const [sttModel, setSttModel] = useState<string>("large-v3");
@@ -406,6 +427,9 @@ export function MediaPool({
   useEffect(() => {
     if (pendingLocalMedia) setContextMenu({ assetId: "__pending_local__", left: 72, top: 140 });
   }, [pendingLocalMedia?.sourcePath]);
+  useEffect(() => {
+    setNativeCacheChoiceOpen(pendingNativeMediaPaths.length > 0);
+  }, [pendingNativeMediaPaths.join("\0")]);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const footageAssets = assets.filter((asset) => !asset.sourceArchiveAssetId && !(asset.obsRecordingId && asset.sourceExtension !== ".mka"));
   const childrenOf = (asset: ProjectMediaAsset) => assets.filter((item) => item.sourceArchiveAssetId === asset.id);
@@ -636,7 +660,7 @@ export function MediaPool({
       eyebrow="PROJECT MEDIA"
       index="MP"
       title="Media Pool"
-      action={<div className="media-import-actions"><button aria-label="Mở file media từ máy" className="media-import" disabled={busy} onClick={onImportLocal} title="Import file gốc, hỗ trợ MKV đang ghi" type="button"><Icon name="folder" /><span>{busy ? "IMPORTING" : "IMPORT"}</span></button><label className="media-import media-import-native" title="Upload file đã hoàn tất"><Icon name="upload" /><input aria-label="Import media" accept={MEDIA_ACCEPT} disabled={busy} multiple onChange={importFiles} type="file" /></label></div>}
+      action={<div className="media-import-actions"><button aria-label="Mở file media từ máy" className="media-import" onClick={onImportLocal} title="Chọn một hoặc nhiều file gốc để import" type="button"><Icon name="folder" /><span>IMPORT</span></button><label className="media-import media-import-native" title="Upload một hoặc nhiều file đã hoàn tất"><Icon name="upload" /><input aria-label="Import media" accept={MEDIA_ACCEPT} multiple onChange={importFiles} type="file" /></label></div>}
     >
       <div className="media-pool-summary">
         <span><b>{liveAssets.length}</b> ASSETS</span>
@@ -653,6 +677,11 @@ export function MediaPool({
         {pendingLocalMedia ? <div className="media-pool-pending" onContextMenu={(event) => openContextMenu(event, "__pending_local__")}>
           <button aria-label={`Chọn track cho ${pendingLocalMedia.name}`} onClick={(event) => openContextMenu(event, "__pending_local__")} type="button"><Icon name="folder" /><span><b>{pendingLocalMedia.name}</b><small>CHỜ IMPORT · {pendingLocalMedia.tracks.length} AUDIO TRACK · BẤM ĐỂ CHỌN KÊNH VÀ THEO DÕI</small></span></button>
         </div> : null}
+        {pendingMediaImports.map((item) => <div aria-label={`Footage ${item.name}: ${item.status === "error" ? "LỖI IMPORT" : item.status === "queued" ? "ĐANG CHỜ IMPORT" : item.status === "caching" ? "ĐANG CACHE" : "ĐANG IMPORT"}`} className={`media-pool-importing media-pool-importing--${item.status}`} key={item.id}>
+          <span aria-hidden="true" className="media-pool-importing__spinner"><Icon name={item.status === "error" ? "refresh" : "waveform"} /></span>
+          <span><b>{item.name}</b><small>{item.status === "error" ? "IMPORT THẤT BẠI" : item.status === "queued" ? "ĐANG CHỜ TRONG HÀNG IMPORT" : item.status === "caching" ? "ĐANG CACHE VÀ TẠO FOOTAGE" : "ĐANG ĐỌC MEDIA VÀ TẠO FOOTAGE"}</small>{item.detail ? <em>{item.detail}</em> : null}</span>
+          {item.status === "error" && item.retryable ? <button className="media-pool-importing__retry" onClick={() => onRetryPendingImport(item.id)} type="button">Thử lại</button> : null}
+        </div>)}
         {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
         {liveAssets.map(renderAsset)}
         {!projectId && !pendingLocalMedia && !liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
@@ -680,6 +709,21 @@ export function MediaPool({
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>
+      {nativeCacheChoiceOpen ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancelNativeMediaImport(); }}>
+        <section aria-label="Tùy chọn cache file media" aria-modal="true" className="media-import-dialog media-import-dialog--cache" role="dialog">
+          <header><span>IMPORT FILE GỐC</span><strong>{pendingNativeMediaPaths.length} file</strong></header>
+          <p>Chọn cách app dùng các file nguồn. Cache sẽ sao chép vào project để project mang theo media; giữ file gốc sẽ lưu liên kết tới vị trí hiện tại.</p>
+          <div aria-label="Các file sắp import" className="media-import-choices">{pendingNativeMediaPaths.map((path) => <div className="media-import-choice-file" key={path}><b>{path.split(/[\\/]/).pop() || path}</b><small>{path}</small></div>)}</div>
+          <footer><button className="button button--quiet" onClick={onCancelNativeMediaImport} type="button">Hủy</button><button className="button button--quiet" onClick={() => { setNativeCacheChoiceOpen(false); onConfirmNativeMediaImport(pendingNativeMediaPaths, false); }} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => { setNativeCacheChoiceOpen(false); onConfirmNativeMediaImport(pendingNativeMediaPaths, true); }} type="button">Cache trong project</button></footer>
+        </section>
+      </div> : null}
+      {localCacheChoiceOpen && pendingLocalMedia ? <div className="media-import-backdrop">
+        <section aria-label="Tùy chọn cache file media" aria-modal="true" className="media-import-dialog media-import-dialog--cache" role="dialog">
+          <header><span>IMPORT FILE GỐC</span><strong>{pendingLocalMedia.name}</strong></header>
+          <p>Cache sẽ sao chép file vào project. Giữ file gốc sẽ liên kết tới vị trí hiện tại. Chọn các track và bật STT riêng trong menu sau khi import.</p>
+          <footer><button className="button button--quiet" onClick={() => setLocalCacheChoiceOpen(false)} type="button">Hủy</button><button className="button button--quiet" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, false); }} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, true); }} type="button">Cache trong project</button></footer>
+        </section>
+      </div> : null}
       {pendingImports.length ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingImports([]); }}><section aria-label="Tùy chọn import media" aria-modal="true" className="media-import-dialog" role="dialog"><header><span>IMPORT QUEUE</span><strong>{pendingImports.length} footage</strong></header><p>{pendingGrowingMkv ? "MKV đang ghi cần theo dõi file gốc trên máy. Hãy chọn lại chính file này trong hộp chọn file gốc, rồi bấm mục chờ trong Media Pool để chọn Import/STT cho từng track. Upload chỉ gửi một bản sao và không nhận thêm dữ liệu khi OBS tiếp tục ghi." : "Chọn footage cần đưa vào hàng chờ STT. STT kỹ sẽ chỉ chạy khi bấm Speech to text."}</p><div className="media-import-choices">{pendingImports.map((choice, index) => <label key={`${choice.file.name}-${index}`}><span><b>{choice.file.name}</b><small>{(choice.file.size / 1024 / 1024).toFixed(1)} MB</small></span><input aria-label={`Đánh dấu STT cho ${choice.file.name}`} checked={choice.transcribe} onChange={(event) => togglePendingTranscript(index, event.target.checked)} type="checkbox" /><em>{choice.transcribe ? "TO STT" : "IMPORT ONLY"}</em></label>)}</div><footer><button className="button button--quiet" onClick={() => setPendingImports([])} type="button">Hủy</button>{pendingGrowingMkv ? <button className="button button--accent" onClick={() => { setPendingImports([]); onImportLocal(); }} type="button">Theo dõi MKV đang ghi</button> : null}<button className={pendingGrowingMkv ? "button button--quiet" : "button button--accent"} onClick={confirmImport} type="button">{pendingGrowingMkv ? "Import file đã hoàn tất" : `Import ${pendingImports.length} file`}</button></footer></section></div> : null}
       {mkvSttDialogOpen && (pendingLocalMedia || mkvSttTargetId) ? <div className="media-import-backdrop">
         <section aria-label="Thiết lập STT MKV" aria-modal="true" className="media-import-dialog" role="dialog">
@@ -706,7 +750,7 @@ export function MediaPool({
             </div>)}
           </div><p>MKV đang ghi: Live Transcribe chạy trên các track đã tick STT. Bấm Speech to text sau khi import để chốt audio hiện có và bắt đầu STT kỹ.</p></section>
           <footer>
-            <button disabled={busy || !pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); onConfirmPendingLocalMedia("import"); }} role="menuitem" type="button"><Icon name="upload" /> Import file đã hoàn tất</button>
+            <button disabled={!pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); setLocalCacheChoiceOpen(true); }} role="menuitem" type="button"><Icon name="upload" /> Import file đã hoàn tất</button>
             {pendingLocalMedia.name.toLowerCase().endsWith(".mkv") ? <button disabled={busy || !pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); onConfirmPendingLocalMedia("follow", 60); }} role="menuitem" type="button"><Icon name="waveform" /> Theo dõi MKV đang ghi</button> : null}
             <button onClick={() => { setContextMenu(null); onCancelPendingLocalMedia(); }} role="menuitem" type="button">Hủy mục chờ</button>
           </footer>

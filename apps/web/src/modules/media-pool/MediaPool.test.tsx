@@ -132,6 +132,53 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mở file media từ máy" }));
     expect(onImportLocal).toHaveBeenCalledOnce();
   });
+
+  it("keeps multi-file upload choices and starts the batch from an in-app import dialog", () => {
+    const onImport = vi.fn();
+    const first = new File(["a"], "first.wav", { type: "audio/wav" });
+    const second = new File(["b"], "second.wav", { type: "audio/wav" });
+    render(<MediaPool {...props({ onImport })} />);
+    fireEvent.change(screen.getByLabelText("Import media"), { target: { files: [first, second] } });
+    expect(screen.getByRole("dialog", { name: "Tùy chọn import media" })).toHaveTextContent("2 footage");
+    expect(screen.getByLabelText("Đánh dấu STT cho first.wav")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Import 2 file" }));
+    expect(onImport).toHaveBeenCalledWith([
+      { file: first, transcribe: true }, { file: second, transcribe: true },
+    ]);
+    expect(screen.queryByRole("dialog", { name: "Tùy chọn import media" })).not.toBeInTheDocument();
+  });
+
+  it("asks native-file cache choice inside the app and keeps an import row visible", async () => {
+    const onConfirmNativeMediaImport = vi.fn();
+    const onRetryPendingImport = vi.fn();
+    render(<MediaPool {...props({
+      assets: [], pendingNativeMediaPaths: ["C:/source/one.wav", "C:/source/two.wav"],
+      pendingMediaImports: [{ id: "pending-1", name: "one.wav", status: "caching" }],
+      onConfirmNativeMediaImport, onRetryPendingImport,
+    })} />);
+    expect(await screen.findByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("2 file");
+    fireEvent.click(screen.getByRole("button", { name: "Cache trong project" }));
+    expect(onConfirmNativeMediaImport).toHaveBeenCalledWith(["C:/source/one.wav", "C:/source/two.wav"], true);
+    expect(screen.getByLabelText("Footage one.wav: ĐANG CACHE")).toBeInTheDocument();
+    const failed = { id: "pending-2", name: "bad.wav", status: "error" as const, retryable: true, detail: "unsupported codec" };
+    const view = render(<MediaPool {...props({ assets: [], pendingMediaImports: [failed], onRetryPendingImport })} />);
+    expect(screen.getByLabelText("Footage bad.wav: LỖI IMPORT")).toHaveTextContent("unsupported codec");
+    fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+    expect(onRetryPendingImport).toHaveBeenCalledWith("pending-2");
+    view.unmount();
+  });
+
+  it("replaces the browser cache confirmation for pending native tracks with an app dialog", async () => {
+    const onConfirmPendingLocalMedia = vi.fn();
+    const pendingLocalMedia = { sourcePath: "C:/recording.wav", name: "recording.wav", tracks: [
+      { streamIndex: 0, title: "Audio", codec: "pcm", channels: 2, imported: true, transcribe: false },
+    ] };
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia })} />);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Import file đã hoàn tất" }));
+    expect(screen.getByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("recording.wav");
+    fireEvent.click(screen.getByRole("button", { name: "Giữ file gốc" }));
+    expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("import", undefined, false);
+  });
   it("clears the open footage when the empty part of the list is clicked", () => {
     const onSelect = vi.fn();
     const onClearSelection = vi.fn();

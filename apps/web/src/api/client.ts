@@ -281,6 +281,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ initialPath }),
     }),
+  pickMediaFiles: (initialPath = "") =>
+    request<{ paths: string[] }>("/api/system/pick-media-files", {
+      method: "POST",
+      body: JSON.stringify({ initialPath }),
+    }),
   inspectLocalMediaTracks: (projectId: string, sourcePath: string) =>
     request<{ tracks: Array<{ streamIndex: number; title: string; codec: string; channels: number | null }> }>(
       `/api/projects/${projectId}/media/inspect-local`,
