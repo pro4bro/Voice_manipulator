@@ -179,6 +179,48 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("button", { name: "Giữ file gốc" }));
     expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("import", undefined, false);
   });
+
+  it("creates nested folders and moves footage in and back out without moving its source", async () => {
+    const organization = {
+      schemaVersion: 1 as const,
+      folders: [{ id: "folder-a", name: "Audio", parentFolderId: null, order: 0 }],
+      assets: [{ assetId: asset.id, folderId: null, order: 0 }],
+    };
+    const read = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue(organization);
+    const save = vi.spyOn(api, "updateMediaPoolOrganization").mockImplementation(async (_projectId, next) => next);
+    const sourcePath = asset.sourcePath;
+    const view = render(<MediaPool {...props({ projectId: "project", assets: [asset], onImportLocal: vi.fn() })} />);
+    try {
+      await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
+      fireEvent.click(await screen.findByRole("button", { name: "Mở thư mục Audio" }));
+      fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder con" }));
+      fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: "Interview" } });
+      fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
+      await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
+        folders: expect.arrayContaining([expect.objectContaining({ name: "Interview", parentFolderId: "folder-a" })]),
+      })));
+
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục gốc" }));
+      const assetRow = view.container.querySelector(".media-pool-item[draggable='true']") as HTMLElement;
+      const transfer = { setData: vi.fn(), getData: vi.fn(() => asset.id), effectAllowed: "", dropEffect: "" };
+      fireEvent.dragStart(assetRow, { dataTransfer: transfer });
+      fireEvent.drop(screen.getByRole("button", { name: "Mở thư mục Audio" }), { dataTransfer: transfer });
+      await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
+        assets: [expect.objectContaining({ assetId: asset.id, folderId: "folder-a" })],
+      })));
+
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Audio" }));
+      fireEvent.drop(screen.getByRole("button", { name: "Mở thư mục gốc" }), { dataTransfer: transfer });
+      await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
+        assets: [expect.objectContaining({ assetId: asset.id, folderId: null })],
+      })));
+      expect(asset.sourcePath).toBe(sourcePath);
+    } finally {
+      read.mockRestore();
+      save.mockRestore();
+      view.unmount();
+    }
+  });
   it("clears the open footage when the empty part of the list is clicked", () => {
     const onSelect = vi.fn();
     const onClearSelection = vi.fn();

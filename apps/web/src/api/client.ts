@@ -58,6 +58,7 @@ import type {
   TrainingRunLog,
   WorkspacePage,
 } from "../domain/types";
+import type { MediaPoolOrganization } from "../modules/media-pool/media-organization";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
@@ -327,6 +328,12 @@ export const api = {
     const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media`);
     return assets.map(normalizeMediaAsset);
   },
+  getMediaPoolOrganization: (projectId: string) =>
+    request<MediaPoolOrganization>(`/api/projects/${projectId}/media/organization`),
+  updateMediaPoolOrganization: (projectId: string, organization: MediaPoolOrganization) =>
+    request<MediaPoolOrganization>(`/api/projects/${projectId}/media/organization`, {
+      method: "PATCH", body: JSON.stringify(organization),
+    }),
   inspectObsRecording: (projectId: string, sourcePath: string) =>
     request<ObsRecordingInspection>(`/api/projects/${projectId}/obs-sessions/inspect`, {
       method: "POST", body: JSON.stringify({ sourcePath }),

@@ -30,6 +30,7 @@ from app.domain.models import (
     TimelineEditRange,
     TimelineGainKeyframe,
 )
+from app.domain.media_organization import MediaPoolAssetPlacement, MediaPoolOrganization
 from app.domain.ports import ProjectRepository
 
 # Distinguishes "leave words untouched" from "replace words with an empty list".
@@ -70,6 +71,76 @@ class FileMediaLibrary:
         """Read Media Pool identities without loading per-word transcript files."""
         with self._lock(project_id):
             return self._load(project_id, include_words=False)
+
+    def organization(self, project_id: str) -> MediaPoolOrganization:
+        """Read project-owned folder and order metadata without moving any media."""
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            path = root / "assets" / "media" / "organization.json"
+            if path.is_file():
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    organization = MediaPoolOrganization.model_validate(payload)
+                except (OSError, ValueError, TypeError) as exc:
+                    raise ValueError("Media Pool organization file is invalid") from exc
+            else:
+                organization = MediaPoolOrganization()
+            assets = self._load(project_id, include_words=False)
+            return self._complete_media_organization(organization, assets)
+
+    def update_organization(
+        self, project_id: str, organization: MediaPoolOrganization
+    ) -> MediaPoolOrganization:
+        """Validate and atomically save the portable Media Pool arrangement."""
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            self._validate_media_organization(organization, assets)
+            normalized = self._complete_media_organization(organization, assets)
+            self._validate_media_organization(normalized, assets)
+            path = root / "assets" / "media" / "organization.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._store._write_json(path, normalized.model_dump(by_alias=True, mode="json"), indent=2)
+            return normalized
+
+    @staticmethod
+    def _complete_media_organization(
+        organization: MediaPoolOrganization, assets: list[ProjectMediaAsset]
+    ) -> MediaPoolOrganization:
+        known = {asset.id for asset in assets}
+        placements = [item for item in organization.assets if item.asset_id in known]
+        placed = {item.asset_id for item in placements}
+        root_order = max((item.order for item in placements if item.folder_id is None), default=-1) + 1
+        for asset in assets:
+            if asset.id not in placed:
+                placements.append(MediaPoolAssetPlacement(asset_id=asset.id, folder_id=None, order=root_order))
+                root_order += 1
+        return organization.model_copy(update={"assets": placements})
+
+    @staticmethod
+    def _validate_media_organization(
+        organization: MediaPoolOrganization, assets: list[ProjectMediaAsset]
+    ) -> None:
+        folders = {folder.id: folder for folder in organization.folders}
+        if len(folders) != len(organization.folders):
+            raise ValueError("Media Pool folder IDs must be unique")
+        if len({item.asset_id for item in organization.assets}) != len(organization.assets):
+            raise ValueError("Media Pool asset placements must be unique")
+        known_assets = {asset.id for asset in assets}
+        if any(item.asset_id not in known_assets for item in organization.assets):
+            raise ValueError("Media Pool placement references an unknown asset")
+        for folder in organization.folders:
+            if folder.parent_folder_id is not None and folder.parent_folder_id not in folders:
+                raise ValueError("Media Pool folder parent does not exist")
+            visited = {folder.id}
+            parent_id = folder.parent_folder_id
+            while parent_id is not None:
+                if parent_id in visited:
+                    raise ValueError("Media Pool folders cannot contain cycles")
+                visited.add(parent_id)
+                parent_id = folders[parent_id].parent_folder_id
+        if any(item.folder_id is not None and item.folder_id not in folders for item in organization.assets):
+            raise ValueError("Media Pool placement folder does not exist")
 
     def get(self, project_id: str, asset_id: str) -> ProjectMediaAsset:
         with self._lock(project_id):

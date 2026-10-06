@@ -169,6 +169,7 @@ from app.domain.models import (
     TrainingCatalog,
     WorkspacePage,
 )
+from app.domain.media_organization import MediaPoolOrganization
 from app.domain.ports import FolderPicker, ProjectRepository, SpeakerEmbedder, VoiceEngine
 from app.settings import Settings
 from app.runtime_layout import python_executable
@@ -660,6 +661,32 @@ def create_app(
             return media.list(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get(
+        "/api/projects/{project_id}/media/organization",
+        response_model=MediaPoolOrganization,
+    )
+    def get_media_organization(project_id: str) -> MediaPoolOrganization:
+        try:
+            return media.organization(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch(
+        "/api/projects/{project_id}/media/organization",
+        response_model=MediaPoolOrganization,
+    )
+    def update_media_organization(
+        project_id: str, payload: MediaPoolOrganization
+    ) -> MediaPoolOrganization:
+        try:
+            return media.update_organization(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post(
         "/api/projects/{project_id}/obs-sessions/inspect",

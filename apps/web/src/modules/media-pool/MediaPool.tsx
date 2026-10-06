@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "../../api/client";
@@ -9,7 +9,9 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ObsLiveLinkRecordingJournal, PendingLocalMedia, ProjectAsrAdapter, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { createMediaPoolFolder, EMPTY_MEDIA_POOL_ORGANIZATION, moveMediaPoolAsset, orderedMediaPoolPlacements, type MediaPoolOrganization } from "./media-organization";
 import "./media-pool-import.css";
+import "./media-pool-organization.css";
 
 const STT_MODELS = [
   { id: "tiny", label: "Tiny · nhanh nhất / yếu nhất" },
@@ -415,6 +417,13 @@ export function MediaPool({
   const [mkvSttSegmentSeconds, setMkvSttSegmentSeconds] = useState(60);
   const [nativeCacheChoiceOpen, setNativeCacheChoiceOpen] = useState(false);
   const [localCacheChoiceOpen, setLocalCacheChoiceOpen] = useState(false);
+  const [organization, setOrganization] = useState<MediaPoolOrganization>(EMPTY_MEDIA_POOL_ORGANIZATION);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const organizationSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const draggedAssetId = useRef<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: string; left: number; top: number } | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
   const [sttModel, setSttModel] = useState<string>("large-v3");
@@ -430,6 +439,19 @@ export function MediaPool({
   useEffect(() => {
     setNativeCacheChoiceOpen(pendingNativeMediaPaths.length > 0);
   }, [pendingNativeMediaPaths.join("\0")]);
+  useEffect(() => {
+    setOrganization(EMPTY_MEDIA_POOL_ORGANIZATION);
+    setActiveFolderId(null);
+    setOrganizationError(null);
+    if (!projectId) return;
+    let current = true;
+    void api.getMediaPoolOrganization(projectId).then((result) => {
+      if (current) setOrganization(result);
+    }).catch((error: unknown) => {
+      if (current) setOrganizationError(error instanceof Error ? error.message : "Không tải được cấu trúc Media Pool.");
+    });
+    return () => { current = false; };
+  }, [projectId]);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
   const footageAssets = assets.filter((asset) => !asset.sourceArchiveAssetId && !(asset.obsRecordingId && asset.sourceExtension !== ".mka"));
   const childrenOf = (asset: ProjectMediaAsset) => assets.filter((item) => item.sourceArchiveAssetId === asset.id);
@@ -480,6 +502,72 @@ export function MediaPool({
     && childrenOf(asset).some((child) => child.importSelected !== false && child.transcriptionSelected));
   const selectedGrowingMkv = growingMkvCandidates.find((asset) => selectedIds.includes(asset.id))
     ?? (!selectedIds.length && growingMkvCandidates.length === 1 ? growingMkvCandidates[0] : null);
+
+  function persistOrganization(next: MediaPoolOrganization) {
+    setOrganization(next);
+    setOrganizationError(null);
+    if (!projectId) return;
+    const requestedProjectId = projectId;
+    const save = () => api.updateMediaPoolOrganization(requestedProjectId, next);
+    const pending = organizationSaveQueue.current.then(save, save);
+    organizationSaveQueue.current = pending.then((saved) => {
+      if (requestedProjectId === projectId) setOrganization(saved);
+    }).catch((error: unknown) => {
+      if (requestedProjectId === projectId)
+        setOrganizationError(error instanceof Error ? error.message : "Không lưu được thứ tự Media Pool.");
+    });
+  }
+
+  function arrangeAsset(assetId: string, folderId: string | null, beforeAssetId: string | null = null) {
+    const next = moveMediaPoolAsset(organization, assetId, folderId, beforeAssetId);
+    if (next !== organization) persistOrganization(next);
+  }
+
+  function handleAssetDragOver(event: DragEvent<HTMLElement>) {
+    if (!draggedAssetId.current) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  function handleAssetDrop(event: DragEvent<HTMLElement>, folderId: string | null, beforeAssetId: string | null = null) {
+    event.preventDefault();
+    const assetId = draggedAssetId.current || event.dataTransfer.getData("text/plain");
+    if (assetId) arrangeAsset(assetId, folderId, beforeAssetId);
+    draggedAssetId.current = null;
+  }
+
+  function createFolder() {
+    const name = newFolderName.trim();
+    if (!name) return;
+    const id = `folder-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    persistOrganization(createMediaPoolFolder(organization, id, name, activeFolderId));
+    setNewFolderName("");
+    setCreateFolderOpen(false);
+  }
+
+  const folderById = new Map(organization.folders.map((folder) => [folder.id, folder]));
+  const visibleFolders = organization.folders
+    .filter((folder) => folder.parentFolderId === activeFolderId)
+    .slice().sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+  const placementByAssetId = new Map(organization.assets.map((placement) => [placement.assetId, placement]));
+  const liveAssetById = new Map(liveAssets.map((asset) => [asset.id, asset]));
+  const orderedInFolder = orderedMediaPoolPlacements(organization, activeFolderId)
+    .flatMap((placement) => liveAssetById.has(placement.assetId) ? [liveAssetById.get(placement.assetId)!] : []);
+  const orderedAssetIds = new Set(orderedInFolder.map((asset) => asset.id));
+  const visibleAssets = activeFolderId === null
+    ? [...orderedInFolder, ...liveAssets.filter((asset) => !orderedAssetIds.has(asset.id) && !placementByAssetId.get(asset.id)?.folderId)]
+    : [...orderedInFolder, ...liveAssets.filter((asset) => !orderedAssetIds.has(asset.id) && placementByAssetId.get(asset.id)?.folderId === activeFolderId)];
+  const folderAncestors = (() => {
+    const path = [];
+    let current = activeFolderId ? folderById.get(activeFolderId) : undefined;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      path.unshift(current);
+      current = current.parentFolderId ? folderById.get(current.parentFolderId) : undefined;
+    }
+    return path;
+  })();
 
   function startSpeechToText() {
     if (selectedGrowingMkv) {
@@ -603,7 +691,7 @@ export function MediaPool({
     setHistoryAssetId(asset.id);
   }
 
-  function renderAsset(asset: ProjectMediaAsset) {
+  function renderAsset(asset: ProjectMediaAsset, organizable = false) {
     const channels = childrenOf(asset);
     const stageState = (test: (item: ProjectMediaAsset) => boolean) => {
       const targets = channels.length ? channels : [asset];
@@ -623,7 +711,7 @@ export function MediaPool({
     const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
     const missing = recycled || channels.length ? [] : missingPreparation(asset);
     return (
-      <div className={`media-pool-item ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)}>
+      <div className={`media-pool-item ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} draggable={organizable && !recycled} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)} onDragStart={organizable ? (event) => { draggedAssetId.current = asset.id; event.dataTransfer.setData("text/plain", asset.id); event.dataTransfer.effectAllowed = "move"; } : undefined} onDragEnd={organizable ? () => { draggedAssetId.current = null; } : undefined} onDragOver={organizable ? handleAssetDragOver : undefined} onDrop={organizable ? (event) => handleAssetDrop(event, activeFolderId, asset.id) : undefined}>
         {channels.length ? <button aria-expanded={expandedAssets.includes(asset.id)} aria-label={`${expandedAssets.includes(asset.id) ? "Thu gọn" : "Xổ"} track của ${asset.name}`} className="media-pool-item__expand" onClick={() => setExpandedAssets((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} type="button">{expandedAssets.includes(asset.id) ? "▾" : "▸"}</button> : null}
         <button aria-pressed={selected} className="media-pool-item__main" onClick={(event) => selectAsset(event, asset)} type="button">
           <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
@@ -668,6 +756,18 @@ export function MediaPool({
         <span><b>{transcriptionCount}</b> TO STT</span>
         <span><b>{trainingCount}</b> TO TRAIN</span>
       </div>
+      <div aria-label="Tổ chức Media Pool" className="media-organization-toolbar">
+        <nav aria-label="Đường dẫn thư mục" className="media-organization-breadcrumbs">
+          <button aria-label="Mở thư mục gốc" className={activeFolderId === null ? "is-active" : ""} onClick={() => setActiveFolderId(null)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)} type="button">Tất cả footage</button>
+          {folderAncestors.map((folder) => <button aria-label={`Mở thư mục ${folder.name}`} className={folder.id === activeFolderId ? "is-active" : ""} key={folder.id} onClick={() => setActiveFolderId(folder.id)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)} type="button">› {folder.name}</button>)}
+        </nav>
+        {createFolderOpen ? <form className="media-organization-create" onSubmit={(event) => { event.preventDefault(); createFolder(); }}>
+          <input aria-label="Tên thư mục mới" autoFocus maxLength={120} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Tên thư mục" value={newFolderName} />
+          <button className="button button--accent" disabled={!newFolderName.trim()} type="submit">Tạo folder</button>
+          <button className="button button--quiet" onClick={() => { setCreateFolderOpen(false); setNewFolderName(""); }} type="button">Hủy</button>
+        </form> : <button className="media-organization-add" onClick={() => setCreateFolderOpen(true)} type="button">+ Tạo folder{activeFolderId ? " con" : ""}</button>}
+        {organizationError ? <small className="media-organization-error" role="alert">Không lưu được tổ chức Media Pool: {organizationError}</small> : null}
+      </div>
       <div aria-label="Danh sách Media Pool" className="media-pool-list" onClick={(event) => {
         if (event.target !== event.currentTarget && !(event.target as HTMLElement).closest(".media-pool-empty")) return;
         setSelection({ ids: [], anchorId: null });
@@ -683,7 +783,11 @@ export function MediaPool({
           {item.status === "error" && item.retryable ? <button className="media-pool-importing__retry" onClick={() => onRetryPendingImport(item.id)} type="button">Thử lại</button> : null}
         </div>)}
         {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
-        {liveAssets.map(renderAsset)}
+        {visibleFolders.map((folder) => <button aria-label={`Mở thư mục ${folder.name}`} className="media-organization-folder" key={folder.id} onClick={() => setActiveFolderId(folder.id)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)} type="button">
+          <Icon name="folder" /><span><b>{folder.name}</b><small>{organization.folders.filter((child) => child.parentFolderId === folder.id).length} thư mục con · {organization.assets.filter((placement) => placement.folderId === folder.id).length} footage</small></span><i aria-hidden="true">›</i>
+        </button>)}
+        {visibleAssets.map((asset) => renderAsset(asset, true))}
+        {projectId && activeFolderId !== null && !visibleFolders.length && !visibleAssets.length ? <div className="media-organization-empty">Thư mục này chưa có footage. Kéo footage vào đây hoặc tạo thư mục con.</div> : null}
         {!projectId && !pendingLocalMedia && !liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
         {/* Rendered after the list rather than inside it, so no amount of
             importing can push the bin out of last place. */}
@@ -700,7 +804,7 @@ export function MediaPool({
           {binOpen ? <div className="media-recycle-bin__list">
             <p>Chỉ xem: play, script, subtitle và zoom vẫn dùng được; muốn sửa thì Restore trước.</p>
             {selectedBinIds.length > 1 ? <div className="media-recycle-bin__bulk"><span>{selectedBinIds.length} footage đã chọn</span><button onClick={() => onBatchAction({ kind: "restore", assetIds: selectedBinIds })} type="button">Restore đã chọn</button><button className="is-danger" onClick={() => onBatchAction({ kind: "delete", assetIds: selectedBinIds })} type="button">Delete đã chọn</button></div> : null}
-            {recycledAssets.map(renderAsset)}
+            {recycledAssets.map((asset) => renderAsset(asset))}
           </div> : null}
         </section> : null}
       </div>
