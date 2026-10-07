@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-DEVICE-01D1–01D2 Resume cache and Generate checked.
-last_activity_desc: Dev-token Resume cache repaired; actual Generate queue/hard Stop and WAV rerun retain sources. Next01D3 fresh disposable LoRA checkpoint Stop/Resume. Browser tool policy blocks new UI evidence; identity/physical budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-DEVICE-01D3 actual checkpoint Stop/Resume passed.
+last_activity_desc: Windows tokenizer pressure fixed; real checkpoint5 retained on Stop, same-run Resume finishes20 and publishes LoRA which generates WAV. API658/frontend560; next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,17 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## TASK-STOP-DEVICE-01D1–01D3 — 2026-10-07
+
+Resume dev-token cache and Windows tokenizer process pressure repaired. Actual
+Generate queue/hard Stop/rerun retains WAVs. Actual Training Stop reaps four
+processes and retains11 checkpoint hashes; same-run checkpoint5 Resume completes
+20, publishes LoRA and generates WAV.19 retained source/reference hashes agree.
+API658, frontend560/63, typecheck/build pass; fixture services cleaned. See the
+four01D gates. Next UX-EDITING-DEVICE-01 needs native/audio/load evidence; older
+physical/download/LAN and trusted recognition/speaker labels stay open. API
+checkpoint-list freshness and unfinished-save recovery remain separate notes.
 
 ## TASK-STOP-DEVICE-01C — 2026-10-07
 
@@ -67,7 +78,7 @@ Older near-term parents and Phase03-04 retain their documented prerequisites.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-10-07 — Cancelled activity repaired and checked with real GPU.
+Last activity: 2026-10-07 — Real Training Stop/Resume and Generate artifacts checked.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 

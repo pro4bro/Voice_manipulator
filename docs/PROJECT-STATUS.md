@@ -1,5 +1,20 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-DEVICE-01D3A–01D3 — actual Training recovery (2026-10-07)
+
+Windows tokenizer process pressure fixed after real paging/MemoryError; retry
+produces5 train/1 dev shards with zero errors. Fresh product LoRA Stop reaps
+four processes with11 checkpoint hashes unchanged. Same-run Resume loads actual
+checkpoint5, reuses tokens, completes20 and publishes a real adapter which
+generates WAV3.2s.19 source/reference hashes and prior outputs remain. Gates:
+`docs/gates/task-stop-device-01d3a-tokenizer-windows.md` and
+`docs/gates/task-stop-device-01d3-training-resume.md`. Full API658; unchanged
+frontend560/63, typecheck/build pass. Fixture cleaned, normal services activated.
+No owner identity/quality/browser claim. Next UX-EDITING-DEVICE-01 and physical/
+download/second-machine/reviewed-label gates need device/human evidence.
+Cancelled checkpoint-list freshness and unfinished-save recovery are noted;
+this acceptance deliberately stops only after a fully saved checkpoint.
+
 ## TASK-STOP-DEVICE-01D1–01D2 — Resume cache and actual Generate (2026-10-07)
 
 Dev token cache selection repaired; current/legacy/missing layouts pass six

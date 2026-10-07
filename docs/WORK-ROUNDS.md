@@ -12,7 +12,22 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01D3A
+### 2026-10-07 — current: TASK-STOP-DEVICE-01D3
+
+Actual short LoRA queue Stop retains active training; hard Stop after complete
+checkpoint5 reaps four processes and retains all11 checkpoint hashes. Same run/
+manifest Resume reuses tokens, loads actual optimizer/model/RNG state and reaches
+step20, publishes real LoRA; that adapter generates WAV3.2s.19 retained hashes
+and both earlier WAVs agree. API658/two existing warnings, unchanged frontend
+560/63, typecheck/build pass. Gate:
+`docs/gates/task-stop-device-01d3-training-resume.md`. Isolated services cleaned;
+normal source activation checked separately. No quality/identity/UI claim.
+Cancelled API checkpoint-list freshness/unfinished-save recovery remain noted.
+Exact next UX-EDITING-DEVICE-01 needs native picker, real-load interaction and
+audible scrubbing. Older physical mic/OBS, saved-download/cancel, second-machine
+LAN and reviewed recognition/speaker/identity gates retain prerequisites.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01D3A
 
 Actual fresh LoRA tokenize failed42s with Windows paging/MemoryError under
 upstream3 processes/GPU +24 loaders. Product Windows command uses1 process and
