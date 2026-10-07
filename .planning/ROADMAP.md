@@ -1,5 +1,15 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## TASK-STOP-01 — confirmed processing Stop (2026-10-07)
+
+The four processing panels share first-click queue Stop and two-click confirmed
+active cancellation. Includes detailed MKV/OBS STT, owned subprocess shutdown,
+publication fences, training Resume ownership and generation intake reservation.
+Frontend560/63 files, API646, Studio22, typecheck/build and browser Yes/No proof pass. Full API
+and Studio evidence: `docs/gates/task-stop-2026-10-07.md`, ADR0047.
+Exact next: TASK-STOP-DEVICE-01 for real-model shutdown and rerun/Resume after
+normal app/Studio restart. Older UX device and product phase gates remain open.
+
 ## UX-INTEGRATION-01 — requested editing workflow (2026-10-07)
 
 Nine bounded UX rounds cover concurrent multi-file import, portable nested

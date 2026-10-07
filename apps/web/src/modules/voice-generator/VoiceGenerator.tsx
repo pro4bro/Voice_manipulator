@@ -2,6 +2,7 @@ import type { ProjectVoice, SpeakerProfile, TrainingModelOption, TrainingParamet
 import { VOICE_KIND_LABELS, resolveRowVoice, scriptReadiness, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { TaskStop, type TaskStopHandler } from "../../ui/TaskStop";
 import { useParameterForm } from "../../ui/ParameterForm";
 import { parameterProblem, parameterValue } from "../train/trainingModels";
 
@@ -19,6 +20,7 @@ interface VoiceGeneratorProps {
   job?: VoiceScriptJob | null;
   busy?: boolean;
   onGenerate: () => void;
+  onStop?: TaskStopHandler;
   onOpenTraining?: () => void;
 }
 
@@ -68,7 +70,7 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
  * the Script itself; this panel shows which voices that adds up to, the
  * settings of each engine involved, and how far a read has got.
  */
-export function VoiceGenerator({ projectId, generators, category, voices, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onOpenTraining }: VoiceGeneratorProps) {
+export function VoiceGenerator({ projectId, generators, category, voices, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onStop, onOpenTraining }: VoiceGeneratorProps) {
   const speakerOf = (id: string) => speakers.find((speaker) => speaker.id === id);
   const readiness = scriptReadiness(rows, voices);
   const used = new Map<string, { voice: ProjectVoice; rows: number }>();
@@ -142,6 +144,7 @@ export function VoiceGenerator({ projectId, generators, category, voices, rows, 
       <button className="button button--accent button--full" disabled={!ready} onClick={onGenerate} type="button">
         <Icon name="spark" />{label}
       </button>
+      {busy && onStop ? <TaskStop onStop={onStop} scope="Generate Voice" /> : null}
     </ModuleFrame>
   );
 }

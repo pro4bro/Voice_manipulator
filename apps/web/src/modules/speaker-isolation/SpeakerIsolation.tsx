@@ -3,10 +3,13 @@ import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { TaskStop, type TaskStopHandler } from "../../ui/TaskStop";
 
 interface SpeakerIsolationProps {
   asset: ProjectMediaAsset | null;
   onRun: () => void;
+  onStop?: TaskStopHandler;
+  batchBusy?: boolean;
   onAssign: (assignments: Record<string, string | null>) => void;
   speakers: SpeakerProfile[];
   words: StudioWord[];
@@ -22,7 +25,7 @@ function orderedDiarizationLabels(words: StudioWord[]) {
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
 }
 
-export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: SpeakerIsolationProps) {
+export function SpeakerIsolation({ asset, onRun, onStop, batchBusy = false, onAssign, speakers, words }: SpeakerIsolationProps) {
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const [showRunNotice, setShowRunNotice] = useState(false);
   const status = asset?.diarizationStatus ?? "idle";
@@ -71,6 +74,7 @@ export function SpeakerIsolation({ asset, onRun, onAssign, speakers, words }: Sp
       </div>
       {diarizedWords.length ? <p className="speaker-isolation-empty">Mapping ở đây là mặc định ban đầu cho cả nhãn máy. Chọn Speaker ngay trên từng row hoặc chọn nhiều row để gán cùng lúc; kéo từng word sang row khác; timestamp subtitle không đổi.</p> : null}
       <button className="button button--quiet button--full" disabled={!asset || isBusy} onClick={() => setShowRunNotice(true)} type="button">{isBusy ? "Đang nhận diện speaker..." : "Nhận diện Speaker"}</button>
+      {(batchBusy || isBusy) && onStop ? <TaskStop onStop={onStop} scope="Speaker Diarization" /> : null}
       {showRunNotice ? <div aria-label="Lưu ý Speaker Diarization" className="speaker-isolation-run-notice" role="alertdialog">
         <p>Speaker Diarization chỉ hữu ích khi footage hoặc track có nhiều người cùng nói. Với một người nói, bước này dùng thêm tài nguyên mà không cần thiết. Chạy cho tất cả mục đã tick DIA?</p>
         <div><button onClick={() => setShowRunNotice(false)} type="button">Hủy</button><button onClick={() => { setShowRunNotice(false); onRun(); }} type="button">Chạy Speaker Diarization</button></div>

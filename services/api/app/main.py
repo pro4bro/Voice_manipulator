@@ -64,6 +64,7 @@ from app.adapters.voice_changer import FileChangerRecordings, VoiceChanger, Voic
 from app.adapters.voice_script_speaker import StudioWordRecognizer, VoiceScriptBusy, VoiceScriptSpeaker
 from app.adapters.omnivoice_generator import (
     VibeVoiceSpeech,
+    VoiceGenerationCancelled,
     VoiceGenerationError,
     VoiceGenerator,
     omnivoice_worker,
@@ -74,6 +75,7 @@ from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleT
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
+from app.adapters.processing_cancellation import ProcessingStopError
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.training_runtime import TrainingRuntime
 from app.adapters.training_model_catalog import (
@@ -127,6 +129,7 @@ from app.domain.models import (
     MediaTranscriptionEnqueue,
     MediaTranscriptionProgress,
     MediaTranscriptionSelection,
+    TaskStopRequest,
     ProjectCreate,
     ProjectMediaAsset,
     ProjectAsrAdapter,
@@ -334,6 +337,20 @@ def create_app(
         generation_worker.shutdown()
         if vibevoice_speech_worker is not None:
             vibevoice_speech_worker.shutdown()
+        # Studio owns warm inference children. Release only idle children; a
+        # running recognizer must not lose its model to a training request.
+        try:
+            with httpx.Client(timeout=httpx.Timeout(3.0, connect=0.5), trust_env=False) as client:
+                response = client.post(f"{settings.legacy_studio_url.rstrip('/')}/api/runtime/release")
+            if response.status_code == 409:
+                raise GpuBusy(gpu_lease.holder() or GpuLeaseHolder(
+                    token="studio-inference", label="Studio STT / Speaker Diarization", pid=os.getpid(),
+                ))
+            if response.status_code != 404:
+                response.raise_for_status()
+        except httpx.ConnectError:
+            # An offline Studio holds no warm models.
+            pass
 
     voice_outputs = FileVoiceOutputs(projects)
     resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
@@ -409,9 +426,13 @@ def create_app(
     runtime_status = RuntimeStatus(settings.data_root)
     vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu, python=vibevoice_python)
 
-    def vibevoice_stt(path: Path, duration: float, variant: str | None = None, project_id: str | None = None) -> dict:
+    def vibevoice_stt(path: Path, duration: float, variant: str | None = None, project_id: str | None = None, *, cancellation_id: str | None = None) -> dict:
         adapter = asr_adapters.weights(project_id, variant) if variant and project_id else None
-        return vibevoice_asr.transcribe(path, duration, adapter=adapter)
+        return vibevoice_asr.transcribe(path, duration, adapter=adapter, cancellation_id=cancellation_id)
+
+    vibevoice_stt.register_request = vibevoice_asr.register_request
+    vibevoice_stt.cancel_request = vibevoice_asr.cancel_request
+    vibevoice_stt.abandon_request = vibevoice_asr.abandon_request
 
     stt_engines = FileTrainingModelCatalog(
         settings.stt_engines_root,
@@ -1079,6 +1100,7 @@ def create_app(
                 growing_mkv.configure_detailed_stt, projects.get(project_id),
                 asset_id, payload.segment_seconds,
             )
+            await growing_mkv_stt.resume_parent(projects.get(project_id), asset_id)
             ensure_mkv_stt_worker(project_id, asset_id)
             return result
         except (KeyError, FileNotFoundError) as exc:
@@ -1330,12 +1352,22 @@ def create_app(
         project_id: str, payload: MediaTranscriptionControl
     ) -> list[ProjectMediaAsset]:
         try:
+            projects.get(project_id)
             if payload.action == "pause":
                 touched = await transcription_queue.pause(project_id, payload.asset_ids)
             elif payload.action == "resume":
                 touched = await transcription_queue.resume(project_id, payload.asset_ids)
             else:
-                touched = await transcription_queue.stop(project_id, payload.asset_ids)
+                results = await asyncio.gather(
+                    transcription_queue.stop(project_id, payload.asset_ids, include_active=payload.action == "stop-all"),
+                    growing_mkv_stt.stop(projects.get(project_id), asset_ids=payload.asset_ids, include_active=payload.action == "stop-all"),
+                    obs_livelink_detailed_stt.stop(projects.get(project_id), asset_ids=payload.asset_ids, include_active=payload.action == "stop-all"),
+                    return_exceptions=True,
+                )
+                failures = [result for result in results if isinstance(result, Exception)]
+                if failures:
+                    raise ProcessingStopError("; ".join(str(error) for error in failures))
+                touched = list(dict.fromkeys(asset_id for result in results for asset_id in result))
             assets = []
             for asset_id in touched:
                 try:
@@ -1343,12 +1375,25 @@ def create_app(
                 except KeyError:
                     continue
             return assets
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
     @app.get("/api/projects/{project_id}/media/transcription-queue")
     async def read_transcription_queue(project_id: str) -> dict:
         return transcription_queue.status(project_id)
+
+    @app.post("/api/projects/{project_id}/media/diarizations/control", response_model=list[ProjectMediaAsset])
+    async def control_media_diarizations(project_id: str, payload: TaskStopRequest) -> list[ProjectMediaAsset]:
+        try:
+            projects.get(project_id)
+            touched = await diarization_queue.stop(project_id, include_active=payload.mode == "all")
+            return [media.get(project_id, asset_id) for asset_id in touched]
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
 
     @app.get(
         "/api/projects/{project_id}/media/diarization-status",
@@ -1716,12 +1761,24 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @app.post("/api/projects/{project_id}/training-runs/control", response_model=list[TrainingRun])
+    def control_training_runs(project_id: str, payload: TaskStopRequest) -> list[TrainingRun]:
+        try:
+            projects.get(project_id)
+            return training_runner.stop(project_id, include_active=payload.mode == "all")
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
     @app.post(
         "/api/projects/{project_id}/training-runs/{run_id}/cancel", response_model=TrainingRun
     )
     def cancel_training_run(project_id: str, run_id: str) -> TrainingRun:
         try:
             return training_runner.cancel(project_id, run_id)
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Training run not found") from exc
         except ValueError as exc:
@@ -1899,6 +1956,18 @@ def create_app(
             raise HTTPException(status_code=404, detail="Thiếu file giọng mẫu")
         return FileResponse(path, media_type="audio/wav")
 
+    @app.post("/api/projects/{project_id}/generation/control", response_model=VoiceScriptJob | None)
+    def control_generation(project_id: str, payload: TaskStopRequest) -> VoiceScriptJob | None:
+        try:
+            projects.get(project_id)
+            job = voice_script_speaker.stop(project_id, include_active=payload.mode == "all")
+            voice_generator.stop(project_id, include_active=payload.mode == "all")
+            return job
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
     @app.post(
         "/api/projects/{project_id}/voices/{voice_id}/generate",
         response_model=VoiceOutput,
@@ -1908,10 +1977,13 @@ def create_app(
         try:
             # The engine call blocks for seconds, or a minute on a cold start;
             # it must not hold the event loop every other request runs on.
-            return await asyncio.to_thread(voice_generator.generate, project_id, voice_id, payload)
+            cancellation_id = voice_generator.reserve(project_id)
+            return await asyncio.to_thread(voice_generator.generate, project_id, voice_id, payload, cancellation_id=cancellation_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Voice hoặc project không tồn tại") from exc
         except (GpuBusy, TrainingModelUnavailable) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except VoiceGenerationCancelled as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except VoiceGenerationError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -1927,7 +1999,8 @@ def create_app(
         try:
             # Planning checks every row's voice and generator before the GPU is
             # taken; the rows are then read in the background and polled.
-            return await asyncio.to_thread(voice_script_speaker.start, project_id, payload)
+            reserved_job_id = voice_script_speaker.reserve(project_id, payload)
+            return await asyncio.to_thread(voice_script_speaker.start, project_id, payload, reserved_job_id=reserved_job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
         except (GpuBusy, TrainingModelUnavailable, VoiceScriptBusy) as exc:
@@ -2912,6 +2985,19 @@ def create_app(
             return configured
         except (KeyError, FileNotFoundError) as exc:
             raise HTTPException(status_code=404, detail="OBS recording not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/obs-livelink/recordings/{recording_id}/detailed-stt/control")
+    async def control_obs_livelink_detailed_stt(project_id: str, recording_id: str, payload: TaskStopRequest) -> dict:
+        try:
+            project = projects.get(project_id)
+            await obs_livelink_detailed_stt.stop_recording(project, recording_id, include_active=payload.mode == "all")
+            return obs_livelink_detailed_stt.status(project, recording_id)
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="OBS detailed STT not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

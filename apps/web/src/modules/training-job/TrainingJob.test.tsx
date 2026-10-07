@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TrainingJob, logMessage } from "./TrainingJob";
@@ -161,14 +161,17 @@ describe("TrainingJob", () => {
     expect(within(screen.getByRole("region", { name: "Flow Voice Training" })).getByText("12/32 shard")).toBeInTheDocument();
   });
 
-  it("cancels the live voice, and offers nothing once the batch is done", () => {
-    const onCancel = vi.fn();
-    const { rerender } = render(<TrainingJob batch={BATCH} onCancelRun={onCancel} speakers={[AN, BINH]} />);
-    fireEvent.click(screen.getByRole("button", { name: /Huỷ/ }));
-    expect(onCancel).toHaveBeenCalledWith("run-an");
+  it("stops pending training first and confirms before cancelling the live voice", async () => {
+    const onStop = vi.fn();
+    const { rerender } = render(<TrainingJob batch={BATCH} onStop={onStop} speakers={[AN, BINH]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("queue"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("all"));
 
-    rerender(<TrainingJob batch={BATCH.map((item) => ({ ...item, status: "complete" as const }))} onCancelRun={onCancel} speakers={[AN, BINH]} />);
-    expect(screen.queryByRole("button", { name: /Huỷ/ })).not.toBeInTheDocument();
+    rerender(<TrainingJob batch={BATCH.map((item) => ({ ...item, status: "complete" as const }))} onStop={onStop} speakers={[AN, BINH]} />);
+    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
     expect(screen.getByText("2/2 voice xong")).toBeInTheDocument();
   });
 

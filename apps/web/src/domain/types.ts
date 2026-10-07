@@ -24,9 +24,9 @@ export interface RuntimeWorkloadState {
   updatedAt: string;
 }
 export type EmotionLabel = "exciting" | "funny" | "good" | "normal" | "low-energy" | "sad" | "cry" | "angry" | "critical" | "mix";
-export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "paused" | "not-applicable" | "error";
+export type MediaTranscriptionStatus = "queued" | "processing" | "reviewing" | "complete" | "skipped" | "paused" | "not-applicable" | "error" | "cancelled";
 export type AIReviewStatus = "pending" | "complete" | "skipped" | "error";
-export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error";
+export type MediaDiarizationStatus = "idle" | "queued" | "processing" | "complete" | "requires-setup" | "error" | "cancelled";
 export type WordTimingQuality = "unverified" | "source" | "partial" | "needs-alignment";
 /** How an asset's audio and transcript came to exist. Provenance, not a quality score. */
 export type CaptureTier = "guided" | "record" | "import";
@@ -909,7 +909,7 @@ export interface ObsLiveLinkRecordingJournal {
   protocolVersion: 3;
   recording: ObsLiveLinkRecording;
   durableChannelIds?: string[];
-  detailedStt?: { segmentSeconds?: number; tracks?: Record<string, { initialFrames: number; cursor: number }>; error?: string | null };
+  detailedStt?: { segmentSeconds?: number; tracks?: Record<string, { initialFrames: number; cursor: number }>; error?: string | null; stopMode?: "queue" | "all" | null; active?: boolean };
   channels?: Array<{ channelId: string; nativeName?: string; relayLabel: string; slot: number | null; forwardApplied: boolean }>;
   videoSpans?: Array<{ spanId: string; startedMonotonicNs: number; endedMonotonicNs: number | null; importedVideoAssetId: string | null; recordingFileName?: string | null; recordingFolder?: string | null; recordingFileAvailable?: boolean; videoSha256?: string | null }>;
   sourceStems?: Array<{ channelId: string; sourceUuid: string; alias: string; assetId: string | null; sourcePath: string; analysisPath: string | null; gaps: Array<{ firstSampleIndex: number; lastSampleIndex: number; classification: string }> }>;
@@ -1165,7 +1165,7 @@ export interface VoiceScriptRow {
 export interface VoiceScriptJob {
   id: string;
   projectId: string;
-  status: "running" | "complete" | "failed";
+  status: "running" | "complete" | "failed" | "stopped" | "cancelled";
   total: number;
   done: number;
   reused: number;

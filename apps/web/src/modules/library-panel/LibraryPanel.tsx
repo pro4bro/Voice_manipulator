@@ -32,7 +32,7 @@ interface LibraryPanelProps {
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onToggleDiarization?: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
-  onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
+  onControlTranscriptions: (action: "pause" | "resume" | "stop" | "stop-all", assetIds?: string[]) => void | Promise<unknown>;
   onRemove: (asset: ProjectMediaAsset) => void;
   onBatchAction: (action: MediaBatchAction) => void;
   onRestore: (asset: ProjectMediaAsset) => void;

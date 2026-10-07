@@ -1,5 +1,6 @@
 import type { WordSelection } from "../../domain/word-selection";
 import type { TimelineEditState } from "../../domain/timeline-editing";
+import type { TaskStopHandler } from "../../ui/TaskStop";
 import type { ReadingMode } from "../../domain/reading-plan";
 import type { EmotionLabel, EmotionStylePreferences, EngineProfileSchema, MediaImportChoice, PendingLocalMedia, ModuleId, DatasetReadiness, ProjectMediaAsset, TrainingModelOption, TrainingProgressLine, TrainingRun, ReadingPackSummary, RecordingWaveformPreview, StudioWord, TimelineEditRange, TimelineGainKeyframe, TrainingCatalog, VoiceOutputExportMode, WorkspacePage } from "../../domain/types";
 import { ControlRack } from "../control-rack/ControlRack";
@@ -160,7 +161,7 @@ export interface StudioContext {
   onToggleImport: (assetId: string, selected: boolean, streamIndex?: number) => void;
   onToggleDiarization: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
-  onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
+  onControlTranscriptions: (action: "pause" | "resume" | "stop" | "stop-all", assetIds?: string[]) => void | Promise<unknown>;
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
   onBatchMediaAction: (action: MediaBatchAction) => void;
   onRestoreAsset: (asset: ProjectMediaAsset) => void;
@@ -179,12 +180,14 @@ export interface StudioContext {
   onDeferredAction: (action: string) => void;
   onRunAiReview: () => void;
   onRunDiarization: () => void;
+  onStopDiarization: TaskStopHandler;
+  onStopTraining: TaskStopHandler;
+  onStopGeneration: TaskStopHandler;
   onWordSelectionChange: (selection: WordSelection) => void;
   onStartReadingSession: (packId: string, emotions: EmotionLabel[], mode: ReadingMode, speakerProfileId: string) => void;
   onEndReadingSession: () => void;
   onSkipCard: () => void;
   onCompileDataset: () => void;
-  onCancelTrainingRun: (runId: string) => void;
   onTrainingOutputsChanged: () => void;
   onDeleteVoice: (voice: import("../../domain/types").ProjectVoice) => void;
   onDeleteVoices: (voices: import("../../domain/types").ProjectVoice[]) => void;
@@ -333,7 +336,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
-      return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onCancelRun={context.onCancelTrainingRun} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
+      return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onStop={context.onStopTraining} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":
       return <PipelineDashboard assets={workingAssets} onOpenTraining={() => context.onSelectPage("voice-training")} onSelectAsset={context.onSelectAsset} readiness={context.datasetReadiness} runs={context.trainingRuns} speakers={context.trainingCatalog.speakers} />;
     case "project-overview":
@@ -341,7 +344,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "dataset-readiness":
       return <DatasetReadinessPanel busy={context.datasetBusy} onCompile={context.onCompileDataset} readiness={context.datasetReadiness} speakers={context.trainingCatalog.speakers} />;
     case "speaker-isolation":
-      return <SpeakerIsolation asset={workingAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
+      return <SpeakerIsolation asset={workingAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} onAssign={(assignments) => context.onUpdateDiarizationAssignments(context.selectedAssetId ?? "", assignments)} onRun={context.onRunDiarization} onStop={context.onStopDiarization} batchBusy={workingAssets.some((asset) => asset.diarizationStatus === "queued" || asset.diarizationStatus === "processing")} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "speaker-emotion":
       return <SpeakerEmotion asset={workingAssets.find((asset) => asset.id === context.selectedAssetId) ?? null} speakers={context.trainingCatalog.speakers} words={context.take?.words ?? []} />;
     case "train":
@@ -351,7 +354,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "voice-output":
       return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
-      return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
+      return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {
       const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
       return <VoiceScript activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;

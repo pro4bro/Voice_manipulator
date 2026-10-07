@@ -62,9 +62,9 @@ MediaOrigin = Literal["import", "record", "generate"]
 CaptureTier = Literal["guided", "record", "import"]
 MediaStatus = Literal["ready", "no-audio", "error"]
 MediaTranscriptionStatus = Literal[
-    "queued", "processing", "reviewing", "complete", "skipped", "paused", "not-applicable", "error"
+    "queued", "processing", "reviewing", "complete", "skipped", "paused", "not-applicable", "error", "cancelled"
 ]
-MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error"]
+MediaDiarizationStatus = Literal["idle", "queued", "processing", "complete", "requires-setup", "error", "cancelled"]
 AIReviewStatus = Literal["pending", "complete", "skipped", "error"]
 WordTimingQuality = Literal["unverified", "source", "partial", "needs-alignment"]
 MediaRevisionSource = Literal["stt", "ai", "user", "record", "import", "guided"]
@@ -268,7 +268,7 @@ class MediaTranscriptionEnqueue(DomainModel):
 class MediaTranscriptionControl(DomainModel):
     """Pause, resume or stop a run. No asset ids means the whole project's queue."""
 
-    action: Literal["pause", "resume", "stop"]
+    action: Literal["pause", "resume", "stop", "stop-all"]
     asset_ids: list[str] | None = Field(default=None, max_length=500)
 
 
@@ -277,6 +277,10 @@ class MediaTranscriptionProgress(DomainModel):
     transcription_status: MediaTranscriptionStatus
     transcription_progress: float = Field(ge=0, le=100)
     transcription_error: str | None = None
+
+
+class TaskStopRequest(DomainModel):
+    mode: Literal["queue", "all"] = "queue"
 
 
 class MediaDiarizationEnqueue(DomainModel):
@@ -1475,7 +1479,7 @@ class VoiceScriptRequest(DomainModel):
 class VoiceScriptJob(DomainModel):
     id: str
     project_id: str
-    status: Literal["running", "complete", "failed"] = "running"
+    status: Literal["running", "complete", "failed", "stopped", "cancelled"] = "running"
     total: int = Field(ge=0)
     done: int = Field(default=0, ge=0)
     reused: int = Field(default=0, ge=0)

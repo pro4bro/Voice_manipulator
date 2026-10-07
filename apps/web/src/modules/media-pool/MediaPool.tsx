@@ -9,6 +9,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ObsLiveLinkRecordingJournal, PendingLocalMedia, ProjectAsrAdapter, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { TaskStop } from "../../ui/TaskStop";
 import { createMediaPoolFolder, EMPTY_MEDIA_POOL_ORGANIZATION, moveMediaPoolAsset, orderedMediaPoolPlacements, type MediaPoolOrganization } from "./media-organization";
 import "./media-pool-import.css";
 import "./media-pool-organization.css";
@@ -127,7 +128,7 @@ interface MediaPoolProps {
   onToggleTranscription: (assetId: string, selected: boolean) => void;
   onToggleDiarization?: (assetId: string, selected: boolean) => void;
   onQueueTranscriptions: (model: string) => void;
-  onControlTranscriptions: (action: "pause" | "resume" | "stop", assetIds?: string[]) => void;
+  onControlTranscriptions: (action: "pause" | "resume" | "stop" | "stop-all", assetIds?: string[]) => void | Promise<unknown>;
   onRemove: (asset: ProjectMediaAsset) => void;
   onBatchAction: (action: MediaBatchAction) => void;
   onRestore: (asset: ProjectMediaAsset) => void;
@@ -270,7 +271,9 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
       recording.archiveStatus === "error" ? "MKA LỖI" :
       recording.archiveStatus === "ready" ? "ĐANG CẬP NHẬT MEDIA POOL" : "ĐANG TẠO MKA";
     const cursors = Object.values(detailedStt?.tracks ?? {}).map((track) => track.cursor / 24000);
-    const detailLabel = detailedStt?.error ? `STT kỹ lỗi: ${detailedStt.error}` : cursors.length
+    const detailLabel = detailedStt?.error ? `STT kỹ lỗi: ${detailedStt.error}` : detailedStt?.stopMode
+      ? detailedStt.active ? "Đã dừng hàng đợi STT · đang hoàn tất đoạn hiện tại" : "STT kỹ đã dừng · bấm chạy tiếp để tiếp tục"
+      : cursors.length
       ? `STT kỹ ${cursors.length} track · đã xử lý ${Math.min(...cursors).toFixed(0)} giây`
       : recording.status === "stopped" ? "Đang kiểm tra PCM · chờ MKA" : "Phiên thu đang mở · MKA chưa hoàn tất";
     const available = (channels ?? []).filter((channel) => channel.forwardApplied || durableChannelIds?.includes(channel.channelId));
@@ -281,7 +284,7 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
         <span className="media-kind media-kind--audio"><Icon name="waveform" /></span>
         <span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · {state}</small><em>{detailLabel}</em></span>
       </button>
-      <button className="media-pool-item__obs-retry" disabled={Boolean(detailedStt?.tracks && !detailedStt.error) || !durableChannelIds?.length} onClick={() => {
+      <button className="media-pool-item__obs-retry" disabled={Boolean(detailedStt?.tracks && !detailedStt.error && (!detailedStt.stopMode || detailedStt.active)) || !durableChannelIds?.length} onClick={() => {
         const journal = journals.find((item) => item.recording.recordingId === recording.recordingId);
         if (!journal) return;
         setDetailTarget(journal);
@@ -290,7 +293,12 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
             .map((channel) => channel.channelId));
         setDetailSeconds(detailedStt?.segmentSeconds ?? 60);
         setDetailMessage(null);
-      }} type="button">{detailedStt?.error ? "Thử lại STT" : detailedStt?.tracks ? "STT đang chạy" : "STT kỹ"}</button>
+      }} type="button">{detailedStt?.error ? "Thử lại STT" : detailedStt?.stopMode && !detailedStt.active ? "Chạy tiếp STT" : detailedStt?.tracks ? "STT đang chạy" : "STT kỹ"}</button>
+      {detailedStt?.tracks && (!detailedStt.stopMode || detailedStt.active) ? <TaskStop scope={`STT OBS · ${recording.displayName || recording.recordingId.slice(0, 8)}`} onStop={async (mode) => {
+        const state = await api.stopObsLiveLinkDetailedStt(projectId, recording.recordingId, mode);
+        setJournals((current) => current.map((journal) => journal.recording.recordingId === recording.recordingId
+          ? { ...journal, detailedStt: state } : journal));
+      }} /> : null}
       {recording.status === "stopped" && recording.archiveStatus === "error" ?
         <button className="media-pool-item__obs-retry" disabled={retryingId === recording.recordingId} onClick={() => void retry(recording.recordingId)} type="button">Thử lại</button> : null}
       {expanded ? <div className="media-pool-item__channels media-pool-item__live-channels">
@@ -356,6 +364,7 @@ function transcriptionLabel(asset: ProjectMediaAsset) {
   if (asset.transcriptionStatus === "processing") return "STT ĐANG CHẠY";
   if (asset.transcriptionStatus === "reviewing") return "AI REVIEW";
   if (asset.transcriptionStatus === "error") return "STT ERROR";
+  if (asset.transcriptionStatus === "cancelled") return "STT ĐÃ HUỶ";
   if (asset.transcriptionStatus === "skipped") return "NO STT";
   return asset.aiReviewStatus === "complete" ? "AI CHECKED" : "TRANSCRIPT";
 }
@@ -902,7 +911,7 @@ export function MediaPool({
         </section> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><button className="button button--quiet media-stt-stop" onClick={() => onControlTranscriptions("stop")} type="button">Stop</button></> : <button className="button button--accent media-send-training" disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)} onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}</small> : null}</div> : null}
+        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><TaskStop scope="STT" onStop={(mode) => onControlTranscriptions(mode === "all" ? "stop-all" : "stop")} /></> : <button className="button button--accent media-send-training" disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)} onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}</small> : null}</div> : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>
@@ -983,7 +992,7 @@ export function MediaPool({
             <button onClick={() => { setContextMenu(null); if (menuAssets.length > 1) onBatchAction({ kind: "disabled", assetIds: menuAssets.map((asset) => asset.id), disabled: !menuAssets.every((asset) => asset.disabled) }); else onSetDisabled(contextAsset, !contextAsset.disabled); }} role="menuitem" type="button"><Icon name="power" /> {menuAssets.every((asset) => asset.disabled) ? "Enable footage" : "Disable footage"}</button>
             {contextTargets(contextAsset, "pause").length ? <button onClick={() => { setContextMenu(null); onControlTranscriptions("pause", contextTargets(contextAsset, "pause")); }} role="menuitem" type="button"><Icon name="power" /> Pause STT{contextTargets(contextAsset, "pause").length > 1 ? ` (${contextTargets(contextAsset, "pause").length})` : ""}</button> : null}
             {contextTargets(contextAsset, "resume").length ? <button onClick={() => { setContextMenu(null); onControlTranscriptions("resume", contextTargets(contextAsset, "resume")); }} role="menuitem" type="button"><Icon name="power" /> Chạy tiếp STT</button> : null}
-            {contextTargets(contextAsset, "stop").length ? <button onClick={() => { setContextMenu(null); onControlTranscriptions("stop", contextTargets(contextAsset, "stop")); }} role="menuitem" type="button"><Icon name="power" /> Stop STT{contextTargets(contextAsset, "stop").length > 1 ? ` (${contextTargets(contextAsset, "stop").length})` : ""}</button> : null}
+            {contextTargets(contextAsset, "stop").length ? <button onClick={() => { setContextMenu(null); void Promise.resolve(onControlTranscriptions("stop", contextTargets(contextAsset, "stop"))).catch(() => undefined); }} role="menuitem" type="button"><Icon name="power" /> Dừng hàng đợi STT{contextTargets(contextAsset, "stop").length > 1 ? ` (${contextTargets(contextAsset, "stop").length})` : ""}</button> : null}
             <button className="media-context-menu__remove" onClick={() => { setContextMenu(null); if (menuAssets.length > 1) onBatchAction({ kind: "recycle", assetIds: menuAssets.map((asset) => asset.id) }); else onRemove(contextAsset); }} role="menuitem" type="button"><Icon name="trash" /> Remove{menuAssets.length > 1 ? ` (${menuAssets.length})` : ""}</button>
           </footer>
           </>}

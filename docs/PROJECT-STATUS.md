@@ -1,5 +1,18 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-01 — confirmed processing Stop (2026-10-07)
+
+STT, Speaker Diarization, Training and Generate Voice share queue Stop and a
+second-click Yes/No dialog for active cancellation. General STT covers growing
+MKV and OBS detailed pipelines; recording-specific controls name their scope.
+Owned cancellation fences block late publication, preserve completed results
+and checkpoints, and support explicit rerun/Resume after executor cleanup.
+Frontend560/63 files, API646, Studio22, typecheck/build and synthetic browser proof pass; full
+API/Studio evidence is recorded in `docs/gates/task-stop-2026-10-07.md`.
+Real GPU-model termination and checkpoint Resume require TASK-STOP-DEVICE-01
+after restarting the normal app and Studio. Continuous capture controls and
+existing phase/recognition budgets retain their current meaning.
+
 ## UX-INTEGRATION-01 — import and source-time editing (2026-10-07)
 
 The owner-requested nine UX rounds add concurrent multi-file import with an app

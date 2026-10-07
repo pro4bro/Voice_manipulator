@@ -1,0 +1,5 @@
+.task-stop-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 24px; background: rgb(0 0 0 / 55%); }
+.task-stop-dialog { width: min(520px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 24px; color: var(--text); background: var(--surface-panel); border: 1px solid var(--line); box-shadow: 0 12px 40px rgb(0 0 0 / 30%); }
+.task-stop-dialog h2 { margin: 0 0 16px; font-size: 18px; }
+.task-stop-dialog p { line-height: 1.6; }
+.task-stop-dialog footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }

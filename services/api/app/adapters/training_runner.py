@@ -31,6 +31,7 @@ from app.adapters.training_process import (
     run_training,
     spawn_in_thread,
 )
+from app.adapters.processing_cancellation import ProcessingStopError
 from app.adapters.training_runtime import TrainingRuntime
 from app.adapters.vibevoice_training import (
     ASR_PACKAGES,
@@ -204,6 +205,12 @@ class TrainingRunner:
         self.asr_adapters = asr_adapters
         self.rvc_paths = rvc_paths
         self._active: dict[str, TrainingProcess] = {}
+        self._cancelled_runs: set[str] = set()
+        self._unconfirmed_stops: set[str] = set()
+        # Covers preparation and queued dispatch as well as a registered child
+        # process. A cancelled run cannot be resumed until its old executor has
+        # finished, so clearing its cancellation fence cannot revive stale work.
+        self._execution_owners: set[str] = set()
         self._lock = threading.Lock()
         # run id -> [last journalled counter, last applied counter], monotonic seconds
         self._counter_marks: dict[str, list[float]] = {}
@@ -251,21 +258,36 @@ class TrainingRunner:
             if run.status not in {"interrupted", "cancelled", "failed"}:
                 raise ValueError("Run này chưa ở trạng thái có thể resume.")
         else:
-            run = self.runs.create(
-                project_id,
-                manifest.id,
-                manifest_hash=self._manifest_hash(project_id, manifest.id),
-                config=config,
-                engine_revision=self._engine_revision(),
-            )
+            run = None
 
-        # Until the sidecar child exists, the API process is the owner of this
-        # short preparation window. This prevents a fast polling request from
-        # reconciling a just-created pending run as interrupted.
-        run = self.runs.update(
-            project_id,
-            run.model_copy(update={"status": "running", "process_id": os.getpid()}),
-        )
+        # Reserve execution ownership atomically with the status transition.
+        # In particular a Stop racing with resume cannot leave a stale process
+        # alive while the new attempt clears its cancellation marker.
+        with self._lock:
+            if resume_run_id:
+                run = self.runs.get(project_id, resume_run_id)
+                if run.status not in {"interrupted", "cancelled", "failed"}:
+                    raise ValueError("Run này chưa ở trạng thái có thể resume.")
+                if run.id in self._unconfirmed_stops:
+                    raise TrainingBusyError("Chưa xác nhận process cũ đã dừng. Khởi động lại runtime trước khi resume.")
+                if run.id in self._execution_owners or run.id in self._active:
+                    raise TrainingBusyError("Run cũ vẫn đang dừng. Thử resume lại sau khi process kết thúc.")
+                self._cancelled_runs.discard(run.id)
+            else:
+                run = self.runs.create(
+                    project_id,
+                    manifest.id,
+                    manifest_hash=self._manifest_hash(project_id, manifest.id),
+                    config=config,
+                    engine_revision=self._engine_revision(),
+                )
+            self._execution_owners.add(run.id)
+            # Until the sidecar child exists, the API process owns this short
+            # preparation window and polling cannot reconcile it as interrupted.
+            run = self.runs.update(
+                project_id,
+                run.model_copy(update={"status": "running", "process_id": os.getpid()}),
+            )
         spawn_in_thread(lambda: self._execute(run))
         return self.runs.get(project_id, run.id)
 
@@ -327,22 +349,24 @@ class TrainingRunner:
         manifest_hash = self._manifest_hash(project_id, manifest.id)
         revision = self._engine_revision()
         runs: list[TrainingRun] = []
-        for index, target in enumerate(targets):
-            run = self.runs.create(
-                project_id,
-                manifest.id,
-                manifest_hash=manifest_hash,
-                config=config,
-                engine_revision=revision,
-                speaker_profile_id=target,
-                batch_id=batch_id,
-                batch_index=index,
-                batch_size=len(targets),
-            )
-            # Queued runs are owned by the API process until their turn: a poll
-            # does not reconcile them as interrupted while they wait, and does
-            # if the app stops before reaching them.
-            runs.append(self.runs.update(project_id, run.model_copy(update={"process_id": os.getpid()})))
+        with self._lock:
+            for index, target in enumerate(targets):
+                run = self.runs.create(
+                    project_id,
+                    manifest.id,
+                    manifest_hash=manifest_hash,
+                    config=config,
+                    engine_revision=revision,
+                    speaker_profile_id=target,
+                    batch_id=batch_id,
+                    batch_index=index,
+                    batch_size=len(targets),
+                )
+                # Reserve every row until the batch executor either claims or
+                # skips it. A cancelled queued row cannot be resumed into a
+                # second worker while the old batch loop still owns it.
+                self._execution_owners.add(run.id)
+                runs.append(self.runs.update(project_id, run.model_copy(update={"process_id": os.getpid()})))
         spawn_in_thread(lambda: self._execute_batch(runs))
         return self.runs.get(project_id, runs[0].id)
 
@@ -418,30 +442,78 @@ class TrainingRunner:
         for queued in runs:
             current = self.runs.get(queued.project_id, queued.id)
             if current.status != "pending":
+                with self._lock:
+                    self._execution_owners.discard(current.id)
                 continue
             self._execute(current)
 
-    def cancel(self, project_id: str, run_id: str) -> TrainingRun:
-        """Cancel a run, and with it every voice still queued behind it."""
-        run = self.runs.get(project_id, run_id)
-        if run.status not in {"pending", "running"}:
-            raise ValueError("Run này không còn đang chạy.")
+    def stop(self, project_id: str, include_active: bool = False) -> list[TrainingRun]:
+        """Stop queued runs, optionally stopping the active run too.
+
+        Completed runs and their published outputs/checkpoints remain intact.
+        Repeating the same stop request is safe.
+        """
+        self.projects.get(project_id)
+        to_cancel: list[tuple[TrainingRun, TrainingProcess]] = []
         with self._lock:
-            process = self._active.get(run_id)
-        if process is not None:
-            process.cancel()
-        if run.batch_id:
-            for sibling in self.runs.list(project_id):
-                if sibling.batch_id == run.batch_id and sibling.id != run.id and sibling.status == "pending":
+            for run in self.runs.list(project_id):
+                if run.status == "pending" or include_active and run.status == "running":
                     self.runs.update(
                         project_id,
-                        sibling.model_copy(update={"status": "cancelled", "process_id": None}),
+                        run.model_copy(update={"status": "cancelled", "process_id": None}),
                     )
+                    self._cancelled_runs.add(run.id)
+                    process = self._active.get(run.id) if include_active else None
+                    if process is not None:
+                        to_cancel.append((run, process))
+        failures: list[str] = []
+        for run, process in to_cancel:
+            try:
+                process.cancel()
+            except ProcessingStopError as exc:
+                failures.append(str(exc))
+                self._mark_stop_failure(run, process, str(exc))
+        if failures:
+            raise ProcessingStopError("; ".join(failures))
+        return self.runs.list(project_id)
+
+    def cancel(self, project_id: str, run_id: str) -> TrainingRun:
+        """Cancel a run, and with it every voice still queued behind it."""
+        with self._lock:
+            run = self.runs.get(project_id, run_id)
+            if run.status not in {"pending", "running"}:
+                raise ValueError("Run này không còn đang chạy.")
+            process = self._active.get(run_id)
+            self._cancelled_runs.add(run_id)
+            cancelled = self.runs.update(
+                project_id,
+                run.model_copy(update={"status": "cancelled", "process_id": None}),
+            )
+            if run.batch_id:
+                for sibling in self.runs.list(project_id):
+                    if sibling.batch_id == run.batch_id and sibling.id != run.id and sibling.status == "pending":
+                        self.runs.update(
+                            project_id,
+                            sibling.model_copy(update={"status": "cancelled", "process_id": None}),
+                        )
+        if process is not None:
+            try:
+                process.cancel()
+            except ProcessingStopError as exc:
+                self._mark_stop_failure(run, process, str(exc))
+                raise
         self._append(run, run.step_id, f"Người dùng bấm huỷ ở step {run.global_step}.", level="warning")
-        return self.runs.update(
-            project_id,
-            run.model_copy(update={"status": "cancelled", "process_id": None}),
-        )
+        return cancelled
+
+    def _mark_stop_failure(self, run: TrainingRun, process: TrainingProcess, message: str) -> None:
+        with self._lock:
+            current = self.runs.get(run.project_id, run.id)
+            if current.status != "complete":
+                self._unconfirmed_stops.add(run.id)
+                self.runs.update(run.project_id, current.model_copy(update={
+                    "status": "failed", "error": message,
+                    "process_id": process.pid if process.alive else None,
+                }))
 
     def _execute(self, initial: TrainingRun) -> None:
         """Run one voice, and say in its log how it began and how it ended.
@@ -451,7 +523,9 @@ class TrainingRunner:
         """
         run = initial
         began = time.monotonic()
-        if self.runs.get(run.project_id, run.id).status == "cancelled":
+        if not self._claim_run(run):
+            with self._lock:
+                self._execution_owners.discard(run.id)
             return
         try:
             self._announce(run)
@@ -469,6 +543,19 @@ class TrainingRunner:
         finally:
             self._summarize(run, began)
             self._step_marks.pop(run.id, None)
+            with self._lock:
+                self._execution_owners.discard(run.id)
+
+    def _claim_run(self, run: TrainingRun) -> bool:
+        """Atomically turn a queued row into the current run before work starts."""
+        with self._lock:
+            current = self.runs.get(run.project_id, run.id)
+            if current.status == "cancelled":
+                return False
+            self._execution_owners.add(run.id)
+            if current.status == "pending":
+                self.runs.update(run.project_id, current.model_copy(update={"status": "running"}))
+            return current.status in {"pending", "running"}
 
     def _execute_omnivoice(self, initial: TrainingRun) -> None:
         run = initial
@@ -561,10 +648,10 @@ class TrainingRunner:
             checkpoint_dir = Path(project.project_path) / latest.path
             run = self._set_run(run, step_id="publish")
             if run.config.mode == "lora-finetune":
-                voice = self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir)
+                voice = self._publish_final(run, lambda: self._publish_voice(run, manifest, kind="lora", adapter_dir=checkpoint_dir))
             else:
                 # A full fine-tune checkpoint is a whole model.
-                voice = self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir)
+                voice = self._publish_final(run, lambda: self._publish_voice(run, manifest, kind="full", adapter_dir=None, model_dir=checkpoint_dir))
             if voice is not None:
                 self._append(run, "publish", f"Đã tạo voice {voice.name} ({voice.id}); dùng được ở Voice Manipulator.")
             self._set_run(run, status="complete", step_id="publish", process_id=None)
@@ -581,7 +668,7 @@ class TrainingRunner:
     def _process_for(self, run: TrainingRun, step_id: str | None = None) -> TrainingProcess:
         process = TrainingProcess(
             lambda line: self._on_progress(run, line),
-            lambda pid: self._on_started(run, pid),
+            lambda pid: self._on_started(run, pid, process),
         )
         process.step_id = step_id or run.step_id
         process.rewrite = lambda text: self._portable(run, text)
@@ -591,11 +678,21 @@ class TrainingRunner:
             process.log_path = None
         with self._lock:
             self._active[run.id] = process
+            if run.id in self._cancelled_runs:
+                process.cancel()
         return process
 
-    def _on_started(self, run: TrainingRun, pid: int) -> None:
-        current = self.runs.get(run.project_id, run.id)
-        self.runs.update(run.project_id, current.model_copy(update={"process_id": pid, "status": "running"}))
+    def _on_started(self, run: TrainingRun, pid: int, process: TrainingProcess | None = None) -> None:
+        with self._lock:
+            cancelled = run.id in self._cancelled_runs or self.runs.get(run.project_id, run.id).status == "cancelled"
+            if not cancelled:
+                current = self.runs.get(run.project_id, run.id)
+                self.runs.update(run.project_id, current.model_copy(update={"process_id": pid, "status": "running"}))
+        if cancelled and process is not None:
+            try:
+                process.cancel()
+            except ProcessingStopError as exc:
+                self._mark_stop_failure(run, process, str(exc))
 
     def _on_progress(self, run: TrainingRun, line: TrainingProgressLine) -> None:
         if is_counter(line):
@@ -702,9 +799,12 @@ class TrainingRunner:
             run = self._set_run(run, step_id="publish")
             adapter_root = output_dir if finished_ok else project_root / latest.path
             if run.config.mode == "tts-lora":
-                self._publish_voice(run, manifest, kind="lora", adapter_dir=adapter_root, base_model=str(model_dir.relative_to(paths.models).as_posix()))
+                self._publish_final(run, lambda: self._publish_voice(
+                    run, manifest, kind="lora", adapter_dir=adapter_root,
+                    base_model=str(model_dir.relative_to(paths.models).as_posix()),
+                ))
             else:
-                self._publish_asr_adapter(run, model_dir, adapter_root, project_root, paths)
+                self._publish_final(run, lambda: self._publish_asr_adapter(run, model_dir, adapter_root, project_root, paths))
             self._set_run(run, status="complete", step_id="publish", process_id=None)
         except GpuBusy as exc:
             self._fail(run, str(exc))
@@ -775,7 +875,10 @@ class TrainingRunner:
             self._append(run, "checkpoint", f"Model {model.name}" + (f" · index {index.name}" if index else " · không có index"))
 
             run = self._set_run(run, step_id="publish")
-            self._publish_voice(run, manifest, kind="vc", adapter_dir=index, model_dir=model, base_model="rvc-hifigan-40k", required=True)
+            self._publish_final(run, lambda: self._publish_voice(
+                run, manifest, kind="vc", adapter_dir=index, model_dir=model,
+                base_model="rvc-hifigan-40k", required=True,
+            ))
             self._set_run(run, status="complete", step_id="publish", process_id=None)
         except GpuBusy as exc:
             self._fail(run, str(exc))
@@ -867,12 +970,28 @@ class TrainingRunner:
                 )
             self._append(run, "read-manifest", f"Đã đọc {len(manifest.segments)} đoạn của voice target.")
             run = self._set_run(run, step_id="write-jsonl")
-            voice = self._publish_voice(run, manifest, kind="clone", adapter_dir=None, required=True)
+            voice = self._publish_final(run, lambda: self._publish_voice(run, manifest, kind="clone", adapter_dir=None, required=True))
+            if voice is None:
+                return
             run = self._set_run(run, step_id="publish")
             self._append(run, "publish", f"Đã tạo voice nhái giọng {voice.name} ({voice.id}). Không cần train.")
             self._set_run(run, status="complete", step_id="publish", process_id=None)
         except (DatasetExportError, KeyError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
             self._fail(run, str(exc))
+
+    def _publish_final(self, run: TrainingRun, publish: Callable[[], object]) -> object:
+        """Serialize artifact publication with Stop so a late worker cannot publish."""
+        with self._lock:
+            current = self.runs.get(run.project_id, run.id)
+            if current.status == "cancelled" or run.id in self._cancelled_runs:
+                return None
+            result = publish()
+            current = self.runs.get(run.project_id, run.id)
+            if current.status != "cancelled" and run.id not in self._cancelled_runs:
+                self.runs.update(run.project_id, current.model_copy(update={
+                    "status": "complete", "step_id": "publish", "process_id": None,
+                }))
+            return result
 
     def _publish_voice(
         self,
@@ -977,15 +1096,19 @@ class TrainingRunner:
     def _set_run(self, run: TrainingRun, **updates: object) -> TrainingRun:
         if isinstance(updates.get("step_id"), str):
             self._mark_step(run, updates["step_id"])  # type: ignore[arg-type]
-        current = self.runs.get(run.project_id, run.id)
-        return self.runs.update(run.project_id, current.model_copy(update=updates))
+        with self._lock:
+            current = self.runs.get(run.project_id, run.id)
+            if current.status == "cancelled" or run.id in self._cancelled_runs:
+                return current
+            return self.runs.update(run.project_id, current.model_copy(update=updates))
 
     def _fail(self, run: TrainingRun, message: str) -> None:
-        current = self.runs.get(run.project_id, run.id)
-        if current.status == "cancelled":
-            return
-        message = self._portable(run, message)
-        self.runs.update(run.project_id, current.model_copy(update={"status": "failed", "process_id": None, "error": message}))
+        with self._lock:
+            current = self.runs.get(run.project_id, run.id)
+            if current.status == "cancelled" or run.id in self._cancelled_runs:
+                return
+            message = self._portable(run, message)
+            self.runs.update(run.project_id, current.model_copy(update={"status": "failed", "process_id": None, "error": message}))
         label = STEP_LABELS.get(current.step_id, current.step_id)
         self._append(run, current.step_id, f"Thất bại ở bước {label}: {message}", level="error")
 

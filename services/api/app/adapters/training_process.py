@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import re
+import logging
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -14,9 +17,11 @@ from app.adapters.training_log_parser import (
     parse_train_line,
     split_carriage_returns,
 )
+from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import TrainingProgressLine
 
 TRAIN_LAUNCHER = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_train.py"
+logger = logging.getLogger("app.adapters.training_process")
 
 # Windows only: lets the runner signal or kill a whole tree rather than the one
 # process it started. `accelerate` spawns a worker per GPU and each worker spawns
@@ -69,6 +74,10 @@ class TrainingProcess:
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
 
+    @property
+    def alive(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
     def run(
         self,
         command: list[str],
@@ -89,6 +98,7 @@ class TrainingProcess:
             errors="replace",
             bufsize=1,
             creationflags=creation,
+            start_new_session=sys.platform != "win32",
         )
         if self.on_started is not None:
             self.on_started(self._process.pid)
@@ -141,18 +151,78 @@ class TrainingProcess:
         run, not a mistake to clean up.
         """
         process = self._process
-        if process is None or process.poll() is not None:
+        if process is None:
+            return False
+        if process.poll() is not None:
+            process.wait()
             return False
         self._cancelled = True
         if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                capture_output=True,
-                check=False,
-            )
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                self._kill_and_reap(process)
+                raise ProcessingStopError(
+                    "Cannot confirm the training process tree stopped. Restart the owning runtime before retrying."
+                ) from exc
+            if result.returncode != 0:
+                self._kill_and_reap(process)
+                raise ProcessingStopError(
+                    "Windows could not confirm the training process tree stopped. Restart the owning runtime before retrying."
+                )
         else:
-            process.terminate()
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except OSError as exc:
+                if process.poll() is None:
+                    self._kill_and_reap(process)
+                    raise ProcessingStopError(
+                        "Cannot signal the training process tree. Restart the owning runtime before retrying."
+                    ) from exc
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                if sys.platform == "win32":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+            except OSError as exc:
+                if process.poll() is None:
+                    raise ProcessingStopError(
+                        "Cannot force the training process tree to stop. Restart the owning runtime before retrying."
+                    ) from exc
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired as exc:
+                raise ProcessingStopError(
+                    "Training process remained alive after forced termination. Restart the owning runtime before retrying."
+                ) from exc
+        if process.poll() is None:
+            raise ProcessingStopError(
+                "Cannot confirm the training process tree stopped. Restart the owning runtime before retrying."
+            )
         return True
+
+    @staticmethod
+    def _kill_and_reap(process: subprocess.Popen[str]) -> None:
+        """Best-effort cleanup of this owned parent after tree termination failed."""
+        if process.poll() is not None:
+            process.wait()
+            return
+        try:
+            process.kill()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.error("Training process %s remained alive after fallback kill", process.pid)
 
     @property
     def cancelled(self) -> bool:

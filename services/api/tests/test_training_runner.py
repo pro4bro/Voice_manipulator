@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -10,13 +12,15 @@ from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.gpu_lease import GpuLease
-from app.adapters.training_runner import TrainingRunner
+from app.adapters.training_runner import TrainingBusyError, TrainingRunner
+from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import (
     DatasetManifest,
     DatasetSegment,
     ProjectCreate,
     SpeakerProfile,
     TrainingCatalog,
+    TrainingCheckpoint,
     TrainingRuntimeReport,
     TrainingRunConfig,
 )
@@ -191,6 +195,185 @@ def test_cancelling_the_running_voice_cancels_the_ones_queued_behind_it(tmp_path
     assert {run.status for run in runs.list(project.id)} == {"cancelled"}
 
 
+def test_queue_stop_cancels_pending_runs_but_leaves_the_active_run_running(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(
+        tmp_path, monkeypatch, {"speaker-an": ["train", "dev"], "speaker-binh": ["train", "dev"]}
+    )
+    monkeypatch.setattr(runner, "_execute_batch", lambda queued: None)
+    finished = runs.create(project.id, "dataset-1")
+    finished = runs.update(project.id, finished.model_copy(update={
+        "status": "complete", "checkpoints": [TrainingCheckpoint(step=10, path="assets/checkpoint", bytes=42)],
+    }))
+    first = runner.start(project.id, "dataset-1", TrainingRunConfig(), speaker_profile_ids=["speaker-an", "speaker-binh"])
+    all_runs = sorted(
+        (run for run in runs.list(project.id) if run.batch_id == first.batch_id),
+        key=lambda run: run.batch_index,
+    )
+    runs.update(project.id, all_runs[0].model_copy(update={"status": "running"}))
+
+    stopped = runner.stop(project.id)
+    runner.stop(project.id)
+
+    assert {run.id: run.status for run in stopped} == {
+        finished.id: "complete", first.id: "running", all_runs[1].id: "cancelled",
+    }
+    assert runs.get(project.id, first.id).status == "running"
+    assert runs.get(project.id, finished.id).status == "complete"
+    assert runs.get(project.id, finished.id).checkpoints[0].bytes == 42
+
+
+def test_all_stop_kills_owned_training_subprocess_and_is_idempotent(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    run = runs.create(project.id, "dataset-1")
+    run = runs.update(project.id, run.model_copy(update={"status": "running"}))
+    process = runner._process_for(run)
+    thread = threading.Thread(
+        target=lambda: process.run([sys.executable, "-c", "import time; print('ready', flush=True); time.sleep(30)"], lambda _line: None),
+        daemon=True,
+    )
+    thread.start()
+    deadline = time.monotonic() + 5
+    while process.pid is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert process.pid is not None
+
+    runner.stop(project.id, include_active=True)
+    runner.stop(project.id, include_active=True)
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert process.cancelled
+    assert runs.get(project.id, run.id).status == "cancelled"
+
+
+def test_cancelled_run_cannot_publish_after_stop(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    run = runs.create(project.id, "dataset-1")
+    runs.update(project.id, run.model_copy(update={"status": "running"}))
+    runner.stop(project.id, include_active=True)
+    published = False
+
+    def publish():
+        nonlocal published
+        published = True
+
+    result = runner._publish_final(run, publish)
+
+    assert result is None and not published
+    assert runs.get(project.id, run.id).status == "cancelled"
+
+
+def test_stopped_training_run_resumes_only_after_old_executor_exits(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    first_started = threading.Event()
+    first_process_returned = threading.Event()
+    release_old_executor = threading.Event()
+    resumed = threading.Event()
+    attempt = 0
+
+    def execute(run):
+        nonlocal attempt
+        attempt += 1
+        process = runner._process_for(run, "train")
+        try:
+            if attempt == 1:
+                code = process.run(
+                    [sys.executable, "-c", "import time; print('started', flush=True); time.sleep(30)"],
+                    lambda _line: first_started.set(),
+                )
+                assert process.cancelled and code != 0
+                first_process_returned.set()
+                release_old_executor.wait(timeout=5)
+                return
+            code = process.run(
+                [sys.executable, "-c", "print('resumed', flush=True)"],
+                lambda _line: None,
+            )
+            assert code == 0 and not process.cancelled
+            current = runs.get(project.id, run.id)
+            runs.update(project.id, current.model_copy(update={
+                "status": "complete", "process_id": None,
+                "checkpoints": [TrainingCheckpoint(step=12, path="assets/checkpoint-resumed", bytes=99)],
+            }))
+            resumed.set()
+        finally:
+            with runner._lock:
+                runner._active.pop(run.id, None)
+
+    monkeypatch.setattr(runner, "_execute_omnivoice", execute)
+    initial = runner.start(project.id, "dataset-1", TrainingRunConfig())
+    assert first_started.wait(timeout=3)
+
+    runner.stop(project.id, include_active=True)
+    assert first_process_returned.wait(timeout=3)
+    with pytest.raises(TrainingBusyError, match="Run cũ vẫn đang dừng"):
+        runner.start(project.id, "dataset-1", resume_run_id=initial.id)
+
+    release_old_executor.set()
+    deadline = time.monotonic() + 3
+    while initial.id in runner._execution_owners and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert initial.id not in runner._execution_owners
+
+    retried = runner.start(project.id, "dataset-1", resume_run_id=initial.id)
+    assert retried.status == "running"
+    assert resumed.wait(timeout=3)
+    final = runs.get(project.id, initial.id)
+    assert final.status == "complete"
+    assert [(item.step, item.path, item.bytes) for item in final.checkpoints] == [
+        (12, "assets/checkpoint-resumed", 99),
+    ]
+    assert attempt == 2
+
+
+def test_stop_reports_process_ack_failure_after_attempting_every_active_run(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    active = []
+    for _ in range(2):
+        run = runs.create(project.id, "dataset-1")
+        run = runs.update(project.id, run.model_copy(update={"status": "running", "process_id": 456}))
+        active.append(run)
+    pending = runs.create(project.id, "dataset-1")
+
+    class Stopper:
+        pid = 456
+        alive = True
+
+        def __init__(self, should_fail):
+            self.should_fail = should_fail
+            self.called = False
+
+        def cancel(self):
+            self.called = True
+            if self.should_fail:
+                raise ProcessingStopError("process tree still alive")
+            self.alive = False
+            return True
+
+    failed_process, stopped_process = Stopper(True), Stopper(False)
+    runner._active.update({active[0].id: failed_process, active[1].id: stopped_process})
+
+    with pytest.raises(ProcessingStopError, match="process tree still alive"):
+        runner.stop(project.id, include_active=True)
+
+    assert failed_process.called and stopped_process.called
+    assert runs.get(project.id, active[0].id).status == "failed"
+    assert runs.get(project.id, active[0].id).error == "process tree still alive"
+    assert runs.get(project.id, active[0].id).process_id == 456
+    assert runs.get(project.id, active[1].id).status == "cancelled"
+    assert runs.get(project.id, pending.id).status == "cancelled"
+    with pytest.raises(TrainingBusyError, match="Khởi động lại runtime"):
+        runner.start(project.id, "dataset-1", resume_run_id=active[0].id)
+    published = False
+
+    def late_publish():
+        nonlocal published
+        published = True
+
+    assert runner._publish_final(active[0], late_publish) is None
+    assert not published
+
+
 def test_commands_in_the_log_carry_no_machine_paths(tmp_path, monkeypatch):
     project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
     run = runs.create(project.id, "dataset-1")
@@ -208,6 +391,17 @@ def test_commands_in_the_log_carry_no_machine_paths(tmp_path, monkeypatch):
     assert "<run>/data/train.jsonl" in message
     assert '"<omnivoice>/tok dir"' in message
     assert str(tmp_path) not in message
+
+
+def test_cancelled_clone_exits_without_publishing_or_reporting_a_voice(tmp_path, monkeypatch):
+    project, runs, runner = batch_fixture(tmp_path, monkeypatch, {"speaker-an": ["train", "dev"]})
+    run = runs.create(project.id, "dataset-1", config=TrainingRunConfig(mode="zero-shot-clone"))
+    runner.stop(project.id, include_active=True)
+    publish = lambda *_args, **_kwargs: pytest.fail("Cancelled clone must not publish")
+    monkeypatch.setattr(runner, "_publish_voice", publish)
+    runner._build_clone_voice(run)
+    assert runs.get(project.id, run.id).status == "cancelled"
+    assert not any("Đã tạo voice" in line.message for line in runs.progress(project.id, run.id))
 
 
 def test_a_redrawn_training_bar_moves_the_run_without_filling_the_journal(tmp_path, monkeypatch):

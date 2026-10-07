@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 import time
+from types import SimpleNamespace
 from pathlib import Path
+
+import pytest
 
 from app.adapters.training_process import (
     OmniVoiceTrainingCommands,
@@ -10,6 +14,7 @@ from app.adapters.training_process import (
     run_tokenize,
     run_training,
 )
+from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import TrainingProgressLine
 
 
@@ -149,6 +154,92 @@ def test_cancel_stops_a_long_run_and_reports_that_it_did(tmp_path):
 
 def test_cancelling_nothing_is_not_an_error():
     assert TrainingProcess(lambda _line: None).cancel() is False
+
+
+class StubProcess:
+    pid = 12345
+
+    def __init__(self) -> None:
+        self.alive = True
+        self.killed = False
+        self.terminated = False
+
+    def poll(self):
+        return None if self.alive else -9
+
+    def wait(self, timeout=None):
+        if self.alive:
+            raise subprocess.TimeoutExpired(cmd="training", timeout=timeout)
+        return -9
+
+    def kill(self):
+        self.killed = True
+        self.alive = False
+
+    def terminate(self):
+        self.terminated = True
+        self.alive = False
+
+
+@pytest.mark.parametrize("taskkill_result", [1, "timeout"])
+def test_windows_tree_cancel_falls_back_but_reports_unconfirmed_tree(monkeypatch, taskkill_result):
+    import app.adapters.training_process as module
+
+    process = StubProcess()
+    runner = TrainingProcess(lambda _line: None)
+    runner._process = process  # type: ignore[assignment]
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+
+    def failed_taskkill(*_args, **kwargs):
+        assert kwargs["timeout"] == 5
+        if taskkill_result == "timeout":
+            raise subprocess.TimeoutExpired(cmd="taskkill", timeout=kwargs["timeout"])
+        return subprocess.CompletedProcess(args="taskkill", returncode=taskkill_result)
+
+    monkeypatch.setattr(module.subprocess, "run", failed_taskkill)
+    with pytest.raises(ProcessingStopError, match="process tree"):
+        runner.cancel()
+
+    assert process.killed and process.poll() is not None
+
+
+def test_windows_tree_cancel_reaps_after_taskkill_ack(monkeypatch):
+    import app.adapters.training_process as module
+
+    process = StubProcess()
+    runner = TrainingProcess(lambda _line: None)
+    runner._process = process  # type: ignore[assignment]
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+
+    def successful_taskkill(*_args, **kwargs):
+        assert kwargs["timeout"] == 5
+        process.alive = False
+        return subprocess.CompletedProcess(args="taskkill", returncode=0)
+
+    monkeypatch.setattr(module.subprocess, "run", successful_taskkill)
+
+    assert runner.cancel() is True
+    assert process.poll() is not None
+
+
+def test_posix_cancel_terminates_owned_process_group_and_reaps(monkeypatch):
+    import app.adapters.training_process as module
+
+    process = StubProcess()
+    runner = TrainingProcess(lambda _line: None)
+    runner._process = process  # type: ignore[assignment]
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="linux"))
+    signals = []
+
+    def killpg(pid, signum):
+        signals.append((pid, signum))
+        process.alive = False
+
+    monkeypatch.setattr(module.os, "killpg", killpg, raising=False)
+
+    assert runner.cancel() is True
+    assert signals == [(process.pid, module.signal.SIGTERM)]
+    assert process.poll() is not None
 
 
 class TestCommands:

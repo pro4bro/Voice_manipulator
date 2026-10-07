@@ -232,6 +232,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   });
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
+  const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
   const [voiceChangers, setVoiceChangers] = useState<TrainingModelOption[]>([]);
   const [changerPreflight, setChangerPreflight] = useState<VoiceChangerPreflight | null>(null);
   const [changerStatus, setChangerStatus] = useState<VoiceChangerStatus | null>(null);
@@ -366,17 +367,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const timer = window.setInterval(() => {
       void api.getVoiceScriptJob(project.id, jobId).then((job) => {
         if (cancelled) return;
-        setVoiceScriptJob(job);
-        if (job.status === "complete" && job.output) {
-          const output = job.output;
-          setGenerating(false);
-          setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
-          openVoiceOutput(output, false);
-          setNotice(`Đã đọc ${job.total} đoạn${job.reused ? ` (${job.reused} đoạn dùng lại)` : ""} · ${output.duration.toFixed(1)} giây; file nằm trong Voice Output.`);
-        } else if (job.status === "failed") {
-          setGenerating(false);
-          setNotice(job.error ?? "Đọc Script thất bại");
-        }
+        acceptVoiceScriptJob(job);
       }).catch(() => undefined);
     }, 800);
     return () => { cancelled = true; window.clearInterval(timer); };
@@ -994,7 +985,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     } catch (error) { setNotice(error instanceof Error ? error.message : "Không lưu được Speaker của row."); }
   }
 
-  async function controlTranscriptions(action: "pause" | "resume" | "stop", assetIds?: string[]) {
+  async function controlTranscriptions(action: "pause" | "resume" | "stop" | "stop-all", assetIds?: string[]) {
     try {
       const updated = await api.controlMediaTranscriptions(project.id, action, assetIds);
       if (updated.length) {
@@ -1002,13 +993,51 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
         setMediaAssets((current) => current.map((asset) => byId.get(asset.id) ?? asset));
       }
       const scope = assetIds?.length ? `${assetIds.length} footage` : "toàn bộ hàng đợi";
-      // Recognition runs in a worker thread that cannot be interrupted, so say
-      // plainly that the file already being transcribed still finishes.
-      setNotice(action === "resume"
+      setNotice(action === "stop-all" ? "Đã yêu cầu dừng toàn bộ STT đang chạy và hàng đợi."
+        : action === "resume"
         ? `Đã chạy tiếp ${scope}.`
         : `Đã ${action === "pause" ? "tạm dừng" : "dừng"} ${scope}. File đang nhận dạng vẫn chạy nốt.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không điều khiển được hàng đợi STT");
+      if (action === "stop" || action === "stop-all") throw error;
+    }
+  }
+
+  async function stopDiarization(mode: "queue" | "all") {
+    const updated = await api.stopMediaDiarizations(project.id, mode);
+    const byId = new Map(updated.map((asset) => [asset.id, asset]));
+    setMediaAssets((current) => current.map((asset) => byId.get(asset.id) ?? asset));
+    setNotice(mode === "all" ? "Đã yêu cầu dừng toàn bộ Speaker Diarization." : "Đã dừng hàng đợi Speaker Diarization; footage đang chạy sẽ hoàn tất.");
+  }
+
+  async function stopTraining(mode: "queue" | "all") {
+    await api.stopTrainingRuns(project.id, mode);
+    await refreshTrainingRun();
+    setNotice(mode === "all" ? "Đã yêu cầu dừng toàn bộ Training; giữ checkpoint đã lưu." : "Đã dừng hàng đợi Training; voice đang chạy sẽ hoàn tất.");
+  }
+
+  async function stopGeneration(mode: "queue" | "all") {
+    const job = await api.stopGeneration(project.id, mode);
+    if (job) acceptVoiceScriptJob(job);
+    if (!job?.output) setNotice(mode === "all" ? "Đã yêu cầu dừng toàn bộ Generate Voice." : "Đã dừng hàng đợi Generate Voice; đoạn đang đọc sẽ hoàn tất.");
+  }
+
+  function acceptVoiceScriptJob(job: VoiceScriptJob) {
+    const previous = voiceScriptJobRef.current;
+    // Start/poll responses can arrive after a Stop acknowledgement. A stale
+    // running snapshot must not revive a terminal job or its busy UI.
+    if (previous?.id === job.id && previous.status !== "running"
+      && (job.status === "running" || previous.status === "cancelled" && job.status !== "cancelled")) return;
+    voiceScriptJobRef.current = job;
+    setVoiceScriptJob(job);
+    setGenerating(job.status === "running");
+    if ((job.status === "complete" || job.status === "stopped") && job.output) {
+      const output = job.output;
+      setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
+      openVoiceOutput(output, false);
+      setNotice(`${job.status === "stopped" ? "Đã dừng sau khi đọc" : "Đã đọc"} ${job.done} đoạn${job.reused ? ` (${job.reused} đoạn dùng lại)` : ""} · ${output.duration.toFixed(1)} giây; file nằm trong Voice Output.`);
+    } else if (job.status !== "running") {
+      setNotice(job.error ?? job.message ?? "Đọc Script đã dừng.");
     }
   }
 
@@ -1166,16 +1195,6 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       settings: { ...settings, environmentProfileId: settings.environmentProfileId && selectedIds.has(settings.environmentProfileId) ? null : settings.environmentProfileId },
     });
     setNotice(`Đã xoá ${profiles.length} Environment Profile.`);
-  }
-
-  async function cancelTrainingRun(runId: string) {
-    try {
-      await api.cancelTrainingRun(project.id, runId);
-      setNotice("Đã huỷ voice đang train và các voice đang chờ. Checkpoint vẫn còn.");
-      await refreshTrainingRun();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không huỷ được run");
-    }
   }
 
   /** Whose voice this footage is. One profile is all the dataset needs. */
@@ -1866,8 +1885,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     // No blocking overlay: the Script marks the row being read and the Voice
     // Generator panel shows how many are done.
     setGenerating(true);
+    voiceScriptJobRef.current = null;
+    setVoiceScriptJob(null);
     try {
-      setVoiceScriptJob(await api.readVoiceScript(project.id, { rows: readiness.rows, parameters }));
+      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: readiness.rows, parameters }));
     } catch (error) {
       setGenerating(false);
       setNotice(error instanceof Error ? error.message : "Không bắt đầu đọc Script được");
@@ -2206,7 +2227,6 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     trainingProgressByRun,
     trainingRuntime,
     trainingModels,
-    onCancelTrainingRun: (runId) => void cancelTrainingRun(runId),
     onTrainingOutputsChanged: () => void refreshTrainingOutputs(),
     onDeleteVoice: (voice) => void deleteProjectVoice(voice),
     onDeleteVoices: (voices) => void deleteProjectVoices(voices),
@@ -2273,7 +2293,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onToggleImport: (assetId, selected, streamIndex) => void toggleImportAsset(assetId, selected, streamIndex),
     onToggleDiarization: (assetId, selected) => void toggleDiarizationAsset(assetId, selected),
     onQueueTranscriptions: (model) => void queueSelectedTranscriptions(model),
-    onControlTranscriptions: (action, assetIds) => void controlTranscriptions(action, assetIds),
+    onControlTranscriptions: (action, assetIds) => controlTranscriptions(action, assetIds),
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
     onBatchMediaAction: (action) => { if (action.kind === "restore" || action.kind === "delete" || !blockedByRecycleBin()) void batchMediaAction(action); },
     onRestoreAsset: (asset) => void restoreMediaAsset(asset),
@@ -2288,6 +2308,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onCatalogChange: changeCatalog,
     onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),
+    onStopDiarization: stopDiarization,
+    onStopTraining: stopTraining,
+    onStopGeneration: stopGeneration,
     onDeferredAction: (action) => {
       if (action === "Export SRT theo câu") void exportSubtitles("sentence");
       else if (action === "Export SRT từng từ") void exportSubtitles("word");

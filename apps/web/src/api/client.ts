@@ -16,6 +16,7 @@ import type {
   ObsLiveSession,
   ObsLiveCaptionQuality,
   ObsLiveLinkStatus,
+  ObsLiveLinkRecordingJournal,
   ObsPluginInstallationStatus,
   ObsRecordingInspection,
   ObsTrackSource,
@@ -254,6 +255,11 @@ export const api = {
   getObsLiveLinkDetailedStt: (projectId: string, recordingId: string) =>
     request<{ segmentSeconds: number; tracks: Record<string, { initialFrames: number; cursor: number }>; error?: string | null }>(
       `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/detailed-stt`),
+  stopObsLiveLinkDetailedStt: (projectId: string, recordingId: string, mode: "queue" | "all") =>
+    request<NonNullable<ObsLiveLinkRecordingJournal["detailedStt"]>>(
+      `/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/detailed-stt/control`,
+      { method: "POST", body: JSON.stringify({ mode }) },
+    ),
   retryObsLiveLinkArchive: (projectId: string, recordingId: string) =>
     request<{ artifactReady: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/archive/retry`, {
       method: "POST",
@@ -388,7 +394,7 @@ export const api = {
   /** Pause, resume or stop a Speech to text run. No ids means the whole queue. */
   controlMediaTranscriptions: async (
     projectId: string,
-    action: "pause" | "resume" | "stop",
+    action: "pause" | "resume" | "stop" | "stop-all",
     assetIds?: string[],
   ) => {
     const assets = await request<ProjectMediaAsset[]>(
@@ -397,6 +403,16 @@ export const api = {
     );
     return assets.map(normalizeMediaAsset);
   },
+  stopMediaDiarizations: async (projectId: string, mode: "queue" | "all") => {
+    const assets = await request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/diarizations/control`, {
+      method: "POST", body: JSON.stringify({ mode }),
+    });
+    return assets.map(normalizeMediaAsset);
+  },
+  stopTrainingRuns: (projectId: string, mode: "queue" | "all") =>
+    request<TrainingRun[]>(`/api/projects/${projectId}/training-runs/control`, { method: "POST", body: JSON.stringify({ mode }) }),
+  stopGeneration: (projectId: string, mode: "queue" | "all") =>
+    request<VoiceScriptJob | null>(`/api/projects/${projectId}/generation/control`, { method: "POST", body: JSON.stringify({ mode }) }),
   updateMediaScript: async (projectId: string, assetId: string, text: string, source: MediaRevisionSource, words?: StudioWord[]) => {
     const asset = await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/script`, {
       method: "PATCH",

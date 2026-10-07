@@ -22,6 +22,31 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("keeps cancelled footage's transcript while showing that STT was stopped", () => {
+    render(<MediaPool {...props({ assets: [{ ...asset, transcriptionStatus: "cancelled" }] })} />);
+    expect(screen.getByText(/STT ĐÃ HUỶ/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Tiến trình Speech to text/)).not.toBeInTheDocument();
+  });
+  it("offers the same confirmed Stop for detailed OBS STT before archive completion", async () => {
+    const live = { protocolVersion: 3, recording: { recordingId: "take-live", projectId: "project", displayName: "OBS take live",
+      status: "recording", archiveStatus: "pending", startedMonotonicNs: 0, endedMonotonicNs: null,
+      pauseCauses: [], videoSpanIds: [], channelIntervals: [] }, durableChannelIds: ["mic"],
+      detailedStt: { tracks: { mic: { initialFrames: 24000, cursor: 0 } }, active: true },
+    } as ObsLiveLinkRecordingJournal;
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockResolvedValue([live]);
+    const stop = vi.spyOn(api, "stopObsLiveLinkDetailedStt").mockResolvedValueOnce({
+      ...live.detailedStt, stopMode: "queue", active: true,
+    }).mockResolvedValue({ ...live.detailedStt, stopMode: "all", active: false });
+    try {
+      render(<MediaPool {...props({ assets: [], projectId: "project" })} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await waitFor(() => expect(stop).toHaveBeenCalledWith("project", "take-live", "queue"));
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+      await waitFor(() => expect(stop).toHaveBeenCalledWith("project", "take-live", "all"));
+      expect(await screen.findByRole("button", { name: "Chạy tiếp STT" })).toBeEnabled();
+    } finally { list.mockRestore(); stop.mockRestore(); }
+  });
   it("publishes footage and multi-track Script selection without opening modifier-clicked tracks", async () => {
     const tracks = ["a", "b"].map((id) => ({ ...asset, id, name: `Mic ${id}`, sourceArchiveAssetId: asset.id }));
     const onScriptSelectionChange = vi.fn();
@@ -587,7 +612,7 @@ describe("MediaPool", () => {
     expect(onUpdateAnnotations).toHaveBeenNthCalledWith(2, "asset-1", [], [], "exciting");
   });
 
-  it("turns Speech to text into Pause and Stop while a batch is running", () => {
+  it("turns Speech to text into Pause and two-level Stop while a batch is running", async () => {
     const onControlTranscriptions = vi.fn();
     const running = { ...asset, transcriptionStatus: "processing" as const, transcriptionSelected: true };
     render(<MediaPool {...props({ assets: [running], onControlTranscriptions })} />);
@@ -595,7 +620,11 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Pause/ }));
     expect(onControlTranscriptions).toHaveBeenCalledWith("pause");
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-    expect(onControlTranscriptions).toHaveBeenCalledWith("stop");
+    await waitFor(() => expect(onControlTranscriptions).toHaveBeenCalledWith("stop"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(onControlTranscriptions).not.toHaveBeenCalledWith("stop-all");
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(onControlTranscriptions).toHaveBeenCalledWith("stop-all"));
   });
 
   it("offers to carry on once the whole queue is held", () => {
@@ -612,7 +641,7 @@ describe("MediaPool", () => {
     const queued = { ...asset, transcriptionStatus: "queued" as const, transcriptionSelected: true };
     render(<MediaPool {...props({ assets: [queued], onControlTranscriptions })} />);
     fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Stop STT/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Dừng hàng đợi STT/ }));
     expect(onControlTranscriptions).toHaveBeenCalledWith("stop", ["asset-1"]);
   });
 

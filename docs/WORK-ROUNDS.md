@@ -12,7 +12,21 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: UX-INTEGRATION-01
+### 2026-10-07 — current: TASK-STOP-01
+
+Uniform two-level Stop covers STT, Speaker Diarization, Training and Generate
+Voice, including growing MKV and OBS detailed STT. First Stop drops pending
+work; two rapid clicks open Yes/No for active cancellation. Task ownership and
+publication fences preserve source PCM, completed outputs and saved checkpoints.
+Frontend560/63 files, API646, Studio22, typecheck/build and isolated browser
+Yes/No proof pass; final Clone guard has a separate13-test Training check.
+Final API/Studio counts are in `docs/gates/task-stop-2026-10-07.md`; ADR0047
+records the process and persistence contracts.
+Exact next round: TASK-STOP-DEVICE-01 — restart normal app including Studio,
+exercise real-model Stop and rerun/Training Resume, then address reproducible
+device failures. UX-EDITING-DEVICE-01 and older phase gates remain open.
+
+### 2026-10-07 — previous: UX-INTEGRATION-01
 
 Owner override: run all nine requested import/organization/editing/range rounds
 in this invocation, with bounded commits and evidence. IMPORT-UX-01,

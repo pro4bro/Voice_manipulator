@@ -1,10 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectMediaAsset } from "../../domain/types";
 import { SpeakerIsolation } from "./SpeakerIsolation";
 
 describe("SpeakerIsolation", () => {
+  it("shows batch Stop even while another footage is selected", async () => {
+    const onStop = vi.fn();
+    render(<SpeakerIsolation asset={null} batchBusy onStop={onStop} onAssign={vi.fn()} onRun={vi.fn()} speakers={[]} words={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("queue"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("all"));
+  });
   it("explains the multi-speaker cost before running the selected diarization batch", () => {
     const onRun = vi.fn();
     render(<SpeakerIsolation asset={{ id: "footage" } as ProjectMediaAsset} onAssign={vi.fn()} onRun={onRun} speakers={[]} words={[]} />);

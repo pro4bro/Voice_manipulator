@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { VoiceGenerator, generatorForEngine } from "./VoiceGenerator";
@@ -43,6 +43,14 @@ function props(overrides = {}) {
 }
 
 describe("VoiceGenerator", () => {
+  it("stops remaining Script rows first and confirms active generation cancellation", async () => {
+    const onStop = vi.fn(); render(<VoiceGenerator {...props({ busy: true, onStop })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("queue"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith("all"));
+  });
   it("lists who reads the Script, how many rows each, and lets each reference be heard", () => {
     const onGenerate = vi.fn();
     render(<VoiceGenerator {...props({ onGenerate })} />);

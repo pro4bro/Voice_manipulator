@@ -6,6 +6,7 @@ import type { ActivityEvent, ActivityTask, ProjectAsrAdapter, SpeakerProfile, Tr
 import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
 import { Icon, type IconName } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { TaskStop, type TaskStopHandler } from "../../ui/TaskStop";
 import { RunLogDialog, TrainingHistoryDialog } from "./TrainingHistory";
 
 interface TrainingJobProps {
@@ -18,7 +19,7 @@ interface TrainingJobProps {
   /** The option chosen in Train. While nothing runs, the flow shows its steps. */
   selectedMode?: string | null;
   busy?: boolean;
-  onCancelRun?: (runId: string) => void;
+  onStop?: TaskStopHandler;
   projectId?: string;
   /** Every run of the project, for the history and its delete. */
   runs?: TrainingRun[];
@@ -166,7 +167,7 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onCancelRun, projectId, runs = [], adapters = [], activityEvents = [], activityTasks = [], onRunsChanged }: TrainingJobProps) {
+export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onStop, projectId, runs = [], adapters = [], activityEvents = [], activityTasks = [], onRunsChanged }: TrainingJobProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const [follow, setFollow] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -346,7 +347,7 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
           <span>TỔNG</span>
           <b>{percent(overall)}</b>
           <small>{targets.length ? `${targets.filter((target) => target.run?.status === "complete").length}/${targets.length} voice xong` : "Chưa tick voice target"}</small>
-          {live ? <button className="button button--quiet" disabled={busy} onClick={() => onCancelRun?.(live.id)} type="button">Huỷ · giữ checkpoint</button> : null}
+          {live && onStop ? <TaskStop disabled={busy} onStop={onStop} scope="Training" /> : null}
         </div>
         <div className="training-overall__bar" role="progressbar" aria-label="Tiến trình training tổng" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(overall * 100)}>
           {targets.map((target) => <span key={target.key}><i style={{ width: percent(target.fraction) }} /></span>)}

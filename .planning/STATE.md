@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — owner-requested import and source-time editing rounds integrated.
-last_activity_desc: Frontend550/62 files, backend588, typecheck/build and real PCM/browser persistence proof pass. Native picker, GPU-load smoothness and audible scrubbing need owner device checks. Existing phase and recognition budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-01 uniform confirmed processing Stop integrated.
+last_activity_desc: Frontend560/63 files, API646, Studio22, typecheck/build and browser Yes/No proof pass. Final Clone guard covered by13 focused Training checks. Real GPU Stop and rerun/Resume require TASK-STOP-DEVICE-01. Existing phase and recognition budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,14 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## TASK-STOP-01 — 2026-10-07
+
+STT, diarization, training and generation share queue Stop with a repeated-click
+Yes/No dialog for active cancellation. Owned subprocess control and result
+fences preserve completed artifacts/PCM/checkpoints. See the task-stop gate and
+ADR0047. Next: TASK-STOP-DEVICE-01, real-model Stop then rerun/Training Resume
+after normal app/Studio restart. UX-EDITING-DEVICE-01 remains open.
 
 ## UX-INTEGRATION-01 — 2026-10-07
 
@@ -37,7 +45,7 @@ Older near-term parents and Phase03-04 retain their documented prerequisites.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-10-07 — Integrated the requested editing workflow; device checks remain.
+Last activity: 2026-10-07 — Integrated confirmed processing Stop; device checks remain.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 

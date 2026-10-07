@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from app.adapters.activity_center import CENTER
 from app.adapters.engine_worker import EngineWorkerError, EngineWorkerProcess
@@ -25,6 +27,10 @@ VIBEVOICE_WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "vib
 
 class VoiceGenerationError(RuntimeError):
     """The engine could not produce audio for this request."""
+
+
+class VoiceGenerationCancelled(VoiceGenerationError):
+    """The caller stopped this generation before it could be published."""
 
 
 def omnivoice_worker(python: Path, env: dict[str, str] | None = None, idle_seconds: float = 300.0) -> EngineWorkerProcess:
@@ -136,6 +142,10 @@ class VoiceGenerator:
         self.gpu_lease = gpu_lease
         self.generators = generators
         self.engines: dict[str, OmniVoiceSpeech | VibeVoiceSpeech] = {"omnivoice": OmniVoiceSpeech(worker), **(engines or {})}
+        self._operation_lock = threading.Lock()
+        self._active_operations: dict[str, tuple[str, EngineWorkerProcess | None]] = {}
+        self._reserved_operations: set[str] = set()
+        self._cancelled_operations: set[str] = set()
 
     def prepare(self, project_id: str, voice_id: str, generator_id: str, parameters: dict[str, Any]) -> SpeechPlan:
         """Everything about speaking with a voice except the text: checked once, used per request."""
@@ -170,7 +180,14 @@ class VoiceGenerator:
         chosen = next((option for option in options if option.available), options[0] if options else None)
         return chosen.id if chosen else None
 
-    def speak(self, plan: SpeechPlan, text: str, output: Path, duration: float | None = None) -> float:
+    def speak(
+        self,
+        plan: SpeechPlan,
+        text: str,
+        output: Path,
+        duration: float | None = None,
+        cancellation_id: str | None = None,
+    ) -> float:
         """Speak text into `output` and return its length. The caller holds the GPU lease."""
         reply = self._request(
             plan.engine_speech.worker,
@@ -180,13 +197,71 @@ class VoiceGenerator:
                     generation=plan.generation, language=plan.language, speed=plan.speed, duration=duration, output=output,
                 )
             ),
+            cancellation_id=cancellation_id,
         )
         if not reply.get("ok") or not output.is_file():
             raise VoiceGenerationError(reply.get("error") or f"{plan.generator_label} không tạo được audio.")
         return float(reply.get("seconds") or 0)
 
-    def generate(self, project_id: str, voice_id: str, request: VoiceGenerateRequest) -> VoiceOutput:
-        plan = self.prepare(project_id, voice_id, request.generator_id, request.parameters)
+    def stop(self, project_id: str, include_active: bool = True) -> bool:
+        """Cancel in-flight single generation requests owned by this project."""
+        if not include_active:
+            return False
+        with self._operation_lock:
+            matching = [
+                (request_id, worker)
+                for request_id, (owner, worker) in self._active_operations.items()
+                if owner == project_id
+            ]
+            for request_id, _worker in matching:
+                self._cancelled_operations.add(request_id)
+        cancelled = False
+        for request_id, worker in matching:
+            if worker is not None:
+                cancelled = worker.cancel_request(request_id) or cancelled
+        return cancelled or bool(matching)
+
+    def reserve(self, project_id: str) -> str:
+        """Register ownership synchronously before a caller dispatches to a threadpool."""
+        self.projects.get(project_id)
+        request_id = f"generate-{uuid4().hex}"
+        with self._operation_lock:
+            self._active_operations[request_id] = (project_id, None)
+            self._reserved_operations.add(request_id)
+        return request_id
+
+    def generate(
+        self, project_id: str, voice_id: str, request: VoiceGenerateRequest,
+        cancellation_id: str | None = None,
+    ) -> VoiceOutput:
+        request_id = cancellation_id or self.reserve(project_id)
+        with self._operation_lock:
+            owner = self._active_operations.get(request_id)
+            if owner is None or owner[0] != project_id or request_id not in self._reserved_operations:
+                raise ValueError("Voice generation reservation is missing, already used, or belongs to another project.")
+            self._reserved_operations.discard(request_id)
+            cancelled_before_start = request_id in self._cancelled_operations
+            if cancelled_before_start:
+                self._active_operations.pop(request_id, None)
+                self._cancelled_operations.discard(request_id)
+        if cancelled_before_start:
+            raise VoiceGenerationCancelled("Voice generation was cancelled before preparation.")
+        try:
+            plan = self.prepare(project_id, voice_id, request.generator_id, request.parameters)
+            worker = plan.engine_speech.worker
+            with self._operation_lock:
+                self._raise_if_cancelled_locked(request_id)
+                self._active_operations[request_id] = (project_id, worker)
+                if isinstance(worker, EngineWorkerProcess):
+                    worker.register_request(request_id)
+        except Exception as exc:
+            with self._operation_lock:
+                cancelled = request_id in self._cancelled_operations
+                self._active_operations.pop(request_id, None)
+                self._cancelled_operations.discard(request_id)
+            if cancelled:
+                raise VoiceGenerationCancelled("Voice generation was cancelled during preparation.") from exc
+            raise
         voice = plan.voice
         preview_text = " ".join(request.text.split())
         task = CENTER.start_task(
@@ -197,46 +272,76 @@ class VoiceGenerator:
         began = time.perf_counter()
         logger.info("Tạo giọng %s · %s chữ", voice.name, len(preview_text.split()))
         project_root = Path(self.projects.get(project_id).project_path)
-
         # The lease first: a busy GPU must not leave an empty output folder behind.
-        lease = self.gpu_lease.acquire(f"voice-generate:{voice.id}")
+        lease = None
         output_id: str | None = None
         try:
+            lease = self.gpu_lease.acquire(f"voice-generate:{voice.id}")
+            self._raise_if_cancelled(request_id)
             output_id, audio = self.outputs.reserve(project_id)
-            seconds = self.speak(plan, request.text, audio, request.duration)
+            seconds = self.speak(plan, request.text, audio, request.duration, cancellation_id=request_id)
+            self._raise_if_cancelled(request_id)
+            spent = time.perf_counter() - began
+            with self._operation_lock:
+                self._raise_if_cancelled_locked(request_id)
+                output = self.outputs.save(
+                    project_id,
+                    VoiceOutput(
+                        id=output_id,
+                        name=f"{voice.name} · {' '.join(request.text.split()[:6])}",
+                        text=request.text,
+                        voice_id=voice.id,
+                        voice_name=voice.name,
+                        speaker_profile_id=voice.speaker_profile_id,
+                        engine=plan.engine,
+                        generator_id=plan.generator_id,
+                        parameters={**plan.generation, "language": plan.language, "speed": plan.speed, "duration": request.duration},
+                        duration=seconds,
+                        audio_path=audio.relative_to(project_root).as_posix(),
+                    ),
+                )
+                self._active_operations.pop(request_id, None)
         except Exception as exc:
             if output_id:
                 self.outputs.discard(project_id, output_id)
+            with self._operation_lock:
+                cancelled = request_id in self._cancelled_operations
+            if cancelled:
+                cancellation = VoiceGenerationCancelled("Voice generation was cancelled.")
+                CENTER.finish_task(task, status="cancelled", error=str(cancellation))
+                logger.info("Tạo giọng %s đã bị huỷ", voice.name)
+                raise cancellation from exc
             CENTER.finish_task(task, status="failed", error=str(exc))
             logger.error("Tạo giọng %s thất bại: %s", voice.name, exc)
             raise
         finally:
-            self.gpu_lease.release(lease.token)
-        spent = time.perf_counter() - began
+            if lease is not None:
+                self.gpu_lease.release(lease.token)
+            with self._operation_lock:
+                self._active_operations.pop(request_id, None)
+                self._reserved_operations.discard(request_id)
+                self._cancelled_operations.discard(request_id)
+                if isinstance(worker, EngineWorkerProcess):
+                    worker.abandon_request(request_id)
         CENTER.finish_task(task, detail=f"{seconds:.1f} giây audio")
         logger.info("Tạo giọng %s xong: %.1f giây audio trong %.1f giây", voice.name, seconds, spent)
+        return output
 
-        preview = " ".join(request.text.split()[:6])
-        return self.outputs.save(
-            project_id,
-            VoiceOutput(
-                id=output_id,
-                name=f"{voice.name} · {preview}",
-                text=request.text,
-                voice_id=voice.id,
-                voice_name=voice.name,
-                speaker_profile_id=voice.speaker_profile_id,
-                engine=plan.engine,
-                generator_id=plan.generator_id,
-                parameters={**plan.generation, "language": plan.language, "speed": plan.speed, "duration": request.duration},
-                duration=seconds,
-                audio_path=audio.relative_to(project_root).as_posix(),
-            ),
-        )
+    def _raise_if_cancelled(self, request_id: str) -> None:
+        with self._operation_lock:
+            self._raise_if_cancelled_locked(request_id)
+
+    def _raise_if_cancelled_locked(self, request_id: str) -> None:
+        if request_id in self._cancelled_operations:
+            raise VoiceGenerationCancelled("Voice generation was cancelled.")
 
     @staticmethod
-    def _request(worker: EngineWorkerProcess, payload: dict) -> dict:
+    def _request(worker: EngineWorkerProcess, payload: dict, cancellation_id: str | None = None) -> dict:
         try:
-            return worker.request(payload)
+            if cancellation_id is None:
+                return worker.request(payload)
+            if not isinstance(worker, EngineWorkerProcess):
+                return worker.request(payload)
+            return worker.request(payload, cancellation_id=cancellation_id)
         except EngineWorkerError as exc:
             raise VoiceGenerationError(str(exc)) from exc

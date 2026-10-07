@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import wave
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -9,10 +11,10 @@ from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
-from app.adapters.omnivoice_generator import VoiceGenerator
+from app.adapters.omnivoice_generator import VoiceGenerationCancelled, VoiceGenerator
 from app.adapters.training_model_catalog import FileTrainingModelCatalog
-from app.adapters.voice_script_speaker import SAMPLE_RATE, VoiceScriptSpeaker, read_pcm, trim_to_words
-from app.domain.models import DatasetSegment, ProjectCreate, VoiceScriptRequest, VoiceScriptRow
+from app.adapters.voice_script_speaker import SAMPLE_RATE, StudioWordRecognizer, VoiceScriptSpeaker, read_pcm, trim_to_words
+from app.domain.models import DatasetSegment, ProjectCreate, VoiceGenerateRequest, VoiceScriptRequest, VoiceScriptRow
 from app.domain.script_word_alignment import align_script_words, script_tokens
 from app.settings import Settings
 
@@ -89,6 +91,28 @@ class FakeEngine:
         return {"ok": True, "seconds": seconds}
 
 
+class BlockingEngine(FakeEngine):
+    def __init__(self, *, cancelable: bool = False) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.cancelable = cancelable
+
+    def request(self, payload):
+        self.entered.set()
+        self.release.wait(timeout=5)
+        if self.cancelable and not self.release.is_set():
+            return {"ok": False, "error": "cancelled"}
+        return super().request(payload)
+
+    def cancel_request(self, cancellation_id: str) -> bool:
+        if not self.cancelable:
+            return False
+        self.cancelable = False
+        self.release.set()
+        return True
+
+
 class FakeRecognizer:
     def __init__(self) -> None:
         self.languages: list[str | None] = []
@@ -100,6 +124,24 @@ class FakeRecognizer:
         text = CLIP_TEXT.pop(0)
         step = seconds / len(text.split())
         return [{"text": word, "start": index * step, "end": (index + 1) * step} for index, word in enumerate(text.split())]
+
+
+class BlockingRecognizer:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.cancellation_id: str | None = None
+
+    def recognize(self, audio: Path, language: str | None, cancellation_id: str | None = None):
+        self.cancellation_id = cancellation_id
+        self.entered.set()
+        self.release.wait(timeout=5)
+        raise RuntimeError("recognition cancelled")
+
+    def cancel_request(self, cancellation_id: str) -> bool:
+        assert cancellation_id == self.cancellation_id
+        self.release.set()
+        return True
 
 
 CLIP_TEXT: list[str] = []
@@ -252,6 +294,317 @@ def test_a_failed_row_fails_the_job_and_frees_the_gpu(tmp_path):
     assert job.status == "failed" and "out of memory" in job.error and job.done == 1
     assert lease.holder() is None and outputs.list(project.id) == []
     assert [folder.name for folder in outputs.clips_root(project.id).iterdir() if ".partial-" in folder.name] == []
+
+
+def test_queue_stop_finishes_the_current_script_row_and_suppresses_later_rows(tmp_path):
+    engine = BlockingEngine()
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    CLIP_TEXT[:] = ["đang chạy"]
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[
+        VoiceScriptRow(id="r1", voice_id=an.id, text="đang chạy"),
+        VoiceScriptRow(id="r2", voice_id=an.id, text="không đọc"),
+    ]))
+    assert engine.entered.wait(timeout=2)
+
+    stopped = speaker.stop(project.id)
+    assert stopped is not None and stopped.status == "running"
+    engine.release.set()
+    deadline = time.monotonic() + 5
+    while (speaker.job(project.id, job.id).status == "running" or lease.holder() is not None) and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    result = speaker.job(project.id, job.id)
+    assert result.status == "stopped" and result.done == 1
+    assert result.output is not None and [segment.row_id for segment in result.output.segments] == ["r1"]
+    assert len(outputs.list(project.id)) == 1 and lease.holder() is None
+
+
+def test_queue_stop_at_row_boundary_publishes_the_completed_prefix(tmp_path, monkeypatch):
+    import app.adapters.voice_script_speaker as module
+
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine())
+    CLIP_TEXT[:] = ["một", "hai"]
+    boundary = threading.Event()
+    release_boundary = threading.Event()
+    assembling = threading.Event()
+    release_assembly = threading.Event()
+    original_update = module.CENTER.update_task
+    original_assemble = speaker._assemble
+
+    def block_after_first_row(task_id, **changes):
+        original_update(task_id, **changes)
+        if changes.get("fraction") == 0.5:
+            boundary.set()
+            release_boundary.wait(timeout=5)
+
+    def block_assembly(*args, **kwargs):
+        assembling.set()
+        release_assembly.wait(timeout=5)
+        return original_assemble(*args, **kwargs)
+
+    monkeypatch.setattr(module.CENTER, "update_task", block_after_first_row)
+    monkeypatch.setattr(speaker, "_assemble", block_assembly)
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[
+        VoiceScriptRow(id="r1", voice_id=an.id, text="một"),
+        VoiceScriptRow(id="r2", voice_id=an.id, text="hai"),
+    ]))
+    assert boundary.wait(timeout=3)
+
+    boundary_stop = speaker.stop(project.id)
+    assert boundary_stop is not None and boundary_stop.status == "running"
+    release_boundary.set()
+    assert assembling.wait(timeout=3)
+    assembly_stop = speaker.stop(project.id)
+    assert assembly_stop is not None and assembly_stop.status == "running"
+    release_assembly.set()
+
+    deadline = time.monotonic() + 5
+    while speaker.job(project.id, job.id).status == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    result = speaker.job(project.id, job.id)
+    assert result.status == "stopped" and result.done == 1
+    assert result.output is not None and [segment.row_id for segment in result.output.segments] == ["r1"]
+    assert outputs.list(project.id) == [result.output]
+    assert lease.holder() is None
+
+
+def test_queue_stop_during_assembly_completes_when_all_rows_are_read(tmp_path, monkeypatch):
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine())
+    CLIP_TEXT[:] = ["một"]
+    entered = threading.Event()
+    release = threading.Event()
+    original_assemble = speaker._assemble
+
+    def blocked_assemble(*args, **kwargs):
+        entered.set()
+        release.wait(timeout=5)
+        return original_assemble(*args, **kwargs)
+
+    monkeypatch.setattr(speaker, "_assemble", blocked_assemble)
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[VoiceScriptRow(id="r1", voice_id=an.id, text="một")]))
+    assert entered.wait(timeout=3)
+    stopped = speaker.stop(project.id)
+    assert stopped is not None and stopped.status == "running"
+    release.set()
+
+    deadline = time.monotonic() + 5
+    while speaker.job(project.id, job.id).status == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    result = speaker.job(project.id, job.id)
+    assert result.status == "complete" and result.done == 1 and result.output is not None
+    assert outputs.list(project.id) == [result.output]
+    assert lease.holder() is None
+
+
+def test_all_stop_cancels_active_script_row_without_publishing_output(tmp_path, monkeypatch):
+    engine = BlockingEngine(cancelable=True)
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    released = threading.Event()
+    release_lease = lease.release
+
+    def release_and_signal(token: str) -> bool:
+        result = release_lease(token)
+        released.set()
+        return result
+
+    monkeypatch.setattr(lease, "release", release_and_signal)
+    CLIP_TEXT[:] = ["đang chạy"]
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[
+        VoiceScriptRow(id="r1", voice_id=an.id, text="đang chạy"),
+        VoiceScriptRow(id="r2", voice_id=an.id, text="không đọc"),
+    ]))
+    assert engine.entered.wait(timeout=2)
+
+    stopped = speaker.stop(project.id, include_active=True)
+    assert released.wait(timeout=5)
+
+    result = speaker.job(project.id, job.id)
+    assert stopped is not None and stopped.status == "cancelled"
+    assert result.status == "cancelled" and result.output is None
+    assert outputs.list(project.id) == [] and lease.holder() is None
+    assert list(outputs.clips_root(project.id).iterdir()) == []
+
+
+def test_all_stop_cancels_blocking_word_recognition(tmp_path):
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine())
+    recognizer = BlockingRecognizer()
+    speaker.recognizer = recognizer
+    CLIP_TEXT[:] = ["xin chào"]
+    errors: list[Exception] = []
+
+    def start_script() -> None:
+        try:
+            speaker.start(project.id, VoiceScriptRequest(rows=[VoiceScriptRow(id="r1", voice_id=an.id, text="Xin chào")]), background=False)
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=start_script, daemon=True)
+    thread.start()
+    assert recognizer.entered.wait(timeout=3)
+
+    stopped = speaker.stop(project.id, include_active=True)
+    thread.join(timeout=3)
+
+    assert not thread.is_alive() and not errors
+    assert stopped is not None and stopped.status == "cancelled"
+    assert recognizer.cancellation_id and recognizer.cancellation_id.endswith("-words")
+    assert outputs.list(project.id) == []
+    assert list(outputs.clips_root(project.id).iterdir()) == []
+    assert lease.holder() is None
+
+
+def test_studio_recognizer_uses_progress_id_and_accepts_pre_dispatch_cancel_ack(tmp_path, monkeypatch):
+    import app.adapters.voice_script_speaker as module
+
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"cancelled": False} if "/cancel" in calls[-1][0] else {"item": {"words": []}}
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr(module.httpx, "post", post)
+    recognizer = StudioWordRecognizer("http://studio")
+    audio = tmp_path / "clip.wav"
+    write_tone(audio, 0.1)
+
+    assert recognizer.recognize(audio, "vi", cancellation_id="owned-token") == []
+    assert calls[0][0] == "http://studio/api/audio/import"
+    assert calls[0][1]["data"]["progress_id"] == "owned-token"
+    assert recognizer.cancel_request("owned-token") is True
+    assert calls[1][0] == "http://studio/api/audio/import/owned-token/cancel"
+
+
+def test_generation_stop_cancels_project_owned_single_request_without_output(tmp_path):
+    engine = BlockingEngine(cancelable=True)
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    errors: list[Exception] = []
+
+    def generate() -> None:
+        try:
+            speaker.generator.generate(project.id, an.id, VoiceGenerateRequest(text="đang chạy"))
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=generate, daemon=True)
+    thread.start()
+    assert engine.entered.wait(timeout=2)
+
+    assert speaker.generator.stop(project.id) is True
+    thread.join(timeout=5)
+
+    assert not thread.is_alive() and errors
+    assert isinstance(errors[0], VoiceGenerationCancelled)
+    assert outputs.list(project.id) == [] and lease.holder() is None
+
+
+def test_script_stop_during_planning_is_retained_until_start_returns(tmp_path, monkeypatch):
+    engine = FakeEngine()
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    entered = threading.Event()
+    release = threading.Event()
+    original_plan = speaker._plan
+
+    def blocking_plan(project_id, request):
+        entered.set()
+        release.wait(timeout=5)
+        return original_plan(project_id, request)
+
+    monkeypatch.setattr(speaker, "_plan", blocking_plan)
+    started: list = []
+    thread = threading.Thread(
+        target=lambda: started.append(speaker.start(project.id, VoiceScriptRequest(rows=[
+            VoiceScriptRow(id="r1", voice_id=an.id, text="chào"),
+        ]))),
+        daemon=True,
+    )
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    queued = speaker.stop(project.id)
+    cancelled = speaker.stop(project.id, include_active=True)
+    assert queued is not None and queued.status == "stopped"
+    assert cancelled is not None and cancelled.status == "cancelled"
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive() and started[0].status == "cancelled"
+    assert outputs.list(project.id) == [] and lease.holder() is None
+
+
+def test_reserved_script_stop_before_thread_dispatch_skips_planning(tmp_path, monkeypatch):
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine())
+    request = VoiceScriptRequest(rows=[VoiceScriptRow(id="r1", voice_id=an.id, text="không đọc")])
+    reservation = speaker.reserve(project.id, request)
+    stopped = speaker.stop(project.id)
+    assert stopped is not None and stopped.status == "stopped"
+
+    def unexpected_plan(*_args):
+        raise AssertionError("reserved stopped job must not plan")
+
+    monkeypatch.setattr(speaker, "_plan", unexpected_plan)
+    result = speaker.start(project.id, request, reserved_job_id=reservation)
+
+    assert result.status == "stopped"
+    assert outputs.list(project.id) == [] and lease.holder() is None
+
+
+def test_single_generation_stop_during_voice_preparation_raises_cancelled(tmp_path, monkeypatch):
+    engine = FakeEngine()
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    entered = threading.Event()
+    release = threading.Event()
+    original_prepare = speaker.generator.prepare
+
+    def blocking_prepare(*args, **kwargs):
+        entered.set()
+        release.wait(timeout=5)
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(speaker.generator, "prepare", blocking_prepare)
+    errors: list[Exception] = []
+
+    def generate() -> None:
+        try:
+            speaker.generator.generate(project.id, an.id, VoiceGenerateRequest(text="chào"))
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=generate, daemon=True)
+    thread.start()
+    assert entered.wait(timeout=2)
+    assert speaker.generator.stop(project.id) is True
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive() and len(errors) == 1
+    assert isinstance(errors[0], VoiceGenerationCancelled)
+    assert outputs.list(project.id) == [] and lease.holder() is None
+
+
+def test_reserved_generation_stop_before_thread_dispatch_skips_preparation(tmp_path, monkeypatch):
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine())
+    reservation = speaker.generator.reserve(project.id)
+    assert speaker.generator.stop(project.id) is True
+
+    def unexpected_prepare(*_args, **_kwargs):
+        raise AssertionError("reserved stopped generation must not prepare")
+
+    monkeypatch.setattr(speaker.generator, "prepare", unexpected_prepare)
+    with pytest.raises(VoiceGenerationCancelled):
+        speaker.generator.generate(
+            project.id, an.id, VoiceGenerateRequest(text="không tạo"), cancellation_id=reservation,
+        )
+
+    assert outputs.list(project.id) == [] and lease.holder() is None
 
 
 def test_long_silence_around_measured_speech_is_cut_and_the_words_follow():

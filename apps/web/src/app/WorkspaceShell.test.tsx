@@ -3,10 +3,15 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Project, ProjectMediaAsset, ReadingSession } from "../domain/types";
+import type { Project, ProjectMediaAsset, ReadingSession, VoiceScriptJob } from "../domain/types";
+import type { StudioContext } from "../modules/registry/ModuleRegistry";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 const apiMocks = vi.hoisted(() => ({
+  listProjectVoices: vi.fn(),
+  readVoiceScript: vi.fn(),
+  getVoiceScriptJob: vi.fn(),
+  stopGeneration: vi.fn(),
   getOmniVoiceProfileSchema: vi.fn(),
   getPreferences: vi.fn(),
   getSystemStatus: vi.fn(),
@@ -57,6 +62,13 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
     if (id === "recorder") return <><button type="button" onClick={() => (context as unknown as { onTakeChange: (capture: unknown) => void }).onTakeChange({ name: "hq.wav", url: "blob:hq", duration: 999, file: new File(["wav"], "hq.wav"), origin: "record", realtimeText: "ASR khác bài đọc", words: [{ text: "ASR", start: 0, end: 1 }], readingSessionId: "session-1", readingSessionRevision: 0, readingCardId: "card-1", captureId: "capture-1", knownText: "Lời bài đọc." })}>deliver HQ take</button><button onClick={() => void (context as unknown as { onObsArchiveReady: (id: string) => Promise<void> }).onObsArchiveReady("take-new")} type="button">archive ready</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsRecording("take-new")} type="button">open new OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button></>;
     if (id === "manipulator-library") {
       return <button onClick={() => context.onOpenVoiceOutput(GENERATED)} type="button">mở voice output</button>;
+    }
+    if (id === "voice-generator") {
+      const generation = context as unknown as StudioContext;
+      return <><button onClick={generation.onGenerate} type="button">read test script</button>
+        <button onClick={() => void generation.onStopGeneration("all")} type="button">stop test generation</button>
+        <output data-testid="generation-state">{String(generation.generating)}:{generation.voiceScriptJob?.status ?? "none"}</output>
+        <output data-testid="generation-voices">{generation.projectVoices.length}</output></>;
     }
     return null;
   },
@@ -155,9 +167,48 @@ describe("WorkspaceShell STT synchronization", () => {
       },
     });
     apiMocks.getSystemStatus.mockResolvedValue(null);
+    apiMocks.listProjectVoices.mockResolvedValue([]);
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
+  });
+
+  function prepareGeneration() {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.listProjectVoices.mockResolvedValue([{ id: "voice-1", name: "Test voice", kind: "lora", engine: "omnivoice", speakerProfileId: "speaker-1", createdAt: "2026-10-07T00:00:00Z" }]);
+    localStorage.setItem(`pro4bro:${project.id}:voice-script`, JSON.stringify([{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }]));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={{ ...project, lastPage: "voice-manipulator" }} runtime={null} theme="dark" />);
+  }
+
+  function generationJob(status: VoiceScriptJob["status"]): VoiceScriptJob {
+    return { id: "generation-1", projectId: project.id, status, total: 2, done: 1, reused: 0,
+      currentRowId: null, message: null, output: null, error: null, startedAt: "2026-10-07T00:00:00Z", finishedAt: null };
+  }
+
+  it("does not revive generation when its start response arrives after confirmed Stop", async () => {
+    const start = deferred<VoiceScriptJob>();
+    apiMocks.readVoiceScript.mockReturnValue(start.promise);
+    apiMocks.stopGeneration.mockResolvedValue(generationJob("cancelled"));
+    prepareGeneration();
+    await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "read test script" }));
+    await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "stop test generation" }));
+    await waitFor(() => expect(screen.getByTestId("generation-state")).toHaveTextContent("false:cancelled"));
+    await act(async () => start.resolve(generationJob("running")));
+    expect(screen.getByTestId("generation-state")).toHaveTextContent("false:cancelled");
+  });
+
+  it("opens the completed prefix when queue Stop returns a stopped output", async () => {
+    apiMocks.readVoiceScript.mockResolvedValue({ ...generationJob("stopped"), output: GENERATED });
+    prepareGeneration();
+    await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "read test script" }));
+    await waitFor(() => expect(screen.getByTestId("generation-state")).toHaveTextContent("false:stopped"));
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent(GENERATED.name);
   });
 
   it("keeps a guided take's snapshot text instead of replacing it with live ASR", async () => {
