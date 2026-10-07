@@ -84,6 +84,14 @@ def job_finished(kind: str, project_id: str, asset_id: str, seconds: float, **de
     CENTER.finish_task(task_id_for(kind, project_id, asset_id), detail=_suffix(detail).strip() or None)
 
 
+def job_cancelled(kind: str, project_id: str, asset_id: str, detail: str | None = None) -> None:
+    activity.info(
+        "%s STOP   %s/%s%s", kind.upper(), project_id, asset_id,
+        f"  {detail}" if detail else "",
+    )
+    CENTER.finish_task(task_id_for(kind, project_id, asset_id), status="cancelled", detail=detail)
+
+
 def job_failed(kind: str, project_id: str, asset_id: str, error: BaseException) -> None:
     CENTER.finish_task(
         task_id_for(kind, project_id, asset_id), status="failed", error=f"{type(error).__name__}: {error}"

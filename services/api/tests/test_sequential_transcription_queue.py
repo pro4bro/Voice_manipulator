@@ -4,6 +4,7 @@ import asyncio
 
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
+from app.adapters.activity_center import CENTER
 from app.adapters.openai_compatible_transcript_reviewer import ReviewOutcome
 from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
@@ -244,6 +245,8 @@ def test_stop_all_cancels_only_the_selected_project_and_suppresses_late_result(t
     assert media.get(project.id, active.id).text == ""
     assert media.get(project.id, active.id).transcription_selected is True
     assert media.get(other_project.id, other.id).transcription_status == "complete"
+    activity = {task.id: task for task in CENTER.tasks()}[f"stt:{project.id}:{active.id}"]
+    assert activity.status == "cancelled"
 
     async def retry():
         await queue.enqueue(project.id, [active.id, pending.id])
@@ -294,3 +297,63 @@ def test_failed_active_cancel_ack_is_reported_and_never_marked_cancelled(tmp_pat
     final = media.get(project.id, asset.id)
     assert final.transcription_status == "error"
     assert final.text == ""
+    activity = {task.id: task for task in CENTER.tasks()}[f"stt:{project.id}:{asset.id}"]
+    assert activity.status == "failed"
+    assert "could not be confirmed" in activity.error
+
+
+def test_first_stop_keeps_active_activity_running_until_recognition_finishes(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Queue stop remains active"))
+    media = FileMediaLibrary(projects)
+    asset = _asset(media, project.id, "active")
+    importer = GatedImporter(media)
+    queue = SequentialTranscriptionQueue(projects, media, importer, FakeReviewer())
+
+    async def run():
+        await queue.enqueue(project.id, [asset.id])
+        await importer.entered.wait()
+        task_id = f"stt:{project.id}:{asset.id}"
+        assert next(task for task in CENTER.tasks() if task.id == task_id).status == "running"
+        await queue.stop(project.id)
+        assert next(task for task in CENTER.tasks() if task.id == task_id).status == "running"
+        importer.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(run())
+    activity = {task.id: task for task in CENTER.tasks()}[f"stt:{project.id}:{asset.id}"]
+    assert activity.status == "complete"
+
+
+def test_removing_active_footage_does_not_leave_its_activity_running(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Removed active footage"))
+    media = FileMediaLibrary(projects)
+    asset = _asset(media, project.id, "removed")
+
+    class RemovedAssetImporter(FakeImporter):
+        def __init__(self, library):
+            super().__init__(library)
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3", cancellation=None):
+            self.entered.set()
+            await self.release.wait()
+            self.media.remove(project.id, asset.id)
+            raise KeyError(asset.id)
+
+    importer = RemovedAssetImporter(media)
+    queue = SequentialTranscriptionQueue(projects, media, importer, FakeReviewer())
+
+    async def run():
+        await queue.enqueue(project.id, [asset.id])
+        await importer.entered.wait()
+        importer.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(run())
+    activity = {task.id: task for task in CENTER.tasks()}[f"stt:{project.id}:{asset.id}"]
+    assert activity.status == "cancelled"

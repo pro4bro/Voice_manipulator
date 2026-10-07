@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started, job_tick
+from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError, ProcessingStopped
@@ -352,6 +352,7 @@ class SequentialDiarizationQueue:
             pass
 
     async def _process(self, task: DiarizationTask) -> None:
+        activity_started = False
         try:
             cancellation = task.cancellation
             if cancellation:
@@ -368,6 +369,7 @@ class SequentialDiarizationQueue:
                 model=settings.model, words=len(asset.words),
                 expected_speakers=task.expected_speakers,
             )
+            activity_started = True
             milestone = 25.0
 
             async def report(value: float) -> None:
@@ -429,9 +431,17 @@ class SequentialDiarizationQueue:
                     error=cancellation.cancel_error if state == "error" else None,
                 )
             except KeyError:
-                return
+                pass
+            if state == "error":
+                job_failed(
+                    "diarization", task.project_id, task.asset_id,
+                    ProcessingStopError(cancellation.cancel_error or "Cancellation could not be confirmed."),
+                )
+            elif activity_started:
+                job_cancelled("diarization", task.project_id, task.asset_id, "Diarization cancelled")
         except KeyError:
-            return
+            if activity_started:
+                job_cancelled("diarization", task.project_id, task.asset_id, "Footage removed")
         except Exception as exc:
             if task.cancellation and task.cancellation.cancelled:
                 state = "error" if task.cancellation.cancel_error else "cancelled"
@@ -442,6 +452,13 @@ class SequentialDiarizationQueue:
                     )
                 except KeyError:
                     pass
+                if state == "error":
+                    job_failed(
+                        "diarization", task.project_id, task.asset_id,
+                        ProcessingStopError(task.cancellation.cancel_error or "Cancellation could not be confirmed."),
+                    )
+                elif activity_started:
+                    job_cancelled("diarization", task.project_id, task.asset_id, "Diarization cancelled")
                 return
             job_failed("diarization", task.project_id, task.asset_id, exc)
             state = "requires-setup" if "Hugging Face token" in str(exc) or "chấp nhận model" in str(exc) else "error"

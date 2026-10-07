@@ -11,6 +11,7 @@ def test_diarization_stop_all_cancels_active_job_and_allows_retry(tmp_path, monk
 
     from app.adapters.file_media_library import FileMediaLibrary
     from app.adapters.file_project_repository import FileProjectRepository
+    from app.adapters.activity_center import CENTER
     from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
     from app.adapters.studio_diarization_gateway import DiarizationResult
     from app.domain.models import MediaAssetCreate, ProjectCreate
@@ -62,6 +63,8 @@ def test_diarization_stop_all_cancels_active_job_and_allows_retry(tmp_path, monk
     assert asyncio.run(run()) == [asset.id]
     stopped = media.get(project.id, asset.id)
     assert stopped.diarization_status == "cancelled"
+    activity = {task.id: task for task in CENTER.tasks()}[f"diarization:{project.id}:{asset.id}"]
+    assert activity.status == "cancelled"
     assert "diarizationSpeakerId" not in stopped.words[0]
     assert not (Path(project.project_path) / "assets/media/asset-1/diarization/spans.json").exists()
 
@@ -73,6 +76,74 @@ def test_diarization_stop_all_cancels_active_job_and_allows_retry(tmp_path, monk
     asyncio.run(retry())
     assert media.get(project.id, asset.id).diarization_status == "complete"
     assert studio.calls == 2
+
+
+def test_diarization_activity_fails_when_engine_stop_is_not_confirmed(tmp_path, monkeypatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.adapters.activity_center import CENTER
+    from app.adapters.file_media_library import FileMediaLibrary
+    from app.adapters.file_project_repository import FileProjectRepository
+    from app.adapters.processing_cancellation import ProcessingStopError
+    from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
+    from app.domain.models import MediaAssetCreate, ProjectCreate
+
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Diarization stop acknowledgement"))
+    media = FileMediaLibrary(projects)
+    analysis = tmp_path / "analysis.wav"
+    analysis.write_bytes(b"test")
+    asset = media.create(project.id, MediaAssetCreate(
+        name="speech.wav", source_extension=".wav", media_kind="audio",
+        source_path="assets/media/asset-ack/source.wav", analysis_path="assets/media/asset-ack/analysis.wav",
+        duration=2, origin="import", transcription_status="complete",
+        words=[{"text": "Xin", "start": 0.0, "end": 1.0}],
+    ), "asset-ack")
+    monkeypatch.setattr(
+        "app.adapters.sequential_diarization_queue.prepare_diarization_audio",
+        lambda _path, _asset: (analysis, None),
+    )
+
+    class Preferences:
+        def private_diarization(self):
+            return SimpleNamespace(enabled=True, model="test-model", huggingface_token="test-token")
+
+    class UnstoppableStudio:
+        def __init__(self):
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def diarize(self, _path, *, token, model, expected_speakers=None, on_progress=None, cancellation=None):
+            async def fail_acknowledgement():
+                raise ProcessingStopError("Diarization worker could not be stopped.")
+
+            await cancellation.install_cancel_handler(fail_acknowledgement)
+            self.entered.set()
+            await self.release.wait()
+            cancellation.check()
+
+    studio = UnstoppableStudio()
+    queue = SequentialDiarizationQueue(projects, media, Preferences(), studio)
+
+    async def run():
+        await queue.enqueue(project.id, asset.id)
+        await studio.entered.wait()
+        try:
+            await queue.stop(project.id, include_active=True)
+        except ProcessingStopError:
+            pass
+        else:
+            raise AssertionError("Stop must report a failed diarization acknowledgement")
+        studio.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(run())
+    assert media.get(project.id, asset.id).diarization_status == "error"
+    activity = {task.id: task for task in CENTER.tasks()}[f"diarization:{project.id}:{asset.id}"]
+    assert activity.status == "failed"
+    assert "could not be stopped" in activity.error
 
 
 def test_assigns_stable_diarization_labels_by_word_overlap_without_replacing_profile() -> None:

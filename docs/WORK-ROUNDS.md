@@ -12,7 +12,20 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01B
+### 2026-10-07 — current: TASK-STOP-DEVICE-01C
+
+Repairs the stale Activity Center task found in01A/01B. First Stop retains
+running activity; hard cancellation settles cancelled; failed acknowledgement
+settles failed. Regression and real new-API Medium/community-1 GPU checks pass;
+the footer returns to READY and all seven PCM/source hashes agree. Gate:
+`docs/gates/task-stop-device-01c-activity.md`. Fixture services/token copy cleaned.
+Full frontend560/63, API650, Studio22, typecheck/build pass. Normal launcher
+reloads current source; controller/API/Studio health all ok, readiness below4s.
+Exact next01D: real Training Stop/checkpoint Resume and Generate Stop/rerun with
+an owner-selected project/Speaker and compatible artifacts (question pending).
+Physical/native/second-machine and older recognition/phase gates remain open.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01B
 
 Real cached community-1 No/Yes/rerun passes: actual worker59148 is reaped,
 new worker73644 publishes24 raw spans; completed long footage retains120 spans.

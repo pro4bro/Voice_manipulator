@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started, job_tick
+from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
@@ -250,6 +250,7 @@ class SequentialTranscriptionQueue:
         }
 
     async def _process(self, task: TranscriptionTask) -> None:
+        activity_started = False
         try:
             cancellation = task.cancellation
             if cancellation:
@@ -264,6 +265,7 @@ class SequentialTranscriptionQueue:
                 "stt", task.project_id, task.asset_id,
                 model=task.model, name=asset.name, duration=round(asset.duration, 1),
             )
+            activity_started = True
             milestone = 25.0
 
             async def report_progress(value: float) -> None:
@@ -307,10 +309,15 @@ class SequentialTranscriptionQueue:
                     progress=0,
                 )
             except KeyError:
-                return
+                pass
+            if state == "error":
+                job_failed("stt", task.project_id, task.asset_id, ProcessingStopError(cancellation.cancel_error))
+            elif activity_started:
+                job_cancelled("stt", task.project_id, task.asset_id, "Recognition cancelled")
         except KeyError:
             # A user may remove queued footage before its turn without making the queue fail.
-            return
+            if activity_started:
+                job_cancelled("stt", task.project_id, task.asset_id, "Footage removed")
         except Exception as exc:
             if task.cancellation and task.cancellation.cancelled:
                 state = "error" if task.cancellation.cancel_error else "cancelled"
@@ -323,6 +330,10 @@ class SequentialTranscriptionQueue:
                     )
                 except KeyError:
                     pass
+                if state == "error":
+                    job_failed("stt", task.project_id, task.asset_id, ProcessingStopError(task.cancellation.cancel_error))
+                elif activity_started:
+                    job_cancelled("stt", task.project_id, task.asset_id, "Recognition cancelled")
                 return
             job_failed("stt", task.project_id, task.asset_id, exc)
             try:

@@ -1,5 +1,17 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-DEVICE-01C — cancelled activity repair (2026-10-07)
+
+STT/diarization cancellation now settles Activity Center as cancelled, including
+removed active footage; unconfirmed engine termination is failed. Queue Stop
+keeps the active task running. Regressions and actual new-API Medium/community-1
+GPU Stop prove the footer returns to READY and PCM/results stay retained. Gate:
+`docs/gates/task-stop-device-01c-activity.md`. Isolated services/secret copy cleaned.
+Full frontend560/63, API650, Studio22, typecheck/build pass. Normal app restarted
+with current source and three healthy services; readiness3.553/3.291/3.409s.
+Next01D needs owner-selected project/Speaker and compatible Training/Generate
+artifacts. Physical/native/second-machine and older phase gates remain open.
+
 ## TASK-STOP-DEVICE-01B — real community-1 acceptance (2026-10-07)
 
 Real cached community-1 diarization No/Yes/rerun passes in the isolated fixture:

@@ -1,5 +1,13 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## TASK-STOP-DEVICE-01C — settle cancelled activity (2026-10-07)
+
+Bounded STT/diarization Activity Center repair passes regression and actual
+new-API GPU cancellation checks; first Stop retains active work and the footer
+returns READY after hard Stop. Gate: `docs/gates/task-stop-device-01c-activity.md`.
+Exact next01D needs selected project/Speaker and compatible Training/Generate
+artifacts. Parent device/identity, physical and older phase gates remain open.
+
 ## TASK-STOP-DEVICE-01B — real diarization Stop (2026-10-07)
 
 Cached community-1 No/Yes/new-worker rerun has actual process, raw-span and PCM

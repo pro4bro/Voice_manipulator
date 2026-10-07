@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-DEVICE-01B real community-1 Stop acceptance.
-last_activity_desc: Real diarization No/Yes/new-worker rerun and PCM preservation pass; next01C repairs cancelled activity still shown running. Training Resume needs compatible project artifacts. Existing phase and recognition budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-DEVICE-01C cancelled activity repaired.
+last_activity_desc: First Stop retains active task; hard Stop settles activity and reaps real Medium/community-1 workers; browser returns READY. Next01D Training Resume/Generate needs compatible owner-selected project artifacts. Existing phase and recognition budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,14 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## TASK-STOP-DEVICE-01C — 2026-10-07
+
+Cancellation settles STT/diarization activity instead of leaving a running
+footer. Failed acknowledgement remains failed; first Stop stays running.
+Real GPU/new-API and focused regression proof in the01C gate. Exact next01D:
+Training checkpoint Resume/Generate Stop using compatible project artifacts.
+Owner selection is pending; fixture services/token copy are cleaned.
 
 ## TASK-STOP-DEVICE-01B — 2026-10-07
 
@@ -59,7 +67,7 @@ Older near-term parents and Phase03-04 retain their documented prerequisites.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-10-07 — Real diarization Stop accepted; next activity repair.
+Last activity: 2026-10-07 — Cancelled activity repaired and checked with real GPU.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 
