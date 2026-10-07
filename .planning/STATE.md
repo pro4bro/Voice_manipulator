@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-DEVICE-01C cancelled activity repaired.
-last_activity_desc: First Stop retains active task; hard Stop settles activity and reaps real Medium/community-1 workers; browser returns READY. Next01D Training Resume/Generate needs compatible owner-selected project artifacts. Existing phase and recognition budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-DEVICE-01D1–01D2 Resume cache and Generate checked.
+last_activity_desc: Dev-token Resume cache repaired; actual Generate queue/hard Stop and WAV rerun retain sources. Next01D3 fresh disposable LoRA checkpoint Stop/Resume. Browser tool policy blocks new UI evidence; identity/physical budgets unchanged.
 ---
 
 # Project State

@@ -12,7 +12,18 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01D1
+### 2026-10-07 — current: TASK-STOP-DEVICE-01D2
+
+Product imports + real Medium words compile a disposable six-segment dataset;
+Clone publishes a real reference/voice. Generate queue Stop completes WAV4.16s;
+hard Stop reaps warm40628, no late output; rerun11000 publishes WAV3.2s.19 retained
+hashes and the completed output agree, no clipping; no quality/identity claim.
+See `docs/gates/task-stop-device-01d2-generation.md`. Source unchanged since01D1;
+full frontend560/63/API656, typecheck/build pass. Exact next01D3: fresh LoRA
+checkpoint Stop/Resume using the repaired token cache. Browser access rejected
+by tool policy; saved-file/cancel/native/physical/second-machine gates stay open.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01D1
 
 Resume now finds the current dev token list beside train tokens and supports
 the legacy nested dev path. Six regressions pass (current layout failed before

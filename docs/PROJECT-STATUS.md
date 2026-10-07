@@ -1,5 +1,15 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-DEVICE-01D1–01D2 — Resume cache and actual Generate (2026-10-07)
+
+Dev token cache selection repaired; current/legacy/missing layouts pass six
+regressions, runner19, full API656, frontend560/63, typecheck/build. Actual
+product Clone/OmniVoice proves queue Stop, hard Stop worker reaping and fresh
+WAV rerun with19 retained hashes. See the01D1/01D2 gates. Exact next01D3 runs
+fresh LoRA checkpoint Stop/Resume on the disposable product-compiled manifest.
+Browser tool policy blocks new UI/download evidence; physical/identity gates
+remain. No owner project, source PCM, upstream or phase-budget change.
+
 ## TASK-STOP-DEVICE-01C — cancelled activity repair (2026-10-07)
 
 STT/diarization cancellation now settles Activity Center as cancelled, including
