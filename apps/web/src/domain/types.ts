@@ -1049,6 +1049,8 @@ export interface VoiceOutput {
   duration: number;
   sampleRate: number;
   audioPath: string;
+  /** Verified by the output listing; false when the WAV is missing or empty. */
+  audioAvailable?: boolean;
   /** Timed on the generated audio, in the same shape as footage words. */
   words?: StudioWord[];
   wordTimingQuality?: WordTimingQuality | null;

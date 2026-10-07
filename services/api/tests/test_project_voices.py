@@ -256,6 +256,22 @@ def test_generated_speech_lands_in_voice_output_not_media_pool(tmp_path):
     assert outputs.list(project.id) == []
 
 
+def test_voice_output_listing_verifies_audio_without_discarding_metadata(tmp_path):
+    worker = fake_worker(tmp_path)
+    project, voice, outputs, _, generator = generator_fixture(tmp_path, worker)
+    try:
+        output = generator.generate(project.id, voice.id, VoiceGenerateRequest(text="Xin chào"))
+    finally:
+        worker.shutdown()
+    audio = outputs.audio_path(project.id, output.id)
+    assert outputs.list(project.id)[0].audio_available
+    record = (audio.parent / "output.json").read_bytes()
+    audio.unlink()
+    unavailable = outputs.list(project.id)[0]
+    assert unavailable.id == output.id and not unavailable.audio_available
+    assert (audio.parent / "output.json").read_bytes() == record
+
+
 def test_generation_refuses_unknown_parameters_and_a_busy_gpu(tmp_path):
     class NeverCalled:
         def request(self, payload):

@@ -51,11 +51,12 @@ import type {
   TrainingCatalog,
   WorkspacePage,
 } from "../domain/types";
-import { ModuleRegistry, type StudioContext } from "../modules/registry/ModuleRegistry";
+import type { StudioContext } from "../modules/registry/ModuleRegistry";
+import { ProgressiveModule } from "./ProgressiveModule";
 import type { MediaBatchAction, PendingMediaImportRow } from "../modules/media-pool/MediaPool";
 import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-feed";
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../modules/obs-capture/obs-overlap";
-import { categoryOf, parameterOverrides, selectedTrainingModel } from "../modules/train/trainingModels";
+import { categoryOf, parameterOverrides, parameterValue, selectedTrainingModel } from "../modules/train/trainingModels";
 import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
 import { resolveRowVoice, rowsFromOutput, scriptReadiness, voicesInCategory } from "../domain/voiceScript";
 import { isLive, newestBatch } from "../domain/trainingBatch";
@@ -68,6 +69,8 @@ import { Icon, type IconName } from "../ui/Icon";
 import { RuntimeMenuItems } from "./RuntimeMenuItems";
 import { ModuleErrorBoundary } from "./ModuleErrorBoundary";
 import { reconcileScriptTextEdit } from "../modules/script/script-text-reconciliation";
+import { useProcessingChoice } from "../ui/ProcessingChoice";
+import { completedGenerationRows, completedTrainingTargets } from "../domain/processing-results";
 
 interface WorkspaceShellProps {
   project: Project;
@@ -127,6 +130,7 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
 }
 
 export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
+  const processingChoice = useProcessingChoice();
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
 
   useEffect(() => {
@@ -382,23 +386,23 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   useEffect(() => {
     let cancelled = false;
     setMediaBusy(true);
+    void api.listProjectMedia(project.id).then((assets) => {
+      if (!cancelled) setMediaAssets(withoutPermanentlyRemoved(assets));
+    }).catch((error: unknown) => {
+      if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Media Pool");
+    }).finally(() => { if (!cancelled) setMediaBusy(false); });
     void Promise.all([
-      api.listProjectMedia(project.id),
       api.getTrainingCatalog(project.id),
       api.getOmniVoiceProfileSchema(),
       api.getPreferences(),
-    ]).then(([assets, catalog, schema, savedPreferences]) => {
+    ]).then(([catalog, schema, savedPreferences]) => {
       if (cancelled) return;
-      const visibleAssets = withoutPermanentlyRemoved(assets);
-      setMediaAssets(visibleAssets);
       setTrainingCatalog(catalog);
       setProfileSchema(schema);
       setPreferences(savedPreferences);
       if (catalog.speakers[0]) setSelectedVoice((current) => current || catalog.speakers[0].id);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được dữ liệu workspace");
-    }).finally(() => {
-      if (!cancelled) setMediaBusy(false);
     });
 
     api.listReadingPacks()
@@ -1238,8 +1242,14 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   async function startTrainingRun() {
     const model = selectedTrainingModel(trainingModels, trainingCatalog.settings);
-    const targets = trainingCatalog.settings.targetSpeakerIds;
-    if (!model || !targets.length) return;
+    const candidates = trainingCatalog.settings.targetSpeakerIds;
+    if (!model || !candidates.length) return;
+    const parameters = parameterOverrides(model, trainingCatalog.settings);
+    const effectiveParameters = Object.fromEntries(model.parameters.map((spec) => [spec.key, parameterValue(spec, parameters)]));
+    const choice = await processingChoice.choose("Training", candidates,
+      completedTrainingTargets(candidates, model.id, effectiveParameters, trainingRuns, projectVoices, mediaAssets));
+    if (!choice) return;
+    const targets = choice.ids;
     setDatasetBusy(true);
     try {
       // Compiled at the moment of starting, so the run trains on the footage
@@ -1250,7 +1260,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       // the rest from the same descriptor and refuses what it does not allow.
       await api.startTrainingRun(project.id, {
         manifestId: manifest.id,
-        config: { modelId: model.id, parameters: parameterOverrides(model, trainingCatalog.settings) },
+        config: { modelId: model.id, parameters },
         speakerProfileIds: targets,
       });
       setNotice(`Đã xếp ${targets.length} voice target vào hàng train · ${manifest.stats.segments} đoạn.`);
@@ -1593,15 +1603,19 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   async function queueSelectedTranscriptions(model = "large-v3") {
     const followedParents = new Set(mediaAssets.filter((asset) => asset.growingMkvFollow).map((asset) => asset.id));
-    const assetIds = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.importSelected !== false && asset.status !== "no-audio"
+    const targets = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.importSelected !== false && asset.status !== "no-audio"
+      && !asset.deletedAt && !asset.disabled && !mediaAssets.some((child) => child.sourceArchiveAssetId === asset.id)
       && !followedParents.has(asset.sourceArchiveAssetId ?? "")
-      && !["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)).map((asset) => asset.id);
-    if (!assetIds.length) {
+      && !["queued", "processing", "reviewing"].includes(asset.transcriptionStatus));
+    if (!targets.length) {
       setNotice("Hãy tick STT cho ít nhất một footage không đang chạy.");
       return;
     }
+    const choice = await processingChoice.choose("Speech to text", targets.map((asset) => asset.id),
+      new Set(targets.filter((asset) => asset.transcriptionStatus === "complete").map((asset) => asset.id)));
+    if (!choice) return;
     try {
-      const queued = await api.enqueueMediaTranscriptions(project.id, assetIds, model);
+      const queued = await api.enqueueMediaTranscriptions(project.id, choice.ids, model);
       setMediaAssets((current) => current.map((asset) => queued.find((item) => item.id === asset.id) ?? asset));
       setNotice(`Đã đưa ${queued.length} footage vào hàng chờ STT. Chạy lần lượt theo thứ tự thêm vào và không khóa UI.`);
     } catch (error) {
@@ -1769,6 +1783,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setNotice("Hãy chọn footage trong Media Pool trước khi chạy STT kỹ.");
       return;
     }
+    const asset = mediaAssets.find((item) => item.id === scriptAssetId);
+    const choice = await processingChoice.choose("Speech to text", [scriptAssetId],
+      new Set(asset?.transcriptionStatus === "complete" ? [scriptAssetId] : []));
+    if (!choice) return;
     try {
       const selected = await api.setMediaTranscriptionSelected(project.id, scriptAssetId, true);
       const queued = await api.enqueueMediaTranscriptions(project.id, [scriptAssetId]);
@@ -1797,8 +1815,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setNotice("Speaker Diarization cần Hugging Face token lần đầu. Hãy chấp nhận model community-1, dán Read token rồi Lưu Preferences.");
       return;
     }
+    const choice = await processingChoice.choose("Speaker Diarization", targets.map((asset) => asset.id),
+      new Set(targets.filter((asset) => asset.diarizationStatus === "complete").map((asset) => asset.id)));
+    if (!choice) return;
     try {
-      const results = await Promise.allSettled(targets.map((asset) => api.enqueueMediaDiarization(project.id, asset.id, null)));
+      const results = await Promise.allSettled(choice.ids.map((id) => api.enqueueMediaDiarization(project.id, id, null)));
       const queued = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
       setMediaAssets((current) => current.map((asset) => queued.find((item) => item.id === asset.id) ?? asset));
       const failed = results.length - queued.length;
@@ -1873,22 +1894,29 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     // values set in the panel, and reading speed from Control Rack where the
     // generator has such a setting.
     const parameters: Record<string, Record<string, TrainingParameterValue>> = {};
+    const rowParameters: Record<string, Record<string, TrainingParameterValue>> = {};
     for (const row of voiceScriptRows) {
       const voice = row.text.trim() ? resolveRowVoice(row, offered) : null;
       const generator = voice ? generatorForEngine(voiceGenerators, voice.engine) : null;
-      if (!generator || parameters[generator.id]) continue;
-      parameters[generator.id] = {
+      if (!generator || !voice) continue;
+      parameters[generator.id] ??= {
         ...(generatorParameters[generator.id] ?? {}),
         ...(generator.parameters.some((spec) => spec.key === "speed") ? { speed } : {}),
       };
+      const effective = Object.fromEntries(generator.parameters.map((spec) => [spec.key, parameterValue(spec, parameters[generator.id])]));
+      rowParameters[row.id] = { ...effective, language: effective.language || voice.language || null, speed: effective.speed ?? null };
     }
+    const choice = await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
+      completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
+    if (!choice) return;
+    const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
     // No blocking overlay: the Script marks the row being read and the Voice
     // Generator panel shows how many are done.
     setGenerating(true);
     voiceScriptJobRef.current = null;
     setVoiceScriptJob(null);
     try {
-      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: readiness.rows, parameters }));
+      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: selectedRows, parameters, forceRegenerate: choice.rerunAll }));
     } catch (error) {
       setGenerating(false);
       setNotice(error instanceof Error ? error.message : "Không bắt đầu đọc Script được");
@@ -2323,7 +2351,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
-    <ModuleRegistry context={context} id={id} />
+    <ProgressiveModule context={context} id={id} />
   </ModuleErrorBoundary>;
 
   return (
@@ -2355,6 +2383,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       {notice ? <div className="studio-notice" role="status"><i />{notice}</div> : null}
       {job ? <div className="studio-job" role="status"><span><i /><i /><i /></span><b>{job}</b><small>Không đóng app trong khi model đang xử lý.</small></div> : null}
       {preferencesOpen ? <PreferencesDialog preferences={preferences} saving={preferencesSaving} onClose={() => setPreferencesOpen(false)} onSave={(next) => void savePreferences(next)} /> : null}
+      {processingChoice.dialog}
     </main>
   );
 }

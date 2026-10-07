@@ -624,7 +624,7 @@ export const api = {
       `/api/projects/${projectId}/voice-outputs/${outputId}/subtitles?mode=${mode}`,
       `voice-output--${mode}.${mode === "table" ? "csv" : "srt"}`,
     ),
-  readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number }) =>
+  readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/read`, {
       method: "POST",
       body: JSON.stringify(payload),

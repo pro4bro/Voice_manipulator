@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Profiler } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, ProjectMediaAsset, ReadingSession, VoiceScriptJob } from "../domain/types";
@@ -9,6 +10,10 @@ import { WorkspaceShell } from "./WorkspaceShell";
 
 const apiMocks = vi.hoisted(() => ({
   listProjectVoices: vi.fn(),
+  listVoiceOutputs: vi.fn(),
+  getTrainingModels: vi.fn(),
+  compileDataset: vi.fn(),
+  startTrainingRun: vi.fn(),
   readVoiceScript: vi.fn(),
   getVoiceScriptJob: vi.fn(),
   stopGeneration: vi.fn(),
@@ -17,6 +22,8 @@ const apiMocks = vi.hoisted(() => ({
   getSystemStatus: vi.fn(),
   getTrainingCatalog: vi.fn(),
   listProjectMedia: vi.fn(),
+  enqueueMediaTranscriptions: vi.fn().mockResolvedValue([]),
+  enqueueMediaDiarization: vi.fn().mockResolvedValue({}),
   listProjectMediaTranscriptionStatus: vi.fn(),
   listReadingPacks: vi.fn(),
   listReadingSessions: vi.fn(),
@@ -45,7 +52,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
   ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean, streamIndex?: number) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
-    if (id === "library-panel") return <><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
+    if (id === "library-panel") return <><button onClick={() => (context as unknown as StudioContext).onQueueTranscriptions("large-v3")} type="button">queue selected STT</button><button onClick={() => (context as unknown as StudioContext).onRunDiarization()} type="button">queue selected diarization</button><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "script") {
       const overlap = context as unknown as { obsOverlapSelection: { startSeconds: number; endSeconds: number } | null;
@@ -70,6 +77,7 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
         <output data-testid="generation-state">{String(generation.generating)}:{generation.voiceScriptJob?.status ?? "none"}</output>
         <output data-testid="generation-voices">{generation.projectVoices.length}</output></>;
     }
+    if (id === "training-job") return <button onClick={() => (context as unknown as StudioContext).onStartTrainingRun()} type="button">start test training</button>;
     return null;
   },
 }));
@@ -168,16 +176,67 @@ describe("WorkspaceShell STT synchronization", () => {
     });
     apiMocks.getSystemStatus.mockResolvedValue(null);
     apiMocks.listProjectVoices.mockResolvedValue([]);
+    apiMocks.listVoiceOutputs.mockResolvedValue([]);
+    apiMocks.getTrainingModels.mockResolvedValue([]);
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
   });
 
-  function prepareGeneration() {
+  it.each(["all", "missing", "cancel"])("asks before enqueueing a mixed STT selection: %s", async (choice) => {
+    const done = mediaAsset("complete", "Đã có text", "2026-10-08T00:00:01Z");
+    const fresh = { ...mediaAsset("skipped", "", "2026-10-08T00:00:02Z"), id: "asset-2" };
+    const removed = { ...fresh, id: "removed", deletedAt: "2026-10-08T00:00:03Z" };
+    apiMocks.listProjectMedia.mockResolvedValue([done, fresh, removed]);
+    apiMocks.enqueueMediaTranscriptions.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-2"));
+    fireEvent.click(screen.getByRole("button", { name: "queue selected STT" }));
+    expect(apiMocks.enqueueMediaTranscriptions).not.toHaveBeenCalled();
+    const name = choice === "all" ? "Chạy toàn bộ (2)" : choice === "missing" ? "Chỉ phần chưa có kết quả (1)" : "Hủy";
+    fireEvent.click(await screen.findByRole("button", { name }));
+    if (choice === "cancel") {
+      await act(async () => { await Promise.resolve(); });
+      expect(apiMocks.enqueueMediaTranscriptions).not.toHaveBeenCalled();
+    } else await waitFor(() => expect(apiMocks.enqueueMediaTranscriptions).toHaveBeenCalledWith(project.id,
+      choice === "all" ? ["asset-1", "asset-2"] : ["asset-2"], "large-v3"));
+  });
+
+  it("shows media without waiting for unrelated catalog loading", async () => {
+    const catalog = deferred<unknown>();
+    apiMocks.getTrainingCatalog.mockReturnValue(catalog.promise);
+    apiMocks.listProjectMedia.mockResolvedValue([mediaAsset("complete", "Text", "2026-10-08T00:00:01Z")]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+  });
+
+  it("commits selection feedback before loading Script and Timeline, then uses the latest selection", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([mediaAsset("complete", "Đúng footage", "2026-10-08T00:00:01Z")]);
+    const commits: string[] = [];
+    render(<Profiler id="workspace" onRender={() => commits.push(document.body.textContent ?? "")}>
+      <WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+        onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+        project={project} runtime={null} theme="dark" />
+    </Profiler>);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+    commits.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    expect(commits.some((text) => text.includes("Đang mở footage…"))).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("script-value")).toHaveTextContent("Đúng footage"));
+    fireEvent.click(screen.getByRole("button", { name: "clear footage selection" }));
+    await waitFor(() => expect(screen.getByTestId("script-value")).toBeEmptyDOMElement());
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent("trống");
+  });
+
+  function prepareGeneration(rows = [{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }]) {
     apiMocks.listProjectMedia.mockResolvedValue([]);
     apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
     apiMocks.listProjectVoices.mockResolvedValue([{ id: "voice-1", name: "Test voice", kind: "lora", engine: "omnivoice", speakerProfileId: "speaker-1", createdAt: "2026-10-07T00:00:00Z" }]);
-    localStorage.setItem(`pro4bro:${project.id}:voice-script`, JSON.stringify([{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }]));
+    localStorage.setItem(`pro4bro:${project.id}:voice-script`, JSON.stringify(rows));
     render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
       onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
       project={{ ...project, lastPage: "voice-manipulator" }} runtime={null} theme="dark" />);
@@ -187,6 +246,59 @@ describe("WorkspaceShell STT synchronization", () => {
     return { id: "generation-1", projectId: project.id, status, total: 2, done: 1, reused: 0,
       currentRowId: null, message: null, output: null, error: null, startedAt: "2026-10-07T00:00:00Z", finishedAt: null };
   }
+
+  it.each([true, false])("chooses Generate Voice rows before dispatch and requests true regeneration for all: %s", async (all) => {
+    apiMocks.listVoiceOutputs.mockResolvedValue([{ ...GENERATED, segments: [{ rowId: "row-1", voiceId: "voice-1", generatorId: "gen", text: "xin chào" }] }]);
+    apiMocks.readVoiceScript.mockResolvedValue(generationJob("cancelled"));
+    prepareGeneration([{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" },
+      { id: "row-2", text: "từ mới", voiceId: "voice-1", speakerProfileId: "speaker-1" }]);
+    await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "read test script" }));
+    expect(apiMocks.readVoiceScript).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: all ? "Chạy toàn bộ (2)" : "Chỉ phần chưa có kết quả (1)" }));
+    await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
+    const request = apiMocks.readVoiceScript.mock.calls[0][1];
+    expect(request.rows.map((row: { id: string }) => row.id)).toEqual(all ? ["row-1", "row-2"] : ["row-2"]);
+    expect(request.forceRegenerate).toBe(all);
+  });
+
+  it("runs diarization only for unfinished selected footage after the in-app choice", async () => {
+    const preferences = await apiMocks.getPreferences();
+    apiMocks.getPreferences.mockResolvedValue({ ...preferences, diarization: { ...preferences.diarization, huggingfaceTokenConfigured: true } });
+    const done = { ...mediaAsset("complete", "x", "2026-10-08T00:00:01Z"), diarizationSelected: true, diarizationStatus: "complete" };
+    const fresh = { ...done, id: "asset-2", diarizationStatus: "idle" };
+    apiMocks.listProjectMedia.mockResolvedValue([done, fresh]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-2"));
+    fireEvent.click(screen.getByRole("button", { name: "queue selected diarization" }));
+    expect(apiMocks.enqueueMediaDiarization).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Chỉ phần chưa có kết quả (1)" }));
+    await waitFor(() => expect(apiMocks.enqueueMediaDiarization).toHaveBeenCalledWith(project.id, "asset-2", null));
+    expect(apiMocks.enqueueMediaDiarization).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts Training only for targets without a published completed run", async () => {
+    const catalog = await apiMocks.getTrainingCatalog();
+    apiMocks.getTrainingCatalog.mockResolvedValue({ ...catalog, settings: { ...catalog.settings, targetSpeakerIds: ["a", "b"], modelId: "model" } });
+    apiMocks.getTrainingModels.mockResolvedValue([{ id: "model", available: true, parameters: [], category: "train" }]);
+    apiMocks.listTrainingRuns.mockResolvedValue([{ id: "run1", status: "complete", speakerProfileId: "a", createdAt: "2026-10-08T12:00:00Z", config: { modelId: "model", parameters: {} }, checkpoints: [] }]);
+    apiMocks.listProjectVoices.mockResolvedValue([{ id: "v1", speakerProfileId: "a", sourceRunId: "run1", modelId: "model" }]);
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.compileDataset.mockResolvedValue({ id: "dataset", stats: { segments: 2 } });
+    apiMocks.startTrainingRun.mockResolvedValue(undefined);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={{ ...project, lastPage: "voice-training" }} runtime={null} theme="dark" />);
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole("button", { name: "start test training" }));
+    expect(apiMocks.compileDataset).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Chỉ phần chưa có kết quả (1)" }));
+    await waitFor(() => expect(apiMocks.startTrainingRun).toHaveBeenCalledWith(project.id, {
+      manifestId: "dataset", config: { modelId: "model", parameters: {} }, speakerProfileIds: ["b"],
+    }));
+  });
 
   it("does not revive generation when its start response arrives after confirmed Stop", async () => {
     const start = deferred<VoiceScriptJob>();
@@ -208,7 +320,7 @@ describe("WorkspaceShell STT synchronization", () => {
     await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
     fireEvent.click(screen.getByRole("button", { name: "read test script" }));
     await waitFor(() => expect(screen.getByTestId("generation-state")).toHaveTextContent("false:stopped"));
-    expect(screen.getByTestId("timeline-take")).toHaveTextContent(GENERATED.name);
+    expect(await screen.findByTestId("timeline-take")).toHaveTextContent(GENERATED.name);
   });
 
   it("keeps a guided take's snapshot text instead of replacing it with live ASR", async () => {
@@ -282,7 +394,7 @@ describe("WorkspaceShell STT synchronization", () => {
       project.id, "C:/captures/recording.mkv", [2], [2], 60,
     ));
     await waitFor(() => expect(screen.getByTestId("pending-tracks")).toHaveTextContent("none"));
-    expect(screen.getByTestId("script-track")).toHaveTextContent("none");
+    await waitFor(() => expect(screen.getByTestId("script-track")).toHaveTextContent("none"));
     // Following a new MKV opens its parent; the track remains available in Media Pool.
     expect(screen.getByTestId("timeline-take")).toHaveTextContent("recording.mkv");
     await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("mkv-track-2"));
@@ -397,7 +509,7 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByTestId("obs-recording")).toHaveTextContent("take-new:true");
     fireEvent.click(screen.getByRole("button", { name: "archive ready" }));
     await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("archive-new"));
-    expect(screen.getByTestId("timeline-take")).toHaveTextContent("OBS LiveLink · take-new");
+    await waitFor(() => expect(screen.getByTestId("timeline-take")).toHaveTextContent("OBS LiveLink · take-new"));
   });
 
   it("opens an imported multitrack parent with channel Script and saves edits to the selected child", async () => {

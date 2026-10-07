@@ -850,7 +850,7 @@ export function MediaPool({
       eyebrow="PROJECT MEDIA"
       index="MP"
       title="Media Pool"
-      action={<div className="media-import-actions"><button aria-label="Mở file media từ máy" className="media-import" onClick={onImportLocal} title="Chọn một hoặc nhiều file gốc để import" type="button"><Icon name="folder" /><span>IMPORT</span></button><label className="media-import media-import-native" title="Upload một hoặc nhiều file đã hoàn tất"><Icon name="upload" /><input aria-label="Import media" accept={MEDIA_ACCEPT} multiple onChange={importFiles} type="file" /></label></div>}
+      action={<div className="media-import-actions"><button aria-label="Mở file media từ máy" className="media-import" onClick={onImportLocal} title="Chọn một hoặc nhiều file gốc để import" type="button"><Icon name="import" /></button><button aria-label={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} aria-expanded={createFolderOpen} className="media-import" onClick={() => setCreateFolderOpen((open) => !open)} title={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} type="button"><Icon name="folder-plus" /></button><label className="media-import media-import-native" title="Upload một hoặc nhiều file đã hoàn tất"><Icon name="upload" /><input aria-label="Import media" accept={MEDIA_ACCEPT} multiple onChange={importFiles} type="file" /></label></div>}
     >
       <div className="media-pool-summary">
         <span><b>{liveAssets.length}</b> ASSETS</span>
@@ -867,7 +867,7 @@ export function MediaPool({
           <input aria-label="Tên thư mục mới" autoFocus maxLength={120} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Tên thư mục" value={newFolderName} />
           <button className="button button--accent" disabled={!newFolderName.trim()} type="submit">Tạo folder</button>
           <button className="button button--quiet" onClick={() => { setCreateFolderOpen(false); setNewFolderName(""); }} type="button">Hủy</button>
-        </form> : <button className="media-organization-add" onClick={() => setCreateFolderOpen(true)} type="button">+ Tạo folder{activeFolderId ? " con" : ""}</button>}
+        </form> : null}
         {organizationError ? <small className="media-organization-error" role="alert">Không lưu được tổ chức Media Pool: {organizationError}</small> : null}
       </div>
       <div aria-label="Danh sách Media Pool" className="media-pool-list" onClick={(event) => {

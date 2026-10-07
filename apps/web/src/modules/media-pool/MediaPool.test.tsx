@@ -219,7 +219,7 @@ describe("MediaPool", () => {
     try {
       await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
       fireEvent.click(await screen.findByRole("button", { name: "Mở thư mục Audio" }));
-      fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder con" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tạo thư mục con" }));
       fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: "Interview" } });
       fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
       await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
@@ -264,7 +264,7 @@ describe("MediaPool", () => {
       await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
 
       const addFolder = async (name: string) => {
-        fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder" }));
+        fireEvent.click(screen.getByRole("button", { name: "Tạo thư mục" }));
         fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: name } });
         fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
       };
@@ -325,7 +325,7 @@ describe("MediaPool", () => {
         expect.objectContaining({ assetId: imported.id, folderId: null }),
       ])));
 
-      fireEvent.click(screen.getByRole("button", { name: "+ Tạo folder" }));
+      fireEvent.click(screen.getByRole("button", { name: "Tạo thư mục" }));
       fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: "Clean Folder" } });
       fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
       await waitFor(() => expect(screen.getByRole("button", { name: "Mở thư mục Clean Folder" })).toBeInTheDocument());

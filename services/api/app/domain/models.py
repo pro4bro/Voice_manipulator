@@ -1451,6 +1451,8 @@ class VoiceOutput(DomainModel):
     duration: float = Field(default=0, ge=0)
     sample_rate: int = 24000
     audio_path: str
+    # Listing verifies the WAV without rewriting persisted output metadata.
+    audio_available: bool = True
     # Word timing measured on the generated audio, in the same shape Speech to
     # Text gives footage, so Script and Timeline follow speech the same way.
     words: list[dict[str, Any]] = Field(default_factory=list)

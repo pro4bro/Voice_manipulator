@@ -6,6 +6,8 @@ const paths = {
   chevron: "m9 18 6-6-6-6",
   file: "M7 3h7l4 4v14H7zM14 3v5h5M10 13h5M10 17h5",
   folder: "M3 6h7l2 2h9v11H3z",
+  "folder-plus": "M3 6h7l2 2h9v11H3zM12 11v6M9 14h6",
+  import: "M4 4h16v6M4 14v6h16v-6M12 8v9m-4-4 4 4 4-4",
   grid: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
   home: "M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z",
   mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-7 9a7 7 0 0 0 14 0M12 19v3M8 22h8",

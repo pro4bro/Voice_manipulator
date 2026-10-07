@@ -59,7 +59,13 @@ class FileVoiceOutputs:
         outputs: list[VoiceOutput] = []
         for record in root.glob("*/output.json"):
             try:
-                outputs.append(VoiceOutput.model_validate_json(record.read_text(encoding="utf-8")))
+                output = VoiceOutput.model_validate_json(record.read_text(encoding="utf-8"))
+                audio = record.parent / "audio.wav"
+                try:
+                    available = audio.is_file() and audio.stat().st_size > 0
+                except OSError:
+                    available = False
+                outputs.append(output.model_copy(update={"audio_available": available}))
             except ValueError:
                 continue
         return sorted(outputs, key=lambda output: output.created_at, reverse=True)
