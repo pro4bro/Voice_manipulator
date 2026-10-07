@@ -1,5 +1,16 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## UX-INTEGRATION-01 — requested editing workflow (2026-10-07)
+
+Nine bounded UX rounds cover concurrent multi-file import, portable nested
+organization, Script/native text edits, source-time word interpolation and
+promotion, shared subtitle editing, working/cut exclusions and list gutters.
+Frontend550/62 files, backend588, typecheck/build, real PCM preservation and
+browser persistence have evidence in `docs/gates/ux-editing-2026-10-07.md`.
+Owner device checks cover native picker, loaded STT smoothness and audible
+timestamp scrubbing. Exact next: UX-EDITING-DEVICE-01. This UX delivery does not
+advance Phase03-04 or close the older nine recognition/physical parent gates.
+
 ## 03-04A — durable Reading Session recovery (2026-10-05)
 
 Server-owned pack/Speaker/card snapshot, revisions, take receipts, measured

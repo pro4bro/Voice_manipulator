@@ -1,5 +1,22 @@
 # Project Status — 2026-09-22
 
+## UX-INTEGRATION-01 — import and source-time editing (2026-10-07)
+
+The owner-requested nine UX rounds add concurrent multi-file import with an app
+cache dialog, portable folders/order, consistent Script/subtitle text editing,
+provisional word interpolation, middle-click timestamp placement and source-time
+working/cut intervals. Playback, STT, diarization, subtitle export and training
+use the same exclusions. Uncut restores eligibility; original audio is retained.
+Object-list gutters and right-edge scrolling are included. Blocking STT result
+mapping/publication runs off the API event loop; actual GPU-load smoothness
+remains a device check.
+Frontend550/62 files, backend588, typecheck/build and real four-second retained
+PCM proof pass. Browser edits, upload,
+clipboard, range skipping and reopened persistence pass on an isolated copied
+synthetic project; no model/physical audio claim. See the integration gate for
+full check evidence and `docs/UX-EDITING-OWNER-CHECKS.md` for owner acceptance.
+Phase progress and older recognition/physical budgets are unchanged.
+
 ## 03-04A — durable Reading Session recovery (2026-10-05)
 
 Server-owned pack/Speaker/card snapshot, revisions, take receipts, measured

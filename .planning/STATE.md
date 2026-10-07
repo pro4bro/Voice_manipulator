@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-05 — 03-04A persistence/recovery and correctedSTT19B6 timing delivered; 19B7 rejected.
-last_activity_desc: Frontend507/backend570/typecheck/build pass; real session move/restart proof. STT replay post-end p956.891s; CER19.62% fails. Nine near-term parents retain human/physical gates.
+last_activity: 2026-10-07 — owner-requested import and source-time editing rounds integrated.
+last_activity_desc: Frontend550/62 files, backend588, typecheck/build and real PCM/browser persistence proof pass. Native picker, GPU-load smoothness and audible scrubbing need owner device checks. Existing phase and recognition budgets unchanged.
 ---
 
 # Project State
@@ -22,12 +22,22 @@ training, generation, conversion, and later LipSync with honest lineage.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
 
+## UX-INTEGRATION-01 — 2026-10-07
+
+Nine requested UX rounds execute under the owner's all-round override. Portable
+organization, concurrent multi-file import, shared Script/subtitle edits,
+provisional timing and effective working/cut intervals are integrated.
+The real PCM and browser fixtures retain source hashes; interpolation never
+claims verified recognition. See `docs/gates/ux-editing-2026-10-07.md`.
+Next: UX-EDITING-DEVICE-01 — the four owner checks after normal app restart.
+Older near-term parents and Phase03-04 retain their documented prerequisites.
+
 ## Current Position
 
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-09-22 — Completed Round 03-03B SpeakerEmbedder identity gate.
+Last activity: 2026-10-07 — Integrated the requested editing workflow; device checks remain.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 

@@ -12,7 +12,25 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-05 — current: 03-04A / STT19B6–19B7
+### 2026-10-07 — current: UX-INTEGRATION-01
+
+Owner override: run all nine requested import/organization/editing/range rounds
+in this invocation, with bounded commits and evidence. IMPORT-UX-01,
+MEDIA-ORG-01, SCRIPT-EDIT-01, WORD-EDIT-01, WORD-GAP-01, TIMELINE-EDIT-01,
+TIMELINE-RANGE-01 and LIST-UX-01 have their implementation and focused checks.
+The integration gate records complete tests, real PCM and browser persistence.
+Frontend550/62 files and backend588 pass, as do typecheck/build. Archived OBS
+and imported multitrack use the shared editing controls with corrected gain
+units (100 percent = 0 dB); the final browser check has no console errors.
+See `docs/gates/ux-editing-2026-10-07.md`, ADR0046 and
+`docs/UX-EDITING-OWNER-CHECKS.md` for the device acceptance checks.
+Original source hashes are unchanged; interpolation stays unverified. Native
+picker, real STT load and physical audio audition require owner evidence.
+Older nine near-term parents and phase gates retain their prerequisites.
+Exact next round: UX-EDITING-DEVICE-01, run the four owner checks after restarting
+the normal app to load the changed API; fix any reproducible device failure.
+
+### 2026-10-05 — previous: 03-04A / STT19B6–19B7
 
 03-04A persistence/recovery accepted at its bounded slice; frontend507/backend570,
 real API/browser/move/restart proof pass. 19B6 corrected replay post-source-end
@@ -173,9 +191,9 @@ Gate: `docs/gates/livelink-ingest-18d-directory.md`.
 | VOICE-EXPORT-13B3 | Real-output browser handoff | Complete for UI status and project-owned SRT artifacts; parent open | 12 line/333 word cues fit audio; 18 untrusted cues skipped. |
 | UI-CONTRAST-01C | Residual physical DPI and populated highlight matrix | Queued by GAP-PLAN | Criteria and dependencies: `docs/GAP-PLAN-2026-10-03.md`. |
 
-Current execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
-retain historical implementation/acceptance distinctions. Exact next:
-**LIVELINK-INGEST-18A**; historical native-failure acceptance remains open.
+The older execution order is in `docs/GAP-PLAN-2026-10-03.md`; queue rows above
+retain historical implementation/acceptance distinctions. The latest dated
+Queue entry governs the current next round; native-failure acceptance remains open.
 
 ## Round 03-03A — 2026-09-22
 
