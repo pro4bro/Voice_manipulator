@@ -6,6 +6,7 @@ import gc
 import json
 import logging
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from copy import deepcopy
 import math
 import os
@@ -96,7 +97,13 @@ loaded_diarization_model: str | None = None
 model_load_state = "idle"
 model_load_error: str | None = None
 _dll_directory_handles: list[Any] = []
-app = FastAPI(title="Pro4Bro WhisperX Studio", version="1.0")
+@asynccontextmanager
+async def lifespan(_app):
+    yield
+    await stop_inference_workers()
+
+
+app = FastAPI(title="Pro4Bro WhisperX Studio", version="1.0", lifespan=lifespan)
 
 
 @dataclass
@@ -358,7 +365,6 @@ async def release_inference_models() -> dict[str, bool]:
         queued_inference_lock.release()
 
 
-@app.on_event("shutdown")
 async def stop_inference_workers() -> None:
     async with queued_inference_lock:
         workers = list(inference_workers.values())
@@ -1034,9 +1040,11 @@ async def health() -> dict[str, str]:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     device, compute_type = _resolve_device()
-    child_models = sorted({model for models in inference_worker_models.values() for model in models})
+    child_models = [model for kind in sorted(inference_worker_models)
+                    for model in sorted(inference_worker_models[kind])]
+    combined_models = list(dict.fromkeys([*loaded_model_names, *child_models]))
     return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None or bool(child_models), "load_state": model_load_state, "load_error": model_load_error,
-            "loaded_models": sorted(set(loaded_model_names) | set(child_models)), "model_load_count": model_load_count,
+            "loaded_models": combined_models, "model_load_count": model_load_count,
             "last_model_load_seconds": last_model_load_seconds}
 
 
