@@ -247,7 +247,7 @@ class OmniVoiceTrainingCommands:
         # min/max mirror the compiler's own window. Passing them again means a
         # hand-edited manifest is filtered here rather than becoming a shard of
         # samples the trainer will silently drop.
-        return [
+        command = [
             str(self.python), "-m", "omnivoice.scripts.extract_audio_tokens",
             "--input_jsonl", str(input_jsonl),
             "--tar_output_pattern", str(token_dir / "audios" / "shard-%06d.tar"),
@@ -256,6 +256,12 @@ class OmniVoiceTrainingCommands:
             "--min_length", str(min_seconds),
             "--max_length", str(max_seconds),
         ]
+        if sys.platform == "win32":
+            # The upstream CLI defaults to three tokenizer processes per GPU
+            # and 24 DataLoader workers. Spawn-heavy defaults can exhaust
+            # Windows commit/pagefile limits even for a tiny project dataset.
+            command.extend(["--nj_per_gpu", "1", "--loader_workers", "0"])
+        return command
 
     def train(
         self,

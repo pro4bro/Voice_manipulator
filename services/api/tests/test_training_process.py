@@ -253,6 +253,26 @@ class TestCommands:
         assert "--min_length" in command and "2.0" in command
         assert "--max_length" in command and "15.0" in command
 
+    def test_windows_tokenizer_uses_one_process_and_no_dataloader_workers(self, monkeypatch):
+        import app.adapters.training_process as module
+
+        monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+
+        command = self.commands.tokenize(Path("train.jsonl"), Path("tokens"))
+
+        assert command[command.index("--nj_per_gpu") + 1] == "1"
+        assert command[command.index("--loader_workers") + 1] == "0"
+
+    def test_non_windows_tokenizer_keeps_upstream_concurrency_defaults(self, monkeypatch):
+        import app.adapters.training_process as module
+
+        monkeypatch.setattr(module, "sys", SimpleNamespace(platform="linux"))
+
+        command = self.commands.tokenize(Path("train.jsonl"), Path("tokens"))
+
+        assert "--nj_per_gpu" not in command
+        assert "--loader_workers" not in command
+
     def test_tokenize_names_both_shard_patterns(self):
         command = self.commands.tokenize(Path("train.jsonl"), Path("tokens"))
 

@@ -12,7 +12,19 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01D2
+### 2026-10-07 — current: TASK-STOP-DEVICE-01D3A
+
+Actual fresh LoRA tokenize failed42s with Windows paging/MemoryError under
+upstream3 processes/GPU +24 loaders. Product Windows command uses1 process and
+0 loader children; upstream unchanged. Same failed run retries through API and
+produces5 train/1 dev shards with zero failures. Command regressions red/green,
+process17, full API658/two existing warnings pass; unchanged frontend560/63,
+typecheck/build retain their successful check. Gate:
+`docs/gates/task-stop-device-01d3a-tokenizer-windows.md`. Exact next01D3 records
+the actual completed checkpoint Stop/Resume and LoRA WAV acceptance. No quality,
+native, browser-download or second-machine gate advance.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01D2
 
 Product imports + real Medium words compile a disposable six-segment dataset;
 Clone publishes a real reference/voice. Generate queue Stop completes WAV4.16s;
