@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import wave
+import hashlib
 import threading
 import time
+import wave
 from pathlib import Path
 
 import pytest
@@ -67,12 +68,12 @@ def test_punctuation_on_its_own_stays_with_the_word_before_it():
 # ---------------------------------------------------------------- speaker
 
 
-def write_tone(path: Path, seconds: float, rate: int = SAMPLE_RATE) -> None:
+def write_tone(path: Path, seconds: float, rate: int = SAMPLE_RATE, sample: int = 0x10) -> None:
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)
         handle.setsampwidth(2)
         handle.setframerate(rate)
-        handle.writeframes(b"\x10\x00" * int(seconds * rate))
+        handle.writeframes(sample.to_bytes(2, "little", signed=True) * int(seconds * rate))
 
 
 class FakeEngine:
@@ -88,6 +89,16 @@ class FakeEngine:
         self.spoken.append(payload["text"])
         seconds = 0.25 * len(payload["text"].split())
         write_tone(Path(payload["output"]), seconds, rate=16000)
+        return {"ok": True, "seconds": seconds}
+
+
+class RevisionEngine(FakeEngine):
+    def request(self, payload):
+        if payload["text"] == self.fail_on:
+            return {"ok": False, "error": "RuntimeError: out of memory"}
+        self.spoken.append(payload["text"])
+        seconds = 0.25 * len(payload["text"].split())
+        write_tone(Path(payload["output"]), seconds, rate=16000, sample=100 * len(self.spoken))
         return {"ok": True, "seconds": seconds}
 
 
@@ -205,6 +216,35 @@ def test_a_script_is_read_row_by_row_into_one_output_with_words_on_its_timeline(
     assert recognizer.languages == ["vi", "vi", "vi"]
     assert lease.holder() is None
     assert outputs.list(project.id) == [output]
+
+
+def test_terminal_generation_status_waits_until_gpu_lease_is_released(tmp_path, monkeypatch):
+    project, an, _binh, _outputs, lease, speaker, _recognizer = speaker_fixture(tmp_path, FakeEngine())
+    speaker.recognizer = None
+    releasing = threading.Event()
+    allow_release = threading.Event()
+    release = lease.release
+
+    def delayed_release(token):
+        releasing.set()
+        assert allow_release.wait(3)
+        release(token)
+
+    monkeypatch.setattr(lease, "release", delayed_release)
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[
+        VoiceScriptRow(id="r1", voice_id=an.id, text="xin chào"),
+    ]))
+    try:
+        assert releasing.wait(3)
+        assert lease.holder() is not None
+        assert speaker.job(project.id, job.id).status == "running"
+    finally:
+        allow_release.set()
+    deadline = time.monotonic() + 3
+    while speaker.job(project.id, job.id).status == "running" and time.monotonic() < deadline:
+        time.sleep(.01)
+    assert speaker.job(project.id, job.id).status == "complete"
+    assert lease.holder() is None
 
 
 def test_voice_output_exports_wav_and_one_srt_cue_per_script_row_without_word_alignment(tmp_path):
@@ -423,6 +463,104 @@ def test_all_stop_cancels_active_script_row_without_publishing_output(tmp_path, 
     assert result.status == "cancelled" and result.output is None
     assert outputs.list(project.id) == [] and lease.holder() is None
     assert list(outputs.clips_root(project.id).iterdir()) == []
+
+
+def _artifact_hashes(paths: list[Path]) -> dict[str, str]:
+    return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def test_force_regenerate_speaks_again_and_keeps_previous_output_and_clip(tmp_path):
+    engine = RevisionEngine()
+    project, an, _binh, outputs, _lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    rows = [VoiceScriptRow(id="row-1", voice_id=an.id, text="same words")]
+    first = speaker.start(project.id, VoiceScriptRequest(rows=rows), background=False)
+    old_clip = outputs.clips_root(project.id) / first.output.segments[0].clip
+    old_hashes = _artifact_hashes([
+        outputs.audio_path(project.id, first.output.id),
+        old_clip / "audio.wav",
+        old_clip / "clip.json",
+    ])
+    old_output_audio = outputs.audio_path(project.id, first.output.id).read_bytes()
+
+    forced = VoiceScriptRequest.model_validate({
+        "rows": [{"id": rows[0].id, "voiceId": rows[0].voice_id, "text": rows[0].text}],
+        "forceRegenerate": True,
+    })
+    assert forced.force_regenerate is True
+    second = speaker.start(project.id, forced, background=False)
+
+    assert second.status == "complete" and second.reused == 0
+    assert engine.spoken == ["same words", "same words"]
+    assert second.output.segments[0].clip != first.output.segments[0].clip
+    assert outputs.audio_path(project.id, first.output.id).read_bytes() == old_output_audio
+    assert _artifact_hashes([
+        outputs.audio_path(project.id, first.output.id),
+        old_clip / "audio.wav",
+        old_clip / "clip.json",
+    ]) == old_hashes
+    assert outputs.audio_path(project.id, second.output.id).is_file()
+    with wave.open(str(outputs.audio_path(project.id, second.output.id))) as handle:
+        assert handle.getframerate() == SAMPLE_RATE and handle.getnframes() > 0
+
+
+def test_failed_forced_regeneration_keeps_previous_output_and_clip(tmp_path):
+    engine = RevisionEngine(fail_on="same words")
+    project, an, _binh, outputs, _lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    rows = [VoiceScriptRow(id="row-1", voice_id=an.id, text="same words")]
+    engine.fail_on = None
+    first = speaker.start(project.id, VoiceScriptRequest(rows=rows), background=False)
+    old_clip = outputs.clips_root(project.id) / first.output.segments[0].clip
+    old_paths = [outputs.audio_path(project.id, first.output.id), old_clip / "audio.wav", old_clip / "clip.json"]
+    old_hashes = _artifact_hashes(old_paths)
+    engine.fail_on = "same words"
+
+    failed = speaker.start(
+        project.id,
+        VoiceScriptRequest(rows=rows, force_regenerate=True),
+        background=False,
+    )
+
+    assert failed.status == "failed" and "out of memory" in failed.error
+    assert [output.id for output in outputs.list(project.id)] == [first.output.id]
+    assert _artifact_hashes(old_paths) == old_hashes
+    assert [folder.name for folder in outputs.clips_root(project.id).iterdir() if ".partial-" in folder.name] == []
+
+
+def test_cancelled_forced_regeneration_keeps_previous_output_and_clip(tmp_path):
+    engine = BlockingEngine(cancelable=True)
+    project, an, _binh, outputs, lease, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    request = VoiceScriptRequest(rows=[VoiceScriptRow(id="row-1", voice_id=an.id, text="same words")])
+    first_job = speaker.start(project.id, request)
+    assert engine.entered.wait(timeout=2)
+    engine.release.set()
+    deadline = time.monotonic() + 5
+    while speaker.job(project.id, first_job.id).status == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    first = speaker.job(project.id, first_job.id)
+    assert first.status == "complete" and first.output is not None
+
+    old_clip = outputs.clips_root(project.id) / first.output.segments[0].clip
+    old_paths = [outputs.audio_path(project.id, first.output.id), old_clip / "audio.wav", old_clip / "clip.json"]
+    old_hashes = _artifact_hashes(old_paths)
+    engine.entered.clear()
+    engine.release.clear()
+    engine.cancelable = True
+    forced_job = speaker.start(project.id, request.model_copy(update={"force_regenerate": True}))
+    assert engine.entered.wait(timeout=2)
+
+    cancelled = speaker.stop(project.id, include_active=True)
+    assert cancelled is not None and cancelled.status == "cancelled"
+    deadline = time.monotonic() + 5
+    while lease.holder() is not None and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert speaker.job(project.id, forced_job.id).status == "cancelled"
+    assert [output.id for output in outputs.list(project.id)] == [first.output.id]
+    assert _artifact_hashes(old_paths) == old_hashes
+    assert [folder.name for folder in outputs.clips_root(project.id).iterdir() if ".partial-" in folder.name] == []
 
 
 def test_all_stop_cancels_blocking_word_recognition(tmp_path):

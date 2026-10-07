@@ -1470,6 +1470,8 @@ class VoiceScriptRequest(DomainModel):
     """A typed Script, row by row, each row read by the voice picked for it."""
 
     rows: list[VoiceScriptRow] = Field(min_length=1, max_length=400)
+    # Bypass each row's reusable clip cache and publish fresh clip revisions.
+    force_regenerate: bool = False
     # Generation values per generator id, as the Voice Generator panel holds them.
     parameters: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # Silence between two rows, so a change of speaker does not land on a breath.

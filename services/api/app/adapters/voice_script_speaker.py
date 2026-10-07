@@ -286,9 +286,13 @@ class VoiceScriptSpeaker:
                 self._jobs.pop(job.record.id, None)
             raise
         if background:
-            threading.Thread(target=self._run, args=(job, steps, request.gap_seconds, lease.token), daemon=True).start()
+            threading.Thread(
+                target=self._run,
+                args=(job, steps, request.gap_seconds, lease.token, request.force_regenerate),
+                daemon=True,
+            ).start()
         else:
-            self._run(job, steps, request.gap_seconds, lease.token)
+            self._run(job, steps, request.gap_seconds, lease.token, request.force_regenerate)
         return self.job(project_id, job.record.id)
 
     def job(self, project_id: str, job_id: str) -> VoiceScriptJob:
@@ -296,6 +300,12 @@ class VoiceScriptSpeaker:
         if job is None or job.record.project_id != project_id:
             raise KeyError(job_id)
         with job.lock:
+            # Publication finishes before the thread's GPU/worker cleanup.
+            # Keep polling live until that handover is complete, so the next
+            # inference is not offered while the previous lease is still held.
+            if job.live and (job.record.status in {"complete", "failed"}
+                    or (job.record.status == "stopped" and job.record.output is not None)):
+                return job.record.model_copy(update={"status": "running", "finished_at": None}, deep=True)
             return job.record.model_copy(deep=True)
 
     def stop(self, project_id: str, include_active: bool = False) -> VoiceScriptJob | None:
@@ -365,7 +375,10 @@ class VoiceScriptSpeaker:
                 return
             job.record = job.record.model_copy(update=changes)
 
-    def _run(self, job: _Job, steps: list[_Step], gap_seconds: float, lease_token: str) -> None:
+    def _run(
+        self, job: _Job, steps: list[_Step], gap_seconds: float, lease_token: str,
+        force_regenerate: bool = False,
+    ) -> None:
         project_id = job.record.project_id
         task = CENTER.start_task(
             "tts", f"Đọc Script · {len(steps)} đoạn", detail="Chuẩn bị", fraction=0.0, project_id=project_id,
@@ -407,6 +420,7 @@ class VoiceScriptSpeaker:
                     job=job,
                     is_cancelled=lambda: self._cancel_requested(job),
                     commit=lambda action: self._commit_if_active(job, action),
+                    force_regenerate=force_regenerate,
                 )
                 abandon = getattr(step.plan.engine_speech.worker, "abandon_request", None)
                 if callable(abandon):
@@ -470,15 +484,18 @@ class VoiceScriptSpeaker:
                 active_worker = job.active_worker
                 job.active_request_id = None
                 job.active_worker = None
-                job.live = False
-            abandon = getattr(active_worker, "abandon_request", None)
-            if active_request_id is not None and callable(abandon):
-                abandon(active_request_id)
-            if terminal_status == "stopped":
-                CENTER.finish_task(task, status="cancelled", detail=f"Đã dừng sau {job.record.done}/{len(steps)} đoạn")
-            elif terminal_status == "cancelled":
-                CENTER.finish_task(task, status="cancelled", detail="Đã huỷ")
-            self.gpu_lease.release(lease_token)
+            try:
+                abandon = getattr(active_worker, "abandon_request", None)
+                if active_request_id is not None and callable(abandon):
+                    abandon(active_request_id)
+                if terminal_status == "stopped":
+                    CENTER.finish_task(task, status="cancelled", detail=f"Đã dừng sau {job.record.done}/{len(steps)} đoạn")
+                elif terminal_status == "cancelled":
+                    CENTER.finish_task(task, status="cancelled", detail="Đã huỷ")
+            finally:
+                self.gpu_lease.release(lease_token)
+                with job.lock:
+                    job.live = False
 
     @staticmethod
     def _cancel_requested(job: _Job) -> bool:
@@ -534,8 +551,13 @@ class VoiceScriptSpeaker:
         job: _Job | None = None,
         is_cancelled: Callable[[], bool] | None = None,
         commit: Callable[[Callable[[], None]], bool] | None = None,
+        force_regenerate: bool = False,
     ) -> Clip:
         key = self.clip_key(step)
+        if force_regenerate:
+            # Keep every completed output's original clip immutable. Fresh
+            # generations receive their own project-owned revision directory.
+            key = f"{key}-{uuid4().hex}"
         folder = self.outputs.clips_root(project_id) / key
         record = folder / "clip.json"
         if record.is_file() and (folder / "audio.wav").is_file():
