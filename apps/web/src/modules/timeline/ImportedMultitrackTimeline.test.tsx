@@ -31,6 +31,22 @@ it("positions timed subtitle words on the same axis as each waveform", () => {
   expect(word).toHaveClass("is-active");
 });
 
+it("hides labels on dense subtitle intervals and restores them when zoom makes room", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 7200, points: [] }) }));
+  const shortWord = { text: "short", start: 0.1, end: 0.2 };
+  render(<ImportedMultitrackTimeline parent={{ ...parent, duration: 7200 }} tracks={[{
+    ...tracks[0], duration: 7200, text: "short", words: [shortWord],
+  }]} selectedTrackId={null} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
+  const word = screen.getByRole("button", { name: "short · 00:00–00:00" });
+  expect(word).toHaveClass("is-compact");
+  expect(word.style.left).toBe("0.001388888888888889%");
+
+  fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "1000" } });
+  expect(word).not.toHaveClass("is-compact");
+  fireEvent.click(word);
+  expect(word).toHaveClass("is-active");
+});
+
 it("opens the shared timeline editor for an archived multitrack word and writes only to its asset", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const words = [{ text: "hello", start: 15, end: 18 }, { text: "world", start: 30, end: 33 }];

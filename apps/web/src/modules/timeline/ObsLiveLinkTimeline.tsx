@@ -18,7 +18,9 @@ import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
+import { isCompactSubtitleWord, subtitleWordWidthPixels } from "./subtitle-density";
 import "./waveform.css";
+import "./subtitle-density.css";
 
 const WINDOW_OPTIONS = [15, 30, 60, 120] as const;
 const DEFAULT_WINDOW_SECONDS = 60;
@@ -777,6 +779,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               </span>)}
             </div></> : null}
           {visibleLanes.map((lane) => {
+            const subtitleLaneWidth = layout === "columns"
+              ? (columnWidths[lane.channelId] ?? defaultColumnWidth) * 0.62
+              : Math.max(240, viewportWidth - 124);
             const captions = transcriptRows.filter((row) => row.recordingId === recordingId && row.channelId === lane.channelId);
             const archivedAsset = !isLive && lane.assetId ? assets.find((asset) => asset.id === lane.assetId) : undefined;
             const overlaps: TimelineOverlap[] = detailedOverlaps
@@ -920,7 +925,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   return position ? <button key={wordIndex} type="button" style={position}
                     aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${isCompactSubtitleWord(subtitleWordWidthPixels(word.start, word.end, windowStart, windowSpan, subtitleLaneWidth)) ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

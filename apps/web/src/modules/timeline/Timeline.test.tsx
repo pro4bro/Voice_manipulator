@@ -176,6 +176,32 @@ describe("Timeline", () => {
     expect(screen.getByRole("button", { name: "Subtitle word cũ" })).toHaveClass("timeline-word--untrusted");
   });
 
+  it("keeps dense words in place and restores their labels when zoom provides room", () => {
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) { this.callback([{ target } as ResizeObserverEntry], this as unknown as ResizeObserver); }
+      disconnect() {}
+    });
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const width = this.classList.contains("timeline-canvas")
+        ? 1_000 * Number(this.style.getPropertyValue("--zoom") || 1) : 1_000;
+      return { left: 0, top: 0, width, height: 100, right: width, bottom: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "dense.wav", duration: 60,
+        wordTimingQuality: "source", words: [{ text: "short", start: 0.1, end: 0.2 }] }} />);
+      const word = screen.getByRole("button", { name: "Subtitle word short" });
+      expect(word).toHaveClass("is-compact");
+      const originalLeft = word.style.left;
+      fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "1000" } });
+      expect(word).not.toHaveClass("is-compact");
+      expect(word.style.left).toBe(originalLeft);
+    } finally {
+      rectSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders partial timing and marks only the untrusted word", () => {
     render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "partial.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "partial", words: [{ text: "đúng", start: 1, end: 1.3, timingTrusted: true }, { text: "cảnh-báo", start: 1.3, end: 1.31, timingTrusted: false }] }} />);
     expect(screen.getByRole("button", { name: "Subtitle word đúng" })).not.toHaveClass("timeline-word--untrusted");

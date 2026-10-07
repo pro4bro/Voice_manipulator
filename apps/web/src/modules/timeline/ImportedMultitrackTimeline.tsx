@@ -9,9 +9,11 @@ import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
+import { isCompactSubtitleWord, subtitleWordWidthPixels } from "./subtitle-density";
 import { Timeline } from "./Timeline";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import "./waveform.css";
+import "./subtitle-density.css";
 
 const MAX_WAVEFORM_PIXELS_PER_SECOND = 1000;
 type Layout = "layers" | "columns";
@@ -412,6 +414,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
           </div></> : null}
           {visibleTracks.map((track) => {
             const index = orderedTracks.findIndex((item) => item.id === track.id);
+            const subtitleLaneWidth = layout === "columns"
+              ? columnWidths[track.id] ?? Math.max(240, (viewportWidth - 12 - 6 * Math.max(0, visibleTracks.length - 1)) / Math.max(1, visibleTracks.length))
+              : Math.max(240, viewportWidth - 140);
             const trackName = track.name.startsWith(`${parent.name} · `) ? track.name.slice(parent.name.length + 3) : track.name;
             const overview = envelopes[track.id];
             const detail = detailEnvelopes[track.id];
@@ -443,7 +448,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                   return style ? <button key={wordIndex} type="button" style={style}
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${isCompactSubtitleWord(subtitleWordWidthPixels(word.start, word.end, windowStart, span, subtitleLaneWidth)) ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

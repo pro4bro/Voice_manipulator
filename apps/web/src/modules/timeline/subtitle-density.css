@@ -1,0 +1,28 @@
+/* Keep the original timestamp rectangles and hit targets, but omit text and
+   per-word boxes when a word occupies less space than its label can use. */
+.timeline-module .timeline-word.is-compact,
+.timeline-module .imported-timeline__word.is-compact {
+  overflow: hidden;
+  padding: 0;
+  color: transparent !important;
+  font-size: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.timeline-module .timeline-word.is-compact.is-active,
+.timeline-module .imported-timeline__word.is-compact.is-active {
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.timeline-module .timeline-word.is-compact.is-selected {
+  box-shadow: inset 0 -2px var(--accent-dark);
+}
+
+.timeline-module .timeline-word.is-compact.is-promoted {
+  outline: 1px solid var(--lime);
+  outline-offset: -1px;
+}
