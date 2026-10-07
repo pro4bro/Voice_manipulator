@@ -10,6 +10,7 @@ from pathlib import Path
 from app.adapters.activity_logging import job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError, ProcessingStopped
 from app.adapters.studio_diarization_gateway import StudioDiarizationGateway
 from app.adapters.timeline_audio import prepare_diarization_audio
 from app.domain.timeline_intervals import restore_span
@@ -21,6 +22,7 @@ class DiarizationTask:
     project_id: str
     asset_id: str
     expected_speakers: int | None = None
+    cancellation: ProcessingCancellation | None = None
 
 
 # A word whose own span covers less than this is sitting on a boundary; its raw
@@ -230,6 +232,7 @@ class SequentialDiarizationQueue:
         self._pending: list[DiarizationTask] = []
         self._scheduled: set[tuple[str, str]] = set()
         self._worker: asyncio.Task[None] | None = None
+        self._active: DiarizationTask | None = None
 
     async def enqueue(self, project_id: str, asset_id: str, expected_speakers: int | None = None) -> None:
         asset = self.media.get(project_id, asset_id)
@@ -244,7 +247,7 @@ class SequentialDiarizationQueue:
             if key in self._scheduled:
                 return
             self.media.set_diarization_state(project_id, asset_id, "queued", progress=0, error=None)
-            self._pending.append(DiarizationTask(project_id, asset_id, expected_speakers))
+            self._pending.append(DiarizationTask(project_id, asset_id, expected_speakers, ProcessingCancellation()))
             self._scheduled.add(key)
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.create_task(self._run(), name="pro4bro-diarization-queue")
@@ -254,13 +257,66 @@ class SequentialDiarizationQueue:
             async with self._lock:
                 if not self._pending:
                     self._worker = None
+                    self._active = None
                     return
                 task = self._pending.pop(0)
+                self._active = task
             try:
                 await self._process(task)
             finally:
                 async with self._lock:
                     self._scheduled.discard((task.project_id, task.asset_id))
+                    if self._active is task:
+                        self._active = None
+
+    async def stop(
+        self,
+        project_id: str,
+        asset_ids: list[str] | None = None,
+        *,
+        include_active: bool = False,
+    ) -> list[str]:
+        """Remove queued work; optionally cancel matching active inference."""
+        active_to_cancel: DiarizationTask | None = None
+        async with self._lock:
+            wanted = set(asset_ids) if asset_ids else {
+                task.asset_id for task in self._pending if task.project_id == project_id
+            }
+            dropped = [
+                task.asset_id for task in self._pending
+                if task.project_id == project_id and task.asset_id in wanted
+            ]
+            self._pending = [
+                task for task in self._pending
+                if task.project_id != project_id or task.asset_id not in wanted
+            ]
+            if include_active and self._active is not None:
+                active = self._active
+                if active.project_id == project_id and (not asset_ids or active.asset_id in wanted):
+                    active_to_cancel = active
+                    if active.cancellation:
+                        active.cancellation.request()
+                    dropped.append(active.asset_id)
+            for asset_id in dropped:
+                if self._active is None or (self._active.project_id, self._active.asset_id) != (project_id, asset_id):
+                    self._scheduled.discard((project_id, asset_id))
+                try:
+                    state = "cancelled" if include_active else "idle"
+                    self.media.set_diarization_state(project_id, asset_id, state, progress=0, error=None)
+                except KeyError:
+                    continue
+        if active_to_cancel and active_to_cancel.cancellation:
+            try:
+                await active_to_cancel.cancellation.cancel()
+            except ProcessingStopError as exc:
+                try:
+                    self.media.set_diarization_state(
+                        project_id, active_to_cancel.asset_id, "error", progress=0, error=str(exc)
+                    )
+                except KeyError:
+                    pass
+                raise
+        return list(dict.fromkeys(dropped))
 
     @staticmethod
     def _store_spans(
@@ -297,6 +353,9 @@ class SequentialDiarizationQueue:
 
     async def _process(self, task: DiarizationTask) -> None:
         try:
+            cancellation = task.cancellation
+            if cancellation:
+                cancellation.check()
             asset = self.media.get(task.project_id, task.asset_id)
             project = self.projects.get(task.project_id)
             settings = self.preferences.private_diarization()
@@ -313,6 +372,8 @@ class SequentialDiarizationQueue:
 
             async def report(value: float) -> None:
                 nonlocal milestone
+                if cancellation:
+                    cancellation.check()
                 if value >= milestone:
                     # Every 25% keeps a long job visible without one line per tick.
                     job_progress("diarization", task.project_id, task.asset_id, value)
@@ -325,24 +386,33 @@ class SequentialDiarizationQueue:
 
             processing_path, kept = await asyncio.to_thread(prepare_diarization_audio,
                 Path(project.project_path) / str(asset.analysis_path), asset)
+            if cancellation:
+                cancellation.check()
             result = await self.studio.diarize(
                 processing_path,
                 token=settings.huggingface_token,
                 model=settings.model,
                 expected_speakers=task.expected_speakers,
                 on_progress=report,
+                cancellation=cancellation,
             )
+            if cancellation:
+                cancellation.check()
             def restore(spans):
                 if kept is None:
                     return spans
                 return [{**span, "start": a, "end": b} for span in spans
                         for a, b in restore_span(float(span["start"]), float(span["end"]), kept)]
             spans = restore(result.spans)
+            if cancellation:
+                cancellation.check()
             self._store_spans(project.project_path, task.asset_id, spans, settings.model, restore(result.overlaps or []))
             # Re-read words instead of reusing the snapshot taken before the job.
             # Diarization runs for minutes; Script edits made in the meantime were
             # silently overwritten by the stale copy.
             current = self.media.get(task.project_id, task.asset_id)
+            if cancellation:
+                cancellation.check()
             labelled = assign_spans_to_words(current.words, spans)
             self.media.apply_diarization(task.project_id, task.asset_id, labelled)
             job_finished(
@@ -351,9 +421,28 @@ class SequentialDiarizationQueue:
                 speakers=len({w.get("diarizationSpeakerId") for w in labelled if w.get("diarizationSpeakerId")}),
                 unlabelled=sum(1 for w in labelled if not w.get("diarizationSpeakerId")),
             )
+        except ProcessingStopped:
+            try:
+                state = "error" if cancellation and cancellation.cancel_error else "cancelled"
+                self.media.set_diarization_state(
+                    task.project_id, task.asset_id, state, progress=0,
+                    error=cancellation.cancel_error if state == "error" else None,
+                )
+            except KeyError:
+                return
         except KeyError:
             return
         except Exception as exc:
+            if task.cancellation and task.cancellation.cancelled:
+                state = "error" if task.cancellation.cancel_error else "cancelled"
+                try:
+                    self.media.set_diarization_state(
+                        task.project_id, task.asset_id, state, progress=0,
+                        error=task.cancellation.cancel_error if state == "error" else None,
+                    )
+                except KeyError:
+                    pass
+                return
             job_failed("diarization", task.project_id, task.asset_id, exc)
             state = "requires-setup" if "Hugging Face token" in str(exc) or "chấp nhận model" in str(exc) else "error"
             try:

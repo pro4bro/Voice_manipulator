@@ -5,6 +5,7 @@ import asyncio
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.openai_compatible_transcript_reviewer import ReviewOutcome
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError
 from app.adapters.sequential_transcription_queue import SequentialTranscriptionQueue
 from app.domain.models import MediaAssetCreate, ProjectCreate
 
@@ -14,7 +15,7 @@ class FakeImporter:
         self.media = media
         self.calls: list[str] = []
 
-    async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3"):
+    async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3", cancellation=None):
         self.calls.append(asset.id)
         if on_progress:
             await on_progress(12.3)
@@ -102,10 +103,11 @@ class GatedImporter(FakeImporter):
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3"):
+    async def transcribe_existing(self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3", cancellation=None):
+        self.cancellation = cancellation
         self.entered.set()
         await self.release.wait()
-        return await super().transcribe_existing(project, asset, realtime_text, on_progress, model)
+        return await super().transcribe_existing(project, asset, realtime_text, on_progress, model, cancellation)
 
 
 def test_pausing_one_asset_lets_the_rest_of_the_batch_carry_on(tmp_path):
@@ -185,3 +187,110 @@ def test_stopping_takes_an_asset_out_but_keeps_it_ticked_for_a_re_run(tmp_path):
     assert stopped.transcription_status == "skipped"
     # Stop cancels this run, not the intent to transcribe it.
     assert stopped.transcription_selected is True
+
+
+class LateMediaImporter:
+    """Simulates a recognizer that returns after its owning job was stopped."""
+
+    def __init__(self, media: FileMediaLibrary) -> None:
+        self.media = media
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.calls: list[str] = []
+
+    async def transcribe_existing(
+        self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3", cancellation=None
+    ):
+        self.calls.append(asset.id)
+        self.entered.set()
+        await self.release.wait()
+        if cancellation:
+            cancellation.check()
+        return self.media.apply_transcription(
+            project.id,
+            asset.id,
+            {"id": f"late-{asset.id}", "text": "late result", "words": [], "duration": asset.duration},
+            asset.duration,
+        ), 0.01
+
+
+def test_stop_all_cancels_only_the_selected_project_and_suppresses_late_result(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Stopped project"))
+    other_project = projects.create(ProjectCreate(name="Other project"))
+    media = FileMediaLibrary(projects)
+    active = _asset(media, project.id, "active")
+    pending = _asset(media, project.id, "pending")
+    other = _asset(media, other_project.id, "other")
+    importer = LateMediaImporter(media)
+    queue = SequentialTranscriptionQueue(projects, media, importer, FakeReviewer())
+
+    async def run():
+        await queue.enqueue(project.id, [active.id, pending.id])
+        await queue.enqueue(other_project.id, [other.id])
+        await importer.entered.wait()
+        stopped = await queue.stop(project.id, include_active=True)
+        importer.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+        return stopped
+
+    stopped = asyncio.run(run())
+
+    assert set(stopped) == {active.id, pending.id}
+    assert importer.calls == [active.id, other.id]
+    assert media.get(project.id, active.id).transcription_status == "cancelled"
+    assert media.get(project.id, pending.id).transcription_status == "cancelled"
+    assert media.get(project.id, active.id).text == ""
+    assert media.get(project.id, active.id).transcription_selected is True
+    assert media.get(other_project.id, other.id).transcription_status == "complete"
+
+    async def retry():
+        await queue.enqueue(project.id, [active.id, pending.id])
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(retry())
+    assert media.get(project.id, active.id).transcription_status == "complete"
+    assert media.get(project.id, pending.id).transcription_status == "complete"
+
+
+def test_failed_active_cancel_ack_is_reported_and_never_marked_cancelled(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Stop acknowledgement"))
+    media = FileMediaLibrary(projects)
+    asset = _asset(media, project.id, "active")
+
+    class AcknowledgementFailureImporter(LateMediaImporter):
+        async def transcribe_existing(
+            self, project, asset, realtime_text: str, on_progress=None, model: str = "large-v3", cancellation=None
+        ):
+            async def fail_acknowledgement():
+                raise ProcessingStopError("Studio cancellation could not be confirmed.")
+
+            await cancellation.install_cancel_handler(fail_acknowledgement)
+            self.entered.set()
+            await self.release.wait()
+            cancellation.check()
+
+    importer = AcknowledgementFailureImporter(media)
+    queue = SequentialTranscriptionQueue(projects, media, importer, FakeReviewer())
+
+    async def run():
+        await queue.enqueue(project.id, [asset.id])
+        await importer.entered.wait()
+        try:
+            await queue.stop(project.id, include_active=True)
+        except ProcessingStopError as exc:
+            assert "could not be confirmed" in str(exc)
+        else:
+            raise AssertionError("Stop must report a failed engine acknowledgement")
+        assert media.get(project.id, asset.id).transcription_status == "error"
+        importer.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(run())
+    final = media.get(project.id, asset.id)
+    assert final.transcription_status == "error"
+    assert final.text == ""

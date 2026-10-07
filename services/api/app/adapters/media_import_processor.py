@@ -36,6 +36,7 @@ from app.domain.ports import MediaLibrary
 from app.adapters.word_timing_quality import reconcile_word_timing_quality, space_recognized_words
 from app.domain.timeline_intervals import excluded_intervals
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError
 
 
 SUPPORTED_MEDIA_EXTENSIONS = {
@@ -540,13 +541,18 @@ class MediaImportProcessor:
         realtime_text: str = "",
         on_progress: TranscriptionProgressCallback | None = None,
         model: str = "large-v3",
+        cancellation: ProcessingCancellation | None = None,
     ) -> tuple[ProjectMediaAsset, float]:
+        if cancellation:
+            cancellation.check()
         if not asset.analysis_path:
             raise ValueError("Footage không có analysis audio để chạy Speech to Text.")
         analysis_path = Path(project.project_path) / asset.analysis_path
         if not analysis_path.is_file():
             raise FileNotFoundError("Analysis audio không còn trong project.")
         processing_path, kept_ranges = await asyncio.to_thread(self._prepare_processing_audio, analysis_path, asset)
+        if cancellation:
+            cancellation.check()
         engine_name, _, variant = model.partition("@")
         engine = self.other_stt.get(engine_name)
         if engine is not None:
@@ -554,10 +560,34 @@ class MediaImportProcessor:
                 await on_progress(1)
             started = time.perf_counter()
             duration = await asyncio.to_thread(self._audio_duration, processing_path)
-            if variant:
-                item = await asyncio.to_thread(engine, processing_path, duration, variant=variant, project_id=project.id)
-            else:
-                item = await asyncio.to_thread(engine, processing_path, duration)
+            registered = False
+            if cancellation:
+                cancellation.check()
+                register_request = getattr(engine, "register_request", None)
+                if callable(register_request):
+                    register_request(cancellation.id)
+                    registered = True
+                cancel_request = getattr(engine, "cancel_request", None)
+                if callable(cancel_request):
+                    async def cancel_engine_request() -> None:
+                        await asyncio.to_thread(cancel_request, cancellation.id)
+                    await cancellation.install_cancel_handler(cancel_engine_request)
+            try:
+                if variant:
+                    kwargs = {"variant": variant, "project_id": project.id}
+                    if cancellation:
+                        kwargs["cancellation_id"] = cancellation.id
+                    item = await asyncio.to_thread(engine, processing_path, duration, **kwargs)
+                else:
+                    kwargs = {"cancellation_id": cancellation.id} if cancellation else {}
+                    item = await asyncio.to_thread(engine, processing_path, duration, **kwargs)
+            finally:
+                if registered:
+                    abandon_request = getattr(engine, "abandon_request", None)
+                    if callable(abandon_request):
+                        abandon_request(cancellation.id)
+            if cancellation:
+                cancellation.check()
             elapsed = round(time.perf_counter() - started, 2)
             if on_progress is not None:
                 await on_progress(99)
@@ -568,11 +598,20 @@ class MediaImportProcessor:
                 realtime_text or asset.text,
                 on_progress=on_progress,
                 model=model,
+                cancellation=cancellation,
             )
+        if cancellation:
+            cancellation.check()
         if kept_ranges:
             item = await asyncio.to_thread(self._restore_original_timeline, item, kept_ranges, asset.duration)
+        if cancellation:
+            cancellation.check()
         item = await asyncio.to_thread(self._attach_timing_quality, item, asset.duration)
+        if cancellation:
+            cancellation.check()
         item = await asyncio.to_thread(self._write_and_read_stt_artifacts, analysis_path.parent, item)
+        if cancellation:
+            cancellation.check()
         updated = await asyncio.to_thread(self.library.apply_transcription, project.id, asset.id, item, asset.duration)
         return updated, elapsed
 
@@ -800,12 +839,18 @@ class MediaImportProcessor:
         *,
         on_progress: TranscriptionProgressCallback | None = None,
         model: str = "large-v3",
+        cancellation: ProcessingCancellation | None = None,
     ) -> tuple[dict[str, Any], float]:
+        if cancellation:
+            cancellation.check()
         duration = await asyncio.to_thread(self._audio_duration, analysis_path)
+        if cancellation:
+            cancellation.check()
         chunks = self._stt_chunks(duration)
         if len(chunks) == 1:
             return await self._upload_studio_audio(
-                analysis_path, origin, realtime_text, on_progress=on_progress, model=model
+                analysis_path, origin, realtime_text, on_progress=on_progress, model=model,
+                cancellation=cancellation,
             )
 
         cache_dir = analysis_path.parent / "cache" / "stt-chunks"
@@ -815,6 +860,8 @@ class MediaImportProcessor:
         elapsed = 0.0
         try:
             for index, chunk in enumerate(chunks, start=1):
+                if cancellation:
+                    cancellation.check()
                 chunk_path = cache_dir / f"stt-{job_id}-{index:03d}.wav"
 
                 async def report_chunk_progress(value: float, *, completed: int = index - 1) -> None:
@@ -831,6 +878,7 @@ class MediaImportProcessor:
                         realtime_text if index == 1 else "",
                         on_progress=report_chunk_progress if on_progress else None,
                         model=model,
+                        cancellation=cancellation,
                     )
                     results.append((chunk, item))
                     elapsed += chunk_elapsed
@@ -929,10 +977,11 @@ class MediaImportProcessor:
         *,
         on_progress: TranscriptionProgressCallback | None = None,
         model: str = "large-v3",
+        cancellation: ProcessingCancellation | None = None,
     ) -> tuple[dict[str, Any], float]:
         # A queued local STT job may legitimately run for hours; keep the import request alive.
         timeout = httpx.Timeout(timeout=None, connect=5.0)
-        progress_id = uuid4().hex if on_progress else ""
+        progress_id = cancellation.id if cancellation else (uuid4().hex if on_progress else "")
         latest_progress = -1.0
         progress_endpoint_available = bool(progress_id)
 
@@ -942,6 +991,8 @@ class MediaImportProcessor:
                 progress = round(max(0.0, min(100.0, float(value))), 1)
             except (TypeError, ValueError):
                 return
+            if cancellation:
+                cancellation.check()
             if on_progress is None or progress <= latest_progress:
                 return
             latest_progress = progress
@@ -953,6 +1004,11 @@ class MediaImportProcessor:
 
         async def send(client: httpx.AsyncClient, *, by_path: bool) -> httpx.Response:
             """Run one import request while relaying the sidecar's progress."""
+            if cancellation:
+                cancellation.check()
+                await cancellation.install_cancel_handler(
+                    lambda: self._cancel_studio_job(progress_id, "import")
+                )
             if by_path:
                 task = asyncio.create_task(
                     client.post(
@@ -960,7 +1016,7 @@ class MediaImportProcessor:
                         data={**data, "source_path": str(analysis_path.resolve())},
                     )
                 )
-                return await self._await_import(client, task, progress_id, publish)
+                return await self._await_import(client, task, progress_id, publish, cancellation)
             with analysis_path.open("rb") as audio:
                 task = asyncio.create_task(
                     client.post(
@@ -969,7 +1025,7 @@ class MediaImportProcessor:
                         data=data,
                     )
                 )
-                return await self._await_import(client, task, progress_id, publish)
+                return await self._await_import(client, task, progress_id, publish, cancellation)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -981,6 +1037,8 @@ class MediaImportProcessor:
                     response = await send(client, by_path=False)
         except httpx.RequestError as exc:
             raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
+        if cancellation:
+            cancellation.check()
         payload = response.json()
         if response.is_error:
             raise RuntimeError(payload.get("detail", f"Studio import thất bại ({response.status_code})."))
@@ -993,9 +1051,16 @@ class MediaImportProcessor:
         task: asyncio.Task[httpx.Response],
         progress_id: str,
         publish: Callable[[object], Awaitable[None]],
+        cancellation: ProcessingCancellation | None = None,
     ) -> httpx.Response:
         progress_endpoint_available = bool(progress_id)
         while not task.done():
+            if cancellation:
+                try:
+                    cancellation.check()
+                except Exception:
+                    task.cancel()
+                    raise
             await asyncio.sleep(0.15)
             if not progress_endpoint_available:
                 continue
@@ -1012,6 +1077,25 @@ class MediaImportProcessor:
                 # The import request itself reports the final connection failure.
                 continue
         return await task
+
+    async def _cancel_studio_job(self, progress_id: str, kind: str) -> None:
+        """Request termination of the sidecar child assigned to one job id."""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+                response = await client.post(f"{self.studio_url}/api/audio/{kind}/{progress_id}/cancel")
+                if response.status_code == 404:
+                    raise ProcessingStopError(
+                        "Studio does not support per-job cancellation. Restart the Studio runtime before retrying."
+                    )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise ProcessingStopError(
+                "Studio rejected the cancellation request. Restart the Studio runtime before retrying."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ProcessingStopError(
+                "Cannot reach Studio to confirm the inference stopped. Restart the Studio runtime before retrying."
+            ) from exc
 
     @staticmethod
     def _codec(stream: dict[str, Any] | None) -> str | None:

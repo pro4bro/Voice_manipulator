@@ -108,7 +108,14 @@ class VibeVoiceAsrTranscriber:
             return "Chưa thấy tokenizer VibeVoice_models/Qwen/Qwen2.5-7B."
         return None
 
-    def transcribe(self, audio: Path, duration: float, context_info: str = "", adapter: Path | None = None) -> dict[str, Any]:
+    def transcribe(
+        self,
+        audio: Path,
+        duration: float,
+        context_info: str = "",
+        adapter: Path | None = None,
+        cancellation_id: str | None = None,
+    ) -> dict[str, Any]:
         reason = self.unavailable_reason()
         if reason:
             raise VibeVoiceAsrError(reason)
@@ -124,7 +131,8 @@ class VibeVoiceAsrTranscriber:
                     "context_info": context_info,
                     "max_new_tokens": self.max_new_tokens,
                     "lora_adapter": str(adapter) if adapter else None,
-                }
+                },
+                cancellation_id=cancellation_id,
             )
         except EngineWorkerError as exc:
             raise VibeVoiceAsrError(str(exc)) from exc
@@ -133,6 +141,16 @@ class VibeVoiceAsrTranscriber:
         if not reply.get("ok"):
             raise VibeVoiceAsrError(reply.get("error") or "VibeVoice-ASR không trả kết quả.")
         return segments_to_item(list(reply.get("segments") or []), duration)
+
+    def cancel_request(self, cancellation_id: str) -> bool:
+        """Stop only the worker request owned by this queued transcription."""
+        return self.worker.cancel_request(cancellation_id)
+
+    def register_request(self, cancellation_id: str) -> None:
+        self.worker.register_request(cancellation_id)
+
+    def abandon_request(self, cancellation_id: str) -> None:
+        self.worker.abandon_request(cancellation_id)
 
     def _default_worker(self, models: Path | None) -> EngineWorkerProcess:
         repo = self.repo or Path(".")

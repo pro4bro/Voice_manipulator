@@ -1,6 +1,78 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.adapters.sequential_diarization_queue import assign_spans_to_words
+
+
+def test_diarization_stop_all_cancels_active_job_and_allows_retry(tmp_path, monkeypatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.adapters.file_media_library import FileMediaLibrary
+    from app.adapters.file_project_repository import FileProjectRepository
+    from app.adapters.sequential_diarization_queue import SequentialDiarizationQueue
+    from app.adapters.studio_diarization_gateway import DiarizationResult
+    from app.domain.models import MediaAssetCreate, ProjectCreate
+
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Diarization stop"))
+    media = FileMediaLibrary(projects)
+    analysis = tmp_path / "analysis.wav"
+    analysis.write_bytes(b"test")
+    asset = media.create(project.id, MediaAssetCreate(
+        name="speech.wav", source_extension=".wav", media_kind="audio",
+        source_path="assets/media/asset-1/source.wav", analysis_path="assets/media/asset-1/analysis.wav",
+        duration=2, origin="import", transcription_status="complete",
+        words=[{"text": "Xin", "start": 0.0, "end": 1.0}],
+    ), "asset-1")
+    monkeypatch.setattr(
+        "app.adapters.sequential_diarization_queue.prepare_diarization_audio",
+        lambda _path, _asset: (analysis, None),
+    )
+
+    class Preferences:
+        def private_diarization(self):
+            return SimpleNamespace(enabled=True, model="test-model", huggingface_token="test-token")
+
+    class GateStudio:
+        def __init__(self):
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+            self.calls = 0
+
+        async def diarize(self, _path, *, token, model, expected_speakers=None, on_progress=None, cancellation=None):
+            self.calls += 1
+            self.entered.set()
+            await self.release.wait()
+            return DiarizationResult(spans=[{"speaker": "A", "start": 0.0, "end": 2.0}])
+
+    studio = GateStudio()
+    queue = SequentialDiarizationQueue(projects, media, Preferences(), studio)
+
+    async def run():
+        await queue.enqueue(project.id, asset.id)
+        await studio.entered.wait()
+        stopped = await queue.stop(project.id, include_active=True)
+        studio.release.set()
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+        return stopped
+
+    assert asyncio.run(run()) == [asset.id]
+    stopped = media.get(project.id, asset.id)
+    assert stopped.diarization_status == "cancelled"
+    assert "diarizationSpeakerId" not in stopped.words[0]
+    assert not (Path(project.project_path) / "assets/media/asset-1/diarization/spans.json").exists()
+
+    async def retry():
+        await queue.enqueue(project.id, asset.id)
+        while queue._worker and not queue._worker.done():
+            await asyncio.sleep(0.001)
+
+    asyncio.run(retry())
+    assert media.get(project.id, asset.id).diarization_status == "complete"
+    assert studio.calls == 2
 
 
 def test_assigns_stable_diarization_labels_by_word_overlap_without_replacing_profile() -> None:

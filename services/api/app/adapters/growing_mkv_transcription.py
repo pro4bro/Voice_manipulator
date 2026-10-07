@@ -18,6 +18,9 @@ from typing import Awaitable, Callable
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.media_presentation import render_srt
+from app.adapters.processing_cancellation import (
+    ProcessingCancellation, ProcessingStopError, ProcessingStopped,
+)
 from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.domain.models import ProjectRecord
 
@@ -68,17 +71,23 @@ class GrowingMkvTranscription:
         self.importer = importer
         self.recognizer = recognizer or self._recognize
         self._locks: dict[str, asyncio.Lock] = {}
-        self._detailed_tasks: dict[str, tuple[tuple[str, str, int, int], asyncio.Task]] = {}
+        self._detailed_tasks: dict[str, tuple[tuple[str, str, int, int], ProcessingCancellation, asyncio.Task]] = {}
+        self._live_tasks: dict[str, tuple[tuple[str, str, int, int], ProcessingCancellation, asyncio.Task]] = {}
 
     async def close(self) -> None:
-        tasks = [task for _, task in self._detailed_tasks.values()]
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        active = list(self._detailed_tasks.values()) + list(self._live_tasks.values())
+        for _, cancellation, _ in active:
+            cancellation.request()
+        await asyncio.gather(*(cancellation.cancel() for _, cancellation, _ in active),
+                             return_exceptions=True)
+        await asyncio.gather(*(task for _, _, task in active), return_exceptions=True)
         self._detailed_tasks.clear()
+        self._live_tasks.clear()
 
-    async def _recognize(self, segment: Path, model: str) -> dict:
-        item, _ = await self.importer._upload_studio_audio(segment, "import", "", model=model)
+    async def _recognize(self, segment: Path, model: str,
+                         cancellation: ProcessingCancellation | None = None) -> dict:
+        item, _ = await self.importer._upload_studio_audio(
+            segment, "import", "", model=model, cancellation=cancellation)
         return item
 
     @staticmethod
@@ -101,6 +110,18 @@ class GrowingMkvTranscription:
             state = {"version": 1, "parentId": parent_id,
                      "segmentSeconds": follow.get("sttSegmentSeconds", 60), "tracks": {}}
         return directory, follow, stt_path, state
+
+    @staticmethod
+    def _save_state(path: Path, state: dict) -> None:
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = {}
+        for asset_id, progress in state.get("tracks", {}).items():
+            persisted = current.get("tracks", {}).get(asset_id, {})
+            if "stopMode" in persisted:
+                progress["stopMode"] = persisted["stopMode"]
+        _atomic_json(path, state)
 
     @staticmethod
     def _result_path(directory: Path, asset_id: str, phase: str, start: int) -> Path:
@@ -154,7 +175,10 @@ class GrowingMkvTranscription:
 
     async def _one_segment(self, project: ProjectRecord, directory: Path, asset_id: str,
                            source: Path, phase: str, start: int, end: int,
-                           *, overlap: bool = False) -> None:
+                           *, overlap: bool = False,
+                           cancellation: ProcessingCancellation | None = None) -> None:
+        if cancellation:
+            cancellation.check()
         result_path = self._result_path(directory, asset_id, phase, start)
         if result_path.is_file():
             result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -165,14 +189,122 @@ class GrowingMkvTranscription:
         audio_start = max(0, start - 10 * RATE) if overlap else start
         merge_start = max(0, start - 5 * RATE) if overlap else start
         await asyncio.to_thread(_copy_frames, source, segment, audio_start, end)
-        item = await self.recognizer(segment, "tiny" if phase == "live" else "large-v3")
+        if cancellation:
+            cancellation.check()
+        if self.recognizer == self._recognize:
+            item = await self._recognize(segment, "tiny" if phase == "live" else "large-v3", cancellation)
+        else:
+            item = await self.recognizer(segment, "tiny" if phase == "live" else "large-v3")
+        if cancellation:
+            cancellation.check()
         if overlap and str(item.get("text") or "").strip() and not item.get("words"):
             raise ValueError("STT kỹ thiếu word timestamp; chưa thể ghép đoạn chồng an toàn")
         metadata = {"audioStartFrame": audio_start, "mergeStartFrame": merge_start} if overlap else {}
-        _atomic_json(result_path, {"startFrame": start, "endFrame": end, **metadata,
-                                   "startSeconds": round(start / RATE, 6),
-                                   "endSeconds": round(end / RATE, 6), "item": item})
-        segment.unlink(missing_ok=True)
+        try:
+            _atomic_json(result_path, {"startFrame": start, "endFrame": end, **metadata,
+                                       "startSeconds": round(start / RATE, 6),
+                                       "endSeconds": round(end / RATE, 6), "item": item})
+        finally:
+            segment.unlink(missing_ok=True)
+
+    async def stop(self, project: ProjectRecord, *, include_active: bool = False,
+                   asset_ids: list[str] | None = None) -> list[str]:
+        """Stop detailed STT for selected followed tracks; hard stop cancels current inference."""
+        root = Path(project.project_path) / "assets" / "media"
+        requested = set(asset_ids) if asset_ids is not None else None
+        touched: list[str] = []
+        for follow_path in root.glob("asset-*/follow-state.json"):
+            parent_id = follow_path.parent.name
+            try:
+                _, follow, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
+                tracks = {track["assetId"] for track in follow.get("tracks", [])}
+                selected = tracks if requested is None else tracks & requested
+                if not selected:
+                    continue
+                detail_active = self._detailed_tasks.get(parent_id)
+                live_active = self._live_tasks.get(parent_id)
+                active_ids = {item[0][0] for item in (detail_active, live_active) if item}
+                for asset_id in selected:
+                    progress = state["tracks"].setdefault(asset_id, {"liveFrame": 0, "finalFrame": 0})
+                    progress["stopMode"] = "all" if include_active else "queue"
+                    touched.append(asset_id)
+                    if asset_id not in active_ids:
+                        try:
+                            self.library.set_transcription_state(
+                                project.id, asset_id,
+                                "cancelled" if include_active else "skipped",
+                                ai_review_status="skipped", error=None, progress=0,
+                            )
+                        except KeyError:
+                            pass
+                self._save_state(stt_path, state)
+                if include_active:
+                    for active in (live_active, detail_active):
+                        if not active or active[0][0] not in selected:
+                            continue
+                        active[1].request()
+                        try:
+                            await active[1].cancel()
+                            await active[2]
+                        except ProcessingStopped:
+                            pass
+                        except Exception as exc:
+                            try:
+                                self.library.set_transcription_state(
+                                    project.id, active[0][0], "error", ai_review_status="error",
+                                    error=str(exc), progress=0,
+                                )
+                            except KeyError:
+                                pass
+                            raise ProcessingStopError(
+                                f"Cannot confirm detailed STT stopped for {active[0][0]}: {exc}"
+                            ) from exc
+                        if active is live_active:
+                            self._live_tasks.pop(parent_id, None)
+                        else:
+                            self._detailed_tasks.pop(parent_id, None)
+                        try:
+                            self.library.set_transcription_state(
+                                project.id, active[0][0], "cancelled", ai_review_status="skipped",
+                                error=None, progress=0,
+                            )
+                        except KeyError:
+                            pass
+                # Preserve the persisted control if process_once had loaded an
+                # older checkpoint before the cancellation fence was raised.
+                _, _, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
+                for asset_id in selected:
+                    progress = state["tracks"].setdefault(asset_id, {"liveFrame": 0, "finalFrame": 0})
+                    progress["stopMode"] = "all" if include_active else "queue"
+                self._save_state(stt_path, state)
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return touched
+
+    async def stop_parent(self, project: ProjectRecord, parent_id: str, *,
+                          include_active: bool = False) -> bool:
+        _, follow, _, _ = await asyncio.to_thread(self._load, project, parent_id)
+        ids = [track["assetId"] for track in follow.get("tracks", [])]
+        return bool(await self.stop(project, include_active=include_active, asset_ids=ids))
+
+    async def resume_parent(self, project: ProjectRecord, parent_id: str) -> None:
+        """Explicit configure/start clears persisted stop flags without rewinding work."""
+        async with self._locks.setdefault(parent_id, asyncio.Lock()):
+            _, follow, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
+            for track in follow.get("tracks", []):
+                progress = state.get("tracks", {}).get(track["assetId"])
+                if progress:
+                    progress.pop("stopMode", None)
+                    try:
+                        asset = self.library.get(project.id, track["assetId"])
+                        if asset.transcription_status in ("skipped", "paused", "cancelled"):
+                            self.library.set_transcription_state(
+                                project.id, asset.id, "queued", ai_review_status="pending",
+                                error=None, progress=0,
+                            )
+                    except KeyError:
+                        pass
+            _atomic_json(stt_path, state)
 
     async def process_once(self, project: ProjectRecord, parent_id: str, *, wait_for_detail: bool = True) -> dict:
         async with self._locks.setdefault(parent_id, asyncio.Lock()):
@@ -188,15 +320,16 @@ class GrowingMkvTranscription:
                 for progress in state["tracks"].values():
                     progress["finalFrame"] = 0
                 state["segmentSeconds"] = follow["sttSegmentSeconds"]
-                _atomic_json(stt_path, state)
+                self._save_state(stt_path, state)
             final_phase = f"final-{plan['id']}" if plan else "final"
             active = self._detailed_tasks.get(parent_id)
             if active:
                 active_asset = await asyncio.to_thread(self.library.get, project.id, active[0][0])
                 if (active[0][1] != final_phase or not active_asset.import_selected
                         or not active_asset.transcription_selected or active_asset.deleted_at or active_asset.disabled):
-                    active[1].cancel()
-                    await asyncio.gather(active[1], return_exceptions=True)
+                    active[1].request()
+                    await active[1].cancel()
+                    await asyncio.gather(active[2], return_exceptions=True)
                     self._detailed_tasks.pop(parent_id, None)
             if state["segmentSeconds"] != follow.get("sttSegmentSeconds", 60):
                 if any(progress.get("finalFrame", 0) for progress in state["tracks"].values()):
@@ -212,6 +345,26 @@ class GrowingMkvTranscription:
                     continue
                 selected.append(asset_id)
                 progress = state["tracks"].setdefault(asset_id, {"liveFrame": 0, "finalFrame": 0})
+                try:
+                    latest = json.loads(stt_path.read_text(encoding="utf-8"))
+                    persisted = latest.get("tracks", {}).get(asset_id, {})
+                    if "stopMode" in persisted:
+                        progress["stopMode"] = persisted["stopMode"]
+                except (OSError, ValueError):
+                    pass
+                stop_mode = progress.get("stopMode")
+                if stop_mode == "all":
+                    all_done = False
+                    continue
+                active_detail = self._detailed_tasks.get(parent_id)
+                if stop_mode == "queue" and not (active_detail and active_detail[0][0] == asset_id):
+                    if asset.transcription_status == "processing":
+                        self.library.set_transcription_state(
+                            project.id, asset_id, "paused", ai_review_status="skipped",
+                            error=None, progress=0,
+                        )
+                    all_done = False
+                    continue
                 total = int(track.get("finalFrames", track["frames"]) if finished else track["frames"])
                 source = root / asset.analysis_path
                 changed = (progress.get("publishedFinalFrame", -1) != progress["finalFrame"]
@@ -221,17 +374,34 @@ class GrowingMkvTranscription:
                 progress["liveFrame"] = live_start
                 if live_start > total or detail_start > total:
                     raise ValueError("STT cursor vượt quá audio đã ghi")
-                if not finished and total - live_start >= LIVE_SECONDS * RATE:
+                if stop_mode is None and not finished and total - live_start >= LIVE_SECONDS * RATE:
                     live_end = live_start + LIVE_SECONDS * RATE
+                    live_key = (asset_id, "live", live_start, live_end)
+                    cancellation = ProcessingCancellation()
+                    live_task = asyncio.create_task(self._one_segment(
+                        project, directory, asset_id, source, "live", live_start, live_end,
+                        cancellation=cancellation))
+                    self._live_tasks[parent_id] = (live_key, cancellation, live_task)
                     try:
-                        await self._one_segment(project, directory, asset_id, source,
-                                                "live", live_start, live_end)
+                        await live_task
+                    except ProcessingStopped:
+                        try:
+                            latest = json.loads(stt_path.read_text(encoding="utf-8"))
+                            progress["stopMode"] = latest.get("tracks", {}).get(asset_id, {}).get(
+                                "stopMode", "all")
+                        except (OSError, ValueError):
+                            progress["stopMode"] = "all"
+                        all_done = False
+                        continue
                     except Exception as exc:
                         if asset.transcription_status != "error" or asset.transcription_error != str(exc):
                             self.library.set_transcription_state(project.id, asset_id, "error", error=str(exc))
                         raise
+                    finally:
+                        self._live_tasks.pop(parent_id, None)
                     progress["liveFrame"] = live_end
-                    _atomic_json(stt_path, state)
+                    self._save_state(stt_path, state)
+                    stop_mode = progress.get("stopMode")
                     changed = True
                 detail_frames = int(state["segmentSeconds"]) * RATE
                 initial_end = int(plan["initialFrames"].get(asset_id, 0)) if plan else 0
@@ -246,32 +416,70 @@ class GrowingMkvTranscription:
                         active = self._detailed_tasks.get(parent_id)
                         result_ready = False
                         if active:
-                            if active[0] == job_key and (active[1].done() or wait_for_detail):
+                            if active[0] == job_key and (active[2].done() or wait_for_detail):
                                 try:
-                                    await active[1]
+                                    await active[2]
+                                    result_ready = True
+                                except ProcessingStopped:
+                                    result_ready = False
+                                    try:
+                                        latest = json.loads(stt_path.read_text(encoding="utf-8"))
+                                        progress["stopMode"] = latest.get("tracks", {}).get(asset_id, {}).get(
+                                            "stopMode", "all")
+                                    except (OSError, ValueError):
+                                        progress["stopMode"] = "all"
+                                finally:
+                                    self._detailed_tasks.pop(parent_id, None)
+                            elif active[2].done() and active[0][1] != final_phase:
+                                # An explicit new plan supersedes legacy work without publishing it.
+                                active[2].exception()
+                                self._detailed_tasks.pop(parent_id, None)
+                        elif stop_mode is None:
+                            cancellation = ProcessingCancellation()
+                            try:
+                                self.library.set_transcription_state(
+                                    project.id, asset_id, "processing", ai_review_status="pending",
+                                    error=None, progress=asset.transcription_progress,
+                                )
+                            except KeyError:
+                                pass
+                            task = asyncio.create_task(self._one_segment(
+                                project, directory, asset_id, source, final_phase, detail_start, detail_end,
+                                overlap=bool(plan), cancellation=cancellation))
+                            self._detailed_tasks[parent_id] = (job_key, cancellation, task)
+                            if wait_for_detail:
+                                try:
+                                    await task
                                     result_ready = True
                                 finally:
                                     self._detailed_tasks.pop(parent_id, None)
-                            elif active[1].done() and active[0][1] != final_phase:
-                                # An explicit new plan supersedes legacy work without publishing it.
-                                active[1].exception()
-                                self._detailed_tasks.pop(parent_id, None)
-                        elif wait_for_detail:
-                            await self._one_segment(project, directory, asset_id, source,
-                                                    final_phase, detail_start, detail_end, overlap=bool(plan))
-                            result_ready = True
-                        else:
-                            self._detailed_tasks[parent_id] = (job_key, asyncio.create_task(self._one_segment(
-                                project, directory, asset_id, source, final_phase, detail_start, detail_end,
-                                overlap=bool(plan))))
+                        if stop_mode == "all":
+                            result_ready = False
+                        elif stop_mode == "queue" and active is None:
+                            result_ready = False
+                    except ProcessingStopped:
+                        result_ready = False
+                        try:
+                            latest = json.loads(stt_path.read_text(encoding="utf-8"))
+                            progress["stopMode"] = latest.get("tracks", {}).get(asset_id, {}).get(
+                                "stopMode", "all")
+                        except (OSError, ValueError):
+                            progress["stopMode"] = "all"
                     except Exception as exc:
                         if asset.transcription_status != "error" or asset.transcription_error != str(exc):
                             self.library.set_transcription_state(project.id, asset_id, "error", error=str(exc))
                         raise
                     if result_ready:
                         progress["finalFrame"] = detail_end
-                        _atomic_json(stt_path, state)
+                        self._save_state(stt_path, state)
                         changed = True
+                        if progress.get("stopMode") == "queue":
+                            self.library.set_transcription_state(
+                                project.id, asset_id, "paused", ai_review_status="skipped",
+                                error=None, progress=0,
+                            )
+                    if progress.get("stopMode") == "all":
+                        continue
                 if finished and detailed_enabled and int(progress["finalFrame"]) == total:
                     if changed or asset.transcription_status not in ("complete", "reviewing"):
                         # A cursor may have committed before publication. Replaying this
@@ -306,17 +514,47 @@ class GrowingMkvTranscription:
                     os.replace(temporary, destination)
                     progress["publishedFinalFrame"] = progress["finalFrame"]
                     progress["publishedLiveFrame"] = progress["liveFrame"]
-                    _atomic_json(stt_path, state)
+                    self._save_state(stt_path, state)
                 if detailed_enabled and (int(progress["finalFrame"]) < total or not finished):
                     all_done = False
             if not stt_path.is_file():
-                _atomic_json(stt_path, state)
+                self._save_state(stt_path, state)
+            try:
+                latest = json.loads(stt_path.read_text(encoding="utf-8"))
+                for asset_id, progress in state.get("tracks", {}).items():
+                    persisted = latest.get("tracks", {}).get(asset_id, {})
+                    if "stopMode" in persisted:
+                        progress["stopMode"] = persisted["stopMode"]
+            except (OSError, ValueError):
+                pass
+            stopped = bool(selected) and all(
+                state["tracks"].get(asset_id, {}).get("stopMode") in ("queue", "all")
+                and not ((self._detailed_tasks.get(parent_id) and
+                          self._detailed_tasks[parent_id][0][0] == asset_id)
+                         or (self._live_tasks.get(parent_id) and
+                             self._live_tasks[parent_id][0][0] == asset_id))
+                for asset_id in selected
+            )
             return {"parentId": parent_id, "finished": finished,
-                    "done": all_done or not selected,
+                    "done": all_done or not selected or stopped,
+                    "stopMode": self.status(project, parent_id)["stopMode"],
+                    "active": any(bool(progress.get("active"))
+                                  for progress in self.status(project, parent_id)["tracks"].values()),
                     "selectedAssetIds": selected, "segmentSeconds": state["segmentSeconds"],
                     "tracks": state["tracks"]}
 
     def status(self, project: ProjectRecord, parent_id: str) -> dict:
         _, follow, _, state = self._load(project, parent_id)
+        active = self._detailed_tasks.get(parent_id)
+        live = self._live_tasks.get(parent_id)
+        for asset_id, progress in state.get("tracks", {}).items():
+            progress["active"] = bool((active and active[0][0] == asset_id)
+                                       or (live and live[0][0] == asset_id))
+        modes = {progress.get("stopMode") for progress in state.get("tracks", {}).values()}
         return {"finished": bool(follow["finished"]),
-                "segmentSeconds": state["segmentSeconds"], "tracks": state["tracks"]}
+                "segmentSeconds": state["segmentSeconds"],
+                "stopMode": ("all" if modes and modes == {"all"}
+                             else "queue" if modes and modes.issubset({"queue", "all"})
+                             else None),
+                "active": any(bool(progress.get("active")) for progress in state["tracks"].values()),
+                "tracks": state["tracks"]}

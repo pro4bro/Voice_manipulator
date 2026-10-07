@@ -250,3 +250,76 @@ def test_resumed_chunk_scan_does_not_block_api_event_loop(tmp_path, monkeypatch)
             await task
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("include_active,expected_cursor,expected_result", [
+    (False, 240000, True),
+    (True, 0, False),
+])
+def test_detailed_stop_queue_finishes_current_segment_and_hard_stop_fences_publication(
+        tmp_path, monkeypatch, include_active, expected_cursor, expected_result):
+    projects, project, folder, recording_id, channels, _ = _setup(tmp_path)
+    channel = channels[0]
+    _chunk(folder, channel, 0, 10)
+    def render(*args):
+        args[-2].parent.mkdir(parents=True, exist_ok=True)
+        args[-2].write_bytes(b"segment")
+
+    monkeypatch.setattr("app.adapters.obs_livelink_detailed_stt._render_segment", render)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    class Importer:
+        ffmpeg_path = "unused"
+
+        async def _run_studio_import(self, path, kind, title, *, model, cancellation):
+            async def stop_engine():
+                release.set()
+
+            await cancellation.install_cancel_handler(stop_engine)
+            started.set()
+            await release.wait()
+            return {"text": "spoken", "words": [{"text": "spoken", "start": 1, "end": 2}]}, {}
+
+    worker = ObsLiveLinkDetailedStt(FileMediaLibrary(projects), Importer())
+    worker.configure(project, recording_id, 10, [channel])
+
+    async def scenario():
+        processing = asyncio.create_task(worker.process_once(project, recording_id))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            if processing.done():
+                processing.result()
+            raise
+        assert await worker.stop_recording(project, recording_id, include_active=include_active)
+        if not include_active:
+            release.set()
+        return await processing
+
+    response = asyncio.run(scenario())
+    state = worker.status(project, recording_id)
+    assert state["tracks"][channel]["cursor"] == expected_cursor
+    assert state["tracks"][channel]["stopMode"] == ("all" if include_active else "queue")
+    assert state["stopMode"] == ("all" if include_active else "queue")
+    assert response["done"] is True and response["active"] is False
+    result = folder / "detailed-stt" / channel / "000000000000.json"
+    assert result.is_file() is expected_result
+    assert (folder / "detailed-stt" / channel / "transcript.stt.srt").exists() is not include_active
+    assert state["active"] is False
+
+
+def test_status_only_reports_root_stop_when_every_configured_track_is_stopped(tmp_path):
+    projects, project, folder, recording_id, channels, _ = _setup(tmp_path)
+    for channel in channels:
+        _chunk(folder, channel, 0, 1)
+    worker = ObsLiveLinkDetailedStt(
+        FileMediaLibrary(projects), type("Importer", (), {"ffmpeg_path": "unused"})())
+    state = worker.configure(project, recording_id, 10, channels)
+    state["tracks"][channels[0]]["stopMode"] = "queue"
+    (folder / "detailed-stt-state.json").write_text(json.dumps(state), encoding="utf-8")
+    status = worker.status(project, recording_id)
+    assert status["stopMode"] is None
+    assert status["active"] is False
+    resumed = worker.configure(project, recording_id, 10, channels)
+    assert resumed["stopMode"] is None
+    assert all("stopMode" not in progress for progress in resumed["tracks"].values())

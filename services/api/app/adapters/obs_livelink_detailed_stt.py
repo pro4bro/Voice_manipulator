@@ -25,6 +25,7 @@ from app.adapters.obs_livelink_deletions import deleted_recording_ids
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription, RATE, _atomic_json
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.media_presentation import render_srt
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopped
 from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.domain.models import ProjectRecord
 
@@ -162,6 +163,7 @@ class ObsLiveLinkDetailedStt:
         self._configuration_lock = threading.Lock()
         self._chunk_lock = threading.Lock()
         self._chunk_cache: dict[tuple[Path, str], list[dict]] = {}
+        self._active: dict[tuple[str, str], tuple[ProcessingCancellation, asyncio.Task]] = {}
 
     def preview_audio(self, project: ProjectRecord, recording_id: str, channel_id: str,
                       start_seconds: float | None = None, duration_seconds: float = 30) -> tuple[bytes, float, float]:
@@ -217,8 +219,10 @@ class ObsLiveLinkDetailedStt:
                 result.append(item)
             return list(result)
 
-    async def _recognize(self, path: Path, model: str) -> dict:
-        item, _ = await self.importer._run_studio_import(path, "import", "", model=model)
+    async def _recognize(self, path: Path, model: str,
+                         cancellation: ProcessingCancellation | None = None) -> dict:
+        item, _ = await self.importer._run_studio_import(
+            path, "import", "", model=model, cancellation=cancellation)
         return item
 
     def configure(self, project: ProjectRecord, recording_id: str, segment_seconds: int,
@@ -242,6 +246,19 @@ class ObsLiveLinkDetailedStt:
             if (state["segmentSeconds"] != segment_seconds or state["model"] != model or
                     (channel_ids is not None and set(channel_ids) != set(state["tracks"]))):
                 raise ValueError("STT kỹ đã bắt đầu; không thể đổi cấu hình của bản ghi này")
+            for progress in state["tracks"].values():
+                progress.pop("stopMode", None)
+            _atomic_json(path, state)
+            for stem in journal.get("sourceStems", []):
+                try:
+                    asset = self.library.get(project.id, stem.get("assetId", ""))
+                    if asset.transcription_status in ("skipped", "paused", "cancelled"):
+                        self.library.set_transcription_state(
+                            project.id, asset.id, "queued", ai_review_status="pending",
+                            error=None, progress=0,
+                        )
+                except KeyError:
+                    pass
             return self.status(project, recording_id)
         available = {item["channelId"] for item in journal.get("channels", [])
                      if self._read_chunks(folder, item["channelId"])}
@@ -264,7 +281,149 @@ class ObsLiveLinkDetailedStt:
         _journal(folder, project, recording_id)
         if state.get("version") != 1 or state.get("recordingId") != recording_id:
             raise ValueError("OBS STT checkpoint không hợp lệ")
+        state["active"] = any(key[0] == recording_id for key in self._active)
+        modes = {progress.get("stopMode") for progress in state.get("tracks", {}).values()}
+        state["stopMode"] = (
+            "all" if modes and modes == {"all"}
+            else "queue" if modes and modes.issubset({"queue", "all"})
+            else None
+        )
         return state
+
+    @staticmethod
+    def _save_state(path: Path, state: dict) -> None:
+        # Stop can arrive while inference is awaiting the Studio. Preserve the
+        # newer control flags when committing this segment's cursor.
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = {}
+        for channel_id, progress in state.get("tracks", {}).items():
+            persisted = current.get("tracks", {}).get(channel_id, {})
+            if "stopMode" in persisted:
+                progress["stopMode"] = persisted["stopMode"]
+        _atomic_json(path, {key: value for key, value in state.items()
+                            if key not in ("active", "stopMode")})
+
+    async def stop(self, project: ProjectRecord, *, include_active: bool = False,
+                   asset_ids: list[str] | None = None,
+                   _recording_id: str | None = None) -> list[str]:
+        """Persist stop state for configured recordings selected by media asset ID."""
+        root = Path(project.project_path) / "assets" / "obs-livelink"
+        requested = set(asset_ids) if asset_ids is not None else None
+        touched: list[str] = []
+        if not root.is_dir():
+            return touched
+        for state_path in root.glob("*/detailed-stt-state.json"):
+            folder = state_path.parent
+            recording_id = folder.name
+            if _recording_id is not None and recording_id != _recording_id:
+                continue
+            try:
+                state = self.status(project, recording_id)
+                journal = _journal(folder, project, recording_id)
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            stems = {item["channelId"]: item.get("assetId")
+                     for item in journal.get("sourceStems", [])}
+            requested_recording = False
+            if requested is not None:
+                for asset_id in requested:
+                    try:
+                        asset = self.library.get(project.id, asset_id)
+                    except KeyError:
+                        continue
+                    if asset.obs_recording_id == recording_id:
+                        requested_recording = True
+                        break
+            selected_channels = set(state["tracks"])
+            if requested is not None:
+                exact_channels = {channel_id for channel_id, asset_id in stems.items()
+                                  if asset_id in requested}
+                selected_channels = exact_channels or (selected_channels if requested_recording else set())
+            if requested is not None and not selected_channels:
+                continue
+            for channel_id in selected_channels:
+                progress = state["tracks"].get(channel_id)
+                if progress is None:
+                    continue
+                progress["stopMode"] = "all" if include_active else "queue"
+                asset_id = stems.get(channel_id)
+                if asset_id:
+                    touched.append(asset_id)
+                    if (recording_id, channel_id) not in self._active:
+                        try:
+                            self.library.set_transcription_state(
+                                project.id, asset_id,
+                                "cancelled" if include_active else "skipped",
+                                ai_review_status="skipped", error=None, progress=0,
+                            )
+                        except KeyError:
+                            pass
+            _atomic_json(state_path, {key: value for key, value in state.items()
+                                      if key not in ("active", "stopMode")})
+            if include_active:
+                for channel_id in selected_channels:
+                    active = self._active.get((recording_id, channel_id))
+                    if active:
+                        cancellation, task = active
+                        cancellation.request()
+                        try:
+                            await cancellation.cancel()
+                            await task
+                        except ProcessingStopped:
+                            pass
+                        except Exception as exc:
+                            asset_id = stems.get(channel_id)
+                            if asset_id:
+                                try:
+                                    self.library.set_transcription_state(
+                                        project.id, asset_id, "error", ai_review_status="error",
+                                        error=str(exc), progress=0,
+                                    )
+                                except KeyError:
+                                    pass
+                            raise
+                        self._active.pop((recording_id, channel_id), None)
+                        asset_id = stems.get(channel_id)
+                        if asset_id:
+                            try:
+                                self.library.set_transcription_state(
+                                    project.id, asset_id, "cancelled", ai_review_status="skipped",
+                                    error=None, progress=0,
+                                )
+                            except KeyError:
+                                pass
+            # Ensure flags survive if process_once loaded an older snapshot.
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            for channel_id in selected_channels:
+                if channel_id in state["tracks"]:
+                    state["tracks"][channel_id]["stopMode"] = "all" if include_active else "queue"
+            _atomic_json(state_path, state)
+        return list(dict.fromkeys(touched))
+
+    async def stop_recording(self, project: ProjectRecord, recording_id: str, *,
+                             include_active: bool = False) -> bool:
+        state = self.status(project, recording_id)
+        await self.stop(project, include_active=include_active, _recording_id=recording_id)
+        return bool(state.get("tracks"))
+
+    async def _recognize_segment(self, folder: Path, recording: dict, channel_id: str,
+                                 chunks: list[dict], audio_start: int, end: int,
+                                 segment: Path, model: str,
+                                 cancellation: ProcessingCancellation) -> dict:
+        await asyncio.to_thread(_render_segment, folder, recording, channel_id, chunks,
+                                audio_start, end, segment, self.importer.ffmpeg_path)
+        cancellation.check()
+        try:
+            if self.recognizer == self._recognize:
+                item = await self._recognize(segment, model, cancellation)
+            else:
+                item = await self.recognizer(segment, model)
+            cancellation.check()
+            return item
+        finally:
+            segment.unlink(missing_ok=True)
 
     async def process_once(self, project: ProjectRecord, recording_id: str) -> dict:
         async with self._locks.setdefault(recording_id, asyncio.Lock()):
@@ -273,9 +432,38 @@ class ObsLiveLinkDetailedStt:
             recording = journal["recording"]
             state_path = folder / "detailed-stt-state.json"
             state = self.status(project, recording_id)
+            state.pop("active", None)
+            state.pop("stopMode", None)
             stopped = recording["status"] == "stopped"
             complete = stopped and recording.get("archiveStatus") == "ready"
             for channel_id, progress in state["tracks"].items():
+                try:
+                    latest = json.loads(state_path.read_text(encoding="utf-8"))
+                    persisted = latest.get("tracks", {}).get(channel_id, {})
+                    if "stopMode" in persisted:
+                        progress["stopMode"] = persisted["stopMode"]
+                except (OSError, ValueError):
+                    pass
+                stop_mode = progress.get("stopMode")
+                active_key = (recording_id, channel_id)
+                active = self._active.get(active_key)
+                if stop_mode == "all" or (stop_mode == "queue" and active is None):
+                    if stop_mode == "queue":
+                        stem = next((item for item in journal.get("sourceStems", [])
+                                     if item["channelId"] == channel_id), None)
+                        if stem and stem.get("assetId"):
+                            try:
+                                asset = self.library.get(project.id, stem["assetId"])
+                                if asset.transcription_status == "processing":
+                                    self.library.set_transcription_state(
+                                        project.id, asset.id, "paused", ai_review_status="skipped",
+                                        error=None, progress=0,
+                                    )
+                            except KeyError:
+                                pass
+                    complete = False if progress["cursor"] < _available_frames(
+                        recording, await asyncio.to_thread(self._read_chunks, folder, channel_id)) else complete
+                    continue
                 # Recovery can scan thousands of cold checkpoint files before
                 # its first STT request. Keep startup/health on the event loop.
                 chunks = await asyncio.to_thread(self._read_chunks, folder, channel_id)
@@ -303,11 +491,24 @@ class ObsLiveLinkDetailedStt:
                         audio_start = max(0, start - 10 * RATE) if start else 0
                         merge_start = max(0, start - 5 * RATE) if start else 0
                         segment = result_path.with_suffix(".wav")
-                        await asyncio.to_thread(_render_segment, folder, recording, channel_id,
-                                                chunks, audio_start, end, segment,
-                                                self.importer.ffmpeg_path)
+                        cancellation = ProcessingCancellation()
+                        stem = next((item for item in journal.get("sourceStems", [])
+                                     if item["channelId"] == channel_id), None)
+                        if stem and stem.get("assetId"):
+                            try:
+                                self.library.set_transcription_state(
+                                    project.id, stem["assetId"], "processing",
+                                    ai_review_status="pending", error=None, progress=0,
+                                )
+                            except KeyError:
+                                pass
+                        task = asyncio.create_task(self._recognize_segment(
+                            folder, recording, channel_id, chunks, audio_start, end,
+                            segment, state["model"], cancellation))
+                        self._active[active_key] = (cancellation, task)
                         try:
-                            item = await self.recognizer(segment, state["model"])
+                            item = await task
+                            cancellation.check()
                             if str(item.get("text") or "").strip():
                                 words = item.get("words")
                                 duration = (end - audio_start) / RATE
@@ -326,18 +527,33 @@ class ObsLiveLinkDetailedStt:
                                     raise ValueError("STT kỹ thiếu word timestamp; chưa thể ghép transcript an toàn")
                             metadata = {"audioStartFrame": audio_start,
                                         "mergeStartFrame": merge_start} if start else {}
+                            cancellation.check()
                             _atomic_json(result_path, {"startFrame": start, "endFrame": end,
                                                        **metadata, "item": item})
+                        except ProcessingStopped:
+                            complete = False
+                            continue
                         finally:
                             segment.unlink(missing_ok=True)
+                            self._active.pop(active_key, None)
                     progress["cursor"] = end
-                    _atomic_json(state_path, state)
+                    self._save_state(state_path, state)
+                    if progress.get("stopMode") == "queue" and stem and stem.get("assetId"):
+                        try:
+                            self.library.set_transcription_state(
+                                project.id, stem["assetId"], "paused", ai_review_status="skipped",
+                                error=None, progress=0,
+                            )
+                        except KeyError:
+                            pass
                 stem = next((item for item in journal.get("sourceStems", [])
                              if item["channelId"] == channel_id), None)
                 archive_ready = recording.get("archiveStatus") == "ready"
                 if (progress["cursor"] != progress["publishedCursor"] or
                         (archive_ready and stem and stem.get("assetId") and
                          not progress.get("publishedAsset"))):
+                    if progress.get("stopMode") == "all":
+                        continue
                     results = [json.loads(path.read_text(encoding="utf-8"))
                                for path in sorted(result_dir.glob("*.json"))]
                     combined = GrowingMkvTranscription._combine(results, total / RATE)
@@ -369,7 +585,26 @@ class ObsLiveLinkDetailedStt:
                                                                     total / RATE)
                             progress["publishedAsset"] = True
                     progress["publishedCursor"] = progress["cursor"]
-                    _atomic_json(state_path, state)
+                    self._save_state(state_path, state)
                 if progress["cursor"] != total or not progress.get("publishedAsset"):
                     complete = False
-            return {**state, "done": complete}
+            try:
+                latest = json.loads(state_path.read_text(encoding="utf-8"))
+                for channel_id, progress in state["tracks"].items():
+                    persisted = latest.get("tracks", {}).get(channel_id, {})
+                    if "stopMode" in persisted:
+                        progress["stopMode"] = persisted["stopMode"]
+            except (OSError, ValueError):
+                pass
+            stopped_all = bool(state["tracks"]) and all(
+                progress.get("stopMode") in ("queue", "all")
+                and (recording_id, channel_id) not in self._active
+                for channel_id, progress in state["tracks"].items()
+            )
+            modes = {progress.get("stopMode") for progress in state["tracks"].values()}
+            stop_mode = ("all" if modes and modes == {"all"}
+                         else "queue" if modes and modes.issubset({"queue", "all"})
+                         else None)
+            return {**state, "done": complete or stopped_all,
+                    "stopMode": stop_mode,
+                    "active": any(key[0] == recording_id for key in self._active)}

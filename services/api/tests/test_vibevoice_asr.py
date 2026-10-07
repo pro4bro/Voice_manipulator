@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ class FakeWorker:
         self.error = error
         self.requests = []
 
-    def request(self, payload):
+    def request(self, payload, cancellation_id=None):
         self.requests.append(payload)
         if self.error:
             raise self.error
@@ -97,6 +98,53 @@ def test_the_transcriber_frees_the_gpu_before_and_after_and_reports_worker_failu
     failing = VibeVoiceAsrTranscriber(vibevoice_tree(tmp_path / "second"), lease, worker=FakeWorker(error=EngineWorkerError("Worker VibeVoice-ASR đã thoát.")))
     with pytest.raises(VibeVoiceAsrError, match="đã thoát"):
         failing.transcribe(tmp_path / "a.wav", 3.0)
+    assert lease.holder() is None
+
+
+def test_cancelling_owned_asr_request_releases_its_gpu_lease(tmp_path):
+    class BlockingWorker:
+        def __init__(self):
+            self.entered = threading.Event()
+            self.release = threading.Event()
+            self.cancelled = []
+
+        def register_request(self, cancellation_id):
+            pass
+
+        def request(self, payload, cancellation_id=None):
+            self.entered.set()
+            self.release.wait(timeout=5)
+            raise EngineWorkerError("Worker VibeVoice-ASR request was cancelled.")
+
+        def cancel_request(self, cancellation_id):
+            self.cancelled.append(cancellation_id)
+            self.release.set()
+            return True
+
+        def abandon_request(self, cancellation_id):
+            pass
+
+    lease = GpuLease(tmp_path / "gpu.json")
+    worker = BlockingWorker()
+    transcriber = VibeVoiceAsrTranscriber(vibevoice_tree(tmp_path), lease, worker=worker)
+    errors = []
+
+    def run():
+        try:
+            transcriber.transcribe(tmp_path / "owned.wav", 3.0, cancellation_id="owned-job")
+        except VibeVoiceAsrError as exc:
+            errors.append(str(exc))
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert worker.entered.wait(timeout=2)
+    assert lease.holder() is not None
+    assert transcriber.cancel_request("owned-job") is True
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert worker.cancelled == ["owned-job"]
+    assert errors and "cancelled" in errors[0]
     assert lease.holder() is None
 
 

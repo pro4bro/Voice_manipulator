@@ -8,6 +8,7 @@ from app.adapters.activity_logging import job_failed, job_finished, job_progress
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError, ProcessingStopped
 from app.domain.ports import ProjectRepository
 
 
@@ -17,6 +18,7 @@ class TranscriptionTask:
     asset_id: str
     realtime_text: str = ""
     model: str = "large-v3"
+    cancellation: ProcessingCancellation | None = None
 
 
 class SequentialTranscriptionQueue:
@@ -40,10 +42,10 @@ class SequentialTranscriptionQueue:
         # Held back rather than dropped: a paused asset keeps its place in line.
         self._paused: set[tuple[str, str]] = set()
         self._paused_projects: set[str] = set()
-        # The asset a worker is inside right now. Recognition runs in a worker
-        # thread and the model cannot be interrupted, so pause and stop take
-        # effect between files - this one always runs to the end.
+        # The asset a worker is inside right now. Pause and ordinary Stop let
+        # it finish; confirmed Stop All signals its per-job cancellation owner.
         self._active: tuple[str, str] | None = None
+        self._active_task: TranscriptionTask | None = None
 
     async def enqueue(
         self, project_id: str, asset_ids: list[str], realtime_text: str = "", model: str = "large-v3"
@@ -77,6 +79,7 @@ class SequentialTranscriptionQueue:
                         asset_id=asset.id,
                         realtime_text=realtime_text if len(assets) == 1 else "",
                         model=model,
+                        cancellation=ProcessingCancellation(),
                     )
                 )
                 self._scheduled.add(key)
@@ -110,6 +113,7 @@ class SequentialTranscriptionQueue:
                     return
                 task = self._pending.pop(runnable)
                 self._active = (task.project_id, task.asset_id)
+                self._active_task = task
             try:
                 await self._process(task)
             finally:
@@ -117,6 +121,7 @@ class SequentialTranscriptionQueue:
                     self._scheduled.discard((task.project_id, task.asset_id))
                     if self._active == (task.project_id, task.asset_id):
                         self._active = None
+                        self._active_task = None
 
     def _wake(self) -> None:
         if self._pending and (self._worker is None or self._worker.done()):
@@ -159,28 +164,74 @@ class SequentialTranscriptionQueue:
             self._wake()
             return freed
 
-    async def stop(self, project_id: str, asset_ids: list[str] | None = None) -> list[str]:
-        """Take assets out of the queue, keeping them ticked so they can be re-run."""
+    async def stop(
+        self,
+        project_id: str,
+        asset_ids: list[str] | None = None,
+        *,
+        include_active: bool = False,
+    ) -> list[str]:
+        """Remove pending work; optionally cancel matching active inference too."""
+        active_to_cancel: TranscriptionTask | None = None
         async with self._lock:
-            dropped = self._targets(project_id, asset_ids)
-            wanted = set(dropped)
+            wanted = set(asset_ids) if asset_ids else {
+                task.asset_id for task in self._pending if task.project_id == project_id
+            }
+            dropped = [
+                task.asset_id for task in self._pending
+                if task.project_id == project_id and task.asset_id in wanted
+            ]
             self._pending = [
                 task for task in self._pending
                 if task.project_id != project_id or task.asset_id not in wanted
             ]
+            if include_active and self._active_task is not None:
+                active = self._active_task
+                if active.project_id == project_id and (not asset_ids or active.asset_id in wanted):
+                    active_to_cancel = active
+                    # This synchronous fence runs before releasing the queue lock.
+                    if active.cancellation is not None:
+                        active.cancellation.request()
+                    dropped.append(active.asset_id)
             if asset_ids is None:
                 self._paused_projects.discard(project_id)
             for asset_id in dropped:
-                self._scheduled.discard((project_id, asset_id))
+                if (project_id, asset_id) != self._active:
+                    self._scheduled.discard((project_id, asset_id))
                 self._paused.discard((project_id, asset_id))
                 if (project_id, asset_id) == self._active:
+                    if include_active:
+                        try:
+                            self.media.set_transcription_state(
+                                project_id, asset_id, "cancelled", ai_review_status="skipped", error=None, progress=0
+                            )
+                        except KeyError:
+                            pass
                     continue
                 try:
-                    self.media.set_transcription_state(project_id, asset_id, "skipped", error=None, progress=0)
+                    state = "cancelled" if include_active else "skipped"
+                    self.media.set_transcription_state(
+                        project_id, asset_id, state,
+                        ai_review_status="skipped" if include_active else None,
+                        error=None,
+                        progress=0,
+                    )
                 except KeyError:
                     continue
             self._wake()
-            return dropped
+        if active_to_cancel and active_to_cancel.cancellation is not None:
+            try:
+                await active_to_cancel.cancellation.cancel()
+            except ProcessingStopError as exc:
+                try:
+                    self.media.set_transcription_state(
+                        project_id, active_to_cancel.asset_id, "error", ai_review_status="error",
+                        error=str(exc), progress=0,
+                    )
+                except KeyError:
+                    pass
+                raise
+        return list(dict.fromkeys(dropped))
 
     def status_any_running(self) -> bool:
         """True when any project's batch is mid-flight, for any project."""
@@ -200,6 +251,9 @@ class SequentialTranscriptionQueue:
 
     async def _process(self, task: TranscriptionTask) -> None:
         try:
+            cancellation = task.cancellation
+            if cancellation:
+                cancellation.check()
             project = self.projects.get(task.project_id)
             asset = self.media.get(task.project_id, task.asset_id)
             self.media.set_transcription_state(
@@ -214,6 +268,8 @@ class SequentialTranscriptionQueue:
 
             async def report_progress(value: float) -> None:
                 nonlocal milestone
+                if cancellation:
+                    cancellation.check()
                 self.media.set_transcription_progress(
                     task.project_id, task.asset_id, value
                 )
@@ -223,8 +279,11 @@ class SequentialTranscriptionQueue:
                     milestone = value + 25
 
             transcribed, _ = await self.importer.transcribe_existing(
-                project, asset, task.realtime_text, model=task.model, on_progress=report_progress
+                project, asset, task.realtime_text, model=task.model, on_progress=report_progress,
+                cancellation=cancellation,
             )
+            if cancellation:
+                cancellation.check()
             job_finished(
                 "stt", task.project_id, task.asset_id, time.perf_counter() - started,
                 words=len(transcribed.words), quality=transcribed.word_timing_quality,
@@ -238,10 +297,33 @@ class SequentialTranscriptionQueue:
                 error=None,
                 progress=100,
             )
+        except ProcessingStopped:
+            try:
+                state = "error" if cancellation and cancellation.cancel_error else "cancelled"
+                self.media.set_transcription_state(
+                    task.project_id, task.asset_id, state,
+                    ai_review_status="error" if state == "error" else "skipped",
+                    error=cancellation.cancel_error if state == "error" else None,
+                    progress=0,
+                )
+            except KeyError:
+                return
         except KeyError:
             # A user may remove queued footage before its turn without making the queue fail.
             return
         except Exception as exc:
+            if task.cancellation and task.cancellation.cancelled:
+                state = "error" if task.cancellation.cancel_error else "cancelled"
+                try:
+                    self.media.set_transcription_state(
+                        task.project_id, task.asset_id, state,
+                        ai_review_status="error" if state == "error" else "skipped",
+                        error=task.cancellation.cancel_error if state == "error" else None,
+                        progress=0,
+                    )
+                except KeyError:
+                    pass
+                return
             job_failed("stt", task.project_id, task.asset_id, exc)
             try:
                 self.media.set_transcription_state(

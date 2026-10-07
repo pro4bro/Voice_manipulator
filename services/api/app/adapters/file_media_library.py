@@ -889,7 +889,7 @@ class FileMediaLibrary:
         progress: float | None = None,
         error: str | None = None,
     ) -> ProjectMediaAsset:
-        allowed = {"idle", "queued", "processing", "complete", "requires-setup", "error"}
+        allowed = {"idle", "queued", "processing", "complete", "requires-setup", "error", "cancelled"}
         if state not in allowed:
             raise ValueError("Trạng thái diarization không hợp lệ.")
         with self._lock(project_id):

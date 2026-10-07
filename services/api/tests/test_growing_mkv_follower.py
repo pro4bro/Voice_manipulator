@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import shutil
 import subprocess
@@ -200,6 +201,73 @@ def test_detailed_button_snapshots_committed_frames_and_waits_for_next_full_bloc
         await asyncio.sleep(0)
         await concurrent.close()
     asyncio.run(live_while_detailed_is_pending())
+
+
+@pytest.mark.parametrize("phase", ["live", "detailed"])
+def test_hard_stop_cancels_owned_mkv_live_or_detailed_segment_without_publication(
+        tmp_path, two_track_mkv, phase):
+    ffmpeg, closed = two_track_mkv
+    projects = FileProjectRepository(tmp_path / "projects")
+    project = projects.create(ProjectCreate(name="Stop MKV STT"))
+    library = FileMediaLibrary(projects)
+    follower = FileGrowingMkvFollower(
+        library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
+        str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")),
+    )
+    result = follower.start(project, str(closed), [0, 1], [0, 1], 60)
+    directory = Path(project.project_path) / "assets" / "media" / result.asset.id
+    follow_path = directory / "follow-state.json"
+    follow = json.loads(follow_path.read_text(encoding="utf-8"))
+    pcm_sources = []
+    for track in follow["tracks"]:
+        asset = library.get(project.id, track["assetId"])
+        analysis = Path(project.project_path) / asset.analysis_path
+        with wave.open(str(analysis), "wb") as audio:
+            audio.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+            audio.writeframes(b"\0\0" * (10 * 24000))
+        track["frames"] = 10 * 24000
+        pcm_sources.append((analysis, hashlib.sha256(analysis.read_bytes()).hexdigest()))
+        if phase == "detailed":
+            track["finalFrames"] = 10 * 24000
+    follow["finished"] = phase == "detailed"
+    follow["sttDetailedEnabled"] = False
+    follow_path.write_text(json.dumps(follow), encoding="utf-8")
+    if phase == "detailed":
+        follower.configure_detailed_stt(project, result.asset.id, 10)
+
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class Importer:
+        async def _upload_studio_audio(self, path, kind, title, *, model, cancellation):
+            async def stop_engine():
+                release.set()
+
+            await cancellation.install_cancel_handler(stop_engine)
+            entered.set()
+            await release.wait()
+            return {"text": "late result", "words": [{"text": "late", "start": 1, "end": 2}]}, {}
+
+    worker = GrowingMkvTranscription(library, Importer())
+
+    async def scenario():
+        processing = asyncio.create_task(worker.process_once(
+            project, result.asset.id, wait_for_detail=True))
+        await asyncio.wait_for(entered.wait(), timeout=10)
+        assert await worker.stop_parent(project, result.asset.id, include_active=True)
+        await processing
+        return processing.result()
+
+    response = asyncio.run(scenario())
+    stopped_at = (directory / "stt-state.json").stat().st_mtime_ns
+    assert response["stopMode"] == "all"
+    assert response["done"] is True
+    state = json.loads((directory / "stt-state.json").read_text(encoding="utf-8"))
+    assert all(progress.get("stopMode") == "all" for progress in state["tracks"].values())
+    assert all(progress["liveFrame"] == 0 and progress["finalFrame"] == 0
+               for progress in state["tracks"].values())
+    assert not list((directory / "stt-segments").glob("**/*.json"))
+    assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in pcm_sources)
+    assert (directory / "stt-state.json").stat().st_mtime_ns == stopped_at
 
 
 def test_start_registers_footage_before_decoding_existing_clusters(tmp_path, two_track_mkv, monkeypatch):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import audioop
 import gc
+import json
+import logging
 from collections import OrderedDict
 from copy import deepcopy
 import math
@@ -12,6 +14,7 @@ import threading
 import time
 import uuid
 import wave
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -94,6 +97,270 @@ model_load_state = "idle"
 model_load_error: str | None = None
 _dll_directory_handles: list[Any] = []
 app = FastAPI(title="Pro4Bro WhisperX Studio", version="1.0")
+
+
+@dataclass
+class InferenceJob:
+    progress_id: str
+    cancelled: bool = False
+    process: asyncio.subprocess.Process | None = None
+
+
+inference_jobs: dict[str, InferenceJob] = {}
+cancelled_job_ids: dict[str, float] = {}
+inference_jobs_lock = threading.Lock()
+# Cancellable queue jobs share one local inference slot and keep their model in
+# one reusable child process per engine type. The legacy live-session route has
+# its own state and does not participate in this queue.
+queued_inference_lock = asyncio.Lock()
+inference_workers: dict[str, asyncio.subprocess.Process] = {}
+inference_worker_models: dict[str, set[str]] = {}
+inference_worker_idle_tasks: dict[str, asyncio.Task[None]] = {}
+INFERENCE_WORKER_IDLE_SECONDS = 300.0
+INFERENCE_MARKER = "@@PRO4BRO_JOB@@"
+logger = logging.getLogger(__name__)
+
+
+def _register_inference_job(progress_id: str) -> InferenceJob:
+    now = time.monotonic()
+    with inference_jobs_lock:
+        for key, expires in list(cancelled_job_ids.items()):
+            if expires <= now:
+                cancelled_job_ids.pop(key, None)
+        job = InferenceJob(progress_id)
+        if progress_id and progress_id in cancelled_job_ids:
+            job.cancelled = True
+        inference_jobs[progress_id] = job
+        return job
+
+
+async def _cancel_inference_job(progress_id: str) -> bool:
+    """Cancel one active/queued inference, retaining a tombstone for upload races."""
+    with inference_jobs_lock:
+        job = inference_jobs.get(progress_id)
+        if job is None:
+            cancelled_job_ids[progress_id] = time.monotonic() + 900
+            return False
+        job.cancelled = True
+        process = job.process
+    if process is not None and process.returncode is None:
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+        with inference_jobs_lock:
+            for kind, worker in list(inference_workers.items()):
+                if worker is process:
+                    inference_workers.pop(kind, None)
+                    inference_worker_models.pop(kind, None)
+    return True
+
+
+async def _get_inference_worker(kind: str) -> asyncio.subprocess.Process:
+    idle_task = inference_worker_idle_tasks.pop(kind, None)
+    if idle_task is not None:
+        idle_task.cancel()
+    worker = inference_workers.get(kind)
+    if worker is not None and worker.returncode is None:
+        return worker
+    worker = await asyncio.create_subprocess_exec(
+        sys.executable,
+        str(Path(__file__).with_name("inference_worker.py")),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        cwd=str(Path(__file__).resolve().parents[1]),
+        limit=1024 * 1024,
+    )
+    inference_workers[kind] = worker
+    return worker
+
+
+async def _retire_other_inference_workers(kind: str) -> None:
+    """Keep only the active engine kind warm in the shared GPU slot."""
+    for other_kind, worker in list(inference_workers.items()):
+        if other_kind == kind:
+            continue
+        inference_workers.pop(other_kind, None)
+        inference_worker_models.pop(other_kind, None)
+        idle_task = inference_worker_idle_tasks.pop(other_kind, None)
+        if idle_task is not None:
+            idle_task.cancel()
+        if worker.returncode is None:
+            worker.terminate()
+            try:
+                await asyncio.wait_for(worker.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                worker.kill()
+                await worker.wait()
+
+
+def _schedule_worker_idle_shutdown(kind: str, worker: asyncio.subprocess.Process) -> None:
+    async def shut_down_when_idle() -> None:
+        try:
+            await asyncio.sleep(INFERENCE_WORKER_IDLE_SECONDS)
+            await queued_inference_lock.acquire()
+            try:
+                if inference_workers.get(kind) is worker and worker.returncode is None:
+                    inference_workers.pop(kind, None)
+                    inference_worker_models.pop(kind, None)
+                    if worker.stdin is not None:
+                        worker.stdin.write(b'{"kind":"shutdown"}\n')
+                        await worker.stdin.drain()
+                    try:
+                        await asyncio.wait_for(worker.wait(), timeout=5)
+                    except asyncio.TimeoutError:
+                        worker.kill()
+                        await worker.wait()
+            finally:
+                queued_inference_lock.release()
+        except asyncio.CancelledError:
+            return
+
+    old_task = inference_worker_idle_tasks.pop(kind, None)
+    if old_task is not None:
+        old_task.cancel()
+    inference_worker_idle_tasks[kind] = asyncio.create_task(shut_down_when_idle())
+
+
+async def _run_cancellable_inference(
+    job: InferenceJob,
+    kind: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Run one inference in its own reusable worker while retaining FIFO order."""
+    async with queued_inference_lock:
+        if job.cancelled:
+            raise HTTPException(status_code=409, detail="Inference was cancelled.")
+        result_fd, result_name = tempfile.mkstemp(prefix="pro4bro-job-", suffix=".json")
+        os.close(result_fd)
+        result_path = Path(result_name)
+        result_path.unlink(missing_ok=True)
+        payload = {
+            **arguments,
+            "kind": kind,
+            "result_path": str(result_path),
+            "progress_id": job.progress_id,
+        }
+        process: asyncio.subprocess.Process | None = None
+        try:
+            await _retire_other_inference_workers(kind)
+            process = await _get_inference_worker(kind)
+            with inference_jobs_lock:
+                job.process = process
+                already_cancelled = job.cancelled
+            if already_cancelled:
+                process.terminate()
+                await process.wait()
+                inference_workers.pop(kind, None)
+                raise HTTPException(status_code=409, detail="Inference was cancelled.")
+            assert process.stdin is not None and process.stdout is not None
+            process.stdin.write(json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n")
+            await process.stdin.drain()
+            completed = False
+            while line := await process.stdout.readline():
+                if not line.startswith(INFERENCE_MARKER.encode("ascii")):
+                    logger.warning("Inference worker %s: %s", kind,
+                                   line.decode("utf-8", errors="replace").rstrip()[:2048])
+                    continue
+                try:
+                    message = json.loads(line[len(INFERENCE_MARKER):])
+                except (UnicodeDecodeError, ValueError):
+                    continue
+                if message.get("progress_id") != job.progress_id:
+                    continue
+                if message.get("kind") == "progress":
+                    progress.set(job.progress_id, float(message.get("value", 0)))
+                elif message.get("kind") == "done":
+                    completed = True
+                    break
+            if job.cancelled:
+                raise HTTPException(status_code=409, detail="Inference was cancelled.")
+            if not completed or process.returncode is not None or not result_path.is_file():
+                if process.returncode is None:
+                    process.terminate()
+                    await process.wait()
+                inference_workers.pop(kind, None)
+                inference_worker_models.pop(kind, None)
+                raise RuntimeError("Inference worker exited without a result.")
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            if result.get("error"):
+                raise RuntimeError(str(result["error"]))
+            requested_model = arguments.get("model")
+            if requested_model:
+                inference_worker_models.setdefault(kind, set()).add(str(requested_model))
+            return dict(result.get("result") or {})
+        finally:
+            with inference_jobs_lock:
+                if job.process is process:
+                    job.process = None
+            result_path.unlink(missing_ok=True)
+            if process is not None and process.returncode is None and not job.cancelled:
+                _schedule_worker_idle_shutdown(kind, process)
+
+
+async def _send_worker_control(worker: asyncio.subprocess.Process, kind: str) -> None:
+    if worker.returncode is not None or worker.stdin is None or worker.stdout is None:
+        return
+    progress_id = uuid.uuid4().hex
+    worker.stdin.write(json.dumps({"kind": kind, "progress_id": progress_id}) .encode("utf-8") + b"\n")
+    await worker.stdin.drain()
+    while line := await worker.stdout.readline():
+        if not line.startswith(INFERENCE_MARKER.encode("ascii")):
+            continue
+        try:
+            message = json.loads(line[len(INFERENCE_MARKER):])
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if message.get("kind") == "done" and message.get("progress_id") == progress_id:
+            return
+
+
+@app.post("/api/runtime/release")
+async def release_inference_models() -> dict[str, bool]:
+    """Release warm sidecar models before another local workload takes the GPU."""
+    if queued_inference_lock.locked():
+        raise HTTPException(status_code=409, detail="Speaker or STT inference is active.")
+    await queued_inference_lock.acquire()
+    try:
+        workers = list(inference_workers.values())
+        inference_workers.clear()
+        inference_worker_models.clear()
+        for task in inference_worker_idle_tasks.values():
+            task.cancel()
+        inference_worker_idle_tasks.clear()
+        for worker in workers:
+            if worker.returncode is None:
+                worker.terminate()
+                try:
+                    await asyncio.wait_for(worker.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    worker.kill()
+                    await worker.wait()
+        return {"released": True}
+    finally:
+        queued_inference_lock.release()
+
+
+@app.on_event("shutdown")
+async def stop_inference_workers() -> None:
+    async with queued_inference_lock:
+        workers = list(inference_workers.values())
+        inference_workers.clear()
+        inference_worker_models.clear()
+        for task in inference_worker_idle_tasks.values():
+            task.cancel()
+        inference_worker_idle_tasks.clear()
+        for worker in workers:
+            if worker.returncode is None:
+                try:
+                    await _send_worker_control(worker, "shutdown")
+                    await asyncio.wait_for(worker.wait(), timeout=5)
+                except (OSError, asyncio.TimeoutError):
+                    worker.kill()
+                    await worker.wait()
 
 
 def _audio_duration(path: Path) -> tuple[float, int]:
@@ -630,25 +897,47 @@ def diarize_progress(progress_id: str) -> dict[str, float]:
     return {"progress": progress.get(progress_id) or 0.0}
 
 
+@app.post("/api/audio/diarize/{progress_id}/cancel")
+async def cancel_diarize(progress_id: str) -> dict[str, bool]:
+    return {"cancelled": await _cancel_inference_job(progress_id)}
+
+
 @app.post("/api/audio/diarize")
 async def diarize_audio(file: UploadFile = File(...), progress_id: str = Form(""), model: str = Form("pyannote/speaker-diarization-community-1"), expected_speakers: int = Form(0), huggingface_token: str | None = Header(default=None, alias="X-Pro4Bro-HuggingFace-Token")) -> dict[str, Any]:
     started = time.perf_counter()
     if not (huggingface_token or "").strip():
         raise HTTPException(status_code=503, detail="Cần Hugging Face token cho Speaker Diarization. Mở Windows → Preferences để cấu hình.")
+    effective_id = progress_id or uuid.uuid4().hex
+    job = _register_inference_job(effective_id)
     suffix = Path(file.filename or "analysis.wav").suffix or ".wav"
-    progress.set(progress_id, 1)
-    with tempfile.TemporaryDirectory(prefix="pro4bro-diarize-") as temporary_directory:
-        destination = Path(temporary_directory) / f"input{suffix}"
-        with destination.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                output.write(chunk)
-        try:
-            result = await asyncio.to_thread(_diarize, destination, progress_id, model, huggingface_token, max(0, min(8, expected_speakers)))
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Speaker Diarization thất bại: {exc}") from exc
-    return {"spans": result["spans"], "overlaps": result["overlaps"], "elapsed": round(time.perf_counter() - started, 2)}
+    progress.set(effective_id, 1)
+    try:
+        if job.cancelled:
+            raise HTTPException(status_code=409, detail="Inference was cancelled.")
+        with tempfile.TemporaryDirectory(prefix="pro4bro-diarize-") as temporary_directory:
+            destination = Path(temporary_directory) / f"input{suffix}"
+            with destination.open("wb") as output:
+                while chunk := await file.read(1024 * 1024):
+                    if job.cancelled:
+                        raise HTTPException(status_code=409, detail="Inference was cancelled.")
+                    output.write(chunk)
+            result = await _run_cancellable_inference(job, "diarize", {
+                "path": str(destination),
+                "model": model,
+                "token": huggingface_token,
+                "expected_speakers": max(0, min(8, expected_speakers)),
+            })
+        return {"spans": result["spans"], "overlaps": result["overlaps"], "elapsed": round(time.perf_counter() - started, 2)}
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Speaker Diarization thất bại: {exc}") from exc
+    finally:
+        with inference_jobs_lock:
+            if inference_jobs.get(effective_id) is job:
+                inference_jobs.pop(effective_id, None)
 
 @app.post("/api/audio/live/chunk")
 async def live_chunk(
@@ -731,8 +1020,9 @@ async def health() -> dict[str, str]:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     device, compute_type = _resolve_device()
-    return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None, "load_state": model_load_state, "load_error": model_load_error,
-            "loaded_models": list(loaded_model_names), "model_load_count": model_load_count,
+    child_models = sorted({model for models in inference_worker_models.values() for model in models})
+    return {"status": "ok", "engine": "faster-whisper", "timing_engine": "cross-attention-dtw", "model": MODEL_NAME, "device": device, "compute_type": compute_type, "loaded": loaded_model is not None or bool(child_models), "load_state": model_load_state, "load_error": model_load_error,
+            "loaded_models": sorted(set(loaded_model_names) | set(child_models)), "model_load_count": model_load_count,
             "last_model_load_seconds": last_model_load_seconds}
 
 
@@ -740,6 +1030,11 @@ def status() -> dict[str, Any]:
 def import_progress(progress_id: str) -> dict[str, float]:
     # Polling may run before the job is registered; 0 avoids a false 404.
     return {"progress": progress.get(progress_id) or 0.0}
+
+
+@app.post("/api/audio/import/{progress_id}/cancel")
+async def cancel_import(progress_id: str) -> dict[str, bool]:
+    return {"cancelled": await _cancel_inference_job(progress_id)}
 
 
 def _resolve_local_source(value: str) -> Path:
@@ -775,32 +1070,43 @@ async def import_audio(file: UploadFile | None = File(None), origin: str = Form(
     if model not in SUPPORTED_STT_MODELS:
         raise HTTPException(status_code=400, detail="Model STT không được hỗ trợ.")
     started = time.perf_counter()
-    progress.set(progress_id, 1)
+    effective_id = progress_id or uuid.uuid4().hex
+    job = _register_inference_job(effective_id)
+    progress.set(effective_id, 1)
+    try:
+        if job.cancelled:
+            raise HTTPException(status_code=409, detail="Inference was cancelled.")
+        if source_path.strip():
+            path = _resolve_local_source(source_path.strip())
+            item = await _run_cancellable_inference(job, "transcribe", {
+                "path": str(path), "model": model, "language": language.strip() or None,
+            })
+            return {"item": item, "elapsed": round(time.perf_counter() - started, 2)}
 
-    async def run(path: Path) -> dict[str, Any]:
-        try:
-            return await asyncio.to_thread(_transcribe, path, progress_id, model, language.strip() or None)
-        except HTTPException:
-            raise
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"WhisperX STT thất bại: {exc}") from exc
-
-    if source_path.strip():
-        item = await run(_resolve_local_source(source_path.strip()))
+        if file is None:
+            raise HTTPException(status_code=400, detail="Cần file upload hoặc source_path.")
+        suffix = Path(file.filename or "analysis.wav").suffix or ".wav"
+        with tempfile.TemporaryDirectory(prefix="pro4bro-stt-") as temporary_directory:
+            destination = Path(temporary_directory) / f"input{suffix}"
+            with destination.open("wb") as output:
+                while chunk := await file.read(1024 * 1024):
+                    if job.cancelled:
+                        raise HTTPException(status_code=409, detail="Inference was cancelled.")
+                    output.write(chunk)
+            item = await _run_cancellable_inference(job, "transcribe", {
+                "path": str(destination), "model": model, "language": language.strip() or None,
+            })
         return {"item": item, "elapsed": round(time.perf_counter() - started, 2)}
-
-    if file is None:
-        raise HTTPException(status_code=400, detail="Cần file upload hoặc source_path.")
-    suffix = Path(file.filename or "analysis.wav").suffix or ".wav"
-    with tempfile.TemporaryDirectory(prefix="pro4bro-stt-") as temporary_directory:
-        destination = Path(temporary_directory) / f"input{suffix}"
-        with destination.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                output.write(chunk)
-        item = await run(destination)
-    return {"item": item, "elapsed": round(time.perf_counter() - started, 2)}
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"WhisperX STT thất bại: {exc}") from exc
+    finally:
+        with inference_jobs_lock:
+            if inference_jobs.get(effective_id) is job:
+                inference_jobs.pop(effective_id, None)
 
 if __name__ == "__main__":
     import uvicorn

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import asyncio
 import httpx
+from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError
 
 DiarizationProgressCallback = Callable[[float], Awaitable[None]]
 
@@ -35,10 +36,11 @@ class StudioDiarizationGateway:
         model: str,
         expected_speakers: int | None = None,
         on_progress: DiarizationProgressCallback | None = None,
+        cancellation: ProcessingCancellation | None = None,
     ) -> DiarizationResult:
         if not token:
             raise RuntimeError("Cần Hugging Face token cho Speaker Diarization. Mở Windows → Preferences, chấp nhận model community-1 rồi nhập token.")
-        progress_id = uuid4().hex
+        progress_id = cancellation.id if cancellation else uuid4().hex
         latest = -1.0
 
         async def publish(value: object) -> None:
@@ -47,6 +49,8 @@ class StudioDiarizationGateway:
                 numeric = round(max(0.0, min(100.0, float(value))), 1)
             except (TypeError, ValueError):
                 return
+            if cancellation:
+                cancellation.check()
             if on_progress and numeric > latest:
                 latest = numeric
                 await on_progress(numeric)
@@ -55,6 +59,11 @@ class StudioDiarizationGateway:
         try:
             with analysis_path.open("rb") as audio:
                 async with httpx.AsyncClient(timeout=timeout) as client:
+                    if cancellation:
+                        cancellation.check()
+                        await cancellation.install_cancel_handler(
+                            lambda: self._cancel(progress_id, "diarize")
+                        )
                     task = asyncio.create_task(client.post(
                         f"{self.studio_url}/api/audio/diarize",
                         files={"file": (analysis_path.name, audio, "audio/wav")},
@@ -62,6 +71,12 @@ class StudioDiarizationGateway:
                         headers={"X-Pro4Bro-HuggingFace-Token": token},
                     ))
                     while not task.done():
+                        if cancellation:
+                            try:
+                                cancellation.check()
+                            except Exception:
+                                task.cancel()
+                                raise
                         await asyncio.sleep(0.2)
                         try:
                             status = await client.get(
@@ -75,6 +90,8 @@ class StudioDiarizationGateway:
                     response = await task
         except httpx.RequestError as exc:
             raise RuntimeError("OmniVoice Studio runtime chưa chạy.") from exc
+        if cancellation:
+            cancellation.check()
         payload = response.json()
         if response.is_error:
             raise RuntimeError(str(payload.get("detail") or f"Speaker Diarization thất bại ({response.status_code})."))
@@ -87,3 +104,21 @@ class StudioDiarizationGateway:
             spans=[dict(span) for span in spans if isinstance(span, dict)],
             overlaps=[dict(region) for region in overlaps if isinstance(region, dict)],
         )
+
+    async def _cancel(self, progress_id: str, kind: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+                response = await client.post(f"{self.studio_url}/api/audio/{kind}/{progress_id}/cancel")
+                if response.status_code == 404:
+                    raise ProcessingStopError(
+                        "Studio does not support per-job cancellation. Restart the Studio runtime before retrying."
+                    )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise ProcessingStopError(
+                "Studio rejected the diarization cancellation request. Restart the Studio runtime before retrying."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ProcessingStopError(
+                "Cannot reach Studio to confirm diarization stopped. Restart the Studio runtime before retrying."
+            ) from exc
