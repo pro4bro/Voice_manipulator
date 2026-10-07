@@ -12,7 +12,17 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01A
+### 2026-10-07 — current: TASK-STOP-DEVICE-01B
+
+Real cached community-1 No/Yes/rerun passes: actual worker59148 is reaped,
+new worker73644 publishes24 raw spans; completed long footage retains120 spans.
+All seven PCM/source hashes agree and the cancelled asset has no late publication.
+See `docs/gates/task-stop-device-01b-diarization.md`. Model cancellation passes;
+Activity Center still displays cancelled work, so exact next01C settles the
+STT/diarization cancellation activity and verifies the new API. Training Resume,
+generation artifacts and older physical/recognition gates remain open.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01A
 
 Real cached Medium/CUDA STT Stop acceptance passes in an isolated current-source
 fixture. Browser No drops pending files while active recognition completes; Yes

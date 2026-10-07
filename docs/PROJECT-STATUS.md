@@ -1,5 +1,13 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-DEVICE-01B — real community-1 acceptance (2026-10-07)
+
+Real cached community-1 diarization No/Yes/rerun passes in the isolated fixture:
+worker termination, new-worker execution, real raw spans and PCM preservation
+have evidence in `docs/gates/task-stop-device-01b-diarization.md`. Cancelled
+activity still appears running in the footer; exact next01C repairs that observed
+gap. Speaker accuracy/identity, Training/Generate and physical gates remain open.
+
 ## TASK-STOP-DEVICE-01A — real CUDA STT acceptance (2026-10-07)
 
 Current-source isolated fixture proves cached Medium/CUDA No/Yes/rerun. No drops

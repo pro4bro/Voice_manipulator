@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-DEVICE-01A real CUDA STT Stop acceptance.
-last_activity_desc: Real Medium No/Yes/new-worker rerun and PCM preservation pass; full checks in the STT device gate. Next01B community-1 diarization. Training Resume needs compatible project artifacts. Existing phase and recognition budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-DEVICE-01B real community-1 Stop acceptance.
+last_activity_desc: Real diarization No/Yes/new-worker rerun and PCM preservation pass; next01C repairs cancelled activity still shown running. Training Resume needs compatible project artifacts. Existing phase and recognition budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,13 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## TASK-STOP-DEVICE-01B — 2026-10-07
+
+Real community-1 No/Yes/rerun preserves completed spans and all seven WAVs.
+See `docs/gates/task-stop-device-01b-diarization.md`. Exact next01C repairs
+the observed stale Activity Center task after STT/diarization cancellation.
+Training/generation and physical acceptance retain their prerequisites.
 
 ## TASK-STOP-DEVICE-01A — 2026-10-07
 
@@ -52,7 +59,7 @@ Older near-term parents and Phase03-04 retain their documented prerequisites.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-10-07 — Real CUDA STT Stop accepted; next diarization slice.
+Last activity: 2026-10-07 — Real diarization Stop accepted; next activity repair.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 

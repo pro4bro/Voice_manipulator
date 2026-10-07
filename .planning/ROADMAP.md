@@ -1,5 +1,12 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## TASK-STOP-DEVICE-01B — real diarization Stop (2026-10-07)
+
+Cached community-1 No/Yes/new-worker rerun has actual process, raw-span and PCM
+evidence in `docs/gates/task-stop-device-01b-diarization.md`. An observed stale
+Activity Center task makes01C the exact next repair/acceptance slice. Parent
+device, Training/Generate and older phase/physical gates remain open.
+
 ## TASK-STOP-DEVICE-01A — real STT Stop (2026-10-07)
 
 Cached Medium/CUDA execution passes No/Yes/new-worker rerun on copied speech.
