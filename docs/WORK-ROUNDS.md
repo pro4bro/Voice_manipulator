@@ -12,7 +12,17 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01C
+### 2026-10-07 — current: TASK-STOP-DEVICE-01D1
+
+Resume now finds the current dev token list beside train tokens and supports
+the legacy nested dev path. Six regressions pass (current layout failed before
+repair), full runner19, frontend560/63, API656/two existing warnings, typecheck
+and build pass. See `docs/gates/task-stop-device-01d1-token-cache.md`.
+Exact next01D2 records actual Generate queue/hard Stop and WAV rerun;01D3 uses
+the freshly compiled disposable dataset for real checkpoint Stop/Resume.
+Owner-specific quality and older physical/browser/second-machine gates remain.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01C
 
 Repairs the stale Activity Center task found in01A/01B. First Stop retains
 running activity; hard cancellation settles cancelled; failed acknowledgement

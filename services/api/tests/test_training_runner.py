@@ -111,6 +111,90 @@ def test_descriptor_values_reach_the_omnivoice_config_under_their_own_names(tmp_
     assert written["warmup_ratio"] == 0.01
 
 
+@pytest.mark.parametrize("dev_layout", ["current", "legacy"])
+@pytest.mark.parametrize("missing_split", [None, "train", "dev"])
+def test_resume_reuses_complete_token_lists_and_retokenizes_when_either_is_missing(
+    tmp_path, monkeypatch, dev_layout, missing_split
+):
+    from app.adapters import training_runner as module
+
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Resume token cache"))
+    source = Path(project.project_path) / "assets" / "media" / "take.wav"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"fixture audio bytes")
+    manifest = DatasetManifest(id="dataset-1", segments=[
+        DatasetSegment(
+            id="train-1", asset_id="asset-1", audio_path="assets/media/take.wav",
+            start=0, end=3, text="train phrase", split="train", capture_tier="guided",
+        ),
+        DatasetSegment(
+            id="dev-1", asset_id="asset-2", audio_path="assets/media/take.wav",
+            start=0, end=3, text="dev phrase", split="dev", capture_tier="guided",
+        ),
+    ])
+    (Path(project.project_path) / "assets" / "training" / "datasets").mkdir(parents=True)
+    (Path(project.project_path) / "assets" / "training" / "datasets" / "dataset-1.json").write_text(
+        manifest.model_dump_json(), encoding="utf-8"
+    )
+    engine = tmp_path / "engine"
+    template = engine / "examples" / "config" / "train_config_finetune_lora.json"
+    template.parent.mkdir(parents=True)
+    template.write_text(json.dumps({"steps": 20, "eval_steps": 5}), encoding="utf-8")
+    runs = FileTrainingRuns(projects)
+    runner = TrainingRunner(
+        projects,
+        StoredManifest(manifest),  # type: ignore[arg-type]
+        FileTrainingCatalog(projects),
+        runs,
+        ReadyRuntime(),  # type: ignore[arg-type]
+        GpuLease(tmp_path / "gpu.json"),
+        engine,
+    )
+    run = runs.create(project.id, manifest.id, config=TrainingRunConfig(steps=20, save_steps=5))
+    run = runs.update(project.id, run.model_copy(update={"status": "running", "global_step": 5}))
+    run_dir = runs.run_dir(project.id, run.id)
+    train_list = run_dir / "data" / "tokens" / "data.lst"
+    dev_list = run_dir / "data" / ("dev-tokens" if dev_layout == "current" else "tokens/dev") / "data.lst"
+    train_list.parent.mkdir(parents=True, exist_ok=True)
+    dev_list.parent.mkdir(parents=True, exist_ok=True)
+    train_list.write_text("train tokens", encoding="utf-8")
+    dev_list.write_text("dev tokens", encoding="utf-8")
+    if missing_split == "train":
+        train_list.unlink()
+    elif missing_split == "dev":
+        dev_list.unlink()
+    checkpoint = run_dir / "checkpoints" / "checkpoint-5"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "model.safetensors").write_bytes(b"checkpoint")
+
+    tokenize_calls = []
+
+    def fake_run_tokenize(_process, command, **_kwargs):
+        tokenize_calls.append(command)
+        tar_pattern = Path(command[command.index("--tar_output_pattern") + 1])
+        token_dir = tar_pattern.parent.parent
+        token_dir.mkdir(parents=True, exist_ok=True)
+        (token_dir / "data.lst").write_text("regenerated tokens", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(module, "run_tokenize", fake_run_tokenize)
+    monkeypatch.setattr(module, "run_training", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(runner, "_plan_passes", lambda current, *_args: current)
+    monkeypatch.setattr(runner, "_publish_final", lambda *_args: None)
+
+    runner._execute_omnivoice(run)
+
+    assert len(tokenize_calls) == (0 if missing_split is None else 2)
+    data_config = json.loads((run_dir / "data" / "data_config.json").read_text(encoding="utf-8"))
+    assert Path(data_config["train"][0]["manifest_path"][0]) == train_list
+    expected_dev_list = run_dir / "data" / "dev-tokens" / "data.lst"
+    if missing_split is not None:
+        assert Path(data_config["dev"][0]["manifest_path"][0]) == expected_dev_list
+    else:
+        assert Path(data_config["dev"][0]["manifest_path"][0]) == dev_list
+
+
 def batch_fixture(tmp_path, monkeypatch, segments_by_speaker):
     projects = FileProjectRepository(tmp_path / "registry")
     project = projects.create(ProjectCreate(name="Batch"))

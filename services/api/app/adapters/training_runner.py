@@ -599,8 +599,8 @@ class TrainingRunner:
 
             token_dir = run_dir / "data" / "tokens"
             train_lst = token_dir / "data.lst"
-            dev_lst = token_dir / "dev" / "data.lst"
-            if not train_lst.is_file() or not dev_lst.is_file():
+            cached_token_lists = self._existing_omnivoice_token_lists(run_dir)
+            if cached_token_lists is None:
                 run = self._set_run(run, step_id="tokenize")
                 self._append(run, "tokenize", "Chuyển audio thành audio token bằng higgs-audio-v2 (chạy trên GPU).")
                 commands = OmniVoiceTrainingCommands(self.runtime.python, self.engine_root)
@@ -624,6 +624,7 @@ class TrainingRunner:
                     raise RuntimeError(_failed(f"OmniVoice tokenizer cho dev thất bại với mã {code}.", dev_process))
                 dev_lst = dev_dir / "data.lst"
             else:
+                train_lst, dev_lst = cached_token_lists
                 self._append(run, "tokenize", "Đã có audio token từ lần chạy trước, bỏ qua tokenize.")
             data_config = self.exporter.write_data_config(run_dir, train_lst, dev_lst)
 
@@ -664,6 +665,28 @@ class TrainingRunner:
                 self.gpu_lease.release(lease_token)
             with self._lock:
                 self._active.pop(run.id, None)
+
+    @staticmethod
+    def _existing_omnivoice_token_lists(run_dir: Path) -> tuple[Path, Path] | None:
+        """Reuse both completed token splits, including the earlier dev layout.
+
+        Current exports place dev tokens beside the train-token directory. Some
+        earlier runs wrote them below `tokens/dev`; keep those readable so a
+        resume does not needlessly repeat GPU tokenization.
+        """
+        data_dir = run_dir / "data"
+        train_lst = data_dir / "tokens" / "data.lst"
+        if not train_lst.is_file():
+            return None
+
+        dev_lists = (
+            data_dir / "dev-tokens" / "data.lst",
+            data_dir / "tokens" / "dev" / "data.lst",
+        )
+        dev_lst = next((path for path in dev_lists if path.is_file()), None)
+        if dev_lst is None:
+            return None
+        return train_lst, dev_lst
 
     def _process_for(self, run: TrainingRun, step_id: str | None = None) -> TrainingProcess:
         process = TrainingProcess(
