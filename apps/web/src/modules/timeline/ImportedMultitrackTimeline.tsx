@@ -5,6 +5,8 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain/timestamp-promotion";
+import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
 import { Timeline } from "./Timeline";
@@ -66,9 +68,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [markIn, setMarkIn] = useState<number | null>(null);
-  const [markOut, setMarkOut] = useState<number | null>(null);
-  const [stagedCut, setStagedCut] = useState<TimelineEditRange | null>(null);
+  const [markIn, setMarkIn] = useState<number | null>(tracks[0]?.workingRange?.start ?? null);
+  const [markOut, setMarkOut] = useState<number | null>(tracks[0]?.workingRange?.end ?? null);
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -86,12 +88,15 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [viewportHeight, setViewportHeight] = useState(220);
   const [viewportWidth, setViewportWidth] = useState(1000);
   const [measuredWaveWidth, setMeasuredWaveWidth] = useState(0);
-  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; serial: number } } | null>(null);
+  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } } | null>(null);
+  const editFocusRef = useRef(editFocus);
+  editFocusRef.current = editFocus;
   const duration = Math.max(parent.duration, ...tracks.map((track) => track.duration), 0);
   const selected = tracks.find((track) => track.id === selectedTrackId) ?? tracks[0];
 
-  function focusTrack(track: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number }) {
+  function focusTrack(track: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number }) {
     if (readOnly || !onAssetWordsChange || !onAssetTimelineStateChange) return;
+    if (editFocus?.assetId === track.id && editFocus.request.promoteIndex === request.promoteIndex && request.promoteIndex !== undefined) return;
     audioRefs.current.forEach((audio) => audio.pause());
     setPlaying(false);
     setEditFocus({ assetId: track.id, request: { ...request, serial: Date.now() } });
@@ -103,6 +108,10 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const minSpan = Math.min(Math.max(duration, 0.01), Math.max(0.01, waveWidth / MAX_WAVEFORM_PIXELS_PER_SECOND));
   const span = duration > 0 ? Math.min(duration, Math.max(minSpan, windowSeconds)) : 1;
   const sharedCuts = tracks[0]?.removedRanges ?? [];
+  const sharedWorkingRange = tracks[0]?.workingRange ?? null;
+  const sharedCutPoints = tracks[0]?.cutPoints ?? [];
+  const excludedRanges = useMemo(() => excludedTimelineRanges(duration, sharedCuts, sharedWorkingRange), [duration, sharedCuts, sharedWorkingRange]);
+  const sections = useMemo(() => timelineSections(duration, sharedCutPoints), [duration, sharedCutPoints]);
   const orderedTracks = useMemo(() => [...tracks].sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0)), [tracks]);
   const visibleTracks = singleTrackView && selectedTrackId ? orderedTracks.filter((track) => track.id === selectedTrackId) : orderedTracks;
   const trackSources = orderedTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
@@ -117,6 +126,17 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     if (ids.includes(assetId)) seek(seconds);
   }));
   useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<TimestampPromotion>).detail;
+      if (detail.index === null || detail.index === undefined) return;
+      if (editFocusRef.current?.assetId === detail.assetId) return;
+      const track = orderedTracks.find((item) => item.id === detail.assetId);
+      if (track) focusTrack(track, { promoteIndex: detail.index });
+    };
+    window.addEventListener(TIMESTAMP_PROMOTION_EVENT, receive);
+    return () => window.removeEventListener(TIMESTAMP_PROMOTION_EVENT, receive);
+  }, [orderedTracks, readOnly, onAssetWordsChange, onAssetTimelineStateChange]);
+  useEffect(() => {
     const anchor = wordSelection?.anchor;
     if (singleTrackView && anchor != null && selected?.words[anchor]) seek(selected.words[anchor].start);
   // Selection changes seek once; transcript polling must not rewind playback.
@@ -125,10 +145,15 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
 
   useEffect(() => {
     setWindowSeconds(Number.POSITIVE_INFINITY);
-    setCurrentTime(0); setWindowStart(0); setMarkIn(null); setMarkOut(null); setStagedCut(null);
+    setCurrentTime(0); setWindowStart(0); setMarkIn(tracks[0]?.workingRange?.start ?? null); setMarkOut(tracks[0]?.workingRange?.end ?? null); setSelectedSections([]);
     setPlaying(false); setEnvelopes({}); setDetailEnvelopes({}); setError(null);
     audioRefs.current.forEach((audio) => audio.pause());
   }, [parent.id]);
+
+  useEffect(() => {
+    setMarkIn(sharedWorkingRange?.start ?? null);
+    setMarkOut(sharedWorkingRange?.end ?? null);
+  }, [tracks[0]?.id, sharedWorkingRange?.start, sharedWorkingRange?.end]);
 
   useEffect(() => () => {
     if (audioGraphRef.current) void audioGraphRef.current.context.close();
@@ -243,6 +268,62 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     if (box.width) seek((full ? 0 : windowStart) + Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * (full ? duration : span));
   }
 
+  async function saveTimelineState(state: TimelineEditState) {
+    if (readOnly || busy) return false;
+    setBusy(true);
+    try {
+      if (onAssetTimelineStateChange) {
+        for (const track of orderedTracks) await onAssetTimelineStateChange(track.id, state);
+      } else if (onCutsChange) {
+        const saved = await onCutsChange(ids, state.removedRanges);
+        if (!saved) return false;
+      } else return false;
+      setError(null);
+      return true;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không lưu được chỉnh sửa Timeline cho các channel.");
+      return false;
+    } finally { setBusy(false); }
+  }
+
+  function markWorkingRange(kind: "in" | "out") {
+    const nextIn = kind === "in" ? currentTime : markIn;
+    const nextOut = kind === "out" ? currentTime : markOut;
+    if (kind === "in") setMarkIn(currentTime);
+    else setMarkOut(currentTime);
+    if (nextIn === null || nextOut === null || nextIn === nextOut) return;
+    void saveTimelineState({ removedRanges: sharedCuts, cutPoints: sharedCutPoints,
+      workingRange: { id: "working", start: Math.min(nextIn, nextOut), end: Math.max(nextIn, nextOut) } });
+  }
+
+  function cutAtPlayhead() {
+    if (currentTime <= 0 || currentTime >= duration) return;
+    void saveTimelineState({ removedRanges: sharedCuts, workingRange: sharedWorkingRange,
+      cutPoints: [...new Set([...sharedCutPoints, currentTime])].sort((a, b) => a - b) });
+  }
+
+  function deleteSelectedSections() {
+    const selected = sections.filter((section) => selectedSections.includes(section.id));
+    if (!selected.length) return;
+    const ranges = excludedTimelineRanges(duration, [...sharedCuts, ...selected], null);
+    void saveTimelineState({ removedRanges: ranges, workingRange: sharedWorkingRange, cutPoints: sharedCutPoints });
+    setSelectedSections([]);
+  }
+
+  function uncutSelectedSections() {
+    const selected = selectedSections.length ? sections.filter((section) => selectedSections.includes(section.id)) : sections;
+    const edges = new Set(selected.flatMap((section) => [section.start, section.end]));
+    const removedRanges = selectedSections.length ? restoreTimelineSections(sharedCuts, selected) : [];
+    const cutPoints = selectedSections.length ? sharedCutPoints.filter((point) => !edges.has(point)) : [];
+    void saveTimelineState({ removedRanges, workingRange: sharedWorkingRange, cutPoints });
+    setSelectedSections([]);
+  }
+
+  function resetTimelineEdits() {
+    void saveTimelineState({ removedRanges: [], workingRange: null, cutPoints: [] });
+    setMarkIn(null); setMarkOut(null); setSelectedSections([]);
+  }
+
   function beginScrub(event: PointerEvent<HTMLElement>, full = false) {
     scrubbingRef.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -254,14 +335,6 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     seekFrom(event, full);
     scrubbingRef.current = false;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
-
-  async function saveCuts(next: TimelineEditRange[]) {
-    if (readOnly || busy) return;
-    setBusy(true);
-    try {
-      if (await onCutsChange(ids, next)) { setStagedCut(null); setMarkIn(null); setMarkOut(null); }
-    } finally { setBusy(false); }
   }
 
   function resizeColumn(trackId: string, event: PointerEvent<HTMLDivElement>) {
@@ -307,12 +380,12 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
         <button aria-pressed={layout === "layers"} onClick={() => setLayout("layers")} type="button">LAYER</button>
       </div>
       <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
-        <button disabled={readOnly || !duration} onClick={() => { setMarkIn(currentTime); setStagedCut(null); }} type="button">MARK IN</button>
-        <button disabled={readOnly || !duration} onClick={() => { setMarkOut(currentTime); setStagedCut(null); }} type="button">MARK OUT</button>
-        <button disabled={readOnly || markIn === null || markOut === null || Math.abs(markOut - markIn) < .05} onClick={() => setStagedCut({ id: "preview", start: Math.min(markIn!, markOut!), end: Math.max(markIn!, markOut!) })} type="button">CUT</button>
-        <button disabled={readOnly || busy || (!stagedCut && !sharedCuts.length)} onClick={() => stagedCut ? setStagedCut(null) : void saveCuts(sharedCuts.slice(0, -1))} type="button">UNCUT</button>
-        <button className="is-delete" disabled={readOnly || busy || !stagedCut} onClick={() => { if (stagedCut) void saveCuts([...sharedCuts, { ...stagedCut, id: `cut-${crypto.randomUUID()}` }].sort((a, b) => a.start - b.start)); }} type="button">DELETE</button>
-        <button disabled={readOnly || busy || (!sharedCuts.length && !stagedCut && markIn === null && markOut === null)} onClick={() => sharedCuts.length ? void saveCuts([]) : (setStagedCut(null), setMarkIn(null), setMarkOut(null))} type="button">RESET</button>
+        <button disabled={readOnly || busy || !duration} onClick={() => markWorkingRange("in")} type="button">MARK IN</button>
+        <button disabled={readOnly || busy || !duration} onClick={() => markWorkingRange("out")} type="button">MARK OUT</button>
+        <button disabled={readOnly || busy || currentTime <= 0 || currentTime >= duration} onClick={cutAtPlayhead} type="button">CUT</button>
+        <button disabled={readOnly || busy || (!sharedCuts.length && !sharedCutPoints.length)} onClick={uncutSelectedSections} type="button">UNCUT</button>
+        <button className="is-delete" disabled={readOnly || busy || !selectedSections.length} onClick={deleteSelectedSections} type="button">DELETE</button>
+        <button disabled={readOnly || busy || (!sharedCuts.length && !sharedCutPoints.length && !sharedWorkingRange)} onClick={resetTimelineEdits} type="button">RESET</button>
       </div>
       <div aria-label="Zoom Timeline" className="timeline-zoom obs-timeline__zoom" role="group">
         <button aria-label="Thu nhỏ Timeline" disabled={!duration || span >= duration} onClick={() => selectZoom(span * 2)} type="button">−</button>
@@ -348,13 +421,19 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
               {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>
                 <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
-                {sharedCuts.map((cut) => { const style = intervalStyle(cut.start, cut.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại" className="obs-timeline__removed-range" key={cut.id} style={style} /> : null; })}
-                {stagedCut && intervalStyle(stagedCut.start, stagedCut.end, windowStart, span) ? <i className="obs-timeline__removed-range is-staged" style={intervalStyle(stagedCut.start, stagedCut.end, windowStart, span)!} /> : null}
+                {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại khỏi tính toán" className="timeline-removed-range" key={`${range.id}-${range.start}`} style={style} /> : null; })}
+                {sharedCutPoints.map((point) => point >= windowStart && point <= windowStart + span ? <i aria-label="Điểm cắt" className="timeline-cut-point" key={point} style={{ left: `${(point - windowStart) / span * 100}%` }} /> : null)}
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ? <i aria-label={`Playhead Channel ${index + 1}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}
                 {markIn !== null ? <i aria-label="Mark In" className="obs-timeline__mark" style={{ left: `${(markIn - windowStart) / span * 100}%` }} /> : null}
                 {markOut !== null ? <i aria-label="Mark Out" className="obs-timeline__mark" style={{ left: `${(markOut - windowStart) / span * 100}%` }} /> : null}
               </div>
-              <div aria-label={`Subtitle Channel ${index + 1}`} className="obs-timeline__caption imported-timeline__words">
+              <div aria-label={`Subtitle Channel ${index + 1}`} className="obs-timeline__caption imported-timeline__words"
+                onClick={(event) => {
+                  if (!event.ctrlKey && !event.metaKey) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const ratio = rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : 0;
+                  focusTrack(track, { insertTime: Math.max(0, Math.min(duration, windowStart + ratio * span)) });
+                }}>
                 {track.words.length ? track.words.map((word, wordIndex) => {
                   const style = intervalStyle(word.start, word.end, windowStart, span);
                   return style ? <button key={wordIndex} type="button" style={style}
@@ -371,9 +450,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                       else seek(word.start);
                     }}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); focusTrack(track, { wordIndex }); }}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); focusTrack(track, { contextIndex: wordIndex }); }}
                     onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); focusTrack(track, { promoteIndex: wordIndex }); } }}
                     >{word.text}</button> : null;
                 }) : <span>{track.text ? "Transcript chưa có word timestamp" : "Chưa có lời nói"}</span>}
+                {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-hidden="true" className="timeline-removed-range" key={`caption-${range.id}-${range.start}`} style={style} /> : null; })}
               </div>
               <div className="obs-timeline__lane-controls">
                 <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span><button aria-label={`${muted[track.id] ? "Bật tiếng" : "Tắt tiếng"} Channel ${index + 1}`} aria-pressed={Boolean(muted[track.id])} className="obs-timeline__mute" onClick={() => setMuted((current) => ({ ...current, [track.id]: !current[track.id] }))} title={muted[track.id] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button></div><input aria-label={`Gain Channel ${index + 1}`} max="200" min="0" onChange={(event) => setGains((current) => ({ ...current, [track.id]: Number(event.target.value) }))} type="range" value={gains[track.id] ?? 100} /><output>{gains[track.id] ?? 100}%</output></div>
@@ -385,11 +466,25 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
           {layout === "layers" && playhead >= 0 && playhead <= 100 ? <div className="obs-timeline__playhead-layer"><i aria-label="Playhead chung" className="obs-timeline__playhead" style={{ left: `${playhead}%` }} /></div> : null}
         </div>
       </div>
+      {duration > 0 ? <div aria-label="Các đoạn Timeline" className="timeline-section-strip">
+        {sections.map((section) => {
+          const removed = excludedRanges.some((range) => range.start <= section.start && range.end >= section.end);
+          const selectedSection = selectedSections.includes(section.id);
+          return <button aria-label={`Đoạn ${clock(section.start)}–${clock(section.end)}${removed ? " đã loại" : ""}`} aria-pressed={selectedSection}
+            className={`${selectedSection ? "is-selected" : ""} ${removed ? "is-removed" : ""}`}
+            key={section.id} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey
+              ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id]
+              : [section.id])} style={{ flex: `${Math.max(.001, section.end - section.start)} 1 0` }} type="button" />;
+        })}
+      </div> : null}
       <div className="transport-bar obs-timeline__transport">
         <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={() => {
           if (playing) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
           else {
-            audioRefs.current.forEach((audio) => { audio.currentTime = currentTime; audio.playbackRate = rate; });
+            const startAt = nextPlayableTime(currentTime, duration, excludedRanges);
+            if (startAt >= duration) { setCurrentTime(duration); return; }
+            seek(startAt);
+            audioRefs.current.forEach((audio) => { audio.currentTime = startAt; audio.playbackRate = rate; });
             void preparePlayback().then(() => Promise.all([...audioRefs.current.values()].map((audio) => audio.play()))).then(() => setPlaying(true))
               .catch(() => { audioRefs.current.forEach((audio) => audio.pause()); setError("Không phát được các channel cùng lúc."); });
           }
@@ -406,9 +501,12 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     }} onTimeUpdate={(event) => {
       if (track.id !== orderedTracks[0]?.id) return;
       const time = event.currentTarget.currentTime;
-      setCurrentTime(time);
-      setWindowStart((start) => time <= start + span ? start : Math.min(Math.max(0, duration - span), time - span / 2));
-      audioRefs.current.forEach((audio, id) => { if (id !== track.id && Math.abs(audio.currentTime - time) > .08) audio.currentTime = time; });
+      const playable = nextPlayableTime(time, duration, excludedRanges);
+      const next = playable > time + .001 ? playable : time;
+      if (next >= duration) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
+      setCurrentTime(next);
+      setWindowStart((start) => next <= start + span ? start : Math.min(Math.max(0, duration - span), next - span / 2));
+      audioRefs.current.forEach((audio, id) => { if (Math.abs(audio.currentTime - next) > .08) audio.currentTime = next; });
     }} onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime, event.currentTarget.duration || currentTime); }}
       preload="none" ref={(element) => { if (element) audioRefs.current.set(track.id, element); else audioRefs.current.delete(track.id); }} src={track.url} /> : null)}
   </ModuleFrame>;

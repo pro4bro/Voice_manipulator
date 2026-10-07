@@ -68,6 +68,21 @@ it("opens insertion and timestamp-promotion requests from subtitle gestures", as
   fireEvent.pointerDown(screen.getByRole("button", { name: "hello · 00:15–00:18" }), { button: 1 });
   await waitFor(() => expect(listener).toHaveBeenCalledWith(expect.objectContaining({ detail: { assetId: "a", index: 0 } })));
   window.removeEventListener("pro4bro:timestamp-promotion", listener);
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  const replay = vi.fn();
+  window.addEventListener("pro4bro:timestamp-promotion", replay);
+  act(() => window.dispatchEvent(new CustomEvent("pro4bro:timestamp-promotion", { detail: { assetId: "a", index: 0 } })));
+  expect(await screen.findByText(/GÁN TIMESTAMP · hello/)).toBeInTheDocument();
+  expect(replay.mock.calls.filter(([event]) => event.detail.index !== null)).toHaveLength(2);
+  window.removeEventListener("pro4bro:timestamp-promotion", replay);
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  expect(await screen.findByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  const subtitle = screen.getByLabelText("Subtitle Channel 1");
+  vi.spyOn(subtitle, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.click(subtitle, { ctrlKey: true, clientX: 50 });
+  expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
 });
 
 it("keeps each Script word and both subtitle lanes synchronized without opening a child", () => {
@@ -138,29 +153,62 @@ it("keeps Channel and Track on one line in both layouts and scrolls only when cl
   expect(viewport.querySelectorAll("b")).toHaveLength(1);
 });
 
-it("loads a waveform for each track and saves one cut across both channels", async () => {
+it("persists the working range and playhead cuts across tracks, then selects sections for delete and uncut", async () => {
   const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [{ min: -.5, max: .5 }] }) });
   vi.stubGlobal("fetch", fetcher);
-  const onCutsChange = vi.fn().mockResolvedValue(true);
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
   const onSelectTrack = vi.fn();
   const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId="a"
-    onSelectTrack={onSelectTrack} onCutsChange={onCutsChange} />);
+    onSelectTrack={onSelectTrack} onCutsChange={async () => true} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
   expect(screen.getAllByLabelText(/Waveform Channel/)).toHaveLength(2);
   expect(screen.getByLabelText("Playhead chung")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Channel 2 - Mic" }));
   expect(onSelectTrack).toHaveBeenCalledWith("b");
-  fireEvent.click(screen.getByRole("button", { name: "MARK IN" }));
-  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  let progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
   vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
   fireEvent.pointerDown(progress, { clientX: 50, pointerId: 1 });
   fireEvent.pointerUp(progress, { clientX: 50, pointerId: 1 });
+  fireEvent.click(screen.getByRole("button", { name: "MARK IN" }));
+  fireEvent.pointerDown(progress, { clientX: 60, pointerId: 2 });
+  fireEvent.pointerUp(progress, { clientX: 60, pointerId: 2 });
   fireEvent.click(screen.getByRole("button", { name: "MARK OUT" }));
+  await waitFor(() => expect(onAssetTimelineStateChange).toHaveBeenLastCalledWith("b", expect.objectContaining({
+    workingRange: { id: "working", start: 30, end: 36 }, removedRanges: [], cutPoints: [],
+  })));
+  view.rerender(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track,
+    workingRange: { id: "working", start: 30, end: 36 },
+  }))} selectedTrackId="a" onSelectTrack={onSelectTrack} onCutsChange={async () => true}
+    onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+  progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.pointerDown(progress, { clientX: 75, pointerId: 3 });
+  fireEvent.pointerUp(progress, { clientX: 75, pointerId: 3 });
   fireEvent.click(screen.getByRole("button", { name: "CUT" }));
+  await waitFor(() => expect(onAssetTimelineStateChange).toHaveBeenLastCalledWith("b", expect.objectContaining({
+    workingRange: { id: "working", start: 30, end: 36 }, removedRanges: [], cutPoints: [45],
+  })));
+  view.rerender(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track,
+    workingRange: { id: "working", start: 30, end: 36 }, cutPoints: [45],
+  }))} selectedTrackId="a" onSelectTrack={onSelectTrack} onCutsChange={async () => true}
+    onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+  const section = screen.getByRole("button", { name: "Đoạn 00:00–00:45" });
+  fireEvent.click(section);
+  expect(screen.getByRole("button", { name: "DELETE" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "DELETE" }));
-  await waitFor(() => expect(onCutsChange).toHaveBeenCalledWith(["a", "b"], [expect.objectContaining({ start: 0, end: 30 })]));
+  await waitFor(() => expect(onAssetTimelineStateChange).toHaveBeenLastCalledWith("b", expect.objectContaining({
+    removedRanges: [expect.objectContaining({ start: 0, end: 45 })],
+  })));
+  view.rerender(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track,
+    workingRange: { id: "working", start: 30, end: 36 }, cutPoints: [45],
+    removedRanges: track.id === "a" ? [{ id: "removed", start: 0, end: 45 }] : [],
+  }))} selectedTrackId="a" onSelectTrack={onSelectTrack} onCutsChange={async () => true}
+    onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+  fireEvent.click(screen.getByRole("button", { name: "Đoạn 00:00–00:45 đã loại" }));
+  fireEvent.click(screen.getByRole("button", { name: "UNCUT" }));
+  await waitFor(() => expect(onAssetTimelineStateChange).toHaveBeenLastCalledWith("b", expect.objectContaining({ removedRanges: [] })));
   view.rerender(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId="a" singleTrackView
-    onSelectTrack={onSelectTrack} onCutsChange={onCutsChange} />);
+    onSelectTrack={onSelectTrack} onCutsChange={async () => true} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
   expect(screen.getAllByLabelText(/Waveform Channel/)).toHaveLength(1);
   expect(screen.getByLabelText("Waveform Channel 1")).toBeInTheDocument();
 });
