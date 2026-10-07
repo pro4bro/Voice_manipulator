@@ -119,6 +119,8 @@ inference_worker_idle_tasks: dict[str, asyncio.Task[None]] = {}
 INFERENCE_WORKER_IDLE_SECONDS = 300.0
 INFERENCE_MARKER = "@@PRO4BRO_JOB@@"
 logger = logging.getLogger(__name__)
+CANCEL_TERMINATE_TIMEOUT_SECONDS = 5.0
+CANCEL_KILL_TIMEOUT_SECONDS = 5.0
 
 
 def _register_inference_job(progress_id: str) -> InferenceJob:
@@ -144,12 +146,24 @@ async def _cancel_inference_job(progress_id: str) -> bool:
         job.cancelled = True
         process = job.process
     if process is not None and process.returncode is None:
-        process.terminate()
         try:
-            await asyncio.wait_for(process.wait(), timeout=5)
+            process.terminate()
+        except ProcessLookupError:
+            pass
+        try:
+            await asyncio.wait_for(process.wait(), timeout=CANCEL_TERMINATE_TIMEOUT_SECONDS)
         except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(process.wait(), timeout=CANCEL_KILL_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Cannot confirm the inference worker stopped after kill.",
+                ) from exc
         with inference_jobs_lock:
             for kind, worker in list(inference_workers.items()):
                 if worker is process:

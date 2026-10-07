@@ -57,6 +57,41 @@ def test_cancel_terminates_and_reaps_only_the_owned_blocking_subprocess() -> Non
     asyncio.run(run())
 
 
+def test_cancel_reports_502_when_killed_child_does_not_exit(monkeypatch) -> None:
+    class StubbornProcess:
+        returncode = None
+
+        def terminate(self):
+            pass
+
+        def kill(self):
+            pass
+
+        async def wait(self):
+            await asyncio.sleep(60)
+
+    async def run() -> None:
+        monkeypatch.setattr(server, "CANCEL_TERMINATE_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(server, "CANCEL_KILL_TIMEOUT_SECONDS", 0.01)
+        progress_id = "stubborn-owned-process"
+        job = server._register_inference_job(progress_id)
+        process = StubbornProcess()
+        job.process = process
+        server.inference_workers["transcribe"] = process
+        try:
+            with pytest.raises(HTTPException) as error:
+                await server._cancel_inference_job(progress_id)
+            assert error.value.status_code == 502
+            assert job.cancelled is True
+            assert job.process is process
+            assert server.inference_workers.get("transcribe") is process
+        finally:
+            server.inference_jobs.pop(progress_id, None)
+            server.inference_workers.pop("transcribe", None)
+
+    asyncio.run(run())
+
+
 def test_persistent_job_worker_is_reused_and_cancelled_worker_cannot_publish(tmp_path, monkeypatch) -> None:
     async def run() -> None:
         server.inference_workers.clear()
