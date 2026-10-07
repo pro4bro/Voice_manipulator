@@ -1,5 +1,13 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## TASK-STOP-DEVICE-01A — real STT Stop (2026-10-07)
+
+Cached Medium/CUDA execution passes No/Yes/new-worker rerun on copied speech.
+The cancelled record and original/analysis PCM remain unchanged; no speech
+quality, latency or physical recording acceptance is claimed. Full checks and
+tool limitations: `docs/gates/task-stop-device-01a-stt.md`. Exact next01B:
+community-1 diarization. Parent device acceptance and older phase gates stay open.
+
 ## TASK-STOP-01 — confirmed processing Stop (2026-10-07)
 
 The four processing panels share first-click queue Stop and two-click confirmed

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-01 uniform confirmed processing Stop integrated.
-last_activity_desc: Frontend560/63 files, API646, Studio22, typecheck/build and browser Yes/No proof pass. Final Clone guard covered by13 focused Training checks. Real GPU Stop and rerun/Resume require TASK-STOP-DEVICE-01. Existing phase and recognition budgets unchanged.
+last_activity: 2026-10-07 — TASK-STOP-DEVICE-01A real CUDA STT Stop acceptance.
+last_activity_desc: Real Medium No/Yes/new-worker rerun and PCM preservation pass; full checks in the STT device gate. Next01B community-1 diarization. Training Resume needs compatible project artifacts. Existing phase and recognition budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,13 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## TASK-STOP-DEVICE-01A — 2026-10-07
+
+Real Medium/CUDA No/Yes/rerun passes with actual worker reaping and stable
+cancelled records/source PCM. Gate: `docs/gates/task-stop-device-01a-stt.md`.
+Next01B runs community-1 diarization. Training Resume and generation need their
+compatible project artifacts; physical OBS/native evidence remains separate.
 
 ## TASK-STOP-01 — 2026-10-07
 
@@ -45,7 +52,7 @@ Older near-term parents and Phase03-04 retain their documented prerequisites.
 Phase: 3 of 7 (Voice Training)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-10-07 — Integrated confirmed processing Stop; device checks remain.
+Last activity: 2026-10-07 — Real CUDA STT Stop accepted; next diarization slice.
 
 Progress: [████████████░░░░░░░░] 60% artifact count (product phases: 1/7 complete)
 

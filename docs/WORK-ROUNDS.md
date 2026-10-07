@@ -12,7 +12,18 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-01
+### 2026-10-07 — current: TASK-STOP-DEVICE-01A
+
+Real cached Medium/CUDA STT Stop acceptance passes in an isolated current-source
+fixture. Browser No drops pending files while active recognition completes; Yes
+reaps the actual inference worker and freezes publication. A subsequent STT
+completes on a new worker; all source/analysis PCM hashes agree. No recognition
+accuracy or latency budget claim. See `docs/gates/task-stop-device-01a-stt.md`.
+Exact next: TASK-STOP-DEVICE-01B — cached community-1 diarization No/Yes/rerun.
+Training Resume needs a selected project/Speaker and compatible artifacts; that
+owner question remains pending. Parent device/older physical gates remain open.
+
+### 2026-10-07 — previous: TASK-STOP-01
 
 Uniform two-level Stop covers STT, Speaker Diarization, Training and Generate
 Voice, including growing MKV and OBS detailed STT. First Stop drops pending

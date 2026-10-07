@@ -1,5 +1,15 @@
 # Project Status — 2026-09-22
 
+## TASK-STOP-DEVICE-01A — real CUDA STT acceptance (2026-10-07)
+
+Current-source isolated fixture proves cached Medium/CUDA No/Yes/rerun. No drops
+pending work and lets active recognition complete; Yes removes the actual worker
+and prevents late publication; a new worker completes a subsequent STT. Source
+and six analysis hashes match. See `docs/gates/task-stop-device-01a-stt.md` for
+full suite evidence and browser/tool limitations. This proves cancellation, not
+speech accuracy, latency or physical recording. Next: TASK-STOP-DEVICE-01B,
+community-1 diarization; Training/Generate and physical acceptance remain open.
+
 ## TASK-STOP-01 — confirmed processing Stop (2026-10-07)
 
 STT, Speaker Diarization, Training and Generate Voice share queue Stop and a
