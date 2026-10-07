@@ -42,12 +42,22 @@ it("opens the shared timeline editor for an archived multitrack word and writes 
     onAssetWordsChange={onAssetWordsChange} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
   fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
   expect(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" })).toBeInTheDocument();
+  expect(screen.getByRole("spinbutton", { name: "Nhập gain dB" })).toHaveValue(0);
   const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
   fireEvent.change(editor, { target: { value: "Hi" } });
   fireEvent.keyDown(editor, { key: "Enter" });
   await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("a", [
     expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), words[1],
   ], "Hi world"));
+  const gain = screen.getByRole("slider", { name: "Source gain" });
+  fireEvent.pointerDown(gain);
+  fireEvent.change(gain, { target: { value: "6" } });
+  fireEvent.pointerUp(gain);
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  expect(Number((screen.getByRole("slider", { name: "Gain Channel 1" }) as HTMLInputElement).value)).toBeCloseTo(199.526, 2);
+  fireEvent.change(screen.getByRole("slider", { name: "Gain Channel 1" }), { target: { value: "0" } });
+  fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  expect(screen.getByRole("spinbutton", { name: "Nhập gain dB" })).toHaveValue(-96);
 });
 
 it("opens insertion and timestamp-promotion requests from subtitle gestures", async () => {

@@ -13,6 +13,15 @@ export function dbToLinear(gainDb: number) {
   return 10 ** (gainDb / 20);
 }
 
+/** Archive preview controls use 0–200%; the shared editor uses dB. */
+export function previewPercentToDb(percent: number) {
+  return Math.max(-96, 20 * Math.log10(Math.max(0, percent) / 100));
+}
+
+export function previewDbToPercent(gainDb: number) {
+  return gainDb <= -96 ? 0 : Math.min(200, dbToLinear(gainDb) * 100);
+}
+
 function clampGainDb(value: number) {
   return Math.max(-96, Math.min(96, Number.isFinite(value) ? value : 0));
 }

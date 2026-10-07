@@ -701,14 +701,20 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
     onAssetTimelineStateChange={onAssetTimelineStateChange} projectId="project" requestedRecordingId="recording" />);
   fireEvent.doubleClick(await screen.findByRole("button", { name: /hello ·/ }));
   expect(await screen.findByRole("button", { name: "← TẤT CẢ TRACK OBS" })).toBeInTheDocument();
+  expect(screen.getByRole("spinbutton", { name: "Nhập gain dB" })).toHaveValue(0);
   const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
   fireEvent.change(editor, { target: { value: "Hi" } });
   fireEvent.keyDown(editor, { key: "Enter" });
   await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("asset-0", [
     expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), asset.words[1],
   ], "Hi world"));
+  const gain = screen.getByRole("slider", { name: "Source gain" });
+  fireEvent.pointerDown(gain);
+  fireEvent.change(gain, { target: { value: "6" } });
+  fireEvent.pointerUp(gain);
   fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
   await screen.findByRole("button", { name: /hello ·/ });
+  expect(Number((screen.getByRole("slider", { name: "Gain nghe lại Channel 1" }) as HTMLInputElement).value)).toBeCloseTo(199.526, 2);
   const promotion = vi.fn();
   window.addEventListener("pro4bro:timestamp-promotion", promotion);
   act(() => window.dispatchEvent(new CustomEvent("pro4bro:timestamp-promotion", { detail: { assetId: "asset-0", index: 0 } })));

@@ -14,6 +14,7 @@ import { ModuleFrame } from "../../ui/ModuleFrame";
 import { Icon } from "../../ui/Icon";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { Timeline } from "./Timeline";
+import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
@@ -709,8 +710,13 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   if (focusedAsset && editFocus && !isLive) return <Timeline
     editRequest={editFocus.request}
-    gain={selectedGain}
-    onGainChange={(value) => selectedLane && setGainByChannel((current) => ({ ...current, [`${recordingId}:${selectedLane.channelId}`]: value }))}
+    gain={previewPercentToDb(selectedMuted ? 0 : selectedGain)}
+    onGainChange={(value) => {
+      if (!selectedLane) return;
+      const key = `${recordingId}:${selectedLane.channelId}`;
+      setMutedByChannel((current) => ({ ...current, [key]: false }));
+      setGainByChannel((current) => ({ ...current, [key]: previewDbToPercent(value) }));
+    }}
     onEditStateChange={(state) => { void saveTimelineState(state); }}
     onWordsChange={(words, text) => onAssetWordsChange?.(focusedAsset.id, words, text)}
     speakers={speakers}

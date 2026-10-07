@@ -10,6 +10,7 @@ import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, time
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
 import { Timeline } from "./Timeline";
+import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import "./waveform.css";
 
 const MAX_WAVEFORM_PIXELS_PER_SECOND = 1000;
@@ -361,8 +362,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     const track = orderedTracks.find((item) => item.id === editFocus.assetId);
     if (track) return <Timeline
       editRequest={editFocus.request}
-      gain={gains[track.id] ?? 100}
-      onGainChange={(value) => setGains((current) => ({ ...current, [track.id]: value }))}
+      gain={previewPercentToDb(muted[track.id] ? 0 : gains[track.id] ?? 100)}
+      onGainChange={(value) => {
+        setMuted((current) => ({ ...current, [track.id]: false }));
+        setGains((current) => ({ ...current, [track.id]: previewDbToPercent(value) }));
+      }}
       onEditStateChange={(state) => { void (async () => { for (const item of orderedTracks) await onAssetTimelineStateChange?.(item.id, state); })().catch((reason) => setError(reason instanceof Error ? reason.message : "Không lưu được chỉnh sửa Timeline cho các channel.")); }}
       onWordsChange={(words, text) => onAssetWordsChange?.(track.id, words, text)}
       speakers={speakers}
