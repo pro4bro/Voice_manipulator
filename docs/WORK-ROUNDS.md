@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-08 — current: USER-FEEDBACK-01
+### 2026-10-08 — current: USER-FEEDBACK-02
+
+Main Import uses the current device's multiple-file chooser; Host import retains
+host paths/growing MKV and reports picker errors. Larger icons and the corrected
+root breadcrumb are delivered. Lifecycle request revisions preserve Recycle/
+Restore/Delete across older reads, including after fresh acknowledgement.
+STT/DIA activity aggregates tracks; Training maps active speaker runs to media.
+Shared normal-pitch short previews cover left drag and promoted middle timing in
+normal/imported/archived OBS timelines, preserving gain/mute and excluded audio.
+Frontend593/68, API677 and typecheck/build pass. API runs and timing caveat are recorded in
+`docs/gates/user-feedback-02-media-and-audio-scrubbing.md`; ADR0049 records the
+preview design. Unified Queue is a recommendation in `docs/AI-QUEUE-PROPOSAL.md`,
+not a shipped scheduler. Exact next UX-EDITING-DEVICE-01: permitted visual/native
+picker, audible scrub and real-load interaction acceptance. The existing browser
+policy restriction and older physical/quality/download/LAN prerequisites remain.
+No Phase03 budgets or owner media changed.
+
+### 2026-10-08 — previous: USER-FEEDBACK-01
 
 Restart/Open Existing release orphaned STT/diarization flags; removal fences
 sequential and dedicated MKV/OBS owners. Valid checkpoint resumes remain.

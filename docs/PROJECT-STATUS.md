@@ -1,5 +1,23 @@
 # Project Status — 2026-10-08
 
+## USER-FEEDBACK-02 — Media Pool and audible pointer previews (2026-10-08)
+
+Main Import opens the device multi-file chooser; separate Host import preserves
+host/growing-MKV workflows and exposes picker errors. Root breadcrumb semantics
+and icon sizing corrected. Lifecycle revisions fence older media responses so
+Recycle/Restore/Delete remain actionable without refresh. STT/DIA busy toggles
+aggregate parent tracks; Training maps pending/running speaker runs to footage.
+Shared short normal-pitch previews support left drag and promoted middle timing
+for ordinary/imported/archived OBS timelines, preserving gain/mute and excluded
+regions. Frontend593/68, API677 and typecheck/build pass; full API results and initial
+readiness timing caveat are in the gate. No backend/launcher source changed.
+See `docs/gates/user-feedback-02-media-and-audio-scrubbing.md`, ADR0049 and the
+unimplemented recommendation `docs/AI-QUEUE-PROPOSAL.md`. Next remains
+UX-EDITING-DEVICE-01: allowed visual/native picker, real-load and audible evidence.
+Browser access restriction and older physical/quality/download/LAN gates remain.
+No runtime restart/model dispatch, owner-media mutation or phase-budget advance;
+the pre-existing normal listeners were left running.
+
 ## USER-FEEDBACK-01 — restart recovery and footage UI (2026-10-08)
 
 Orphaned sequential STT/diarization state is cancelled on startup/Open Existing,

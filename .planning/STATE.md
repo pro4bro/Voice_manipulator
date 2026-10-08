@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-08 — USER-FEEDBACK-01 restart recovery and footage UI.
-last_activity_desc: Orphan STT/DIA recovery, removal fencing, shared processing scope, import/folder icons, priority selection and compact subtitles implemented. Frontend580/67 and API677 pass. Next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
+last_activity: 2026-10-08 — USER-FEEDBACK-02 Media Pool and pointer audio previews.
+last_activity_desc: Multi-file Import, host picker error feedback, lifecycle revision fence, stage activity and shared normal/middle scrubbing delivered. Frontend593/68, API677, typecheck/build pass; timing caveat in current gate. Unified Queue remains a proposal. Next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-02 — 2026-10-08
+
+Larger device Import and separate Host chooser, corrected root breadcrumb,
+stale-read lifecycle fence and STT/DIA/Training activity implemented. Shared
+pointer preview covers ordinary, middle alignment, multitrack and archived OBS,
+preserving gain/mute, excluded boundaries and release/source cancellation.
+Frontend593/68, API677 and typecheck/build pass; API results/timing caveat are in
+`docs/gates/user-feedback-02-media-and-audio-scrubbing.md`. Queue tabs/hierarchy
+and durable GPU dispatcher are proposed, not implemented. Exact next
+UX-EDITING-DEVICE-01 still needs allowed visual/native, real-load and audible
+checks; browser tool restriction and older device/quality/LAN gates remain.
+Phase03 stays60%.
 
 ## USER-FEEDBACK-01 — 2026-10-08
 

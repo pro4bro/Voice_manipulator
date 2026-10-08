@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-02 — Media Pool and pointer audio previews (2026-10-08)
+
+Device multi-file Import, separate Host picker/errors, larger icons, root
+breadcrumb clarification, lifecycle request fence and stage activity delivered.
+Shared scrub preview covers ordinary/middle/imported/archived OBS interaction,
+gain/mute and excluded boundaries. Frontend593/68, API677 and typecheck/build pass;
+API runs and readiness timing caveat are in the current gate:
+`docs/gates/user-feedback-02-media-and-audio-scrubbing.md`. Unified Queue is a
+source-grounded proposal (`docs/AI-QUEUE-PROPOSAL.md`), not shipped orchestration.
+Exact next UX-EDITING-DEVICE-01 requires permitted visual/native, real-load and
+audible checks. Existing browser restriction and older physical, reviewed
+recognition/speaker/identity, download and second-machine gates remain open.
+This round does not complete Phase03-04 or change phase acceptance budgets.
+
 ## USER-FEEDBACK-01 — recovery and footage interaction (2026-10-08)
 
 Bounded feedback delivery reconciles orphaned STT/DIA flags, validates resumable
