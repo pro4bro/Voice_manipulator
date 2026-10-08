@@ -171,6 +171,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const timelineWriteVersions = useRef(new Map<string, number>());
   // Full-list requests started before a permanent delete must not reinsert it.
   const permanentlyRemovedMediaIds = useRef(new Set<string>());
+  // A background list read can finish after a local recycle/restore response.
+  // Keep those lifecycle writes authoritative over reads that began earlier.
+  const mediaLifecycleRevision = useRef(0);
+  const mediaLifecycleWrites = useRef(new Map<string, { revision: number; deletedAt: string | null }>());
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedScriptAssetIds, setSelectedScriptAssetIds] = useState<string[] | null>(null);
   const [selectedImportedTrackId, setSelectedImportedTrackId] = useState<string | null>(null);
@@ -277,11 +281,36 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     return assets.filter((asset) => !permanentlyRemovedMediaIds.current.has(asset.id));
   }
 
+  async function listProjectMediaWithLifecycleFence(projectId: string) {
+    const requestRevision = mediaLifecycleRevision.current;
+    const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
+    return assets.map((asset) => {
+      const write = mediaLifecycleWrites.current.get(asset.id);
+      if (!write) return asset;
+      if (write.revision > requestRevision) return { ...asset, deletedAt: write.deletedAt };
+      // Keep the revision after acknowledgement: an older request can finish
+      // after this fresh one and still needs the lifecycle fence.
+      return asset;
+    });
+  }
+
+  function rememberMediaLifecycle(assetId: string, deletedAt: string | null) {
+    const revision = ++mediaLifecycleRevision.current;
+    for (const relatedId of relatedMediaIds(assetId)) {
+      mediaLifecycleWrites.current.set(relatedId, { revision, deletedAt });
+    }
+    if (!mediaLifecycleWrites.current.has(assetId)) mediaLifecycleWrites.current.set(assetId, { revision, deletedAt });
+  }
+
   function relatedMediaIds(assetId: string) {
     return mediaAssetsRef.current.filter((asset) => asset.id === assetId || asset.sourceArchiveAssetId === assetId).map((asset) => asset.id);
   }
 
-  useEffect(() => { permanentlyRemovedMediaIds.current.clear(); }, [project.id]);
+  useEffect(() => {
+    permanentlyRemovedMediaIds.current.clear();
+    mediaLifecycleRevision.current = 0;
+    mediaLifecycleWrites.current.clear();
+  }, [project.id]);
 
   async function runRuntimeAction(action: RuntimeAction) {
     setWindowsMenuOpen(false);
@@ -386,8 +415,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   useEffect(() => {
     let cancelled = false;
     setMediaBusy(true);
-    void api.listProjectMedia(project.id).then((assets) => {
-      if (!cancelled) setMediaAssets(withoutPermanentlyRemoved(assets));
+    void listProjectMediaWithLifecycleFence(project.id).then((assets) => {
+      if (!cancelled) setMediaAssets(assets);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Media Pool");
     }).finally(() => { if (!cancelled) setMediaBusy(false); });
@@ -506,9 +535,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const refreshFullMedia = () => {
       if (fullMediaRefreshInFlight) return;
       fullMediaRefreshInFlight = true;
-      void api.listProjectMedia(project.id).then((response) => {
+      void listProjectMediaWithLifecycleFence(project.id).then((response) => {
         if (cancelled) return;
-        const assets = withoutPermanentlyRemoved(response);
+        const assets = response;
         const currentAssets = mediaAssetsRef.current;
         const activeAssetId = scriptAssetIdRef.current;
         const currentSelected = currentAssets.find((asset) => asset.id === activeAssetId);
@@ -583,9 +612,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const refreshFullMedia = () => {
       if (fullMediaRefreshInFlight) return;
       fullMediaRefreshInFlight = true;
-      void api.listProjectMedia(project.id).then((response) => {
+      void listProjectMediaWithLifecycleFence(project.id).then((response) => {
         if (cancelled) return;
-        const assets = withoutPermanentlyRemoved(response);
+        const assets = response;
         setMediaAssets((current) => current.length === assets.length && current.every((asset, index) => asset.id === assets[index]?.id && asset.updatedAt === assets[index]?.updatedAt) ? current : assets);
         const selected = assets.find((asset) => asset.id === scriptAssetIdRef.current);
         if (selected && selected.diarizationStatus === "complete" && !scriptDirtyRef.current && !liveTranscriptActiveRef.current) {
@@ -828,7 +857,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   async function openObsAsset(assetId: string) {
     try {
-      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      const assets = await listProjectMediaWithLifecycleFence(project.id);
       setMediaAssets(assets);
       const asset = assets.find((item) => item.id === assetId);
       if (!asset) throw new Error("Không tìm thấy track OBS trong Media Pool.");
@@ -1328,7 +1357,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           const result = await job.run();
           const targetIds = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
           if (job.transcribe) await Promise.all(targetIds.map((id) => api.setMediaTranscriptionSelected(projectId, id, true)));
-          const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
+          const assets = await listProjectMediaWithLifecycleFence(projectId);
           if (activeMediaProjectId.current === projectId) {
             flushCurrentMediaDraft();
             setMediaAssets(assets);
@@ -1418,7 +1447,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         const result = await job.run();
         const targets = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
         if (job.transcribe) await Promise.all(targets.map((target) => api.setMediaTranscriptionSelected(projectId, target, true)));
-        const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
+        const assets = await listProjectMediaWithLifecycleFence(projectId);
         if (activeMediaProjectId.current === projectId) {
           setMediaAssets(assets);
           setPendingMediaImports((current) => current.filter((row) => row.id !== id));
@@ -1458,7 +1487,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         ? await api.startGrowingMkvFollow(project.id, pending.sourcePath, streamIndexes, transcribeStreamIndexes, sttSegmentSeconds)
         : await api.importLocalProjectMedia(project.id, pending.sourcePath, cacheLocal, streamIndexes, transcribeStreamIndexes);
       flushCurrentMediaDraft();
-      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      const assets = await listProjectMediaWithLifecycleFence(project.id);
       setMediaAssets(assets);
       applyMediaAsset(assets.find((asset) => asset.id === result.asset.id) ?? result.asset, assets);
       setPendingLocalMedia(null);
@@ -1476,7 +1505,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setMediaBusy(true);
     try {
       await api.finishGrowingMkvFollow(project.id, assetId);
-      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      const assets = await listProjectMediaWithLifecycleFence(project.id);
       setMediaAssets(assets);
       const selected = assets.find((asset) => asset.id === assetId);
       if (selectedAssetId === assetId && selected) applyMediaAsset(selected, assets);
@@ -1522,7 +1551,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setMediaBusy(true);
       try {
         await api.importExistingAudioTrack(project.id, assetId, streamIndex);
-        const assets = await api.listProjectMedia(project.id);
+        const assets = await listProjectMediaWithLifecycleFence(project.id);
         setMediaAssets(assets);
         void refreshDatasetReadiness();
         setNotice("Đã thêm track vào footage.");
@@ -1638,6 +1667,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         return;
       }
       const recycled = await api.recycleProjectMedia(project.id, asset.id);
+      rememberMediaLifecycle(asset.id, recycled.deletedAt ?? null);
       setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item.sourceArchiveAssetId === recycled.id ? { ...item, deletedAt: recycled.deletedAt, transcriptionSelected: false, trainingSelected: false } : item));
       if (selectedAssetId === asset.id) {
         moveOffAsset(mediaAssets.filter((item) => item.id !== asset.id && !item.deletedAt));
@@ -1700,9 +1730,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           setMediaAssets((current) => withoutPermanentlyRemoved(current));
         } else if (action.kind === "restore") {
           const restored = await api.restoreProjectMedia(project.id, change.assetId);
+          rememberMediaLifecycle(restored.id, restored.deletedAt ?? null);
           setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item.sourceArchiveAssetId === restored.id ? { ...item, deletedAt: null } : item));
         } else {
           const recycled = await api.recycleProjectMedia(project.id, change.assetId);
+          rememberMediaLifecycle(recycled.id, recycled.deletedAt ?? null);
           setMediaAssets((current) => current.map((item) => item.id === recycled.id ? recycled : item.sourceArchiveAssetId === recycled.id ? { ...item, deletedAt: recycled.deletedAt, transcriptionSelected: false, trainingSelected: false } : item));
         }
         completed.push(change.assetId);
@@ -1761,6 +1793,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   async function restoreMediaAsset(asset: ProjectMediaAsset) {
     try {
       const restored = await api.restoreProjectMedia(project.id, asset.id);
+      rememberMediaLifecycle(restored.id, restored.deletedAt ?? null);
       setMediaAssets((current) => current.map((item) => item.id === restored.id ? restored : item.sourceArchiveAssetId === restored.id ? { ...item, deletedAt: null } : item));
       setNotice(`Đã restore ${restored.name}.`);
     } catch (error) {
@@ -2190,7 +2223,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onOpenObsRecording: (recordingId) => openObsRecording(recordingId),
     onOpenObsTrack: (recordingId, channelId) => openObsRecording(recordingId, channelId),
     onObsArchiveReady: async (recordingId) => {
-      const assets = withoutPermanentlyRemoved(await api.listProjectMedia(project.id));
+      const assets = await listProjectMediaWithLifecycleFence(project.id);
       const archived = assets.find((asset) => asset.obsRecordingId === recordingId && asset.sourceExtension === ".mka");
       if (!archived) {
         throw new Error(`OBS archive ${recordingId} is not in Media Pool yet`);

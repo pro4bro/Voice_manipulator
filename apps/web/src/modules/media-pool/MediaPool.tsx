@@ -13,6 +13,7 @@ import { TaskStop } from "../../ui/TaskStop";
 import { createMediaPoolFolder, EMPTY_MEDIA_POOL_ORGANIZATION, moveMediaPoolAsset, orderedMediaPoolPlacements, type MediaPoolOrganization } from "./media-organization";
 import "./media-pool-import.css";
 import "./media-pool-organization.css";
+import "./media-pool.css";
 
 const STT_MODELS = [
   { id: "tiny", label: "Tiny · nhanh nhất / yếu nhất" },
@@ -142,6 +143,7 @@ interface MediaPoolProps {
   onObsArchiveReady?: (recordingId: string) => Promise<void>;
   pendingNativeMediaPaths?: string[];
   pendingMediaImports?: PendingMediaImportRow[];
+  activeTrainingSpeakerIds?: string[];
   onConfirmNativeMediaImport?: (paths: string[], cacheLocal: boolean) => void;
   onCancelNativeMediaImport?: () => void;
   onRetryPendingImport?: (id: string) => void;
@@ -332,12 +334,13 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
     </section></div> : null}</>;
 }
 
-function StageToggle({ name, stage, selected, mixed = false, disabled = false, ariaLabel, onChange }: {
+function StageToggle({ name, stage, selected, mixed = false, disabled = false, running = false, ariaLabel, onChange }: {
   name: string; stage: "Import" | "STT" | "Speaker Diarization" | "Train";
-  selected: boolean; mixed?: boolean; disabled?: boolean; ariaLabel?: string; onChange: (selected: boolean) => void;
+  selected: boolean; mixed?: boolean; disabled?: boolean; running?: boolean; ariaLabel?: string; onChange: (selected: boolean) => void;
 }) {
-  return <label className={`media-training-toggle ${selected ? "is-selected" : ""} ${mixed ? "is-mixed" : ""}`}>
-    <input aria-label={ariaLabel ?? `${stage} ${name}`} checked={selected} disabled={disabled} onChange={(event) => onChange(event.target.checked)}
+  const status = running ? " · đang chạy" : "";
+  return <label className={`media-training-toggle ${selected ? "is-selected" : ""} ${mixed ? "is-mixed" : ""} ${running ? "is-running" : ""}`} title={running ? `${stage}: đang chạy` : undefined}>
+    <input aria-busy={running || undefined} aria-label={`${ariaLabel ?? `${stage} ${name}`}${status}`} checked={selected} disabled={disabled} onChange={(event) => onChange(event.target.checked)}
       ref={(element) => { if (element) element.indeterminate = mixed; }} type="checkbox" />
     <span>{stage === "Speaker Diarization" ? "DIA" : stage.toUpperCase()}</span>
   </label>;
@@ -440,11 +443,13 @@ export function MediaPool({
   onObsArchiveReady,
   pendingNativeMediaPaths = [],
   pendingMediaImports = [],
+  activeTrainingSpeakerIds = [],
   onConfirmNativeMediaImport = () => undefined,
   onCancelNativeMediaImport = () => undefined,
   onRetryPendingImport = () => undefined,
 }: MediaPoolProps) {
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
+  const browserFileInput = useRef<HTMLInputElement | null>(null);
   const pendingGrowingMkv = pendingImports.length === 1 && /\.mkv$/iu.test(pendingImports[0].file.name);
   const [mkvSttDialogOpen, setMkvSttDialogOpen] = useState(false);
   const [mkvSttTargetId, setMkvSttTargetId] = useState<string | null>(null);
@@ -800,10 +805,17 @@ export function MediaPool({
       const count = targets.filter(test).length;
       return { selected: count === targets.length, mixed: count > 0 && count < targets.length };
     };
+    const stageBusy = (test: (item: ProjectMediaAsset) => boolean) => (channels.length ? channels : [asset]).some(test);
     const imported = stageState((item) => item.importSelected !== false);
     const stt = stageState((item) => item.transcriptionSelected);
     const diarization = stageState((item) => Boolean(item.diarizationSelected));
     const training = stageState((item) => item.trainingSelected);
+    const sttRunning = stageBusy((item) => ["queued", "processing", "reviewing"].includes(item.transcriptionStatus));
+    const diarizationRunning = stageBusy((item) => ["queued", "processing"].includes(item.diarizationStatus ?? "idle"));
+    const trainingRunning = stageBusy((item) => {
+      const assigned = new Set([...item.speakerProfileIds, ...item.words.flatMap((word) => [word.speakerId, word.manualDiarizationSpeakerId].filter((id): id is string => Boolean(id)))]);
+      return activeTrainingSpeakerIds.some((speakerId) => assigned.has(speakerId));
+    });
     const selected = asset.deletedAt ? selectedBinIds.includes(asset.id) : selectedIds.includes(asset.id);
     const active = asset.id === selectedAssetId;
     const recycled = Boolean(asset.deletedAt);
@@ -827,17 +839,17 @@ export function MediaPool({
         <div className="media-pool-item__toggles">
         {recycled ? <><button className="media-restore-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "restore", assetIds: selectedBinIds }); else onRestore(asset); }} title="Đưa footage trở lại Media Pool" type="button">Restore</button><button className="media-remove-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "delete", assetIds: selectedBinIds }); else onRemove(asset); }} title="Xóa hẳn, không khôi phục được" type="button">Delete</button></> : <>
           <StageToggle disabled={asset.status === "no-audio" || busy} mixed={imported.mixed} name={asset.name} onChange={(value) => onToggleImport(asset.id, value)} selected={imported.selected} stage="Import" />
-          <StageToggle ariaLabel={`Đưa ${asset.name} vào hàng đợi Speech to text`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} mixed={stt.mixed} name={asset.name} onChange={(value) => onToggleTranscription(asset.id, value)} selected={stt.selected} stage="STT" />
-          <StageToggle disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={diarization.mixed} name={asset.name} onChange={(value) => onToggleDiarization(asset.id, value)} selected={diarization.selected} stage="Speaker Diarization" />
-          <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => onToggleTraining(asset.id, value)} selected={training.selected} stage="Train" /></>}
+          <StageToggle ariaLabel={`Đưa ${asset.name} vào hàng đợi Speech to text`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} mixed={stt.mixed} name={asset.name} onChange={(value) => onToggleTranscription(asset.id, value)} running={sttRunning} selected={stt.selected} stage="STT" />
+          <StageToggle disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={diarization.mixed} name={asset.name} onChange={(value) => onToggleDiarization(asset.id, value)} running={diarizationRunning} selected={diarization.selected} stage="Speaker Diarization" />
+          <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => onToggleTraining(asset.id, value)} running={trainingRunning} selected={training.selected} stage="Train" /></>}
         </div>
         {channels.length && expandedAssets.includes(asset.id) && !recycled ? <div className="media-pool-item__channels">{channels.map((track) => <div className={`media-pool-item__channel ${track.importSelected === false ? "is-not-imported" : ""}`} key={track.id}>
           <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={selectedListIds.includes(track.id)} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={(event) => { setBinSelection({ ids: [], anchorId: null }); setSelection((current) => selectListItem(current, selectableIds, track.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey })); if (!event.ctrlKey && !event.metaKey && !event.shiftKey) onSelectTrack(track.id); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
           <div className="media-pool-item__toggles">
             <StageToggle name={track.name} onChange={(value) => onToggleImport(track.id, value)} selected={track.importSelected !== false} stage="Import" />
-            <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => onToggleTranscription(track.id, value)} selected={track.transcriptionSelected} stage="STT" />
-            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleDiarization(track.id, value)} selected={Boolean(track.diarizationSelected)} stage="Speaker Diarization" />
-            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleTraining(track.id, value)} selected={track.trainingSelected} stage="Train" />
+            <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => onToggleTranscription(track.id, value)} running={["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} selected={track.transcriptionSelected} stage="STT" />
+            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleDiarization(track.id, value)} running={["queued", "processing"].includes(track.diarizationStatus ?? "idle")} selected={Boolean(track.diarizationSelected)} stage="Speaker Diarization" />
+            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleTraining(track.id, value)} running={activeTrainingSpeakerIds.some((speakerId) => track.speakerProfileIds.includes(speakerId) || track.words.some((word) => word.speakerId === speakerId || word.manualDiarizationSpeakerId === speakerId))} selected={track.trainingSelected} stage="Train" />
           </div>
         </div>)}</div> : null}
       </div>
@@ -850,7 +862,12 @@ export function MediaPool({
       eyebrow="PROJECT MEDIA"
       index="MP"
       title="Media Pool"
-      action={<div className="media-import-actions"><button aria-label="Mở file media từ máy" className="media-import" onClick={onImportLocal} title="Chọn một hoặc nhiều file gốc để import" type="button"><Icon name="import" /></button><button aria-label={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} aria-expanded={createFolderOpen} className="media-import" onClick={() => setCreateFolderOpen((open) => !open)} title={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} type="button"><Icon name="folder-plus" /></button><label className="media-import media-import-native" title="Upload một hoặc nhiều file đã hoàn tất"><Icon name="upload" /><input aria-label="Import media" accept={MEDIA_ACCEPT} multiple onChange={importFiles} type="file" /></label></div>}
+      action={<div className="media-import-actions">
+        <button aria-label="Import footage từ máy đang dùng" className="media-import media-import--primary" onClick={() => browserFileInput.current?.click()} title="Chọn một hoặc nhiều file từ thiết bị đang dùng" type="button"><Icon name="import" /></button>
+        <input aria-label="Import file từ máy đang dùng" accept={MEDIA_ACCEPT} className="media-pool-file-input" multiple onChange={importFiles} ref={browserFileInput} type="file" />
+        <button aria-label="Import file trên máy Host" className="media-import media-import--host" onClick={onImportLocal} title="Chọn file nằm trên máy Host, gồm MKV đang ghi" type="button"><Icon name="window" /></button>
+        <button aria-label={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} aria-expanded={createFolderOpen} className="media-import" onClick={() => setCreateFolderOpen((open) => !open)} title={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} type="button"><Icon name="folder-plus" /></button>
+      </div>}
     >
       <div className="media-pool-summary">
         <span><b>{liveAssets.length}</b> ASSETS</span>
@@ -860,7 +877,7 @@ export function MediaPool({
       </div>
       <div aria-label="Tổ chức Media Pool" className="media-organization-toolbar">
         <nav aria-label="Đường dẫn thư mục" className="media-organization-breadcrumbs">
-          <button aria-label="Mở thư mục gốc" className={activeFolderId === null ? "is-active" : ""} onClick={() => setActiveFolderId(null)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)} type="button">Tất cả footage</button>
+          <button aria-label="Mở thư mục gốc" className={activeFolderId === null ? "is-active" : ""} onClick={() => setActiveFolderId(null)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)} type="button">Thư mục gốc</button>
           {folderAncestors.map((folder) => <button aria-label={`Mở thư mục ${folder.name}`} className={folder.id === activeFolderId ? "is-active" : ""} key={folder.id} onClick={() => setActiveFolderId(folder.id)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)} type="button">› {folder.name}</button>)}
         </nav>
         {createFolderOpen ? <form className="media-organization-create" onSubmit={(event) => { event.preventDefault(); createFolder(); }}>

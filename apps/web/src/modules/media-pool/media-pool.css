@@ -1,0 +1,41 @@
+.media-import-actions { display: inline-flex; align-items: center; gap: 6px; }
+.media-import-actions .media-import {
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  justify-content: center;
+  padding: 0;
+}
+.media-import-actions .media-import svg { width: 21px; height: 21px; }
+.media-import-actions .media-import--primary { color: var(--text-on-accent); background: var(--accent); }
+.media-import-actions .media-import--primary:hover { color: var(--text-on-accent); background: var(--accent-strong, var(--accent)); }
+.media-import-actions .media-import--host { width: 34px; min-width: 34px; min-height: 34px; opacity: .76; }
+.media-import-actions .media-import--host svg { width: 17px; height: 17px; }
+.media-pool-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+
+.media-training-toggle.is-running {
+  position: relative;
+  color: var(--text);
+  outline: 1px solid color-mix(in srgb, var(--accent) 68%, transparent);
+  outline-offset: -2px;
+  animation: media-stage-running 1.25s ease-in-out infinite;
+}
+.media-training-toggle.is-running input { accent-color: var(--accent); }
+.media-training-toggle.is-running::after {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  content: "";
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+@keyframes media-stage-running {
+  0%, 100% { box-shadow: inset 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .media-training-toggle.is-running { animation: none; }
+}

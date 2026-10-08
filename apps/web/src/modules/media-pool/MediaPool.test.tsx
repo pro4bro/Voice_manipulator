@@ -152,10 +152,19 @@ describe("MediaPool", () => {
       list.mockRestore();
     }
   });
-  it("opens the native source picker directly from the primary IMPORT button", () => {
+  it("opens the browser multi-file chooser from the primary IMPORT icon", () => {
+    const onImport = vi.fn();
+    render(<MediaPool {...props({ onImport })} />);
+    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy đang dùng" }));
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a separate host picker action for files currently on the host", () => {
     const onImportLocal = vi.fn();
     render(<MediaPool {...props({ onImportLocal })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Mở file media từ máy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import file trên máy Host" }));
     expect(onImportLocal).toHaveBeenCalledOnce();
   });
 
@@ -164,7 +173,11 @@ describe("MediaPool", () => {
     const first = new File(["a"], "first.wav", { type: "audio/wav" });
     const second = new File(["b"], "second.wav", { type: "audio/wav" });
     render(<MediaPool {...props({ onImport })} />);
-    fireEvent.change(screen.getByLabelText("Import media"), { target: { files: [first, second] } });
+    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy đang dùng" }));
+    expect(click).toHaveBeenCalledOnce();
+    fireEvent.change(input, { target: { files: [first, second] } });
     expect(screen.getByRole("dialog", { name: "Tùy chọn import media" })).toHaveTextContent("2 footage");
     expect(screen.getByLabelText("Đánh dấu STT cho first.wav")).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Import 2 file" }));
@@ -386,7 +399,7 @@ describe("MediaPool", () => {
     const onImport = vi.fn();
     const onImportLocal = vi.fn();
     render(<MediaPool {...props({ onImport, onImportLocal })} />);
-    fireEvent.change(screen.getByLabelText("Import media"), {
+    fireEvent.change(screen.getByLabelText("Import file từ máy đang dùng"), {
       target: { files: [new File(["partial mkv"], "recording.mkv", { type: "video/x-matroska" })] },
     });
     const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
@@ -538,7 +551,7 @@ describe("MediaPool", () => {
   it("imports common media formats and selects an asset with its own history", () => {
     const onSelect = vi.fn();
     render(<MediaPool {...props({ onSelect })} />);
-    const input = screen.getByLabelText("Import media") as HTMLInputElement;
+    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
     expect(input.accept).toContain(".mov"); expect(input.accept).toContain(".mkv"); expect(input.accept).toContain(".wav");
     expect(screen.getByText(/1 REV/)).toBeInTheDocument();
     expect(screen.getByText(/NORMAL · CHƯA GÁN SPEAKER/)).toBeInTheDocument();
@@ -550,7 +563,7 @@ describe("MediaPool", () => {
     const onImport = vi.fn();
     render(<MediaPool {...props({ assets: [], onImport })} />);
     const files = [new File(["audio"], "needs-stt.wav", { type: "audio/wav" }), new File(["video"], "known-script.mov", { type: "video/quicktime" })];
-    fireEvent.change(screen.getByLabelText("Import media"), { target: { files } });
+    fireEvent.change(screen.getByLabelText("Import file từ máy đang dùng"), { target: { files } });
     fireEvent.click(screen.getByLabelText("Đánh dấu STT cho known-script.mov"));
     fireEvent.click(screen.getByRole("button", { name: "Import 2 file" }));
     expect(onImport).toHaveBeenCalledWith([{ file: files[0], transcribe: true }, { file: files[1], transcribe: false }]);
@@ -598,6 +611,33 @@ describe("MediaPool", () => {
     render(<MediaPool {...props({ onToggleTraining })} />);
     fireEvent.click(screen.getByLabelText("Dùng interview.mov cho Voice Training"));
     expect(onToggleTraining).toHaveBeenCalledWith("asset-1", true);
+  });
+
+  it("marks STT, diarization, and training toggles as busy with accessible status", () => {
+    const running = { ...asset, transcriptionStatus: "processing" as const,
+      diarizationStatus: "queued" as const, speakerProfileIds: ["speaker-1"] };
+    render(<MediaPool {...props({ assets: [running], activeTrainingSpeakerIds: ["speaker-1"] })} />);
+    expect(screen.getByRole("checkbox", { name: /Speech to text.*đang chạy/i })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("checkbox", { name: /Speaker Diarization interview\.mov.*đang chạy/i })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("checkbox", { name: /Voice Training.*đang chạy/i })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("takes the All Footage breadcrumb back from a nested folder to the root", async () => {
+    const list = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue({
+      schemaVersion: 1,
+      folders: [{ id: "folder-a", name: "Folder A", parentFolderId: null, order: 0 }],
+      assets: [{ assetId: asset.id, folderId: "folder-a", order: 0 }],
+    });
+    try {
+      render(<MediaPool {...props({ projectId: "project", assets: [asset] })} />);
+      await screen.findByRole("button", { name: "Mở thư mục Folder A" });
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Folder A" }));
+      expect(screen.getByRole("button", { name: /interview\.mov/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục gốc" }));
+      expect(screen.getByRole("button", { name: "Mở thư mục gốc" })).toHaveTextContent("Thư mục gốc");
+      expect(screen.getByRole("button", { name: "Mở thư mục Folder A" })).toBeInTheDocument();
+      expect(list).toHaveBeenCalledWith("project");
+    } finally { list.mockRestore(); }
   });
 
   it("assigns speaker, environment, and emotion tags from the footage right-click menu", () => {

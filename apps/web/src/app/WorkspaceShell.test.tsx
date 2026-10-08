@@ -52,7 +52,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
   ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean, streamIndex?: number) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
-    if (id === "library-panel") return <><button onClick={() => (context as unknown as StudioContext).onQueueTranscriptions("large-v3")} type="button">queue selected STT</button><button onClick={() => (context as unknown as StudioContext).onRunDiarization()} type="button">queue selected diarization</button><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
+    if (id === "library-panel") return <><button onClick={() => (context as unknown as StudioContext).onQueueTranscriptions("large-v3")} type="button">queue selected STT</button><button onClick={() => (context as unknown as StudioContext).onRunDiarization()} type="button">queue selected diarization</button><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><output data-testid="recycled-ids">{context.mediaAssets.filter((item) => item.deletedAt).map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "script") {
       const overlap = context as unknown as { obsOverlapSelection: { startSeconds: number; endSeconds: number } | null;
@@ -611,6 +611,76 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(apiMocks.recycleProjectMedia).toHaveBeenNthCalledWith(1, project.id, first.id);
     expect(apiMocks.recycleProjectMedia).toHaveBeenNthCalledWith(2, project.id, second.id);
     await waitFor(() => expect(screen.getByText("Đã chuyển vào Recycle Bin 2 footage.")).toBeInTheDocument());
+  });
+
+  it("does not let an in-flight STT refresh undo a recycle action", async () => {
+    const processing = { ...mediaAsset("processing", "partial", "2026-08-30T00:00:01Z") };
+    const staleList = deferred<ProjectMediaAsset[]>();
+    const status = deferred<Array<{ id: string; transcriptionStatus: ProjectMediaAsset["transcriptionStatus"]; transcriptionProgress: number; transcriptionError: null }>>();
+    apiMocks.listProjectMedia.mockResolvedValueOnce([processing]).mockReturnValueOnce(staleList.promise);
+    apiMocks.listProjectMediaTranscriptionStatus.mockReturnValue(status.promise);
+    apiMocks.recycleProjectMedia.mockResolvedValue({ ...processing, deletedAt: "2026-10-08T01:00:00Z", updatedAt: "2026-10-08T01:00:00Z" });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+    status.resolve([{ id: processing.id, transcriptionStatus: "complete", transcriptionProgress: 100, transcriptionError: null }]);
+    await waitFor(() => expect(apiMocks.listProjectMedia).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "remove selected footage" }));
+    await waitFor(() => expect(screen.getByTestId("recycled-ids")).toHaveTextContent("asset-1"));
+    // A newer read may acknowledge recycle before the oldest read completes.
+    apiMocks.listProjectMedia.mockResolvedValue([{ ...processing, deletedAt: "2026-10-08T01:00:00Z" }]);
+    fireEvent.click(screen.getByRole("button", { name: "refresh footage list" }));
+    await waitFor(() => expect(apiMocks.listProjectMedia).toHaveBeenCalledTimes(3));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { staleList.resolve([processing]); await staleList.promise; });
+    await waitFor(() => expect(screen.getByTestId("recycled-ids")).toHaveTextContent("asset-1"));
+  });
+
+  it("restores and permanently deletes footage immediately after recycle without refreshing", async () => {
+    const first = mediaAsset("complete", "one", "2026-08-30T00:00:01Z");
+    const second = { ...mediaAsset("complete", "two", "2026-08-30T00:00:02Z"), id: "asset-2", name: "second.wav" };
+    apiMocks.listProjectMedia.mockResolvedValue([first, second]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.recycleProjectMedia.mockImplementation(async (_projectId: string, assetId: string) => ({
+      ...(assetId === first.id ? first : second), deletedAt: "2026-10-08T01:00:00Z",
+    }));
+    apiMocks.restoreProjectMedia.mockImplementation(async (_projectId: string, assetId: string) => ({
+      ...(assetId === first.id ? first : second), deletedAt: null,
+    }));
+    apiMocks.removeProjectMedia.mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+        onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+        project={project} runtime={null} theme="dark" />);
+      await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1,asset-2"));
+
+      fireEvent.click(screen.getByRole("button", { name: "remove selected footage" }));
+      await waitFor(() => expect(screen.getByTestId("recycled-ids")).toHaveTextContent("asset-1,asset-2"));
+      fireEvent.click(screen.getByRole("button", { name: "restore selected footage" }));
+      await waitFor(() => expect(apiMocks.restoreProjectMedia).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.getByTestId("recycled-ids")).toBeEmptyDOMElement());
+
+      fireEvent.click(screen.getByRole("button", { name: "remove selected footage" }));
+      await waitFor(() => expect(screen.getByTestId("recycled-ids")).toHaveTextContent("asset-1,asset-2"));
+      fireEvent.click(screen.getByRole("button", { name: "delete selected bin footage" }));
+      await waitFor(() => expect(screen.getByTestId("media-ids")).toBeEmptyDOMElement());
+      expect(apiMocks.removeProjectMedia).toHaveBeenCalledTimes(2);
+      expect(apiMocks.listProjectMedia).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledOnce();
+    } finally { confirm.mockRestore(); }
+  });
+
+  it("shows host picker errors in the workspace so Import never appears inert", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.pickMediaFiles.mockRejectedValue(new Error("Native file picker is unavailable on this client"));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    fireEvent.click(await screen.findByRole("button", { name: "pick native media" }));
+    expect(await screen.findByText("Native file picker is unavailable on this client")).toHaveClass("studio-notice");
   });
 
   it("restores selected Recycle Bin footage through the project API", async () => {

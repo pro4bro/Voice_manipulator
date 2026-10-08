@@ -210,6 +210,10 @@ function mediaPoolProps(context: StudioContext) {
   return {
     projectId: context.workflow === "voice-training" ? undefined : context.projectId,
     assets: workflowMediaAssets(context),
+    activeTrainingSpeakerIds: [...new Set((context.trainingRuns ?? [])
+      .filter((run) => run.status === "pending" || run.status === "running")
+      .map((run) => run.speakerProfileId)
+      .filter((speakerId): speakerId is string => Boolean(speakerId)))],
     busy: context.mediaBusy,
     environments: context.trainingCatalog.environmentProfiles,
     onImport: context.onImportMedia,
