@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-07 — TASK-STOP-DEVICE-01D3 actual checkpoint Stop/Resume passed.
-last_activity_desc: Windows tokenizer pressure fixed; real checkpoint5 retained on Stop, same-run Resume finishes20 and publishes LoRA which generates WAV. API658/frontend560; next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
+last_activity: 2026-10-08 — USER-FEEDBACK-01 restart recovery and footage UI.
+last_activity_desc: Orphan STT/DIA recovery, removal fencing, shared processing scope, import/folder icons, priority selection and compact subtitles implemented. Frontend580/67 and API677 pass. Next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-01 — 2026-10-08
+
+Startup/Open Existing reconcile orphan STT/DIA; dedicated checkpoint ownership
+is validated and removal fences all affected workers. Shared all/missing choice
+dispatches only confirmed targets. Generate force uses new clips and hands over
+GPU before terminal status; eligibility verifies WAVs and effective settings.
+Icon Import/folder-plus, independent media loading, deferred selection feedback
+and shared compact subtitles are implemented. Frontend580/67, typecheck/build
+and API677/two existing warnings pass. Actual recycled PDCA MP3 flag
+repaired; completed results preserved, Test_OBS_05 valid resumes retained.
+Exact next UX-EDITING-DEVICE-01 needs allowed UI/device and real-load evidence;
+older quality/identity/physical/download/LAN gates remain. Phase03 stays60%.
 
 ## TASK-STOP-DEVICE-01D1–01D3 — 2026-10-07
 

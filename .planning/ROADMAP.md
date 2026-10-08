@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-01 — recovery and footage interaction (2026-10-08)
+
+Bounded feedback delivery reconciles orphaned STT/DIA flags, validates resumable
+MKV/OBS ownership and fences removal. Shared all/missing/cancel choices cover
+STT/DIA/Training/Generate; forced clips and GPU terminal handover retain outputs.
+Adjacent Import/folder icons, priority selection feedback and shared compact
+subtitles are implemented. Frontend580/67, API677/two existing warnings,
+typecheck/build pass: `docs/gates/user-feedback-01-processing-and-footage-ui.md`.
+Actual PDCA stale state repaired without replacing completed transcripts; valid
+Test_OBS_05 checkpoint owners retained. Exact next UX-EDITING-DEVICE-01 requires
+allowed visual/native, real-load and audible checks. Older physical, reviewed
+recognition/speaker/identity, download and second-machine gates remain open.
+This round does not complete Phase03-04 or change phase acceptance budgets.
+
 ## TASK-STOP-DEVICE-01C — settle cancelled activity (2026-10-07)
 
 Bounded STT/diarization Activity Center repair passes regression and actual

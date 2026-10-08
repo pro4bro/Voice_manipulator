@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-07 — current: TASK-STOP-DEVICE-01D3
+### 2026-10-08 — current: USER-FEEDBACK-01
+
+Restart/Open Existing release orphaned STT/diarization flags; removal fences
+sequential and dedicated MKV/OBS owners. Valid checkpoint resumes remain.
+Shared all/missing/cancel dialog covers STT, diarization, Training speakers and
+Generate rows; rerun-all generates fresh immutable clips. Missing WAVs and
+changed effective settings do not count as completed generation. Import/folder
+icons are adjacent; media loads independently and selection feedback precedes
+heavy Script/Timeline rendering. Shared compact subtitles suppress tiny boxes
+at zoomed-out scale. Frontend580/67, API677/two existing warnings, typecheck/build
+pass. Gate: `docs/gates/user-feedback-01-processing-and-footage-ui.md`.
+Original recycled PDCA MP3 flag repaired with completed transcript preservation;
+six legitimate Test_OBS_05 growing-MKV resume targets remain unchanged.
+Exact next UX-EDITING-DEVICE-01: allowed browser/native visual checks, real-STT
+selection responsiveness and audible scrubbing. Older physical/quality/download/
+second-machine gates remain; this delivery does not advance Phase03 budgets.
+
+### 2026-10-07 — previous: TASK-STOP-DEVICE-01D3
 
 Actual short LoRA queue Stop retains active training; hard Stop after complete
 checkpoint5 reaps four processes and retains all11 checkpoint hashes. Same run/

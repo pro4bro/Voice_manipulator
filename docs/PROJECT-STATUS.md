@@ -1,4 +1,21 @@
-# Project Status — 2026-09-22
+# Project Status — 2026-10-08
+
+## USER-FEEDBACK-01 — restart recovery and footage UI (2026-10-08)
+
+Orphaned sequential STT/diarization state is cancelled on startup/Open Existing,
+while validated MKV/OBS checkpoint owners resume. Removal fences their work.
+STT/DIA/Training/Generate ask all versus missing-only before dispatch. Generate
+all uses immutable fresh clips; terminal status waits for GPU handover. Result
+eligibility compares resolved settings and verifies listed output WAV presence.
+Media Pool has adjacent Import/folder-plus icons; independent media loading and
+deferred Script/Timeline construction prioritize selection feedback. Shared
+subtitle density avoids crowded per-word boxes below22px. Frontend580/67,
+API677/two existing warnings, typecheck/build pass. Product helper
+recovered the actual recycled PDCA MP3 flag, preserving completed text/words;
+Test_OBS_05 valid growing-MKV ownership remains. No normal services/models ran.
+See `docs/gates/user-feedback-01-processing-and-footage-ui.md`, ADR0048.
+Next UX-EDITING-DEVICE-01 requires allowed visual/native, real-load and audible
+checks. Older quality/identity/physical/download/LAN gates retain prerequisites.
 
 ## TASK-STOP-DEVICE-01D3A–01D3 — actual Training recovery (2026-10-07)
 
