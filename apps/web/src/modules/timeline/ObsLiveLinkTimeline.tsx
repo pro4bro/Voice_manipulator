@@ -19,7 +19,7 @@ import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, subtitleWordWidthPixels } from "./subtitle-density";
+import { isCompactSubtitleWord, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
 import "./waveform.css";
 import "./subtitle-density.css";
 
@@ -925,14 +925,20 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 })}
               </div>
               {archivedAsset ? <div aria-label={`Subtitle ${lane.label}`} className="obs-timeline__caption imported-timeline__words"
+                onDoubleClick={(event) => { if (event.target !== event.currentTarget) return; const time = positionSeconds(event.clientX, event.currentTarget); const wordIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (wordIndex >= 0) focusArchivedTrack(archivedAsset, { wordIndex }); }}
+                onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); const time = positionSeconds(event.clientX, event.currentTarget); const contextIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (contextIndex >= 0) focusArchivedTrack(archivedAsset, { contextIndex }); }}
+                onPointerDown={(event) => { if (event.button !== 1 || event.target !== event.currentTarget) return; event.preventDefault(); const time = positionSeconds(event.clientX, event.currentTarget); const promoteIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (promoteIndex >= 0) focusArchivedTrack(archivedAsset, { promoteIndex }); }}
                 onClick={(event) => {
-                  if (!(event.ctrlKey || event.metaKey) || event.target !== event.currentTarget) return;
+                  if (event.target !== event.currentTarget) return;
                   const seconds = positionSeconds(event.clientX, event.currentTarget);
-                  if (seconds !== null) focusArchivedTrack(archivedAsset, { insertTime: seconds });
+                  if (seconds === null) return;
+                  if (event.ctrlKey || event.metaKey) focusArchivedTrack(archivedAsset, { insertTime: seconds });
+                  else seek(event.clientX, event.currentTarget);
                 }}>
                 {excludedRanges.map((range) => { const position = intervalPosition(range.start, range.end, windowStart, windowSpan);
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
-                {(archivedAsset.words ?? []).map((word, wordIndex) => {
+                {visibleSubtitleIndexes(archivedAsset.words ?? [], windowStart, windowSpan, currentTime).map((wordIndex) => {
+                  const word = archivedAsset.words[wordIndex];
                   const position = intervalPosition(word.start, word.end, windowStart, windowSpan);
                   return position ? <button key={wordIndex} type="button" style={position}
                     aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`}

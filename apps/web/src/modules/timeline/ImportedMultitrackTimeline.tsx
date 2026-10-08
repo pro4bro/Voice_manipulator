@@ -10,7 +10,7 @@ import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, subtitleWordWidthPixels } from "./subtitle-density";
+import { isCompactSubtitleWord, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
 import { Timeline } from "./Timeline";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import "./waveform.css";
@@ -452,13 +452,19 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                 {markOut !== null ? <i aria-label="Mark Out" className="obs-timeline__mark" style={{ left: `${(markOut - windowStart) / span * 100}%` }} /> : null}
               </div>
               <div aria-label={`Subtitle Channel ${index + 1}`} className="obs-timeline__caption imported-timeline__words"
+                onDoubleClick={(event) => { if (event.target !== event.currentTarget) return; const rect = event.currentTarget.getBoundingClientRect(); const time = windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span; const wordIndex = subtitleIndexAtTime(track.words, time); if (wordIndex >= 0) focusTrack(track, { wordIndex }); }}
+                onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const contextIndex = subtitleIndexAtTime(track.words, windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span); if (contextIndex >= 0) focusTrack(track, { contextIndex }); }}
+                onPointerDown={(event) => { if (event.button !== 1 || event.target !== event.currentTarget) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const promoteIndex = subtitleIndexAtTime(track.words, windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span); if (promoteIndex >= 0) focusTrack(track, { promoteIndex }); }}
                 onClick={(event) => {
-                  if (!event.ctrlKey && !event.metaKey) return;
+                  if (event.target !== event.currentTarget) return;
                   const rect = event.currentTarget.getBoundingClientRect();
                   const ratio = rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : 0;
-                  focusTrack(track, { insertTime: Math.max(0, Math.min(duration, windowStart + ratio * span)) });
+                  const time = Math.max(0, Math.min(duration, windowStart + ratio * span));
+                  if (event.ctrlKey || event.metaKey) focusTrack(track, { insertTime: time });
+                  else { const wordIndex = subtitleIndexAtTime(track.words, time); if (wordIndex >= 0) seek(track.words[wordIndex].start); }
                 }}>
-                {track.words.length ? track.words.map((word, wordIndex) => {
+                {track.words.length ? visibleSubtitleIndexes(track.words, windowStart, span, currentTime).map((wordIndex) => {
+                  const word = track.words[wordIndex];
                   const style = intervalStyle(word.start, word.end, windowStart, span);
                   return style ? <button key={wordIndex} type="button" style={style}
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}

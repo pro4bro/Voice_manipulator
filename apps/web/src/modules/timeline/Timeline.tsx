@@ -12,7 +12,7 @@ import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, type WordDragMode } from "./word-timing";
-import { isCompactSubtitleWord } from "./subtitle-density";
+import { boundedSubtitleIndexes, isCompactSubtitleWord } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -403,15 +403,9 @@ export function Timeline({
     return { first, last };
   }, [displayWords, duration, timelineCanvasWidth, timelineViewport]);
   const wordTrackIndexes = useMemo(() => {
-    const indexes: number[] = [];
-    for (let index = visibleWordRange.first; index < visibleWordRange.last; index += 1) indexes.push(index);
-    // The playing word must stay mounted even when the viewport has scrolled off it.
-    if (activeWordIndex >= 0 && (activeWordIndex < visibleWordRange.first || activeWordIndex >= visibleWordRange.last)) {
-      indexes.push(activeWordIndex);
-      indexes.sort((left, right) => left - right);
-    }
-    return indexes;
-  }, [activeWordIndex, visibleWordRange]);
+    return boundedSubtitleIndexes(visibleWordRange.first, visibleWordRange.last,
+      [...wordSelection.indexes.slice(-8), activeWordIndex, promotedIndex ?? -1, wordEditor?.index ?? -1], displayWords.length);
+  }, [activeWordIndex, visibleWordRange, wordSelection.indexes, promotedIndex, wordEditor?.index, displayWords.length]);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
   const timelineNavigator = useMemo(() => {
     const visible = Math.max(0, timelineViewport.width);
@@ -1379,7 +1373,7 @@ export function Timeline({
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
-            <div className="word-track" onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            <div className="word-track" onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) setWordEditor({ index, time: words[index].start, text: words[index].text }); }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));

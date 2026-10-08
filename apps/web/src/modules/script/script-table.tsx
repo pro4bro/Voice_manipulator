@@ -5,6 +5,7 @@ import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../
 import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
+import { useTranscriptWindow } from "./transcript-window";
 
 export interface ScriptTableColumn {
   id: string;
@@ -330,6 +331,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const [rowDrop, setRowDrop] = useState<{ rowId: string; direction: RowMoveDirection } | null>(null);
   selectionRef.current = selection;
   const [scroll, setScroll] = useState<ScrollMetrics>({ top: 0, clientHeight: 0, scrollHeight: 0, trackHeight: 0 });
+  const transcriptWindow = useTranscriptWindow(rows, scrollRef, columns.find((column) => column.builtin === "content")?.width ?? 620);
 
   useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
   useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [words, speakers, defaultSpeakerId]);
@@ -338,6 +340,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   useLayoutEffect(() => {
     const view = scrollRef.current;
     if (!view || selection.anchor === null) return;
+    if (transcriptWindow.reveal(selection.anchor)) { updateScroll(view); return; }
     const target = view.querySelector<HTMLElement>(`[data-script-word-index="${selection.anchor}"]`);
     if (target && keepWordInView(view, target) !== null) updateScroll(view);
   }, [selection.anchor]);
@@ -429,7 +432,9 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   useLayoutEffect(() => {
     const element = scrollRef.current;
     const activeWord = activeWordRef.current;
-    if (!element || !activeWord || activeWordIndex < 0) return;
+    if (!element || activeWordIndex < 0) return;
+    if (transcriptWindow.reveal(activeWordIndex)) { updateScroll(element); return; }
+    if (!activeWord) return;
     if (keepWordInView(element, activeWord) !== null) updateScroll(element);
   }, [activeWordIndex, rows]);
 
@@ -654,7 +659,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     </span>;
   }
 
-  function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn) {
+  function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, visibleWords = row.words) {
     if (column.builtin === "speaker") {
       return <div className="script-table__speaker" role="gridcell">
         <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
@@ -671,7 +676,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     }
     if (column.builtin === "content") {
       return <div className="script-table__content" role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
-        {row.words.map(({ index, word }) => renderWord(index, word))}
+        {visibleWords.map(({ index, word }) => renderWord(index, word))}
       </div>;
     }
     if (column.builtin === "timestamp") {
@@ -698,11 +703,13 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
           {columns.map((column) => <div className="script-table__header-cell" key={column.id} role="columnheader"><b>{column.label}</b><button aria-label={`Kéo rộng cột ${column.label}`} className="script-table__resize" onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, column)} onPointerMove={resizeColumn} onPointerUp={endColumnResize} type="button" />{columns.length > 1 ? <button aria-label={`Xóa cột ${column.label}`} className="script-table__remove" onClick={() => removeColumn(column.id)} type="button">×</button> : null}</div>)}
           <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
         </div>
-          {rows.map((row) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns }}>
-            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column)}</div>)}
+          {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
+          {transcriptWindow.visible.map(({ row, words: visibleWords, key, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${visibleWords.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} data-transcript-fragment={key} key={key} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
+            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column, visibleWords)}</div>)}
             <i aria-hidden="true" className="script-table__add-space" />
             {!columns.some((column) => column.builtin === "speaker") ? <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button> : null}
         </div>)}
+          {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
       </div>
     </div>
     <div aria-label="Thanh cuộn bảng Script" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(thumb.top)} className={`script-table-scrollbar ${thumb.enabled ? "" : "is-static"}`} onPointerCancel={endScrollbar} onPointerDown={beginScrollbar} onPointerMove={moveScrollbar} onPointerUp={endScrollbar} ref={trackRef} role="scrollbar" tabIndex={0}>

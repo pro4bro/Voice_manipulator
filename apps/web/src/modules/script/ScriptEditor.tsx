@@ -100,8 +100,8 @@ export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferred
   const [scriptScroll, setScriptScroll] = useState({ top: 0, clientHeight: 0, scrollHeight: 0 });
   const [dismissedLiveComparisonSignature, setDismissedLiveComparisonSignature] = useState<string | null>(null);
   const wordRanges = useMemo(
-    () => scriptWordRanges(value, words),
-    [value, words],
+    () => scriptView !== "table" || findOpen || showReview || liveTranscriptText || aiReviewText ? scriptWordRanges(value, words) : [],
+    [value, words, scriptView, findOpen, showReview, liveTranscriptText, aiReviewText],
   );
   const wordRangesByIndex = useMemo(() => new Map(wordRanges.map((range) => [range.index, range])), [wordRanges]);
   // Built inline in JSX before, so thousands of spans were re-created whenever
@@ -393,7 +393,8 @@ export function ScriptEditor({ value, onChange, workflow, onGenerate, onDeferred
 
   function deleteScriptWords(indexes: number[]): boolean {
     if (!onWordsChange) return false;
-    const nextText = removeScriptWordRanges(value, indexes, wordRangesByIndex);
+    const ranges = wordRangesByIndex.size ? wordRangesByIndex : new Map(scriptWordRanges(value, words).map((range) => [range.index, range]));
+    const nextText = removeScriptWordRanges(value, indexes, ranges);
     if (nextText === null) return false;
     const removed = new Set(indexes);
     onWordsChange(words.filter((_, index) => !removed.has(index)), nextText);

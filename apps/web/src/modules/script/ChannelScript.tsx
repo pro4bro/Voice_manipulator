@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
@@ -7,6 +7,7 @@ import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync
 import { obsOverlapSelectionMatches, type ObsOverlapSelection } from "../obs-capture/obs-overlap";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import { replaceScriptWord } from "./script-text-reconciliation";
+import { useTranscriptWindow } from "./transcript-window";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -66,13 +67,17 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
 }) {
   // Timings from separate footage do not share a clock. Detect interruptions
   // and overlaps only between channels of the same recording/archive.
-  const groupByTrack = new Map(tracks.map((track) => [track.id, track.sourceArchiveAssetId ? `archive:${track.sourceArchiveAssetId}`
+  const groupByTrack = useMemo(() => new Map(tracks.map((track) => [track.id, track.sourceArchiveAssetId ? `archive:${track.sourceArchiveAssetId}`
     : track.obsRecordingId ? `recording:${track.obsRecordingId}`
     : recordingId && track.name.startsWith("OBS LiveLink · ") ? `recording:${recordingId}`
-    : track.name.startsWith("OBS LiveLink · ") ? "obs-unarchived" : `asset:${track.id}`]));
-  const groups = new Map<string, ProjectMediaAsset[]>();
-  tracks.forEach((track) => { const group = groupByTrack.get(track.id)!; groups.set(group, [...(groups.get(group) ?? []), track]); });
-  const rows = [...groups.values()].flatMap(channelScriptRows);
+    : track.name.startsWith("OBS LiveLink · ") ? "obs-unarchived" : `asset:${track.id}`])), [tracks, recordingId]);
+  const rows = useMemo(() => {
+    const groups = new Map<string, ProjectMediaAsset[]>();
+    tracks.forEach((track) => { const group = groupByTrack.get(track.id)!; const own = groups.get(group) ?? []; own.push(track); groups.set(group, own); });
+    return [...groups.values()].flatMap(channelScriptRows);
+  }, [tracks, groupByTrack]);
+  const viewRef = useRef<HTMLOListElement>(null);
+  const transcriptWindow = useTranscriptWindow(rows, viewRef, 500);
   const rowIds = rows.map((row) => `${row.trackId}:${row.words[0]?.index ?? "untimed"}`);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const selected = reconcileListSelection(selection, rowIds).ids;
@@ -99,8 +104,9 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
       </select></label>
       <button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button>
     </div> : null}
-    <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows">
-      {rows.map((row, index) => <li data-channel-id={row.trackId} key={`${row.trackId}-${row.start ?? "untimed"}-${index}`}>
+    <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
+      {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
+      {transcriptWindow.visible.map(({ row, rowIndex: index, words: visibleWords, key }) => <li data-transcript-fragment={key} data-channel-id={row.trackId} key={key}>
         <div className="obs-script__row-button">
           <div className="obs-script__source">
             {onAssignWords ? <button type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
@@ -110,7 +116,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
               }}>Chọn row {index + 1}</button> : null}
             <button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button"><b>{row.trackName}</b><small>{timecode(row.start)}–{timecode(row.end)}</small></button>
           </div>
-          <ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={row} track={tracks.find((track) => track.id === row.trackId)!} />
+          <ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: visibleWords }} track={tracks.find((track) => track.id === row.trackId)!} />
           {onAssignWords ? <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
             value={speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
             onChange={(event) => onAssignWords(row.trackId, row.words.map((item) => item.index), event.target.value || null)}>
@@ -135,6 +141,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
           </button>)}
         </div> : null}
       </li>)}
+      {transcriptWindow.bottom ? <li aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
     </ol>
     {!rows.length ? <p className="obs-script__empty">Các track đã Import chưa có transcript.</p> : null}
   </section>;
