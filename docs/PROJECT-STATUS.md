@@ -1,5 +1,20 @@
 # Project Status — 2026-10-08
 
+## USER-FEEDBACK-03 — import feedback, media tree and bounded detail views (2026-10-08)
+
+Pending footage slots appear before cache confirmation/track inspection, including
+same-name imports. Expandable folder slots replace Thư mục gốc and preserve
+nested creation/root-folder moves. Multi-selection closes detail constructors;
+bulk checkbox intent updates immediately, with ordered saves and stale-read/open
+fences. Script/ChannelScript render bounded fragments and dense Timeline subtitle
+overviews use full-source hit testing. All words/timestamps remain available.
+Frontend602/69, API677/two existing warnings and typecheck/build pass; current gate:
+`docs/gates/user-feedback-03-media-tree-and-responsive-selection.md`, ADR0050.
+Exact next UX-EDITING-DEVICE-01 needs allowed browser/native, real-load/scroll and
+audible evidence. DOM bounds do not establish real browser interaction latency.
+Older physical/quality/download/LAN gates remain. No backend/launcher/upstream,
+project schema, owner-media mutation or phase-budget change; Queue remains proposed.
+
 ## USER-FEEDBACK-02 — Media Pool and audible pointer previews (2026-10-08)
 
 Main Import opens the device multi-file chooser; separate Host import preserves

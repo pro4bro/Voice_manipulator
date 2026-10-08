@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-08 — USER-FEEDBACK-02 Media Pool and pointer audio previews.
-last_activity_desc: Multi-file Import, host picker error feedback, lifecycle revision fence, stage activity and shared normal/middle scrubbing delivered. Frontend593/68, API677, typecheck/build pass; timing caveat in current gate. Unified Queue remains a proposal. Next UX-EDITING-DEVICE-01 and older physical/label/download/LAN evidence. Phase budgets unchanged.
+last_activity: 2026-10-08 — USER-FEEDBACK-03 Immediate imports and responsive media selection.
+last_activity_desc: Pending import slots, folder tree, empty multi-select detail views, optimistic ordered bulk ticks and bounded Script/Timeline DOM delivered. Frontend602/69, API677/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 real-load/scroll/native/audio evidence. Queue and phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-03 — 2026-10-08
+
+Animated import placeholders precede metadata/cache choices and retain same-name
+feedback. Expandable folder slots replace breadcrumb navigation. Multi-select
+retains list IDs without loading Script/Timeline; bulk ticks change immediately
+and save in order, fenced against stale opens/reads. Long Script fragments and
+dense subtitle overviews bound mounted DOM while retaining full source indexes.
+Frontend602/69, API677/two existing warnings, typecheck/build pass; limits in
+`docs/gates/user-feedback-03-media-tree-and-responsive-selection.md`, ADR0050.
+Next UX-EDITING-DEVICE-01 requires allowed real browser/native, real-STT selection
+and scroll, and audible checks. Existing tool restriction and older physical/
+quality/download/LAN gates remain. Phase03 stays60%; Queue is still proposed.
 
 ## USER-FEEDBACK-02 — 2026-10-08
 

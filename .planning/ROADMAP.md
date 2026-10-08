@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-03 — import slots and media selection (2026-10-08)
+
+Immediate animated import choices/inspection rows, expandable folder tree,
+closed multi-select detail constructors and immediate bulk checkbox intent are
+implemented. Ordered writes and revision fences retain the newest action.
+Bounded Script fragments and dense Timeline marker views preserve full-source
+editing. Frontend602/69, API677/two existing warnings, typecheck/build pass; limits:
+`docs/gates/user-feedback-03-media-tree-and-responsive-selection.md`, ADR0050.
+Exact next UX-EDITING-DEVICE-01: permitted visual/native, real-STT selection/scroll
+and audible acceptance. DOM tests do not establish real device latency. Existing
+browser restriction and physical, reviewed recognition/speaker/identity, download
+and second-machine gates remain. Phase03 budgets and Queue proposal are unchanged.
+
 ## USER-FEEDBACK-02 — Media Pool and pointer audio previews (2026-10-08)
 
 Device multi-file Import, separate Host picker/errors, larger icons, root

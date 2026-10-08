@@ -12,7 +12,23 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-08 — current: USER-FEEDBACK-02
+### 2026-10-08 — current: USER-FEEDBACK-03
+
+Immediate animated import slots precede browser confirmation and host inspection;
+same-name choices retain feedback until queue handoff. Expandable folder slots
+replace the root breadcrumb, retaining nested creation and root/folder moves.
+Multi-select closes detail data, preserves list IDs and applies checkbox intent
+immediately to eligible footage/tracks. Revision fences and ordered bulk writes
+prevent older responses restoring prior opens or checkbox values. Long Script
+turns use viewport fragments; dense Timeline overviews bound subtitle DOM with
+full-source editing hit tests. Frontend602/69, API677/two existing warnings and
+typecheck/build pass: `docs/gates/user-feedback-03-media-tree-and-responsive-selection.md`.
+ADR0050 records view and selection contracts. Exact next UX-EDITING-DEVICE-01:
+permitted visual/native picker, real-STT interaction/scroll and audible acceptance.
+Browser restriction and older physical/quality/download/LAN prerequisites remain.
+No normal service/model dispatch, owner media or Phase03 budget changed.
+
+### 2026-10-08 — previous: USER-FEEDBACK-02
 
 Main Import uses the current device's multiple-file chooser; Host import retains
 host paths/growing MKV and reports picker errors. Larger icons and the corrected
