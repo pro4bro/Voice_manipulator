@@ -56,7 +56,7 @@ function ProcessingChoice({ pending, onChoose }: {
       }}>
       <h2 id={headingId}>Chạy {pending.label}</h2>
       <p id={descriptionId}>{pending.ids.length - pending.missing.length}/{pending.ids.length} mục đã có kết quả. Anh muốn chạy toàn bộ các mục đã chọn, hay chỉ phần chưa có kết quả?</p>
-      <p>Kết quả đã hoàn tất vẫn được giữ lại.</p>
+      <p>Chạy toàn bộ sẽ xử lý lại cả những mục đã có kết quả.</p>
       {!pending.missing.length ? <p>Tất cả các mục đã chọn đều có kết quả. Chọn chạy toàn bộ nếu muốn làm lại.</p> : null}
       <footer><button className="button button--quiet" onClick={() => onChoose(null)} type="button">Hủy</button>
         <button className="button button--quiet" onClick={() => onChoose({ ids: pending.ids, rerunAll: true })} type="button">Chạy toàn bộ ({pending.ids.length})</button>
