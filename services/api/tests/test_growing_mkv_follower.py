@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import json
 import shutil
 import subprocess
 import time
@@ -21,6 +22,43 @@ from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.domain.models import ProjectCreate
 from app.main import create_app
 from app.settings import Settings
+
+
+def test_checkpoint_replace_retries_transient_windows_reader(tmp_path, monkeypatch):
+    from app.adapters import file_growing_mkv_follower as follower
+
+    path = tmp_path / "follow-state.json"
+    path.write_text('{"sequence": 1}', encoding="utf-8")
+    replace_file = follower.os.replace
+    attempts = []
+
+    def replace_after_reader_closes(source, destination):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise PermissionError("Windows reader still holds the checkpoint")
+        replace_file(source, destination)
+
+    monkeypatch.setattr(follower.os, "replace", replace_after_reader_closes)
+    follower._atomic_json(path, {"sequence": 2})
+    assert len(attempts) == 2
+    assert json.loads(path.read_text(encoding="utf-8")) == {"sequence": 2}
+
+
+def test_checkpoint_replace_reports_persistent_permission_error_without_losing_old_state(tmp_path, monkeypatch):
+    from app.adapters import file_growing_mkv_follower as follower
+
+    path = tmp_path / "follow-state.json"
+    original = b'{"sequence": 1}'
+    path.write_bytes(original)
+
+    def denied(source, destination):
+        raise PermissionError("checkpoint remains locked")
+
+    monkeypatch.setattr(follower.os, "replace", denied)
+    monkeypatch.setattr(follower.time, "sleep", lambda seconds: None)
+    with pytest.raises(PermissionError, match="remains locked"):
+        follower._atomic_json(path, {"sequence": 2})
+    assert path.read_bytes() == original
 
 
 @pytest.fixture

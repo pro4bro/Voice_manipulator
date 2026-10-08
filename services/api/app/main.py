@@ -725,9 +725,9 @@ def create_app(
                 if journal.parent.name in deleted_ids:
                     continue
                 try:
-                    live_tracks += await asyncio.to_thread(
-                        obs_livelink_stt.resume_recording, project.id, journal.parent.name
-                    )
+                    # This method schedules asyncio workers as well as reading
+                    # their journal; it must retain event-loop ownership.
+                    live_tracks += obs_livelink_stt.resume_recording(project.id, journal.parent.name)
                 except (OSError, ValueError, KeyError) as exc:
                     logging.getLogger(__name__).warning(
                         "LiveLink STT could not resume %s: %s", journal.parent.name, exc)

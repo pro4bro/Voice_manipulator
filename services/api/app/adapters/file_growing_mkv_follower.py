@@ -37,7 +37,16 @@ def _atomic_json(path: Path, value: dict) -> None:
         json.dump(value, output, ensure_ascii=False, indent=2)
         output.flush()
         os.fsync(output.fileno())
-    os.replace(temporary, path)
+    # Windows readers can briefly prevent replacement of an open checkpoint.
+    # Retry only that sharing/permission failure; keep permanent errors visible.
+    for attempt in range(5):
+        try:
+            os.replace(temporary, path)
+            break
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(.02 * (attempt + 1))
 
 
 def _hash_file(path: Path) -> str:
