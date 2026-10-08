@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 interface ModuleFrameProps {
+  elementRef?: Ref<HTMLElement>;
   eyebrow?: string;
   title?: string;
   index?: string;
@@ -18,9 +19,10 @@ export function ModuleFrame({
   children,
   className = "",
   tone = "paper",
+  elementRef,
 }: ModuleFrameProps) {
   return (
-    <section className={`module-frame module-frame--${tone} ${className}`}>
+    <section ref={elementRef} className={`module-frame module-frame--${tone} ${className}`}>
       <header className="module-frame__header">
         <div className="module-frame__identity">
           {index ? <span className="module-frame__index">{index}</span> : null}

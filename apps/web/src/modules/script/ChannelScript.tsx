@@ -8,6 +8,8 @@ import { obsOverlapSelectionMatches, type ObsOverlapSelection } from "../obs-cap
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import { replaceScriptWord } from "./script-text-reconciliation";
 import { useTranscriptWindow } from "./transcript-window";
+import { useScriptShortcuts } from "./script-shortcuts";
+import "./script-selection.css";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -81,6 +83,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
   const rowIds = rows.map((row) => `${row.trackId}:${row.words[0]?.index ?? "untimed"}`);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const selected = reconcileListSelection(selection, rowIds).ids;
+  useScriptShortcuts(viewRef, { selectAll: () => setSelection((current) => selectAllListItems(current, rowIds)) });
   function assignSelected(profileId: string | null) {
     const byTrack = new Map<string, number[]>();
     rows.forEach((row, index) => {
@@ -106,20 +109,20 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     </div> : null}
     <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
       {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-      {transcriptWindow.visible.map(({ row, rowIndex: index, words: visibleWords, key }) => <li data-transcript-fragment={key} data-channel-id={row.trackId} key={key}>
+      {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => <li data-channel-id={row.trackId} key={rowIds[index]}>
         <div className="obs-script__row-button">
           <div className="obs-script__source">
-            {onAssignWords ? <button type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
+            {onAssignWords ? <div className="script-row-selection"><button className="script-table__row-select" type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
               onClick={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }))}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelection((current) => selectAllListItems(current, rowIds)); }
-              }}>Chọn row {index + 1}</button> : null}
+              }}><span aria-hidden="true">{selected.includes(rowIds[index]) ? "✓" : ""}</span></button><small aria-label={`Row ${index + 1}`}>{index + 1}</small></div> : null}
             <button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button"><b>{row.trackName}</b><small>{timecode(row.start)}–{timecode(row.end)}</small></button>
           </div>
-          <ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: visibleWords }} track={tracks.find((track) => track.id === row.trackId)!} />
+          <div>{fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}</div>
           {onAssignWords ? <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
             value={speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
-            onChange={(event) => onAssignWords(row.trackId, row.words.map((item) => item.index), event.target.value || null)}>
+            disabled={!selected.includes(rowIds[index])} onChange={(event) => { if (selected.includes(rowIds[index])) assignSelected(event.target.value || null); }}>
             <option value="">Chưa gán Profile</option>
             {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
           </select> : row.speakerId ? <span className="obs-script__state">{speakers.find((speaker) => speaker.id === row.speakerId)?.name ?? row.speakerId}</span> : null}

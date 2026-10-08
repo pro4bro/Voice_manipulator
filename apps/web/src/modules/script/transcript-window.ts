@@ -83,6 +83,13 @@ export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
     setViewport({ top, height: view.current.clientHeight || 400 });
     return true;
   }
-  return { enabled, visible: fragments.slice(first, last), top: enabled ? offsets[first] : 0,
+  const visible = fragments.slice(first, last);
+  const visibleRows: Array<{ row: T; rowIndex: number; fragments: typeof visible }> = [];
+  for (const fragment of visible) {
+    const previous = visibleRows.at(-1);
+    if (previous?.rowIndex === fragment.rowIndex) previous.fragments.push(fragment);
+    else visibleRows.push({ row: fragment.row, rowIndex: fragment.rowIndex, fragments: [fragment] });
+  }
+  return { enabled, visible, visibleRows, top: enabled ? offsets[first] : 0,
     bottom: enabled ? offsets[fragments.length] - offsets[last] : 0, reveal };
 }

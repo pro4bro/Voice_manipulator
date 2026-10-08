@@ -34,6 +34,9 @@ it("assigns individual and selected rows to profiles across selected tracks", ()
   const onAssignWords = vi.fn();
   render(<ChannelScript tracks={tracks} speakers={speakers} onAssignWords={onAssignWords} onSelectTrack={vi.fn()} />);
   fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của a row 1" }), { target: { value: "s2" } });
+  expect(onAssignWords).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Chọn row 1 của a" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của a row 1" }), { target: { value: "s2" } });
   expect(onAssignWords).toHaveBeenLastCalledWith("a", [0], "s2");
   onAssignWords.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "Chọn row 1 của a" }));

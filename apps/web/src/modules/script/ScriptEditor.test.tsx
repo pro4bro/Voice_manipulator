@@ -16,37 +16,82 @@ function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
 }
 
 describe("ScriptEditor", () => {
-  it("offers a Speaker Profile dropdown on every diarized row and assigns only that row", () => {
+  it("commits pending plain text timing before requesting redo so a new edit clears the old redo branch", () => {
+    const order: string[] = [];
+    const onWordsChange = vi.fn(() => order.push("edit"));
+    function Editor() {
+      const [text, setText] = useState("one");
+      return <ScriptEditor onChange={setText} onWordsChange={onWordsChange} onRedo={() => order.push("redo")} words={[{ text: "one", start: 0, end: 1 }]} value={text} workflow="speech-to-text" />;
+    }
+    render(<Editor />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const input = screen.getByRole("textbox", { name: "Script transcript" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "two" } });
+    fireEvent.keyDown(input, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(order).toEqual(["edit", "redo"]);
+    expect(onWordsChange).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ text: "two" })]), "two");
+  });
+  it("selects every logical row and routes bounded history shortcuts while the pointer is in Script", () => {
+    const onUndo = vi.fn(), onRedo = vi.fn();
+    const view = render(<ScriptEditor onChange={vi.fn()} onUndo={onUndo} onRedo={onRedo} words={[
+      { text: "one", start: 0, end: 1, diarizationSpeakerId: "speaker-1" },
+      { text: "two", start: 1, end: 2, diarizationSpeakerId: "speaker-2" },
+    ]} value="one two" workflow="speech-to-text" />);
+    const scope = view.container.querySelector(".script-module")!;
+    fireEvent.pointerEnter(scope);
+    fireEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    expect(screen.getByRole("button", { name: "Chọn Script row Speaker 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Chọn Script row Speaker 2" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Row 1")).toHaveTextContent("1");
+    expect(screen.getByLabelText("Row 2")).toHaveTextContent("2");
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(onUndo).toHaveBeenCalledOnce();
+    expect(onRedo).toHaveBeenCalledOnce();
+    fireEvent.pointerLeave(scope);
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    expect(onUndo).toHaveBeenCalledOnce();
+  });
+  it("only assigns checked rows when choosing a Speaker Profile", () => {
     const onWordsChange = vi.fn();
     const speakers = [{ id: "an", name: "An", color: "#ff8000" }, { id: "binh", name: "Bình", color: "#80ff00" }] as Parameters<typeof ScriptEditor>[0]["speakers"];
     const words = [{ text: "Xin", start: 0, end: 1, diarizationSpeakerId: "speaker-1", speakerId: "an" }, { text: "chào", start: 1, end: 2, diarizationSpeakerId: "speaker-2", speakerId: "binh" }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={speakers} value="Xin chào" words={words} workflow="speech-to-text" />);
     fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của row 1" }), { target: { value: "binh" } });
+    expect(onWordsChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row An" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của row 1" }), { target: { value: "binh" } });
     expect(onWordsChange).toHaveBeenCalledWith([{ ...words[0], speakerId: "binh" }, words[1]]);
     expect(screen.getByRole("combobox", { name: "Speaker Profile của row 2" })).toHaveValue("binh");
   });
-it("assigns the whole take to a Speaker Profile without running diarization", () => {
+it("requires checked rows for the toolbar speaker choice without changing the whole footage profile", () => {
     const onSpeakerProfileChange = vi.fn();
     const speakers = [
       { id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#f00", createdAt: "" },
       { id: "speaker-khoa", name: "Khoa Trịnh", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#0f0", createdAt: "" },
     ];
 
-    render(<ScriptEditor onChange={vi.fn()} onSpeakerProfileChange={onSpeakerProfileChange} speakerProfileId="speaker-an" speakers={speakers} value="Xin chào" workflow="speech-to-text" />);
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 1 }, { text: "chào", start: 1, end: 2 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} onSpeakerProfileChange={onSpeakerProfileChange} speakerProfileId="speaker-an" speakers={speakers} value="Xin chào" words={words} workflow="speech-to-text" />);
 
-    const pick = screen.getByLabelText("Người nói của footage này") as HTMLSelectElement;
-    expect(pick.value).toBe("speaker-an");
+    const pick = screen.getByLabelText("Gán speaker cho rows đã chọn") as HTMLSelectElement;
+    expect(pick).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Anh Vũ" }));
+    expect(pick).toBeEnabled();
     fireEvent.change(pick, { target: { value: "speaker-khoa" } });
-    expect(onSpeakerProfileChange).toHaveBeenCalledWith("speaker-khoa");
+    expect(onWordsChange).toHaveBeenCalledWith(words.map((word) => ({ ...word, speakerId: "speaker-khoa" })));
 
     fireEvent.change(pick, { target: { value: "" } });
-    expect(onSpeakerProfileChange).toHaveBeenLastCalledWith(null);
+    expect(onSpeakerProfileChange).not.toHaveBeenCalled();
+    expect(onWordsChange).toHaveBeenLastCalledWith(words.map((word) => ({ ...word, speakerId: undefined })));
   });
 
   it("offers no speaker picker when no take is open", () => {
     render(<ScriptEditor onChange={vi.fn()} value="" workflow="speech-to-text" />);
 
-    expect(screen.queryByLabelText("Người nói của footage này")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Gán speaker cho rows đã chọn")).not.toBeInTheDocument();
   });
 
   it("lets the user edit transcript text after recognition", () => {
@@ -187,6 +232,7 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[{ id: "speaker-profile-1", name: "Anh Vũ", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "male", attributes: {}, color: "#ff6745", createdAt: "2026-08-23T00:00:00Z" }]} value="Xin chào" words={words} workflow="speech-to-text" />);
     const first = screen.getByRole("button", { name: "Chọn từ Xin" });
     const second = screen.getByRole("button", { name: "Chọn từ chào" });
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Speaker 1" }));
     fireEvent.pointerDown(first, { pointerId: 1 });
     fireEvent.pointerEnter(second, { pointerId: 1 });
     fireEvent.pointerUp(second, { pointerId: 1 });
@@ -241,6 +287,7 @@ it("assigns the whole take to a Speaker Profile without running diarization", ()
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[{ id: "speaker-profile-2", name: "Chị Lan", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "female", attributes: {}, color: "#86b5d8", createdAt: "2026-08-23T00:00:00Z" }]} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Speaker 2" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Chị Lan" }));
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: "speaker-profile-2" }]);

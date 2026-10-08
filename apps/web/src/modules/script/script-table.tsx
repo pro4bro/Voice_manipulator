@@ -6,6 +6,8 @@ import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
 import { useTranscriptWindow } from "./transcript-window";
+import { useScriptShortcuts } from "./script-shortcuts";
+import "./script-selection.css";
 
 export interface ScriptTableColumn {
   id: string;
@@ -85,8 +87,8 @@ export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerPro
   const profileById = new Map(speakers.map((speaker) => [speaker.id, speaker]));
   const rows: SpeakerScriptRow[] = [];
   for (const [index, word] of words.entries()) {
-    const diarizationId = normalizedDiarizationId(word);
     const unnamed = !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId;
+    const diarizationId = unnamed && defaultSpeakerId ? `profile:${defaultSpeakerId}` : normalizedDiarizationId(word);
     const owner = word.speakerId || (unnamed ? defaultSpeakerId : null);
     const profile = owner ? profileById.get(owner) ?? null : null;
     const previous = rows[rows.length - 1];
@@ -155,6 +157,7 @@ export function updateWordText(words: StudioWord[], index: number, text: string)
 }
 
 interface ScriptTableProps {
+  onSelectedRowWordsChange?: (indexes: number[]) => void;
   assetId?: string | null;
   words: StudioWord[];
   speakers: SpeakerProfile[];
@@ -298,7 +301,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection,
     })}
   </div>;
 }
-export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null }: ScriptTableProps) {
+export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null, onSelectedRowWordsChange }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -311,6 +314,10 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const rowIds = rows.map((row) => row.id);
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
+  const commandRef = useRef<HTMLDivElement>(null);
+  useScriptShortcuts(commandRef, { selectAll: () => setRowSelection((current) => selectAllListItems(current, rowIds)) });
+  const selectedRowWords = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.id)).flatMap((row) => row.words.map((item) => item.index)), [rows, selectedRowIds.join("\0")]);
+  useEffect(() => { onSelectedRowWordsChange?.(selectedRowWords); }, [selectedRowWords.join(","), onSelectedRowWordsChange]);
   const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
   const wordEditCommittedRef = useRef(false);
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
@@ -600,7 +607,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   function assignProfileToSelectedWords(profileId: string | null) {
     if (!speakerMenu?.indexes.length) return;
-    onAssignWords(speakerMenu.indexes, profileId);
+    const indexes = speakerMenu.indexes.filter((index) => selectedRowWords.includes(index));
+    if (indexes.length) onAssignWords(indexes, profileId);
     setSpeakerMenu(null);
   }
 
@@ -659,15 +667,19 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     </span>;
   }
 
-  function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, visibleWords = row.words) {
+  function rowSelectionControl(row: SpeakerScriptRow, rowIndex: number) {
+    return <div className="script-row-selection"><button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button"><span aria-hidden="true">{selectedRowIds.includes(row.id) ? "✓" : ""}</span></button><small aria-label={`Row ${rowIndex + 1}`}>{rowIndex + 1}</small></div>;
+  }
+
+  function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, fragments: typeof transcriptWindow.visible, rowIndex: number) {
     if (column.builtin === "speaker") {
       return <div className="script-table__speaker" role="gridcell">
-        <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
+        {rowSelectionControl(row, rowIndex)}
         <i style={{ background: row.profile?.color ?? "var(--text-muted)" }} />
         <div>
           <b style={{ color: row.profile?.color }}>{row.diarizationLabel}</b>
-          <select aria-label={`Speaker Profile của row ${rows.indexOf(row) + 1}`} value={row.profileId ?? ""}
-            onChange={(event) => onAssignWords(row.words.map(({ index }) => index), event.target.value || null)}>
+          <select aria-label={`Speaker Profile của row ${rowIndex + 1}`} value={row.profileId ?? ""} disabled={!selectedRowIds.includes(row.id)}
+            onChange={(event) => { if (selectedRowIds.includes(row.id)) assignProfileToSelectedRows(event.target.value || "__none__"); }}>
             <option value="">Chưa gán Profile</option>
             {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
           </select>
@@ -676,7 +688,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     }
     if (column.builtin === "content") {
       return <div className="script-table__content" role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
-        {visibleWords.map(({ index, word }) => renderWord(index, word))}
+        {fragments.map((fragment) => <div className="script-table__fragment" data-transcript-fragment={fragment.key} key={fragment.key}>{fragment.words.map(({ index, word }) => renderWord(index, word))}</div>)}
       </div>;
     }
     if (column.builtin === "timestamp") {
@@ -689,7 +701,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   if (!rows.length) return null;
 
-  return <div className="script-table-shell" onKeyDown={selectScriptRow}>
+  return <div className="script-table-shell" ref={commandRef} onKeyDown={selectScriptRow}>
     {selectedRowIds.length ? <div aria-label="Thao tác transcript rows đã chọn" className="script-row-bulk-actions"><b>{selectedRowIds.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho transcript rows" onChange={(event) => assignProfileToSelectedRows(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label>{onDeleteWords ? <button className="is-danger" onClick={deleteSelectedRows} type="button">Xoá rows đã chọn</button> : null}<button onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
     {deleteMessage ? <p role="status">{deleteMessage}</p> : null}
     <div className="script-table-scroll" onPointerDown={(event) => {
@@ -704,10 +716,10 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
           <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
         </div>
           {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-          {transcriptWindow.visible.map(({ row, words: visibleWords, key, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${visibleWords.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} data-transcript-fragment={key} key={key} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
-            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column, visibleWords)}</div>)}
+          {transcriptWindow.visibleRows.map(({ row, fragments, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${fragments.some((fragment) => fragment.words.some(({ index }) => index === activeWordIndex)) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
+            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column, fragments, rowIndex)}</div>)}
             <i aria-hidden="true" className="script-table__add-space" />
-            {!columns.some((column) => column.builtin === "speaker") ? <button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button> : null}
+            {!columns.some((column) => column.builtin === "speaker") ? rowSelectionControl(row, rowIndex) : null}
         </div>)}
           {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
       </div>
@@ -718,8 +730,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
       {speakerMenu.indexes.length === 1 ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes[0], value: words[speakerMenu.indexes[0]].text }); setSpeakerMenu(null); }} role="menuitem" type="button">Sửa text</button> : null}
-      <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
-      {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+      <button disabled={!speakerMenu.indexes.some((index) => selectedRowWords.includes(index))} onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
+      {speakers.map((speaker) => <button disabled={!speakerMenu.indexes.some((index) => selectedRowWords.includes(index))} key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
       {(() => {
         // Only the neighbouring rows, and only from a row's edge: anything else
         // would reorder the transcript, which recognition already got right.

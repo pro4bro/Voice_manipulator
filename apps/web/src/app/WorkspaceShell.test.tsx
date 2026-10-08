@@ -59,7 +59,8 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
       const overlap = context as unknown as { obsOverlapSelection: { startSeconds: number; endSeconds: number } | null;
         onObsArchivedOverlapSelect: (trackId: string, selection: { recordingId: string; startSeconds: number;
           endSeconds: number; sourceIds: string[] }) => void };
-      return <><output data-testid="script-value">{context.script}</output><output data-testid="script-track">{context.selectedImportedTrackId ?? "none"}</output><output data-testid="obs-overlap-selection">{overlap.obsOverlapSelection ? `${overlap.obsOverlapSelection.startSeconds}-${overlap.obsOverlapSelection.endSeconds}` : "none"}</output><button onClick={() => overlap.onObsArchivedOverlapSelect("asset-b", { recordingId: "take-one", startSeconds: 2, endSeconds: 5, sourceIds: ["asset-a", "asset-b"] })} type="button">select archived overlap</button><button onClick={() => context.onSelectImportedTrack("channel-b")} type="button">select second imported track</button><button onClick={() => context.onScriptChange("Edited channel B")} type="button">edit imported script</button></>;
+      const commands = context as unknown as StudioContext;
+      return <><button onClick={() => { const words = commands.take?.words; if (words?.length) commands.onWordsChange([{ ...words[0], text: "edited", start: .2, end: .7, speakerId: "speaker-new" }, ...words.slice(1)], "edited"); }} type="button">edit timed word</button><button onClick={commands.onScriptUndo} type="button">undo script edit</button><button onClick={commands.onScriptRedo} type="button">redo script edit</button><output data-testid="history-word">{commands.take?.words?.[0] ? JSON.stringify(commands.take.words[0]) : "none"}</output><output data-testid="script-value">{context.script}</output><output data-testid="script-track">{context.selectedImportedTrackId ?? "none"}</output><output data-testid="obs-overlap-selection">{overlap.obsOverlapSelection ? `${overlap.obsOverlapSelection.startSeconds}-${overlap.obsOverlapSelection.endSeconds}` : "none"}</output><button onClick={() => overlap.onObsArchivedOverlapSelect("asset-b", { recordingId: "take-one", startSeconds: 2, endSeconds: 5, sourceIds: ["asset-a", "asset-b"] })} type="button">select archived overlap</button><button onClick={() => context.onSelectImportedTrack("channel-b")} type="button">select second imported track</button><button onClick={() => context.onScriptChange("Edited channel B")} type="button">edit imported script</button></>;
     }
     if (id === "timeline") {
       const request = context.obsSeekRequest as { assetId?: string; channelId?: string; selectOnly?: boolean } | null;
@@ -266,6 +267,28 @@ describe("WorkspaceShell STT synchronization", () => {
     fireEvent.click(screen.getByRole("button", { name: "bulk training on" }));
     expect(screen.getByTestId("media-ticks")).toHaveTextContent("asset-1:true,asset-2:true");
     await act(async () => pending.resolve({ ...first, trainingSelected: true }));
+  });
+
+  it("undoes and redoes text, timing and speaker together through the ordered project saves", async () => {
+    const first = { ...mediaAsset("complete", "one", "2026-10-08T00:00:01Z"), words: [{ text: "one", start: .1, end: .6, speakerId: "speaker-original" }] };
+    let saved: ProjectMediaAsset = first;
+    apiMocks.listProjectMedia.mockResolvedValue([first]);
+    apiMocks.updateMediaScript.mockImplementation(async (_projectId: string, _id: string, text: string, _source: string, words: ProjectMediaAsset["words"]) => { saved = { ...saved, text, words }; return saved; });
+    apiMocks.updateMediaAnnotations.mockImplementation(async (_projectId: string, _id: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: ProjectMediaAsset["emotion"]) => { saved = { ...saved, speakerProfileIds, environmentProfileIds, emotion }; return saved; });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    fireEvent.click(screen.getByRole("button", { name: "edit timed word" }));
+    expect(screen.getByTestId("script-value")).toHaveTextContent("edited");
+    fireEvent.click(screen.getByRole("button", { name: "undo script edit" }));
+    expect(JSON.parse(screen.getByTestId("history-word").textContent!)).toEqual(first.words[0]);
+    expect(screen.getByTestId("script-value")).toHaveTextContent("one");
+    fireEvent.click(screen.getByRole("button", { name: "redo script edit" }));
+    expect(JSON.parse(screen.getByTestId("history-word").textContent!)).toMatchObject({ text: "edited", start: .2, end: .7, speakerId: "speaker-new" });
+    await waitFor(() => expect(apiMocks.updateMediaScript).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(apiMocks.updateMediaAnnotations).toHaveBeenCalledTimes(3));
+    expect(saved.words[0]).toMatchObject({ text: "edited", start: .2, end: .7, speakerId: "speaker-new" });
   });
 
   it("shows a host footage slot before delayed track information arrives", async () => {

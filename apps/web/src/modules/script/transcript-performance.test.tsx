@@ -12,6 +12,8 @@ it("bounds a long single speaker turn and reaches a far selected word without mo
   const props = { value: words.map((word) => word.text).join(" "), words, workflow: "speech-to-text" as const,
     playbackAssetId: "large", onChange: vi.fn() };
   const view = render(<ScriptEditor {...props} />);
+  expect(view.container.querySelectorAll('[role="row"]')).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Chọn Script row Speaker 1" })).toHaveLength(1);
   expect(view.container.querySelectorAll("[data-script-word-index]").length).toBeLessThanOrEqual(768);
   view.rerender(<ScriptEditor {...props} wordSelection={{ indexes: [5500], anchor: 5500 }} />);
   await waitFor(() => expect(view.container.querySelector('[data-script-word-index="5500"]')).toBeInTheDocument());

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
 import { api } from "../api/client";
+import { ScriptEditHistory, type ScriptEditSnapshot } from "../modules/script/script-edit-history";
 import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
@@ -178,6 +179,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedScriptAssetIds, setSelectedScriptAssetIds] = useState<string[] | null>(null);
   const mediaOpenRevision = useRef(0);
+  const scriptEditHistory = useRef(new ScriptEditHistory());
+  const scriptSpeakerAssignments = useRef<Array<{ assetId: string; indexes: number[]; profileId: string | null }>>([]);
   const mediaSelectionWrites = useRef(new Map<string, { version: number; selected: boolean | undefined; pending: boolean }>());
   const mediaSelectionRequests = useRef(new Map<string, Promise<ProjectMediaAsset | null>>());
   const [selectedImportedTrackId, setSelectedImportedTrackId] = useState<string | null>(null);
@@ -320,6 +323,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     mediaLifecycleWrites.current.clear();
     mediaSelectionWrites.current.clear();
     ++mediaOpenRevision.current;
+    scriptEditHistory.current = new ScriptEditHistory();
   }, [project.id]);
 
   async function runRuntimeAction(action: RuntimeAction) {
@@ -895,6 +899,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function changeScript(value: string) {
+    if (!scriptAssetId || activePage === "voice-manipulator") scriptEditHistory.current.record(null, { text: scriptRef.current, words: [] }, { text: value, words: [] });
     setScript(value);
     scriptRef.current = value;
     // In Voice Manipulator the Script is text to speak, not the transcript of
@@ -984,17 +989,21 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  async function changeWordAnnotations(words: StudioWord[], text?: string, assetId = scriptAssetId) {
+  async function changeWordAnnotations(words: StudioWord[], text?: string, assetId = scriptAssetId, restore?: ScriptEditSnapshot) {
     if (!assetId) return;
     const asset = mediaAssetsRef.current.find((item) => item.id === assetId) ?? mediaAssets.find((item) => item.id === assetId);
     if (!asset) return;
     const wordSpeakerIds = words.map((word) => word.speakerId).filter((id): id is string => Boolean(id));
     const wordEnvironmentIds = words.flatMap((word) => word.environmentProfileIds ?? []);
-    const speakerProfileIds = [...new Set([...asset.speakerProfileIds, ...wordSpeakerIds])];
-    const environmentProfileIds = [...new Set([...asset.environmentProfileIds, ...wordEnvironmentIds])];
+    const speakerProfileIds = restore?.speakerProfileIds ?? [...new Set([...asset.speakerProfileIds, ...wordSpeakerIds])];
+    const environmentProfileIds = restore?.environmentProfileIds ?? [...new Set([...asset.environmentProfileIds, ...wordEnvironmentIds])];
     const emotions = [...new Set(words.map((word) => word.emotion ?? asset.emotion))];
-    const emotion = emotions.length > 1 ? "mix" : emotions[0] ?? asset.emotion;
+    const emotion = restore?.emotion ?? (emotions.length > 1 ? "mix" : emotions[0] ?? asset.emotion);
     const nextText = text ?? (assetId === scriptAssetId ? scriptRef.current : asset.text);
+    if (!restore) {
+      const base = scriptDraftBases.current.get(assetId) ?? asset;
+      scriptEditHistory.current.record(assetId, { text: base.text, words: base.words, speakerProfileIds: asset.speakerProfileIds, environmentProfileIds: asset.environmentProfileIds, emotion: asset.emotion }, { text: nextText, words, speakerProfileIds, environmentProfileIds, emotion });
+    }
     scriptDraftBases.current.delete(assetId);
     if (text !== undefined && assetId === scriptAssetId) {
       setScript(nextText);
@@ -1028,7 +1037,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   async function assignScriptWords(assetId: string, indexes: number[], speakerProfileId: string | null) {
     const asset = mediaAssetsRef.current.find((item) => item.id === assetId);
     if (!asset || asset.deletedAt) { setNotice("Restore footage trước khi sửa Speaker."); return; }
-    if (!indexes.length) { await assignAssetSpeaker(assetId, speakerProfileId); return; }
+    if (!indexes.length) return;
     const selected = new Set(indexes);
     const words = asset.words.map((word, index) => {
       if (!selected.has(index)) return word;
@@ -1036,12 +1045,25 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
       delete next.manualDiarizationSpeakerId;
       return next;
     });
-    try {
-      const updated = await api.updateMediaScript(project.id, assetId, asset.text, "user", words);
-      storeMediaAsset(updated);
-      if (scriptAssetIdRef.current === assetId) setTake((current) => current ? { ...current, words } : current);
-      void refreshDatasetReadiness();
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Không lưu được Speaker của row."); }
+    await changeWordAnnotations(words, asset.text, assetId);
+  }
+
+  function restoreScriptEdit(direction: "undo" | "redo") {
+    flushCurrentMediaDraft();
+    const edit = scriptEditHistory.current[direction]();
+    if (!edit) return;
+    const targets = [edit, ...(edit.related ?? [])];
+    if (targets.some((target) => target.assetId && !mediaAssetsRef.current.some((asset) => asset.id === target.assetId && !asset.deletedAt))) {
+      setNotice("Không khôi phục sửa Script của footage đã bị remove.");
+      return;
+    }
+    for (const target of targets) {
+      if (target.assetId) void changeWordAnnotations(target.snapshot.words, target.snapshot.text, target.assetId, target.snapshot);
+      else if (!scriptAssetId || activePage === "voice-manipulator") {
+        setScript(target.snapshot.text);
+        scriptRef.current = target.snapshot.text;
+      } else localStorage.setItem(scratchStorageKey, target.snapshot.text);
+    }
   }
 
   async function controlTranscriptions(action: "pause" | "resume" | "stop" | "stop-all", assetIds?: string[]) {
@@ -2248,7 +2270,14 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     selectedImportedTrackId,
     selectedScriptAssetIds,
     onScriptSelectionChange: selectMediaList,
-    onAssignScriptWords: (assetId, indexes, speakerProfileId) => { void assignScriptWords(assetId, indexes, speakerProfileId); },
+    onAssignScriptWords: (assetId, indexes, profileId) => {
+      scriptSpeakerAssignments.current.push({ assetId, indexes, profileId });
+      if (scriptSpeakerAssignments.current.length === 1) queueMicrotask(() => {
+        const assignments = scriptSpeakerAssignments.current.splice(0);
+        if (activeMediaProjectId.current !== project.id) return;
+        scriptEditHistory.current.batch(() => assignments.forEach((assignment) => { void assignScriptWords(assignment.assetId, assignment.indexes, assignment.profileId); }));
+      });
+    },
     onSelectImportedTrack: selectImportedTrack,
     mediaBusy,
     recordingPreview,
@@ -2434,6 +2463,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onUpdateDiarizationAssignments: (assetId, assignments) => { if (!blockedByRecycleBin()) void updateDiarizationAssignments(assetId, assignments); },
     onAssetWordsChange: (assetId, words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text, assetId); },
     onWordsChange: (words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text); },
+    onScriptUndo: () => restoreScriptEdit("undo"),
+    onScriptRedo: () => restoreScriptEdit("redo"),
     onCatalogChange: changeCatalog,
     onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),

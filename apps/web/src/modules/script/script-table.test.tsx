@@ -11,6 +11,11 @@ function word(overrides: Partial<StudioWord> = {}): StudioWord {
 }
 
 describe("Script rows", () => {
+  it("keeps explicit and inherited identities of the same speaker in one row", () => {
+    const rows = buildSpeakerScriptRows([word(), word({ speakerId: "speaker-an" }), word()], [AN], "speaker-an");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].words).toHaveLength(3);
+  });
   it("reads a take nobody tagged as the profile the file is assigned to", () => {
     const rows = buildSpeakerScriptRows([word(), word({ text: "chào", start: 0.2, end: 0.4 })], [AN], "speaker-an");
 
