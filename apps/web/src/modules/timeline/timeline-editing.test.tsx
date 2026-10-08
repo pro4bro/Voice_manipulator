@@ -37,13 +37,15 @@ describe("time-aware timeline editing", () => {
     expect(change.mock.calls[0][1]).toBe("xin mới chào");
     expect(change.mock.calls[0][0].some((word: { timingSource?: string }) => word.timingSource === "user-interpolated")).toBe(true);
   });
-  it("assigns a promoted word IN/OUT on middle drag and advances to the next word", () => {
+  it("audibly previews a promoted word IN/OUT on middle drag and advances to the next word", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
     geometry(container);
     act(() => promoteTimestampWord("editing", 0));
     const waveform = screen.getByLabelText("Waveform timeline");
     fireEvent.pointerDown(waveform, { button: 1, clientX: 100, pointerId: 1 });
     fireEvent.pointerMove(waveform, { buttons: 4, clientX: 250, pointerId: 1 });
+    expect(play).toHaveBeenCalled();
     fireEvent.pointerUp(waveform, { button: 1, clientX: 250, pointerId: 1 });
     expect(change).toHaveBeenCalled();
     expect(change.mock.calls[0][0][0]).toMatchObject({ start: 1, end: 2.5, timingSource: "manual" });

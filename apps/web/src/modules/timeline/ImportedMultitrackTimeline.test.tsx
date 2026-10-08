@@ -126,7 +126,7 @@ it("keeps each Script word and both subtitle lanes synchronized without opening 
   expect(within(screen.getByLabelText("Subtitle Channel 2")).getByRole("button", { name: "world · 00:30–00:33" })).toHaveClass("is-active");
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("opens a long multitrack footage at its full duration", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 7200, points: [] }) }));
@@ -253,6 +253,8 @@ it("uses one zoom control and shows each channel's gain and level in both layout
 });
 
 it("keeps the waveform mounted while dragging and mutes one track independently", () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  play.mockClear();
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const onSelectTrack = vi.fn();
   const { container } = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId="a" singleTrackView
@@ -261,6 +263,7 @@ it("keeps the waveform mounted while dragging and mutes one track independently"
   vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
   fireEvent.pointerDown(wave, { pointerId: 1, clientX: 20 });
   fireEvent.pointerMove(wave, { pointerId: 1, clientX: 60 });
+  expect(play).toHaveBeenCalledTimes(2);
   fireEvent.pointerUp(wave, { pointerId: 1, clientX: 60 });
   expect(onSelectTrack).not.toHaveBeenCalled();
   expect(wave).toBeInTheDocument();

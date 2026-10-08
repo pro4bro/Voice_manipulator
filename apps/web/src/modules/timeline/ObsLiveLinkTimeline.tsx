@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import { useAudioScrubber } from "./audio-scrubbing";
 
 import { api } from "../../api/client";
 import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, SpeakerProfile, TimelineEditRange } from "../../domain/types";
@@ -453,6 +454,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const playbackUrl = selectedLane?.assetId
     ? `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(selectedLane.assetId)}/audio`
     : null;
+  const audioScrubber = useAudioScrubber(`${recordingId}:${playbackUrl}:${isLive}`);
   const selectedGain = selectedLane ? gainByChannel[`${recordingId}:${selectedLane.channelId}`] ?? 100 : 100;
   const selectedMuted = selectedLane ? mutedByChannel[`${recordingId}:${selectedLane.channelId}`] ?? false : false;
   const playhead = ((currentTime - windowStart) / windowSpan) * 100;
@@ -479,6 +481,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   function togglePlayback() {
     if (!canPlay) return;
+    audioScrubber.end();
     if (playing) { pausePlayback(); return; }
     const start = nextPlayableTime(currentTime, duration, excludedRanges);
     if (start >= duration) return;
@@ -619,7 +622,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (next < windowStart || next > windowStart + windowSpan) {
       setWindowStart(Math.max(0, Math.min(Math.max(0, duration - windowSpan), next - windowSpan / 2)));
     }
-    forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, audio.duration || next); });
+    if (audioScrubber.active) audioScrubber.move(next);
+    else forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, audio.duration || next); });
   }
 
   function clickSeek(event: MouseEvent<HTMLElement>, lane?: Lane, overlaps: TimelineOverlap[] = []) {
@@ -638,6 +642,12 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   function beginScrub(event: PointerEvent<HTMLElement>) {
     if (isLive || event.button !== 0) return;
+    const audios: HTMLAudioElement[] = [];
+    forEachPlaybackAudio((audio) => audios.push(audio));
+    audioScrubber.begin(audios, (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+    setPlaying(false);
+    if (audioRef.current) preparePreviewAudio(audioRef.current);
     scrubbingRef.current = true;
     scrubStartXRef.current = event.clientX;
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -652,6 +662,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (!scrubbingRef.current) return;
     seek(event.clientX, event.currentTarget);
     scrubbingRef.current = false;
+    audioScrubber.end();
     suppressClickRef.current = Math.abs(event.clientX - scrubStartXRef.current) > 2;
     if (suppressClickRef.current) window.setTimeout(() => { suppressClickRef.current = false; }, 0);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -659,6 +670,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   function cancelScrub(event: PointerEvent<HTMLElement>) {
     scrubbingRef.current = false;
+    audioScrubber.end();
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
@@ -1004,7 +1016,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
           event.currentTarget.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
         }
       }}
-      onPlay={() => setPlaying(true)} onTimeUpdate={(event) => {
+      onPlay={() => { if (!audioScrubber.active) setPlaying(true); }} onTimeUpdate={(event) => {
+        if (audioScrubber.active) return;
         const time = event.currentTarget.currentTime;
         const next = nextPlayableTime(time, duration, excludedRanges);
         if (next >= duration) pausePlayback();

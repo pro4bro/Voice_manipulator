@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useAudioScrubber } from "./audio-scrubbing";
 import type { ProjectMediaAsset, SpeakerProfile, TimelineEditRange, WaveformPoint } from "../../domain/types";
 import type { TimelineEditState } from "../../domain/timeline-editing";
 import { Icon } from "../../ui/Icon";
@@ -118,6 +119,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const orderedTracks = useMemo(() => [...tracks].sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0)), [tracks]);
   const visibleTracks = singleTrackView && selectedTrackId ? orderedTracks.filter((track) => track.id === selectedTrackId) : orderedTracks;
   const trackSources = orderedTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
+  const audioScrubber = useAudioScrubber(trackSources);
   const ids = orderedTracks.map((track) => track.id);
 
   useEffect(() => {
@@ -262,7 +264,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   function seek(seconds: number) {
     const next = Math.max(0, Math.min(duration, seconds));
     setCurrentTime(next);
-    audioRefs.current.forEach((audio) => { audio.currentTime = Math.min(next, Number.isFinite(audio.duration) ? audio.duration : next); });
+    if (audioScrubber.active) audioScrubber.move(next);
+    else audioRefs.current.forEach((audio) => { audio.currentTime = Math.min(next, Number.isFinite(audio.duration) ? audio.duration : next); });
     if (next < windowStart || next > windowStart + span) setWindowStart(Math.max(0, Math.min(duration - span, next - span / 2)));
   }
 
@@ -328,6 +331,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   }
 
   function beginScrub(event: PointerEvent<HTMLElement>, full = false) {
+    if (event.button !== 0) return;
+    audioScrubber.begin([...audioRefs.current.values()], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+    setPlaying(false);
+    void preparePlayback();
     scrubbingRef.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seekFrom(event, full);
@@ -337,7 +345,14 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     if (!scrubbingRef.current) return;
     seekFrom(event, full);
     scrubbingRef.current = false;
+    audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
+
+  function cancelScrub(event: PointerEvent<HTMLElement>) {
+    scrubbingRef.current = false;
+    audioScrubber.end();
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
   function resizeColumn(trackId: string, event: PointerEvent<HTMLDivElement>) {
@@ -409,7 +424,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
         <div aria-label="Timeline đa kênh import" className={`obs-timeline__track-scroll is-${layout}`}
           style={{ "--obs-layer-height": `${Math.max(110, Math.round(viewportHeight * .6))}px` } as CSSProperties}>
           {layout === "layers" ? <><div className="obs-timeline__label-spacer" /><div aria-label="Ruler chung" className="obs-timeline__ruler"
-            onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>
+            onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>
             {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}
           </div></> : null}
           {visibleTracks.map((track) => {
@@ -427,8 +442,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
               <button aria-pressed={selected?.id === track.id} className="obs-timeline__lane-label" onClick={() => onSelectTrack(track.id)} type="button">
                 <TimelineLaneLabel text={`Channel ${index + 1} - ${trackName}`} title={track.name} />
               </button>
-              {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
-              <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)}>
+              {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
+              <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>
                 <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
                 {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại khỏi tính toán" className="timeline-removed-range" key={`${range.id}-${range.start}`} style={style} /> : null; })}
                 {sharedCutPoints.map((point) => point >= windowStart && point <= windowStart + span ? <i aria-label="Điểm cắt" className="timeline-cut-point" key={point} style={{ left: `${(point - windowStart) / span * 100}%` }} /> : null)}
@@ -488,7 +503,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       </div> : null}
       <div className="transport-bar obs-timeline__transport">
         <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={() => {
-          if (playing) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
+          audioScrubber.end(); if (playing) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
           else {
             const startAt = nextPlayableTime(currentTime, duration, excludedRanges);
             if (startAt >= duration) { setCurrentTime(duration); return; }
@@ -499,16 +514,17 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
           }
         }} type="button"><Icon name={playing ? "pause" : "play"} /></button>
         <code>{clock(currentTime)}</code>
-        <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub" onPointerDown={(event) => beginScrub(event, true)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event, true); }} onPointerUp={(event) => endScrub(event, true)}><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /><b style={{ left: `${duration ? currentTime / duration * 100 : 0}%` }} /></div>
+        <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub" onPointerDown={(event) => beginScrub(event, true)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event, true); }} onPointerUp={(event) => endScrub(event, true)} onPointerCancel={cancelScrub}><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /><b style={{ left: `${duration ? currentTime / duration * 100 : 0}%` }} /></div>
         <code>{clock(duration)}</code>
         <label className="transport-rate"><span>RATE</span><select aria-label="Tốc độ phát" onChange={(event) => setRate(Number(event.target.value))} value={rate}>{[.5, .75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}</select></label>
         <div className="obs-timeline__transport-extras"><span>{selected?.name ?? "Chưa có channel"}</span></div>
       </div>
     </div>
     {orderedTracks.map((track) => track.url ? <audio key={track.id} onEnded={() => {
+      if (audioScrubber.active) return;
       if (track.id === orderedTracks[0]?.id) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
     }} onTimeUpdate={(event) => {
-      if (track.id !== orderedTracks[0]?.id) return;
+      if (audioScrubber.active || track.id !== orderedTracks[0]?.id) return;
       const time = event.currentTarget.currentTime;
       const playable = nextPlayableTime(time, duration, excludedRanges);
       const next = playable > time + .001 ? playable : time;

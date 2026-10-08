@@ -344,7 +344,7 @@ it("hides an archived OBS channel withdrawn by its Import checkbox", async () =>
   expect(screen.queryByLabelText("Sóng âm Channel 1")).not.toBeInTheDocument();
 });
 
-it("shows compact, passive overlap marks and seeks without starting playback", async () => {
+it("keeps overlap clicks passive and previews audio only during waveform dragging", async () => {
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   const onOverlapSelect = vi.fn();
@@ -376,7 +376,9 @@ it("shows compact, passive overlap marks and seeks without starting playback", a
   fireEvent.pointerMove(wave, { pointerId: 1, clientX: 40 });
   fireEvent.pointerUp(wave, { pointerId: 1, clientX: 40 });
   expect(onOverlapSelect).toHaveBeenCalledTimes(1);
-  expect(play).not.toHaveBeenCalled();
+  expect(play).toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Phát track OBS" })).toBeInTheDocument();
+  pause.mockClear();
   const audio = view.container.querySelector("audio") as HTMLAudioElement;
   expect(screen.getByLabelText("Phụ đề nháp Channel 1")).toHaveClass("is-overlap");
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveClass("is-overlap");

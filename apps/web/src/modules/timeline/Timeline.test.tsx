@@ -231,6 +231,8 @@ describe("Timeline", () => {
   });
 
   it("seeks immediately when the user clicks or drags on the waveform", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     const { container } = render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "scrub.wav", url: "/audio.wav", duration: 10 }} />);
     const canvas = container.querySelector(".timeline-canvas") as HTMLDivElement;
     const waveform = screen.getByLabelText("Waveform timeline");
@@ -239,5 +241,13 @@ describe("Timeline", () => {
     expect(await screen.findByText("00:00:05.000")).toBeInTheDocument();
     fireEvent.pointerMove(waveform, { clientX: 160, pointerId: 1 });
     expect(await screen.findByText("00:00:08.000")).toBeInTheDocument();
+    expect(play).toHaveBeenCalled();
+    const audio = container.querySelector("audio")!;
+    audio.currentTime = 9;
+    fireEvent.timeUpdate(audio);
+    expect(screen.getByText("00:00:08.000")).toBeInTheDocument();
+    fireEvent.pointerUp(waveform, { clientX: 160, pointerId: 1 });
+    expect(audio.currentTime).toBe(8);
+    expect(pause).toHaveBeenCalled();
   });
 });

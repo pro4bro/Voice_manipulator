@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { publishPlaybackWord } from "../../domain/playback-sync";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections, type TimelineEditState } from "../../domain/timeline-editing";
 import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
+import { useAudioScrubber } from "./audio-scrubbing";
 import "./timeline-editing.css";
 import "./subtitle-density.css";
 import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/script-text-reconciliation";
@@ -304,6 +305,7 @@ export function Timeline({
   const playbackClockFrameRef = useRef<number | null>(null);
   const lastClockStateUpdateRef = useRef(0);
   const scrubbingRef = useRef(false);
+  const audioScrubber = useAudioScrubber(take?.url);
   const gainInteractionRef = useRef(false);
   // A sweep is measured from where it began, against the selection as it stood
   // then, so dragging back over the run shrinks it instead of piling up.
@@ -570,9 +572,9 @@ export function Timeline({
     const cancel = (event: globalThis.PointerEvent) => {
       if (event.button !== 0 && event.button !== 2) return;
       if (promotedRef.current !== null) promoteTimestampWord(null, null);
-      if (promotionDragRef.current) { promotionDragRef.current = null; audioRef.current?.pause(); }
+      if (promotionDragRef.current) { promotionDragRef.current = null; audioScrubber.end(); audioRef.current?.pause(); }
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; audioRef.current?.pause(); } };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; audioScrubber.end(); audioRef.current?.pause(); } };
     window.addEventListener("pointerdown", cancel, true);
     window.addEventListener("keydown", escape);
     return () => { window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", escape); };
@@ -774,6 +776,7 @@ export function Timeline({
   async function togglePlay() {
     const audio = audioRef.current;
     if (!audio || !take?.url || isRecording) return;
+    audioScrubber.end();
     if (audio.paused) {
       try {
         await preparePlayback(audio);
@@ -1045,13 +1048,8 @@ export function Timeline({
     const start = sourceTimeAt(event.clientX);
     promotionDragRef.current = { start, index: promotedRef.current };
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    const audio = audioRef.current;
-    if (audio) {
-      audio.currentTime = start;
-      void preparePlayback(audio).catch(() => undefined).then(() => {
-        if (promotionDragRef.current) void audio.play().catch(() => undefined);
-      });
-    }
+    beginAudioScrub();
+    audioScrubber.move(start);
     setCurrentTime(start);
     return true;
   }
@@ -1060,7 +1058,7 @@ export function Timeline({
     if (!promotionDragRef.current) return false;
     event.preventDefault();
     const time = sourceTimeAt(event.clientX);
-    if (audioRef.current) audioRef.current.currentTime = time;
+    audioScrubber.move(time);
     paintPlayhead(time);
     setCurrentTime(time);
     return true;
@@ -1071,6 +1069,7 @@ export function Timeline({
     if (!drag) return false;
     event.preventDefault();
     promotionDragRef.current = null;
+    audioScrubber.end();
     audioRef.current?.pause();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     if (!cancel) {
@@ -1156,7 +1155,8 @@ export function Timeline({
     const rect = canvas.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / rect.width) * duration));
     setCurrentTime(nextTime);
-    if (audioRef.current) {
+    if (audioScrubber.active) audioScrubber.move(nextTime);
+    else if (audioRef.current) {
       audioRef.current.currentTime = nextTime;
       syncPlaybackClock(audioRef.current);
     }
@@ -1172,16 +1172,18 @@ export function Timeline({
     const rect = transport.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / Math.max(rect.width, 1)) * duration));
     setCurrentTime(nextTime);
-    if (audioRef.current) {
+    if (audioScrubber.active) audioScrubber.move(nextTime);
+    else if (audioRef.current) {
       audioRef.current.currentTime = nextTime;
       syncPlaybackClock(audioRef.current);
     }
   }
 
   function beginTransportScrub(event: PointerEvent<HTMLDivElement>) {
-    if (isRecording || !take?.url) return;
+    if (event.button !== 0 || isRecording || !take?.url) return;
     event.preventDefault();
     transportScrubRef.current = true;
+    beginAudioScrub();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seekTransportToClientX(event.clientX);
   }
@@ -1197,14 +1199,16 @@ export function Timeline({
     event.preventDefault();
     seekTransportToClientX(event.clientX);
     transportScrubRef.current = false;
+    audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
 
   function beginPlayheadDrag(event: PointerEvent<HTMLDivElement>) {
-    if (isRecording || !take?.url) return;
+    if (event.button !== 0 || isRecording || !take?.url) return;
     event.preventDefault();
     event.stopPropagation();
     playheadDragRef.current = true;
+    beginAudioScrub();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seekToClientX(event.clientX);
   }
@@ -1220,14 +1224,27 @@ export function Timeline({
     event.preventDefault();
     seekToClientX(event.clientX);
     playheadDragRef.current = false;
+    audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     requestAnimationFrame(followPlayhead);
+  }
+
+  function beginAudioScrub() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audioScrubber.begin([audio], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+    setPlaying(false);
+    stopPlaybackClock();
+    stopSignalMeter();
+    void preparePlayback(audio).catch(() => undefined);
   }
 
   function beginScrub(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || isRecording || !take?.url) return;
     event.preventDefault();
     scrubbingRef.current = true;
+    beginAudioScrub();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seek(event);
   }
@@ -1242,6 +1259,7 @@ export function Timeline({
     if (!scrubbingRef.current) return;
     seek(event);
     scrubbingRef.current = false;
+    audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
 
@@ -1438,16 +1456,16 @@ export function Timeline({
       </div>
       {take?.url ? (
         <audio
-          onEnded={(event) => { syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
+          onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
           onLoadedMetadata={(event) => {
             syncPlaybackDuration(event.currentTarget);
           }}
           onDurationChange={(event) => syncPlaybackDuration(event.currentTarget)}
           onPause={() => { setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
-          onPlay={() => { setPlaying(true); syncPlaybackClock(); startSignalMeter(); startPlaybackClock(); }}
-          onSeeking={(event) => { scheduleGainAutomation(event.currentTarget); syncPlaybackClock(event.currentTarget); }}
-          onSeeked={(event) => { scheduleGainAutomation(event.currentTarget); syncPlaybackClock(event.currentTarget); }}
-          onTimeUpdate={(event) => syncPlaybackClock(event.currentTarget)}
+          onPlay={() => { if (audioScrubber.active) return; setPlaying(true); syncPlaybackClock(); startSignalMeter(); startPlaybackClock(); }}
+          onSeeking={(event) => { scheduleGainAutomation(event.currentTarget); if (!audioScrubber.active) syncPlaybackClock(event.currentTarget); }}
+          onSeeked={(event) => { scheduleGainAutomation(event.currentTarget); if (!audioScrubber.active) syncPlaybackClock(event.currentTarget); }}
+          onTimeUpdate={(event) => { if (!audioScrubber.active) syncPlaybackClock(event.currentTarget); }}
           preload="metadata"
           ref={audioRef}
           src={take.url}
