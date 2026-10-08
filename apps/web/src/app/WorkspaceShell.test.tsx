@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   listVoiceOutputs: vi.fn(),
   getTrainingModels: vi.fn(),
   compileDataset: vi.fn(),
+  setMediaTrainingSelected: vi.fn(),
   startTrainingRun: vi.fn(),
   readVoiceScript: vi.fn(),
   getVoiceScriptJob: vi.fn(),
@@ -51,8 +52,8 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
-  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean, streamIndex?: number) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
-    if (id === "library-panel") return <><button onClick={() => (context as unknown as StudioContext).onQueueTranscriptions("large-v3")} type="button">queue selected STT</button><button onClick={() => (context as unknown as StudioContext).onRunDiarization()} type="button">queue selected diarization</button><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><output data-testid="recycled-ids">{context.mediaAssets.filter((item) => item.deletedAt).map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
+  ModuleRegistry: ({ id, context }: { id: string; context: { script: string; onScriptSelectionChange?: (ids: string[]) => void; selectedScriptAssetIds?: string[]; pendingMediaImports?: Array<{ name: string; status: string }>; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean, streamIndex?: number) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
+    if (id === "library-panel") return <><button onClick={() => (context as unknown as StudioContext).onQueueTranscriptions("large-v3")} type="button">queue selected STT</button><button onClick={() => (context as unknown as StudioContext).onRunDiarization()} type="button">queue selected diarization</button><button onClick={() => (context as unknown as { onClearMediaSelection: () => void }).onClearMediaSelection()} type="button">clear footage selection</button><button onClick={() => context.onSelectAsset("asset-1")} type="button">open first footage</button><button onClick={() => context.onSelectAsset("archive-1")} type="button">open OBS footage</button><button onClick={() => context.onToggleImport("channel-a", false)} type="button">withdraw first track</button><button onClick={() => context.onToggleImport("channel-b", false)} type="button">withdraw second track</button><button onClick={() => context.onToggleImport("archive", true)} type="button">restore imported parent</button><button onClick={() => context.onToggleImport("archive", true, 3)} type="button">add omitted track</button><button onClick={() => context.onSelectAsset("archive")} type="button">open imported parent</button><button onClick={() => context.onBatchMediaAction({ kind: "recycle", assetIds: ["asset-1", "asset-2"] })} type="button">remove selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "restore", assetIds: ["asset-1", "asset-2"] })} type="button">restore selected footage</button><button onClick={() => context.onBatchMediaAction({ kind: "delete", assetIds: ["asset-1", "asset-2"] })} type="button">delete selected bin footage</button><button onClick={() => { const asset = context.mediaAssets.find((item) => item.id === "asset-1"); if (asset) context.onRemoveAsset(asset); }} type="button">delete first bin footage</button><button onClick={() => context.onOpenObsAsset("asset-1")} type="button">refresh footage list</button><button onClick={() => context.onScriptSelectionChange?.(["asset-1", "asset-2"])} type="button">select multiple footage</button><button onClick={() => context.onBatchMediaAction({ kind: "selection", target: "training", assetIds: ["asset-1", "asset-2"], selected: true })} type="button">bulk training on</button><button onClick={() => context.onBatchMediaAction({ kind: "selection", target: "training", assetIds: ["asset-1", "asset-2"], selected: false })} type="button">bulk training off</button><output data-testid="media-ticks">{context.mediaAssets.map((asset) => `${asset.id}:${asset.trainingSelected}`).join(",")}</output><output data-testid="pending-imports">{context.pendingMediaImports?.map((row) => `${row.name}:${row.status}`).join(",")}</output><output data-testid="media-selection">{context.selectedScriptAssetIds?.join(",")}</output><output data-testid="media-ids">{context.mediaAssets.map((item) => item.id).join(",")}</output><output data-testid="recycled-ids">{context.mediaAssets.filter((item) => item.deletedAt).map((item) => item.id).join(",")}</output><button onClick={context.onImportLocalMedia} type="button">pick native media</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "media-pool") return <><button onClick={context.onImportLocalMedia} type="button">pick native media</button><button onClick={() => context.onOpenObsRecording("live-take")} type="button">open live OBS take</button><button onClick={() => context.onOpenObsTrack("live-take", "mic-1")} type="button">open live OBS track</button><output data-testid="pending-tracks">{context.pendingLocalMedia?.tracks.map((track) => `${track.streamIndex}:${track.imported}:${track.transcribe}`).join(",") ?? "none"}</output><button onClick={() => context.onPendingLocalTrackChange(1, "imported", false)} type="button">omit first track</button><button onClick={() => context.onPendingLocalTrackChange(2, "transcribe", true)} type="button">stt second track</button><button onClick={() => context.onConfirmPendingLocalMedia("follow")} type="button">start follow</button></>;
     if (id === "script") {
       const overlap = context as unknown as { obsOverlapSelection: { startSeconds: number; endSeconds: number } | null;
@@ -230,6 +231,72 @@ describe("WorkspaceShell STT synchronization", () => {
     fireEvent.click(screen.getByRole("button", { name: "clear footage selection" }));
     await waitFor(() => expect(screen.getByTestId("script-value")).toBeEmptyDOMElement());
     expect(screen.getByTestId("timeline-take")).toHaveTextContent("trống");
+  });
+
+  it("closes opened data for multi-selection and rejects a late open response", async () => {
+    const first = mediaAsset("complete", "first text", "2026-10-08T00:00:01Z");
+    const second = { ...first, id: "asset-2", name: "second.wav", text: "second text" };
+    const late = deferred<ProjectMediaAsset[]>();
+    apiMocks.listProjectMedia.mockResolvedValueOnce([first, second]).mockReturnValueOnce(late.promise);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await screen.findByTestId("media-ids");
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-2"));
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    await waitFor(() => expect(screen.getByTestId("script-value")).toHaveTextContent("first text"));
+    fireEvent.click(screen.getByRole("button", { name: "refresh footage list" }));
+    fireEvent.click(screen.getByRole("button", { name: "select multiple footage" }));
+    await waitFor(() => expect(screen.getByTestId("script-value")).toBeEmptyDOMElement());
+    expect(screen.getByTestId("media-selection")).toHaveTextContent("asset-1,asset-2");
+    expect(screen.getByTestId("timeline-take")).toHaveTextContent("trống");
+    await act(async () => { late.resolve([first, second]); });
+    expect(screen.getByTestId("script-value")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("media-selection")).toHaveTextContent("asset-1,asset-2");
+  });
+
+  it("updates every bulk checkbox immediately while saving to the API", async () => {
+    const first = { ...mediaAsset("complete", "first", "2026-10-08T00:00:01Z"), trainingSelected: false };
+    const second = { ...first, id: "asset-2", name: "second.wav" };
+    const pending = deferred<ProjectMediaAsset>();
+    apiMocks.listProjectMedia.mockResolvedValue([first, second]);
+    apiMocks.setMediaTrainingSelected.mockReturnValueOnce(pending.promise).mockResolvedValue({ ...second, trainingSelected: true });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-2"));
+    fireEvent.click(screen.getByRole("button", { name: "bulk training on" }));
+    expect(screen.getByTestId("media-ticks")).toHaveTextContent("asset-1:true,asset-2:true");
+    await act(async () => pending.resolve({ ...first, trainingSelected: true }));
+  });
+
+  it("shows a host footage slot before delayed track information arrives", async () => {
+    const inspection = deferred<{ tracks: unknown[] }>();
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.pickMediaFiles.mockResolvedValue({ paths: ["E:/media/large.mkv"] });
+    apiMocks.inspectLocalMediaTracks.mockReturnValue(inspection.promise);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    fireEvent.click(screen.getByRole("button", { name: "pick native media" }));
+    await waitFor(() => expect(screen.getByTestId("pending-imports")).toHaveTextContent("large.mkv:importing"));
+    await act(async () => inspection.resolve({ tracks: [] }));
+  });
+
+  it("orders rapid bulk tick changes and prevents an older save from restoring the earlier value", async () => {
+    const first = { ...mediaAsset("complete", "first", "2026-10-08T00:00:01Z"), trainingSelected: false };
+    const second = { ...first, id: "asset-2", name: "second.wav" };
+    const pending = deferred<ProjectMediaAsset>();
+    apiMocks.listProjectMedia.mockResolvedValue([first, second]);
+    apiMocks.setMediaTrainingSelected.mockReturnValueOnce(pending.promise).mockImplementation(async (_projectId: string, id: string, selected: boolean) => ({ ...(id === first.id ? first : second), trainingSelected: selected }));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-2"));
+    fireEvent.click(screen.getByRole("button", { name: "bulk training on" }));
+    fireEvent.click(screen.getByRole("button", { name: "bulk training off" }));
+    expect(screen.getByTestId("media-ticks")).toHaveTextContent("asset-1:false,asset-2:false");
+    expect(apiMocks.setMediaTrainingSelected).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve({ ...first, trainingSelected: true }));
+    await waitFor(() => expect(apiMocks.setMediaTrainingSelected).toHaveBeenCalledTimes(3));
+    expect(apiMocks.setMediaTrainingSelected.mock.calls.map((call) => [call[1], call[2]])).toEqual([["asset-1", true], ["asset-1", false], ["asset-2", false]]);
+    expect(screen.getByTestId("media-ticks")).toHaveTextContent("asset-1:false,asset-2:false");
   });
 
   function prepareGeneration(rows = [{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }]) {

@@ -9,6 +9,7 @@ import { PipelineDashboard } from "../dashboard/PipelineDashboard";
 import { ProjectOverview } from "../dashboard/ProjectOverview";
 import { LibraryPanel, ManipulatorLibrary } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
+import { ModuleFrame } from "../../ui/ModuleFrame";
 import type { MediaBatchAction } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
@@ -264,6 +265,9 @@ function workflowMediaAssets(context: StudioContext) {
 }
 
 export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
+  if ((id === "script" || id === "timeline") && context.workflow !== "voice-manipulator" && (context.selectedScriptAssetIds?.length ?? 0) > 1) {
+    return <ModuleFrame title={id === "script" ? "Script" : "Timeline"}><p role="status">Đã chọn {context.selectedScriptAssetIds!.length} mục · chọn một footage để mở dữ liệu.</p></ModuleFrame>;
+  }
   const pageAssets = workflowMediaAssets(context);
   const parentsWithTracks = new Set(context.mediaAssets.map((asset) => asset.sourceArchiveAssetId).filter((id): id is string => Boolean(id)));
   const parentsWithImportedTracks = new Set(context.mediaAssets.filter((asset) => asset.sourceArchiveAssetId && asset.importSelected !== false).map((asset) => asset.sourceArchiveAssetId));

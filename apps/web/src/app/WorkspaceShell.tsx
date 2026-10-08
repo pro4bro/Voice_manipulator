@@ -177,6 +177,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const mediaLifecycleWrites = useRef(new Map<string, { revision: number; deletedAt: string | null }>());
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedScriptAssetIds, setSelectedScriptAssetIds] = useState<string[] | null>(null);
+  const mediaOpenRevision = useRef(0);
+  const mediaSelectionWrites = useRef(new Map<string, { version: number; selected: boolean | undefined; pending: boolean }>());
+  const mediaSelectionRequests = useRef(new Map<string, Promise<ProjectMediaAsset | null>>());
   const [selectedImportedTrackId, setSelectedImportedTrackId] = useState<string | null>(null);
   const scriptAssetId = selectedImportedTrackId ?? selectedAssetId;
   // Owned here rather than in either module, so Script and Timeline agree on
@@ -283,8 +286,13 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   async function listProjectMediaWithLifecycleFence(projectId: string) {
     const requestRevision = mediaLifecycleRevision.current;
+    const selectionVersions = new Map([...mediaSelectionWrites.current].map(([key, write]) => [key, write.version]));
     const assets = withoutPermanentlyRemoved(await api.listProjectMedia(projectId));
     return assets.map((asset) => {
+      for (const field of ["importSelected", "transcriptionSelected", "diarizationSelected", "trainingSelected"] as const) {
+        const key = `${asset.id}:${field}`, write = mediaSelectionWrites.current.get(key);
+        if (write && (write.pending || write.version > (selectionVersions.get(key) ?? 0))) asset = { ...asset, [field]: write.selected };
+      }
       const write = mediaLifecycleWrites.current.get(asset.id);
       if (!write) return asset;
       if (write.revision > requestRevision) return { ...asset, deletedAt: write.deletedAt };
@@ -310,6 +318,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     permanentlyRemovedMediaIds.current.clear();
     mediaLifecycleRevision.current = 0;
     mediaLifecycleWrites.current.clear();
+    mediaSelectionWrites.current.clear();
+    ++mediaOpenRevision.current;
   }, [project.id]);
 
   async function runRuntimeAction(action: RuntimeAction) {
@@ -772,6 +782,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function applyMediaAsset(asset: ProjectMediaAsset, available = mediaAssetsRef.current) {
+    ++mediaOpenRevision.current;
     setSelectedAssetId(asset.id);
     setSelectedImportedTrackId(null);
     setObsTimelineRecordingId(asset.obsRecordingId ?? null);
@@ -782,6 +793,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function selectImportedTrack(assetId: string) {
+    ++mediaOpenRevision.current;
     const asset = mediaAssets.find((item) => item.id === assetId && item.sourceArchiveAssetId && item.importSelected !== false);
     if (!asset || asset.id === selectedImportedTrackId) return;
     const parent = mediaAssets.find((item) => item.id === asset.sourceArchiveAssetId);
@@ -814,6 +826,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function selectMediaAsset(assetId: string) {
+    ++mediaOpenRevision.current;
     const asset = mediaAssets.find((item) => item.id === assetId);
     if (asset && isImportedForWork(asset, mediaAssets) && (asset.id !== selectedAssetId || selectedImportedTrackId !== null)) {
       flushCurrentMediaDraft();
@@ -821,8 +834,8 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
   }
 
-  function clearMediaSelection() {
-    setSelectedScriptAssetIds([]);
+  function closeMediaDetails() {
+    ++mediaOpenRevision.current;
     flushCurrentMediaDraft();
     selectedAssetIdRef.current = null;
     scriptAssetIdRef.current = null;
@@ -838,7 +851,18 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     setWordSelection(EMPTY_SELECTION);
   }
 
+  function clearMediaSelection() {
+    setSelectedScriptAssetIds([]);
+    closeMediaDetails();
+  }
+
+  function selectMediaList(assetIds: string[]) {
+    setSelectedScriptAssetIds(assetIds);
+    if (assetIds.length > 1 || !assetIds.length && selectedAssetIdRef.current !== null) closeMediaDetails();
+  }
+
   function openObsRecording(recordingId: string, channelId?: string) {
+    ++mediaOpenRevision.current;
     flushCurrentMediaDraft();
     selectedAssetIdRef.current = null;
     scriptAssetIdRef.current = null;
@@ -856,8 +880,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   async function openObsAsset(assetId: string) {
+    const revision = ++mediaOpenRevision.current;
     try {
       const assets = await listProjectMediaWithLifecycleFence(project.id);
+      if (revision !== mediaOpenRevision.current) return;
       setMediaAssets(assets);
       const asset = assets.find((item) => item.id === assetId);
       if (!asset) throw new Error("Không tìm thấy track OBS trong Media Pool.");
@@ -1396,11 +1422,16 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     try {
       const picked = await api.pickMediaFiles();
       if (!picked.paths.length) { setNotice("Đã hủy chọn file gốc."); return; }
+      if (activeMediaProjectId.current !== projectId) return;
       if (picked.paths.length === 1) {
         const path = picked.paths[0];
         const extension = path.split(".").pop()?.toLowerCase();
         if (["mkv", "mov", "mp4"].includes(extension ?? "")) {
-          const inspection = await api.inspectLocalMediaTracks(projectId, path);
+          const probeId = `inspect-${Date.now()}`;
+          setPendingMediaImports((current) => [...current, { id: probeId, name: path.split(/[\\/]/).pop() ?? "media", status: "importing", detail: "Đang đọc thông tin file và các track…" }]);
+          let inspection;
+          try { inspection = await api.inspectLocalMediaTracks(projectId, path); }
+          finally { if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.filter((row) => row.id !== probeId)); }
           if (activeMediaProjectId.current !== projectId) return;
           if (inspection.tracks.length && (inspection.tracks.length > 1 || extension === "mkv")) {
             setPendingLocalMedia({
@@ -1706,7 +1737,23 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       : action.kind === "disabled"
         ? action.assetIds.flatMap((id) => relatedMediaIds(id)) : action.assetIds;
     const changes = action.kind === "annotations" ? action.changes : [...new Set(operationIds)].map((assetId) => ({ assetId }));
+    const selectionField = action.kind === "selection" ? ({ import: "importSelected", stt: "transcriptionSelected", training: "trainingSelected", diarization: "diarizationSelected" } as const)[action.target] : null;
+    const beforeSelection = new Map(mediaAssetsRef.current.map((asset) => [asset.id, asset]));
+    const versions = new Map<string, number>();
+    if (action.kind === "selection" && selectionField) {
+      const ids = new Set(operationIds);
+      for (const assetId of ids) {
+        const key = `${assetId}:${selectionField}`;
+        const version = (mediaSelectionWrites.current.get(key)?.version ?? 0) + 1;
+        versions.set(key, version);
+        mediaSelectionWrites.current.set(key, { version, selected: action.selected, pending: true });
+      }
+      setMediaAssets((current) => current.map((asset) => ids.has(asset.id) ? { ...asset, [selectionField]: action.selected } : asset));
+    }
     for (const change of changes) {
+      const selectionKey = `${change.assetId}:${selectionField}`;
+      const ownsSelection = () => activeMediaProjectId.current === project.id && mediaSelectionWrites.current.get(selectionKey)?.version === versions.get(selectionKey);
+      if (selectionField && !ownsSelection()) continue;
       try {
         if (action.kind === "annotations") {
           const annotation = action.changes.find((item) => item.assetId === change.assetId)!;
@@ -1716,14 +1763,29 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           const updated = await api.setMediaDisabled(project.id, change.assetId, action.disabled);
           setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
         } else if (action.kind === "selection") {
-          const updated = action.target === "stt"
-            ? await api.setMediaTranscriptionSelected(project.id, change.assetId, action.selected)
-            : action.target === "training"
-              ? await api.setMediaTrainingSelected(project.id, change.assetId, action.selected)
-              : action.target === "import"
-                ? await api.setMediaImportSelected(project.id, change.assetId, action.selected)
-                : await api.setMediaDiarizationSelected(project.id, change.assetId, action.selected);
-          setMediaAssets((current) => current.map((item) => item.id === updated.id ? updated : item));
+          // Order writes for the same checkbox, even across overlapping bulk clicks.
+          const requestKey = `${project.id}:${selectionKey}`;
+          const previousRequest = mediaSelectionRequests.current.get(requestKey);
+          const request = (async () => {
+            if (previousRequest) await previousRequest.catch(() => null);
+            if (!ownsSelection()) return null;
+            return action.target === "stt"
+              ? api.setMediaTranscriptionSelected(project.id, change.assetId, action.selected)
+              : action.target === "training"
+                ? api.setMediaTrainingSelected(project.id, change.assetId, action.selected)
+                : action.target === "import"
+                  ? api.setMediaImportSelected(project.id, change.assetId, action.selected)
+                  : api.setMediaDiarizationSelected(project.id, change.assetId, action.selected);
+          })();
+          mediaSelectionRequests.current.set(requestKey, request);
+          let updated;
+          try { updated = await request; }
+          finally { if (mediaSelectionRequests.current.get(requestKey) === request) mediaSelectionRequests.current.delete(requestKey); }
+          if (updated && ownsSelection()) {
+            const write = mediaSelectionWrites.current.get(selectionKey)!;
+            mediaSelectionWrites.current.set(selectionKey, { ...write, pending: false });
+            setMediaAssets((current) => current.map((item) => item.id === updated.id && selectionField ? { ...item, [selectionField]: updated[selectionField] } : item));
+          }
         } else if (action.kind === "delete") {
           await api.removeProjectMedia(project.id, change.assetId);
           for (const id of relatedMediaIds(change.assetId)) permanentlyRemovedMediaIds.current.add(id);
@@ -1739,6 +1801,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         }
         completed.push(change.assetId);
       } catch (error) {
+        if (action.kind === "selection" && selectionField && ownsSelection()) {
+          const previous = beforeSelection.get(change.assetId);
+          const write = mediaSelectionWrites.current.get(selectionKey)!;
+          mediaSelectionWrites.current.set(selectionKey, { ...write, pending: false, selected: previous?.[selectionField] });
+          if (previous) setMediaAssets((current) => current.map((item) => item.id === change.assetId ? { ...item, [selectionField]: previous[selectionField] } : item));
+        }
         const message = error instanceof Error ? error.message : "Lỗi không xác định";
         if (action.kind === "delete" && /not found/i.test(message)) {
           for (const id of relatedMediaIds(change.assetId)) permanentlyRemovedMediaIds.current.add(id);
@@ -2179,7 +2247,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     selectedAssetId,
     selectedImportedTrackId,
     selectedScriptAssetIds,
-    onScriptSelectionChange: setSelectedScriptAssetIds,
+    onScriptSelectionChange: selectMediaList,
     onAssignScriptWords: (assetId, indexes, speakerProfileId) => { void assignScriptWords(assetId, indexes, speakerProfileId); },
     onSelectImportedTrack: selectImportedTrack,
     mediaBusy,

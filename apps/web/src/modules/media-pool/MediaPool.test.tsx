@@ -178,6 +178,8 @@ describe("MediaPool", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy đang dùng" }));
     expect(click).toHaveBeenCalledOnce();
     fireEvent.change(input, { target: { files: [first, second] } });
+    expect(screen.getByLabelText("Footage first.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
+    expect(screen.getByLabelText("Footage second.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Tùy chọn import media" })).toHaveTextContent("2 footage");
     expect(screen.getByLabelText("Đánh dấu STT cho first.wav")).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Import 2 file" }));
@@ -187,20 +189,37 @@ describe("MediaPool", () => {
     expect(screen.queryByRole("dialog", { name: "Tùy chọn import media" })).not.toBeInTheDocument();
   });
 
+  it("keeps the immediate browser import slot until the workspace queue owns it, without duplicate rows", async () => {
+    const file = new File(["audio"], "handoff.wav", { type: "audio/wav" });
+    const existing = { ...asset, name: file.name };
+    const view = render(<MediaPool {...props({ assets: [existing] })} />);
+    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(screen.getByLabelText("Footage handoff.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Import 1 file" }));
+    expect(screen.getByLabelText("Footage handoff.wav: ĐANG IMPORT")).toBeInTheDocument();
+    view.rerender(<MediaPool {...props({ assets: [existing], pendingMediaImports: [{ id: "job-1", name: "handoff.wav", status: "caching" }] })} />);
+    await waitFor(() => expect(screen.getByLabelText("Footage handoff.wav: ĐANG CACHE")).toBeInTheDocument());
+    expect(screen.getAllByLabelText(/Footage handoff\.wav:/)).toHaveLength(1);
+  });
+
   it("asks native-file cache choice inside the app and keeps an import row visible", async () => {
     const onConfirmNativeMediaImport = vi.fn();
     const onRetryPendingImport = vi.fn();
-    render(<MediaPool {...props({
+    const view = render(<MediaPool {...props({
       assets: [], pendingNativeMediaPaths: ["C:/source/one.wav", "C:/source/two.wav"],
-      pendingMediaImports: [{ id: "pending-1", name: "one.wav", status: "caching" }],
       onConfirmNativeMediaImport, onRetryPendingImport,
     })} />);
     expect(await screen.findByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("2 file");
+    expect(screen.getByLabelText("Footage one.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cache trong project" }));
     expect(onConfirmNativeMediaImport).toHaveBeenCalledWith(["C:/source/one.wav", "C:/source/two.wav"], true);
-    expect(screen.getByLabelText("Footage one.wav: ĐANG CACHE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Footage one.wav: ĐANG IMPORT")).toBeInTheDocument();
+    view.rerender(<MediaPool {...props({ assets: [], pendingMediaImports: [{ id: "pending-1", name: "one.wav", status: "caching" }] })} />);
+    await waitFor(() => expect(screen.getByLabelText("Footage one.wav: ĐANG CACHE")).toBeInTheDocument());
+    expect(screen.getAllByLabelText(/Footage one\.wav:/)).toHaveLength(1);
     const failed = { id: "pending-2", name: "bad.wav", status: "error" as const, retryable: true, detail: "unsupported codec" };
-    const view = render(<MediaPool {...props({ assets: [], pendingMediaImports: [failed], onRetryPendingImport })} />);
+    view.rerender(<MediaPool {...props({ assets: [], pendingMediaImports: [failed], onRetryPendingImport })} />);
     expect(screen.getByLabelText("Footage bad.wav: LỖI IMPORT")).toHaveTextContent("unsupported codec");
     fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
     expect(onRetryPendingImport).toHaveBeenCalledWith("pending-2");
@@ -231,15 +250,14 @@ describe("MediaPool", () => {
     const view = render(<MediaPool {...props({ projectId: "project", assets: [asset], onImportLocal: vi.fn() })} />);
     try {
       await waitFor(() => expect(read).toHaveBeenCalledWith("project"));
-      fireEvent.click(await screen.findByRole("button", { name: "Mở thư mục Audio" }));
-      fireEvent.click(screen.getByRole("button", { name: "Tạo thư mục con" }));
+      await screen.findByRole("button", { name: "Mở thư mục Audio" });
+      fireEvent.click(screen.getByRole("button", { name: "Tạo thư mục con trong Audio" }));
       fireEvent.change(screen.getByLabelText("Tên thư mục mới"), { target: { value: "Interview" } });
       fireEvent.click(screen.getByRole("button", { name: "Tạo folder" }));
       await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
         folders: expect.arrayContaining([expect.objectContaining({ name: "Interview", parentFolderId: "folder-a" })]),
       })));
 
-      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục gốc" }));
       const assetRow = view.container.querySelector(".media-pool-item[draggable='true']") as HTMLElement;
       const transfer = { setData: vi.fn(), getData: vi.fn(() => asset.id), effectAllowed: "", dropEffect: "" };
       fireEvent.dragStart(assetRow, { dataTransfer: transfer });
@@ -248,8 +266,9 @@ describe("MediaPool", () => {
         assets: [expect.objectContaining({ assetId: asset.id, folderId: "folder-a" })],
       })));
 
-      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Audio" }));
-      fireEvent.drop(screen.getByRole("button", { name: "Mở thư mục gốc" }), { dataTransfer: transfer });
+      const movedAssetRow = view.container.querySelector(".media-pool-item[draggable='true']") as HTMLElement;
+      fireEvent.dragStart(movedAssetRow, { dataTransfer: transfer });
+      fireEvent.drop(view.container.querySelector(".media-organization-root")!, { dataTransfer: transfer });
       await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
         assets: [expect.objectContaining({ assetId: asset.id, folderId: null })],
       })));
@@ -622,22 +641,33 @@ describe("MediaPool", () => {
     expect(screen.getByRole("checkbox", { name: /Voice Training.*đang chạy/i })).toHaveAttribute("aria-busy", "true");
   });
 
-  it("takes the All Footage breadcrumb back from a nested folder to the root", async () => {
+  it("shows nested folder slots in place and drops footage back to the root without a breadcrumb", async () => {
     const list = vi.spyOn(api, "getMediaPoolOrganization").mockResolvedValue({
       schemaVersion: 1,
-      folders: [{ id: "folder-a", name: "Folder A", parentFolderId: null, order: 0 }],
-      assets: [{ assetId: asset.id, folderId: "folder-a", order: 0 }],
+      folders: [
+        { id: "folder-a", name: "Folder A", parentFolderId: null, order: 0 },
+        { id: "folder-b", name: "Folder B", parentFolderId: "folder-a", order: 0 },
+      ],
+      assets: [{ assetId: asset.id, folderId: "folder-b", order: 0 }],
     });
+    const save = vi.spyOn(api, "updateMediaPoolOrganization").mockImplementation(async (_projectId, next) => next);
     try {
-      render(<MediaPool {...props({ projectId: "project", assets: [asset] })} />);
+      const view = render(<MediaPool {...props({ projectId: "project", assets: [asset] })} />);
       await screen.findByRole("button", { name: "Mở thư mục Folder A" });
+      expect(screen.queryByRole("button", { name: "Mở thư mục gốc" })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Folder A" }));
+      expect(screen.getByRole("button", { name: "Mở thư mục Folder B" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục Folder B" }));
       expect(screen.getByRole("button", { name: /interview\.mov/ })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Mở thư mục gốc" }));
-      expect(screen.getByRole("button", { name: "Mở thư mục gốc" })).toHaveTextContent("Thư mục gốc");
-      expect(screen.getByRole("button", { name: "Mở thư mục Folder A" })).toBeInTheDocument();
+      const transfer = { setData: vi.fn(), getData: vi.fn(() => asset.id), effectAllowed: "", dropEffect: "" };
+      const assetRow = screen.getByRole("button", { name: /interview\.mov/ }).closest(".media-pool-item") as HTMLElement;
+      fireEvent.dragStart(assetRow, { dataTransfer: transfer });
+      fireEvent.drop(view.container.querySelector(".media-organization-root")!, { dataTransfer: transfer });
+      await waitFor(() => expect(save).toHaveBeenLastCalledWith("project", expect.objectContaining({
+        assets: [expect.objectContaining({ assetId: asset.id, folderId: null })],
+      })));
       expect(list).toHaveBeenCalledWith("project");
-    } finally { list.mockRestore(); }
+    } finally { list.mockRestore(); save.mockRestore(); }
   });
 
   it("assigns speaker, environment, and emotion tags from the footage right-click menu", () => {
@@ -858,6 +888,29 @@ describe("MediaPool", () => {
     fireEvent.contextMenu(first);
     fireEvent.click(screen.getByRole("menuitem", { name: "Chọn TRAIN (2)" }));
     expect(onBatchAction).toHaveBeenCalledWith({ kind: "selection", target: "training", assetIds: ["asset-1", "asset-2"], selected: true });
+  });
+
+  it("does not open a second selected footage and preserves the list selection when the open asset clears", () => {
+    const second = { ...asset, id: "asset-2", name: "second.wav" };
+    const onSelect = vi.fn();
+    const onClearSelection = vi.fn();
+    const view = render(<MediaPool {...props({ assets: [asset, second], selectedAssetId: asset.id, onSelect, onClearSelection })} />);
+    fireEvent.click(screen.getByRole("button", { name: /second\.wav/ }), { ctrlKey: true });
+    expect(onSelect).not.toHaveBeenCalled();
+    view.rerender(<MediaPool {...props({ assets: [asset, second], selectedAssetId: null, onSelect, onClearSelection })} />);
+    expect(view.container.querySelectorAll(".media-pool-item.is-selected")).toHaveLength(2);
+    expect(onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it("applies a clicked stage checkbox state to every selected eligible footage", () => {
+    const second = { ...asset, id: "asset-2", name: "second.wav", importSelected: false };
+    const third = { ...asset, id: "asset-3", name: "third.wav", status: "no-audio" as const };
+    const onBatchAction = vi.fn();
+    render(<MediaPool {...props({ assets: [asset, second, third], onBatchAction })} />);
+    fireEvent.click(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("button", { name: /second.wav/ }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Import second.wav" }));
+    expect(onBatchAction).toHaveBeenCalledWith({ kind: "selection", target: "import", assetIds: ["asset-1", "asset-2"], selected: true });
   });
 
   it("lists context actions as ordered menu rows", () => {

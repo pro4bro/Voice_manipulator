@@ -16,14 +16,14 @@ it("shows no stale transcript or track switch when nothing is selected", () => {
   expect(screen.queryByRole("button", { name: /MỞ SCRIPT/ })).not.toBeInTheDocument();
 });
 
-it("shows only selected footage transcripts together", () => {
+it("does not load any transcript when several footage are selected", () => {
   const assets = ["a", "b", "c"].map((id) => ({ id, name: id, text: `Transcript ${id}`, words: [], duration: 4, importSelected: true }));
   const context = { workflow: "speech-to-text", script: "Transcript a", selectedAssetId: "a", selectedScriptAssetIds: ["a", "b"], selectedImportedTrackId: null,
     mediaAssets: assets, take: null, trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null,
     wordSelection: EMPTY_SELECTION, obsTimelineActive: false, onScriptChange: vi.fn(), onSelectImportedTrack: vi.fn() } as unknown as StudioContext;
   render(<ModuleRegistry context={context} id="script" />);
-  expect(screen.getByText("Transcript b")).toBeInTheDocument();
-  expect(screen.getByText("Transcript a")).toBeInTheDocument();
+  expect(screen.queryByText("Transcript b")).not.toBeInTheDocument();
+  expect(screen.queryByText("Transcript a")).not.toBeInTheDocument();
   expect(screen.queryByText("Transcript c")).not.toBeInTheDocument();
 });
 

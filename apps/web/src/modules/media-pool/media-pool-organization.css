@@ -11,9 +11,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px 12px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-panel);
+  padding: 0;
 }
 
 .media-organization-breadcrumbs { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px; }
@@ -28,7 +26,7 @@
 .media-organization-error { grid-column: 1 / -1; color: var(--danger, #ff654f); overflow-wrap: anywhere; }
 .media-organization-folder {
   display: grid;
-  grid-template-columns: 25px minmax(0, 1fr) 12px;
+  grid-template-columns: 16px 22px minmax(0, 1fr);
   align-items: center;
   gap: 9px;
   min-height: 56px;
@@ -46,7 +44,14 @@
 .media-organization-folder > span { min-width: 0; display: grid; gap: 4px; }
 .media-organization-folder b { overflow: hidden; font-size: calc(11px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
 .media-organization-folder small { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
-.media-organization-folder > i { color: var(--text-muted); font-style: normal; }
+.media-organization-folder__chevron { color: var(--text-muted); font-size: 12px; }
+.media-organization-node { margin-left: calc(var(--folder-depth, 0) * 14px); }
+.media-organization-folder-slot { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 5px; }
+.media-organization-folder__add { display: grid; min-width: 34px; min-height: 34px; place-items: center; color: var(--accent); border: 1px solid var(--line); background: var(--surface-raised); cursor: pointer; }
+.media-organization-folder__add svg { width: 18px; }
+.media-organization-children { display: grid; gap: 3px; padding: 3px 0 5px 8px; border-left: 1px solid var(--line); margin-left: 8px; }
+.media-organization-root { display: grid; gap: 3px; min-height: 100%; align-content: start; padding: 3px 4px 8px; }
+.media-organization-root > .media-organization-empty { min-height: 52px; }
 .media-organization-empty { padding: 18px 12px; color: var(--text-muted); font-size: calc(11px * var(--font-scale)); text-align: center; }
 .media-pool-item[draggable="true"] { cursor: grab; }
 .media-pool-item[draggable="true"]:active { cursor: grabbing; }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "../../api/client";
@@ -10,7 +10,7 @@ import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ObsLiveL
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { TaskStop } from "../../ui/TaskStop";
-import { createMediaPoolFolder, EMPTY_MEDIA_POOL_ORGANIZATION, moveMediaPoolAsset, orderedMediaPoolPlacements, type MediaPoolOrganization } from "./media-organization";
+import { createMediaPoolFolder, EMPTY_MEDIA_POOL_ORGANIZATION, moveMediaPoolAsset, type MediaPoolOrganization } from "./media-organization";
 import "./media-pool-import.css";
 import "./media-pool-organization.css";
 import "./media-pool.css";
@@ -96,6 +96,17 @@ export interface PendingMediaImportRow {
   status: "queued" | "importing" | "caching" | "error";
   detail?: string;
   retryable?: boolean;
+}
+
+interface LocalImportPlaceholder {
+  id: string;
+  name: string;
+  status: "choosing" | "queued";
+  knownAssetIds: string[];
+}
+
+function mediaName(path: string) {
+  return path.split(/[\\/]/u).pop() || path;
 }
 
 interface MediaPoolProps {
@@ -449,6 +460,8 @@ export function MediaPool({
   onRetryPendingImport = () => undefined,
 }: MediaPoolProps) {
   const [pendingImports, setPendingImports] = useState<MediaImportChoice[]>([]);
+  const [localImportPlaceholders, setLocalImportPlaceholders] = useState<LocalImportPlaceholder[]>([]);
+  const localImportProjectId = useRef(projectId);
   const browserFileInput = useRef<HTMLInputElement | null>(null);
   const pendingGrowingMkv = pendingImports.length === 1 && /\.mkv$/iu.test(pendingImports[0].file.name);
   const [mkvSttDialogOpen, setMkvSttDialogOpen] = useState(false);
@@ -457,7 +470,8 @@ export function MediaPool({
   const [nativeCacheChoiceOpen, setNativeCacheChoiceOpen] = useState(false);
   const [localCacheChoiceOpen, setLocalCacheChoiceOpen] = useState(false);
   const [organization, setOrganization] = useState<MediaPoolOrganization>(EMPTY_MEDIA_POOL_ORGANIZATION);
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
+  const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [organizationError, setOrganizationError] = useState<string | null>(null);
@@ -498,6 +512,17 @@ export function MediaPool({
   const [sttModel, setSttModel] = useState<string>("large-v3");
   const [selection, setSelection] = useState<ListSelection>({ ids: selectedAssetId && assets.some((asset) => asset.id === selectedAssetId && !asset.deletedAt) ? [selectedAssetId] : [], anchorId: selectedAssetId });
   const [binSelection, setBinSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const trainingAssetIds = useMemo(() => {
+    if (!activeTrainingSpeakerIds.length) return new Set<string>();
+    const activeSpeakers = new Set(activeTrainingSpeakerIds);
+    const ids = new Set<string>();
+    for (const item of assets) {
+      if (item.speakerProfileIds.some((id) => activeSpeakers.has(id)) || item.words.some((word) =>
+        (word.speakerId != null && activeSpeakers.has(word.speakerId)) ||
+        (word.manualDiarizationSpeakerId != null && activeSpeakers.has(word.manualDiarizationSpeakerId)))) ids.add(item.id);
+    }
+    return ids;
+  }, [assets, activeTrainingSpeakerIds.join("\0")]);
   const choices = sttChoices(sttEngines, asrAdapters);
   const chosen = choices.find((choice) => choice.value === sttModel) ?? null;
   const choiceGroups = choices.reduce<string[]>((groups, choice) => groups.includes(choice.group) ? groups : [...groups, choice.group], []);
@@ -506,7 +531,23 @@ export function MediaPool({
     if (pendingLocalMedia) setContextMenu({ assetId: "__pending_local__", left: 72, top: 140 });
   }, [pendingLocalMedia?.sourcePath]);
   useEffect(() => {
+    if (localImportProjectId.current !== projectId) {
+      localImportProjectId.current = projectId;
+      setLocalImportPlaceholders([]);
+      setPendingImports([]);
+    }
+  }, [projectId]);
+  useEffect(() => {
     setNativeCacheChoiceOpen(pendingNativeMediaPaths.length > 0);
+    if (pendingNativeMediaPaths.length) {
+      setLocalImportPlaceholders((current) => {
+        const existing = new Set(current.filter((row) => row.id.startsWith("native:")).map((row) => row.id));
+        const next = pendingNativeMediaPaths
+          .map((path) => ({ id: `native:${path}`, name: mediaName(path), status: "choosing" as const, knownAssetIds: assets.map((asset) => asset.id) }))
+          .filter((row) => !existing.has(row.id));
+        return next.length ? [...current, ...next] : current;
+      });
+    }
   }, [pendingNativeMediaPaths.join("\0")]);
   useEffect(() => {
     const generation = ++organizationProjectGeneration.current;
@@ -514,7 +555,8 @@ export function MediaPool({
     lastOrganizationAssetIds.current = null;
     organizationReadyProject.current = null;
     setOrganization(EMPTY_MEDIA_POOL_ORGANIZATION);
-    setActiveFolderId(null);
+    setExpandedFolderIds([]);
+    setCreateFolderParentId(null);
     setOrganizationError(null);
     if (!projectId) return;
     let current = true;
@@ -638,43 +680,54 @@ export function MediaPool({
 
   function handleAssetDrop(event: DragEvent<HTMLElement>, folderId: string | null, beforeAssetId: string | null = null) {
     event.preventDefault();
+    event.stopPropagation();
     const assetId = draggedAssetId.current || event.dataTransfer.getData("text/plain");
     if (assetId) arrangeAsset(assetId, folderId, beforeAssetId);
     draggedAssetId.current = null;
   }
 
-  function createFolder() {
+  function createFolder(parentFolderId: string | null = createFolderParentId) {
     const name = newFolderName.trim();
     if (!name) return;
     const id = `folder-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    persistOrganization(createMediaPoolFolder(organization, id, name, activeFolderId));
+    persistOrganization(createMediaPoolFolder(organization, id, name, parentFolderId));
+    if (parentFolderId) setExpandedFolderIds((current) => current.includes(parentFolderId) ? current : [...current, parentFolderId]);
     setNewFolderName("");
     setCreateFolderOpen(false);
   }
 
-  const folderById = new Map(organization.folders.map((folder) => [folder.id, folder]));
-  const visibleFolders = organization.folders
-    .filter((folder) => folder.parentFolderId === activeFolderId)
-    .slice().sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
-  const placementByAssetId = new Map(organization.assets.map((placement) => [placement.assetId, placement]));
-  const liveAssetById = new Map(liveAssets.map((asset) => [asset.id, asset]));
-  const orderedInFolder = orderedMediaPoolPlacements(organization, activeFolderId)
-    .flatMap((placement) => liveAssetById.has(placement.assetId) ? [liveAssetById.get(placement.assetId)!] : []);
-  const orderedAssetIds = new Set(orderedInFolder.map((asset) => asset.id));
-  const visibleAssets = activeFolderId === null
-    ? [...orderedInFolder, ...liveAssets.filter((asset) => !orderedAssetIds.has(asset.id) && !placementByAssetId.get(asset.id)?.folderId)]
-    : [...orderedInFolder, ...liveAssets.filter((asset) => !orderedAssetIds.has(asset.id) && placementByAssetId.get(asset.id)?.folderId === activeFolderId)];
-  const folderAncestors = (() => {
-    const path = [];
-    let current = activeFolderId ? folderById.get(activeFolderId) : undefined;
-    const seen = new Set<string>();
-    while (current && !seen.has(current.id)) {
-      seen.add(current.id);
-      path.unshift(current);
-      current = current.parentFolderId ? folderById.get(current.parentFolderId) : undefined;
+  const organizationIndex = useMemo(() => {
+    const currentLiveAssets = assets.filter((asset) => !asset.deletedAt && !asset.sourceArchiveAssetId && !(asset.obsRecordingId && asset.sourceExtension !== ".mka"));
+    const liveById = new Map(currentLiveAssets.map((asset) => [asset.id, asset]));
+    const placementsById = new Map(organization.assets.map((placement) => [placement.assetId, placement]));
+    const byFolder = new Map<string | null, ProjectMediaAsset[]>();
+    const seenAssets = new Set<string>();
+    for (const placement of organization.assets.slice().sort((left, right) => left.order - right.order || left.assetId.localeCompare(right.assetId))) {
+      const asset = liveById.get(placement.assetId);
+      if (!asset) continue;
+      const items = byFolder.get(placement.folderId) ?? [];
+      items.push(asset);
+      byFolder.set(placement.folderId, items);
+      seenAssets.add(asset.id);
     }
-    return path;
-  })();
+    for (const asset of currentLiveAssets) {
+      if (seenAssets.has(asset.id)) continue;
+      const folderId = placementsById.get(asset.id)?.folderId ?? null;
+      const items = byFolder.get(folderId) ?? [];
+      items.push(asset);
+      byFolder.set(folderId, items);
+    }
+    const foldersByParent = new Map<string | null, MediaPoolOrganization["folders"]>();
+    for (const folder of organization.folders) {
+      const items = foldersByParent.get(folder.parentFolderId) ?? [];
+      items.push(folder);
+      foldersByParent.set(folder.parentFolderId, items);
+    }
+    for (const items of foldersByParent.values()) items.sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+    return { assetsByFolder: byFolder, foldersByParent };
+  }, [organization, assets]);
+  const assetsInFolder = (folderId: string | null) => organizationIndex.assetsByFolder.get(folderId) ?? [];
+  const foldersIn = (parentFolderId: string | null) => organizationIndex.foldersByParent.get(parentFolderId) ?? [];
 
   function startSpeechToText() {
     if (selectedGrowingMkv) {
@@ -697,9 +750,6 @@ export function MediaPool({
     if (opened && assets.some((asset) => asset.id === opened)) {
       if (recycledIds.includes(opened)) setBinSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
       else setSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
-    } else if (!selectedObsRecordingId) {
-      setSelection({ ids: [], anchorId: null });
-      setBinSelection({ ids: [], anchorId: null });
     }
   }, [selectedAssetId, selectedImportedTrackId]);
   useEffect(() => {
@@ -725,7 +775,12 @@ export function MediaPool({
 
   function importFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-    if (files.length) setPendingImports(files.map((file) => ({ file, transcribe: true })));
+    if (files.length) {
+      setPendingImports(files.map((file) => ({ file, transcribe: true })));
+      setLocalImportPlaceholders((current) => [...current, ...files.map((file) => ({
+        id: `browser:${crypto.randomUUID()}`, name: file.name, status: "choosing" as const, knownAssetIds: assets.map((asset) => asset.id),
+      }))]);
+    }
     event.target.value = "";
   }
 
@@ -735,9 +790,39 @@ export function MediaPool({
 
   function confirmImport() {
     if (!pendingImports.length) return;
+    const names = new Set(pendingImports.map((choice) => choice.file.name));
+    setLocalImportPlaceholders((current) => current.map((row) => names.has(row.name) ? { ...row, status: "queued" } : row));
     onImport(pendingImports);
     setPendingImports([]);
   }
+
+  function cancelBrowserImport() {
+    const names = new Set(pendingImports.map((choice) => choice.file.name));
+    setPendingImports([]);
+    setLocalImportPlaceholders((current) => current.filter((row) => row.status !== "choosing" || !names.has(row.name)));
+  }
+
+  function confirmNativeImport(cacheLocal: boolean) {
+    setNativeCacheChoiceOpen(false);
+    onConfirmNativeMediaImport(pendingNativeMediaPaths, cacheLocal);
+    setLocalImportPlaceholders((current) => current.map((row) => row.id.startsWith("native:") && pendingNativeMediaPaths.includes(row.id.slice("native:".length))
+      ? { ...row, status: "queued" } : row));
+  }
+
+  function cancelNativeImport() {
+    setNativeCacheChoiceOpen(false);
+    setLocalImportPlaceholders((current) => current.filter((row) => !row.id.startsWith("native:") || !pendingNativeMediaPaths.includes(row.id.slice("native:".length))));
+    onCancelNativeMediaImport();
+  }
+
+  const importAcknowledged = (row: LocalImportPlaceholder) => row.status === "queued" && (
+    pendingMediaImports.some((pending) => pending.name === row.name) ||
+    liveAssets.some((asset) => asset.name === row.name && !row.knownAssetIds.includes(asset.id))
+  );
+  const visibleLocalImportPlaceholders = localImportPlaceholders.filter((row) => !importAcknowledged(row));
+  useEffect(() => {
+    setLocalImportPlaceholders((current) => current.some(importAcknowledged) ? current.filter((row) => !importAcknowledged(row)) : current);
+  }, [pendingMediaImports.map((row) => `${row.id}:${row.name}:${row.status}`).join("\0"), liveAssets.map((row) => `${row.id}:${row.name}`).join("\0")]);
 
   function openContextMenu(event: MouseEvent, assetId: string) {
     event.preventDefault();
@@ -764,15 +849,46 @@ export function MediaPool({
     });
   }
 
+  function openSelectedItem(id: string) {
+    if (assets.find((item) => item.id === id)?.sourceArchiveAssetId) onSelectTrack(id);
+    else onSelect(id);
+  }
+
   function selectAsset(event: MouseEvent<HTMLButtonElement>, asset: ProjectMediaAsset) {
     if (asset.deletedAt) {
       setSelection({ ids: [], anchorId: null });
-      setBinSelection((current) => selectListItem(current, recycledIds, asset.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+      const next = selectListItem(binSelection, recycledIds, asset.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey });
+      setBinSelection(next);
+      if (next.ids.length === 1 && !event.ctrlKey && !event.metaKey && !event.shiftKey) onSelect(asset.id);
     } else {
       setBinSelection({ ids: [], anchorId: null });
-      setSelection((current) => selectListItem(current, liveIds, asset.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+      const next = selectListItem(selection, selectableIds, asset.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey });
+      setSelection(next);
+      if (next.ids.length === 1) openSelectedItem(next.ids[0]);
+      else if (!next.ids.length) onClearSelection();
     }
-    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) onSelect(asset.id);
+  }
+
+  function toggleStageForAsset(asset: ProjectMediaAsset, target: "import" | "stt" | "diarization" | "training", value: boolean) {
+    const selectedGroup = selectedListIds.length > 1 && selectedListIds.includes(asset.id)
+      ? selectedListIds.map((id) => assets.find((item) => item.id === id && !item.deletedAt)).filter((item): item is ProjectMediaAsset => Boolean(item))
+      : [asset];
+    const eligible = selectedGroup.filter((item) => {
+      if (item.status === "no-audio" || (target === "import" && busy)) return false;
+      const children = childrenOf(item);
+      const imported = children.length ? children.some((child) => child.importSelected !== false) : item.importSelected !== false;
+      if (target !== "import" && !imported) return false;
+      if (target === "stt" && ["queued", "processing", "reviewing"].includes(item.transcriptionStatus)) return false;
+      return true;
+    });
+    if (eligible.length > 1) {
+      onBatchAction({ kind: "selection", target, assetIds: eligible.map((item) => item.id), selected: value });
+      return;
+    }
+    if (target === "import") onToggleImport(asset.id, value);
+    else if (target === "stt") onToggleTranscription(asset.id, value);
+    else if (target === "diarization") onToggleDiarization(asset.id, value);
+    else onToggleTraining(asset.id, value);
   }
 
   function selectAllWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -798,7 +914,8 @@ export function MediaPool({
     setHistoryAssetId(asset.id);
   }
 
-  function renderAsset(asset: ProjectMediaAsset, organizable = false) {
+  function renderAsset(asset: ProjectMediaAsset, folderId: string | null | false = false) {
+    const organizable = folderId !== false;
     const channels = childrenOf(asset);
     const stageState = (test: (item: ProjectMediaAsset) => boolean) => {
       const targets = channels.length ? channels : [asset];
@@ -813,8 +930,7 @@ export function MediaPool({
     const sttRunning = stageBusy((item) => ["queued", "processing", "reviewing"].includes(item.transcriptionStatus));
     const diarizationRunning = stageBusy((item) => ["queued", "processing"].includes(item.diarizationStatus ?? "idle"));
     const trainingRunning = stageBusy((item) => {
-      const assigned = new Set([...item.speakerProfileIds, ...item.words.flatMap((word) => [word.speakerId, word.manualDiarizationSpeakerId].filter((id): id is string => Boolean(id)))]);
-      return activeTrainingSpeakerIds.some((speakerId) => assigned.has(speakerId));
+      return trainingAssetIds.has(item.id);
     });
     const selected = asset.deletedAt ? selectedBinIds.includes(asset.id) : selectedIds.includes(asset.id);
     const active = asset.id === selectedAssetId;
@@ -825,7 +941,7 @@ export function MediaPool({
     const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
     const missing = recycled || channels.length ? [] : missingPreparation(asset);
     return (
-      <div className={`media-pool-item ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} draggable={organizable && !recycled} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)} onDragStart={organizable ? (event) => { draggedAssetId.current = asset.id; event.dataTransfer.setData("text/plain", asset.id); event.dataTransfer.effectAllowed = "move"; } : undefined} onDragEnd={organizable ? () => { draggedAssetId.current = null; } : undefined} onDragOver={organizable ? handleAssetDragOver : undefined} onDrop={organizable ? (event) => handleAssetDrop(event, activeFolderId, asset.id) : undefined}>
+      <div className={`media-pool-item ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} draggable={organizable && !recycled} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)} onDragStart={organizable ? (event) => { draggedAssetId.current = asset.id; event.dataTransfer.setData("text/plain", asset.id); event.dataTransfer.effectAllowed = "move"; } : undefined} onDragEnd={organizable ? () => { draggedAssetId.current = null; } : undefined} onDragOver={organizable ? handleAssetDragOver : undefined} onDrop={organizable ? (event) => handleAssetDrop(event, folderId, asset.id) : undefined}>
         {channels.length ? <button aria-expanded={expandedAssets.includes(asset.id)} aria-label={`${expandedAssets.includes(asset.id) ? "Thu gọn" : "Xổ"} track của ${asset.name}`} className="media-pool-item__expand" onClick={() => setExpandedAssets((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} type="button">{expandedAssets.includes(asset.id) ? "▾" : "▸"}</button> : null}
         <button aria-pressed={selected} className="media-pool-item__main" onClick={(event) => selectAsset(event, asset)} type="button">
           <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
@@ -838,22 +954,42 @@ export function MediaPool({
         </button>
         <div className="media-pool-item__toggles">
         {recycled ? <><button className="media-restore-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "restore", assetIds: selectedBinIds }); else onRestore(asset); }} title="Đưa footage trở lại Media Pool" type="button">Restore</button><button className="media-remove-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "delete", assetIds: selectedBinIds }); else onRemove(asset); }} title="Xóa hẳn, không khôi phục được" type="button">Delete</button></> : <>
-          <StageToggle disabled={asset.status === "no-audio" || busy} mixed={imported.mixed} name={asset.name} onChange={(value) => onToggleImport(asset.id, value)} selected={imported.selected} stage="Import" />
-          <StageToggle ariaLabel={`Đưa ${asset.name} vào hàng đợi Speech to text`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} mixed={stt.mixed} name={asset.name} onChange={(value) => onToggleTranscription(asset.id, value)} running={sttRunning} selected={stt.selected} stage="STT" />
-          <StageToggle disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={diarization.mixed} name={asset.name} onChange={(value) => onToggleDiarization(asset.id, value)} running={diarizationRunning} selected={diarization.selected} stage="Speaker Diarization" />
-          <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => onToggleTraining(asset.id, value)} running={trainingRunning} selected={training.selected} stage="Train" /></>}
+          <StageToggle disabled={asset.status === "no-audio" || busy} mixed={imported.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "import", value)} selected={imported.selected} stage="Import" />
+          <StageToggle ariaLabel={`Đưa ${asset.name} vào hàng đợi Speech to text`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} mixed={stt.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "stt", value)} running={sttRunning} selected={stt.selected} stage="STT" />
+          <StageToggle disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={diarization.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "diarization", value)} running={diarizationRunning} selected={diarization.selected} stage="Speaker Diarization" />
+          <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "training", value)} running={trainingRunning} selected={training.selected} stage="Train" /></>}
         </div>
         {channels.length && expandedAssets.includes(asset.id) && !recycled ? <div className="media-pool-item__channels">{channels.map((track) => <div className={`media-pool-item__channel ${track.importSelected === false ? "is-not-imported" : ""}`} key={track.id}>
-          <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={selectedListIds.includes(track.id)} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={(event) => { setBinSelection({ ids: [], anchorId: null }); setSelection((current) => selectListItem(current, selectableIds, track.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey })); if (!event.ctrlKey && !event.metaKey && !event.shiftKey) onSelectTrack(track.id); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
+          <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={selectedListIds.includes(track.id)} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={(event) => { setBinSelection({ ids: [], anchorId: null }); const next = selectListItem(selection, selectableIds, track.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }); setSelection(next); if (next.ids.length === 1) openSelectedItem(next.ids[0]); else if (!next.ids.length) onClearSelection(); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
           <div className="media-pool-item__toggles">
-            <StageToggle name={track.name} onChange={(value) => onToggleImport(track.id, value)} selected={track.importSelected !== false} stage="Import" />
-            <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => onToggleTranscription(track.id, value)} running={["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} selected={track.transcriptionSelected} stage="STT" />
-            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleDiarization(track.id, value)} running={["queued", "processing"].includes(track.diarizationStatus ?? "idle")} selected={Boolean(track.diarizationSelected)} stage="Speaker Diarization" />
-            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => onToggleTraining(track.id, value)} running={activeTrainingSpeakerIds.some((speakerId) => track.speakerProfileIds.includes(speakerId) || track.words.some((word) => word.speakerId === speakerId || word.manualDiarizationSpeakerId === speakerId))} selected={track.trainingSelected} stage="Train" />
+            <StageToggle name={track.name} onChange={(value) => toggleStageForAsset(track, "import", value)} selected={track.importSelected !== false} stage="Import" />
+            <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => toggleStageForAsset(track, "stt", value)} running={["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} selected={track.transcriptionSelected} stage="STT" />
+            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => toggleStageForAsset(track, "diarization", value)} running={["queued", "processing"].includes(track.diarizationStatus ?? "idle")} selected={Boolean(track.diarizationSelected)} stage="Speaker Diarization" />
+            <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => toggleStageForAsset(track, "training", value)} running={trainingAssetIds.has(track.id)} selected={track.trainingSelected} stage="Train" />
           </div>
         </div>)}</div> : null}
       </div>
     );
+  }
+
+  function renderFolder(folder: MediaPoolOrganization["folders"][number], depth = 0) {
+    const childFolders = foldersIn(folder.id);
+    const folderAssets = assetsInFolder(folder.id);
+    const expanded = expandedFolderIds.includes(folder.id);
+    const immediateAssetCount = folderAssets.length;
+    return <section className="media-organization-node" key={folder.id} style={{ "--folder-depth": depth } as CSSProperties}>
+      <div className="media-organization-folder-slot" onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)}>
+        <button aria-expanded={expanded} aria-label={`Mở thư mục ${folder.name}`} className="media-organization-folder" onClick={() => setExpandedFolderIds((current) => expanded ? current.filter((id) => id !== folder.id) : [...current, folder.id])} type="button">
+          <span aria-hidden="true" className="media-organization-folder__chevron">{expanded ? "▾" : "▸"}</span><Icon name="folder" /><span><b>{folder.name}</b><small>{childFolders.length} thư mục con · {immediateAssetCount} footage</small></span>
+        </button>
+        <button aria-label={`Tạo thư mục con trong ${folder.name}`} className="media-organization-folder__add" onClick={() => { setCreateFolderParentId(folder.id); setCreateFolderOpen(true); }} title={`Tạo thư mục con trong ${folder.name}`} type="button"><Icon name="folder-plus" /></button>
+      </div>
+      {expanded ? <div aria-label={`Nội dung thư mục ${folder.name}`} className="media-organization-children">
+        {childFolders.map((child) => renderFolder(child, depth + 1))}
+        {folderAssets.map((item) => renderAsset(item, folder.id))}
+        {!childFolders.length && !folderAssets.length ? <div className="media-organization-empty">Thư mục này chưa có footage. Kéo footage vào đây hoặc tạo thư mục con.</div> : null}
+      </div> : null}
+    </section>;
   }
 
   return (
@@ -866,7 +1002,7 @@ export function MediaPool({
         <button aria-label="Import footage từ máy đang dùng" className="media-import media-import--primary" onClick={() => browserFileInput.current?.click()} title="Chọn một hoặc nhiều file từ thiết bị đang dùng" type="button"><Icon name="import" /></button>
         <input aria-label="Import file từ máy đang dùng" accept={MEDIA_ACCEPT} className="media-pool-file-input" multiple onChange={importFiles} ref={browserFileInput} type="file" />
         <button aria-label="Import file trên máy Host" className="media-import media-import--host" onClick={onImportLocal} title="Chọn file nằm trên máy Host, gồm MKV đang ghi" type="button"><Icon name="window" /></button>
-        <button aria-label={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} aria-expanded={createFolderOpen} className="media-import" onClick={() => setCreateFolderOpen((open) => !open)} title={activeFolderId ? "Tạo thư mục con" : "Tạo thư mục"} type="button"><Icon name="folder-plus" /></button>
+        <button aria-label="Tạo thư mục" aria-expanded={createFolderOpen} className="media-import" onClick={() => { setCreateFolderParentId(null); setCreateFolderOpen((open) => !open); }} title="Tạo thư mục trong project" type="button"><Icon name="folder-plus" /></button>
       </div>}
     >
       <div className="media-pool-summary">
@@ -876,14 +1012,10 @@ export function MediaPool({
         <span><b>{trainingCount}</b> TO TRAIN</span>
       </div>
       <div aria-label="Tổ chức Media Pool" className="media-organization-toolbar">
-        <nav aria-label="Đường dẫn thư mục" className="media-organization-breadcrumbs">
-          <button aria-label="Mở thư mục gốc" className={activeFolderId === null ? "is-active" : ""} onClick={() => setActiveFolderId(null)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)} type="button">Thư mục gốc</button>
-          {folderAncestors.map((folder) => <button aria-label={`Mở thư mục ${folder.name}`} className={folder.id === activeFolderId ? "is-active" : ""} key={folder.id} onClick={() => setActiveFolderId(folder.id)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)} type="button">› {folder.name}</button>)}
-        </nav>
         {createFolderOpen ? <form className="media-organization-create" onSubmit={(event) => { event.preventDefault(); createFolder(); }}>
-          <input aria-label="Tên thư mục mới" autoFocus maxLength={120} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Tên thư mục" value={newFolderName} />
+          <input aria-label="Tên thư mục mới" autoFocus maxLength={120} onChange={(event) => setNewFolderName(event.target.value)} placeholder={createFolderParentId ? "Tên thư mục con" : "Tên thư mục"} value={newFolderName} />
           <button className="button button--accent" disabled={!newFolderName.trim()} type="submit">Tạo folder</button>
-          <button className="button button--quiet" onClick={() => { setCreateFolderOpen(false); setNewFolderName(""); }} type="button">Hủy</button>
+          <button className="button button--quiet" onClick={() => { setCreateFolderOpen(false); setCreateFolderParentId(null); setNewFolderName(""); }} type="button">Hủy</button>
         </form> : null}
         {organizationError ? <small className="media-organization-error" role="alert">Không lưu được tổ chức Media Pool: {organizationError}</small> : null}
       </div>
@@ -896,17 +1028,21 @@ export function MediaPool({
         {pendingLocalMedia ? <div className="media-pool-pending" onContextMenu={(event) => openContextMenu(event, "__pending_local__")}>
           <button aria-label={`Chọn track cho ${pendingLocalMedia.name}`} onClick={(event) => openContextMenu(event, "__pending_local__")} type="button"><Icon name="folder" /><span><b>{pendingLocalMedia.name}</b><small>CHỜ IMPORT · {pendingLocalMedia.tracks.length} AUDIO TRACK · BẤM ĐỂ CHỌN KÊNH VÀ THEO DÕI</small></span></button>
         </div> : null}
+        {visibleLocalImportPlaceholders.map((item) => <div aria-label={`Footage ${item.name}: ${item.status === "choosing" ? "ĐANG CHỜ IMPORT" : "ĐANG IMPORT"}`} className={`media-pool-importing media-pool-importing--local media-pool-importing--${item.status}`} key={item.id}>
+          <span aria-hidden="true" className="media-pool-importing__spinner"><Icon name="waveform" /></span>
+          <span><b>{item.name}</b><small>{item.status === "choosing" ? "ĐANG CHỜ XÁC NHẬN IMPORT" : "ĐANG GỬI ĐẾN HÀNG IMPORT"}</small></span>
+        </div>)}
         {pendingMediaImports.map((item) => <div aria-label={`Footage ${item.name}: ${item.status === "error" ? "LỖI IMPORT" : item.status === "queued" ? "ĐANG CHỜ IMPORT" : item.status === "caching" ? "ĐANG CACHE" : "ĐANG IMPORT"}`} className={`media-pool-importing media-pool-importing--${item.status}`} key={item.id}>
           <span aria-hidden="true" className="media-pool-importing__spinner"><Icon name={item.status === "error" ? "refresh" : "waveform"} /></span>
           <span><b>{item.name}</b><small>{item.status === "error" ? "IMPORT THẤT BẠI" : item.status === "queued" ? "ĐANG CHỜ TRONG HÀNG IMPORT" : item.status === "caching" ? "ĐANG CACHE VÀ TẠO FOOTAGE" : "ĐANG ĐỌC MEDIA VÀ TẠO FOOTAGE"}</small>{item.detail ? <em>{item.detail}</em> : null}</span>
           {item.status === "error" && item.retryable ? <button className="media-pool-importing__retry" onClick={() => onRetryPendingImport(item.id)} type="button">Thử lại</button> : null}
         </div>)}
         {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
-        {visibleFolders.map((folder) => <button aria-label={`Mở thư mục ${folder.name}`} className="media-organization-folder" key={folder.id} onClick={() => setActiveFolderId(folder.id)} onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, folder.id)} type="button">
-          <Icon name="folder" /><span><b>{folder.name}</b><small>{organization.folders.filter((child) => child.parentFolderId === folder.id).length} thư mục con · {organization.assets.filter((placement) => placement.folderId === folder.id).length} footage</small></span><i aria-hidden="true">›</i>
-        </button>)}
-        {visibleAssets.map((asset) => renderAsset(asset, true))}
-        {projectId && activeFolderId !== null && !visibleFolders.length && !visibleAssets.length ? <div className="media-organization-empty">Thư mục này chưa có footage. Kéo footage vào đây hoặc tạo thư mục con.</div> : null}
+        {projectId ? <div aria-label="Thư mục trong project" className="media-organization-root" onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)}>
+          {foldersIn(null).map((folder) => renderFolder(folder))}
+          {assetsInFolder(null).map((asset) => renderAsset(asset, null))}
+          {!foldersIn(null).length && !assetsInFolder(null).length ? <div className="media-organization-empty">Project chưa có footage. Kéo footage vào project hoặc tạo thư mục.</div> : null}
+        </div> : liveAssets.map((asset) => renderAsset(asset))}
         {!projectId && !pendingLocalMedia && !liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
         {/* Rendered after the list rather than inside it, so no amount of
             importing can push the bin out of last place. */}
@@ -932,12 +1068,12 @@ export function MediaPool({
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>
-      {nativeCacheChoiceOpen ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancelNativeMediaImport(); }}>
+      {nativeCacheChoiceOpen ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelNativeImport(); }}>
         <section aria-label="Tùy chọn cache file media" aria-modal="true" className="media-import-dialog media-import-dialog--cache" role="dialog">
           <header><span>IMPORT FILE GỐC</span><strong>{pendingNativeMediaPaths.length} file</strong></header>
           <p>Chọn cách app dùng các file nguồn. Cache sẽ sao chép vào project để project mang theo media; giữ file gốc sẽ lưu liên kết tới vị trí hiện tại.</p>
           <div aria-label="Các file sắp import" className="media-import-choices">{pendingNativeMediaPaths.map((path) => <div className="media-import-choice-file" key={path}><b>{path.split(/[\\/]/).pop() || path}</b><small>{path}</small></div>)}</div>
-          <footer><button className="button button--quiet" onClick={onCancelNativeMediaImport} type="button">Hủy</button><button className="button button--quiet" onClick={() => { setNativeCacheChoiceOpen(false); onConfirmNativeMediaImport(pendingNativeMediaPaths, false); }} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => { setNativeCacheChoiceOpen(false); onConfirmNativeMediaImport(pendingNativeMediaPaths, true); }} type="button">Cache trong project</button></footer>
+          <footer><button className="button button--quiet" onClick={cancelNativeImport} type="button">Hủy</button><button className="button button--quiet" onClick={() => confirmNativeImport(false)} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => confirmNativeImport(true)} type="button">Cache trong project</button></footer>
         </section>
       </div> : null}
       {localCacheChoiceOpen && pendingLocalMedia ? <div className="media-import-backdrop">
@@ -947,7 +1083,7 @@ export function MediaPool({
           <footer><button className="button button--quiet" onClick={() => setLocalCacheChoiceOpen(false)} type="button">Hủy</button><button className="button button--quiet" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, false); }} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, true); }} type="button">Cache trong project</button></footer>
         </section>
       </div> : null}
-      {pendingImports.length ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingImports([]); }}><section aria-label="Tùy chọn import media" aria-modal="true" className="media-import-dialog" role="dialog"><header><span>IMPORT QUEUE</span><strong>{pendingImports.length} footage</strong></header><p>{pendingGrowingMkv ? "MKV đang ghi cần theo dõi file gốc trên máy. Hãy chọn lại chính file này trong hộp chọn file gốc, rồi bấm mục chờ trong Media Pool để chọn Import/STT cho từng track. Upload chỉ gửi một bản sao và không nhận thêm dữ liệu khi OBS tiếp tục ghi." : "Chọn footage cần đưa vào hàng chờ STT. STT kỹ sẽ chỉ chạy khi bấm Speech to text."}</p><div className="media-import-choices">{pendingImports.map((choice, index) => <label key={`${choice.file.name}-${index}`}><span><b>{choice.file.name}</b><small>{(choice.file.size / 1024 / 1024).toFixed(1)} MB</small></span><input aria-label={`Đánh dấu STT cho ${choice.file.name}`} checked={choice.transcribe} onChange={(event) => togglePendingTranscript(index, event.target.checked)} type="checkbox" /><em>{choice.transcribe ? "TO STT" : "IMPORT ONLY"}</em></label>)}</div><footer><button className="button button--quiet" onClick={() => setPendingImports([])} type="button">Hủy</button>{pendingGrowingMkv ? <button className="button button--accent" onClick={() => { setPendingImports([]); onImportLocal(); }} type="button">Theo dõi MKV đang ghi</button> : null}<button className={pendingGrowingMkv ? "button button--quiet" : "button button--accent"} onClick={confirmImport} type="button">{pendingGrowingMkv ? "Import file đã hoàn tất" : `Import ${pendingImports.length} file`}</button></footer></section></div> : null}
+      {pendingImports.length ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelBrowserImport(); }}><section aria-label="Tùy chọn import media" aria-modal="true" className="media-import-dialog" role="dialog"><header><span>IMPORT QUEUE</span><strong>{pendingImports.length} footage</strong></header><p>{pendingGrowingMkv ? "MKV đang ghi cần theo dõi file gốc trên máy. Hãy chọn lại chính file này trong hộp chọn file gốc, rồi bấm mục chờ trong Media Pool để chọn Import/STT cho từng track. Upload chỉ gửi một bản sao và không nhận thêm dữ liệu khi OBS tiếp tục ghi." : "Chọn footage cần đưa vào hàng chờ STT. STT kỹ sẽ chỉ chạy khi bấm Speech to text."}</p><div className="media-import-choices">{pendingImports.map((choice, index) => <label key={`${choice.file.name}-${index}`}><span><b>{choice.file.name}</b><small>{(choice.file.size / 1024 / 1024).toFixed(1)} MB</small></span><input aria-label={`Đánh dấu STT cho ${choice.file.name}`} checked={choice.transcribe} onChange={(event) => togglePendingTranscript(index, event.target.checked)} type="checkbox" /><em>{choice.transcribe ? "TO STT" : "IMPORT ONLY"}</em></label>)}</div><footer><button className="button button--quiet" onClick={cancelBrowserImport} type="button">Hủy</button>{pendingGrowingMkv ? <button className="button button--accent" onClick={() => { cancelBrowserImport(); onImportLocal(); }} type="button">Theo dõi MKV đang ghi</button> : null}<button className={pendingGrowingMkv ? "button button--quiet" : "button button--accent"} onClick={confirmImport} type="button">{pendingGrowingMkv ? "Import file đã hoàn tất" : `Import ${pendingImports.length} file`}</button></footer></section></div> : null}
       {mkvSttDialogOpen && (pendingLocalMedia || mkvSttTargetId) ? <div className="media-import-backdrop">
         <section aria-label="Thiết lập STT MKV" aria-modal="true" className="media-import-dialog" role="dialog">
           <header><span>MKV STT KỸ</span><strong>{mkvSttTargetId ? assets.find((asset) => asset.id === mkvSttTargetId)?.name : pendingLocalMedia?.name}</strong></header>
