@@ -10,7 +10,7 @@ import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
+import { isCompactSubtitleWord, readableSubtitleSlots, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
 import { Timeline } from "./Timeline";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import "./waveform.css";
@@ -463,6 +463,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                   if (event.ctrlKey || event.metaKey) focusTrack(track, { insertTime: time });
                   else { const wordIndex = subtitleIndexAtTime(track.words, time); if (wordIndex >= 0) seek(track.words[wordIndex].start); }
                 }}>
+                {readableSubtitleSlots(track.words, windowStart, span, subtitleLaneWidth).map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
+                  style={{ left: `${(slot.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(slot.widthPixels / subtitleLaneWidth) * 100}%` }}>{slot.text}</span>)}
                 {track.words.length ? visibleSubtitleIndexes(track.words, windowStart, span, currentTime).map((wordIndex) => {
                   const word = track.words[wordIndex];
                   const style = intervalStyle(word.start, word.end, windowStart, span);

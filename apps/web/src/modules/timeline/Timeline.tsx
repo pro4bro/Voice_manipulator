@@ -12,7 +12,7 @@ import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, type WordDragMode } from "./word-timing";
-import { boundedSubtitleIndexes, isCompactSubtitleWord } from "./subtitle-density";
+import { boundedSubtitleIndexes, isCompactSubtitleWord, readableSubtitleSlots } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -406,6 +406,14 @@ export function Timeline({
     return boundedSubtitleIndexes(visibleWordRange.first, visibleWordRange.last,
       [...wordSelection.indexes.slice(-8), activeWordIndex, promotedIndex ?? -1, wordEditor?.index ?? -1], displayWords.length);
   }, [activeWordIndex, visibleWordRange, wordSelection.indexes, promotedIndex, wordEditor?.index, displayWords.length]);
+  const readableWordSlots = useMemo(() => {
+    if (!displayWords.length || isRecording || !timingIsTrusted) return [];
+    const canvasWidth = timelineCanvasWidth || 1000;
+    const viewportWidth = timelineViewport.width || Math.min(canvasWidth, 1000);
+    const start = (timelineViewport.left / canvasWidth) * duration;
+    const span = (viewportWidth / canvasWidth) * duration;
+    return readableSubtitleSlots(displayWords, start, span, viewportWidth);
+  }, [displayWords, duration, isRecording, timingIsTrusted, timelineCanvasWidth, timelineViewport]);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
   const timelineNavigator = useMemo(() => {
     const visible = Math.max(0, timelineViewport.width);
@@ -1374,6 +1382,8 @@ export function Timeline({
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
             <div className="word-track" onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) setWordEditor({ index, time: words[index].start, text: words[index].text }); }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+              {readableWordSlots.map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
+                style={{ left: `${((timelineViewport.left + slot.leftPixels) / Math.max(1, timelineCanvasWidth)) * 100}%`, width: `${(slot.widthPixels / Math.max(1, timelineCanvasWidth)) * 100}%` }}>{slot.text}</span>)}
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackIndexes.map((index) => { const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));

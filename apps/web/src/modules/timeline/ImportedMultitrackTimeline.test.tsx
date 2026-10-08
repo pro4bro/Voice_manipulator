@@ -47,6 +47,22 @@ it("hides labels on dense subtitle intervals and restores them when zoom makes r
   expect(word).toHaveClass("is-active");
 });
 
+it("shows a bounded readable text overview for long imported subtitles", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 900, points: [] }) }));
+  const words = Array.from({ length: 6_000 }, (_, index) => {
+    const start = index * 0.15;
+    return { text: `word${index}`, start, end: start + 0.12 };
+  });
+  const { container } = render(<ImportedMultitrackTimeline parent={{ ...parent, duration: 900 }} tracks={[{
+    ...tracks[0], duration: 900, text: "long transcript", words,
+  }]} selectedTrackId={null} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
+  const lane = container.querySelector('[aria-label="Subtitle Channel 1"]')!;
+  expect(lane.querySelectorAll(":scope > .subtitle-readable-slot").length).toBeGreaterThan(0);
+  expect(lane.querySelectorAll(":scope > .subtitle-readable-slot").length).toBeLessThanOrEqual(48);
+  expect(lane.querySelectorAll(":scope > .imported-timeline__word").length).toBeLessThanOrEqual(400);
+  expect(lane.querySelector(":scope > .subtitle-readable-slot")?.textContent?.length).toBeGreaterThan(1);
+});
+
 it("opens the shared timeline editor for an archived multitrack word and writes only to its asset", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const words = [{ text: "hello", start: 15, end: 18 }, { text: "world", start: 30, end: 33 }];

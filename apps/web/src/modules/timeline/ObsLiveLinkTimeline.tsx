@@ -19,7 +19,7 @@ import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
+import { isCompactSubtitleWord, readableSubtitleSlots, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
 import "./waveform.css";
 import "./subtitle-density.css";
 
@@ -935,6 +935,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   if (event.ctrlKey || event.metaKey) focusArchivedTrack(archivedAsset, { insertTime: seconds });
                   else seek(event.clientX, event.currentTarget);
                 }}>
+                {readableSubtitleSlots(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth).map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
+                  style={{ left: `${(slot.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(slot.widthPixels / subtitleLaneWidth) * 100}%` }}>{slot.text}</span>)}
                 {excludedRanges.map((range) => { const position = intervalPosition(range.start, range.end, windowStart, windowSpan);
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
                 {visibleSubtitleIndexes(archivedAsset.words ?? [], windowStart, windowSpan, currentTime).map((wordIndex) => {

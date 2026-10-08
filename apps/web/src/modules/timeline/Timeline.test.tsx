@@ -202,6 +202,34 @@ describe("Timeline", () => {
     }
   });
 
+  it("renders readable, bounded overview snippets for a long transcript while keeping source words sampled", () => {
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) { this.callback([{ target } as ResizeObserverEntry], this as unknown as ResizeObserver); }
+      disconnect() {}
+    });
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const width = this.classList.contains("timeline-canvas") ? 1_000 : this.classList.contains("timeline-scroll") ? 1_000 : 1_000;
+      return { left: 0, top: 0, width, height: 100, right: width, bottom: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      const words = Array.from({ length: 6_000 }, (_, index) => {
+        const start = index * 0.15;
+        return { text: `word${index}`, start, end: start + 0.12 };
+      });
+      const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
+        take={{ name: "long-overview.wav", duration: 900, wordTimingQuality: "source", words }} />);
+      const labels = container.querySelectorAll(".word-track > .subtitle-readable-slot");
+      expect(labels.length).toBeGreaterThan(0);
+      expect(labels.length).toBeLessThanOrEqual(48);
+      expect([...labels].every((label) => label.textContent && label.textContent.length > 1)).toBe(true);
+      expect(container.querySelectorAll(".word-track > .timeline-word").length).toBeLessThanOrEqual(400);
+    } finally {
+      rectSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders partial timing and marks only the untrusted word", () => {
     render(<Timeline gain={0} onGainChange={() => undefined} take={{ name: "partial.wav", url: "/audio.wav", duration: 4, wordTimingQuality: "partial", words: [{ text: "đúng", start: 1, end: 1.3, timingTrusted: true }, { text: "cảnh-báo", start: 1.3, end: 1.31, timingTrusted: false }] }} />);
     expect(screen.getByRole("button", { name: "Subtitle word đúng" })).not.toHaveClass("timeline-word--untrusted");
