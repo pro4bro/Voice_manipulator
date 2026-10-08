@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-04 — Script row and history consistency (2026-10-09)
+
+Owner confirms improved response. Logical speaker rows own their view fragments;
+fixed checkbox/ordinal controls, checked-row attribution, pointer/focus Ctrl+A,
+thirty-step session undo/redo and grouped track assignment are implemented.
+Dense Timeline snippets restore overview text and increase detail with zoom,
+preserving timestamps/hit tests. Frontend611/70, API677/two existing warnings and
+typecheck/build pass: `docs/gates/user-feedback-04-script-rows-subtitles-and-history.md`,
+ADR0051. Exact next UX-EDITING-DEVICE-01 requires permitted real visual/theme/
+ordinal/density, history/scroll and audible acceptance. Existing tool restriction
+and older physical/quality/download/second-machine gates remain. Phase03 budgets,
+project schema and Queue proposal are unchanged.
+
 ## USER-FEEDBACK-03 — import slots and media selection (2026-10-08)
 
 Immediate animated import choices/inspection rows, expandable folder tree,

@@ -1,4 +1,20 @@
-# Project Status — 2026-10-08
+# Project Status — 2026-10-09
+
+## USER-FEEDBACK-04 — logical Script rows, attribution and history (2026-10-09)
+
+Owner confirms responsiveness from03. Virtual word fragments now share one
+speaker row/control; inherited and explicit matching profiles share a key.
+Fixed24px selection boxes show original row ordinals. Script attribution requires
+checked rows; pointer/focus Ctrl+A includes every logical row. Session Ctrl+Z/
+Ctrl+Shift+Z retains30 committed text/timing/tag steps, grouping cross-track
+speaker choices and preserving ordered saves. Dense Timeline snippets restore
+overview text and reveal more detail with zoom without changing source timing.
+Frontend611/70, API677/two existing warnings and typecheck/build pass. Evidence:
+`docs/gates/user-feedback-04-script-rows-subtitles-and-history.md`, ADR0051.
+Next UX-EDITING-DEVICE-01 needs actual checkbox/ordinal/theme, subtitle density,
+history/scroll and audible checks. Prior browser restriction and older physical/
+quality/download/LAN gates remain; DOM tests do not establish visual acceptance.
+No backend/upstream/project-schema, owner-media or phase-budget change.
 
 ## USER-FEEDBACK-03 — import feedback, media tree and bounded detail views (2026-10-08)
 

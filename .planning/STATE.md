@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-08 — USER-FEEDBACK-03 Immediate imports and responsive media selection.
-last_activity_desc: Pending import slots, folder tree, empty multi-select detail views, optimistic ordered bulk ticks and bounded Script/Timeline DOM delivered. Frontend602/69, API677/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 real-load/scroll/native/audio evidence. Queue and phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-04 Logical Script rows and edit history.
+last_activity_desc: Single logical speaker rows, fixed selection/ordinals, checked-row attribution, hover Ctrl+A, thirty-step undo/redo and readable dense subtitles delivered. Owner confirms prior responsiveness. Frontend611/70, API677/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 visual/history/scroll/native/audio evidence. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-04 — 2026-10-09
+
+Fragments remain bounded inside one speaker row; explicit/inherited same profiles
+merge. Fixed selection controls and ordinals, checked-row-only attribution,
+pointer/focus Ctrl+A and thirty-step project-session undo/redo are delivered.
+Cross-track speaker assignments undo as one action. Dense subtitle summaries
+restore readable overview text with zoom detail and original source timing.
+Frontend611/70, API677/two existing warnings, typecheck/build pass; current gate:
+`docs/gates/user-feedback-04-script-rows-subtitles-and-history.md`, ADR0051.
+Owner confirms responsiveness from03. Next UX-EDITING-DEVICE-01 needs permitted
+visual/theme/ordinal/subtitle/history/scroll and audible evidence. Existing tool
+restriction and older physical/quality/download/LAN gates remain. Phase03 stays60%.
 
 ## USER-FEEDBACK-03 — 2026-10-08
 

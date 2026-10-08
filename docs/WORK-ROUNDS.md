@@ -12,7 +12,23 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-08 — current: USER-FEEDBACK-03
+### 2026-10-09 — current: USER-FEEDBACK-04
+
+Owner confirms improved responsiveness. Logical speaker rows now contain their
+virtual fragments, with one fixed24px selector and original ordinal. Same explicit/
+inherited speaker identity stays one row. Script speaker choices target checked
+rows; pointer/focus Ctrl+A selects all logical rows. Session undo/redo retains30
+committed text/timing/attribution steps, grouping cross-track speaker choices.
+Dense Timeline snippets restore readable text at overview scale and increase
+detail with zoom, retaining original hit tests/timestamps. Frontend611/70 with
+capped test workers, API677/two existing warnings and typecheck/build pass.
+Gate: `docs/gates/user-feedback-04-script-rows-subtitles-and-history.md`, ADR0051.
+Exact next UX-EDITING-DEVICE-01: allowed real checkbox/ordinal/theme, subtitle zoom,
+Script editing/history/scroll and audible acceptance. Existing browser restriction
+and older physical/quality/download/LAN prerequisites remain. No owner media,
+normal service/model dispatch, project schema or Phase03 budget changed.
+
+### 2026-10-08 — previous: USER-FEEDBACK-03
 
 Immediate animated import slots precede browser confirmation and host inspection;
 same-name choices retain feedback until queue handoff. Expandable folder slots
