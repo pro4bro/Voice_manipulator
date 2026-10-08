@@ -215,10 +215,11 @@ def test_api_exposes_diarization_progress_snapshots_for_the_whole_project(tmp_pa
         ),
         "asset-poll",
     )
-    library.set_diarization_state(project.id, "asset-poll", "processing", progress=0)
-    library.set_diarization_progress(project.id, "asset-poll", 37.5)
-
     with TestClient(create_app(project_repository=projects, settings=settings)) as client:
+        # The processing snapshot is created after startup so it represents a
+        # live job rather than orphaned state awaiting recovery.
+        library.set_diarization_state(project.id, "asset-poll", "processing", progress=0)
+        library.set_diarization_progress(project.id, "asset-poll", 37.5)
         response = client.get(f"/api/projects/{project.id}/media/diarization-status")
 
     assert response.status_code == 200

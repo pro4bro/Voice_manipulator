@@ -26,7 +26,7 @@ from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_growing_mkv_follower import FileGrowingMkvFollower
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
-from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt
+from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt, _available_frames
 from app.adapters.obs_livelink_outbox import ObsLiveLinkOutbox
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_reading_packs import FileReadingPacks, ReadingPackError
@@ -572,42 +572,162 @@ def create_app(
         if existing is None or existing.done():
             mkv_stt_workers[key] = asyncio.create_task(transcribe_growing_mkv(project_id, asset_id))
 
+    def discover_project_processing(project):
+        """Read validated durable checkpoints without blocking the API event loop."""
+        media_root = Path(project.project_path) / "assets" / "media"
+        resumable_asset_ids: set[str] = set()
+        mkv_watch_ids: list[str] = []
+        mkv_stt_ids: list[str] = []
+        detailed_ids: list[str] = []
+
+        for checkpoint in media_root.glob("asset-*/follow-state.json"):
+            parent_id = checkpoint.parent.name
+            try:
+                follow = json.loads(checkpoint.read_text(encoding="utf-8"))
+                if follow.get("parentId") != parent_id:
+                    continue
+                # A stale checkpoint is not ownership. The manifest flag is
+                # written by the growing-MKV workflow and gates its resumer.
+                parent = media.get(project.id, parent_id)
+                if (
+                    not parent.growing_mkv_follow
+                    or parent.deleted_at is not None
+                    or parent.disabled
+                ):
+                    continue
+                stt_path = checkpoint.parent / "stt-state.json"
+                if stt_path.is_file():
+                    stt_state = json.loads(stt_path.read_text(encoding="utf-8"))
+                    if (stt_state.get("parentId") != parent_id or stt_state.get("version") != 1
+                            or not isinstance(stt_state.get("tracks", {}), dict)):
+                        continue
+                else:
+                    stt_state = {"tracks": {}}
+                follow_tracks = follow.get("tracks", [])
+                if not isinstance(follow_tracks, list):
+                    continue
+                if not follow.get("finished"):
+                    mkv_watch_ids.append(parent_id)
+                has_selected_track = False
+                for track in follow_tracks:
+                    if not isinstance(track, dict):
+                        continue
+                    asset_id = track.get("assetId")
+                    if not isinstance(asset_id, str) or not asset_id:
+                        continue
+                    asset = media.get(project.id, asset_id)
+                    progress = stt_state.get("tracks", {}).get(asset_id, {})
+                    if (
+                        not asset.transcription_selected
+                        or not asset.import_selected
+                        or asset.deleted_at is not None
+                        or asset.disabled
+                        or progress.get("stopMode") == "all"
+                    ):
+                        continue
+                    has_selected_track = True
+                    if asset.transcription_status not in {"queued", "processing", "reviewing"}:
+                        continue
+                    if not follow.get("finished"):
+                        resumable_asset_ids.add(asset_id)
+                        continue
+                    total = int(track.get("finalFrames", track.get("frames", 0)) or 0)
+                    cursor = int(progress.get("finalFrame", 0) or 0)
+                    published = int(progress.get("publishedFinalFrame", -1))
+                    if cursor < total or published != cursor:
+                        resumable_asset_ids.add(asset_id)
+                if has_selected_track:
+                    mkv_stt_ids.append(parent_id)
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                continue
+
+        for checkpoint in (Path(project.project_path) / "assets" / "obs-livelink").glob(
+            "*/detailed-stt-state.json"
+        ):
+            recording_id = checkpoint.parent.name
+            try:
+                progress = obs_livelink_detailed_stt.status(project, recording_id)
+                if not progress["tracks"]:
+                    continue
+                journal = json.loads((checkpoint.parent / "recording.json").read_text(encoding="utf-8"))
+                recording = journal["recording"]
+                stem_by_channel = {
+                    stem["channelId"]: stem.get("assetId")
+                    for stem in journal.get("sourceStems", [])
+                }
+                needs_work = recording.get("status") != "stopped" or recording.get("archiveStatus") != "ready"
+                has_eligible_track = False
+                for channel_id, track_progress in progress["tracks"].items():
+                    asset_id = stem_by_channel.get(channel_id)
+                    if not asset_id or track_progress.get("stopMode") == "all":
+                        continue
+                    asset = media.get(project.id, asset_id)
+                    if asset.deleted_at is not None or asset.disabled:
+                        continue
+                    has_eligible_track = True
+                    if asset.transcription_status not in {"queued", "processing", "reviewing"}:
+                        continue
+                    if needs_work:
+                        resumable_asset_ids.add(asset_id)
+                        continue
+                    chunks = obs_livelink_detailed_stt._read_chunks(checkpoint.parent, channel_id)
+                    total = _available_frames(recording, chunks)
+                    cursor = int(track_progress.get("cursor", 0) or 0)
+                    published = int(track_progress.get("publishedCursor", -1))
+                    if (
+                        cursor < total
+                        or published != cursor
+                        or not track_progress.get("publishedAsset")
+                    ):
+                        resumable_asset_ids.add(asset_id)
+                if has_eligible_track:
+                    detailed_ids.append(recording_id)
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                continue
+
+        return resumable_asset_ids, mkv_watch_ids, mkv_stt_ids, detailed_ids
+
+    async def restore_project_processing(project) -> set[str]:
+        """Resume validated durable STT checkpoints and release other queue flags."""
+        (resumable_asset_ids, mkv_watch_ids, mkv_stt_ids,
+         detailed_ids) = await asyncio.to_thread(discover_project_processing, project)
+
+        # Reconcile before starting workers so a checkpoint-owned asset cannot
+        # race startup recovery. Diarization has no checkpoint resumer.
+        await transcription_queue.recover_interrupted(
+            project.id, resume_owned_asset_ids=resumable_asset_ids,
+        )
+        await diarization_queue.recover_interrupted(project.id)
+        for parent_id in mkv_watch_ids:
+            ensure_mkv_watcher(project.id, parent_id)
+        for parent_id in mkv_stt_ids:
+            ensure_mkv_stt_worker(project.id, parent_id)
+        for recording_id in detailed_ids:
+            ensure_obs_detail_worker(project.id, recording_id)
+        return resumable_asset_ids
+
     async def resume_mkv_watchers() -> None:
         recovery_log = logging.getLogger("pro4bro.activity")
         started = time.perf_counter()
         recovery_log.info("Runtime recovery scan started; pid=%s", os.getpid())
-        recovery_projects = projects.list()
+        recovery_projects = await asyncio.to_thread(projects.list)
         live_tracks = 0
         for project in recovery_projects:
-            media_root = Path(project.project_path) / "assets" / "media"
-            for checkpoint in media_root.glob("asset-*/follow-state.json"):
-                try:
-                    state = json.loads(checkpoint.read_text(encoding="utf-8"))
-                    if not state.get("finished") and state.get("parentId") == checkpoint.parent.name:
-                        ensure_mkv_watcher(project.id, checkpoint.parent.name)
-                    if state.get("parentId") == checkpoint.parent.name and any(
-                        media.get(project.id, track["assetId"]).transcription_selected
-                        for track in state.get("tracks", [])
-                    ):
-                        ensure_mkv_stt_worker(project.id, checkpoint.parent.name)
-                except (OSError, ValueError, KeyError):
-                    continue
-            for checkpoint in (Path(project.project_path) / "assets" / "obs-livelink").glob(
-                "*/detailed-stt-state.json"
-            ):
-                try:
-                    progress = obs_livelink_detailed_stt.status(project, checkpoint.parent.name)
-                    if progress["tracks"]:
-                        ensure_obs_detail_worker(project.id, checkpoint.parent.name)
-                except (OSError, ValueError, KeyError):
-                    continue
+            await restore_project_processing(project)
             livelink_root = Path(project.project_path) / "assets" / "obs-livelink"
-            deleted_ids = deleted_recording_ids(Path(project.project_path))
-            for journal in livelink_root.glob("*/recording.json"):
+            deleted_ids, journal_paths = await asyncio.to_thread(
+                lambda: (
+                    deleted_recording_ids(Path(project.project_path)),
+                    list(livelink_root.glob("*/recording.json")),
+                )
+            )
+            for journal in journal_paths:
                 if journal.parent.name in deleted_ids:
                     continue
                 try:
-                    live_tracks += obs_livelink_stt.resume_recording(project.id, journal.parent.name)
+                    live_tracks += await asyncio.to_thread(
+                        obs_livelink_stt.resume_recording, project.id, journal.parent.name
+                    )
                 except (OSError, ValueError, KeyError) as exc:
                     logging.getLogger(__name__).warning(
                         "LiveLink STT could not resume %s: %s", journal.parent.name, exc)
@@ -668,11 +788,32 @@ def create_app(
         return projects.create(payload)
 
     @app.post("/api/projects/open", response_model=ProjectRecord)
-    def open_project(payload: ProjectOpen) -> ProjectRecord:
+    async def open_project(payload: ProjectOpen) -> ProjectRecord:
         try:
-            return projects.open(payload.path)
+            project = await asyncio.to_thread(projects.open, payload.path)
+            await restore_project_processing(project)
+            return project
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    async def stop_removed_footage_jobs(project_id: str, asset_id: str) -> None:
+        """Fence sequential STT/diarization before footage leaves the Media Pool."""
+        assets = await asyncio.to_thread(media.list, project_id)
+        removed_ids = [asset_id]
+        removed_ids.extend(
+            asset.id for asset in assets if asset.source_archive_asset_id == asset_id
+        )
+        project = await asyncio.to_thread(projects.get, project_id)
+        results = await asyncio.gather(
+            transcription_queue.stop(project_id, removed_ids, include_active=True),
+            diarization_queue.stop(project_id, removed_ids, include_active=True),
+            growing_mkv_stt.stop(project, asset_ids=removed_ids, include_active=True),
+            obs_livelink_detailed_stt.stop(project, asset_ids=removed_ids, include_active=True),
+            return_exceptions=True,
+        )
+        failures = [result for result in results if isinstance(result, Exception)]
+        if failures:
+            raise ProcessingStopError("; ".join(str(error) for error in failures))
 
     @app.get(
         "/api/projects/{project_id}/media", response_model=list[ProjectMediaAsset]
@@ -1459,11 +1600,11 @@ def create_app(
 
     # The two outcomes have different shapes, so the model is built per branch.
     @app.delete("/api/projects/{project_id}/media/{asset_id}", response_model=None)
-    def remove_project_media(
+    async def remove_project_media(
         project_id: str, asset_id: str, permanent: bool = False
     ) -> Response | ProjectMediaAsset:
         """Recycle by default; erase only when the caller says so outright."""
-        try:
+        def remove_after_stop() -> Response | ProjectMediaAsset:
             if not permanent:
                 return media.send_to_recycle_bin(project_id, asset_id)
             asset = media.get(project_id, asset_id)
@@ -1475,8 +1616,14 @@ def create_app(
             else:
                 media.remove(project_id, asset_id)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        try:
+            await stop_removed_footage_jobs(project_id, asset_id)
+            return await asyncio.to_thread(remove_after_stop)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
+        except ProcessingStopError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

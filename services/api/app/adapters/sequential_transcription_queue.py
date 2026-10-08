@@ -92,6 +92,37 @@ class SequentialTranscriptionQueue:
             self._wake()
         return queued
 
+    async def recover_interrupted(
+        self, project_id: str, *, resume_owned_asset_ids: set[str] | None = None,
+    ) -> list[str]:
+        """Release persisted batch work that has no owner in this API process.
+
+        This is called only at API startup or immediately after Open Existing.
+        It never runs as part of queue polling. It skips tasks already scheduled
+        by this queue and assets claimed by a validated durable checkpoint resumer.
+        """
+        recovered: list[str] = []
+        async with self._lock:
+            assets = await asyncio.to_thread(self.media.list, project_id)
+            for asset in assets:
+                key = (project_id, asset.id)
+                if (
+                    key in self._scheduled
+                    or asset.id in (resume_owned_asset_ids or set())
+                    or asset.transcription_status not in {"queued", "processing", "reviewing"}
+                ):
+                    continue
+                await asyncio.to_thread(
+                    self.media.set_transcription_state,
+                    project_id,
+                    asset.id,
+                    "cancelled",
+                    error="Recognition was interrupted when the API stopped. Run STT again to retry.",
+                    progress=0,
+                )
+                recovered.append(asset.id)
+        return recovered
+
     def _is_held(self, task: TranscriptionTask) -> bool:
         return (
             task.project_id in self._paused_projects

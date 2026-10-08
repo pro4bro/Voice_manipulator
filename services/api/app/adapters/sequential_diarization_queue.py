@@ -252,6 +252,26 @@ class SequentialDiarizationQueue:
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.create_task(self._run(), name="pro4bro-diarization-queue")
 
+    async def recover_interrupted(self, project_id: str) -> list[str]:
+        """Release orphaned persisted diarization state during project restoration."""
+        recovered: list[str] = []
+        async with self._lock:
+            assets = await asyncio.to_thread(self.media.list, project_id)
+            for asset in assets:
+                key = (project_id, asset.id)
+                if key in self._scheduled or asset.diarization_status not in {"queued", "processing"}:
+                    continue
+                await asyncio.to_thread(
+                    self.media.set_diarization_state,
+                    project_id,
+                    asset.id,
+                    "cancelled",
+                    error="Diarization was interrupted when the API stopped. Run diarization again to retry.",
+                    progress=0,
+                )
+                recovered.append(asset.id)
+        return recovered
+
     async def _run(self) -> None:
         while True:
             async with self._lock:
