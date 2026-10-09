@@ -486,13 +486,30 @@ class ObsLiveLinkRuntime:
 
     def _persist(self) -> None:
         state = self._require_state()
-        completed = [item for item in state.completed_recordings if item.recording_id not in
-                     deleted_recording_ids(Path(self.projects.get(item.project_id).project_path).resolve())]
+        completed = []
+        completed_projects = {}
+        for item in state.completed_recordings:
+            try:
+                project = self.projects.get(item.project_id)
+            except KeyError:
+                # Machine state can outlive disposable scratch projects. Such
+                # history has no portable journal owner and must not block the
+                # current recording's journal write.
+                continue
+            project_root = Path(project.project_path).resolve()
+            if item.recording_id in deleted_recording_ids(project_root):
+                continue
+            completed.append(item)
+            completed_projects[item.project_id] = project
+
         def named(recording: ObsCaptureRecording) -> ObsCaptureRecording:
             if recording.display_name:
                 return recording
+            project = completed_projects.get(recording.project_id)
+            if project is None:
+                project = self.projects.get(recording.project_id)
             return recording.model_copy(update={"display_name": recording_name(
-                recording.started_at_utc, self.projects.get(recording.project_id).name,
+                recording.started_at_utc, project.name,
                 "LIV", recording.recording_id)})
         state = state.model_copy(update={
             "recording": named(state.recording) if state.recording else None,
@@ -504,8 +521,12 @@ class ObsLiveLinkRuntime:
         records = [*state.completed_recordings]
         if state.recording:
             records.append(state.recording)
+        completed_ids = {item.recording_id for item in state.completed_recordings}
         for recording in records:
-            project_root = Path(self.projects.get(recording.project_id).project_path).resolve()
+            project = completed_projects.get(recording.project_id)
+            if project is None:
+                project = self.projects.get(recording.project_id)
+            project_root = Path(project.project_path).resolve()
             folder = project_root / "assets" / "obs-livelink" / recording.recording_id
             spans = [span for span in state.spans if span.span_id in recording.video_span_ids]
             record = {"protocolVersion": 3,
@@ -514,7 +535,14 @@ class ObsLiveLinkRuntime:
                       "channels": [channel.model_dump(mode="json", by_alias=True) for channel in state.channels]}
             path = folder / "recording.json"
             if path.is_file():
-                previous = json.loads(path.read_text(encoding="utf-8"))
+                try:
+                    previous = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError, TypeError):
+                    if recording.recording_id in completed_ids:
+                        # Never overwrite or recreate corrupt historical
+                        # journals as if they were valid completed recordings.
+                        continue
+                    raise
                 if previous.get("liveSttRecoveryVersion") == 1:
                     record["liveSttRecoveryVersion"] = 1
                 for key in ("sourceStems", "transportGaps", "archiveSha256"):
@@ -524,6 +552,11 @@ class ObsLiveLinkRuntime:
                 record["channels"].extend(item for item in previous.get("channels", [])
                                           if item["channelId"] not in known)
             else:
+                if recording.recording_id in completed_ids:
+                    # A missing historical journal is a real missing artifact,
+                    # not an invitation to fabricate a replacement from the
+                    # machine snapshot.
+                    continue
                 record["liveSttRecoveryVersion"] = 1
             self._write(path, json.dumps(record, indent=2).encode())
 

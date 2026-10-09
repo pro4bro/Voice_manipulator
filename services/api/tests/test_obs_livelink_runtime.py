@@ -17,11 +17,12 @@ from app.adapters import obs_livelink_archive
 from app.adapters.obs_livelink_connection import ObsLiveLinkConnection
 from app.adapters.obs_livelink_connection import LiveLinkError
 from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
+from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
 from app.adapters.obs_livelink_waveform import ObsLiveLinkWaveform
 from app.domain.models import ProjectCreate
 from app.domain.models import MediaAssetCreate
 from app.adapters.obs_livelink_deletions import deleted_recording_ids, mark_recording_deleted
-from app.domain.obs_livelink_state import ObsTimeInterval, ObsTriggerPolicy
+from app.domain.obs_livelink_state import ObsCaptureRecording, ObsTimeInterval, ObsTriggerPolicy
 
 
 def setup(tmp_path):
@@ -169,6 +170,76 @@ def test_new_obs_process_retains_stopped_recording_for_pcm_outbox_replay(tmp_pat
         sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm,
     )
     assert replayed["durable"]
+
+
+def test_missing_historical_runtime_owner_cannot_block_fresh_obs_capture_or_fake_journal(
+    tmp_path,
+):
+    link, runtime, project, token, hello, _snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, _snapshot, [source(channel_id, source_id)])
+
+    stale_project_record = ObsCaptureRecording(
+        recording_id=str(uuid4()), connection_id="old-connection",
+        project_id="removed-scratch-project", started_monotonic_ns=1,
+        ended_monotonic_ns=2, status="stopped", archive_status="pending",
+    )
+    missing_journal_record = ObsCaptureRecording(
+        recording_id=str(uuid4()), connection_id="old-connection",
+        project_id=project.id, started_monotonic_ns=1,
+        ended_monotonic_ns=2, status="stopped", archive_status="pending",
+    )
+    missing_journal_path = (Path(project.project_path) / "assets" / "obs-livelink" /
+                            missing_journal_record.recording_id / "recording.json")
+    cached = runtime._state.model_copy(update={
+        "completed_recordings": [stale_project_record, missing_journal_record],
+    })
+    runtime._state_path(hello["installId"]).write_text(
+        cached.model_dump_json(by_alias=True, indent=2), encoding="utf-8",
+    )
+
+    new_hello = {**hello, "processInstanceId": str(uuid4()),
+                  "channels": [source(channel_id, source_id)]}
+    restarted_link = ObsLiveLinkConnection(tmp_path / "pairing.json")
+    restarted = ObsLiveLinkRuntime(restarted_link, runtime.projects, tmp_path / "machine")
+    snapshot = restarted.sync(new_hello, restarted_link.hello(token, new_hello))
+    snapshot = restarted.sync_current(restarted_link.claim(
+        project_id=project.id, project_name=project.name, owner_id="owner",
+    ))
+
+    missing_audio = FileObsLiveLinkAudio(
+        restarted_link, restarted, restarted.projects, FileMediaLibrary(restarted.projects), None,
+    )
+    assert snapshot["channels"][0]["channelId"] == channel_id
+    started = lifecycle(restarted, token, new_hello, snapshot, 0,
+                        "obs-start", 1_000_000_000, "fresh-span")
+    recording_id = started["appRecording"]["recordingId"]
+    assert all(item["recordingId"] != stale_project_record.recording_id
+               for item in started["recentRecordings"])
+    assert not missing_journal_path.exists(), "Persisting runtime state must not fabricate an old journal"
+    with pytest.raises(LiveLinkError, match="recording journal is missing"):
+        missing_audio.retry(project.id, missing_journal_record.recording_id)
+
+    current_journal = (Path(project.project_path) / "assets" / "obs-livelink" /
+                       recording_id / "recording.json")
+    assert current_journal.is_file()
+    assert json.loads(current_journal.read_text(encoding="utf-8"))["recording"]["recordingId"] == recording_id
+
+    pcm = struct.pack("<" + "h" * 480, *([1200] * 480))
+    assert missing_audio.chunk(
+        token, install_id=new_hello["installId"], connection_id=snapshot["connectionId"],
+        epoch=snapshot["connectionEpoch"], recording_id=recording_id,
+        channel_id=channel_id, source_uuid=source_id, sequence=0,
+        first_sample_index=0, frame_count=480, sample_rate=48000, channels=1,
+        obs_audio_timestamp_ns=1_100_000_000, plugin_monotonic_ns=1_100_000_000,
+        sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm,
+    )["durable"]
+    waveform = missing_audio.waveform.snapshot(project.id, recording_id, channel_id)
+    assert waveform["points"] and waveform["points"][0]["peak"] == 1200
+    transcription = ObsLiveLinkTranscription(
+        restarted.projects, "http://127.0.0.1:1", lambda: False,
+    )
+    assert transcription.snapshot(project.id, recording_id)["events"] == []
 
 
 def test_pcm_ingest_checks_immediate_predecessor_without_scanning_take(tmp_path, monkeypatch):
