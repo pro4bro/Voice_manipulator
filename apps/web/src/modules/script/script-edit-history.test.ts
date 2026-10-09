@@ -1,5 +1,22 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { ScriptEditHistory } from "./script-edit-history";
+
+it("does not serialize entire word snapshots when a text change already proves an edit", () => {
+  const history = new ScriptEditHistory();
+  const words = Array.from({ length: 40000 }, (_, index) => ({ text: String(index), start: index, end: index + 1 }));
+  const serialize = vi.spyOn(JSON, "stringify");
+  try {
+    history.record("large", { text: "before", words }, { text: "after", words });
+    expect(serialize).not.toHaveBeenCalled();
+    expect(history.undo()?.snapshot.words).toBe(words);
+  } finally { serialize.mockRestore(); }
+});
+
+it("still ignores equivalent snapshots with distinct references", () => {
+  const history = new ScriptEditHistory();
+  history.record("one", { text: "xin", words: [{ text: "xin", start: 1, end: 2 }] }, { text: "xin", words: [{ text: "xin", start: 1, end: 2 }] });
+  expect(history.undo()).toBeNull();
+});
 
 it("retains thirty edits, restores text/timing/profile and drops redo after a new edit", () => {
   const history = new ScriptEditHistory();

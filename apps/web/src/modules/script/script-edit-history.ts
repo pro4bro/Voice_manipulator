@@ -18,7 +18,9 @@ export class ScriptEditHistory {
   record(assetId: string | null, before: ScriptEditSnapshot, after: ScriptEditSnapshot) {
     if (before.text === after.text && before.words === after.words && before.emotion === after.emotion &&
       before.speakerProfileIds === after.speakerProfileIds && before.environmentProfileIds === after.environmentProfileIds) return;
-    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    // A changed text already proves an edit; avoid serializing two large
+    // transcripts synchronously just to rediscover that difference.
+    if (before.text === after.text && JSON.stringify(before) === JSON.stringify(after)) return;
     const edit = { assetId, before, after };
     if (this.group) { this.group.push(edit); return; }
     this.commit([edit]);

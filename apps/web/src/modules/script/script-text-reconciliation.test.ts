@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { StudioWord } from "../../domain/types";
-import { insertScriptTextAtWordBoundary, reconcileScriptTextEdit, replaceScriptWord, replaceScriptWordAtTime } from "./script-text-reconciliation";
+import { deleteScriptWords, insertScriptTextAtWordBoundary, reconcileScriptTextEdit, replaceScriptWord, replaceScriptWordAtTime } from "./script-text-reconciliation";
 
 describe("script text timing reconciliation", () => {
+  it("bulk deletes repeated and noncontiguous words without changing surviving punctuation or timing", () => {
+    const before = [{ text: "xin", start: 1, end: 2 }, { text: "xin", start: 3, end: 4 }, { text: "chào", start: 5, end: 6 }, { text: "bạn", start: 7, end: 8 }];
+    const result = deleteScriptWords('“xin,” xin\nchào! bạn.', [2, 0, 2], before)!;
+    expect(result.text).toBe("xin\nbạn.");
+    expect(result.words).toEqual([before[1], before[3]]);
+    expect(result.words[0]).toBe(before[1]); expect(result.words[1]).toBe(before[3]);
+  });
+  it("rejects an unmapped bulk deletion atomically and can remove the entire transcript", () => {
+    const before = [{ text: "xin", start: 1, end: 2 }, { text: "chào", start: 3, end: 4 }];
+    expect(deleteScriptWords("xin", [0, 1], before)).toBeNull();
+    expect(deleteScriptWords("xin chào", [0, 1], before)).toEqual({ text: "", words: [], changedWordIndexes: [] });
+    expect(deleteScriptWords("xin chào", [], before)?.words).toBe(before);
+  });
   it("preserves untouched word objects and timing while estimating inserted words between them", () => {
     const before: StudioWord[] = [
       { text: "Xin", start: 1, end: 1.2, timingSource: "faster-whisper-dtw", timingTrusted: true, speakerId: "lan", emotion: "good" },

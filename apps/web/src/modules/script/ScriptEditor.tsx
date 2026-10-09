@@ -13,6 +13,7 @@ import type { ReadingPlanCard } from "../../domain/reading-plan";
 import { ScriptTable, assignProfileToWords, keepWordInView, moveWordsToRow } from "./script-table";
 import { useScriptShortcuts } from "./script-shortcuts";
 import { mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptTextRange, replaceScriptWord } from "./script-text-reconciliation";
+import { useScriptWordDeletion } from "./use-script-word-deletion";
 
 export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
 export interface ScriptFormatIntent { kind: ScriptFormatKind; value: string | boolean; selection: { start: number; end: number; text: string }; }
@@ -54,28 +55,6 @@ export function scriptWordRanges(value: string, words: StudioWord[]): ScriptWord
   return mapScriptWordsToText(value, words);
 }
 
-function removeScriptWordRanges(value: string, indexes: number[], rangesByIndex: Map<number, ScriptWordRange>): string | null {
-  const ranges = indexes.map((index) => rangesByIndex.get(index));
-  if (ranges.some((range) => !range)) return null;
-  const spans = ranges.filter((range): range is ScriptWordRange => Boolean(range)).map((range) => {
-    let { start, end } = range;
-    while (start > 0 && /[“"'‘([{]/u.test(value[start - 1])) start -= 1;
-    while (end < value.length && /[.,!?;:…"'”’)}\]]/u.test(value[end])) end += 1;
-    if (end < value.length && /\s/u.test(value[end])) end += 1;
-    else while (start > 0 && /\s/u.test(value[start - 1])) start -= 1;
-    return { start, end };
-  }).sort((left, right) => left.start - right.start);
-  const merged = spans.reduce<Array<{ start: number; end: number }>>((result, span) => {
-    const previous = result[result.length - 1];
-    if (previous && span.start <= previous.end) previous.end = Math.max(previous.end, span.end);
-    else result.push({ ...span });
-    return result;
-  }, []);
-  let next = value;
-  for (const span of merged.reverse()) next = next.slice(0, span.start) + next.slice(span.end);
-  return next.trim();
-}
-
 function scriptSegments(value: string, ranges: ScriptWordRange[]): ScriptSegment[] {
   if (!value || !ranges.length) return [{ text: value, wordIndex: null }];
   const segments: ScriptSegment[] = []; let cursor = 0;
@@ -86,6 +65,10 @@ function reviewText(pieces: ReviewPiece[], resolutions: Record<string, ReviewRes
 
 export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange, obsFeed, feedMode = "obs" }: ScriptEditorProps) {
   const commandRef = useRef<HTMLElement>(null);
+  const wordDeletion = useScriptWordDeletion(playbackAssetId, value, words, (edit) => {
+    onWordsChange?.(edit.words, edit.text);
+    onWordSelectionChange?.(EMPTY_SELECTION);
+  });
   const [selectedRowWordIndexes, setSelectedRowWordIndexes] = useState<number[]>([]);
   useScriptShortcuts(commandRef, {
     undo: onUndo ? () => { finishNativeTextEdit(); (document.activeElement as HTMLElement | null)?.blur(); onUndo(); } : undefined,
@@ -94,6 +77,8 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
   const syncedActiveWordIndex = usePlaybackWord(playbackAssetId);
   const activeWordIndex = explicitActiveWordIndex ?? syncedActiveWordIndex;
   const playbackLayerRef = useRef<HTMLDivElement>(null); const reviewLayerRef = useRef<HTMLDivElement>(null); const textareaRef = useRef<HTMLTextAreaElement>(null); const activePlaybackWordRef = useRef<HTMLSpanElement>(null); const selectionMenuRef = useRef<HTMLDivElement>(null); const scriptScrollbarDragRef = useRef(false); const estimatedHoverTimerRef = useRef<number | null>(null); const pendingEstimatedHoverRef = useRef<EstimatedWordHover | null>(null); const [estimatedWordHover, setEstimatedWordHover] = useState<EstimatedWordHover | null>(null); const [tagMode, setTagMode] = useState(false); const [tagSpeakerId, setTagSpeakerId] = useState(""); const [tagEnvironmentId, setTagEnvironmentId] = useState(""); const [tagEmotion, setTagEmotion] = useState<EmotionLabel>("normal"); const [reviewPieces, setReviewPieces] = useState<ReviewPiece[]>([]); const [reviewResolutions, setReviewResolutions] = useState<Record<string, ReviewResolution>>({}); const [showReview, setShowReview] = useState(false); const [hoveredReviewId, setHoveredReviewId] = useState<string | null>(null); const [manualDraft, setManualDraft] = useState(""); const [selectionMenu, setSelectionMenu] = useState<ScriptSelectionMenu | null>(null); const reviewSignature = `${aiReviewKey ?? ""}:${aiReviewText ?? ""}`;
+  const timingNoticeContentRef = useRef<HTMLDivElement>(null);
+  const [timingNoticeHeight, setTimingNoticeHeight] = useState(0);
   const textEditBaselineRef = useRef<{ text: string; words: StudioWord[] } | null>(null);
   const pendingTextRef = useRef(value);
   const [srtExportOpen, setSrtExportOpen] = useState(false);
@@ -122,6 +107,32 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
   useEffect(() => { if (!aiReviewText || !value || aiReviewText.trim() === value.trim()) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } const nextPieces = buildReviewPieces(value, aiReviewText); if (!nextPieces.some((piece) => piece.kind === "change")) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } setReviewPieces(nextPieces); setReviewResolutions({}); setShowReview(true); setDismissedLiveComparisonSignature(liveComparisonSignature); /* A persisted AI revision starts a comparison; normal typing must not reset choices. */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewSignature]);
   const resolvedReview = useMemo(() => reviewPieces.flatMap((piece) => { if (piece.kind !== "change") return []; const resolution = reviewResolutions[piece.id]; return resolution ? [{ piece, resolution }] : []; }), [reviewPieces, reviewResolutions]); const reviewActive = showReview && !tagMode && !isLiveTranscript && reviewPieces.length > 0; const liveComparisonActive = !reviewActive && !tagMode && !isLiveTranscript && dismissedLiveComparisonSignature !== liveComparisonSignature && liveSttPieces.some((piece) => piece.kind === "change"); const comparisonActive = reviewActive || liveComparisonActive; const hasEmotion = words.some((word) => Boolean(word.emotion && word.emotion !== "normal" && word.emotion !== "mix")); const wordCount = value.trim() ? value.trim().split(/\s+/u).length : 0; const duration = Math.round(wordCount / 2.65); const canGenerate = workflow === "voice-manipulator"; const tableVisible = scriptView === "table" && words.length > 0 && !comparisonActive && !isLiveTranscript; const scriptScrollThumb = (() => { const visible = scriptScroll.clientHeight; const total = Math.max(visible, scriptScroll.scrollHeight); const height = total > 0 ? Math.min(100, (visible / total) * 100) : 100; const maxScroll = Math.max(0, total - visible); const top = maxScroll > 0 ? Math.max(0, Math.min(100 - height, (scriptScroll.top / maxScroll) * (100 - height))) : 0; return { top, height, enabled: maxScroll > 0.5 }; })();
+  const showTimingQualityNotice = wordTimingQuality !== "source" && (words.length > 0 || Boolean(wordTimingNote));
+  const showEstimatedTimingNotice = words.some((word) => word.timingSource === "user-interpolated");
+  const hasTimingNotices = showTimingQualityNotice || showEstimatedTimingNotice || wordDeletion.busy || Boolean(wordDeletion.error);
+  const timingNoticeItems: ReactNode = <>
+    {wordDeletion.busy ? <div role="status">Đang xóa từ đã chọn…</div> : null}
+    {wordDeletion.error ? <div role="alert">{wordDeletion.error}</div> : null}
+    {showTimingQualityNotice ? <div className="script-timing-warning" role="status">{wordTimingNote ?? "Word timing chưa có nguồn căn chỉnh đáng tin; app không tự kéo dài hay đoán thời lượng từng từ."}</div> : null}
+    {showEstimatedTimingNotice ? <div className="script-timing-warning is-estimated" role="status">Có từ mới được ước lượng timestamp từ nội dung xung quanh; đây chưa phải thời gian đã được xác nhận bằng âm thanh.</div> : null}
+  </>;
+  const timingNotices: ReactNode = <div className="script-timing-notices">{timingNoticeItems}</div>;
+  useLayoutEffect(() => {
+    const element = timingNoticeContentRef.current;
+    if (!element || !hasTimingNotices || tableVisible) {
+      setTimingNoticeHeight((current) => current ? 0 : current);
+      return undefined;
+    }
+    const measure = () => {
+      const height = element.getBoundingClientRect().height;
+      setTimingNoticeHeight((current) => Math.abs(current - height) > 0.5 ? height : current);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasTimingNotices, tableVisible, wordTimingNote, words]);
   useLayoutEffect(() => {
     if (activeWordIndex < 0 || reviewActive || tagMode) return;
     const activeWord = activePlaybackWordRef.current;
@@ -138,7 +149,10 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
     if (!activeWord || !playbackLayer) return;
     const nextTop = keepWordInView(playbackLayer, activeWord);
     // The textarea sits on top of the layer and must follow it exactly.
-    if (nextTop !== null) textarea.scrollTop = nextTop;
+    if (nextTop !== null) {
+      textarea.scrollTop = nextTop;
+      syncScriptEditorScroll({ currentTarget: textarea } as UIEvent<HTMLTextAreaElement>);
+    }
   }, [activeWordIndex, reviewActive, tagMode, useNativePlayback, value, wordRangesByIndex]);
 
   useEffect(() => {
@@ -209,6 +223,8 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
   }
 
   function updateScriptScroll(textarea: HTMLTextAreaElement) {
+    const noticeLayer = textarea.parentElement?.querySelector<HTMLElement>(".script-timing-notice-layer");
+    if (noticeLayer) noticeLayer.style.transform = `translateY(-${textarea.scrollTop}px)`;
     setScriptScroll((current) => current.top === textarea.scrollTop && current.clientHeight === textarea.clientHeight && current.scrollHeight === textarea.scrollHeight ? current : { top: textarea.scrollTop, clientHeight: textarea.clientHeight, scrollHeight: textarea.scrollHeight });
   }
 
@@ -403,12 +419,7 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
 
   function deleteScriptWords(indexes: number[]): boolean {
     if (!onWordsChange) return false;
-    const ranges = wordRangesByIndex.size ? wordRangesByIndex : new Map(scriptWordRanges(value, words).map((range) => [range.index, range]));
-    const nextText = removeScriptWordRanges(value, indexes, ranges);
-    if (nextText === null) return false;
-    const removed = new Set(indexes);
-    onWordsChange(words.filter((_, index) => !removed.has(index)), nextText);
-    return true;
+    return wordDeletion.remove(indexes);
   }
   function renderComparisonLayer() {
     if (reviewActive) return <div aria-label="So sánh STT và AI" className="script-review-layer" ref={reviewLayerRef}>
@@ -461,8 +472,9 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
       <button disabled={!words.length || isLiveTranscript} onClick={autoFormatFromPauses} type="button">AUTO NHỊP</button>
       {words.length ? <button aria-pressed={tableVisible} onClick={() => { if (comparisonActive) { setShowReview(false); setDismissedLiveComparisonSignature(liveComparisonSignature); setScriptView("table"); } else setScriptView(tableVisible ? "edit" : "table"); }} title="Bật/tắt bảng Script để chuyển giữa bảng và text thường" type="button">DẠNG BẢNG</button> : null}
     </div>
-    {wordTimingQuality !== "source" && (words.length > 0 || wordTimingNote) ? <div className="script-timing-warning" role="status">{wordTimingNote ?? "Word timing chưa có nguồn căn chỉnh đáng tin; app không tự kéo dài hay đoán thời lượng từng từ."}</div> : null}{words.some((word) => word.timingSource === "user-interpolated") ? <div className="script-timing-warning is-estimated" role="status">Có từ mới được ước lượng timestamp từ nội dung xung quanh; đây chưa phải thời gian đã được xác nhận bằng âm thanh.</div> : null}{findOpen ? <div className="script-find-replace" aria-label="Tìm và thay thế"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={findCaseSensitive} onChange={(event) => setFindCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}    {resolvedReview.length ? <div className="script-review-history" aria-label="Các phương án đã chọn">{resolvedReview.map(({ piece, resolution }) => <span className={`is-${resolution.choice}`} key={piece.id}><b>{resolution.choice === "stt" ? "STT" : resolution.choice === "ai" ? "AI" : "Sửa tay"}</b><s>{piece.stt.trim() || "∅"}</s><i>→</i><em>{resolution.text.trim() || "∅"}</em></span>)}</div> : null}</div>
-    {obsFeed ? obsFeed : tableVisible ? <ScriptTable onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={emotionVisualStyle} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
+    {findOpen ? <div className="script-find-replace" aria-label="Tìm và thay thế"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={findCaseSensitive} onChange={(event) => setFindCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}    {resolvedReview.length ? <div className="script-review-history" aria-label="Các phương án đã chọn">{resolvedReview.map(({ piece, resolution }) => <span className={`is-${resolution.choice}`} key={piece.id}><b>{resolution.choice === "stt" ? "STT" : resolution.choice === "ai" ? "AI" : "Sửa tay"}</b><s>{piece.stt.trim() || "∅"}</s><i>→</i><em>{resolution.text.trim() || "∅"}</em></span>)}</div> : null}</div>
+    {obsFeed ? obsFeed : tableVisible ? <ScriptTable deleteBusy={wordDeletion.busy} leadingContent={hasTimingNotices ? timingNotices : undefined} onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={emotionVisualStyle} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, "--script-timing-inset": `${timingNoticeHeight}px`, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
+      {!tagMode && hasTimingNotices ? <div aria-label="Cảnh báo thời gian Script" className="script-timing-notice-layer" style={{ transform: `translateY(-${scriptScroll.top}px)` }}><div className="script-timing-notices" ref={timingNoticeContentRef}>{timingNoticeItems}</div></div> : null}
       {tagMode ? <div aria-label="Gán profile theo từ" className="script-tag-editor">{words.map((word, index) => { const speaker = speakers.find((profile) => profile.id === word.speakerId); const previousSpeakerId = index ? words[index - 1]?.speakerId : null; const wordStyle = { ...emotionVisualStyle(word.emotion, emotionStyle), ...(speaker ? { borderBottomColor: speaker.color } : {}) }; return <Fragment key={`${word.start}-${index}`}>{speaker && speaker.id !== previousSpeakerId ? <span className="script-speaker-cue" style={{ borderColor: speaker.color }}><i style={{ background: speaker.color }} />{speaker.name}</span> : null}<button aria-label={`Gán nhãn cho từ ${word.text}`} className={index === activeWordIndex ? "is-active" : ""} data-emotion={word.emotion ?? "normal"} onClick={() => tagWord(index)} style={wordStyle} title={`${speaker?.name ?? "Chưa gán speaker"} · ${emotionLabel(word.emotion ?? "normal")} · ${word.start.toFixed(2)}s`} type="button">{word.text}<small>{emotionLabel(word.emotion ?? "normal")}</small></button></Fragment>; })}</div> : <><>{comparisonActive ? renderComparisonLayer() : useNativePlayback ? null : <div aria-hidden="true" className="script-playback-layer" ref={playbackLayerRef}>{playbackSegments.map((segment, index) => { const word = segment.wordIndex === null ? undefined : words[segment.wordIndex]; const emotion = word?.emotion; return <span className={`${segment.wordIndex === activeWordIndex ? "is-active" : ""} ${word?.reviewState === "manual" ? "is-edited" : ""} ${word?.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`} data-script-word-index={segment.wordIndex ?? undefined} data-time-estimated={word?.timingSource === "user-interpolated" ? "true" : undefined} key={`${segment.wordIndex ?? "text"}-${index}`} ref={segment.wordIndex === activeWordIndex ? activePlaybackWordRef : undefined} style={emotionVisualStyle(emotion, emotionStyle)}>{segment.text}</span>; })}</div>}</><textarea aria-label="Script transcript" className="script-editor" onBlur={() => { clearEstimatedWordHover(); finishNativeTextEdit(); }} onContextMenu={openSelectionMenu} onFocus={() => { textEditBaselineRef.current = { text: value, words: [...words] }; pendingTextRef.current = value; }} onKeyDown={handleScriptKeyDown} onPointerLeave={clearEstimatedWordHover} onPointerMove={trackEstimatedWordHover} ref={textareaRef} onChange={(event) => { clearEstimatedWordHover(); const nextText = event.target.value; pendingTextRef.current = nextText; if (comparisonActive) { setShowReview(false); setReviewResolutions({}); setDismissedLiveComparisonSignature(liveComparisonSignature); } onChange(nextText); }} onScroll={syncScriptEditorScroll} placeholder="Transcript realtime, STT kỹ và AI fix sẽ cùng xuất hiện ở đây..." readOnly={isLiveTranscript} spellCheck value={value} /><div aria-label="Thanh cuộn Script" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(scriptScrollThumb.top)} className={`script-scrollbar ${scriptScrollThumb.enabled ? "" : "is-static"}`} onPointerCancel={endScriptScrollbar} onPointerDown={beginScriptScrollbar} onPointerMove={moveScriptScrollbar} onPointerUp={endScriptScrollbar} role="scrollbar" tabIndex={0}><i style={{ height: `${scriptScrollThumb.height}%`, top: `${scriptScrollThumb.top}%` }} /></div></>}</div>}
       {estimatedWordHover && words[estimatedWordHover.index] ? <div className="script-table__timing-status" role="status" style={{ left: Math.min(estimatedWordHover.left, Math.max(8, window.innerWidth - 270)), top: estimatedWordHover.top }}>Timestamp ước lượng · {words[estimatedWordHover.index].text} · cần kiểm tra trên waveform</div> : null}
     {selectionMenu ? <div aria-label="Thao tác đoạn Script" className="script-selection-menu" ref={selectionMenuRef} role="menu" style={{ left: selectionMenu.x, top: selectionMenu.y }}>

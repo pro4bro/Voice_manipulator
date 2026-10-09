@@ -1308,7 +1308,13 @@
 .script-table-scrollbar:hover i { background: color-mix(in srgb, var(--accent) 78%, white); }
 .script-table-scrollbar.is-static { cursor: default; opacity: .46; }
 .script-table-scrollbar.is-static i { min-height: 0; }
+.script-table__leading-content { display: grid; gap: 4px; padding: 7px 7px 0; }
 .script-timing-warning { grid-column: 1 / -1; padding: 5px 8px; color: var(--gold-ink); border: 1px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); line-height: 1.35; }
+.script-timing-notice-layer { position: absolute; z-index: 4; inset: 0 22px 0 0; overflow: hidden; padding: 13px 4px 0; pointer-events: none; }
+.script-timing-notices { display: grid; gap: 4px; }
+.script-editor,
+.script-playback-layer,
+.script-review-layer { padding-top: calc(13px + var(--script-timing-inset, 0px)); }
 /* During playback/emotion rendering the visible word layer sits below the editor; keep the editor background clear. */
 .script-editor-stack.is-tracking .script-editor,
 .script-editor-stack.has-emotion:not(.is-reviewing):not(.is-live) .script-editor { background: transparent; }

@@ -29,23 +29,30 @@ function normalizeToken(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/giu, "d").toLocaleLowerCase("vi");
 }
 
-function tokenize(value: string): Token[] {
+function tokenize(value: string, exactOnly = false): Token[] {
   return Array.from(value.matchAll(/[\p{L}\p{N}]+/gu), (match) => {
     const start = match.index ?? 0;
-    return { text: match[0], normalized: normalizeToken(match[0]), start, end: start + match[0].length };
+    if (exactOnly) return { text: match[0], normalized: "", start, end: start + match[0].length };
+    let normalized: string | undefined;
+    return { text: match[0], get normalized() { return normalized ??= normalizeToken(match[0]); }, start, end: start + match[0].length };
   });
 }
 
-function sourceWordTokens(text: string, words: StudioWord[]) {
-  const sourceTokens = tokenize(text);
+function sourceWordTokens(text: string, words: readonly { text: string }[], exactOnly = false) {
+  const sourceTokens = tokenize(text, exactOnly);
   const tokensByWord = new Map<number, Token[]>();
   let cursor = 0;
   for (let index = 0; index < words.length; index += 1) {
-    const wordTokens = tokenize(words[index].text);
+    const wordTokens = tokenize(words[index].text, exactOnly);
     if (!wordTokens.length) continue;
     let matchAt = -1;
     for (let tokenIndex = cursor; tokenIndex <= Math.min(sourceTokens.length - wordTokens.length, cursor + 420); tokenIndex += 1) {
-      if (wordTokens.every((token, offset) => sourceTokens[tokenIndex + offset]?.normalized === token.normalized)) {
+      if (wordTokens.every((token, offset) => {
+        const source = sourceTokens[tokenIndex + offset];
+        return source && (source.text === token.text || (exactOnly
+          ? normalizeToken(source.text) === normalizeToken(token.text)
+          : source.normalized === token.normalized));
+      })) {
         matchAt = tokenIndex;
         break;
       }
@@ -59,7 +66,9 @@ function sourceWordTokens(text: string, words: StudioWord[]) {
 
 /** Map timed word identities onto the exact current Script text offsets. */
 export function mapScriptWordsToText(text: string, words: StudioWord[]): ScriptSourceWordRange[] {
-  const { tokensByWord } = sourceWordTokens(text, words);
+  // Offset mapping needs exact tokens only. Avoid allocating normalized getters
+  // for every word; normalize only a genuinely different spelling on lookup.
+  const { tokensByWord } = sourceWordTokens(text, words, true);
   return [...tokensByWord.entries()].flatMap(([index, tokens]) => tokens.length ? [{ index, start: tokens[0].start, end: tokens[tokens.length - 1].end }] : []);
 }
 
@@ -269,6 +278,42 @@ function pinInsertedWords(result: ReconciledScriptEdit, sourceTime: number, orig
   const gap = Math.min(.01, step / 5);
   indexes.forEach((index, offset) => { result.words[index] = { ...result.words[index], start: start + offset * step, end: start + (offset + 1) * step - gap, timingSource: "user-interpolated", timingTrusted: false }; });
   result.words = editableWordTimings(result.words, originalWords.reduce((limit, word) => Math.max(limit, word.end), end));
+}
+
+/** Delete known word identities in one document pass, without realigning survivors. */
+export function deleteScriptWordText(text: string, indexes: readonly number[], words: readonly { text: string }[]): string | null {
+  const removed = new Set(indexes);
+  if (!removed.size) return text;
+  // The mapper reads lexical identity only; no timing is manufactured or sent
+  // to the background worker.
+  const { tokensByWord } = sourceWordTokens(text, words, true);
+  const spans: ScriptTextRange[] = [];
+  for (const index of removed) {
+    const tokens = tokensByWord.get(index);
+    if (!tokens?.length) return null;
+    let start = tokens[0].start, end = tokens[tokens.length - 1].end;
+    while (start > 0 && /[“"'‘([{]/u.test(text[start - 1])) start -= 1;
+    while (end < text.length && /[.,!?;:…"'”’)}\]]/u.test(text[end])) end += 1;
+    if (end < text.length && /\s/u.test(text[end])) end += 1;
+    else while (start > 0 && /\s/u.test(text[start - 1])) start -= 1;
+    spans.push({ start, end });
+  }
+  spans.sort((a, b) => a.start - b.start);
+  const pieces: string[] = [];
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.start > cursor) pieces.push(text.slice(cursor, span.start));
+    cursor = Math.max(cursor, span.end);
+  }
+  pieces.push(text.slice(cursor));
+  return pieces.join("").trim();
+}
+
+export function deleteScriptWords(text: string, indexes: readonly number[], words: StudioWord[]): ReconciledScriptEdit | null {
+  const nextText = deleteScriptWordText(text, indexes, words);
+  if (nextText === null) return null;
+  const removed = new Set(indexes);
+  return { text: nextText, words: removed.size ? words.filter((_, index) => !removed.has(index)) : words, changedWordIndexes: [] };
 }
 
 export function insertScriptTextAtWordBoundary(previousText: string, wordBoundaryIndex: number, insertedText: string, words: StudioWord[], sourceTime?: number) {

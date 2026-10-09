@@ -7,7 +7,7 @@ const MAX_FRAGMENTS = 12;
 
 /** Window visual fragments; all actions retain the original logical speaker row. */
 export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
-  rows: T[], view: RefObject<HTMLElement | null>, contentWidth = 620,
+  rows: T[], view: RefObject<HTMLElement | null>, contentWidth = 620, topInset = 0,
 ) {
   const [viewport, setViewport] = useState({ top: 0, height: 400 });
   const [heights, setHeights] = useState<Map<string, number>>(() => new Map());
@@ -49,14 +49,15 @@ export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
     if (!element || !enabled) return;
     const update = () => setViewport((current) => {
       const height = element.clientHeight || 400;
-      return current.top === element.scrollTop && current.height === height ? current : { top: element.scrollTop, height };
+      const top = Math.max(0, element.scrollTop - topInset);
+      return current.top === top && current.height === height ? current : { top, height };
     });
     update();
     element.addEventListener("scroll", update, { passive: true });
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     observer?.observe(element);
     return () => { element.removeEventListener("scroll", update); observer?.disconnect(); };
-  }, [enabled, view]);
+  }, [enabled, topInset, view]);
   useLayoutEffect(() => {
     const element = view.current;
     if (!element || !enabled) return;
@@ -79,7 +80,7 @@ export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
     const target = fragments.findIndex((fragment) => fragment.words[0]?.index <= index && fragment.words.at(-1)!.index >= index);
     if (target < 0 || target >= first && target < last) return false;
     const top = Math.max(0, offsets[target] - 60);
-    view.current.scrollTop = top;
+    view.current.scrollTop = topInset + top;
     setViewport({ top, height: view.current.clientHeight || 400 });
     return true;
   }

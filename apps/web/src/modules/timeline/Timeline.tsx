@@ -10,6 +10,7 @@ import { useScriptShortcuts } from "../script/script-shortcuts";
 import "./timeline-editing.css";
 import "./subtitle-density.css";
 import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/script-text-reconciliation";
+import { useScriptWordDeletion } from "../script/use-script-word-deletion";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { rulerMarks } from "./ruler";
@@ -344,6 +345,12 @@ export function Timeline({
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
   const words = useMemo(() => editableWordTimings(rawWords, duration), [rawWords, duration]);
+  const subtitleText = useMemo(() => take?.text ?? words.map((word) => word.text).join(" "), [take?.text, words]);
+  const wordDeletion = useScriptWordDeletion(take?.id ?? null, subtitleText, words, (edit) => {
+    onWordsChange?.(edit.words, edit.text);
+    cancelWordGesture();
+    onWordSelectionChange?.(EMPTY_SELECTION);
+  });
   const excludedRanges = useMemo(() => excludedTimelineRanges(duration, removedRanges, workingRange), [duration, removedRanges, workingRange]);
   const sections = useMemo(() => timelineSections(duration, cutPoints), [duration, cutPoints]);
   const timingIsTrusted = Boolean(take && words.length);
@@ -1003,6 +1010,10 @@ export function Timeline({
     setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), x, y });
   }
 
+  function deleteSelectedSubtitleWords() {
+    if (speakerMenu && onWordsChange && wordDeletion.remove(speakerMenu.indexes)) setSpeakerMenu(null);
+  }
+
   function beginWordDrag(event: PointerEvent<HTMLElement>, index: number, mode: WordDragMode) {
     // Middle carries a selection; the grips trim, and they are left-button.
     if (mode === "move" ? event.button !== 1 : event.button !== 0) return;
@@ -1335,6 +1346,8 @@ export function Timeline({
         </div>
       }
     >
+      {wordDeletion.busy ? <span className="timeline-delete-feedback" role="status">Đang xóa từ đã chọn…</span> : null}
+      {wordDeletion.error ? <span className="timeline-delete-feedback" role="alert">{wordDeletion.error}</span> : null}
       {promotionNote ? createPortal(<div className="timeline-promotion-note" role="tooltip" style={{ left: promotionNote.x, top: promotionNote.y }}>GÁN TIMESTAMP · {promotionNote.text}<br />Giữ chuột giữa trên waveform: IN → OUT.<br />Chuột trái/phải để kết thúc.</div>, document.body) : null}
       <div className="timeline-section-strip" aria-label="Các đoạn footage đã chia">{sections.map((section) => <button type="button" key={section.id} aria-label={`Đoạn footage ${section.start.toFixed(2)} đến ${section.end.toFixed(2)}`} aria-pressed={selectedSections.includes(section.id)} className={`${selectedSections.includes(section.id) ? "is-selected" : ""} ${removedRanges.some((range) => range.start <= section.start && range.end >= section.end) ? "is-removed" : ""}`} style={{ width: `${(section.end - section.start) / duration * 100}%` }} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id] : [section.id])}>{section.start.toFixed(1)}–{section.end.toFixed(1)}</button>)}</div>
       <div className="timeline-stage">
@@ -1464,7 +1477,7 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>TEXT · {speakerMenu.indexes.length} TỪ</strong><button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button><button role="menuitem" type="button" onClick={() => { let edit = { words, text: take?.text ?? words.map((word) => word.text).join(" ") }; for (const index of [...speakerMenu.indexes].sort((a, b) => b - a)) edit = replaceScriptWord(edit.text, index, "", edit.words); onWordsChange?.(edit.words, edit.text); setSpeakerMenu(null); }}>Xóa text đã chọn</button><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
+      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>TEXT · {speakerMenu.indexes.length} TỪ</strong><button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button><button disabled={wordDeletion.busy || !onWordsChange} role="menuitem" type="button" onClick={deleteSelectedSubtitleWords}>Xóa text đã chọn</button><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
         </button>

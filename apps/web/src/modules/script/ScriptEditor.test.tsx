@@ -16,6 +16,39 @@ function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
 }
 
 describe("ScriptEditor", () => {
+  it("keeps timing notices at the start of the active Script scroll content, separate from transcript text", () => {
+    const words = [
+      { text: "Xin", start: 0, end: 0.3 },
+      { text: "rất", start: 0.4, end: 0.6, timingSource: "user-interpolated" as const, timingTrusted: false },
+      { text: "chào", start: 0.7, end: 1 },
+    ];
+    const view = render(<ScriptEditor onChange={vi.fn()} value="Xin rất chào" words={words} workflow="speech-to-text" />);
+    const notices = screen.getAllByRole("status");
+    const tableScroll = view.container.querySelector(".script-table-scroll")!;
+    const tablePrefix = tableScroll.firstElementChild as HTMLElement;
+    expect(tablePrefix).toHaveClass("script-table__leading-content");
+    expect(tablePrefix.querySelector(".script-table")).toBeNull();
+    expect(notices.every((notice) => tableScroll.contains(notice))).toBe(true);
+    expect(notices.every((notice) => !notice.closest(".script-table"))).toBe(true);
+    expect(view.container.querySelectorAll(".script-table-scroll")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const textarea = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    const noticeLayer = view.container.querySelector<HTMLElement>(".script-timing-notice-layer")!;
+    expect(textarea).toHaveValue("Xin rất chào");
+    expect(noticeLayer.parentElement).toHaveClass("script-editor-stack");
+    expect(noticeLayer).toContainElement(screen.getAllByRole("status")[0]);
+    expect(noticeLayer.textContent).not.toContain(textarea.value);
+    const noticeContent = noticeLayer.querySelector<HTMLElement>(".script-timing-notices")!;
+    vi.spyOn(noticeContent, "getBoundingClientRect").mockReturnValue({ height: 38 } as DOMRect);
+    view.rerender(<ScriptEditor onChange={vi.fn()} value="Xin rất chào" words={[...words]} workflow="speech-to-text" />);
+    expect(noticeLayer.parentElement?.getAttribute("style")).toContain("--script-timing-inset: 38px");
+    textarea.scrollTop = 60;
+    fireEvent.scroll(textarea);
+    expect(noticeLayer.style.transform).toBe("translateY(-60px)");
+    expect(13 + 38 - textarea.scrollTop).toBeLessThan(0);
+  });
+
   it("commits pending plain text timing before requesting redo so a new edit clears the old redo branch", () => {
     const order: string[] = [];
     const onWordsChange = vi.fn(() => order.push("edit"));

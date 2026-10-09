@@ -125,6 +125,28 @@ describe("time-aware timeline editing", () => {
     expect(change.mock.calls[0][1].trim()).toBe("chào");
     expect(change.mock.calls[0][0]).toEqual([words[1]]);
   });
+  it("deletes a bulk selection with bounded document work and one commit", () => {
+    const longWords = Array.from({ length: 6000 }, (_, index) => ({ text: `word${index}`, start: index * .3, end: index * .3 + .28, timingTrusted: true }));
+    const indexes = Array.from({ length: 20 }, (_, index) => index);
+    const change = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change}
+      wordSelection={{ indexes, anchor: 0 }} take={{ ...take, text: longWords.map((word) => word.text).join(" "), words: longWords, duration: 1800 }} />);
+    fireEvent.contextMenu(container.querySelector('[data-timeline-word-index="0"]')!, { clientX: 10, clientY: 10 });
+    const normalize = String.prototype.normalize;
+    let normalizedTokens = 0;
+    String.prototype.normalize = function (form) { normalizedTokens += 1; return normalize.call(this, form); };
+    const started = performance.now();
+    try {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Xóa text đã chọn" }));
+      const elapsed = performance.now() - started;
+      console.info(`bulk subtitle deletion: ${elapsed.toFixed(1)}ms, ${normalizedTokens} normalized tokens`);
+      expect(change).toHaveBeenCalledTimes(1);
+      expect(change.mock.calls[0][0]).toHaveLength(longWords.length - indexes.length);
+      expect(change.mock.calls[0][0][0]).toBe(longWords[20]);
+      expect(change.mock.calls[0][1]).toBe(longWords.slice(20).map((word) => word.text).join(" "));
+      expect(normalizedTokens).toBeLessThanOrEqual(longWords.length * 3);
+    } finally { String.prototype.normalize = normalize; }
+  });
   it("discards Escape edits and prevents a later blur from committing them", () => {
     const change = vi.fn(); render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
     fireEvent.doubleClick(screen.getByRole("button", { name: "Subtitle word xin" }));
