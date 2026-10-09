@@ -3,13 +3,33 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
+
+from app.adapters.startup_diagnostics import StartupDiagnostics
+
+
+# Arm before HTTP/FastAPI/Pydantic imports: a pre-bind stall otherwise has no
+# Uvicorn log or observer yet. Keep the existing launcher/module identity.
+_boot_started = time.monotonic()
+_startup_watch: StartupDiagnostics | None = None
+if __name__ == "__main__":
+    controller_logger = logging.getLogger("uvicorn")
+    controller_logger.setLevel(logging.INFO)
+    controller_logger.propagate = False
+    boot_handler = logging.StreamHandler()
+    boot_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s: %(message)s"))
+    controller_logger.addHandler(boot_handler)
+    _startup_watch = StartupDiagnostics(logging.getLogger("uvicorn.error"))
+    _startup_watch.__enter__()
+    controller_logger.info("Controller boot pid=%s phase=imports", os.getpid())
 
 import httpx
 import uvicorn
@@ -258,7 +278,8 @@ class RuntimeLifecycle:
     def observe(self, stop: threading.Event) -> None:
         """Log changes outside lifecycle actions, including unexpected loss."""
         previous = None
-        with httpx.Client(timeout=0.75, trust_env=False) as client:
+        # These probes target fixed HTTP loopback URLs, never HTTPS.
+        with httpx.Client(timeout=0.75, trust_env=False, verify=False) as client:
             while not stop.is_set():
                 snapshot = self.diagnostic_snapshot(client)
                 if snapshot != previous:
@@ -278,7 +299,9 @@ lifecycle = RuntimeLifecycle(WORKLOAD_SCRIPT)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.upstream = httpx.AsyncClient(timeout=None)
+    # The upstream is fixed HTTP loopback. System CA loading and proxy discovery
+    # must not hold startup or reroute local requests through an external proxy.
+    app.state.upstream = httpx.AsyncClient(timeout=None, trust_env=False, verify=False)
     stop = threading.Event()
     observer = threading.Thread(target=lifecycle.observe, args=(stop,), daemon=True)
     observer.start()
@@ -386,8 +409,16 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18119)
     args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    if _startup_watch is not None:
+        logging.getLogger("uvicorn.error").info("Controller imports complete pid=%s elapsedSeconds=%.3f",
+                                               os.getpid(), time.monotonic() - _boot_started)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info",
+                log_config=None if _startup_watch is not None else uvicorn.config.LOGGING_CONFIG)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        if _startup_watch is not None:
+            _startup_watch.__exit__(None, None, None)
