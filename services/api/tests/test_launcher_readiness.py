@@ -1,6 +1,7 @@
 """Exercise the PowerShell launch boundary with real HTTP and process state."""
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -100,3 +101,83 @@ def test_readiness_deadline_retains_live_process_and_listener_evidence(tmp_path)
     assert "state=timeout" in evidence and "probe=invalid-health" in evidence
     assert "listener=-" not in evidence
     assert elapsed < 8, f"A two-second budget took {elapsed:.3f}s"
+
+
+def test_startup_log_archive_preserves_existing_output_across_retries(tmp_path):
+    log_root = tmp_path / "logs with spaces 日本語"
+    log_root.mkdir()
+    stdout = log_root / "pro4bro-api.out.log"
+    stderr = log_root / "pro4bro-api.err.log"
+    stdout.write_text("first attempt stdout", encoding="utf-8")
+    stderr.write_text("first attempt stderr", encoding="utf-8")
+    script = tmp_path / "archive logs.ps1"
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f". {ps_string(ROOT / 'scripts/pro4bro-readiness.ps1')}\n"
+        f"Preserve-Pro4BroStartupLogs @({ps_string(stdout)}, {ps_string(stderr)})\n"
+        "Write-Output 'ARCHIVED'\n",
+        encoding="utf-8-sig",
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True, text=True, timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    history = log_root / "startup-history"
+    archives = sorted(history.glob("*"))
+    assert len(archives) == 2
+    assert all(re.search(r"\.\d{8}T\d{6}\.\d{7}Z\.[0-9a-f]{32}\.log$", path.name)
+               for path in archives)
+    assert {path.read_text(encoding="utf-8") for path in archives} == {
+        "first attempt stdout", "first attempt stderr",
+    }
+    assert "ARCHIVED" in result.stdout
+    assert stdout.read_text(encoding="utf-8") == "first attempt stdout"
+    assert stderr.read_text(encoding="utf-8") == "first attempt stderr"
+
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f". {ps_string(ROOT / 'scripts/pro4bro-readiness.ps1')}\n"
+        f"Preserve-Pro4BroStartupLogs @({ps_string(stdout)}, {ps_string(stderr)})\n",
+        encoding="utf-8-sig",
+    )
+    retry = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True, text=True, timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert retry.returncode == 0, retry.stdout + retry.stderr
+    retry_archives = sorted(history.glob("*"))
+    assert len(retry_archives) == 4
+    assert len({path.name for path in retry_archives}) == 4
+
+
+def test_startup_log_archive_ignores_missing_empty_and_never_throws(tmp_path):
+    log_root = tmp_path / "log root"
+    log_root.mkdir()
+    empty_log = log_root / "empty.log"
+    empty_log.write_bytes(b"")
+    missing_log = log_root / "missing.log"
+    script = tmp_path / "archive failure.ps1"
+    failure_root = tmp_path / "archive failure root"
+    failure_root.mkdir()
+    blocked_history = failure_root / "startup-history"
+    blocked_history.write_text("not a directory", encoding="utf-8")
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f". {ps_string(ROOT / 'scripts/pro4bro-readiness.ps1')}\n"
+        f"Preserve-Pro4BroStartupLogs @({ps_string(missing_log)}, {ps_string(empty_log)})\n"
+        f"Preserve-Pro4BroStartupLogs @({ps_string(blocked_history)})\n"
+        "Write-Output 'LAUNCH MAY CONTINUE'\n",
+        encoding="utf-8-sig",
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True, text=True, timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "LAUNCH MAY CONTINUE" in result.stdout
+    assert not (log_root / "startup-history").exists()
+    assert not (failure_root / "startup-history").is_dir()

@@ -197,9 +197,11 @@ function Start-Workloads {
         Move-Item -LiteralPath $temporary -Destination $sessionPath -Force
     }
     try {
+        Preserve-Pro4BroStartupLogs @($studioOut, $studioErr)
         $studioProcess = Start-Process -FilePath $studioPython -ArgumentList "-m", "studio_app.server", "--host", "127.0.0.1", "--port", "18081" -WorkingDirectory $studioRuntime -RedirectStandardOutput $studioOut -RedirectStandardError $studioErr -PassThru -WindowStyle Hidden
         Write-WorkloadSession
         Wait-Pro4BroReady "OmniVoice Studio" $studioProcess "$studioUrl/api/health" 150 $readinessLog 500
+        Preserve-Pro4BroStartupLogs @($apiOut, $apiErr)
         $apiProcess = Start-Process -FilePath $apiPython -ArgumentList "-m", "app" -WorkingDirectory $apiRoot -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru -WindowStyle Hidden
         Write-WorkloadSession
         Wait-Pro4BroReady "Pro4Bro API" $apiProcess "$apiUrl/api/health" 60 $readinessLog

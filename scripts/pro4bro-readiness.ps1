@@ -1,5 +1,26 @@
 # Readiness is HTTP health plus the continued life of the process we launched.
 # Keep model/device initialization out of this probe.
+function Preserve-Pro4BroStartupLogs([string[]]$LogPaths) {
+    foreach ($logPath in $LogPaths) {
+        try {
+            if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) { continue }
+            $log = Get-Item -LiteralPath $logPath -ErrorAction Stop
+            if ($log.Length -le 0) { continue }
+
+            $logRoot = Split-Path -Parent $log.FullName
+            $historyRoot = Join-Path $logRoot "startup-history"
+            New-Item -ItemType Directory -Force -Path $historyRoot -ErrorAction Stop | Out-Null
+            $timestamp = [datetime]::UtcNow.ToString("yyyyMMdd'T'HHmmss.fffffff'Z'")
+            $unique = [guid]::NewGuid().ToString("N")
+            $archiveName = "{0}.{1}.{2}.log" -f $log.BaseName, $timestamp, $unique
+            Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $historyRoot $archiveName) `
+                -ErrorAction Stop
+        } catch {
+            # Diagnostics are best-effort; a filesystem issue must never block launch.
+        }
+    }
+}
+
 function Wait-Pro4BroReady(
     [string]$Label,
     [System.Diagnostics.Process]$Process,

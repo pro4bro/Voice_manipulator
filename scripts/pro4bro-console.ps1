@@ -314,6 +314,7 @@ if ($reclaimed -gt 0) {
 
 $controllerOut = Join-Path $logRoot "pro4bro-controller.out.log"
 $controllerErr = Join-Path $logRoot "pro4bro-controller.err.log"
+Preserve-Pro4BroStartupLogs @($controllerOut, $controllerErr)
 $controllerProcess = Start-Process -FilePath $python -ArgumentList "-m", "app.runtime_controller", "--host", "127.0.0.1", "--port", "18119" -WorkingDirectory $apiRoot -RedirectStandardOutput $controllerOut -RedirectStandardError $controllerErr -PassThru -WindowStyle Hidden
 
 # The owner record lets a later window take over cleanly: whoever is named here
