@@ -202,7 +202,7 @@ describe("Timeline", () => {
     }
   });
 
-  it("renders readable, bounded overview snippets for a long transcript while keeping source words sampled", () => {
+  it("renders bounded single-word stripes for a long transcript without changing source hit targets", () => {
     vi.stubGlobal("ResizeObserver", class {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe(target: Element) { this.callback([{ target } as ResizeObserverEntry], this as unknown as ResizeObserver); }
@@ -217,13 +217,23 @@ describe("Timeline", () => {
         const start = index * 0.15;
         return { text: `word${index}`, start, end: start + 0.12 };
       });
+      const onWordSelectionChange = vi.fn();
       const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
+        wordSelection={EMPTY_SELECTION} onWordSelectionChange={onWordSelectionChange}
         take={{ name: "long-overview.wav", duration: 900, wordTimingQuality: "source", words }} />);
-      const labels = container.querySelectorAll(".word-track > .subtitle-readable-slot");
+      const labels = [...container.querySelectorAll<HTMLButtonElement>(".word-track > .timeline-word")];
       expect(labels.length).toBeGreaterThan(0);
-      expect(labels.length).toBeLessThanOrEqual(48);
-      expect([...labels].every((label) => label.textContent && label.textContent.length > 1)).toBe(true);
-      expect(container.querySelectorAll(".word-track > .timeline-word").length).toBeLessThanOrEqual(400);
+      expect(labels.length).toBeLessThanOrEqual(250);
+      expect(labels.every((label) => /^Subtitle word word\d+$/.test(label.getAttribute("aria-label") ?? ""))).toBe(true);
+      const pixelSlots = labels.map((label) => ({
+        left: Number.parseFloat(label.style.left) * 10,
+        width: Number.parseFloat(label.style.width) * 10,
+      }));
+      expect(pixelSlots.every((slot) => slot.width >= 4)).toBe(true);
+      expect(pixelSlots.every((slot, index) => index === 0 || slot.left >= pixelSlots[index - 1].left + pixelSlots[index - 1].width - 0.01)).toBe(true);
+      const stripe = labels.find((label) => label.getAttribute("aria-label") === "Subtitle word word24")!;
+      fireEvent.pointerDown(stripe, { button: 0, clientX: 8, clientY: 10, pointerId: 1 });
+      expect(onWordSelectionChange).toHaveBeenCalledWith({ indexes: [24], anchor: 24 });
     } finally {
       rectSpy.mockRestore();
       vi.unstubAllGlobals();

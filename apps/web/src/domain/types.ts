@@ -117,6 +117,8 @@ export interface StudioWord {
   timingSource?: "faster-whisper-dtw" | string;
   /** Structural trust for this exact interval; false words remain visible with a warning. */
   timingTrusted?: boolean;
+  /** Original interval retained when an editable structural estimate is required. */
+  sourceTiming?: { start: number; end: number; source?: string };
   segmentIndex?: number;
   realtime?: string;
   accurate?: string;

@@ -707,9 +707,15 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
   const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
   fireEvent.change(editor, { target: { value: "Hi" } });
   fireEvent.keyDown(editor, { key: "Enter" });
-  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("asset-0", [
-    expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), asset.words[1],
-  ], "Hi world"));
+  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledTimes(1));
+  const [editedAssetId, editedWords, editedText] = onAssetWordsChange.mock.calls.at(-1)!;
+  expect(editedAssetId).toBe("asset-0");
+  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-interpolated", timingTrusted: false }));
+  expect(editedWords[0].start).toBeGreaterThanOrEqual(asset.words![0].start);
+  expect(editedWords[0].end).toBeGreaterThan(editedWords[0].start);
+  expect(editedWords[0].end).toBeLessThan(asset.words![1].start);
+  expect(editedWords[1]).toEqual(asset.words![1]);
+  expect(editedText).toBe("Hi world");
   const gain = screen.getByRole("slider", { name: "Source gain" });
   fireEvent.pointerDown(gain);
   fireEvent.change(gain, { target: { value: "6" } });
@@ -720,7 +726,6 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
   const promotion = vi.fn();
   window.addEventListener("pro4bro:timestamp-promotion", promotion);
   act(() => window.dispatchEvent(new CustomEvent("pro4bro:timestamp-promotion", { detail: { assetId: "asset-0", index: 0 } })));
-  expect(await screen.findByText(/GÁN TIMESTAMP · hello/)).toBeInTheDocument();
   // Original request plus the shared editor's one replay; no feedback loop.
   expect(promotion.mock.calls.filter(([event]) => event.detail.index !== null)).toHaveLength(2);
   expect(promotion).toHaveBeenCalledTimes(3); // Includes the mount's reset event.
@@ -734,6 +739,47 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
   vi.spyOn(subtitle, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
   fireEvent.click(subtitle, { ctrlKey: true, clientX: 50 });
   expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
+});
+
+it("routes undo and redo in both the archived OBS root and focused editor", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const asset = { id: "asset-0", name: "OBS Mic 1", duration: 41, text: "hello", removedRanges: [], words: [
+    { text: "hello", start: 1, end: 2 },
+  ] } as unknown as ProjectMediaAsset;
+  const onUndo = vi.fn(), onRedo = vi.fn();
+  const onAssetWordsChange = vi.fn();
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
+  render(<ObsLiveLinkTimeline assets={[asset]} onUndo={onUndo} onRedo={onRedo}
+    onAssetWordsChange={onAssetWordsChange}
+    onAssetTimelineStateChange={onAssetTimelineStateChange}
+    projectId="project" requestedRecordingId="recording" />);
+
+  fireEvent.pointerEnter(document.querySelector(".timeline-module")!);
+  fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(document, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(1);
+  expect(onRedo).toHaveBeenCalledTimes(1);
+
+  fireEvent.doubleClick(await screen.findByRole("button", { name: /hello ·/ }));
+  expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
+  const focusedTimeline = document.querySelector(".timeline-module")!;
+  fireEvent.pointerEnter(focusedTimeline);
+  fireEvent.keyDown(focusedTimeline, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(focusedTimeline, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(2);
+  expect(onRedo).toHaveBeenCalledTimes(2);
+  fireEvent.click(await screen.findByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
+  const restoredRoot = document.querySelector(".timeline-module")!;
+  fireEvent.pointerEnter(restoredRoot);
+  fireEvent.keyDown(restoredRoot, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(restoredRoot, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(3);
+  expect(onRedo).toHaveBeenCalledTimes(3);
 });
 
 it("shows the actual visible time span for a short archive", async () => {

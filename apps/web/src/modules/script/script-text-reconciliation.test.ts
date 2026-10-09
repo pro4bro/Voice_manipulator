@@ -90,21 +90,28 @@ describe("script text timing reconciliation", () => {
     expect(result.text).toBe("Xin bạn nhé chào");
     expect(result.words[0]).toBe(before[0]);
     expect(result.words.slice(1, 3).map((word) => word.text)).toEqual(["bạn", "nhé"]);
-    expect(result.words.slice(1, 3).every((word) => word.start === 1.31 && word.end === 1.31 && word.timingTrusted === false)).toBe(true);
+    expect(result.words[1].start).toBe(1.31);
+    expect(result.words.slice(1, 3).every((word) => word.end > word.start && word.timingTrusted === false)).toBe(true);
+    expect(result.words[1].end).toBeLessThan(result.words[2].start);
+    expect(result.words[2].end).toBeLessThan(before[1].start);
     expect(result.words[3]).toBe(before[1]);
   });
 
-  it("replaces a known word with a provisional zero-duration interval at the selected time", () => {
+  it("replaces a known word with a positive provisional interval at the selected time", () => {
     const result = replaceScriptWordAtTime("rồi rồi đi", 1, "về", [
       { text: "rồi", start: 0.1, end: 0.3 },
       { text: "rồi", start: 1.1, end: 1.3 },
       { text: "đi", start: 1.4, end: 1.6 },
     ], 1.22);
-    expect(result.words[1]).toMatchObject({ text: "về", start: 1.22, end: 1.22, timingSource: "user-interpolated", timingTrusted: false });
+    expect(result.words[1]).toMatchObject({ text: "về", start: 1.22, timingSource: "user-interpolated", timingTrusted: false });
+    expect(result.words[1].end).toBeGreaterThan(result.words[1].start);
+    expect(result.words[1].end).toBeLessThan(1.4);
   });
 
-  it("does not invent endpoint timing when inserted words lack two anchors", () => {
+  it("keeps endpoint estimates positive and explicitly untrusted", () => {
     const result = reconcileScriptTextEdit("Xin", "Thưa Xin", [{ text: "Xin", start: 3, end: 3.2 }]);
-    expect(result.words[0]).toMatchObject({ text: "Thưa", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false });
+    expect(result.words[0]).toMatchObject({ text: "Thưa", start: 0, timingSource: "user-interpolated", timingTrusted: false });
+    expect(result.words[0].end).toBeGreaterThan(0);
+    expect(result.words[0].end).toBeLessThan(3);
   });
 });

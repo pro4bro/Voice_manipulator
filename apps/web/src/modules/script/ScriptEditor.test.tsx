@@ -304,8 +304,12 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.change(editor, { target: { value: "Chào" } });
     fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
     expect(onWordsChange).toHaveBeenCalledWith([
-      expect.objectContaining({ text: "Chào", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
+      expect.objectContaining({ text: "Chào", timingSource: "user-interpolated", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
     ], "Chào");
+    const edited = onWordsChange.mock.calls[0][0][0];
+    expect(edited.start).toBeGreaterThanOrEqual(words[0].start);
+    expect(edited.end).toBeGreaterThan(edited.start);
+    expect(edited.end).toBeLessThanOrEqual(words[0].end);
   });
   it("commits an inline table word edit when the user clicks outside the editor", () => {
     const onWordsChange = vi.fn();

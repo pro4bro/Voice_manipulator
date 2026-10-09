@@ -12,6 +12,7 @@ import { obsOverlapByUtterance, obsOverlapSelectionMatches, obsOverlapTime,
   type ObsOverlapSelection, type ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
 import { channelScriptRows } from "../script/channel-script";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { useScriptShortcuts } from "../script/script-shortcuts";
 import { Icon } from "../../ui/Icon";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { Timeline } from "./Timeline";
@@ -19,7 +20,7 @@ import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, readableSubtitleSlots, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
+import { subtitleIndexAtTime, visibleSubtitleWordLayout } from "./subtitle-density";
 import "./waveform.css";
 import "./subtitle-density.css";
 
@@ -184,7 +185,7 @@ function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): n
 export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
                                       transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
                                       assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, speakers = [], onAssetWordsChange,
-                                      onAssetTimelineStateChange }: {
+                                      onAssetTimelineStateChange, onUndo, onRedo }: {
   projectId: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
@@ -193,6 +194,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   speakers?: SpeakerProfile[];
   onAssetWordsChange?: (assetId: string, words: ProjectMediaAsset["words"], text?: string) => void;
   onAssetTimelineStateChange?: (assetId: string, state: TimelineEditState) => Promise<void>;
+  onUndo?: () => void;
+  onRedo?: () => void;
   visibleAssetId?: string | null;
   onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
   seekRequest?: ObsTimelineSeekRequest | null;
@@ -226,6 +229,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const [followLive, setFollowLive] = useState(true);
   const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } } | null>(null);
   const editFocusRef = useRef(editFocus);
+  const moduleRef = useRef<HTMLElement>(null);
+  useScriptShortcuts(moduleRef, { undo: onUndo, redo: onRedo }, ".timeline-module", !editFocus);
   editFocusRef.current = editFocus;
   const audioRef = useRef<HTMLAudioElement>(null);
   const otherAudioRefs = useRef(new Map<string, HTMLAudioElement>());
@@ -722,7 +727,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     });
   }
 
-  if (focusedAsset && editFocus && !isLive) return <Timeline
+  if (focusedAsset && editFocus && !isLive) return <Timeline onUndo={onUndo} onRedo={onRedo}
     editRequest={editFocus.request}
     gain={previewPercentToDb(selectedMuted ? 0 : selectedGain)}
     onGainChange={(value) => {
@@ -739,7 +744,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     leadingActions={<>{statusError ? <span role="alert">{statusError}</span> : null}<button onClick={() => { setStatusError(null); setEditFocus(null); }} type="button">← TẤT CẢ TRACK OBS</button></>}
   />;
 
-  return <ModuleFrame eyebrow={isLive ? `REC LIVE · ${lanes.length} CHANNEL` : recordingId ? `OBS LIVELINK · ${recordingId.slice(0, 8)}` : "OBS LIVELINK"}
+  return <ModuleFrame elementRef={moduleRef} eyebrow={isLive ? `REC LIVE · ${lanes.length} CHANNEL` : recordingId ? `OBS LIVELINK · ${recordingId.slice(0, 8)}` : "OBS LIVELINK"}
     title="Timeline" index="A1" tone="dark" className="timeline-module obs-timeline"
     action={<div className="timeline-header-actions obs-timeline__header-actions">
       <label title="Mỗi lần ghi OBS tạo một footage chứa các track và Script đi kèm">BẢN GHI <select aria-label="Bản ghi OBS" disabled={isLive} onChange={(event) => { setSelectedRecordingId(event.target.value); onRecordingIdChange?.(event.target.value); }} title={recording ? recordingDisplayName(recording, projectName) : undefined} value={recordingId ?? ""}>
@@ -935,17 +940,17 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   if (event.ctrlKey || event.metaKey) focusArchivedTrack(archivedAsset, { insertTime: seconds });
                   else seek(event.clientX, event.currentTarget);
                 }}>
-                {readableSubtitleSlots(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth).map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
-                  style={{ left: `${(slot.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(slot.widthPixels / subtitleLaneWidth) * 100}%` }}>{slot.text}</span>)}
                 {excludedRanges.map((range) => { const position = intervalPosition(range.start, range.end, windowStart, windowSpan);
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
-                {visibleSubtitleIndexes(archivedAsset.words ?? [], windowStart, windowSpan, currentTime).map((wordIndex) => {
+                {visibleSubtitleWordLayout(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth,
+                  [subtitleIndexAtTime(archivedAsset.words ?? [], currentTime)]).map((layout) => {
+                  const wordIndex = layout.sourceIndex;
                   const word = archivedAsset.words[wordIndex];
-                  const position = intervalPosition(word.start, word.end, windowStart, windowSpan);
+                  const position = { left: `${(layout.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(layout.widthPixels / subtitleLaneWidth) * 100}%` };
                   return position ? <button key={wordIndex} type="button" style={position}
                     aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${isCompactSubtitleWord(subtitleWordWidthPixels(word.start, word.end, windowStart, windowSpan, subtitleLaneWidth)) ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

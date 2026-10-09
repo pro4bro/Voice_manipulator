@@ -4,13 +4,14 @@ import type { ProjectMediaAsset, SpeakerProfile, TimelineEditRange, WaveformPoin
 import type { TimelineEditState } from "../../domain/timeline-editing";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { useScriptShortcuts } from "../script/script-shortcuts";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
 import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain/timestamp-promotion";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
-import { isCompactSubtitleWord, readableSubtitleSlots, subtitleIndexAtTime, subtitleWordWidthPixels, visibleSubtitleIndexes } from "./subtitle-density";
+import { subtitleIndexAtTime, visibleSubtitleWordLayout } from "./subtitle-density";
 import { Timeline } from "./Timeline";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import "./waveform.css";
@@ -65,9 +66,11 @@ interface Props {
   speakers?: SpeakerProfile[];
   onAssetWordsChange?: (assetId: string, words: ProjectMediaAsset["words"], text?: string) => void;
   onAssetTimelineStateChange?: (assetId: string, state: TimelineEditState) => Promise<void>;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
-export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, onSelectTrack, onCutsChange, readOnly = false, wordSelection, speakers = [], onAssetWordsChange, onAssetTimelineStateChange }: Props) {
+export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, onSelectTrack, onCutsChange, readOnly = false, wordSelection, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
   const [layout, setLayout] = useState<Layout>("layers");
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
@@ -94,6 +97,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [measuredWaveWidth, setMeasuredWaveWidth] = useState(0);
   const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } } | null>(null);
   const editFocusRef = useRef(editFocus);
+  const moduleRef = useRef<HTMLElement>(null);
+  useScriptShortcuts(moduleRef, { undo: onUndo, redo: onRedo }, ".timeline-module", !editFocus);
   editFocusRef.current = editFocus;
   const duration = Math.max(parent.duration, ...tracks.map((track) => track.duration), 0);
   const selected = tracks.find((track) => track.id === selectedTrackId) ?? tracks[0];
@@ -377,7 +382,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const playhead = (currentTime - windowStart) / span * 100;
   if (editFocus) {
     const track = orderedTracks.find((item) => item.id === editFocus.assetId);
-    if (track) return <Timeline
+    if (track) return <Timeline onUndo={onUndo} onRedo={onRedo}
       editRequest={editFocus.request}
       gain={previewPercentToDb(muted[track.id] ? 0 : gains[track.id] ?? 100)}
       onGainChange={(value) => {
@@ -394,7 +399,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     />;
   }
 
-  return <ModuleFrame title="Timeline" eyebrow={`${orderedTracks.length} CHANNEL · ${parent.name}`} index="A1" tone="dark" className="timeline-module obs-timeline imported-timeline"
+  return <ModuleFrame elementRef={moduleRef} title="Timeline" eyebrow={`${orderedTracks.length} CHANNEL · ${parent.name}`} index="A1" tone="dark" className="timeline-module obs-timeline imported-timeline"
     action={<div className="timeline-header-actions obs-timeline__header-actions">
       <div aria-label="Kiểu hiển thị Timeline" className="obs-timeline__layout" role="group">
         <button aria-pressed={layout === "columns"} onClick={() => setLayout("columns")} type="button">CỘT</button>
@@ -463,15 +468,15 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                   if (event.ctrlKey || event.metaKey) focusTrack(track, { insertTime: time });
                   else { const wordIndex = subtitleIndexAtTime(track.words, time); if (wordIndex >= 0) seek(track.words[wordIndex].start); }
                 }}>
-                {readableSubtitleSlots(track.words, windowStart, span, subtitleLaneWidth).map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
-                  style={{ left: `${(slot.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(slot.widthPixels / subtitleLaneWidth) * 100}%` }}>{slot.text}</span>)}
-                {track.words.length ? visibleSubtitleIndexes(track.words, windowStart, span, currentTime).map((wordIndex) => {
+                {track.words.length ? visibleSubtitleWordLayout(track.words, windowStart, span, subtitleLaneWidth,
+                  [subtitleIndexAtTime(track.words, currentTime)]).map((layout) => {
+                  const wordIndex = layout.sourceIndex;
                   const word = track.words[wordIndex];
-                  const style = intervalStyle(word.start, word.end, windowStart, span);
+                  const style = { left: `${(layout.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(layout.widthPixels / subtitleLaneWidth) * 100}%` };
                   return style ? <button key={wordIndex} type="button" style={style}
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${isCompactSubtitleWord(subtitleWordWidthPixels(word.start, word.end, windowStart, span, subtitleLaneWidth)) ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

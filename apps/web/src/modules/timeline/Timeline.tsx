@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
 import { publishPlaybackWord } from "../../domain/playback-sync";
+import { editableWordTimings } from "../../domain/editable-word-timing";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections, type TimelineEditState } from "../../domain/timeline-editing";
 import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
 import { useAudioScrubber } from "./audio-scrubbing";
+import { createPortal } from "react-dom";
+import { useScriptShortcuts } from "../script/script-shortcuts";
 import "./timeline-editing.css";
 import "./subtitle-density.css";
 import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/script-text-reconciliation";
@@ -11,8 +14,8 @@ import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-au
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
-import { acousticEdges, applyWordDrag, type WordDragMode } from "./word-timing";
-import { boundedSubtitleIndexes, isCompactSubtitleWord, readableSubtitleSlots } from "./subtitle-density";
+import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
+import { visibleSubtitleWordLayout } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -64,6 +67,8 @@ interface TimelineProps {
   onGainKeyframesChange?: (keyframes: TimelineGainKeyframe[]) => void;
   speakers?: SpeakerProfile[];
   onWordsChange?: (words: StudioWord[], text?: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
   /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
@@ -83,7 +88,6 @@ const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
 const MAX_GAIN_RANGES = 96;
 const CLOCK_STATE_INTERVAL_MS = 80;
 const MAX_TIMELINE_PIXELS_PER_SECOND = 1000;
-const WORD_TRACK_BUFFER_SECONDS = 2;
 const DETAIL_WAVEFORM_DEBOUNCE_MS = 160;
 const DETAIL_WAVEFORM_MAX_POINTS = 12_000;
 
@@ -201,13 +205,7 @@ function liveEnvelope(samples: EnvelopePoint[]): EnvelopePoint[] {
 }
 
 export function normalizeWordTimings(words: StudioWord[], duration: number): StudioWord[] {
-  const safeDuration = Math.max(0.001, duration);
-  return words.map((word) => {
-    const start = Number.isFinite(word.start) ? Math.min(safeDuration, Math.max(0, word.start)) : 0;
-    const rawEnd = Number.isFinite(word.end) ? word.end : start;
-    const end = Math.min(safeDuration, Math.max(start, rawEnd));
-    return { ...word, start, end };
-  });
+  return editableWordTimings(words, duration);
 }
 
 function activeWordAt(words: StudioWord[], time: number) {
@@ -240,6 +238,8 @@ export function Timeline({
   onGainKeyframesChange,
   speakers = [],
   onWordsChange,
+  onUndo,
+  onRedo,
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
   leadingActions = null,
@@ -264,9 +264,19 @@ export function Timeline({
   const promotedRef = useRef<number | null>(null);
   const promotionDragRef = useRef<{ start: number; index: number } | null>(null);
   const pendingPromotionRef = useRef<number | null>(null);
+  const [collisionIndexes, setCollisionIndexes] = useState<number[]>([]);
+  const [promotionNote, setPromotionNote] = useState<{ x: number; y: number; text: string } | null>(null);
+  const promotionNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wordEditor, setWordEditor] = useState<{ index: number | null; time: number; text: string } | null>(null);
   const wordEditorRef = useRef(wordEditor);
   wordEditorRef.current = wordEditor;
+  const moduleRef = useRef<HTMLElement>(null);
+  useScriptShortcuts(moduleRef, {
+    undo: onUndo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onUndo(); } : undefined,
+    redo: onRedo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onRedo(); } : undefined,
+  }, ".timeline-module");
+  useEffect(() => { hidePromotionNote(); }, [promotedIndex, take?.id]);
+  useEffect(() => () => { if (promotionNoteTimer.current) clearTimeout(promotionNoteTimer.current); }, []);
   const [draftGain, setDraftGain] = useState(gain);
   const [isGainPreviewing, setIsGainPreviewing] = useState(false);
   const [autoCalibrate, setAutoCalibrate] = useState(false);
@@ -321,18 +331,19 @@ export function Timeline({
   const draftWordsRef = useRef<StudioWord[] | null>(null);
   const wordSelectionDraggingRef = useRef(false);
   const isRecording = Boolean(recordingPreview?.active);
-  const words = take?.words ?? [];
+  const rawWords = take?.words ?? [];
   // Spreading 47,000 arguments into Math.max ran on every render and risks a
   // call-stack overflow at that size.
   const lastWordEnd = useMemo(() => {
     let latest = 0;
-    for (const word of words) if (word.end > latest) latest = word.end;
+    for (const word of rawWords) if (word.end > latest) latest = word.end;
     return latest;
-  }, [words]);
+  }, [rawWords]);
   const sourceDuration = isRecording
     ? Math.max(0.1, recordingPreview?.duration ?? 0)
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
+  const words = useMemo(() => editableWordTimings(rawWords, duration), [rawWords, duration]);
   const excludedRanges = useMemo(() => excludedTimelineRanges(duration, removedRanges, workingRange), [duration, removedRanges, workingRange]);
   const sections = useMemo(() => timelineSections(duration, cutPoints), [duration, cutPoints]);
   const timingIsTrusted = Boolean(take && words.length);
@@ -385,35 +396,18 @@ export function Timeline({
   const meterPercent = Math.min(100, Math.max(0, ((activeSignalDb + 96) / 192) * 100));
   const peakPercent = Math.min(100, Math.max(0, ((activePeakDb + 96) / 192) * 100));
   const activeWordIndex = isRecording || !timingIsTrusted ? -1 : activeWordAt(displayWords, currentTime);
-  // Always virtualize. The former "render everything under 1400 words" branch
-  // rebuilt up to 1400 DOM nodes roughly twelve times a second during playback,
-  // because activeWordIndex was a dependency of this memo.
-  const visibleWordRange = useMemo(() => {
-    if (!displayWords.length) return { first: 0, last: 0 };
-    if (!timelineCanvasWidth) return { first: 0, last: Math.min(displayWords.length, 240) };
-    const canvasWidth = timelineCanvasWidth || 1000;
-    const viewportWidth = timelineViewport.width || Math.min(canvasWidth, 1000);
-    const start = Math.max(0, ((timelineViewport.left / canvasWidth) * duration) - WORD_TRACK_BUFFER_SECONDS);
-    const end = Math.min(duration, (((timelineViewport.left + viewportWidth) / canvasWidth) * duration) + WORD_TRACK_BUFFER_SECONDS);
-    let low = 0; let high = displayWords.length;
-    while (low < high) { const middle = Math.floor((low + high) / 2); if (displayWords[middle].end < start) low = middle + 1; else high = middle; }
-    const first = Math.max(0, low - 1);
-    let last = first;
-    while (last < displayWords.length && displayWords[last].start <= end) last += 1;
-    return { first, last };
-  }, [displayWords, duration, timelineCanvasWidth, timelineViewport]);
-  const wordTrackIndexes = useMemo(() => {
-    return boundedSubtitleIndexes(visibleWordRange.first, visibleWordRange.last,
-      [...wordSelection.indexes.slice(-8), activeWordIndex, promotedIndex ?? -1, wordEditor?.index ?? -1], displayWords.length);
-  }, [activeWordIndex, visibleWordRange, wordSelection.indexes, promotedIndex, wordEditor?.index, displayWords.length]);
-  const readableWordSlots = useMemo(() => {
+  // Render original word boxes by screen-space density. Their timestamps still
+  // drive hit testing and edits; compact boxes only receive a four-pixel view.
+  const wordTrackCanvasWidth = timelineCanvasWidth || 1000;
+  const wordTrackViewportWidth = timelineViewport.width || Math.min(wordTrackCanvasWidth, 1000);
+  const wordTrackLayout = useMemo(() => {
     if (!displayWords.length || isRecording || !timingIsTrusted) return [];
-    const canvasWidth = timelineCanvasWidth || 1000;
-    const viewportWidth = timelineViewport.width || Math.min(canvasWidth, 1000);
-    const start = (timelineViewport.left / canvasWidth) * duration;
-    const span = (viewportWidth / canvasWidth) * duration;
-    return readableSubtitleSlots(displayWords, start, span, viewportWidth);
-  }, [displayWords, duration, isRecording, timingIsTrusted, timelineCanvasWidth, timelineViewport]);
+    const start = (timelineViewport.left / wordTrackCanvasWidth) * duration;
+    const span = (wordTrackViewportWidth / wordTrackCanvasWidth) * duration;
+    return visibleSubtitleWordLayout(displayWords, start, span, wordTrackViewportWidth,
+      [...wordSelection.indexes.slice(-8), activeWordIndex, promotedIndex ?? -1, wordEditor?.index ?? -1, ...collisionIndexes]);
+  }, [activeWordIndex, displayWords, duration, isRecording, promotedIndex, timingIsTrusted, timelineViewport,
+    wordEditor?.index, wordSelection.indexes, wordTrackCanvasWidth, wordTrackViewportWidth, collisionIndexes]);
   const playheadPercent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
   const timelineNavigator = useMemo(() => {
     const visible = Math.max(0, timelineViewport.width);
@@ -574,9 +568,9 @@ export function Timeline({
     const cancel = (event: globalThis.PointerEvent) => {
       if (event.button !== 0 && event.button !== 2) return;
       if (promotedRef.current !== null) promoteTimestampWord(null, null);
-      if (promotionDragRef.current) { promotionDragRef.current = null; audioScrubber.end(); audioRef.current?.pause(); }
+      if (promotionDragRef.current) { promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); }
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; audioScrubber.end(); audioRef.current?.pause(); } };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); } };
     window.addEventListener("pointerdown", cancel, true);
     window.addEventListener("keydown", escape);
     return () => { window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", escape); };
@@ -1043,6 +1037,34 @@ export function Timeline({
     promoteTimestampWord(take?.id ?? null, index);
   }
 
+  function hidePromotionNote() {
+    if (promotionNoteTimer.current) clearTimeout(promotionNoteTimer.current);
+    promotionNoteTimer.current = null;
+    setPromotionNote(null);
+  }
+
+  function cancelWordGesture() {
+    promotionDragRef.current = null;
+    wordDragRef.current = null;
+    pendingPromotionRef.current = null;
+    draftWordsRef.current = null;
+    setDraftWords(null);
+    setCollisionIndexes([]);
+    promoteTimestampWord(null, null);
+    audioScrubber.end();
+  }
+
+  function showPromotionNote(event: PointerEvent<HTMLElement>) {
+    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
+    if (!target || Number(target.dataset.timelineWordIndex) !== promotedRef.current) return;
+    hidePromotionNote();
+    const rect = target.getBoundingClientRect();
+    const text = words[promotedRef.current!]?.text ?? "";
+    promotionNoteTimer.current = setTimeout(() => {
+      setPromotionNote({ x: Math.max(8, Math.min(window.innerWidth - 340, rect.left)), y: Math.max(8, rect.top - 42), text });
+    }, 2000);
+  }
+
   function beginPromotionDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 1 || promotedRef.current === null || isRecording) return false;
     event.preventDefault();
@@ -1060,6 +1082,11 @@ export function Timeline({
     if (!promotionDragRef.current) return false;
     event.preventDefault();
     const time = sourceTimeAt(event.clientX);
+    const drag = promotionDragRef.current;
+    const preview = assignWordInterval(words, drag.index, drag.start, time, duration);
+    draftWordsRef.current = preview.words;
+    setDraftWords(preview.words);
+    setCollisionIndexes(preview.collisionIndexes);
     audioScrubber.move(time);
     paintPlayhead(time);
     setCurrentTime(time);
@@ -1071,6 +1098,9 @@ export function Timeline({
     if (!drag) return false;
     event.preventDefault();
     promotionDragRef.current = null;
+    draftWordsRef.current = null;
+    setDraftWords(null);
+    setCollisionIndexes([]);
     audioScrubber.end();
     audioRef.current?.pause();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -1079,8 +1109,7 @@ export function Timeline({
       const start = Math.min(drag.start, end);
       const out = Math.max(drag.start, end);
       if (out - start >= .001) {
-        const moved = applyWordDrag(words, [drag.index], "move", start - words[drag.index].start, { duration, edges: [] });
-        const next = applyWordDrag(moved, [drag.index], "trim-end", out - moved[drag.index].end, { duration, edges: [] });
+        const next = assignWordInterval(words, drag.index, start, out, duration).words;
         onWordsChange?.(next);
         const following = drag.index + 1 < words.length ? drag.index + 1 : null;
         promotedRef.current = following;
@@ -1117,6 +1146,7 @@ export function Timeline({
     if (!drag.moved && Math.abs(event.clientX - drag.originX) < 3) return;
     drag.moved = true;
     const next = applyWordDrag(words, drag.indexes, drag.mode, delta, { duration, edges: snapEdges });
+    setCollisionIndexes(timingCollisionIndexes(words, next, drag.indexes));
     draftWordsRef.current = next;
     setDraftWords(next);
   }
@@ -1128,6 +1158,7 @@ export function Timeline({
     const draft = draftWordsRef.current;
     draftWordsRef.current = null;
     setDraftWords(null);
+    setCollisionIndexes([]);
     // Releasing is what commits: the draft was preview only until now.
     if (drag?.moved && draft) onWordsChange?.(draft);
     else if (pendingPromotionRef.current !== null) promoteWord(pendingPromotionRef.current);
@@ -1267,6 +1298,7 @@ export function Timeline({
 
   return (
     <ModuleFrame
+      elementRef={moduleRef}
       eyebrow={liveCaption ?? (isRecording ? "REC LIVE · WAVEFORM" : take?.name ?? "CHƯA CÓ AUDIO")}
       title="Timeline"
       index="A1"
@@ -1303,7 +1335,7 @@ export function Timeline({
         </div>
       }
     >
-      {promotedIndex !== null ? <div className="timeline-promotion-status" role="status">GÁN TIMESTAMP · {words[promotedIndex]?.text} · giữ chuột giữa trên waveform: IN → OUT · chuột trái/phải để kết thúc</div> : null}
+      {promotionNote ? createPortal(<div className="timeline-promotion-note" role="tooltip" style={{ left: promotionNote.x, top: promotionNote.y }}>GÁN TIMESTAMP · {promotionNote.text}<br />Giữ chuột giữa trên waveform: IN → OUT.<br />Chuột trái/phải để kết thúc.</div>, document.body) : null}
       <div className="timeline-section-strip" aria-label="Các đoạn footage đã chia">{sections.map((section) => <button type="button" key={section.id} aria-label={`Đoạn footage ${section.start.toFixed(2)} đến ${section.end.toFixed(2)}`} aria-pressed={selectedSections.includes(section.id)} className={`${selectedSections.includes(section.id) ? "is-selected" : ""} ${removedRanges.some((range) => range.start <= section.start && range.end >= section.end) ? "is-removed" : ""}`} style={{ width: `${(section.end - section.start) / duration * 100}%` }} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id] : [section.id])}>{section.start.toFixed(1)}–{section.end.toFixed(1)}</button>)}</div>
       <div className="timeline-stage">
         <div className="timeline-controls">
@@ -1381,10 +1413,8 @@ export function Timeline({
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
-            <div className="word-track" onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) setWordEditor({ index, time: words[index].start, text: words[index].text }); }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
-              {readableWordSlots.map((slot) => <span aria-hidden="true" className="subtitle-readable-slot" key={`overview-${slot.sourceIndex}-${slot.leftPixels}`}
-                style={{ left: `${((timelineViewport.left + slot.leftPixels) / Math.max(1, timelineCanvasWidth)) * 100}%`, width: `${(slot.widthPixels / Math.max(1, timelineCanvasWidth)) * 100}%` }}>{slot.text}</span>)}
-              {displayWords.length && !isRecording && timingIsTrusted ? wordTrackIndexes.map((index) => { const word = displayWords[index];
+            <div className="word-track" onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) setWordEditor({ index, time: words[index].start, text: words[index].text }); }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+              {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
                 return (
@@ -1392,10 +1422,13 @@ export function Timeline({
                     aria-label={`Subtitle word ${word.text}`}
                     aria-pressed={selectedWordIndexes.has(index)}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setWordEditor({ index, time: word.start, text: word.text }); }}
-                    className={`timeline-word ${isCompactSubtitleWord(timelineCanvasWidth * (end - start) / Math.max(duration, 0.001)) ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    className={`timeline-word ${layout.isCompact ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${collisionIndexes.includes(index) ? "is-timing-collision" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    onPointerEnter={showPromotionNote}
+                    onPointerLeave={hidePromotionNote}
+                    data-collision-note={collisionIndexes.includes(index) ? "Đang lấn timing · giữ lại ít nhất 10% từ này" : undefined}
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
-                    style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0, ((end - start) / Math.max(duration, 0.001)) * 100)}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
                     data-timing-note={word.timingTrusted === false ? "Từ vừa sửa · timestamp nội suy, cần căn chỉnh" : undefined}
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
@@ -1421,7 +1454,7 @@ export function Timeline({
                 );
               }) : <em className={timingUnavailable ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingUnavailable ? take?.wordTimingNote ?? "WORD TIMING · chưa có nguồn căn chỉnh đáng tin; cần chạy lại STT" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
               {excludedRanges.map((range) => <i key={range.id} className="timeline-removed-range" style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}
-              {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" style={{ left: `${wordEditor.time / duration * 100}%` }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); } }} /> : null}
+              {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" style={{ left: `${wordEditor.time / duration * 100}%` }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { if (!(event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey))) event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); } }} /> : null}
             </div>
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>

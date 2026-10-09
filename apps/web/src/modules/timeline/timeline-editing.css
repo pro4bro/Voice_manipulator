@@ -8,7 +8,10 @@
 .timeline-cut-point { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--lime); pointer-events: none; }
 .timeline-module .timeline-word { pointer-events: auto; }
 .timeline-word.is-promoted { outline: 2px solid var(--lime); z-index: 5; }
-.timeline-promotion-status { flex: 0 0 auto; padding: 4px 8px; color: var(--lime-ink); font-size: 11px; }
+.timeline-promotion-note { position: fixed; z-index: 100; max-width: 340px; padding: 4px 8px; background: var(--surface-field); border: 1px solid var(--line); color: var(--text); font-size: 11px; pointer-events: none; }
+.timeline-module .timeline-word.is-timing-collision { animation: timeline-collision-pulse .65s ease-in-out infinite; outline: 2px dashed var(--accent); outline-offset: -2px; }
+@keyframes timeline-collision-pulse { 50% { background: var(--accent); color: var(--text-on-accent); } }
+@media (prefers-reduced-motion: reduce) { .timeline-module .timeline-word.is-timing-collision { animation: none; } }
 .timeline-word-edit { position: absolute; z-index: 8; top: 0; min-width: 100px; height: 100%; border: 1px solid var(--lime); background: var(--surface-field); color: var(--text); }
 .word-track > .timeline-removed-range { top: 0; bottom: 0; pointer-events: none; }
 .timeline-module .timeline-removed-range:not(.is-staged) { background: color-mix(in srgb, var(--text-muted) 35%, transparent); border-color: var(--text-muted); }

@@ -317,7 +317,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <ObsCapture onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
-        return <ObsLiveLinkTimeline onRecordingIdChange={context.onObsTimelineRecordingChange}
+        return <ObsLiveLinkTimeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} onRecordingIdChange={context.onObsTimelineRecordingChange}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           onPlayheadChange={context.onObsPlayheadChange}
           assets={context.mediaAssets} onCutsChange={context.onObsTimelineCutsChange}
@@ -330,7 +330,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const importedTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === importedParent?.id)
         .sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0));
       if (context.workflow === "speech-to-text" && importedParent && importedTracks.length > 0) {
-        return <ImportedMultitrackTimeline key={importedParent.id} parent={importedParent} tracks={importedTracks}
+        return <ImportedMultitrackTimeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={importedParent.id} parent={importedParent} tracks={importedTracks}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           selectedTrackId={context.selectedImportedTrackId} singleTrackView={Boolean(context.selectedImportedTrackId)} onSelectTrack={context.onSelectImportedTrack} wordSelection={context.wordSelection}
           onCutsChange={context.onObsTimelineCutsChange} readOnly={context.readOnlyAsset} />;
@@ -341,7 +341,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const generatedOnly = context.workflow === "voice-manipulator";
       const selectedAsset = generatedOnly ? undefined : workingAssets.find((asset) => asset.id === context.selectedAssetId);
       const noop = () => undefined;
-      return <Timeline workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={generatedOnly || selectedAsset ? context.take : null} />;
+      return <Timeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={generatedOnly || selectedAsset ? context.take : null} />;
     }
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;

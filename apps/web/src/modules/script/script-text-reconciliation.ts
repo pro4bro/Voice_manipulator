@@ -1,4 +1,5 @@
 import type { StudioWord } from "../../domain/types";
+import { editableWordTimings } from "../../domain/editable-word-timing";
 
 export interface ScriptTextRange {
   start: number;
@@ -207,10 +208,16 @@ function reconcileScriptTextEditWithAnchors(previousText: string, nextText: stri
         };
       }
     }
-    estimatedWords(resultWords, inserted, left, right);
+    // At an endpoint, the removed word's span remains a useful provisional
+    // boundary. Do not spread a one-word replacement across the whole file.
+    const removed = [...replacedWordIndexes].map((wordIndex) => previousWords[wordIndex]);
+    const fallbackLeft = removed.length ? { ...removed[0], end: removed.reduce((start, word) => Math.min(start, word.start), Infinity) } : undefined;
+    const fallbackRight = removed.length ? { ...removed[removed.length - 1], start: removed.reduce((end, word) => Math.max(end, word.end), 0) } : undefined;
+    estimatedWords(resultWords, inserted, left ?? fallbackLeft, right ?? fallbackRight);
   }
 
-  return { text: nextText, words: resultWords, changedWordIndexes, };
+  const duration = previousWords.reduce((end, word) => Math.max(end, Number.isFinite(word.end) ? word.end : 0), 0);
+  return { text: nextText, words: editableWordTimings(resultWords, duration), changedWordIndexes, };
 }
 
 export function reconcileScriptTextEdit(previousText: string, nextText: string, previousWords: StudioWord[]): ReconciledScriptEdit {
@@ -250,6 +257,20 @@ export function replaceScriptWord(previousText: string, wordIndex: number, repla
 }
 
 /** Insert subtitle text before a known word boundary; a clicked timeline time is provisional, not source alignment. */
+function pinInsertedWords(result: ReconciledScriptEdit, sourceTime: number, originalWords: StudioWord[]) {
+  const indexes = result.changedWordIndexes;
+  if (!indexes.length) return;
+  const first = indexes[0], last = indexes[indexes.length - 1];
+  const low = result.words[first - 1]?.end ?? 0;
+  const nextStart = result.words[last + 1]?.start;
+  const start = Math.max(low, nextStart === undefined ? sourceTime : Math.min(sourceTime, nextStart - .02 * indexes.length));
+  const end = nextStart ?? start + .09 * indexes.length;
+  const step = Math.max(.000001, (end - start) / indexes.length);
+  const gap = Math.min(.01, step / 5);
+  indexes.forEach((index, offset) => { result.words[index] = { ...result.words[index], start: start + offset * step, end: start + (offset + 1) * step - gap, timingSource: "user-interpolated", timingTrusted: false }; });
+  result.words = editableWordTimings(result.words, originalWords.reduce((limit, word) => Math.max(limit, word.end), end));
+}
+
 export function insertScriptTextAtWordBoundary(previousText: string, wordBoundaryIndex: number, insertedText: string, words: StudioWord[], sourceTime?: number) {
   const ranges = mapScriptWordsToText(previousText, words);
   const boundary = Math.max(0, Math.min(words.length, Math.trunc(wordBoundaryIndex)));
@@ -262,7 +283,7 @@ export function insertScriptTextAtWordBoundary(previousText: string, wordBoundar
   const text = previousText.slice(0, position) + prefix + trimmed + suffix + previousText.slice(position);
   const result = reconcileScriptTextEdit(previousText, text, words);
   if (sourceTime !== undefined && Number.isFinite(sourceTime)) {
-    for (const index of result.changedWordIndexes) result.words[index] = { ...result.words[index], start: Math.max(0, sourceTime), end: Math.max(0, sourceTime), timingSource: "user-interpolated", timingTrusted: false };
+    pinInsertedWords(result, Math.max(0, sourceTime), words);
   }
   return result;
 }
@@ -271,6 +292,6 @@ export function insertScriptTextAtWordBoundary(previousText: string, wordBoundar
 export function replaceScriptWordAtTime(previousText: string, wordIndex: number, replacement: string, words: StudioWord[], sourceTime: number) {
   const result = replaceScriptWord(previousText, wordIndex, replacement, words);
   if (!Number.isFinite(sourceTime)) return result;
-  for (const index of result.changedWordIndexes) result.words[index] = { ...result.words[index], start: Math.max(0, sourceTime), end: Math.max(0, sourceTime), timingSource: "user-interpolated", timingTrusted: false };
+  pinInsertedWords(result, Math.max(0, sourceTime), words);
   return result;
 }

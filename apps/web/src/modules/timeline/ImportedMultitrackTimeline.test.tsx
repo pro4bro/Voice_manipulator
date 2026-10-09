@@ -47,7 +47,7 @@ it("hides labels on dense subtitle intervals and restores them when zoom makes r
   expect(word).toHaveClass("is-active");
 });
 
-it("shows a bounded readable text overview for long imported subtitles", () => {
+it("shows bounded individual word stripes for long imported subtitles", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 900, points: [] }) }));
   const words = Array.from({ length: 6_000 }, (_, index) => {
     const start = index * 0.15;
@@ -57,10 +57,12 @@ it("shows a bounded readable text overview for long imported subtitles", () => {
     ...tracks[0], duration: 900, text: "long transcript", words,
   }]} selectedTrackId={null} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
   const lane = container.querySelector('[aria-label="Subtitle Channel 1"]')!;
-  expect(lane.querySelectorAll(":scope > .subtitle-readable-slot").length).toBeGreaterThan(0);
-  expect(lane.querySelectorAll(":scope > .subtitle-readable-slot").length).toBeLessThanOrEqual(48);
-  expect(lane.querySelectorAll(":scope > .imported-timeline__word").length).toBeLessThanOrEqual(400);
-  expect(lane.querySelector(":scope > .subtitle-readable-slot")?.textContent?.length).toBeGreaterThan(1);
+  const visibleWords = [...lane.querySelectorAll<HTMLButtonElement>(":scope > .imported-timeline__word")];
+  expect(visibleWords.length).toBeGreaterThan(0);
+  expect(visibleWords.length).toBeLessThanOrEqual(250);
+  expect(visibleWords.every((word) => /^word\d+ · /.test(word.getAttribute("aria-label") ?? ""))).toBe(true);
+  expect(visibleWords.every((word) => word.classList.contains("is-compact"))).toBe(true);
+  expect(lane.querySelector(":scope > .subtitle-readable-slot")).toBeNull();
 });
 
 it("opens the shared timeline editor for an archived multitrack word and writes only to its asset", async () => {
@@ -78,9 +80,15 @@ it("opens the shared timeline editor for an archived multitrack word and writes 
   const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
   fireEvent.change(editor, { target: { value: "Hi" } });
   fireEvent.keyDown(editor, { key: "Enter" });
-  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledWith("a", [
-    expect.objectContaining({ text: "Hi", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false }), words[1],
-  ], "Hi world"));
+  await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledTimes(1));
+  const [editedAssetId, editedWords, editedText] = onAssetWordsChange.mock.calls.at(-1)!;
+  expect(editedAssetId).toBe("a");
+  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-interpolated", timingTrusted: false }));
+  expect(editedWords[0].start).toBeGreaterThanOrEqual(words[0].start);
+  expect(editedWords[0].end).toBeGreaterThan(editedWords[0].start);
+  expect(editedWords[0].end).toBeLessThan(words[1].start);
+  expect(editedWords[1]).toEqual(words[1]);
+  expect(editedText).toBe("Hi world");
   const gain = screen.getByRole("slider", { name: "Source gain" });
   fireEvent.pointerDown(gain);
   fireEvent.change(gain, { target: { value: "6" } });
@@ -90,6 +98,40 @@ it("opens the shared timeline editor for an archived multitrack word and writes 
   fireEvent.change(screen.getByRole("slider", { name: "Gain Channel 1" }), { target: { value: "0" } });
   fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
   expect(screen.getByRole("spinbutton", { name: "Nhập gain dB" })).toHaveValue(-96);
+});
+
+it("routes undo and redo in both the Imported Timeline root and focused editor", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const onUndo = vi.fn(), onRedo = vi.fn();
+  const onAssetWordsChange = vi.fn();
+  const onAssetTimelineStateChange = vi.fn().mockResolvedValue(undefined);
+  const words = [{ text: "hello", start: 15, end: 18 }];
+  const rootView = render(<ImportedMultitrackTimeline parent={parent}
+    tracks={[{ ...tracks[0], text: "hello", words }]} selectedTrackId="a" singleTrackView
+    onSelectTrack={() => undefined} onCutsChange={async () => true} onUndo={onUndo} onRedo={onRedo}
+    onAssetWordsChange={onAssetWordsChange} onAssetTimelineStateChange={onAssetTimelineStateChange} />);
+
+  fireEvent.pointerEnter(document.querySelector(".timeline-module")!);
+  fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(document, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(1);
+  expect(onRedo).toHaveBeenCalledTimes(1);
+
+  fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
+  const focusedTimeline = document.querySelector(".timeline-module")!;
+  fireEvent.pointerEnter(focusedTimeline);
+  fireEvent.keyDown(focusedTimeline, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(focusedTimeline, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(2);
+  expect(onRedo).toHaveBeenCalledTimes(2);
+  fireEvent.click(await screen.findByRole("button", { name: "← TẤT CẢ CHANNEL" }));
+  const restoredRoot = document.querySelector(".timeline-module")!;
+  fireEvent.pointerEnter(restoredRoot);
+  fireEvent.keyDown(restoredRoot, { key: "z", ctrlKey: true });
+  fireEvent.keyDown(restoredRoot, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(onUndo).toHaveBeenCalledTimes(3);
+  expect(onRedo).toHaveBeenCalledTimes(3);
 });
 
 it("opens insertion and timestamp-promotion requests from subtitle gestures", async () => {
@@ -114,7 +156,6 @@ it("opens insertion and timestamp-promotion requests from subtitle gestures", as
   const replay = vi.fn();
   window.addEventListener("pro4bro:timestamp-promotion", replay);
   act(() => window.dispatchEvent(new CustomEvent("pro4bro:timestamp-promotion", { detail: { assetId: "a", index: 0 } })));
-  expect(await screen.findByText(/GÁN TIMESTAMP · hello/)).toBeInTheDocument();
   expect(replay.mock.calls.filter(([event]) => event.detail.index !== null)).toHaveLength(2);
   window.removeEventListener("pro4bro:timestamp-promotion", replay);
   fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ CHANNEL" }));

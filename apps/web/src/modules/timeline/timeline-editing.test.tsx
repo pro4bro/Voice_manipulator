@@ -16,6 +16,71 @@ function geometry(container: HTMLElement) {
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, right: 1000, width: 1000, top: 0, bottom: 100, height: 100, x: 0, y: 0, toJSON: () => ({}) });
 }
 describe("time-aware timeline editing", () => {
+  it("routes undo/redo from hovered Timeline and flushes an inline subtitle edit first", () => {
+    const undo = vi.fn(), redo = vi.fn(), change = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} onUndo={undo} onRedo={redo} take={take} />);
+    fireEvent.pointerEnter(container.querySelector(".timeline-module")!);
+    fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+    expect(undo).toHaveBeenCalledTimes(1);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Subtitle word xin" }));
+    const input = screen.getByLabelText("Sửa subtitle");
+    fireEvent.change(input, { target: { value: "mới" } });
+    fireEvent.keyDown(input, { key: "Z", ctrlKey: true, shiftKey: true });
+    expect(change).toHaveBeenCalledTimes(1); expect(redo).toHaveBeenCalledTimes(1);
+    expect(change.mock.invocationCallOrder[0]).toBeLessThan(redo.mock.invocationCallOrder[0]);
+  });
+  it("assigns a promoted interval atomically without changing an untouched next word", () => {
+    const change = vi.fn();
+    const adjacent = { ...take, words: [{ ...words[0], end: 3 }, { ...words[1], start: 3.1, end: 4.1 }] };
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={adjacent} />);
+    geometry(container); act(() => promoteTimestampWord("editing", 0));
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, clientX: 200, pointerId: 1 });
+    fireEvent.pointerMove(waveform, { buttons: 4, clientX: 250, pointerId: 1 });
+    expect(screen.getByRole("button", { name: "Subtitle word chào" })).not.toHaveClass("is-timing-collision");
+    fireEvent.pointerUp(waveform, { button: 1, clientX: 250, pointerId: 1 });
+    expect(change.mock.calls[0][0][1]).toEqual(adjacent.words[1]);
+  });
+  it("undo cancels an uncommitted timing drag so pointer release cannot save its stale preview", () => {
+    const undo = vi.fn(), change = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} onUndo={undo} take={take} />);
+    geometry(container); act(() => promoteTimestampWord("editing", 0));
+    fireEvent.pointerEnter(container.querySelector(".timeline-module")!);
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(waveform, { buttons: 4, clientX: 900, pointerId: 1 });
+    fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+    fireEvent.pointerUp(waveform, { button: 1, clientX: 900, pointerId: 1 });
+    expect(undo).toHaveBeenCalledTimes(1); expect(change).not.toHaveBeenCalled();
+    expect(container.querySelector(".is-timing-collision")).not.toBeInTheDocument();
+  });
+  it("blinks the encroached neighbour during a promoted drag and retains ten percent on release", () => {
+    const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    geometry(container); act(() => promoteTimestampWord("editing", 0));
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(waveform, { buttons: 4, clientX: 900, pointerId: 1 });
+    expect(screen.getByRole("button", { name: "Subtitle word chào" })).toHaveClass("is-timing-collision");
+    fireEvent.pointerUp(waveform, { button: 1, clientX: 900, pointerId: 1 });
+    expect(change.mock.calls[0][0][1]).toMatchObject({ start: 3.9, end: 4 });
+  });
+  it("shows the promotion guidance after two seconds as a portal tooltip above the word", () => {
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} take={take} />);
+    act(() => promoteTimestampWord("editing", 0));
+    vi.useFakeTimers();
+    try {
+      const word = screen.getByRole("button", { name: "Subtitle word xin" });
+      fireEvent.pointerEnter(word);
+      act(() => { vi.advanceTimersByTime(1999); });
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(screen.getByRole("tooltip")).toHaveTextContent("IN → OUT");
+      expect(container.contains(screen.getByRole("tooltip"))).toBe(false);
+      expect(container.querySelector(".timeline-promotion-status")).not.toBeInTheDocument();
+      fireEvent.pointerLeave(word);
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
   it("marks a work region, cuts at playhead and deletes/restores selected sections", () => {
     const { container } = render(<Editable />);
     const audio = container.querySelector("audio")!;
@@ -49,9 +114,9 @@ describe("time-aware timeline editing", () => {
     fireEvent.pointerUp(waveform, { button: 1, clientX: 250, pointerId: 1 });
     expect(change).toHaveBeenCalled();
     expect(change.mock.calls[0][0][0]).toMatchObject({ start: 1, end: 2.5, timingSource: "manual" });
-    expect(container.querySelector(".timeline-promotion-status")).toHaveTextContent("chào");
+    expect(screen.getByRole("button", { name: "Subtitle word chào" })).toHaveClass("is-promoted");
     fireEvent.pointerDown(waveform, { button: 0, clientX: 300, pointerId: 1 });
-    expect(container.querySelector(".timeline-promotion-status")).not.toBeInTheDocument();
+    expect(container.querySelector(".is-promoted")).not.toBeInTheDocument();
   });
   it("deletes selected subtitle text and its word interval together", () => {
     const change = vi.fn(); render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
@@ -80,7 +145,7 @@ describe("time-aware timeline editing", () => {
     expect(change).toHaveBeenCalledTimes(1);
     expect(change.mock.calls[0][1]).toBe("xin mới chào");
     expect(change.mock.calls[0][0][1]).toMatchObject({ text: "mới", start: 2.5, timingTrusted: false });
-    expect(container.querySelector(".timeline-promotion-status")).toBeInTheDocument();
+    expect(container.querySelector(".timeline-promotion-status")).not.toBeInTheDocument();
   });
   it("Escape aborts promoted drag without assigning timestamps", () => {
     const change = vi.fn(); const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);

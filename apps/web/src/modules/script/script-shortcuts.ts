@@ -3,11 +3,12 @@ import { useEffect, useRef, type RefObject } from "react";
 /** Route commands to the Script under the pointer, or its keyboard focus. */
 export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands: {
   selectAll?: () => void; undo?: () => void; redo?: () => void;
-}) {
+}, moduleSelector = ".script-module", enabled = true) {
   const latest = useRef(commands);
   latest.current = commands;
   useEffect(() => {
-    const root = view.current?.closest<HTMLElement>(".script-module") ?? view.current;
+    if (!enabled) return;
+    const root = view.current?.closest<HTMLElement>(moduleSelector) ?? view.current;
     if (!root) return;
     let hovered = root.matches(":hover"), pointerLeft = false;
     const enter = () => { hovered = true; pointerLeft = false; };
@@ -20,7 +21,7 @@ export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands
       if (event.key.toLowerCase() === "a" && !input && latest.current.selectAll) {
         event.preventDefault(); latest.current.selectAll();
       } else if (event.key.toLowerCase() === "z") {
-        if (input && !input.closest(".script-editor, .script-table__word-editor, .channel-script-word-editor")) return;
+        if (input && !input.closest(".script-editor, .script-table__word-editor, .channel-script-word-editor, .timeline-word-edit")) return;
         const action = event.shiftKey ? latest.current.redo : latest.current.undo;
         if (action) { event.preventDefault(); action(); }
       }
@@ -30,5 +31,5 @@ export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands
     root.addEventListener("focusin", focus);
     document.addEventListener("keydown", key);
     return () => { root.removeEventListener("pointerenter", enter); root.removeEventListener("pointerleave", leave); root.removeEventListener("focusin", focus); document.removeEventListener("keydown", key); };
-  }, [view]);
+  }, [view, moduleSelector, enabled]);
 }

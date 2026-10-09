@@ -1,14 +1,15 @@
-/* Keep the original timestamp rectangles and hit targets, but omit text and
-   per-word boxes when a word occupies less space than its label can use. */
+/* Compact buttons still map one-to-one to original timed words. Their screen
+   geometry is spatially decimated and stays visible as a minimum-width stripe. */
 .timeline-module .timeline-word.is-compact,
 .timeline-module .imported-timeline__word.is-compact {
   overflow: hidden;
   padding: 0;
   color: transparent !important;
   font-size: 0;
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--audio-line);
+  background: color-mix(in srgb, var(--audio-line) 55%, var(--soft-fill));
   box-shadow: none;
+  pointer-events: auto;
   text-overflow: clip;
   white-space: nowrap;
 }
@@ -27,30 +28,6 @@
   outline-offset: -1px;
 }
 
-/* Dense overviews show bounded, inert text snippets on fixed screen slots.
-   Original word rectangles stay in place above these labels for timing and
-   selected/active markers; pointer hit testing remains on the full lane. */
-.timeline-module .subtitle-readable-slot {
-  position: absolute;
-  z-index: 0;
-  top: 2px;
-  bottom: 2px;
-  display: block;
-  overflow: hidden;
-  padding: 3px 4px;
-  color: var(--text);
-  border-left: 1px solid color-mix(in srgb, var(--audio-line) 80%, transparent);
-  background: color-mix(in srgb, var(--soft-fill) 80%, transparent);
-  font-family: var(--editorial);
-  font-size: calc(9px * var(--font-scale));
-  line-height: 1.2;
-  pointer-events: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.timeline-module .imported-timeline__words > .subtitle-readable-slot {
-  top: 0;
-  bottom: 0;
-  padding-top: 4px;
-}
+/* Four-pixel overview markers cannot fit two five-pixel trim grips. Their body
+   remains selectable/promotable; zoom exposes the separate edge controls. */
+.timeline-module .timeline-word.is-compact .timeline-word__grip { display: none; }

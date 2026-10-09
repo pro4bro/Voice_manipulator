@@ -1,3 +1,4 @@
+import { editableWordTimings } from "../domain/editable-word-timing";
 import type {
   ActivitySnapshot,
   AppPreferences,
@@ -127,7 +128,7 @@ function normalizeStudioItem(item: StudioAudioItem): StudioAudioItem {
     sampleRate: item.sampleRate ?? Number(legacy.sample_rate ?? 0),
     voiceId: item.voiceId ?? String(legacy.voice_id ?? ""),
     voiceName: item.voiceName ?? String(legacy.voice_name ?? ""),
-    words: (item.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
+    words: editableWordTimings((item.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)), item.duration),
   };
 }
 
@@ -156,7 +157,7 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
     environmentProfileIds: asset.environmentProfileIds ?? [],
     emotion: asset.emotion ?? "normal",
     url: asset.url?.startsWith("/media/") ? `/api/studio${asset.url}` : asset.url,
-    words: (asset.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)),
+    words: editableWordTimings((asset.words ?? []).map((word) => normalizeWord(word as StudioWord & Record<string, unknown>)), asset.duration),
   };
 }
 

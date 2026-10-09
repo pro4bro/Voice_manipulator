@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 
 import { api } from "../api/client";
 import { ScriptEditHistory, type ScriptEditSnapshot } from "../modules/script/script-edit-history";
+import { editableWordTimings } from "../domain/editable-word-timing";
 import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
@@ -993,6 +994,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     if (!assetId) return;
     const asset = mediaAssetsRef.current.find((item) => item.id === assetId) ?? mediaAssets.find((item) => item.id === assetId);
     if (!asset) return;
+    if (!restore) words = editableWordTimings(words, asset.duration);
     const wordSpeakerIds = words.map((word) => word.speakerId).filter((id): id is string => Boolean(id));
     const wordEnvironmentIds = words.flatMap((word) => word.environmentProfileIds ?? []);
     const speakerProfileIds = restore?.speakerProfileIds ?? [...new Set([...asset.speakerProfileIds, ...wordSpeakerIds])];

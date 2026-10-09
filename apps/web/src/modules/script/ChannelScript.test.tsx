@@ -57,9 +57,13 @@ it("edits an archived channel word on double-click and retains the track's timed
   fireEvent.change(editor, { target: { value: "Thưa" } });
   fireEvent.submit(screen.getByRole("form", { name: "Sửa text Xin" }));
   expect(onWordsChange).toHaveBeenCalledWith("a", [
-    expect.objectContaining({ text: "Thưa", start: 0, end: 0, timingSource: "user-interpolated", timingTrusted: false, speakerId: "s1" }),
+    expect.objectContaining({ text: "Thưa", timingSource: "user-interpolated", timingTrusted: false, speakerId: "s1" }),
     track.words[1],
   ], "Thưa chào");
+  const edited = onWordsChange.mock.calls[0][1][0];
+  expect(edited.start).toBeGreaterThanOrEqual(track.words[0].start);
+  expect(edited.end).toBeGreaterThan(edited.start);
+  expect(edited.end).toBeLessThan(track.words[1].start);
 });
 
 it("shows compact OBS labels, timed rows and word-level overlap after detailed STT", () => {
