@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-13 library slots and Script row controls.
-last_activity_desc: Contained Sound Library, leading row profiles, toggle and explicit unassignment. Frontend682/77, API704, typecheck/build pass. Native acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-14 library menus and imported generation.
+last_activity_desc: Context bulk actions, Collection source and generation category. Frontend690/77, API706, typecheck/build pass. Native acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,28 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-14 — Library menus and imported generation (2026-10-09)
+
+Product `99dc301` moves profile color/apply/delete/deselect and model bulk
+delete/deselect into right-click menus. Tick selection inserts no toolbar.
+Selected ranges, nested model scope, keyboard navigation and focus are retained.
+Labels distinguish Speaker Profile identity from the trained ProjectVoice model.
+Optional Collection origin persists on new imports and projects from bounded
+legacy markers without rewriting owner records; imported models hide Add to
+Collection. A generation category override makes imported trained voices available
+immediately and on reopen without changing Training settings; a compact selector
+permits manual category choice. Existing publication/engine gates remain.
+
+Final frontend690/77, API706/twoexistingwarnings, typecheck/build/diff checks pass.
+Gate user-feedback-14-context-menu-collection-generation and ADR0061 retain
+red/green evidence and the old-toolbar caller test update rationale. Read-only
+OBS9 confirms its existing full model is imported. Native narrow-menu layout and
+audible generation remain device acceptance after restart; mocks prove request
+routing, not model quality. Phase03 stays60%; owner media/model/runtime unchanged.
+Exact next STT-GAP-01 retains isolated recognizer/merge evidence before repairing
+missing OBS words, so existing text is not replaced without recognition evidence.
+
 
 ## USER-FEEDBACK-13 — contained Sound Library and Script row controls (2026-10-09)
 

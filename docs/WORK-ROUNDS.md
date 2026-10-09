@@ -12,7 +12,29 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-13
+### 2026-10-09 — current: USER-FEEDBACK-14
+
+Product `99dc301` moves profile color/apply/delete/deselect and model bulk
+delete/deselect into right-click menus. Tick selection inserts no toolbar.
+Selected ranges, nested model scope, keyboard navigation and focus are retained.
+Labels distinguish Speaker Profile identity from the trained ProjectVoice model.
+Optional Collection origin persists on new imports and projects from bounded
+legacy markers without rewriting owner records; imported models hide Add to
+Collection. A generation category override makes imported trained voices available
+immediately and on reopen without changing Training settings; a compact selector
+permits manual category choice. Existing publication/engine gates remain.
+
+Final frontend690/77, API706/twoexistingwarnings, typecheck/build/diff checks pass.
+Gate user-feedback-14-context-menu-collection-generation and ADR0061 retain
+red/green evidence and the old-toolbar caller test update rationale. Read-only
+OBS9 confirms its existing full model is imported. Native narrow-menu layout and
+audible generation remain device acceptance after restart; mocks prove request
+routing, not model quality. Phase03 stays60%; owner media/model/runtime unchanged.
+Exact next STT-GAP-01 retains isolated recognizer/merge evidence before repairing
+missing OBS words, so existing text is not replaced without recognition evidence.
+
+
+### 2026-10-09 — previous: USER-FEEDBACK-13
 
 Product `1532c47` contains profile/voice controls in compact Sound Library slots,
 with fixed selection boxes, separate voice actions and explicit Properties.

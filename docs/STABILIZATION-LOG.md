@@ -850,3 +850,51 @@ ADR0060. Owner restart/reload and narrow-panel containment, clear/reopen and lon
 Script-end acceptance remain device gates. Native rendering cannot be proven by
 source/jsdom checks. Phase03 stays60%; no owner media/model/runtime mutations.
 Exact next STT-GAP-01 retains isolated OBS recognizer/merge evidence before repair.
+
+## USER-FEEDBACK-14 — Library menus and imported generation (2026-10-09)
+
+Product `99dc301` moves profile color/apply/delete/deselect and model bulk
+delete/deselect into right-click menus. Tick selection inserts no toolbar.
+Selected ranges, nested model scope, keyboard navigation and focus are retained.
+Labels distinguish Speaker Profile identity from the trained ProjectVoice model.
+Optional Collection origin persists on new imports and projects from bounded
+legacy markers without rewriting owner records; imported models hide Add to
+Collection. A generation category override makes imported trained voices available
+immediately and on reopen without changing Training settings; a compact selector
+permits manual category choice. Existing publication/engine gates remain.
+
+Final frontend690/77, API706/twoexistingwarnings, typecheck/build/diff checks pass.
+Gate user-feedback-14-context-menu-collection-generation and ADR0061 retain
+red/green evidence and the old-toolbar caller test update rationale. Read-only
+OBS9 confirms its existing full model is imported. Native narrow-menu layout and
+audible generation remain device acceptance after restart; mocks prove request
+routing, not model quality. Phase03 stays60%; owner media/model/runtime unchanged.
+Exact next STT-GAP-01 retains isolated recognizer/merge evidence before repairing
+missing OBS words, so existing text is not replaced without recognition evidence.
+
+
+### Feedback — 2026-10-09
+
+**Nguyên văn (copy từ chat):**
+
+> khi tick chọn thì các nút như "áp dụng màu", "xóa profile" và "bỏ chọn" nên cho vào right click menu. không nên có nút nào nhày ra như này nữa.
+>
+> anh đang không hiểu có 2 mục Anh Vũ và Anh Vũ - full fine-tune là gì? nếu nó là 2 bản training khác nhau thì tại sao chỉ có full fine-tune là có nút Add to Collection? nếu nó là 1 thì tại sao lại có 2 slot trong module? và có 2 dấu tick? và 2 cái này kết quả tạo ra voice sẽ có gì khác nhau?
+>
+> với các voice được Import from Collection thì voice đó nó sẽ không tồn tại nút Add to Collection nữa. và trong page Voice Manipulation sẽ tự nhận voice đã import từ collection và cho người dùng chọn để generate voice.
+
+Ảnh: codex-clipboard-31a8db18-07d5-481d-92b6-868a047501e9.png trong chat.
+
+**Cách hiểu:** tick chỉ chọn đối tượng; thao tác nhóm nằm trong menu chuột phải.
+Phải phân biệt rõ hồ sơ người nói và model, giữ đúng phạm vi mỗi dấu tick.
+Ẩn export đối với model import, kể cả bản import cũ và sau reopen; cho model đó
+xuất hiện để generate mà không phụ thuộc loại model đang chọn ở Voice Training.
+
+### Agent tự kiểm / kết quả so với ngưỡng
+
+Library red2/green16; Workspace/Generator focused51; backend focused31.
+Full frontend ban đầu689 pass/1fail do ModuleRegistry test bấm toolbar đã bỏ;
+test chuyển sang context menu nhưng giữ nguyên xác nhận/callback xóa nhóm.
+Final690/77 và API706/twoexistingwarnings208.24s, typecheck/build/diff pass.
+Không đổi ngưỡng chất lượng hay timing. Native menu và output âm thanh chưa
+nghiệm thu; gate14 ghi checklist. Kế tiếp STT-GAP-01; Phase03 vẫn60%.
