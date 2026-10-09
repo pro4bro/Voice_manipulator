@@ -279,6 +279,14 @@ describe("Timeline", () => {
       expect.objectContaining({ text: "chào", speakerId: "lan" }),
       expect.objectContaining({ text: "bạn" }),
     ]);
+    fireEvent.contextMenu(second, { clientX: 60, clientY: 10 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Chưa gán Profile" }));
+    expect(onWordsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ text: "xin", speakerId: null }),
+      expect.objectContaining({ text: "chào", speakerId: null }),
+      expect.objectContaining({ text: "bạn" }),
+    ]);
+    expect(onWordsChange.mock.calls.at(-1)?.[0][2]).not.toHaveProperty("speakerId");
   });
 
   it("seeks immediately when the user clicks or drags on the waveform", async () => {

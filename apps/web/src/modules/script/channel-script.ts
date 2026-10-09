@@ -9,6 +9,7 @@ export interface ChannelScriptRow {
   start: number | null;
   end: number | null;
   speakerId: string | null;
+  explicitlyUnassigned: boolean;
   text: string;
   words: { word: StudioWord; index: number }[];
   overlaps: ChannelScriptOverlap[];
@@ -67,6 +68,7 @@ export function channelScriptRows(tracks: ProjectMediaAsset[]): ChannelScriptRow
     let current: ChannelScriptRow | null = null;
     for (const item of own) {
       const speakerId = wordSpeaker(item.word);
+      const explicitlyUnassigned = item.word.speakerId === null;
       let interrupted = false;
       if (previous && item.word.start - previous.word.end > TURN_EDGE_SECONDS * 2) {
         const gapStart = previous.word.end + TURN_EDGE_SECONDS;
@@ -80,9 +82,9 @@ export function channelScriptRows(tracks: ProjectMediaAsset[]): ChannelScriptRow
           }
         }
       }
-      if (!current || current.speakerId !== speakerId || interrupted) {
+      if (!current || current.speakerId !== speakerId || current.explicitlyUnassigned !== explicitlyUnassigned || interrupted) {
         current = { trackId: track.id, trackName: trackLabel(track), start: item.word.start, end: item.word.end,
-          speakerId, text: "", words: [], overlaps: [] };
+          speakerId, explicitlyUnassigned, text: "", words: [], overlaps: [] };
         rows.push(current);
       }
       current.end = Math.max(current.end ?? item.word.end, item.word.end);
@@ -93,7 +95,7 @@ export function channelScriptRows(tracks: ProjectMediaAsset[]): ChannelScriptRow
     }
     if (!own.length && track.text.trim()) {
       rows.push({ trackId: track.id, trackName: trackLabel(track), start: null, end: null,
-        speakerId: null, text: track.text.trim(), words: [], overlaps: [] });
+        speakerId: null, explicitlyUnassigned: false, text: track.text.trim(), words: [], overlaps: [] });
     }
   }
 

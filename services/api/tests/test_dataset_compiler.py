@@ -297,6 +297,28 @@ def test_a_manual_row_move_outranks_the_diarization_label(tmp_path):
     assert {segment.speaker_profile_id for segment in manifest.segments} == {other.id}
 
 
+def test_explicitly_unassigned_word_stays_out_of_training_even_with_manual_mapping(tmp_path):
+    fixture = Fixture(tmp_path)
+    words = steady_words(16)
+    words[3]["speakerId"] = ""  # Legacy blank still inherits, unlike explicit null.
+    words[8]["speakerId"] = None
+    words[8]["manualDiarizationSpeakerId"] = "speaker-1"
+    asset = fixture.add(
+        "asset-explicitly-unassigned",
+        words=words,
+        speaker_profile_ids=[fixture.speaker.id],
+        diarization_speaker_assignments={"speaker-1": fixture.speaker.id},
+    )
+
+    stored_word = fixture.library.get(fixture.project.id, asset.id).words[8]
+    manifest = fixture.compiler.compile(fixture.project.id)
+
+    assert "speakerId" in stored_word and stored_word["speakerId"] is None
+    assert "tu8" not in texts(manifest)
+    assert "tu3" in texts(manifest) and "tu12" in texts(manifest)
+    assert {segment.speaker_profile_id for segment in manifest.segments} == {fixture.speaker.id}
+
+
 def test_words_under_talk_over_leave_the_dataset_with_their_audio(tmp_path):
     fixture = Fixture(tmp_path)
     fixture.add("asset-overlap", words=steady_words(24))

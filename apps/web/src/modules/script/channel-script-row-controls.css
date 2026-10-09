@@ -1,0 +1,20 @@
+.obs-script--embedded .obs-script__rows li > .channel-script__row-button {
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+}
+
+.channel-script__row-controls {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.channel-script__row-controls .script-row-selection {
+  flex: none;
+}
+
+.channel-script__row-controls .channel-script__profile {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}

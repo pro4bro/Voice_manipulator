@@ -172,6 +172,10 @@ class _SpeakerContext:
         )
 
     def owner(self, word: dict[str, Any]) -> str | None:
+        # Explicit null is a row-level decision; missing or legacy blank values
+        # still use the footage's speaker mapping/default.
+        if "speakerId" in word and word["speakerId"] is None:
+            return None
         explicit = word.get("speakerId")
         if explicit:
             return str(explicit)

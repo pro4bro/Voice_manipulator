@@ -39,6 +39,25 @@ function show(props: Partial<Parameters<typeof VoiceVault>[0]> = {}) {
 }
 
 describe("Sound Library", () => {
+  it("opens profile properties with a dedicated button inside the profile slot", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Properties profile An" }));
+    expect(screen.getByText("Speaker Profile Properties")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xác nhận & lưu profile" })).toBeInTheDocument();
+  });
+  it("toggles profile and voice checkboxes off without modifier keys", () => {
+    show({ voices: [voice("voice-1", "An · LoRA", "speaker-an")] });
+    const profileCheck = screen.getByRole("button", { name: "Chọn profile An" });
+    fireEvent.click(profileCheck);
+    expect(profileCheck).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(profileCheck);
+    expect(profileCheck).toHaveAttribute("aria-pressed", "false");
+    const voiceCheck = screen.getByRole("button", { name: "Chọn voice An · LoRA" });
+    fireEvent.click(voiceCheck);
+    expect(voiceCheck).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(voiceCheck);
+    expect(voiceCheck).toHaveAttribute("aria-pressed", "false");
+  });
   it("stores evidence with explicit upload consent and preserves it when saving the profile", async () => {
     const upload = vi.spyOn(api, "uploadConsentEvidence").mockResolvedValue({ path: "assets/consent-evidence/proof.pdf", name: "proof.pdf" });
     const save = vi.fn();

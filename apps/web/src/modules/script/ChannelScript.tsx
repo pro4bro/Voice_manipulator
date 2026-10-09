@@ -11,6 +11,7 @@ import { useTranscriptWindow } from "./transcript-window";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
+import "./channel-script-row-controls.css";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -112,22 +113,25 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
       <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
         {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
         {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => <li data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]}>
-        <div className="obs-script__row-button">
+        <div className={`obs-script__row-button ${onAssignWords ? "channel-script__row-button" : ""}`}>
           <div className="obs-script__source">
-            {onAssignWords ? <div className="script-row-selection"><button className="script-table__row-select" type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
-              onClick={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }))}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelection((current) => selectAllListItems(current, rowIds)); }
-              }}><span aria-hidden="true">{selected.includes(rowIds[index]) ? "✓" : ""}</span></button><small aria-label={`Row ${index + 1}`}>{index + 1}</small></div> : null}
+            {onAssignWords ? <div className="channel-script__row-controls">
+              <div className="script-row-selection"><button className="script-table__row-select" type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
+                onClick={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }))}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelection((current) => selectAllListItems(current, rowIds)); }
+                }}><span aria-hidden="true">{selected.includes(rowIds[index]) ? "✓" : ""}</span></button><small aria-label={`Row ${index + 1}`}>{index + 1}</small></div>
+              <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
+                value={row.explicitlyUnassigned ? "" : speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
+                disabled={!selected.includes(rowIds[index])} onChange={(event) => { if (selected.includes(rowIds[index])) assignSelected(event.target.value || null); }}>
+                <option value="">Chưa gán Profile</option>
+                {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
+              </select>
+            </div> : null}
             <button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button"><b>{row.trackName}</b><small>{timecode(row.start)}–{timecode(row.end)}</small></button>
           </div>
           <div>{fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}</div>
-          {onAssignWords ? <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
-            value={speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
-            disabled={!selected.includes(rowIds[index])} onChange={(event) => { if (selected.includes(rowIds[index])) assignSelected(event.target.value || null); }}>
-            <option value="">Chưa gán Profile</option>
-            {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
-          </select> : row.speakerId ? <span className="obs-script__state">{speakers.find((speaker) => speaker.id === row.speakerId)?.name ?? row.speakerId}</span> : null}
+          {!onAssignWords && row.speakerId ? <span className="obs-script__state">{speakers.find((speaker) => speaker.id === row.speakerId)?.name ?? row.speakerId}</span> : null}
         </div>
         {row.overlaps.length ? <div aria-label={`Đoạn chồng tiếng ${row.trackName}`} className="obs-script__overlaps">
           {row.overlaps.map((overlap) => <button key={`${overlap.startSeconds}-${overlap.endSeconds}`}

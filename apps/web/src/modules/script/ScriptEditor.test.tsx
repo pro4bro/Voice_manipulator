@@ -106,6 +106,43 @@ describe("ScriptEditor", () => {
     expect(onWordsChange).toHaveBeenCalledWith([{ ...words[0], speakerId: "binh" }, words[1]]);
     expect(screen.getByRole("combobox", { name: "Speaker Profile của row 2" })).toHaveValue("binh");
   });
+
+  it("toggles Script row checkboxes on plain clicks without losing shift ranges or Ctrl+A", () => {
+    const words = ["speaker-1", "speaker-2", "speaker-3"].map((speakerId, index) => ({
+      text: `word-${index + 1}`, start: index, end: index + 0.5, diarizationSpeakerId: speakerId,
+    }));
+    render(<ScriptEditor onChange={vi.fn()} value="words" words={words} workflow="speech-to-text" />);
+    const rowA = screen.getByRole("button", { name: "Chọn Script row Speaker 1" });
+    const rowB = screen.getByRole("button", { name: "Chọn Script row Speaker 2" });
+    const rowC = screen.getByRole("button", { name: "Chọn Script row Speaker 3" });
+    fireEvent.click(rowA);
+    fireEvent.click(rowC, { shiftKey: true });
+    expect([rowA, rowB, rowC].every((row) => row.getAttribute("aria-pressed") === "true")).toBe(true);
+    fireEvent.click(rowB);
+    expect(rowA).toHaveAttribute("aria-pressed", "true");
+    expect(rowB).toHaveAttribute("aria-pressed", "false");
+    expect(rowC).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(rowB);
+    expect(rowB).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(screen.getByRole("grid", { name: "Bảng Script theo người nói" }), { key: "a", ctrlKey: true });
+    expect([rowA, rowB, rowC].every((row) => row.getAttribute("aria-pressed") === "true")).toBe(true);
+  });
+
+  it("clears a row inherited from the take's default Speaker Profile", () => {
+    const speakers = [{ id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null,
+      age: null, gender: "male" as const, attributes: {}, color: "#ff6745", createdAt: "" }];
+    const initialWords = [{ text: "Xin", start: 0, end: 0.4 }, { text: "chào", start: 0.5, end: 0.9 }];
+    function ActualScriptCaller() {
+      const [words, setWords] = useState(initialWords);
+      const [defaultSpeakerId, setDefaultSpeakerId] = useState<string | null>("speaker-an");
+      return <ScriptEditor onChange={vi.fn()} onWordsChange={setWords} onSpeakerProfileChange={setDefaultSpeakerId}
+        speakerProfileId={defaultSpeakerId} speakers={speakers} value="Xin chào" words={words} workflow="speech-to-text" />;
+    }
+    render(<ActualScriptCaller />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Anh Vũ" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Speaker Profile của row 1" }), { target: { value: "" } });
+    expect(screen.getByRole("combobox", { name: "Speaker Profile của row 1" })).toHaveValue("");
+  });
 it("requires checked rows for the toolbar speaker choice without changing the whole footage profile", () => {
     const onSpeakerProfileChange = vi.fn();
     const speakers = [
@@ -126,7 +163,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
 
     fireEvent.change(pick, { target: { value: "" } });
     expect(onSpeakerProfileChange).not.toHaveBeenCalled();
-    expect(onWordsChange).toHaveBeenLastCalledWith(words.map((word) => ({ ...word, speakerId: undefined })));
+    expect(onWordsChange).toHaveBeenLastCalledWith(words.map((word) => ({ ...word, speakerId: null })));
   });
 
   it("offers no speaker picker when no take is open", () => {
@@ -411,7 +448,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
   it("moves a word to an unassigned diarized row with a manual row override", () => {
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }, { text: "bạn", start: 0.8, end: 1.1, diarizationSpeakerId: "speaker-2" }];
     const moved = moveWordToRow(words, 1, { speakerKey: "speaker-2", profileId: null });
-    expect(moved[1]).toEqual({ ...words[1], speakerId: undefined, manualDiarizationSpeakerId: "speaker-2" });
+    expect(moved[1]).toEqual({ ...words[1], speakerId: null, manualDiarizationSpeakerId: "speaker-2" });
     expect(moved[1].diarizationSpeakerId).toBe("speaker-1");
   });
 
@@ -421,7 +458,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "↓ Speaker 2 · 00:00.800" }));
-    expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: undefined, manualDiarizationSpeakerId: "speaker-2" }, words[2]]);
+    expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: null, manualDiarizationSpeakerId: "speaker-2" }, words[2]]);
   });
 
   it("offers no row to a word in the middle of its row, which would reorder the transcript", () => {

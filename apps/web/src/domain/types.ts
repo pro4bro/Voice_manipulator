@@ -129,6 +129,7 @@ export interface StudioWord {
   diarizationSpeakerId?: string | null;
   /** Manual Script override used when a word is moved to another diarized row. */
   manualDiarizationSpeakerId?: string | null;
+  /** Missing inherits the footage mapping; null explicitly leaves this word unassigned. */
   speakerId?: string | null;
   environmentProfileIds?: string[];
   emotion?: EmotionLabel | null;

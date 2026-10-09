@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 
 import { api } from "../api/client";
 import { ScriptEditHistory, type ScriptEditSnapshot } from "../modules/script/script-edit-history";
+import { assignProfileToWords } from "../modules/script/script-table";
 import { editableWordTimings } from "../domain/editable-word-timing";
 import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
@@ -1076,13 +1077,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const asset = mediaAssetsRef.current.find((item) => item.id === assetId);
     if (!asset || asset.deletedAt) { setNotice("Restore footage trước khi sửa Speaker."); return; }
     if (!indexes.length) return;
-    const selected = new Set(indexes);
-    const words = asset.words.map((word, index) => {
-      if (!selected.has(index)) return word;
-      const next = { ...word, speakerId: speakerProfileId ?? undefined };
-      delete next.manualDiarizationSpeakerId;
-      return next;
-    });
+    const words = assignProfileToWords(asset.words, indexes, speakerProfileId);
     await changeWordAnnotations(words, asset.text, assetId);
   }
 

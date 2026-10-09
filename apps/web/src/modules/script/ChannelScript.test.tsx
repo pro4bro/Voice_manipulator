@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { expect, it, vi } from "vitest";
 
 import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
@@ -43,6 +44,70 @@ it("assigns individual and selected rows to profiles across selected tracks", ()
   fireEvent.click(screen.getByRole("button", { name: "Chọn row 2 của b" }), { shiftKey: true });
   fireEvent.change(screen.getByRole("combobox", { name: "Gán speaker cho channel rows" }), { target: { value: "s2" } });
   expect(onAssignWords.mock.calls).toEqual([["a", [0], "s2"], ["b", [0], "s2"]]);
+});
+
+it("toggles channel row checkboxes on plain clicks while preserving ranges and Ctrl+A", () => {
+  const tracks = ["a", "b", "c"].map((id) => ({ id, name: id, text: id,
+    words: [{ text: id, start: 0, end: 1, speakerId: "s1" }] })) as ProjectMediaAsset[];
+  render(<ChannelScript tracks={tracks} speakers={[{ id: "s1", name: "An" }] as SpeakerProfile[]}
+    onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
+  const rowA = screen.getByRole("button", { name: "Chọn row 1 của a" });
+  const rowB = screen.getByRole("button", { name: "Chọn row 2 của b" });
+  const rowC = screen.getByRole("button", { name: "Chọn row 3 của c" });
+  fireEvent.click(rowA);
+  fireEvent.click(rowC, { shiftKey: true });
+  expect(rowA).toHaveAttribute("aria-pressed", "true");
+  expect(rowB).toHaveAttribute("aria-pressed", "true");
+  expect(rowC).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(rowB);
+  expect(rowA).toHaveAttribute("aria-pressed", "true");
+  expect(rowB).toHaveAttribute("aria-pressed", "false");
+  expect(rowC).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(rowB);
+  expect(rowB).toHaveAttribute("aria-pressed", "true");
+  fireEvent.keyDown(screen.getByRole("list", { name: "Lượt nói theo thời gian" }), { key: "a", ctrlKey: true });
+  expect([rowA, rowB, rowC].every((row) => row.getAttribute("aria-pressed") === "true")).toBe(true);
+});
+
+it("places the per-row profile selector beside the channel row controls", () => {
+  render(<ChannelScript tracks={[{ id: "a", name: "Mic", text: "Xin", words: [
+    { text: "Xin", start: 0, end: 1, speakerId: "s1" },
+  ] } as ProjectMediaAsset]} speakers={[{ id: "s1", name: "An" }] as SpeakerProfile[]}
+  onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
+  const row = screen.getByRole("listitem");
+  const controls = row.querySelector(".channel-script__row-controls");
+  expect(controls).toContainElement(screen.getByRole("button", { name: "Chọn row 1 của Mic" }));
+  expect(controls).toContainElement(screen.getByRole("combobox", { name: "Speaker Profile của Mic row 1" }));
+});
+
+it("clears a channel row instead of reapplying the track's fallback profile", () => {
+  const original = { id: "a", name: "Mic", text: "Xin", speakerProfileIds: ["s1"], words: [
+    { text: "Xin", start: 0, end: 1, speakerId: "s1", diarizationSpeakerId: "s1" },
+  ] } as ProjectMediaAsset;
+  function ActualChannelCaller() {
+    const [track, setTrack] = useState(original);
+    return <ChannelScript tracks={[track]} speakers={[{ id: "s1", name: "An" }] as SpeakerProfile[]}
+      onAssignWords={(_trackId, indexes, profileId) => setTrack((current) => ({ ...current, words: current.words.map((word, index) => indexes.includes(index)
+        ? { ...word, speakerId: profileId } : word) }))} onSelectTrack={vi.fn()} />;
+  }
+  render(<ActualChannelCaller />);
+  fireEvent.click(screen.getByRole("button", { name: "Chọn row 1 của Mic" }));
+  const profile = screen.getByRole("combobox", { name: "Speaker Profile của Mic row 1" });
+  fireEvent.change(profile, { target: { value: "" } });
+  expect(profile).toHaveValue("");
+});
+
+it("keeps explicitly cleared words separate from words inheriting a track profile", () => {
+  const track = { id: "a", name: "Mic", text: "Xin chào", speakerProfileIds: ["s1"], words: [
+    { text: "Xin", start: 0, end: 0.4, speakerId: null },
+    { text: "chào", start: 0.5, end: 0.9 },
+  ] } as ProjectMediaAsset;
+  render(<ChannelScript tracks={[track]} speakers={[{ id: "s1", name: "An" }] as SpeakerProfile[]}
+    onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
+  const selectors = screen.getAllByRole("combobox", { name: /Speaker Profile của Mic row/ });
+  expect(selectors).toHaveLength(2);
+  expect(selectors[0]).toHaveValue("");
+  expect(selectors[1]).toHaveValue("s1");
 });
 
 it("edits an archived channel word on double-click and retains the track's timed-word identity", () => {

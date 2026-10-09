@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSpeakerScriptRows } from "./script-table";
+import { assignProfileToTurn, buildSpeakerScriptRows } from "./script-table";
 import type { SpeakerProfile, StudioWord } from "../../domain/types";
 
 const AN: SpeakerProfile = { id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#f00", createdAt: "" };
@@ -22,6 +22,14 @@ describe("Script rows", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].diarizationLabel).toBe("Anh Vũ");
     expect(rows[0].profileId).toBe("speaker-an");
+  });
+
+  it("keeps an explicit unassignment distinct from words that inherit the take profile", () => {
+    const cleared = buildSpeakerScriptRows([word({ speakerId: null })], [AN], "speaker-an");
+    const inherited = buildSpeakerScriptRows([word()], [AN], "speaker-an");
+    expect(cleared[0].profileId).toBeNull();
+    expect(inherited[0].profileId).toBe("speaker-an");
+    expect(assignProfileToTurn([word({ speakerId: "speaker-an" })], [0], null)[0].speakerId).toBeNull();
   });
 
   it("leaves words their own speaker, and keeps diarization turns apart", () => {

@@ -189,6 +189,25 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
   });
 
+  it("persists an explicit unassigned row without changing neighboring inherited words", async () => {
+    let saved = { ...mediaAsset("complete", "xin chào", "2026-10-09T00:00:00Z"), speakerProfileIds: ["speaker-1"],
+      words: [{ text: "xin", start: 1, end: 1.4, speakerId: "speaker-1" }, { text: "chào", start: 1.5, end: 2 }] };
+    apiMocks.listProjectMedia.mockImplementation(async () => [saved]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.updateMediaScript.mockImplementation(async (_projectId: string, _id: string, text: string, _source: string, words: ProjectMediaAsset["words"]) => { saved = { ...saved, text, words } as typeof saved; return saved; });
+    apiMocks.updateMediaAnnotations.mockImplementation(async () => saved);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    await waitFor(() => expect(collectionContext.current?.take?.words).toHaveLength(2));
+    await act(async () => { collectionContext.current?.onAssignScriptWords?.("asset-1", [0], null); });
+    await waitFor(() => expect(apiMocks.updateMediaScript).toHaveBeenCalled());
+    expect(saved.words[0]).toHaveProperty("speakerId", null);
+    expect(saved.words[1]).not.toHaveProperty("speakerId");
+    expect(saved.speakerProfileIds).toEqual(["speaker-1"]);
+  });
+
   it("cancels a pending catalog debounce before collection transfer starts", async () => {
     apiMocks.listProjectMedia.mockResolvedValue([]);
     render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}

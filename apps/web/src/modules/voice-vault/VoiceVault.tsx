@@ -156,11 +156,11 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
   }
 
   function selectProfile(event: MouseEvent<HTMLButtonElement>, id: string) {
-    setProfileSelection((current) => selectListItem(current, profileIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+    setProfileSelection((current) => selectListItem(current, profileIds, id, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }));
   }
 
   function selectVoiceItem(event: MouseEvent<HTMLButtonElement>, id: string) {
-    setVoiceSelection((current) => selectListItem(current, voiceIds, id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+    setVoiceSelection((current) => selectListItem(current, voiceIds, id, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }));
   }
 
   function selectAllInLibrary(event: KeyboardEvent<HTMLDivElement>) {
@@ -276,26 +276,32 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
         </form>
       ) : null}
       {!editingSpeaker && !editingEnvironment ? (
-        <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("button, input, .voice-card")) { setProfileSelection({ ids: [], anchorId: null }); setVoiceSelection({ ids: [], anchorId: null }); setProfileMenu(null); } }} onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
+        <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("button, input, .voice-card-group, .sound-library-bulk-actions")) { setProfileSelection({ ids: [], anchorId: null }); setVoiceSelection({ ids: [], anchorId: null }); setProfileMenu(null); } }} onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
           {selectedProfileIds.length ? <div className="sound-library-bulk-actions"><b>{selectedProfileIds.length} profile đã chọn</b>{activeType === "speaker" ? <><label>Màu chung<input aria-label="Màu cho Speaker Profiles đã chọn" onChange={(event) => setBulkSpeakerColor(event.target.value)} type="color" value={bulkSpeakerColor} /></label><button className="button button--quiet" onClick={updateSelectedSpeakerColor} type="button">Áp dụng màu</button></> : null}<button className="button button--quiet is-danger" onClick={deleteSelectedProfiles} type="button">Xoá profiles đã chọn</button><button className="button button--quiet" onClick={() => setProfileSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn profiles</button></div> : null}
           {activeType === "speaker" && selectedVoiceIds.length ? <div className="sound-library-bulk-actions"><b>{selectedVoiceIds.length} voice đã chọn</b><button className="button button--quiet is-danger" onClick={deleteSelectedVoices} type="button">Xoá voices đã chọn</button><button className="button button--quiet" onClick={() => setVoiceSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn voices</button></div> : null}
           {activeType === "speaker" ? catalog.speakers.map((speaker) => {
             const own = voices.filter((voice) => voice.speakerProfileId === speaker.id);
             return (
             <div className={`voice-card-group ${selectedProfileIds.includes(speaker.id) ? "is-selected" : ""}`} key={speaker.id}>
-            <button aria-label={`Chọn profile ${speaker.name}`} aria-pressed={selectedProfileIds.includes(speaker.id)} className="sound-library-select" onClick={(event) => selectProfile(event, speaker.id)} type="button">{selectedProfileIds.includes(speaker.id) ? "✓" : "□"}</button>
+            <div className="voice-card-group__header">
+            <button aria-label={`Chọn profile ${speaker.name}`} aria-pressed={selectedProfileIds.includes(speaker.id)} className="sound-library-select" onClick={(event) => selectProfile(event, speaker.id)} type="button">{selectedProfileIds.includes(speaker.id) ? "✓" : ""}</button>
             <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} onClick={() => onSelectVoice(speaker.id)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "speaker", id: speaker.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
-              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong>{speaker.name}</strong><span>{speakerSummary(speaker)}</span><small className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · {own.length} voice · Properties</small></span><i aria-hidden="true" />
+              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong title={speaker.name}>{speaker.name}</strong><span title={speakerSummary(speaker)}>{speakerSummary(speaker)}</span><small title={speaker.voiceConsent ? "Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} · {own.length} voice</small></span><i aria-hidden="true" />
             </button>
+            <button className="sound-library-properties" aria-label={`Properties profile ${speaker.name}`} title="Properties" onClick={() => editSpeaker(speaker)} type="button"><Icon name="settings" /></button>
+            </div>
             {own.length ? (
               <ul aria-label={`Voice của ${speaker.name}`} className="voice-card__voices">
                 {own.map((voice) => (
                   <li key={voice.id} title={`${voice.id} · tạo ${new Date(voice.createdAt).toLocaleString("vi-VN", { hour12: false })}`}>
-                    <button aria-label={`Chọn voice ${voice.name}`} aria-pressed={selectedVoiceIds.includes(voice.id)} className="sound-library-select" onClick={(event) => selectVoiceItem(event, voice.id)} type="button">{selectedVoiceIds.includes(voice.id) ? "✓" : "□"}</button>
-                    <span>{voice.name}</span>
+                    <button aria-label={`Chọn voice ${voice.name}`} aria-pressed={selectedVoiceIds.includes(voice.id)} className="sound-library-select" onClick={(event) => selectVoiceItem(event, voice.id)} type="button">{selectedVoiceIds.includes(voice.id) ? "✓" : ""}</button>
+                    <div className="sound-library-voice-copy"><span title={voice.name}>{voice.name}</span>
                     <small>{VOICE_KIND_LABELS[voice.kind] ?? voice.kind} · {new Date(voice.createdAt).toLocaleDateString("vi-VN")}</small>
-                    {projectId && voice.kind !== "clone" ? <button aria-label={`Add to Collection ${voice.name}`} onClick={() => setCollectionMode({ voice })} type="button">Add to Collection</button> : null}
-                    {onDeleteVoice ? <button aria-label={`Xoá voice ${voice.name}`} onClick={() => onDeleteVoice(voice)} title="Xoá voice" type="button">×</button> : null}
+                    </div>
+                    {(projectId && voice.kind !== "clone") || onDeleteVoice ? <div className="sound-library-voice-actions">
+                    {projectId && voice.kind !== "clone" ? <button className="sound-library-collection" aria-label={`Add to Collection ${voice.name}`} onClick={() => setCollectionMode({ voice })} type="button"><Icon name="folder-plus" /> Add to Collection</button> : null}
+                    {onDeleteVoice ? <button className="sound-library-delete" aria-label={`Xoá voice ${voice.name}`} onClick={() => onDeleteVoice(voice)} title="Xoá voice" type="button"><Icon name="trash" /></button> : null}
+                    </div> : null}
                   </li>
                 ))}
               </ul>
@@ -304,10 +310,13 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
             );
           }) : catalog.environmentProfiles.map((profile) => (
             <div className={`voice-card-group ${selectedProfileIds.includes(profile.id) ? "is-selected" : ""}`} key={profile.id}>
-            <button aria-label={`Chọn profile ${profile.name}`} aria-pressed={selectedProfileIds.includes(profile.id)} className="sound-library-select" onClick={(event) => selectProfile(event, profile.id)} type="button">{selectedProfileIds.includes(profile.id) ? "✓" : "□"}</button>
+            <div className="voice-card-group__header">
+            <button aria-label={`Chọn profile ${profile.name}`} aria-pressed={selectedProfileIds.includes(profile.id)} className="sound-library-select" onClick={(event) => selectProfile(event, profile.id)} type="button">{selectedProfileIds.includes(profile.id) ? "✓" : ""}</button>
             <button className="voice-card environment-card" key={profile.id} onClick={() => editEnvironment(profile)} onContextMenu={(event) => { event.preventDefault(); setProfileMenu({ type: "environment", id: profile.id, left: event.clientX, top: event.clientY }); }} onDoubleClick={() => editEnvironment(profile)} title="Double click hoặc right click để mở Properties" type="button">
-              <span className="voice-card__avatar"><Icon name="landscape" /></span><span className="voice-card__copy"><strong>{profile.name}</strong><span>{profile.attributes.description || "Environment profile"}</span><small>{profile.assetIds.length} footage tham chiếu · Properties</small></span><i aria-hidden="true" />
+              <span className="voice-card__avatar"><Icon name="landscape" /></span><span className="voice-card__copy"><strong title={profile.name}>{profile.name}</strong><span title={profile.attributes.description}>{profile.attributes.description || "Environment profile"}</span><small>{profile.assetIds.length} footage tham chiếu · Properties</small></span><i aria-hidden="true" />
             </button>
+            <button className="sound-library-properties" aria-label={`Properties profile ${profile.name}`} title="Properties" onClick={() => editEnvironment(profile)} type="button"><Icon name="settings" /></button>
+            </div>
             </div>
           ))}
           {activeType === "speaker" && !catalog.speakers.length ? <div className="voice-vault-empty"><Icon name="person" /><b>Chưa có Speaker Profile</b><span>Thêm người nói trước khi phân vai footage hoặc bắt đầu training.</span></div> : null}

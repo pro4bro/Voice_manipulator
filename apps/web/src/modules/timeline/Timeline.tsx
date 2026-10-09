@@ -1185,7 +1185,7 @@ export function Timeline({
   function assignSpeakerToSelectedWords(profileId: string | null) {
     if (!speakerMenu?.indexes.length) return;
     const indexes = new Set(speakerMenu.indexes);
-    onWordsChange?.(words.map((word, index) => indexes.has(index) ? { ...word, speakerId: profileId ?? undefined } : word));
+    onWordsChange?.(words.map((word, index) => indexes.has(index) ? { ...word, speakerId: profileId } : word));
     setSpeakerMenu(null);
   }
 

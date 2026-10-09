@@ -89,7 +89,9 @@ export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerPro
   const profileById = new Map(speakers.map((speaker) => [speaker.id, speaker]));
   const rows: SpeakerScriptRow[] = [];
   for (const [index, word] of words.entries()) {
-    const unnamed = !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId;
+    // Missing means inherit the take default; explicit null means the user
+    // cleared this word's profile and must remain unassigned.
+    const unnamed = word.speakerId !== null && !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId;
     const diarizationId = unnamed && defaultSpeakerId ? `profile:${defaultSpeakerId}` : normalizedDiarizationId(word);
     const owner = word.speakerId || (unnamed ? defaultSpeakerId : null);
     const profile = owner ? profileById.get(owner) ?? null : null;
@@ -119,7 +121,7 @@ export function assignProfileToTurn(words: StudioWord[], indexes: number[], prof
   const selected = new Set(indexes);
   return words.map((word, index) => {
     if (!selected.has(index)) return word;
-    const updated = { ...word, speakerId: profileId ?? undefined };
+    const updated = { ...word, speakerId: profileId };
     delete updated.manualDiarizationSpeakerId;
     return updated;
   });
@@ -134,7 +136,7 @@ export function moveWordToRow(words: StudioWord[], index: number, row: Pick<Spea
   if (index < 0 || index >= words.length) return words;
   return words.map((word, wordIndex) => {
     if (wordIndex !== index) return word;
-    const updated = { ...word, speakerId: row.profileId ?? undefined };
+    const updated = { ...word, speakerId: row.profileId };
     if (row.profileId) delete updated.manualDiarizationSpeakerId;
     else updated.manualDiarizationSpeakerId = row.speakerKey;
     return updated;
@@ -145,7 +147,7 @@ export function moveWordsToRow(words: StudioWord[], indexes: number[], row: Pick
   if (!selected.size) return words;
   return words.map((word, index) => {
     if (!selected.has(index)) return word;
-    const updated = { ...word, speakerId: row.profileId ?? undefined };
+    const updated = { ...word, speakerId: row.profileId };
     if (row.profileId) delete updated.manualDiarizationSpeakerId;
     else updated.manualDiarizationSpeakerId = row.speakerKey;
     return updated;
@@ -403,7 +405,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   function toggleScriptRow(event: React.MouseEvent<HTMLButtonElement>, rowId: string) {
     event.stopPropagation();
-    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }));
   }
 
   function assignProfileToSelectedRows(profileId: string) {
