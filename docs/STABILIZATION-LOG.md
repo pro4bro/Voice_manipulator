@@ -824,3 +824,12 @@ Nguyên nhân: prefix offsets mới và viewport cũ được render xen giữa 
 bù vị trí; row controls làm hai cửa sổ liên tục thay nhau. Sửa bằng cập nhật
 viewport/measurement cùng batch; không tăng ngưỡng/tắt lỗi React. Gate có log đỏ
 và xanh; việc nghiệm thu hết Script trên thiết bị sau reload vẫn chờ chủ dự án.
+
+## USER-FEEDBACK-12 — 2026-10-09
+
+Shared Timeline density/rulers eliminate OBS15s detail floor. Shared consent form
+uses14px checks and project-local proof uploads. Voice Collection creation, export
+and import work through Hub and all Sound Library routes, with copied artifacts
+and lineage. Product23e6494; final frontend672/API703, typecheck/build pass.
+Initial Windows Stop-test failure, isolated pass and final full pass are retained.
+Native UI acceptance and STT-GAP-01 remain; gate user-feedback-12 and ADR0059.

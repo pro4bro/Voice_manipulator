@@ -1,5 +1,31 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-12 — shared Timeline scale and Voice Collection (2026-10-09)
+
+Product commit `23e6494` aligns standard/imported/OBS Timeline zoom and absolute
+rulers at1,000px/s, including positive sub10ms fit, while retaining120s live feed
+limits. Consent form spans the shared Sound Library, uses14px checkboxes and
+Browse for project-owned evidence, with separate uploadAllowed permission.
+Project Library Voice Collection and all Sound Library routes share create/list,
+Add to Collection and Import from Collection, common classification properties,
+portable copied artifacts and source provenance. Completed retained checkpoints
+and published/passed linked-set gates are enforced; copy/retry/re-export hashes
+stream and Windows checkpoint separators normalize without relaxing containment.
+Catalog writes serialize; an independently reviewed350ms debounce race has a
+red/green Workspace caller test and explicit synchronous timer cancellation.
+
+Final frontend672/77, API703/twoexistingwarnings, typecheck/build/diff checks pass.
+Focused Timeline88/5, backend35/4 pass; initial API699/oneWindows Stop confirmation
+failure is retained, isolated1 and final full703 pass without Stop code changes.
+Real retained LoRA fixture reaches its pending gate rejection; five source hashes
+match and no entry publishes. Synthetic bytes verify transfer, not model quality.
+Gate `docs/gates/user-feedback-12-zoom-consent-collections.md`, ADR0059. Owner must
+restart to load new API/UI and accept max zoom, consent layout and collection
+reopen/import on the device. Earlier browser policy rejection remains respected.
+Normal runtimes/models, owner media/transcript and upstream are untouched. Phase03
+stays60%; quality/calibration budgets remain open. Exact next STT-GAP-01 retains
+isolated recognizer/merge evidence before replacing missing OBS word text.
+
 ## USER-FEEDBACK-11 — Script end update depth (2026-10-09)
 
 Commit `9c6c696` repairs React185 at an archived Script boundary. Row minimum
