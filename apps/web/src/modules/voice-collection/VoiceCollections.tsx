@@ -22,9 +22,13 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set());
+  const [collapsedProfiles, setCollapsedProfiles] = useState<Set<string>>(() => new Set());
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const mounted = useRef(true);
   const operation = useRef(false);
   const selected = collections.find((item) => item.id === selectedId);
+  const projectImport = Boolean(projectId && !exportVoiceId);
   useEffect(() => {
     let active = true;
     mounted.current = true;
@@ -50,7 +54,7 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
     void run(async () => {
       const collection = await api.createVoiceCollection(name.trim(), properties);
       if (!mounted.current) return;
-      setCollections((items) => [...items, collection]); setSelectedId(collection.id); setCreating(false); setName("");
+      setCollections((items) => [...items, collection]); setSelectedId(collection.id); setSelectedEntryIds(new Set()); setCollapsedProfiles(new Set()); setCreating(false); setName("");
     });
   }
   function add() {
@@ -64,16 +68,85 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
     });
   }
 
+  function chooseCollection(id: string) {
+    setSelectedEntryIds(new Set());
+    setCollapsedProfiles(new Set());
+    setImportProgress(null);
+    setNotice(null);
+    setError(null);
+    if (id === "__new__") setCreating(true);
+    else { setCreating(false); setSelectedId(id); }
+  }
+
+  function toggleProfile(entryIds: string[]) {
+    if (busy) return;
+    const allSelected = entryIds.every((id) => selectedEntryIds.has(id));
+    setSelectedEntryIds((current) => {
+      const next = new Set(current);
+      for (const id of entryIds) allSelected ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleEntry(entryId: string) {
+    if (busy) return;
+    setSelectedEntryIds((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) next.delete(entryId); else next.add(entryId);
+      return next;
+    });
+  }
+
+  function importSelected() {
+    if (!projectImport || !projectId || !selected || !selectedEntryIds.size) return;
+    const collectionId = selected.id;
+    const destinationProjectId = projectId;
+    const entriesToImport = selected.entries.filter((entry) => selectedEntryIds.has(entry.id));
+    void run(async () => {
+      let completed = 0;
+      setImportProgress({ completed, total: entriesToImport.length });
+      for (const entry of entriesToImport) {
+        if (!mounted.current) return;
+        setImportProgress({ completed, total: entriesToImport.length });
+        try {
+          await onPrepareExport?.();
+          if (!mounted.current) return;
+          const result = await api.importCollectionVoice(collectionId, entry.id, destinationProjectId);
+          completed += 1;
+          if (!mounted.current) return;
+          onImported?.(result);
+          setSelectedEntryIds((current) => { const next = new Set(current); next.delete(entry.id); return next; });
+        } catch (reason) {
+          if (!mounted.current) return;
+          const message = reason instanceof Error ? reason.message : "Không hoàn tất import voice.";
+          const remaining = entriesToImport.length - completed;
+          setImportProgress(null);
+          setError(`Đã import ${completed}/${entriesToImport.length} model; còn ${remaining} model được giữ lại để thử lại. ${message}`);
+          setNotice(null);
+          return;
+        }
+      }
+      if (mounted.current) {
+        setImportProgress(null);
+        setNotice(`Đã import ${completed} voice.`);
+      }
+    });
+  }
+
+  const profileGroups = selected ? [...selected.entries.reduce((groups, entry) => {
+    const key = JSON.stringify([entry.sourceProjectId, entry.speaker.id]);
+    const group = groups.get(key) ?? { key, speaker: entry.speaker, sourceProjectId: entry.sourceProjectId, sourceProjectName: entry.sourceProjectName, entries: [] as typeof selected.entries };
+    group.entries.push(entry);
+    groups.set(key, group);
+    return groups;
+  }, new Map<string, { key: string; speaker: typeof selected.entries[number]["speaker"]; sourceProjectId: string; sourceProjectName: string; entries: typeof selected.entries }>()).values()] : [];
+
   return <section aria-label="Voice Collection" className="voice-collections">
     <header><h2>Voice Collection</h2><button className="button button--quiet" disabled={busy || loading} onClick={() => setCreating(true)} type="button">+ New Collection</button></header>
     {loading ? <p role="status">Đang tải collection…</p> : null}
     {error ? <p role="alert">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
-    <label className="collection-choice">Collection<select aria-label="Chọn Voice Collection" disabled={busy || loading} value={creating ? "__new__" : selectedId} onChange={(event) => {
-      setNotice(null); setError(null);
-      if (event.target.value === "__new__") setCreating(true);
-      else { setCreating(false); setSelectedId(event.target.value); }
-    }}><option value="">Chọn collection</option>{collections.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.entries.length})</option>)}<option value="__new__">New Collection</option></select></label>
+    <label className="collection-choice">Collection<select aria-label="Chọn Voice Collection" disabled={busy || loading} value={creating ? "__new__" : selectedId} onChange={(event) => chooseCollection(event.target.value)}><option value="">Chọn collection</option>{collections.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.entries.length})</option>)}<option value="__new__">New Collection</option></select></label>
     {creating ? <form className="collection-form" onSubmit={create}>
       <label className="is-wide">Tên collection<input autoFocus maxLength={120} required value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>Ngôn ngữ<select value={properties.languageId ?? ""} onChange={(event) => { const language = schema?.languages.find((item) => item.id === event.target.value); setProperties({ ...properties, languageId: language?.id ?? null, language: language?.label ?? null }); }}><option value="">Chưa chọn</option>{schema?.languages.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
@@ -84,12 +157,30 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
       <div className="collection-form__actions"><button className="button button--quiet" disabled={busy} onClick={() => setCreating(false)} type="button">Hủy</button><button className="button button--accent" disabled={busy || !name.trim()} type="submit">{busy ? "Đang tạo…" : "Tạo collection"}</button></div>
     </form> : selected ? <>
       <p className="collection-properties">{[selected.properties.language, selected.properties.region, selected.properties.age, selected.properties.gender, ...Object.values(selected.properties.attributes)].filter(Boolean).join(" · ")}</p>
+      {projectImport ? <p className="collection-import-help">Tick hồ sơ để chọn toàn bộ model trong Collection này; xổ danh sách để chọn từng model.</p> : null}
       {exportVoiceId ? <button className="button button--accent" disabled={busy} onClick={add} type="button">{busy ? "Đang sao chép voice…" : "Add to Collection"}</button> : null}
-      <ul className="collection-entries">{selected.entries.map((entry) => <li key={entry.id}><div><strong>{entry.voice.name}</strong><span>{entry.speaker.name} · {entry.voice.kind}</span><small>Project: {entry.sourceProjectName || entry.sourceProjectId}</small></div>{projectId && !exportVoiceId ? <button className="button button--quiet" disabled={busy} onClick={() => void run(async () => {
-        await onPrepareExport?.();
-        const result = await api.importCollectionVoice(selected.id, entry.id, projectId);
-        if (mounted.current) { onImported?.(result); setNotice(`Đã import ${result.voice.name}.`); }
-      })} type="button">Import voice</button> : null}</li>)}</ul>
+      <ul className="collection-entries">{profileGroups.map((group) => {
+        const entryIds = group.entries.map((entry) => entry.id);
+        const selectedCount = entryIds.filter((id) => selectedEntryIds.has(id)).length;
+        const checked = entryIds.length > 0 && selectedCount === entryIds.length;
+        const partial = selectedCount > 0 && !checked;
+        const expanded = !collapsedProfiles.has(group.key);
+        const profileLabel = `${group.speaker.name} · ${group.sourceProjectName || group.sourceProjectId}`;
+        return <li className="collection-profile" key={group.key}>
+          <div className="collection-profile__header">
+            {projectImport ? <input aria-label={`Chọn toàn bộ model của ${profileLabel}`} checked={checked} disabled={busy} ref={(node) => { if (node) node.indeterminate = partial; }} type="checkbox" onChange={() => toggleProfile(entryIds)} /> : null}
+            <button aria-expanded={expanded} aria-label={`${expanded ? "Thu gọn" : "Mở rộng"} model ${profileLabel}`} className="collection-profile__toggle" disabled={busy} onClick={() => setCollapsedProfiles((current) => { const next = new Set(current); if (expanded) next.add(group.key); else next.delete(group.key); return next; })} type="button">{expanded ? "▾" : "▸"}</button>
+            <span className="collection-profile__identity"><strong>{group.speaker.name}</strong><small>{group.sourceProjectName || group.sourceProjectId} · {group.entries.length} model</small></span>
+          </div>
+          {expanded ? <ul className="collection-profile__models">{group.entries.map((entry) => <li key={entry.id}>
+            {projectImport ? <label className="collection-model-choice"><input aria-label={`Chọn model ${entry.voice.name} · ${profileLabel}`} checked={selectedEntryIds.has(entry.id)} disabled={busy} type="checkbox" onChange={() => toggleEntry(entry.id)} /><span><strong>{entry.voice.name}</strong><small>{entry.voice.kind}</small></span></label> : <div className="collection-model-choice__browse"><strong>{entry.voice.name}</strong><small>{entry.voice.kind}</small></div>}
+          </li>)}</ul> : null}
+        </li>;
+      })}</ul>
+      {projectImport ? <div className="collection-import-action">
+        {importProgress ? <p role="status">Đang import {Math.min(importProgress.completed + 1, importProgress.total)}/{importProgress.total}…</p> : null}
+        <button className="button button--accent" disabled={busy || !selectedEntryIds.size} onClick={importSelected} type="button">{importProgress ? "Đang import…" : `Import đã chọn (${selectedEntryIds.size})`}</button>
+      </div> : null}
       {!selected.entries.length ? <p>Collection chưa có voice đã train.</p> : null}
     </> : !loading && !creating ? <p>Tạo collection để gom voice đã train từ các project.</p> : null}
   </section>;

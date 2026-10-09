@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 import os
+import json
 from pathlib import Path
 import shutil
 
@@ -127,8 +128,9 @@ def test_collection_reopens_with_copied_bytes_and_import_is_retry_safe(tmp_path)
     assert result.voice.id == retried.voice.id
     assert len(recovered.catalog.speakers) == 1
     assert recovered.speaker.voice_consent.upload_allowed is False
-    assert recovered.speaker.voice_consent.evidence.path.startswith(f"assets/voices/{result.voice.id}/")
+    assert recovered.speaker.voice_consent.evidence.path.startswith("assets/consent-evidence/")
     target_root = Path(target.project_path)
+    assert (target_root / "assets/voices" / result.voice.id / "consent-evidence" / "evidence-source.txt").read_bytes() == b"I agree to local use of my voice."
     assert (target_root / result.voice.reference_audio).read_bytes() == b"RIFF-reference-audio"
     assert (target_root / result.voice.adapter_path / "adapter.bin").read_bytes() == b"real synthetic adapter bytes"
     assert (target_root / recovered.speaker.voice_consent.evidence.path).read_bytes() == b"I agree to local use of my voice."
@@ -143,6 +145,188 @@ def test_collection_reopens_with_copied_bytes_and_import_is_retry_safe(tmp_path)
     third_collection = reopened.create(VoiceCollectionCreate(name="Tamper check"))
     with pytest.raises(ValueError, match="artifacts changed"):
         reopened.add_entry(third_collection.id, target.id, result.voice.id)
+
+
+def _add_second_source_voice(projects, source, source_root, speaker, voice, runs):
+    second_id = "voice-source-second"
+    second_root = source_root / "jobs/training/run-1/second-adapter"
+    second_root.mkdir(parents=True)
+    (second_root / "adapter.bin").write_bytes(b"second synthetic adapter bytes")
+    second = voice.model_copy(update={
+        "id": second_id,
+        "name": "An LoRA second checkpoint",
+        "adapter_path": "jobs/training/run-1/second-adapter",
+        "reference_audio": voice.reference_audio,
+    })
+    voice_root = source_root / "assets/voices" / second.id
+    voice_root.mkdir(parents=True)
+    (voice_root / "voice.json").write_text(second.model_dump_json(by_alias=True), encoding="utf-8")
+    run = runs.get(source.id, "run-1")
+    runs._write(source.id, run.model_copy(update={
+        "checkpoints": [*run.checkpoints, TrainingCheckpoint(
+            step=20, path=second.adapter_path,
+            bytes=sum(path.stat().st_size for path in second_root.rglob("*") if path.is_file()),
+        )],
+    }))
+    return second
+
+
+def test_importing_selected_models_from_same_source_profile_reuses_one_destination_profile(tmp_path):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    second = _add_second_source_voice(projects, source, source_root, speaker, voice, runs)
+    collection = store.create(VoiceCollectionCreate(name="Two checkpoints"))
+    first_entry = store.add_entry(collection.id, source.id, voice.id)
+    second_entry = store.add_entry(collection.id, source.id, second.id)
+
+    first = store.import_entry(collection.id, first_entry.id, target.id)
+    legacy_marker_path = Path(target.project_path) / "assets/voices" / first.voice.id / "collection-import.json"
+    legacy_marker = json.loads(legacy_marker_path.read_text(encoding="utf-8"))
+    legacy_marker.pop("sourceSpeakerId")
+    legacy_marker_path.write_text(json.dumps(legacy_marker), encoding="utf-8")
+    catalogs.save(target.id, first.catalog.model_copy(update={"speakers": []}))
+    reopened = FileVoiceCollections(tmp_path / "data", projects, voices, catalogs, model_sets, runs)
+    selective = reopened.import_entry(collection.id, second_entry.id, target.id)
+    retried = reopened.import_entry(collection.id, second_entry.id, target.id)
+
+    assert first.voice.speaker_profile_id == selective.voice.speaker_profile_id
+    assert selective.speaker.id == first.speaker.id
+    assert retried.voice.id == selective.voice.id
+    assert len(selective.catalog.speakers) == 1
+    assert {item.id for item in reopened.voices.list(target.id)} == {first.voice.id, selective.voice.id}
+
+
+def test_same_display_name_from_distinct_source_profiles_stays_separate(tmp_path):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    second_speaker = speaker.model_copy(update={"id": "speaker-other", "name": speaker.name})
+    catalog = catalogs.get(source.id)
+    catalogs.save(source.id, catalog.model_copy(update={"speakers": [*catalog.speakers, second_speaker]}))
+    second = _add_second_source_voice(projects, source, source_root, second_speaker, voice, runs)
+    # The helper cloned the first voice's source speaker; model identity must follow the second profile.
+    second_adapter_dir = source_root / "jobs/training/run-2/adapter"
+    second_adapter_dir.parent.mkdir(parents=True)
+    shutil.copytree(source_root / second.adapter_path, second_adapter_dir)
+    second = second.model_copy(update={
+        "speaker_profile_id": second_speaker.id,
+        "source_run_id": "run-2",
+        "adapter_path": "jobs/training/run-2/adapter",
+    })
+    (source_root / "assets/voices" / second.id / "voice.json").write_text(
+        second.model_dump_json(by_alias=True), encoding="utf-8",
+    )
+    second_adapter = source_root / second.adapter_path
+    runs._write(source.id, TrainingRun(
+        id="run-2", project_id=source.id, manifest_id="manifest-second", speaker_profile_id=second_speaker.id,
+        status="complete", checkpoints=[TrainingCheckpoint(
+            step=20, path=second.adapter_path,
+            bytes=sum(path.stat().st_size for path in second_adapter.rglob("*") if path.is_file()),
+        )],
+    ))
+    collection = store.create(VoiceCollectionCreate(name="Duplicate names"))
+    first_entry = store.add_entry(collection.id, source.id, voice.id)
+    second_entry = store.add_entry(collection.id, source.id, second.id)
+
+    first = store.import_entry(collection.id, first_entry.id, target.id)
+    second_import = store.import_entry(collection.id, second_entry.id, target.id)
+
+    assert first.speaker.name == second_import.speaker.name
+    assert first.speaker.id != second_import.speaker.id
+    assert first.voice.speaker_profile_id != second_import.voice.speaker_profile_id
+    assert len(second_import.catalog.speakers) == 2
+
+
+def test_deleting_first_imported_model_keeps_shared_consent_and_second_model_exportable(tmp_path):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    second = _add_second_source_voice(projects, source, source_root, speaker, voice, runs)
+    collection = store.create(VoiceCollectionCreate(name="Shared consent"))
+    first_entry = store.add_entry(collection.id, source.id, voice.id)
+    second_entry = store.add_entry(collection.id, source.id, second.id)
+    first = store.import_entry(collection.id, first_entry.id, target.id)
+    second_import = store.import_entry(collection.id, second_entry.id, target.id)
+    target_root = Path(target.project_path)
+    profile_evidence = target_root / second_import.speaker.voice_consent.evidence.path
+
+    voices.delete(target.id, first.voice.id)
+    assert profile_evidence.read_bytes() == b"I agree to local use of my voice."
+    assert (target_root / "assets/voices" / second_import.voice.id / "consent-evidence" / "evidence-source.txt").read_bytes() == b"I agree to local use of my voice."
+
+    another_collection = store.create(VoiceCollectionCreate(name="Second remains usable"))
+    reexported = store.add_entry(another_collection.id, target.id, second_import.voice.id)
+    assert reexported.voice.id == second_import.voice.id
+
+
+def test_failed_consent_copy_leaves_no_imported_model_or_speaker_profile(tmp_path, monkeypatch):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    collection = store.create(VoiceCollectionCreate(name="Copy failure"))
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    original_copy = store._copy_from_archive
+
+    def fail_consent_copy(archive_root, relative, destination):
+        if relative == speaker.voice_consent.evidence.path:
+            raise OSError("synthetic evidence copy failure")
+        return original_copy(archive_root, relative, destination)
+
+    monkeypatch.setattr(store, "_copy_from_archive", fail_consent_copy)
+    with pytest.raises(OSError, match="synthetic evidence copy failure"):
+        store.import_entry(collection.id, entry.id, target.id)
+
+    assert catalogs.get(target.id).speakers == []
+    assert voices.list(target.id) == []
+    target_root = Path(target.project_path)
+    consent_root = target_root / "assets/consent-evidence"
+    assert not list((target_root / "assets/voices").glob("voice-*"))
+    if consent_root.exists():
+        assert not list(consent_root.glob("speaker-*"))
+
+
+def test_profile_consent_publication_rejects_symlinked_speaker_folder(tmp_path):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    collection = store.create(VoiceCollectionCreate(name="Symlink consent target"))
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    archive_root = tmp_path / "data/voice-collections" / collection.id / "entries" / entry.id / "payload"
+    target_root = Path(target.project_path)
+    consent_root = target_root / "assets/consent-evidence"
+    consent_root.mkdir(parents=True)
+    outside = tmp_path / "outside-consent"
+    outside.mkdir()
+    destination = consent_root / "speaker-link"
+    try:
+        os.symlink(outside, destination, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    linked_speaker = speaker.model_copy(update={"id": "speaker-link"})
+    with pytest.raises(ValueError, match="symbolic link|escaped its root"):
+        store._prepare_profile_evidence(target_root, linked_speaker, archive_root=archive_root)
+
+    stage = consent_root / ".speaker-link.test.tmp"
+    stage.mkdir()
+    (stage / "evidence-source.txt").write_bytes(b"synthetic proof")
+    with pytest.raises(ValueError, match="symbolic link|escaped its root"):
+        store._publish_profile_evidence(stage, destination)
+    assert list(outside.iterdir()) == []
+    assert stage.exists()
+
+
+def test_catalog_save_failure_rolls_back_new_model_and_profile_consent(tmp_path, monkeypatch):
+    projects, source, target, source_root, speaker, voice, catalogs, voices, model_sets, runs, store = fixture(tmp_path)
+    collection = store.create(VoiceCollectionCreate(name="Catalog save failure"))
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    original_save = catalogs.save
+
+    def fail_import_save(project_id, catalog):
+        if project_id == target.id and catalog.speakers:
+            raise OSError("synthetic catalog save failure")
+        return original_save(project_id, catalog)
+
+    monkeypatch.setattr(catalogs, "save", fail_import_save)
+    with pytest.raises(OSError, match="synthetic catalog save failure"):
+        store.import_entry(collection.id, entry.id, target.id)
+
+    assert catalogs.get(target.id).speakers == []
+    assert voices.list(target.id) == []
+    target_root = Path(target.project_path)
+    assert not list((target_root / "assets/voices").glob("voice-*"))
+    assert not list((target_root / "assets/consent-evidence").glob("speaker-*"))
 
 
 def test_collection_rejects_clone_missing_artifact_and_pending_model_set(tmp_path):

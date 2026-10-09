@@ -933,6 +933,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   }
 
   function changeCatalog(catalog: TrainingCatalog) {
+    // A Collection import may flush the next model before React commits this
+    // profile. Publish the same snapshot to the transfer boundary immediately.
+    currentCatalog.current = catalog;
     catalogRevisionRef.current += 1;
     setTrainingCatalog(catalog);
     setCatalogRevision(catalogRevisionRef.current);

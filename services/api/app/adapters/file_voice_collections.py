@@ -34,6 +34,7 @@ _LOCKS_GUARD = threading.Lock()
 _SAFE_SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 _MAX_CONSENT_EVIDENCE = 10 * 1024 * 1024
 _ALLOWED_EVIDENCE_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".txt"}
+_USE_SPEAKER_EVIDENCE = object()
 
 
 class FileVoiceCollections:
@@ -164,18 +165,42 @@ class FileVoiceCollections:
                 speaker = next((item for item in catalog.speakers if item.id == voice.speaker_profile_id), None)
                 if speaker is None:
                     speaker = self._imported_speaker(project_root, entry, voice)
-                    catalog = self.catalogs.save(project_id, catalog.model_copy(
-                        update={"speakers": [*catalog.speakers, speaker]},
-                    ))
                 self._require_completed_training_output(project_id, project_root, voice, speaker)
+                speaker, evidence_stage, evidence_target = self._prepare_profile_evidence(project_root, speaker)
+                published_evidence: Path | None = None
+                try:
+                    if evidence_stage:
+                        published_evidence = self._publish_profile_evidence(evidence_stage, evidence_target)
+                    if not any(item.id == speaker.id for item in catalog.speakers):
+                        catalog = self.catalogs.save(project_id, catalog.model_copy(
+                            update={"speakers": [*catalog.speakers, speaker]},
+                        ))
+                    elif catalog.speakers and any(item.id == speaker.id for item in catalog.speakers):
+                        current = next(item for item in catalog.speakers if item.id == speaker.id)
+                        if current != speaker:
+                            catalog = self.catalogs.save(project_id, catalog.model_copy(update={
+                                "speakers": [speaker if item.id == speaker.id else item for item in catalog.speakers],
+                            }))
+                except Exception:
+                    if evidence_stage and evidence_stage.exists():
+                        shutil.rmtree(evidence_stage, ignore_errors=True)
+                    self._rollback_profile_evidence(published_evidence)
+                    raise
                 return VoiceCollectionImportResult(voice=voice, speaker=speaker, catalog=catalog)
 
             archive_root = self._entry_folder(collection_id, entry_id) / "payload"
             new_voice_id = f"voice-{uuid4().hex[:12]}"
-            new_speaker_id = f"speaker-{uuid4().hex[:12]}"
+            catalog = self.catalogs.get(project_id)
+            reused_profile = self._find_imported_profile(
+                voices_root, project_id, entry.source_project_id, entry.speaker.id,
+            )
+            new_speaker_id = reused_profile.id if reused_profile else f"speaker-{uuid4().hex[:12]}"
             folder = voices_root / new_voice_id
             stage = voices_root / f".{new_voice_id}.tmp"
             stage.mkdir()
+            evidence_stage: Path | None = None
+            evidence_target: Path | None = None
+            published_evidence: Path | None = None
             try:
                 reference_rel = "reference.wav"
                 self._copy_from_archive(archive_root, entry.voice.reference_audio, stage / reference_rel)
@@ -188,16 +213,16 @@ class FileVoiceCollections:
                     expect_directory=entry.voice.kind == "full",
                 )
 
-                speaker = entry.speaker.model_copy(update={"id": new_speaker_id})
-                if speaker.voice_consent and speaker.voice_consent.evidence:
-                    evidence = speaker.voice_consent.evidence
-                    evidence_name = PurePosixPath(evidence.path).name
-                    evidence_rel = f"assets/voices/{new_voice_id}/consent-evidence/{evidence_name}"
-                    self._copy_from_archive(archive_root, evidence.path, stage / "consent-evidence" / evidence_name)
-                    evidence = evidence.model_copy(update={"path": evidence_rel})
-                    speaker = speaker.model_copy(update={
-                        "voice_consent": speaker.voice_consent.model_copy(update={"evidence": evidence})
-                    })
+                speaker = reused_profile or entry.speaker.model_copy(update={"id": new_speaker_id})
+                if entry.speaker.voice_consent and entry.speaker.voice_consent.evidence:
+                    archived_evidence = entry.speaker.voice_consent.evidence
+                    evidence_name = PurePosixPath(archived_evidence.path).name
+                    self._copy_from_archive(archive_root, archived_evidence.path, stage / "consent-evidence" / evidence_name)
+                speaker, evidence_stage, evidence_target = self._prepare_profile_evidence(
+                    project_root,
+                    speaker,
+                    archive_root=archive_root if reused_profile is None else None,
+                )
 
                 voice = entry.voice.model_copy(update={
                     "id": new_voice_id,
@@ -219,6 +244,7 @@ class FileVoiceCollections:
                     "collectionId": collection_id,
                     "entryId": entry_id,
                     "sourceProjectId": entry.source_project_id,
+                    "sourceSpeakerId": entry.speaker.id,
                     "sourceVoiceId": entry.voice.id,
                     "sourceRunId": entry.voice.source_run_id,
                     "sourceReferenceSegmentId": entry.voice.reference_segment_id,
@@ -226,26 +252,41 @@ class FileVoiceCollections:
                     "provenance": self._verified_entry_lineage(collection_id, entry_id, entry)["provenance"],
                     "artifactHashes": self._artifact_hashes_for_import(
                         stage, reference_rel, adapter_rel, model_rel,
-                        "consent-evidence" if speaker.voice_consent and speaker.voice_consent.evidence else None,
+                        "consent-evidence"
+                        if entry.speaker.voice_consent and entry.speaker.voice_consent.evidence else None,
                     ),
                 }
                 self._write_json(stage / "collection-import.json", marker)
                 self._write_json(stage / "voice.json", voice.model_dump(mode="json", by_alias=True))
 
-                catalog = self.catalogs.get(project_id)
-                if any(item.id == new_speaker_id for item in catalog.speakers):
+                if reused_profile is None and any(item.id == new_speaker_id for item in catalog.speakers):
                     raise ValueError("Generated Speaker Profile ID already exists; retry the import.")
-                updated_catalog = catalog.model_copy(update={"speakers": [*catalog.speakers, speaker]})
+                if reused_profile is None:
+                    updated_speakers = [*catalog.speakers, speaker]
+                else:
+                    updated_speakers = [speaker if item.id == speaker.id else item for item in catalog.speakers]
+                    if not any(item.id == speaker.id for item in catalog.speakers):
+                        updated_speakers.append(speaker)
+                updated_catalog = catalog.model_copy(update={"speakers": updated_speakers})
 
+                if evidence_stage:
+                    published_evidence = self._publish_profile_evidence(evidence_stage, evidence_target)
                 stage.replace(folder)
                 try:
                     updated_catalog = self.catalogs.save(project_id, updated_catalog)
                 except Exception:
                     shutil.rmtree(folder, ignore_errors=True)
+                    self._rollback_profile_evidence(published_evidence)
+                    published_evidence = None
                     raise
                 return VoiceCollectionImportResult(voice=voice, speaker=speaker, catalog=updated_catalog)
             except Exception:
                 shutil.rmtree(stage, ignore_errors=True)
+                if evidence_stage and evidence_stage.exists():
+                    shutil.rmtree(evidence_stage, ignore_errors=True)
+                if folder.exists():
+                    shutil.rmtree(folder, ignore_errors=True)
+                self._rollback_profile_evidence(published_evidence)
                 raise
 
     def store_consent_evidence(self, project_id: str, name: str, content: bytes) -> ConsentEvidence:
@@ -343,8 +384,6 @@ class FileVoiceCollections:
                 marker = json.loads(marker_path.read_text(encoding="utf-8"))
             except (OSError, ValueError) as exc:
                 raise ValueError("Imported voice lineage marker is unreadable.") from exc
-            if marker.get("artifactHashes") != self._artifact_hashes_for_voice(project_root, voice, speaker):
-                raise ValueError("Imported voice artifacts changed after collection import.")
             source_collection_id = marker.get("collectionId")
             source_entry_id = marker.get("entryId")
             source_entry = self._read_entry(source_collection_id, source_entry_id)
@@ -352,11 +391,20 @@ class FileVoiceCollections:
                     or marker.get("sourceVoiceId") != source_entry.voice.id
                     or marker.get("sourceRunId") != source_entry.voice.source_run_id
                     or marker.get("sourceReferenceSegmentId") != source_entry.voice.reference_segment_id
-                    or marker.get("sourceModelSetId") != source_entry.voice.model_set_id):
+                    or marker.get("sourceModelSetId") != source_entry.voice.model_set_id
+                    or marker.get("sourceSpeakerId", source_entry.speaker.id) != source_entry.speaker.id):
                 raise ValueError("Imported voice lineage does not match its archived collection entry.")
             source_lineage = self._verified_entry_lineage(source_collection_id, source_entry_id, source_entry)
             if marker.get("provenance") != source_lineage.get("provenance"):
                 raise ValueError("Imported voice provenance does not match its archived collection entry.")
+            evidence_path = None
+            if source_entry.speaker.voice_consent and source_entry.speaker.voice_consent.evidence:
+                evidence_name = PurePosixPath(source_entry.speaker.voice_consent.evidence.path).name
+                evidence_path = f"assets/voices/{voice.id}/consent-evidence/{evidence_name}"
+            if marker.get("artifactHashes") != self._artifact_hashes_for_voice(
+                project_root, voice, speaker, consent_evidence_path=evidence_path,
+            ):
+                raise ValueError("Imported voice artifacts changed after collection import.")
             provenance = dict(source_lineage["provenance"])
             chain = list(provenance.get("importChain", []))
             chain.append({
@@ -473,16 +521,21 @@ class FileVoiceCollections:
         return lineage
 
     def _artifact_hashes_for_voice(
-        self, root: Path, voice: ProjectVoice, speaker: SpeakerProfile,
+        self,
+        root: Path,
+        voice: ProjectVoice,
+        speaker: SpeakerProfile,
+        *,
+        consent_evidence_path: str | None | object = _USE_SPEAKER_EVIDENCE,
     ) -> dict:
+        evidence_path = consent_evidence_path
+        if evidence_path is _USE_SPEAKER_EVIDENCE:
+            evidence_path = speaker.voice_consent.evidence.path if speaker.voice_consent and speaker.voice_consent.evidence else None
         return {
             "reference": self._hash_tree(self._safe_relative_source(root, voice.reference_audio)),
             "adapter": self._hash_tree(self._safe_relative_source(root, voice.adapter_path)) if voice.adapter_path else None,
             "model": self._hash_tree(self._safe_relative_source(root, voice.model_path)) if voice.model_path else None,
-            "consentEvidence": (
-                self._hash_tree(self._safe_relative_source(root, speaker.voice_consent.evidence.path))
-                if speaker.voice_consent and speaker.voice_consent.evidence else None
-            ),
+            "consentEvidence": self._hash_tree(self._safe_relative_source(root, evidence_path)) if evidence_path else None,
         }
 
     def _artifact_hashes_for_import(
@@ -600,6 +653,143 @@ class FileVoiceCollections:
                 "voice_consent": speaker.voice_consent.model_copy(update={"evidence": evidence})
             })
         return speaker
+
+    def _find_imported_profile(
+        self,
+        voices_root: Path,
+        project_id: str,
+        source_project_id: str,
+        source_speaker_id: str,
+    ) -> SpeakerProfile | None:
+        """Resolve a destination profile through archived source identities, never display names."""
+        project_root = voices_root.parent.parent.resolve()
+        catalog = self.catalogs.get(project_id)
+        for marker_path in sorted(voices_root.glob("voice-*/collection-import.json")):
+            if (marker_path.is_symlink() or marker_path.parent.is_symlink()
+                    or marker_path.parent.resolve().parent != voices_root.resolve()):
+                continue
+            try:
+                marker = json.loads(marker_path.read_text(encoding="utf-8"))
+                collection_id = marker["collectionId"]
+                entry_id = marker["entryId"]
+                if (not isinstance(collection_id, str) or not isinstance(entry_id, str)
+                        or not _SAFE_SOURCE_ID.fullmatch(collection_id)
+                        or not _SAFE_SOURCE_ID.fullmatch(entry_id)):
+                    continue
+                entry = self._read_entry(collection_id, entry_id)
+                self._verified_entry_lineage(collection_id, entry_id, entry)
+                if (marker.get("sourceProjectId") != entry.source_project_id
+                        or marker.get("sourceVoiceId") != entry.voice.id
+                        or marker.get("sourceSpeakerId", entry.speaker.id) != entry.speaker.id):
+                    continue
+                if (entry.source_project_id, entry.speaker.id) != (source_project_id, source_speaker_id):
+                    continue
+                voice = self.voices.get(project_id, marker_path.parent.name)
+                if (not _SAFE_SOURCE_ID.fullmatch(voice.speaker_profile_id) or voice.id != marker_path.parent.name
+                        or marker.get("sourceRunId") != entry.voice.source_run_id
+                        or marker.get("sourceReferenceSegmentId") != entry.voice.reference_segment_id
+                        or marker.get("sourceModelSetId") != entry.voice.model_set_id):
+                    continue
+                speaker = next((item for item in catalog.speakers if item.id == voice.speaker_profile_id), None)
+                if speaker is None:
+                    speaker = self._imported_speaker(project_root, entry, voice)
+                self._require_completed_training_output(project_id, project_root, voice, speaker)
+                return speaker
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return None
+
+    def _prepare_profile_evidence(
+        self,
+        project_root: Path,
+        speaker: SpeakerProfile,
+        *,
+        archive_root: Path | None = None,
+    ) -> tuple[SpeakerProfile, Path | None, Path | None]:
+        consent = speaker.voice_consent
+        if not consent or not consent.evidence:
+            return speaker, None, None
+        if not _SAFE_SOURCE_ID.fullmatch(speaker.id):
+            raise ValueError("Speaker Profile ID is invalid for project-owned consent evidence.")
+        evidence = consent.evidence
+        evidence_name = PurePosixPath(evidence.path).name
+        if not evidence_name:
+            raise ValueError("Consent evidence needs a file name.")
+        evidence_path = f"assets/consent-evidence/{speaker.id}/{evidence_name}"
+        consent_root = self._contained_dir(project_root, "assets/consent-evidence")
+        destination_folder = consent_root / speaker.id
+        self._validate_storage_child(consent_root, destination_folder)
+        if evidence.path == evidence_path:
+            self._safe_relative_source(project_root, evidence_path)
+            return speaker, None, None
+
+        source_root = archive_root or project_root
+        source = self._safe_relative_source(source_root, evidence.path)
+        destination_file = destination_folder / evidence_name
+        stage = consent_root / f".{speaker.id}.{uuid4().hex}.tmp"
+
+        if destination_file.exists():
+            if self._hash_tree(source) != self._hash_tree(destination_file):
+                raise ValueError("Speaker Profile consent evidence destination already contains different proof.")
+            return speaker.model_copy(update={
+                "voice_consent": consent.model_copy(update={
+                    "evidence": evidence.model_copy(update={"path": evidence_path}),
+                }),
+            }), None, None
+
+        stage.mkdir()
+        try:
+            self._copy_tree(source, stage / evidence_name)
+        except Exception:
+            shutil.rmtree(stage, ignore_errors=True)
+            raise
+        updated = speaker.model_copy(update={
+            "voice_consent": consent.model_copy(update={
+                "evidence": evidence.model_copy(update={"path": evidence_path}),
+            }),
+        })
+        return updated, stage, destination_folder
+
+    def _publish_profile_evidence(self, stage: Path, destination_folder: Path | None) -> Path | None:
+        if destination_folder is None:
+            shutil.rmtree(stage, ignore_errors=True)
+            return None
+        consent_root = stage.parent.resolve(strict=True)
+        self._validate_storage_child(consent_root, destination_folder)
+        destination_file = destination_folder / next(stage.iterdir()).name
+        if destination_folder.exists():
+            if destination_file.exists():
+                raise FileExistsError(f"Speaker Profile consent evidence already exists: {destination_file.name}")
+            destination_file.parent.mkdir(parents=True, exist_ok=True)
+            (stage / destination_file.name).replace(destination_file)
+            shutil.rmtree(stage, ignore_errors=True)
+            return destination_file
+        stage.replace(destination_folder)
+        return destination_folder
+
+    @staticmethod
+    def _validate_storage_child(root: Path, child: Path) -> None:
+        resolved_root = root.resolve(strict=True)
+        if child.parent.resolve(strict=True) != resolved_root:
+            raise ValueError("Storage path escaped its root.")
+        if child.is_symlink():
+            raise ValueError("Storage path cannot traverse a symbolic link or junction.")
+        resolved_child = child.resolve(strict=False)
+        lexical_child = Path(os.path.abspath(child))
+        if (os.path.normcase(str(resolved_child)) != os.path.normcase(str(lexical_child))
+                or (resolved_child != resolved_root and resolved_root not in resolved_child.parents)):
+            raise ValueError("Storage path escaped its root or traverses a junction.")
+        if child.exists() and not child.is_dir():
+            raise ValueError("Storage path must point to a directory.")
+
+    @staticmethod
+    def _rollback_profile_evidence(created: Path | None) -> None:
+        if created is None:
+            return
+        if created.is_dir():
+            shutil.rmtree(created, ignore_errors=True)
+        else:
+            created.unlink(missing_ok=True)
 
     def _copy_from_project(self, project_root: Path, relative: str, archive_root: Path) -> None:
         source = self._safe_relative_source(project_root, relative)

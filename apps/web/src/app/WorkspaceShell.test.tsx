@@ -246,6 +246,28 @@ describe("WorkspaceShell STT synchronization", () => {
     } finally { schedule.mockRestore(); clear.mockRestore(); }
   });
 
+  it("keeps each confirmed profile import in the next flush before React commits", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await screen.findByTestId("media-ids");
+    const original = collectionContext.current!.trainingCatalog;
+    const results = ["first", "second"].map((id) => ({
+      speaker: { id: `imported-${id}`, name: id, language: "vi", languageId: "vi", region: null,
+        age: null, gender: "unknown", attributes: {}, color: "#ff6745", createdAt: "2026-10-09T00:00:00Z" },
+      voice: { id: `voice-${id}`, speakerProfileId: `imported-${id}`, kind: "full", engine: "omnivoice" },
+      catalog: original,
+    } as import("../domain/types").VoiceCollectionImport));
+    await act(async () => {
+      results.forEach((result) => collectionContext.current!.onCollectionImported!(result));
+      await collectionContext.current!.onPrepareCollectionExport!();
+    });
+    const saved = apiMocks.saveTrainingCatalog.mock.calls.at(-1)![1] as TrainingCatalog;
+    expect(saved.speakers.map((speaker) => speaker.id)).toEqual(expect.arrayContaining(["imported-first", "imported-second"]));
+    expect(collectionContext.current!.trainingCatalog.speakers.map((speaker) => speaker.id)).toEqual(expect.arrayContaining(["imported-first", "imported-second"]));
+    expect(collectionContext.current!.projectVoices.map((voice) => voice.id)).toEqual(expect.arrayContaining(["voice-first", "voice-second"]));
+  });
+
   it.each(["all", "missing", "cancel"])("asks before enqueueing a mixed STT selection: %s", async (choice) => {
     const done = mediaAsset("complete", "Đã có text", "2026-10-08T00:00:01Z");
     const fresh = { ...mediaAsset("skipped", "", "2026-10-08T00:00:02Z"), id: "asset-2" };
