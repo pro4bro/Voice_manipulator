@@ -949,3 +949,54 @@ assert riêng. Full frontend696/77, API712/twoexistingwarnings204.01s;
 typecheck/build/diff pass. Legacy proof/manual-edit/delete fixture bổ sung1 pass.
 Không đổi ngưỡng nghiệm thu hoặc Phase03 budgets. Native group checks và âm thanh
 generate còn cần nghiệm thu sau restart; round kế tiếp STT-GAP-01.
+
+
+## USER-FEEDBACK-16 — profile nesting and OBS word sync (2026-10-10)
+
+### Feedback — 2026-10-10
+
+**Nguyên văn (copy từ chat):**
+
+> nếu một model nằm trong một profile thì nó phải nằm trong nút xổ trong profile trong module Speaker Profile. Hiện tại profile và model đang ngang hàng.
+>
+> khi STT với file âm thanh record từ OBS Livelink thì nó không chạy sub theo. Không tương tác qua lại giữa Script và Timeline module.
+
+**Cách hiểu:** model là đối tượng con trong phần xổ của hồ sơ Speaker. Với
+footage OBS đã ghi xong/STT, chọn từ trong Script hoặc subtitle phải tua đúng
+audio/playhead; khi playback, highlight Script và subtitle cùng thời gian,
+cả view nhiều track và một track.
+
+### Agent tự kiểm / kết quả so với ngưỡng
+
+Product `cc1a8fa` nests trained ProjectVoice models inside independently
+expandable Speaker Profile slots, initially collapsed, with accessible counts
+and retained selection/context/Collection controls. Imported models still hide
+Add to Collection. Properties stays in its header column even without models.
+
+Archived OBS now publishes per-asset active word indexes and accepts Script
+seeks through the shared playback store. Subtitle clicks seek audio as well as
+the playhead; single-track Script selection and repeat clicks seek correctly.
+Silence clears highlights; asset refresh does not rewind. The focused standard
+Timeline owns its clock and has local selection when opened from multitrack.
+
+Real ModuleRegistry regressions fail before the repair and pass afterward;
+review caught and repaired the multitrack focused-selection gap. Final frontend
+701/77 files, typecheck/build/diff checks pass. API718/twoexistingwarnings is
+carried from STT-GAP-01, not rerun. Read-only OBS9 confirms two stem/asset/parent
+identities and original1094/42 word arrays; six metadata hashes are unchanged.
+Gate user-feedback-16-profile-obs-sync; ADR0064. No source/model/data mutation
+or runtime restart. Reload the built UI for the new frontend.
+
+Native layout/audio interaction still needs owner acceptance because repository
+jsdom tests cannot prove playback on the device; prior automatic browser review
+rejection remains respected. Phase03 stays60% and recognition/timing budgets
+remain open. Exact next development round **STT-GAP-02** reviews recovered gap
+text and other long/boundary/silence samples; STT-TIMING-ACCURACY-01 remains open.
+
+Red UI disclosure1; red ModuleRegistry interaction2; review focused selection
+red aria-pressed=false. Đã sửa, final frontend701/77 files92.39s. Repeat-click
+regression dùng đủ pointer-down/up/click như trình duyệt thật; không đổi quy tắc
+kéo row trong Script. Một focused run trung gian có nhãn zoom ngắn0.02 thay vì
+0.01; không tái diễn trong full runs sau đó và không sửa assertion để né lỗi.
+Không suy ra nghiệm thu native zoom/audio từ jsdom. Rerun backend không cần
+cho thay đổi UI này; số718 là baseline mang theo, không phải kết quả vòng này.

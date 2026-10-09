@@ -1,5 +1,32 @@
 # Project Status — 2026-10-10
 
+## USER-FEEDBACK-16 — profile nesting and OBS word sync (2026-10-10)
+
+Product `cc1a8fa` nests trained ProjectVoice models inside independently
+expandable Speaker Profile slots, initially collapsed, with accessible counts
+and retained selection/context/Collection controls. Imported models still hide
+Add to Collection. Properties stays in its header column even without models.
+
+Archived OBS now publishes per-asset active word indexes and accepts Script
+seeks through the shared playback store. Subtitle clicks seek audio as well as
+the playhead; single-track Script selection and repeat clicks seek correctly.
+Silence clears highlights; asset refresh does not rewind. The focused standard
+Timeline owns its clock and has local selection when opened from multitrack.
+
+Real ModuleRegistry regressions fail before the repair and pass afterward;
+review caught and repaired the multitrack focused-selection gap. Final frontend
+701/77 files, typecheck/build/diff checks pass. API718/twoexistingwarnings is
+carried from STT-GAP-01, not rerun. Read-only OBS9 confirms two stem/asset/parent
+identities and original1094/42 word arrays; six metadata hashes are unchanged.
+Gate user-feedback-16-profile-obs-sync; ADR0064. No source/model/data mutation
+or runtime restart. Reload the built UI for the new frontend.
+
+Native layout/audio interaction still needs owner acceptance because repository
+jsdom tests cannot prove playback on the device; prior automatic browser review
+rejection remains respected. Phase03 stays60% and recognition/timing budgets
+remain open. Exact next development round **STT-GAP-02** reviews recovered gap
+text and other long/boundary/silence samples; STT-TIMING-ACCURACY-01 remains open.
+
 ## STT-GAP-01 — OBS recognizer context repair (2026-10-10)
 
 Product `2ebada4` repairs a reproduced recognition-context omission on real

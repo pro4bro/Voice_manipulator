@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-10 — STT-GAP-01 OBS recognition-context repair.
-last_activity_desc: Real full-context omission reproduced; 60s common requests recover77 gap words, source1325 unchanged. API718, focused31; frontend baseline carried. STT-GAP-02 and reviewed timing/native acceptance remain; Phase03 budgets unchanged.
+last_activity: 2026-10-10 — USER-FEEDBACK-16 profile nesting and OBS word sync.
+last_activity_desc: Speaker model disclosure and OBS Script/Timeline word clock repaired; frontend701/typecheck/build, six owner metadata hashes unchanged. API718 carried. Native acceptance and STT-GAP-02 remain; Phase03 budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,33 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-16 — profile nesting and OBS word sync (2026-10-10)
+
+Product `cc1a8fa` nests trained ProjectVoice models inside independently
+expandable Speaker Profile slots, initially collapsed, with accessible counts
+and retained selection/context/Collection controls. Imported models still hide
+Add to Collection. Properties stays in its header column even without models.
+
+Archived OBS now publishes per-asset active word indexes and accepts Script
+seeks through the shared playback store. Subtitle clicks seek audio as well as
+the playhead; single-track Script selection and repeat clicks seek correctly.
+Silence clears highlights; asset refresh does not rewind. The focused standard
+Timeline owns its clock and has local selection when opened from multitrack.
+
+Real ModuleRegistry regressions fail before the repair and pass afterward;
+review caught and repaired the multitrack focused-selection gap. Final frontend
+701/77 files, typecheck/build/diff checks pass. API718/twoexistingwarnings is
+carried from STT-GAP-01, not rerun. Read-only OBS9 confirms two stem/asset/parent
+identities and original1094/42 word arrays; six metadata hashes are unchanged.
+Gate user-feedback-16-profile-obs-sync; ADR0064. No source/model/data mutation
+or runtime restart. Reload the built UI for the new frontend.
+
+Native layout/audio interaction still needs owner acceptance because repository
+jsdom tests cannot prove playback on the device; prior automatic browser review
+rejection remains respected. Phase03 stays60% and recognition/timing budgets
+remain open. Exact next development round **STT-GAP-02** reviews recovered gap
+text and other long/boundary/silence samples; STT-TIMING-ACCURACY-01 remains open.
 
 ## STT-GAP-01 — OBS recognizer context repair (2026-10-10)
 
