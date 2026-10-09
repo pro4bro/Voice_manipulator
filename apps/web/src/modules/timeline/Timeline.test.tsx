@@ -14,6 +14,19 @@ function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {
 }
 
 describe("Timeline", () => {
+  it("keeps paused browsing at the end when zoom changes instead of following the idle playhead", () => {
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
+      take={{ id: "archive", name: "archive.wav", url: "/audio.wav", duration: 300 }} />);
+    const scroller = container.querySelector(".timeline-scroll") as HTMLDivElement;
+    Object.defineProperties(scroller, {
+      clientWidth: { configurable: true, value: 1000 },
+      scrollWidth: { configurable: true, value: 3000 },
+    });
+    scroller.scrollLeft = 2000;
+    fireEvent.scroll(scroller);
+    fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
+    expect(scroller.scrollLeft).toBe(2000);
+  });
   it("previews source gain while dragging and commits it only when released", () => {
     const onGainChange = vi.fn();
     render(<Timeline gain={0} onGainChange={onGainChange} take={null} />);

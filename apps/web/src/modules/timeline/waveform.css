@@ -5,8 +5,31 @@
   stroke: none;
 }
 
-.obs-timeline__lane-label[aria-pressed="true"] ~ .obs-timeline__wave svg.timeline-waveform__svg path {
+.obs-timeline__lane-label[aria-pressed="true"] ~ .obs-timeline__wave svg.timeline-waveform__svg.is-live path {
   fill: var(--lime);
   opacity: .94;
   stroke: none;
+}
+
+.obs-timeline__pcm-status {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  z-index: 4;
+  padding: 2px 4px;
+  color: var(--audio-muted);
+  background: var(--surface-audio);
+  font: 9px var(--mono);
+  pointer-events: none;
+}
+.obs-timeline__pcm-status.is-error { color: var(--gold); }
+.obs-timeline__transcript-gap {
+  position: absolute;
+  inset-block: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, var(--surface-audio));
+  border-bottom: 1px dashed var(--gold);
+  font: 9px var(--mono);
 }

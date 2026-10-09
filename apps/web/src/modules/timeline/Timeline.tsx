@@ -522,7 +522,9 @@ export function Timeline({
   useLayoutEffect(() => {
     if (isRecording || playheadDragRef.current) return;
     followPlayhead();
-  }, [currentTime, duration, zoom, isRecording]);
+    // Zoom, duration metadata and data refreshes are browsing operations. Only
+    // a changed playback/seek position may move the viewport to the playhead.
+  }, [currentTime]);
 
   useEffect(() => {
     stopPlaybackClock();
@@ -1191,6 +1193,7 @@ export function Timeline({
     if (visibleRatio >= 0.1 && visibleRatio <= 0.9) return;
     const nextLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, playheadX - scroller.clientWidth * 0.1));
     scroller.scrollLeft = nextLeft;
+    setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
   }
 
   function seekToClientX(clientX: number) {
@@ -1270,7 +1273,8 @@ export function Timeline({
     playheadDragRef.current = false;
     audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    requestAnimationFrame(followPlayhead);
+    // The position set by seekToClientX is committed on the next render.
+    // Scheduling this render's closure would follow the old drag position.
   }
 
   function beginAudioScrub() {

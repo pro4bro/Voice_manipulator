@@ -54,6 +54,90 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it("follows archive playback across the view edge without recentering paused browsing", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
+    status: "stopped", archiveStatus: "ready", endedMonotonicNs: 301_000_000_000 },
+    channels: [], sourceStems: [{ channelId: ids[0], alias: "Channel 1", assetId: "asset-0" }] }]);
+  const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const ruler = screen.getByLabelText("Ruler chung");
+  fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
+  expect(ruler).toHaveTextContent("00:15");
+  const audio = container.querySelector("audio")!;
+  // A paused media event at zero must not cancel manual browsing.
+  fireEvent.timeUpdate(audio);
+  expect(ruler).toHaveTextContent("00:15");
+  fireEvent.play(audio);
+  audio.currentTime = 76;
+  fireEvent.timeUpdate(audio);
+  expect(ruler).toHaveTextContent("01:10");
+  expect(container.querySelector<HTMLElement>(".obs-timeline__playhead")?.style.left).toBe("10%");
+  fireEvent.pause(audio);
+  fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
+  const pausedView = ruler.textContent;
+  fireEvent.timeUpdate(audio);
+  expect(ruler.textContent).toBe(pausedView);
+});
+
+it("reloads a stopped track using the standard viewport PCM waveform", async () => {
+  const pcm = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    start: 0, end: 60, duration: 300, resolution: .001,
+    points: Array.from({ length: 1200 }, () => ({ min: -.1, max: .2 })),
+  }) });
+  vi.stubGlobal("fetch", pcm);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
+    status: "stopped", archiveStatus: "ready", endedMonotonicNs: 301_000_000_000 },
+    channels: [], sourceStems: [{ channelId: ids[0], alias: "Channel 1", assetId: "asset-0" }] }]);
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const lane = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  await waitFor(() => expect(pcm).toHaveBeenCalled());
+  const url = new URL(pcm.mock.calls.at(-1)![0], "http://localhost");
+  expect(url.pathname).toBe("/api/projects/project/media/asset-0/waveform");
+  expect(Number(url.searchParams.get("points"))).toBeGreaterThanOrEqual(1024);
+  await waitFor(() => expect(lane.querySelector("svg")).toHaveAttribute("data-waveform-source", "pcm-detail"));
+});
+
+it("keeps the archive window and PCM detail across repeated idle status and journal refreshes", async () => {
+  const journal = { recording: { ...recording, status: "stopped", archiveStatus: "ready",
+    endedMonotonicNs: 301_000_000_000 }, channels: [],
+    sourceStems: [{ channelId: ids[0], alias: "Channel 1", assetId: "asset-0" }] };
+  mocks.listObsLiveLinkRecordings.mockImplementation(async () => structuredClone([journal]));
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async (input: string) => {
+    const query = new URL(input, "http://localhost").searchParams;
+    return { ok: true, json: async () => ({ start: Number(query.get("start")), end: Number(query.get("end")),
+      points: [{ min: -.1, max: .2 }, { min: -.2, max: .1 }] }) };
+  }));
+  const { container } = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  for (let i = 0; i < 16; i++) fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
+  const ruler = screen.getByLabelText("Ruler chung");
+  expect(ruler).toHaveTextContent("04:00");
+  await waitFor(() => expect(container.querySelector("svg[data-waveform-source='pcm-detail']")).toBeInTheDocument());
+  const saved = ruler.textContent;
+  vi.useFakeTimers();
+  try {
+    for (let i = 0; i < 5; i++) {
+      act(() => mocks.subscribe.mock.calls[0][4]({ appRecording: null, channels: [] }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(ruler.textContent).toBe(saved);
+    }
+  } finally { vi.useRealTimers(); }
+});
+
+it("shows final realtime text as a segment-level note where archived words are missing", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
+    status: "stopped", archiveStatus: "ready", endedMonotonicNs: 301_000_000_000 },
+    channels: [], sourceStems: [{ channelId: ids[0], alias: "Channel 1", assetId: "asset-0" }] }]);
+  const words = [{ text: "trước", start: 1, end: 2 }, { text: "sau", start: 30, end: 31 }];
+  const row = { ...captionRow(ids[0], 3, "lời realtime có sẵn", "final"), endSeconds: 30 };
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording"
+    assets={[{ id: "asset-0", words } as ProjectMediaAsset]} transcriptRows={[row]} />);
+  const note = await screen.findByRole("note");
+  expect(note).toHaveTextContent("Realtime · chưa có timing từ");
+  expect(note).toHaveAttribute("title", expect.stringContaining(row.text));
+  expect(words).toHaveLength(2);
+});
+
 const captionRow = (channelId: string, startSeconds: number, text: string,
                     status: ObsLiveLinkTranscriptRow["status"] = "partial"): ObsLiveLinkTranscriptRow => ({
   schemaVersion: 1, eventRevision: startSeconds + 1, firstEventRevision: startSeconds + 1,
@@ -372,7 +456,9 @@ it("seeks a Script row to its own archived source and recording time", async () 
   await waitFor(() => expect(screen.getByRole("button", { name: "Nghe kênh Channel 2" })).toHaveAttribute("aria-pressed", "true"), { timeout: 2500 });
   expect(screen.getByLabelText("Phụ đề nháp Channel 2")).toHaveTextContent("B");
   expect(screen.getByText("00:00:03.000")).toBeInTheDocument();
-  expect(screen.getByLabelText("Lượt nói Channel 2 tại 3.00s")).toBeInTheDocument();
+  // Realtime segment bands belong to capture; archived PCM has the standard
+  // Timeline background while the segment text remains available below it.
+  expect(screen.queryByLabelText("Lượt nói Channel 2 tại 3.00s")).not.toBeInTheDocument();
 });
 
 it("hides an archived OBS channel withdrawn by its Import checkbox", async () => {

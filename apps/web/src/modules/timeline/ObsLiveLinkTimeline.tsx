@@ -16,6 +16,8 @@ import { useScriptShortcuts } from "../script/script-shortcuts";
 import { Icon } from "../../ui/Icon";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
 import { Timeline } from "./Timeline";
+import { ArchivedObsWaveform } from "./ArchivedObsWaveform";
+import { archiveTranscriptGaps } from "./archive-transcript-gaps";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
@@ -314,7 +316,12 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }), [status, journal, recordingId, isLive, assets, retainedLive]);
   const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
   const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
+  const laneTargets = lanes.map((lane) => `${lane.channelId}:${lane.assetId ?? ""}`).join(",");
   const overlapByUtterance = useMemo(() => obsOverlapByUtterance(transcriptRows), [transcriptRows]);
+  const archivedTranscriptGaps = useMemo(() => new Map(lanes.filter((lane) => lane.assetId).map((lane) => [lane.channelId,
+    archiveTranscriptGaps(assets.find((asset) => asset.id === lane.assetId)?.words ?? [],
+      transcriptRows.filter((row) => row.recordingId === recordingId && row.channelId === lane.channelId))])),
+  [assets, recordingId, transcriptRows, laneTargets]);
   const detailedOverlaps = useMemo(() => {
     const tracks = assets.filter((asset) => asset.obsRecordingId === recordingId && asset.sourceArchiveAssetId &&
       asset.importSelected !== false);
@@ -332,7 +339,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     return byAsset;
   }, [assets, recordingId]);
   const laneIds = lanes.map((lane) => lane.channelId).join(",");
-  const laneTargets = lanes.map((lane) => `${lane.channelId}:${lane.assetId ?? ""}`).join(",");
   const defaultColumnWidth = viewportWidth ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length)))) : 360;
   const clampColumnWidth = (value: number) => Math.max(240, Math.min(1200, Math.round(value)));
 
@@ -907,17 +913,21 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   return position ? <i aria-label={`${lane.label}: thiếu PCM`} className="obs-timeline__gap"
                     key={`missing-${index}`} style={position} title="Chưa nhận PCM ở đoạn này" /> : null;
                 })}
-                {captions.map((row) => {
+                {isLive ? captions.map((row) => {
                   const position = intervalPosition(row.startSeconds, Math.max(row.endSeconds, row.startSeconds + 0.08), windowStart, windowSpan);
                   return position ? <i aria-label={`Lượt nói ${lane.label} tại ${row.startSeconds.toFixed(2)}s`}
                     className="obs-timeline__speech-span" key={row.utteranceId} style={position} /> : null;
-                })}
+                }) : null}
                 {selectedRanges.map((range) => {
                   const position = intervalPosition(range.startSeconds, range.endSeconds, windowStart, windowSpan);
                   return position ? <i aria-label={`Đoạn chồng tiếng đang chọn ${lane.label} ${obsOverlapTime(range.startSeconds)}–${obsOverlapTime(range.endSeconds)}`}
                     className="obs-timeline__selected-overlap" key={`${range.startSeconds}-${range.endSeconds}`} style={position} /> : null;
                 })}
-                <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>
+                {!isLive && lane.assetId ? <ArchivedObsWaveform
+                  url={`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(lane.assetId)}/waveform`}
+                  windowStart={windowStart} windowSpan={windowSpan} duration={duration} width={subtitleLaneWidth}
+                  gain={mutedByChannel[gainKey] ? 0 : gain / 100} fallbackPath={path} /> :
+                  <svg aria-hidden="true" className="timeline-waveform__svg is-live" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>}
                 {layout === "columns" && playhead >= 0 && playhead <= 100 ?
                   <i aria-label={`Playhead ${lane.label}`} className="obs-timeline__playhead obs-timeline__column-playhead" style={{ left: `${playhead}%` }} /> : null}
                 {markInPosition !== null && markInPosition >= 0 && markInPosition <= 100 ?
@@ -957,6 +967,13 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   if (event.ctrlKey || event.metaKey) focusArchivedTrack(archivedAsset, { insertTime: seconds });
                   else seek(event.clientX, event.currentTarget);
                 }}>
+                {(archivedTranscriptGaps.get(lane.channelId) ?? []).map((gap) => {
+                  const position = intervalPosition(gap.start, gap.end, windowStart, windowSpan);
+                  return position ? <span className="obs-timeline__transcript-gap" role="note" key={`${gap.row.utteranceId}:${gap.start}`}
+                    style={position} title={`Realtime ${clock(gap.row.startSeconds)}–${clock(gap.row.endSeconds)} · chưa có timestamp từng từ được xác nhận: ${gap.row.text}`}>
+                    Realtime · chưa có timing từ tin cậy
+                  </span> : null;
+                })}
                 {excludedRanges.map((range) => { const position = intervalPosition(range.start, range.end, windowStart, windowSpan);
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
                 {visibleSubtitleWordLayout(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth,
@@ -1046,12 +1063,16 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
           event.currentTarget.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
         }
       }}
+      onPause={() => { if (!audioScrubber.active) setPlaying(false); }}
       onPlay={() => { if (!audioScrubber.active) setPlaying(true); }} onTimeUpdate={(event) => {
         if (audioScrubber.active) return;
         const time = event.currentTarget.currentTime;
         const next = nextPlayableTime(time, duration, excludedRanges);
         if (next >= duration) pausePlayback();
         setCurrentTime(next);
+        if (playing && !scrubbingRef.current && (next < windowStart || next >= windowStart + windowSpan * .9)) {
+          setWindowStart(Math.max(0, Math.min(Math.max(0, duration - windowSpan), next - windowSpan * .1)));
+        }
         forEachPlaybackAudio((other) => {
           if (Math.abs(other.currentTime - next) > .001) other.currentTime = next;
         });
