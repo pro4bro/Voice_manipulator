@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-07
+### 2026-10-09 — current: USER-FEEDBACK-08
+
+Controller readiness repair removes system CA/proxy loading from fixed HTTP
+loopback clients; real-Uvicorn stalled-certificate and invalid-environment tests
+are red/green. CLI watches from before dependency imports, retaining bounded frame
+stacks until bind. Launchers preserve prior nonempty stdout/stderr before retries.
+API687/two existing warnings passes on E temp storage; initial C temp run had503
+setup errors while C free was0, later independently85GB free; no owner files deleted.
+Actual normal launcher succeeds: controller1.897s, Studio4.354s, API11.393s;
+all health=ok, runtime=running. Normal owner stack left up; no manual inference
+dispatch. Gate `docs/gates/user-feedback-08-controller-readiness.md`, ADR0055.
+The historical PID25916 stack is lost; exact cause and idle/cold reliability remain
+unproven. Exact next RUNTIME-READINESS-DEVICE-01 captures normal idle/cold cycles
+under unchanged deadlines; then UX-EDITING-DEVICE-01 resumes OBS Stop/waveform/
+playback and editing acceptance. STT word truth, Phase03 budgets, upstream and
+project schema stay unchanged. Frontend07 validation is carried, not rerun.
+
+### 2026-10-09 — previous: USER-FEEDBACK-07
 
 Owner confirms OBS signal and overlap detection; Stop/full overview exposed the
 live120-second waveform cap applied to an actual406.4052262-second stopped take.

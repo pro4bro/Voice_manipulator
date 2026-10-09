@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-07 OBS waveform after Stop.
-last_activity_desc: Stopped full waveform overview supports recorded duration with streaming600-bin aggregation; live/cursor caps retained. Stop keeps same-take lanes/bins while journals load. Actual copied406-second owner envelopes pass; baseline422 reproduced; owner media hashes unchanged. Frontend639/73, API682/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 native Stop/zoom/playback and editing after reload. STT word truth and Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-08 controller readiness.
+last_activity_desc: Fixed HTTP loopback clients avoid CA/proxy startup work; early bounded stack watcher and retained retry logs delivered. API687/two existing warnings passes on E temp storage after transient C full setup errors. Actual normal startup passes controller1.897s, Studio4.354s, API11.393s; runtime running and left up. Original PID25916 cause/cold reliability remains unproven. Next RUNTIME-READINESS-DEVICE-01 idle/cold evidence then UX-EDITING-DEVICE-01. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,20 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-08 — 2026-10-09
+
+Removed unnecessary CA/proxy work for controller HTTP loopback clients. Controlled
+Uvicorn/environment/early-import regressions pass; CLI captures bounded startup
+frames and launchers preserve previous nonempty output. API687/two existing
+warnings passes with E temp storage; initial C full fixture errors are recorded,
+no owner files deleted. Actual normal controller1.897s/Studio4.354s/API11.393s
+readiness passes; runtime/health running/ok and normal stack left up.
+Gate `docs/gates/user-feedback-08-controller-readiness.md`, ADR0055.
+Original PID25916 stack and idle/cold reliability remain unproven. Exact next
+RUNTIME-READINESS-DEVICE-01 records normal idle/cold starts; then UX-EDITING-DEVICE-01
+native OBS Stop/waveform/playback/editing acceptance. Frontend07 evidence carried.
+No manual inference dispatch, schema/upstream or Phase03-budget change; stays60%.
 
 ## USER-FEEDBACK-07 — 2026-10-09
 

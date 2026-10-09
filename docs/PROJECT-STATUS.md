@@ -1,5 +1,22 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-08 — controller readiness (2026-10-09)
+
+Controller HTTP loopback clients no longer load system CA/proxy settings before
+bind; controlled real-Uvicorn regressions and invalid environment round-trip pass.
+CLI startup watches precede heavy imports and keep bounded frame-only stacks.
+Controller/Studio/API launchers preserve previous logs before retry truncation.
+API687/two existing warnings passes on E temp storage. Initial C temp fixture
+setup errors coincided with0 free bytes; no owner files were deleted, later85GB
+free independently observed. Real normal launcher passed controller1.897s,
+Studio4.354s, API11.393s. All health=ok/runtime=running; normal stack left up.
+Evidence `docs/gates/user-feedback-08-controller-readiness.md`, ADR0055.
+Original PID25916's exact stack is unavailable and cold reliability is not proven.
+Exact next RUNTIME-READINESS-DEVICE-01 retains idle/cold startup evidence under
+existing deadlines; UX-EDITING-DEVICE-01 native OBS Stop/waveform and editing
+checks follow. No manual model dispatch, schema/upstream or Phase03-budget change.
+Frontend07 checks are carried, not new visual evidence.
+
 ## USER-FEEDBACK-07 — OBS waveform after Stop (2026-10-09)
 
 Actual406.4052262-second stopped take overview failed because of the live120-second

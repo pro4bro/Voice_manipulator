@@ -1,5 +1,20 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-08 — controller startup and retained retry evidence (2026-10-09)
+
+Controller fixed HTTP loopback clients avoid CA/proxy setup before binding.
+CLI watches before heavy imports; launchers preserve nonempty output across retry.
+Controlled real-Uvicorn/invalid-env/slow-import/PowerShell regressions pass; API687/
+two existing warnings on E temp storage after C full setup errors. Actual normal
+launcher succeeds controller1.897s/Studio4.354s/API11.393s, all health=ok, runtime
+running and left up: `docs/gates/user-feedback-08-controller-readiness.md`, ADR0055.
+The historical PID25916 stack is lost, so its exact cause and idle/cold reliability
+are not declared proven. Exact next RUNTIME-READINESS-DEVICE-01 records normal
+idle/cold cycles under existing deadlines; UX-EDITING-DEVICE-01 OBS Stop/waveform/
+playback and editing checks follow. STT word truth and existing physical/quality/
+LAN requirements remain. Frontend07 checks are carried; Phase03/schema/upstream
+and Queue proposal unchanged. No manual inference dispatch or owner-file cleanup.
+
 ## USER-FEEDBACK-07 — OBS Stop waveform (2026-10-09)
 
 Stopped overviews now allow bounded recording duration instead of the live120-second
