@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đối chiếu IN / OUT theo audio</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#151915;color:#e4e9dc;font:15px system-ui,sans-serif}main{max-width:1150px;margin:auto;padding:24px}h1{font-size:24px}p{line-height:1.55}.muted{color:#bdc6b1}button,input,select{font:inherit;background:#262c24;color:#eef3e6;border:1px solid #69715e;border-radius:4px;padding:9px}button{cursor:pointer}button:hover,button:focus-visible{border-color:#c9e780}button:disabled{opacity:.4;cursor:default}label{display:inline-flex;gap:8px;align-items:center}input[type=checkbox]{width:18px;height:18px}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}audio{width:100%}canvas{display:block;width:100%;height:155px;background:#10140f;border:1px solid #59614e;touch-action:none;cursor:crosshair}.clock{font:18px ui-monospace,monospace;color:#c9e780}#words{display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow-y:auto;padding:12px;background:#1e241c}#words button{padding:6px 10px}#words button[aria-pressed=true]{background:#c9e780;color:#11170b}#words button[data-status=heard]{border-color:#c9e780}.editor{border:1px solid #59614e;padding:16px;margin:16px 0}#message{min-height:24px;color:#ffd579}#context{max-height:160px;overflow-y:auto;padding:12px;border:1px solid #59614e}#progress{font-weight:600}input[type=number]{width:145px}.danger{color:#ffd579}
+</style>
+<main>
+<h1>Đối chiếu timestamp bằng tai</h1>
+<p>Nghe audio rồi đánh dấu <strong>IN</strong> khi từ bắt đầu, <strong>OUT</strong> khi từ kết thúc. Các nhãn từ là giả thuyết STT; nếu không nghe thấy từ đó, chọn “Không có từ này”. Có thể sửa nhãn thành lời thực nghe được. Thời gian máy nhận diện được ẩn để tránh ảnh hưởng lúc đánh dấu.</p>
+<div class="toolbar"><label>Đoạn <select id="case"></select></label><span id="progress"></span></div>
+<audio id="audio" controls preload="metadata"></audio>
+<div class="toolbar"><span id="clock" class="clock"></span><label>Tốc độ <select id="rate"><option>1</option><option>0.75</option><option>0.5</option></select></label><label>Zoom <input id="zoom" type="range" min="1" max="16" value="1"></label><button id="back" type="button">−50 ms</button><button id="forward" type="button">+50 ms</button></div>
+<canvas id="wave" tabindex="0" aria-label="Waveform; click hoặc kéo để tua audio"></canvas>
+<p class="muted">Mốc hiển thị dùng đồng hồ footage gốc. Play/Pause bằng phím Space; I đặt IN, O đặt OUT. Phím tắt không áp dụng lúc đang nhập chữ. Waveform chỉ biểu diễn PCM, không phải mốc từ đã duyệt.</p>
+<div id="words" aria-label="Những từ cần nghe đối chiếu"></div>
+<section class="editor">
+<div class="toolbar"><strong id="selected"></strong><label>Lời nghe được <input id="text"></label><label>Trạng thái <select id="status"><option value="unreviewed">Chưa nghe đối chiếu</option><option value="heard">Đã nghe và đánh dấu</option><option value="not-spoken">Không có từ này</option><option value="uncertain">Chưa nghe rõ</option></select></label></div>
+<div class="toolbar"><button id="mark-in" type="button">Đặt IN tại playhead (I)</button><label>IN (giây gốc) <input id="in" type="number" step="0.001"></label><button id="mark-out" type="button">Đặt OUT tại playhead (O)</button><label>OUT (giây gốc) <input id="out" type="number" step="0.001"></label><button id="listen" type="button">Nghe vùng đã đánh dấu</button></div>
+<div id="message" role="status" aria-live="polite"></div>
+</section>
+<p class="muted">Ngữ cảnh STT của đoạn (có thể nhận sai chữ):</p><div id="context"></div>
+<div class="toolbar"><label>Người đối chiếu <input id="reviewer" autocomplete="name"></label><label><input id="independent" type="checkbox">Tôi đã nghe và tự đặt mốc, không sao chép timestamp STT</label></div>
+<div class="toolbar"><button id="export" type="button">Lưu mốc JSON</button><label>Nạp lại bản đang làm <input id="import" type="file" accept="application/json,.json"></label></div>
+<p class="muted">File này chạy tại máy, không gửi audio hay mốc lên server. Có thể lưu khi chưa làm hết; các từ còn thiếu vẫn được ghi là chưa duyệt. Gửi file <strong>reviewed-anchors.json</strong> cho em để đo sai lệch. Kết quả p95 trên bộ chọn này không đại diện cho mọi footage.</p>
+</main>
+<script type="application/json" id="payload">__BLIND_REVIEW_PAYLOAD__</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('payload').textContent);
+const $=id=>document.getElementById(id), audio=$('audio'), canvas=$('wave');
+let caseIndex=0, selected=null, dragging=false, dragRange=null, stopAt=null;
+const answers=new Map(data.targets.map(t=>[t.id,{id:t.id,text:t.text,status:'unreviewed',start:null,end:null}]));
+function current(){return data.cases[caseIndex]}
+function clock(){return current().startSeconds+(Number.isFinite(audio.currentTime)?audio.currentTime:0)}
+function range(){if(dragRange)return dragRange;const c=current(),width=c.duration/Number($('zoom').value),start=Math.max(0,Math.min(c.duration-width,audio.currentTime-width/2));return [start,start+width]}
+function progress(){const count=[...answers.values()].filter(a=>a.status==='heard'||a.status==='not-spoken').length;$('progress').textContent=`Đã đối chiếu ${count}/${answers.size} từ`}
+function refreshWords(){
+ $('words').replaceChildren();
+ for(const t of data.targets.filter(t=>t.case===current().id)){
+  const b=document.createElement('button');b.type='button';b.textContent=t.text;b.dataset.status=answers.get(t.id).status;b.setAttribute('aria-pressed',String(t.id===selected));b.onclick=()=>select(t.id);$('words').append(b);
+ }
+ progress();
+}
+function select(id){selected=id;const a=answers.get(id);$('selected').textContent=`Từ ${id}`;$('text').value=a.text;$('status').value=a.status;$('in').value=a.start??'';$('out').value=a.end??'';$('message').textContent='';refreshWords();draw()}
+function saveFields(){if(!selected)return;const a=answers.get(selected);a.text=$('text').value;a.status=$('status').value;for(const [field,id] of [['start','in'],['end','out']])a[field]=$(id).value===''?null:Number($(id).value);refreshWords();draw()}
+function mark(field){if(!selected)return;$(field==='start'?'in':'out').value=clock().toFixed(3);$('status').value='heard';saveFields()}
+function draw(){
+ const c=current(),ctx=canvas.getContext('2d'),w=canvas.clientWidth,h=155;canvas.width=Math.round(w*devicePixelRatio);canvas.height=Math.round(h*devicePixelRatio);ctx.scale(devicePixelRatio,devicePixelRatio);ctx.clearRect(0,0,w,h);
+ const [start,end]=range(),x=t=>(t-start)/(end-start)*w;ctx.strokeStyle='#3e4736';ctx.beginPath();ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();
+ ctx.fillStyle='#f2744d';for(let i=0;i<c.peaks.length;i++){const t=i/c.peaks.length*c.duration;if(t<start||t>end)continue;const [lo,hi]=c.peaks[i];ctx.fillRect(x(t),h/2-hi*h*.46,Math.max(1,c.duration/c.peaks.length/(end-start)*w),Math.max(1,(hi-lo)*h*.46));}
+ const a=answers.get(selected);if(a&&Number.isFinite(a.start)&&Number.isFinite(a.end)&&a.end>a.start){ctx.fillStyle='#c9e78033';ctx.fillRect(x(a.start-c.startSeconds),0,(a.end-a.start)/(end-start)*w,h)}
+ ctx.fillStyle='#c9e780';ctx.fillRect(x(audio.currentTime)-1,0,2,h);$('clock').textContent=`Gốc ${clock().toFixed(3)} s · Clip ${audio.currentTime.toFixed(3)} s`;
+}
+function switchCase(){audio.pause();stopAt=null;caseIndex=Number($('case').value);audio.src=current().audio;audio.playbackRate=Number($('rate').value);$('zoom').value=1;$('context').textContent=current().context;select(data.targets.find(t=>t.case===current().id).id);draw()}
+function seek(e){const [start,end]=range(),r=canvas.getBoundingClientRect();stopAt=null;audio.currentTime=Math.max(0,Math.min(current().duration,start+(e.clientX-r.left)/r.width*(end-start)));draw()}
+for(let i=0;i<data.cases.length;i++){const o=document.createElement('option');o.value=i;o.textContent=data.cases[i].label;$('case').append(o)}
+$('case').onchange=switchCase;$('zoom').oninput=draw;$('rate').onchange=()=>audio.playbackRate=Number($('rate').value);
+for(const id of ['text','status','in','out'])$(id).onchange=saveFields;
+$('mark-in').onclick=()=>mark('start');$('mark-out').onclick=()=>mark('end');
+$('back').onclick=()=>{stopAt=null;audio.currentTime=Math.max(0,audio.currentTime-.05);draw()};$('forward').onclick=()=>{stopAt=null;audio.currentTime=Math.min(current().duration,audio.currentTime+.05);draw()};
+canvas.onpointerdown=e=>{canvas.focus();dragRange=range();dragging=true;canvas.setPointerCapture(e.pointerId);seek(e)};canvas.onpointermove=e=>{if(dragging)seek(e)};canvas.onpointerup=()=>{dragging=false;dragRange=null;draw()};canvas.onpointercancel=()=>{dragging=false;dragRange=null;draw()};
+audio.ontimeupdate=()=>{if(stopAt!==null&&audio.currentTime>=stopAt){audio.pause();stopAt=null}draw()};audio.onloadedmetadata=draw;window.onresize=draw;
+$('listen').onclick=()=>{saveFields();const a=answers.get(selected);if(a.start===null||a.end===null||a.end<=a.start){$('message').textContent='Đặt IN / OUT hợp lệ trước.';return}audio.currentTime=Math.max(0,a.start-current().startSeconds-.15);stopAt=Math.min(current().duration,a.end-current().startSeconds+.15);audio.play().catch(()=>{$('message').textContent='Bấm Play trên audio để nghe.'})};
+document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea')||e.ctrlKey||e.altKey||e.metaKey)return;if(e.key===' '&&!e.target.matches('button')){e.preventDefault();stopAt=null;if(audio.paused)audio.play().catch(()=>{});else audio.pause()}if(e.key.toLowerCase()==='i')mark('start');if(e.key.toLowerCase()==='o')mark('end')});
+$('export').onclick=()=>{
+ saveFields();if(!$('reviewer').value.trim()||!$('independent').checked){$('message').textContent='Điền người đối chiếu và xác nhận đã tự nghe trước khi lưu.';return}
+ for(const t of data.targets){const a=answers.get(t.id),c=data.cases.find(c=>c.id===t.case);if(a.status==='heard'&&(!a.text.trim()||!Number.isFinite(a.start)||!Number.isFinite(a.end)||a.start<c.startSeconds||a.end>c.startSeconds+c.duration||a.end<=a.start)){$('message').textContent=`Mốc chưa hợp lệ: ${t.id}`;return}}
+ const report={schema:1,protocolSha256:data.protocolSha256,reviewer:$('reviewer').value.trim(),independentlyHeard:true,reviewedAt:new Date().toISOString(),anchors:[...answers.values()]};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='reviewed-anchors.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('message').textContent='Đã tạo file mốc; file tải xuống cần gửi lại cho em.';
+};
+$('import').onchange=async()=>{try{const file=$('import').files[0];if(!file)return;const r=JSON.parse(await file.text());if(r.protocolSha256!==data.protocolSha256)throw Error('Mốc thuộc bộ audio khác.');const staged=new Map(answers);for(const a of r.anchors){if(!staged.has(a.id))throw Error('Có từ không thuộc bộ này.');staged.set(a.id,a)}for(const [id,a] of staged)answers.set(id,a);$('reviewer').value=r.reviewer??'';$('independent').checked=r.independentlyHeard===true;select(selected);$('message').textContent='Đã nạp mốc.'}catch(e){$('message').textContent=String(e.message)}};
+switchCase();
+</script>
+</html>
