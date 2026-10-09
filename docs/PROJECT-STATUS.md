@@ -1,5 +1,23 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-13 — contained Sound Library and Script row controls (2026-10-09)
+
+Product `1532c47` contains profile/voice controls in compact Sound Library slots,
+with fixed selection boxes, separate voice actions and explicit Properties.
+Shared list bounds cover Input, standalone and Voice Manipulator. Channel Script
+places profile choice with leading row controls. Plain ticks toggle membership;
+Shift/Ctrl+A and selected-row-only assignment remain. Explicit null word speaker
+IDs survive Script/Workspace/Timeline and compiler ownership, preventing cleared
+rows from inheriting the footage default. Raw diarization remains provenance.
+
+Frontend682/77, focused Script56/3 and compiler34 pass; typecheck/build pass.
+Full API704/twoexistingwarnings and diff checks pass. Gate user-feedback-13-library-slots-script-profile,
+ADR0060. Owner restart/reload and narrow-panel containment, clear/reopen and long
+Script-end acceptance remain device gates. Native rendering cannot be proven by
+source/jsdom checks. Phase03 stays60%; no owner media/model/runtime mutations.
+Exact next STT-GAP-01 retains isolated OBS recognizer/merge evidence before repair.
+
+
 ## USER-FEEDBACK-12 — shared Timeline scale and Voice Collection (2026-10-09)
 
 Product commit `23e6494` aligns standard/imported/OBS Timeline zoom and absolute
