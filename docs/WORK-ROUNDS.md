@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-06
+### 2026-10-09 — current: USER-FEEDBACK-07
+
+Owner confirms OBS signal and overlap detection; Stop/full overview exposed the
+live120-second waveform cap applied to an actual406.4052262-second stopped take.
+Stopped full snapshots now cover bounded recorded duration with at most600 bins,
+processing envelope documents incrementally. Live/cursor caps remain. Immediate
+journal refresh and same-take overlapping bins retain waveform through Stop/loading.
+Actual copied owner envelopes return600 audio points per channel; baseline adapter
+returns the reported422. Original MKA/two WAV hashes unchanged. Frontend639/73
+(tracked638/72), API682/two existing warnings, typecheck/build pass. Gate:
+`docs/gates/user-feedback-07-obs-stop-waveform.md`, ADR0054.
+Exact next UX-EDITING-DEVICE-01: after reload, reopen this take at full zoom and
+validate native >120-second Record -> Stop -> waveform/zoom/playback; deletion/scroll
+acceptance remains. STT-TIMING-ACCURACY-01 still needs reviewed word truth. No normal
+services, owner media, schema/upstream or Phase03 budget changed. Initial archive
+decode and hours-long disk-read latency are not claimed improved.
+
+### 2026-10-09 — previous: USER-FEEDBACK-06
 
 Selected-word deletion is one bulk identity pass and one commit; large documents
 use a Worker with snapshot fences, cancellation and pending/error feedback.

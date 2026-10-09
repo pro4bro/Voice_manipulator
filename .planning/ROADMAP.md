@@ -1,5 +1,20 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-07 — OBS Stop waveform (2026-10-09)
+
+Stopped overviews now allow bounded recording duration instead of the live120-second
+cap, aggregating documents incrementally into at most600 points. Live/cursor caps,
+ownership/provenance and source separation remain. UI refreshes journal immediately
+and retains same-take overlapping bins during Stop/loading. Real copied406-second
+owner envelopes pass; baseline adapter reproduces422; original media hashes match.
+Frontend639/73, API682/two existing warnings, typecheck/build pass:
+`docs/gates/user-feedback-07-obs-stop-waveform.md`, ADR0054.
+Exact next UX-EDITING-DEVICE-01 requires native Stop/overview/playback after reload
+and earlier editing/scroll acceptance. Owner accepted Record signal/overlap only.
+STT-TIMING-ACCURACY-01 reviewed word truth, existing browser/physical/quality/download/
+LAN requirements and hours-long archive latency remain. Phase03 budgets, schema,
+upstream and Queue proposal unchanged.
+
 ## USER-FEEDBACK-06 — responsive deletion and fresh OBS journal (2026-10-09)
 
 One-pass/Worker deletion retains surviving word identity and one history commit,

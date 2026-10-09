@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-06 Script deletion and OBS journal persistence.
-last_activity_desc: Bulk/background word deletion with stale-result fences, scrolling timing notices and isolation of missing historical OBS owners delivered. Frontend637/73, API680/two existing warnings, typecheck/build and actual Worker bundle pass. Next UX-EDITING-DEVICE-01 real deletion/scroll/native OBS Record after reload. STT-TIMING-ACCURACY-01 reviewed word truth remains. Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-07 OBS waveform after Stop.
+last_activity_desc: Stopped full waveform overview supports recorded duration with streaming600-bin aggregation; live/cursor caps retained. Stop keeps same-take lanes/bins while journals load. Actual copied406-second owner envelopes pass; baseline422 reproduced; owner media hashes unchanged. Frontend639/73, API682/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 native Stop/zoom/playback and editing after reload. STT word truth and Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,21 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-07 — 2026-10-09
+
+Owner confirms Record signal/overlap detection. Logged406-second stopped overview
+exceeded the backend live120-second cap. Stopped full snapshots now permit bounded
+recording duration with incremental600-bin extrema; live/cursor120 caps remain.
+Immediate journal refresh and same-take overlapping bins retain Stop waveform.
+Actual copied owner envelopes pass with600 audio points/channel; baseline adapter
+reproduces422. Original MKA/two WAV hashes unchanged. Frontend639/73, API682/two
+existing warnings, typecheck/build pass; gate:
+`docs/gates/user-feedback-07-obs-stop-waveform.md`, ADR0054.
+Exact next UX-EDITING-DEVICE-01: reload, existing take overview and native >120s
+Record -> Stop -> waveform/zoom/playback, plus prior editing/scroll acceptance.
+Reviewed STT word truth and browser/physical/quality/LAN prerequisites remain.
+No normal service/model, owner media or schema mutation; Phase03 stays60%.
 
 ## USER-FEEDBACK-06 — 2026-10-09
 

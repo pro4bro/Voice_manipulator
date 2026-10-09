@@ -1,5 +1,21 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-07 — OBS waveform after Stop (2026-10-09)
+
+Actual406.4052262-second stopped take overview failed because of the live120-second
+API cap. Stopped full snapshots now permit bounded recording duration, streaming
+envelope documents into at most600 bins. Live/cursor120-second bounds and ownership/
+provenance checks stay intact. UI refreshes journals immediately on Stop and retains
+same-take overlapping waveform while journal/archive data loads. Copied real owner
+envelopes return600 audio points per channel; the baseline adapter returns422.
+Original MKA/two WAV hashes unchanged. Frontend639/73, API682/two existing warnings,
+typecheck/build pass: `docs/gates/user-feedback-07-obs-stop-waveform.md`, ADR0054.
+Owner confirmed Record signal/overlap recognition; exact next UX-EDITING-DEVICE-01
+still needs actual native Stop/overview/playback and editing/scroll acceptance after
+reload. STT-TIMING-ACCURACY-01 word truth remains. No normal services/models, owner
+media, upstream/schema or Phase03-budget mutation; long archive decode/read latency
+remains unmeasured beyond the retained local406-second envelope probe.
+
 ## USER-FEEDBACK-06 — Script deletion and OBS journal recovery path (2026-10-09)
 
 Bulk deletion replaces repeated full transcript reconciliation; large documents
