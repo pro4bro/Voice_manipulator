@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-10 — STT-GAP-02 retained gap review and context screen.
-last_activity_desc: Cached large-v3 context screen CER7.8382%/WER9.5779%; owner OBS passage CER9.6774%/WER12.8713%. API focused34 pass and23 source hashes unchanged. Timing anchors/native acceptance remain; Phase03 stays60%.
+last_activity: 2026-10-10 — STT-TIMING-ACCURACY-01 isolated screen and anchor tooling.
+last_activity_desc: Three private CPU timing cases and24-target blind review packet retained. Candidate confidence/identity/proxy gates fail; human IN/OUT unmeasured. API741 passes; Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,40 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## STT-TIMING-ACCURACY-01 — isolated screen and anchor tooling (2026-10-10)
+
+Measurement/tooling `08918b7` retains three exact mono PCM16/24kHz crops
+(OBS9 236–272s; speech-2 55–66s and 75–82s), 148 native and edge-refined words
+from the same private CPU/int8 Studio passes, and a separate cached Vietnamese
+250h CPU alignment. Production timing defaults and owner runtimes are unchanged.
+
+Candidate has 150/150 raw timed words. OBS confidence >0.3 is 97/104 =93.27%,
+below the unchanged95% gate. Two cases contain leading transcript words absent
+from the native timed-word lists; safe identity mapping is withheld rather than
+shifted. Safe comparison coverage is104/148 =70.27%, below98%. Pooled candidate
+VAD-proxy onset mean142.53ms also exceeds80ms; this is not human IN/OUT truth.
+Short-crop intervals have no invalid/zero/overlap cases; prior zero-PCM timing
+remains unresolved because decode context changed.
+
+The blind offline worksheet has24 targets, exact audio and empty manual IN/OUT.
+The scorer binds protocol/audio/word identity, reports missing/lexically corrected
+words and checks IN/OUT p95 separately against250ms. Human anchors are absent:
+errors and acceptance remain unmeasured. No timing winner/default is accepted.
+
+Focused23 and full API741/two existing warnings pass; compile/JS syntax/diff
+checks pass. Prior frontend701/77/typecheck/build is carried, not rerun. Closure
+rehashes23 previous read-only sources, both current PCMs and all3 crops unchanged.
+Recognition RSS is unavailable; alignment RSS is measured. First NLTK path denial,
+protocol amendment and derived clock repair are retained transparently in the
+gate. Browser/audible acceptance remains unverified; no automation workaround.
+
+Gate `docs/gates/stt-timing-accuracy-01.md` and aggregate JSON document evidence.
+The bounded profiling/tooling slice is complete; Phase03 remains60%. Exact next
+**STT-TIMING-ACCURACY-01 independent anchor review**: receive the matching
+`reviewed-anchors.json` from the worksheet, measure paired errors, and resolve
+untimed leading-word identity before a bounded correction or default change.
+Broader speaker coverage and native Script/Timeline acceptance remain open.
 
 ## STT-GAP-02 — retained gap review and common-context screen (2026-10-10)
 

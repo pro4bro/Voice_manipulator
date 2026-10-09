@@ -56,3 +56,12 @@ frozen acceptance gates, so R6 integration remains unaccepted.
 No model download, inference dispatch, owner-media rewrite or production preset
 change occurred in USER-FEEDBACK-05. Real browser/audible acceptance remains
 UX-EDITING-DEVICE-01; this measurement is a separate quality gate.
+
+## Execution update — 2026-10-10
+
+The isolated profiling/tooling slice is retained in `08918b7` and
+`docs/gates/stt-timing-accuracy-01.md`. Three real CPU cases were screened;
+confidence, safe identity mapping and the unchanged proxy budget do not accept
+the candidate. The blind24-target worksheet is ready, but independent human
+IN/OUT anchors are absent. Continue STT-TIMING-ACCURACY-01 with the matching
+review JSON before claiming acoustic error improvement or changing a default.

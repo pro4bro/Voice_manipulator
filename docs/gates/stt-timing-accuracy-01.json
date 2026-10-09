@@ -1,0 +1,261 @@
+{
+  "round": "STT-TIMING-ACCURACY-01",
+  "date": "2026-10-10",
+  "scope": "private CPU probe, blind human anchor worksheet and scorer; production timing unchanged",
+  "protocolSha256": "20eea692954ba4ee2947d70ae74f7742cc8563ac0764d3afb60b790800784c7c",
+  "caseDurationsSeconds": [
+    36.0,
+    11.0,
+    7.0
+  ],
+  "budgets": {
+    "humanWordP95Seconds": 0.25,
+    "alignmentCoverage": 0.98,
+    "alignmentConfidenceFraction": 0.95,
+    "alignmentConfidenceFloor": 0.3,
+    "proxyOnsetMeanSeconds": 0.08
+  },
+  "nativeWords": 148,
+  "humanAnchorTargets": 24,
+  "reviewedHumanAnchors": 0,
+  "humanInOutErrors": null,
+  "candidate": {
+    "modelId": "nguyenvulebinh/wav2vec2-base-vietnamese-250h",
+    "revision": "69e9000591623e5a4fc2f502407860bcdc0de0b2",
+    "weightsSha256": "2529ffc057c90b3d576ea109999ea49f3bab9691f7a93297a91d69ce8c981f84",
+    "device": "cpu",
+    "localFilesOnly": true,
+    "pipelineType": "huggingface",
+    "language": "vi",
+    "loadSeconds": 8.236,
+    "loadPeakWorkingSetBytes": 695468032,
+    "torchThreads": {
+      "intra": 4,
+      "inter": 2
+    }
+  },
+  "candidateCases": [
+    {
+      "case": "obs9-236-272",
+      "status": "complete",
+      "elapsedSeconds": 4.319,
+      "peakWorkingSetBytes": 2898075648,
+      "peakMemoryError": null,
+      "nativeWordCount": 104,
+      "candidateWordCount": 104,
+      "rawTimedCandidateWordCount": 104,
+      "rawTimingCoverageAgainstCandidateCount": 1.0,
+      "safeMappedTimedWordCount": 104,
+      "safeMappedCoverageAgainstNativeCount": 1.0,
+      "confidenceAboveFloorCount": 97,
+      "confidenceCount": 104,
+      "confidenceFractionAboveFloor": 0.932692,
+      "tokenSequenceExact": true,
+      "mappingStatus": "mapped-by-exact-token-sequence"
+    },
+    {
+      "case": "speech2-55-66",
+      "status": "complete",
+      "elapsedSeconds": 0.882,
+      "peakWorkingSetBytes": 2933350400,
+      "peakMemoryError": null,
+      "nativeWordCount": 24,
+      "candidateWordCount": 25,
+      "rawTimedCandidateWordCount": 25,
+      "rawTimingCoverageAgainstCandidateCount": 1.0,
+      "safeMappedTimedWordCount": 0,
+      "safeMappedCoverageAgainstNativeCount": 0.0,
+      "confidenceAboveFloorCount": 25,
+      "confidenceCount": 25,
+      "confidenceFractionAboveFloor": 1.0,
+      "tokenSequenceExact": false,
+      "mappingStatus": "unmatched-no-positional-mapping"
+    },
+    {
+      "case": "speech2-75-82",
+      "status": "complete",
+      "elapsedSeconds": 0.604,
+      "peakWorkingSetBytes": 2936897536,
+      "peakMemoryError": null,
+      "nativeWordCount": 20,
+      "candidateWordCount": 21,
+      "rawTimedCandidateWordCount": 21,
+      "rawTimingCoverageAgainstCandidateCount": 1.0,
+      "safeMappedTimedWordCount": 0,
+      "safeMappedCoverageAgainstNativeCount": 0.0,
+      "confidenceAboveFloorCount": 19,
+      "confidenceCount": 21,
+      "confidenceFractionAboveFloor": 0.904762,
+      "tokenSequenceExact": false,
+      "mappingStatus": "unmatched-no-positional-mapping"
+    }
+  ],
+  "structure": {
+    "native": {
+      "obs9-236-272": {
+        "words": 104,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-55-66": {
+        "words": 24,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-75-82": {
+        "words": 20,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      }
+    },
+    "edge": {
+      "obs9-236-272": {
+        "words": 104,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-55-66": {
+        "words": 24,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-75-82": {
+        "words": 20,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      }
+    },
+    "aligned": {
+      "obs9-236-272": {
+        "words": 104,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-55-66": {
+        "words": 25,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      },
+      "speech2-75-82": {
+        "words": 21,
+        "invalidOrZeroDuration": 0,
+        "outOfCrop": 0,
+        "overlappingAdjacentIntervals": 0,
+        "under25ms": 0
+      }
+    }
+  },
+  "vadProxy": {
+    "truthStatus": "unpadded Silero proxy only, not independent word IN/OUT; first midpoint-in-span opener recipe from scripts/probe_forced_alignment.py; candidate may choose different opener; clipped crop edges included",
+    "variants": {
+      "native": {
+        "obs9-236-272": {
+          "measuredSpans": 8,
+          "totalSpans": 8,
+          "meanSeconds": 0.1529999999999987
+        },
+        "speech2-55-66": {
+          "measuredSpans": 4,
+          "totalSpans": 6,
+          "meanSeconds": 0.14500000000000135
+        },
+        "speech2-75-82": {
+          "measuredSpans": 2,
+          "totalSpans": 2,
+          "meanSeconds": 0.5020000000000024
+        },
+        "all": {
+          "measuredSpans": 14,
+          "meanSeconds": 0.20057142857142857,
+          "within80msProxyMean": false
+        }
+      },
+      "edge": {
+        "obs9-236-272": {
+          "measuredSpans": 8,
+          "totalSpans": 8,
+          "meanSeconds": 0.12949999999999662
+        },
+        "speech2-55-66": {
+          "measuredSpans": 5,
+          "totalSpans": 6,
+          "meanSeconds": 0.11600000000000107
+        },
+        "speech2-75-82": {
+          "measuredSpans": 2,
+          "totalSpans": 2,
+          "meanSeconds": 0.5020000000000024
+        },
+        "all": {
+          "measuredSpans": 15,
+          "meanSeconds": 0.17466666666666555,
+          "within80msProxyMean": false
+        }
+      },
+      "aligned": {
+        "obs9-236-272": {
+          "measuredSpans": 8,
+          "totalSpans": 8,
+          "meanSeconds": 0.09799999999999187
+        },
+        "speech2-55-66": {
+          "measuredSpans": 5,
+          "totalSpans": 6,
+          "meanSeconds": 0.06340000000000004
+        },
+        "speech2-75-82": {
+          "measuredSpans": 2,
+          "totalSpans": 2,
+          "meanSeconds": 0.5185000000000031
+        },
+        "all": {
+          "measuredSpans": 15,
+          "meanSeconds": 0.14253333333332943,
+          "within80msProxyMean": false
+        }
+      }
+    }
+  },
+  "sourceAudit": {
+    "priorReadOnlySourceHashesUnchanged": 23,
+    "currentUniqueSourcePcmHashesUnchanged": 2,
+    "cropHashesUnchanged": 3,
+    "protocolSha256": "20eea692954ba4ee2947d70ae74f7742cc8563ac0764d3afb60b790800784c7c",
+    "changedSourceFiles": []
+  },
+  "candidateAccepted": false,
+  "productionChanged": false,
+  "recognitionPeakRssAvailable": false,
+  "protocolAmendedForAttempt2": true,
+  "firstAttemptProtocolBytesRetained": false,
+  "firstAttemptFailure": "NLTK default tokenizer path denied; failure outputs retained; allowed repo-local NLTK_DATA used for second attempt",
+  "derivedClockRepair": "208 endpoint fields in expectedNativeWords corrected from unchanged retained global-source words; faulty artifact preserved",
+  "testEvidence": {
+    "focusedTests": 23,
+    "fullApiTests": {
+      "passed": 741,
+      "warnings": 2,
+      "seconds": 205.85
+    },
+    "frontendTests": "unchanged carried baseline 701 in77 files; not rerun",
+    "browserAudibleAcceptance": "unverified; prior automatic browser approval rejection respected",
+    "focusedSeconds": 0.38
+  },
+  "measurementCommit": "08918b7"
+}
