@@ -598,6 +598,9 @@ def _refine_word_boundaries(
     groups.append((group_start, len(words)))
 
     refined = 0
+    # Use the original neighbours as fences: refining one phrase must not make
+    # room by silently pushing a word in a different phrase.
+    original_intervals = [(float(word["start"]), float(word["end"])) for word in words]
     for start_index, end_index in groups:
         source_start = float(words[start_index]["start"])
         source_end = float(words[end_index - 1]["end"])
@@ -605,11 +608,15 @@ def _refine_word_boundaries(
             start
             for start, _ in speech_spans
             if abs(start - source_start) <= WORD_EDGE_SNAP_WINDOW_SECONDS
+            and start < original_intervals[start_index][1]
+            and (start_index == 0 or start >= max(original_intervals[start_index - 1][1], float(words[start_index - 1]["end"])))
         ]
         offset_candidates = [
             end
             for _, end in speech_spans
             if abs(end - source_end) <= WORD_EDGE_SNAP_WINDOW_SECONDS
+            and end > original_intervals[end_index - 1][0]
+            and (end_index == len(words) or end <= original_intervals[end_index][0])
         ]
         group_snapped = False
         first = words[start_index]

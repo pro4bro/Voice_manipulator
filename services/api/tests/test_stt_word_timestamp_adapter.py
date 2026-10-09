@@ -159,3 +159,22 @@ def test_acoustic_refinement_splits_groups_at_whisper_segment_boundaries_before_
         (1.68, 1.9),
         (1.91, 2.12),
     ]
+
+
+def test_acoustic_refinement_cannot_cross_untouched_neighbour_words():
+    words = [
+        {"text": "a", "start": 1.0, "end": 1.3, "segmentIndex": 0},
+        {"text": "b", "start": 1.31, "end": 1.6, "segmentIndex": 1},
+        {"text": "c", "start": 1.61, "end": 1.9, "segmentIndex": 2},
+    ]
+    _refine_word_boundaries(words, [(1.0, 1.5), (1.1, 1.8), (1.4, 1.9)])
+    assert all(left["end"] <= right["start"] for left, right in zip(words, words[1:]))
+
+
+def test_adjacent_phrase_refinements_cannot_both_claim_the_same_gap():
+    words = [
+        {"text": "a", "start": 1.0, "end": 1.3, "segmentIndex": 0},
+        {"text": "b", "start": 1.4, "end": 1.7, "segmentIndex": 1},
+    ]
+    _refine_word_boundaries(words, [(1.0, 1.36), (1.34, 1.7)])
+    assert words[0]["end"] <= words[1]["start"]
