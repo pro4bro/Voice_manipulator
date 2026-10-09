@@ -61,7 +61,7 @@ import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../modules/obs-capture/obs-overlap";
 import { categoryOf, parameterOverrides, parameterValue, selectedTrainingModel } from "../modules/train/trainingModels";
 import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
-import { resolveRowVoice, rowsFromOutput, scriptReadiness, voicesInCategory } from "../domain/voiceScript";
+import { resolveRowVoice, rowsFromOutput, scriptReadiness, voiceCategory as categoryForVoice, voicesInCategory, type VoiceCategory } from "../domain/voiceScript";
 import { isLive, newestBatch } from "../domain/trainingBatch";
 import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusBar";
 import type { CapturedAudio } from "../modules/recorder/Recorder";
@@ -235,6 +235,17 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [sttEngines, setSttEngines] = useState<TrainingModelOption[]>([]);
   const [asrAdapters, setAsrAdapters] = useState<ProjectAsrAdapter[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
+  const [generationCategoryOverride, setGenerationCategoryOverride] = useState<VoiceCategory | null>(null);
+  const generationCategoryChoiceMade = useRef(false);
+  const generationCategoryInitializedProject = useRef<string | null>(null);
+  const generationCategoryProject = useRef(project.id);
+  useEffect(() => {
+    if (generationCategoryProject.current === project.id) return;
+    generationCategoryProject.current = project.id;
+    generationCategoryInitializedProject.current = null;
+    generationCategoryChoiceMade.current = false;
+    setGenerationCategoryOverride(null);
+  }, [project.id]);
   const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
   const [generatorParameters, setGeneratorParameters] = useState<Record<string, Record<string, TrainingParameterValue>>>({});
   const [generating, setGenerating] = useState(false);
@@ -953,6 +964,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     changeCatalog({ ...catalog, speakers: [...catalog.speakers.filter((speaker) => speaker.id !== result.speaker.id), result.speaker] });
     setProjectVoices((voices) => [...voices.filter((voice) => voice.id !== result.voice.id), result.voice]);
     setSelectedVoice(result.speaker.id);
+    if (result.voice.kind !== "vc") {
+      generationCategoryChoiceMade.current = true;
+      setGenerationCategoryOverride(categoryForVoice(result.voice));
+    }
+  }
+
+  function chooseGenerationCategory(category: VoiceCategory) {
+    generationCategoryChoiceMade.current = true;
+    setGenerationCategoryOverride(category);
   }
 
   async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[], assetId = selectedAssetId, workingRange?: TimelineEditRange | null, cutPoints?: number[]) {
@@ -1163,7 +1183,15 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     }
     if (typeof api.listProjectVoices !== "function") return;
     try {
-      setProjectVoices(await api.listProjectVoices(project.id));
+      const voices = await api.listProjectVoices(project.id);
+      setProjectVoices(voices);
+      if (generationCategoryInitializedProject.current !== project.id) {
+        generationCategoryInitializedProject.current = project.id;
+        if (!generationCategoryChoiceMade.current) {
+          const importedVoice = voices.find((voice) => voice.collectionSource && voice.kind !== "vc");
+          if (importedVoice) setGenerationCategoryOverride(categoryForVoice(importedVoice));
+        }
+      }
     } catch {
       setProjectVoices([]);
     }
@@ -2288,8 +2316,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   const scriptMediaAsset = mediaAssets.find((asset) => asset.id === scriptAssetId) ?? selectedMediaAsset;
   const latestAiRevision = [...(scriptMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "ai") ?? null;
   const latestLiveRevision = [...(selectedMediaAsset?.revisions ?? [])].reverse().find((revision) => revision.source === "record") ?? null;
-  // Voice Manipulator offers the kind of voice chosen in Voice Training.
-  const voiceCategory = categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
+  // Voice Manipulator follows Voice Training until the user or an imported
+  // Collection voice chooses a generation category of its own.
+  const voiceCategory = generationCategoryOverride ?? categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
   const canRunAiReview = Boolean(scriptMediaAsset?.text.trim() && scriptMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
   const context = useMemo<StudioContext>(() => ({
     workflow: activePage,
@@ -2391,6 +2420,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     generatorParameters,
     generating,
     onGeneratorParametersChange: (generatorId, parameters) => setGeneratorParameters((current) => ({ ...current, [generatorId]: parameters })),
+    onVoiceCategoryChange: chooseGenerationCategory,
     voiceScriptRows,
     onVoiceScriptRowsChange: setVoiceScriptRows,
     voiceCategory,

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 from pathlib import Path
 
 from app.adapters.safe_delete import child_folder, remove_tree
-from app.domain.models import DatasetSegment, ProjectVoice, VoiceKind
+from app.domain.models import DatasetSegment, ProjectVoice, VoiceCollectionSource, VoiceKind
 from app.domain.ports import ProjectRepository
 
 Slicer = Callable[[Path, Path, float, float], None]
+_MAX_COLLECTION_MARKER_BYTES = 16 * 1024
 
 
 class FileProjectVoices:
@@ -38,7 +40,7 @@ class FileProjectVoices:
         voices: list[ProjectVoice] = []
         for record in root.glob("*/voice.json"):
             try:
-                voices.append(ProjectVoice.model_validate_json(record.read_text(encoding="utf-8")))
+                voices.append(self._read_voice(record))
             except ValueError:
                 continue
         return sorted(voices, key=lambda voice: voice.created_at, reverse=True)
@@ -47,7 +49,35 @@ class FileProjectVoices:
         record = self.root(project_id) / voice_id / "voice.json"
         if not record.is_file():
             raise KeyError(voice_id)
-        return ProjectVoice.model_validate_json(record.read_text(encoding="utf-8"))
+        return self._read_voice(record)
+
+    def _read_voice(self, record: Path) -> ProjectVoice:
+        voice = ProjectVoice.model_validate_json(record.read_text(encoding="utf-8"))
+        if voice.collection_source is not None:
+            return voice
+        collection_source = self._read_collection_source(record.parent / "collection-import.json")
+        return voice.model_copy(update={"collection_source": collection_source})
+
+    @staticmethod
+    def _read_collection_source(marker: Path) -> VoiceCollectionSource | None:
+        try:
+            resolved_marker = marker.resolve(strict=True)
+            resolved_marker.relative_to(marker.parent.resolve(strict=True))
+            if not resolved_marker.is_file() or resolved_marker.stat().st_size > _MAX_COLLECTION_MARKER_BYTES:
+                return None
+            with resolved_marker.open("rb") as stream:
+                raw = stream.read(_MAX_COLLECTION_MARKER_BYTES + 1)
+            if len(raw) > _MAX_COLLECTION_MARKER_BYTES:
+                return None
+            payload = json.loads(raw.decode("utf-8"))
+            if not isinstance(payload, dict):
+                return None
+            return VoiceCollectionSource.model_validate({
+                "collectionId": payload.get("collectionId"),
+                "entryId": payload.get("entryId"),
+            })
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            return None
 
     def delete(self, project_id: str, voice_id: str) -> int:
         """Remove the voice's own folder (record and reference clip); bytes freed.

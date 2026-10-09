@@ -98,6 +98,46 @@ def test_a_published_voice_keeps_project_relative_paths(tmp_path):
     assert str(tmp_path) not in record
 
 
+def test_voice_list_and_get_project_collection_source_from_legacy_import_marker(tmp_path):
+    projects, project = project_with_audio(tmp_path)
+    voices = FileProjectVoices(projects, copy_slicer)
+    voice = voices.publish(
+        project.id, name="Imported voice", speaker_profile_id="speaker-an", kind="clone",
+        reference=segment("nine", 1, 10), language="vi",
+    )
+    voice_folder = Path(project.project_path) / "assets" / "voices" / voice.id
+    marker = voice_folder / "collection-import.json"
+    marker.write_text('{"collectionId":"collection-legacy12","entryId":"entry-legacy34"}', encoding="utf-8")
+    legacy_voice_record = voice.model_dump(mode="json", by_alias=True)
+    legacy_voice_record.pop("collectionSource", None)
+    (voice_folder / "voice.json").write_text(json.dumps(legacy_voice_record), encoding="utf-8")
+
+    listed = voices.list(project.id)
+    loaded = voices.get(project.id, voice.id)
+
+    expected = {"collection_id": "collection-legacy12", "entry_id": "entry-legacy34"}
+    assert listed[0].collection_source is not None
+    assert listed[0].collection_source.model_dump() == expected
+    assert loaded.collection_source == listed[0].collection_source
+    # The old immutable owner record remains unchanged; metadata is projected from
+    # the import marker when read rather than migrated in place.
+    assert "collectionSource" not in json.loads((voice_folder / "voice.json").read_text(encoding="utf-8"))
+
+
+def test_invalid_legacy_collection_marker_does_not_hide_voice(tmp_path):
+    projects, project = project_with_audio(tmp_path)
+    voices = FileProjectVoices(projects, copy_slicer)
+    voice = voices.publish(
+        project.id, name="Voice with invalid marker", speaker_profile_id="speaker-an", kind="clone",
+        reference=segment("nine", 1, 10), language="vi",
+    )
+    marker = Path(project.project_path) / "assets" / "voices" / voice.id / "collection-import.json"
+    marker.write_text('{"collectionId":17,"entryId":null}', encoding="utf-8")
+
+    assert voices.list(project.id) == [voice]
+    assert voices.get(project.id, voice.id).collection_source is None
+
+
 # ---------------------------------------------------------------- runner
 
 

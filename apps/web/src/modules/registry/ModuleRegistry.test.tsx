@@ -147,7 +147,8 @@ it("routes Sound Library bulk deletion to the grouped callback", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Sound Library/ }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
-    fireEvent.click(screen.getByRole("button", { name: "Xoá profiles đã chọn" }));
+    fireEvent.contextMenu(screen.getByText("An"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Xoá profiles đã chọn" }));
     expect(onDeleteSpeakers).toHaveBeenCalledWith(speakers);
     expect(onDeleteSpeaker).not.toHaveBeenCalled();
     expect(confirm).toHaveBeenCalledTimes(1);

@@ -819,6 +819,8 @@ export interface ProjectVoice {
   sourceRunId: string | null;
   /** Aggregate awaiting or carrying the identity-similarity publication gate. */
   modelSetId?: string | null;
+  /** Origin of a copied Collection entry; absent for project-created voices. */
+  collectionSource?: { collectionId: string; entryId: string } | null;
   createdAt: string;
 }
 

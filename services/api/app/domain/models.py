@@ -1205,6 +1205,13 @@ class TrainingRunStart(DomainModel):
 VoiceKind = Literal["clone", "lora", "full", "vc"]
 
 
+class VoiceCollectionSource(DomainModel):
+    """Descriptive collection lineage for a voice copied into a project."""
+
+    collection_id: str = Field(min_length=1, max_length=160)
+    entry_id: str = Field(min_length=1, max_length=160)
+
+
 class ProjectVoice(DomainModel):
     """A voice a Speaker Profile can speak with, made by Voice Training.
 
@@ -1234,6 +1241,8 @@ class ProjectVoice(DomainModel):
     # publication aggregate. RVC voices preserve the performer's emotion and
     # intentionally remain standalone.
     model_set_id: str | None = None
+    # Describes where a copied voice came from; it grants no access or trust.
+    collection_source: VoiceCollectionSource | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

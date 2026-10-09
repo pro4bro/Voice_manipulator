@@ -9,8 +9,9 @@ import { parameterProblem, parameterValue } from "../train/trainingModels";
 interface VoiceGeneratorProps {
   projectId: string;
   generators: TrainingModelOption[];
-  /** The kind chosen in Voice Training; Script rows may only use voices of it. */
+  /** Script rows may only use voices in the selected generation category. */
   category: VoiceCategory;
+  onCategoryChange?: (category: VoiceCategory) => void;
   voices: ProjectVoice[];
   rows: VoiceScriptRow[];
   speakers: SpeakerProfile[];
@@ -66,11 +67,11 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
 }
 
 /**
- * Settings and the read button for the Script. Who reads each row is picked in
+ * Category, settings and the read button for the Script. Who reads each row is picked in
  * the Script itself; this panel shows which voices that adds up to, the
  * settings of each engine involved, and how far a read has got.
  */
-export function VoiceGenerator({ projectId, generators, category, voices, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onStop, onOpenTraining }: VoiceGeneratorProps) {
+export function VoiceGenerator({ projectId, generators, category, onCategoryChange, voices, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onStop, onOpenTraining }: VoiceGeneratorProps) {
   const speakerOf = (id: string) => speakers.find((speaker) => speaker.id === id);
   const readiness = scriptReadiness(rows, voices);
   const used = new Map<string, { voice: ProjectVoice; rows: number }>();
@@ -99,9 +100,9 @@ export function VoiceGenerator({ projectId, generators, category, voices, rows, 
     <ModuleFrame className="voice-generator-module" eyebrow="VOICE GENERATOR" index="01" title="Tạo giọng">
       <div className={`voice-generator-category is-${category}`}>
         <span>DẠNG VOICE</span>
-        <b>{CATEGORY_LABELS[category]}</b>
-        <small>Theo lựa chọn ở Voice Training</small>
-        {onOpenTraining ? <button className="button button--quiet" onClick={onOpenTraining} type="button">Đổi</button> : null}
+        {onCategoryChange ? <select aria-label="Loại voice" value={category} onChange={(event) => onCategoryChange(event.target.value as VoiceCategory)}>
+          {(Object.entries(CATEGORY_LABELS) as Array<[VoiceCategory, string]>).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select> : <b>{CATEGORY_LABELS[category]}</b>}
       </div>
 
       {used.size ? (

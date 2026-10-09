@@ -39,6 +39,77 @@ function show(props: Partial<Parameters<typeof VoiceVault>[0]> = {}) {
 }
 
 describe("Sound Library", () => {
+  it("keeps bulk actions hidden until right-click and applies them to the selected range", () => {
+    const onCatalogChange = vi.fn();
+    show({ catalog: { ...CATALOG, speakers: [...CATALOG.speakers, speaker("speaker-binh", "Bình")] }, onCatalogChange });
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
+    expect(screen.queryByRole("button", { name: "Áp dụng màu" })).not.toBeInTheDocument();
+    expect(screen.queryByText("2 profile đã chọn")).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("An"));
+    const menu = screen.getByRole("menu", { name: "Thao tác profiles đã chọn" });
+    fireEvent.change(within(menu).getByLabelText("Màu cho Speaker Profiles đã chọn"), { target: { value: "#112233" } });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Áp dụng màu" }));
+    expect(onCatalogChange).toHaveBeenLastCalledWith(expect.objectContaining({ speakers: [
+      expect.objectContaining({ id: "speaker-an", color: "#112233" }), expect.objectContaining({ id: "speaker-binh", color: "#112233" }),
+    ] }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("hides Collection export only for imported voices, including after reopening", () => {
+    const imported = { ...voice("imported", "An imported", "speaker-an"), collectionSource: { collectionId: "collection-1", entryId: "entry-1" } };
+    const local = voice("local", "An local", "speaker-an");
+    const view = show({ projectId: "project-test", voices: [imported, local] });
+    expect(screen.queryByRole("button", { name: "Add to Collection An imported" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Collection An local" })).toBeInTheDocument();
+    view.unmount();
+    show({ projectId: "project-test", voices: [imported] });
+    expect(screen.queryByRole("button", { name: /Add to Collection/ })).not.toBeInTheDocument();
+  });
+
+  it("opens selected profile actions by keyboard, unselects and restores focus", () => {
+    show();
+    const check = screen.getByRole("button", { name: "Chọn profile An" });
+    check.focus();
+    fireEvent.click(check);
+    fireEvent.keyDown(check, { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu", { name: "Thao tác profiles đã chọn" });
+    expect(within(menu).getByRole("menuitem", { name: "Properties" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(within(menu).getByRole("menuitem", { name: "Bỏ chọn profiles" })).toHaveFocus();
+    fireEvent.click(document.activeElement!);
+    expect(check).toHaveAttribute("aria-pressed", "false");
+    expect(check).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("right-clicking an unselected profile targets it rather than a previous range", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onDeleteSpeakers = vi.fn();
+    const other = speaker("speaker-binh", "Bình");
+    show({ catalog: { ...CATALOG, speakers: [...CATALOG.speakers, other] }, onDeleteSpeakers });
+    fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
+    fireEvent.contextMenu(screen.getByText("Bình"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Xoá profiles đã chọn" }));
+    expect(onDeleteSpeakers).toHaveBeenCalledWith([other]);
+    confirm.mockRestore();
+  });
+
+  it("keeps voice bulk actions in their own context menu without selecting profiles", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onDeleteVoices = vi.fn();
+    const voices = [voice("v1", "Voice A", "speaker-an"), voice("v2", "Voice B", "speaker-an")];
+    show({ voices, onDeleteVoices });
+    fireEvent.click(screen.getByRole("button", { name: "Chọn voice Voice A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn voice Voice B" }), { shiftKey: true });
+    expect(screen.queryByText("2 voice đã chọn")).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("Voice A"));
+    const menu = screen.getByRole("menu", { name: "Thao tác voices đã chọn" });
+    expect(screen.getByRole("button", { name: "Chọn profile An" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Xoá voices đã chọn" }));
+    expect(onDeleteVoices).toHaveBeenCalledWith(voices);
+    confirm.mockRestore();
+  });
   it("opens profile properties with a dedicated button inside the profile slot", () => {
     show();
     fireEvent.click(screen.getByRole("button", { name: "Properties profile An" }));
@@ -93,9 +164,9 @@ describe("Sound Library", () => {
   it("clears profile selection from the blank side canvas", () => {
     show();
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
-    expect(screen.getByText("1 profile đã chọn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chọn profile An" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.pointerDown(screen.getByRole("region", { name: "Danh sách Sound Library" }));
-    expect(screen.queryByText("1 profile đã chọn")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chọn profile An" })).toHaveAttribute("aria-pressed", "false");
   });
   it("lists the voices a Speaker Profile has, each with a way to remove it", () => {
     const onDeleteVoice = vi.fn();
@@ -112,7 +183,7 @@ describe("Sound Library", () => {
     show({ voices: [voice("voice-1", "Bình · LoRA", "speaker-binh")] });
 
     expect(screen.queryByLabelText("Voice của An")).toBeNull();
-    expect(screen.getByText(/0 voice/)).toBeTruthy();
+    expect(screen.getByText(/0 model giọng/)).toBeTruthy();
   });
 
   it("offers deleting the profile itself from its properties", () => {
@@ -139,8 +210,9 @@ describe("Sound Library", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
+    fireEvent.contextMenu(screen.getByText("An"));
     fireEvent.change(screen.getByLabelText("Màu cho Speaker Profiles đã chọn"), { target: { value: "#112233" } });
-    fireEvent.click(screen.getByRole("button", { name: "Áp dụng màu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Áp dụng màu" }));
 
     expect(onCatalogChange).toHaveBeenLastCalledWith(expect.objectContaining({ speakers: [
       expect.objectContaining({ id: "speaker-an", color: "#112233" }),
@@ -157,7 +229,8 @@ describe("Sound Library", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile Bình" }), { shiftKey: true });
-    fireEvent.click(screen.getByRole("button", { name: "Xoá profiles đã chọn" }));
+    fireEvent.contextMenu(screen.getByText("An"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Xoá profiles đã chọn" }));
 
     expect(confirm).toHaveBeenCalledOnce();
     expect(onDeleteSpeakers).toHaveBeenCalledWith([speaker("speaker-an", "An"), second]);

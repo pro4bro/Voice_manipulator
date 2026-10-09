@@ -1,6 +1,6 @@
 import type { ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptRow } from "./types";
 
-/** Which voices Voice Manipulator offers, following the kind chosen in Voice Training. */
+/** Which voices Voice Manipulator offers for the selected generation category. */
 export type VoiceCategory = "clone" | "train";
 
 export const VOICE_KIND_LABELS: Record<ProjectVoice["kind"], string> = {

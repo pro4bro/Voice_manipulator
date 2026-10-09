@@ -24,6 +24,7 @@ from app.domain.models import (
     VoiceCollectionEntry,
     VoiceCollectionImportResult,
     VoiceCollectionProperties,
+    VoiceCollectionSource,
 )
 from app.domain.ports import ProjectRepository
 
@@ -201,6 +202,10 @@ class FileVoiceCollections:
                 voice = entry.voice.model_copy(update={
                     "id": new_voice_id,
                     "speaker_profile_id": new_speaker_id,
+                    "collection_source": VoiceCollectionSource(
+                        collection_id=collection_id,
+                        entry_id=entry_id,
+                    ),
                     "reference_audio": f"assets/voices/{new_voice_id}/{reference_rel}",
                     "model_path": f"assets/voices/{new_voice_id}/{model_rel}" if model_rel else None,
                     "adapter_path": f"assets/voices/{new_voice_id}/{adapter_rel}" if adapter_rel else None,

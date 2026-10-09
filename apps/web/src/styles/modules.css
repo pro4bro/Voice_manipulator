@@ -850,10 +850,14 @@
 .script-editor-stack.is-live { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
 .script-editor-stack.is-live .script-editor { color: var(--text); }
 
-.sound-profile-context-menu { position: fixed; z-index: 35; min-width: 145px; padding: 4px; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.sound-profile-context-menu { position: fixed; z-index: 35; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 4px; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .sound-profile-context-menu button { width: 100%; min-height: 33px; display: flex; align-items: center; gap: 6px; padding: 0 7px; color: var(--text); background: transparent; font-size: calc(10px * var(--font-scale)); text-align: left; }
 .sound-profile-context-menu button:hover { background: var(--soft-fill); }
 .sound-profile-context-menu svg { width: 14px; }
+.sound-profile-context-menu > strong { display: block; padding: 6px 7px; color: var(--text-muted); font-size: calc(10px * var(--font-scale)); }
+.sound-profile-context-menu > label { display: flex; align-items: center; gap: 8px; padding: 4px 7px; font-size: calc(10px * var(--font-scale)); }
+.sound-profile-context-menu input[type="color"] { width: 28px; height: 24px; padding: 1px; }
+.sound-profile-context-menu button:disabled { opacity: .5; cursor: default; }
 
 /* Compact single-line module headers: primary title first, supporting label beside it. */
 .module-frame__header { min-height: 40px; gap: 10px; padding: 6px 10px; }
@@ -1574,12 +1578,8 @@
 .voice-output-list li.is-selected { background: color-mix(in srgb, var(--accent) 9%, var(--surface-field)); }
 .voice-output-select { width: 24px; padding: 0; color: var(--text-muted); border: 0; background: transparent; cursor: pointer; }
 .voice-output-list-region { outline: none; }
-.voice-output-bulk-actions, .sound-library-bulk-actions, .voice-script__bulk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); }
-.voice-output-bulk-actions > span, .sound-library-bulk-actions > b, .voice-script__bulk-actions > b { color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
-.sound-library-bulk-actions label { display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
-.sound-library-bulk-actions input[type="color"] { width: 28px; height: 24px; padding: 1px; }
-.sound-library-bulk-actions > b { flex-basis: 100%; }
-.sound-library-bulk-actions .button { min-width: 0; max-width: 100%; min-height: 28px; padding: 4px 7px; font-size: calc(10px * var(--font-scale)); overflow-wrap: anywhere; }
+.voice-output-bulk-actions, .voice-script__bulk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--line); background: var(--surface-raised); }
+.voice-output-bulk-actions > span, .voice-script__bulk-actions > b { color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
 .voice-output-item { min-width: 0; display: grid; grid-template-columns: 6px minmax(0, 1fr); align-items: center; gap: 7px; padding: 6px 7px; color: var(--text); text-align: left; border: 0; background: transparent; cursor: pointer; }
 .voice-output-item > i { width: 6px; height: 26px; background: var(--text-subtle); }
 .voice-output-item > span { min-width: 0; display: grid; gap: 2px; }
@@ -1679,6 +1679,7 @@
 .voice-generator-category.is-train { border-left-color: var(--kind-train); }
 .voice-generator-category span { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); font-weight: 900; letter-spacing: .05em; }
 .voice-generator-category b { font-size: calc(11px * var(--font-scale)); }
+.voice-generator-category select { grid-column: 2 / -1; width: 100%; min-width: 0; min-height: 28px; padding: 3px 6px; color: var(--text); border: 1px solid var(--line); background: var(--surface-field); font-size: calc(10px * var(--font-scale)); }
 .voice-generator-category.is-clone b { color: var(--clone-ink); }
 .voice-generator-category.is-train b { color: var(--accent-ink); }
 .voice-generator-category small { grid-column: 1 / 3; color: var(--text-subtle); font-family: var(--mono); font-size: calc(7.5px * var(--font-scale)); }

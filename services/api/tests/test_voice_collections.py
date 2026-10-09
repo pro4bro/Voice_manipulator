@@ -336,7 +336,13 @@ def test_collection_api_imports_published_gated_voice_into_project_catalog(tmp_p
     assert imported_response.status_code == 200, imported_response.text
     imported_voice = imported_response.json()["voice"]
     assert imported_voice["modelSetId"] is None
+    assert imported_voice["collectionSource"] == {
+        "collectionId": created.json()["id"],
+        "entryId": entry.json()["id"],
+    }
     assert any(item["id"] == imported_voice["id"] for item in target_voices.json())
+    imported_from_list = next(item for item in target_voices.json() if item["id"] == imported_voice["id"])
+    assert imported_from_list["collectionSource"] == imported_voice["collectionSource"]
     assert any(item["id"] == imported_response.json()["speaker"]["id"] for item in target_catalog.json()["speakers"])
     assert (Path(target.project_path) / imported_voice["adapterPath"] / "adapter.bin").read_bytes() == b"real synthetic adapter bytes"
 

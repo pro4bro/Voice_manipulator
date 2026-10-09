@@ -37,7 +37,7 @@ function props(overrides = {}) {
   return {
     projectId: "p1", generators: [GENERATOR], category: "clone" as const,
     voices: [voice(), voice({ id: "voice-2", name: "Bình · nhái giọng", speakerProfileId: "speaker-binh" })],
-    rows: ROWS, speakers: [AN, BINH], parameters: {}, onParametersChange: vi.fn(), onGenerate: vi.fn(),
+    rows: ROWS, speakers: [AN, BINH], parameters: {}, onParametersChange: vi.fn(), onCategoryChange: vi.fn(), onGenerate: vi.fn(),
     ...overrides,
   };
 }
@@ -62,7 +62,7 @@ describe("VoiceGenerator", () => {
     expect(onGenerate).toHaveBeenCalled();
   });
 
-  it("shows the kind of voice chosen in Voice Training", () => {
+  it("shows the empty category prompt and links to Voice Training", () => {
     const onOpenTraining = vi.fn();
     render(<VoiceGenerator {...props({ category: "train", voices: [], onOpenTraining })} />);
 
@@ -70,6 +70,15 @@ describe("VoiceGenerator", () => {
     expect(screen.getByText("Chưa có voice dạng train giọng")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Mở Voice Training" }));
     expect(onOpenTraining).toHaveBeenCalled();
+  });
+
+  it("lets Voice Manipulator choose its generation category independently", () => {
+    const onCategoryChange = vi.fn();
+    render(<VoiceGenerator {...props({ onCategoryChange })} />);
+    const selector = screen.getByRole("combobox", { name: "Loại voice" });
+    expect(selector).toHaveValue("clone");
+    fireEvent.change(selector, { target: { value: "train" } });
+    expect(onCategoryChange).toHaveBeenCalledWith("train");
   });
 
   it("shows each engine's parameters, keyed by generator, but leaves speed to Control Rack", () => {
