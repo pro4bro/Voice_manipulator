@@ -898,3 +898,54 @@ test chuyển sang context menu nhưng giữ nguyên xác nhận/callback xóa n
 Final690/77 và API706/twoexistingwarnings208.24s, typecheck/build/diff pass.
 Không đổi ngưỡng chất lượng hay timing. Native menu và output âm thanh chưa
 nghiệm thu; gate14 ghi checklist. Kế tiếp STT-GAP-01; Phase03 vẫn60%.
+
+## USER-FEEDBACK-15 — Collection profile/model import selection (2026-10-09)
+
+Product `a06c2f8` groups Collection models by exact source project and Speaker ID.
+Parent checks select all archived models in that Collection; expanded child
+checks select a subset, with mixed parent state. Fixed import action adds no
+selection toolbar. Imports run serially with catalog flush before every request;
+confirmed models leave selection, failed/unprocessed models remain for retry.
+Workspace publishes its changed catalog snapshot synchronously to the transfer
+ref, preventing pre-render flush from dropping confirmed profiles.
+
+API imports reuse one destination profile for the same archived origin, retain
+manual edits and recover legacy markers/catalogs. Profile consent proof has
+independent project ownership; each model retains its archived evidence/hash
+snapshot. Copy/save failures roll back new artifacts. Lead review repaired header
+CSS specificity and a reproduced child-folder containment gap. Existing artifact,
+checkpoint and publication gates remain; unrelated equal names never merge.
+
+Final frontend696/77, API712/twoexistingwarnings, typecheck/build/diff pass.
+Focused UI8, Workspace44, Collection API22; isolated legacy proof/manual-edit/
+actual-deletion check1 pass. Gate user-feedback-15-profile-model-import, ADR0062.
+Native grouped-checkbox layout and audible owner-model output remain acceptance
+after restart: fixtures prove transfers, not inference quality. Owner projects,
+models and normal runtimes remain untouched; Phase03 stays60%. Exact next
+STT-GAP-01 retains isolated OBS recognizer/merge evidence before missing-word repair.
+
+
+### Feedback — 2026-10-09
+
+**Nguyên văn (copy từ chat):**
+
+> Vậy nghĩa là trong một hồ sơ sẽ có nhiều model phải không? nếu vậy thì nên có dấu tick để import cả bộ hồ sơ người nói, hoặc là import vài model trong hồ sơ do người dùng tự chọn
+
+**Cách hiểu:** một hồ sơ sở hữu nhiều model. Trong Import from Collection,
+tick hồ sơ chọn toàn bộ model đã lưu trong Collection đó; xổ và tick model
+để chọn một phần. Các model import cùng nguồn hồ sơ dùng chung một hồ sơ đích,
+không nhân bản hồ sơ cho mỗi model hoặc gộp hai người chỉ vì trùng tên.
+
+### Agent tự kiểm / kết quả so với ngưỡng
+
+Workspace caller red: hai profile đã import biến mất khỏi snapshot flush trước
+React commit; green44 sau cập nhật transfer ref đồng bộ. UI focused8 pass.
+API red: hai model cùng nguồn có hai speaker ID; green22 gồm retry/reopen,
+legacy recovery, actual model deletion, copy/save rollback và tamper rejection.
+Lead containment regression red1 DID NOT RAISE; đã chặn leaf symlink/junction
+ở prepare/publish, test chạy không skip và target bên ngoài giữ trống.
+Test proof path cũ đổi sang profile-owned theo ADR0062; snapshot model vẫn được
+assert riêng. Full frontend696/77, API712/twoexistingwarnings204.01s;
+typecheck/build/diff pass. Legacy proof/manual-edit/delete fixture bổ sung1 pass.
+Không đổi ngưỡng nghiệm thu hoặc Phase03 budgets. Native group checks và âm thanh
+generate còn cần nghiệm thu sau restart; round kế tiếp STT-GAP-01.

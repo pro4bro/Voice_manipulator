@@ -12,7 +12,33 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-14
+### 2026-10-09 — current: USER-FEEDBACK-15
+
+Product `a06c2f8` groups Collection models by exact source project and Speaker ID.
+Parent checks select all archived models in that Collection; expanded child
+checks select a subset, with mixed parent state. Fixed import action adds no
+selection toolbar. Imports run serially with catalog flush before every request;
+confirmed models leave selection, failed/unprocessed models remain for retry.
+Workspace publishes its changed catalog snapshot synchronously to the transfer
+ref, preventing pre-render flush from dropping confirmed profiles.
+
+API imports reuse one destination profile for the same archived origin, retain
+manual edits and recover legacy markers/catalogs. Profile consent proof has
+independent project ownership; each model retains its archived evidence/hash
+snapshot. Copy/save failures roll back new artifacts. Lead review repaired header
+CSS specificity and a reproduced child-folder containment gap. Existing artifact,
+checkpoint and publication gates remain; unrelated equal names never merge.
+
+Final frontend696/77, API712/twoexistingwarnings, typecheck/build/diff pass.
+Focused UI8, Workspace44, Collection API22; isolated legacy proof/manual-edit/
+actual-deletion check1 pass. Gate user-feedback-15-profile-model-import, ADR0062.
+Native grouped-checkbox layout and audible owner-model output remain acceptance
+after restart: fixtures prove transfers, not inference quality. Owner projects,
+models and normal runtimes remain untouched; Phase03 stays60%. Exact next
+STT-GAP-01 retains isolated OBS recognizer/merge evidence before missing-word repair.
+
+
+### 2026-10-09 — previous: USER-FEEDBACK-14
 
 Product `99dc301` moves profile color/apply/delete/deselect and model bulk
 delete/deselect into right-click menus. Tick selection inserts no toolbar.
