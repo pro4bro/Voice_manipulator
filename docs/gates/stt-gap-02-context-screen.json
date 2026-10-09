@@ -1,0 +1,228 @@
+{
+  "round": "STT-GAP-02",
+  "date": "2026-10-10",
+  "scope": "serial common Studio context screen; no product algorithm change",
+  "model": "large-v3",
+  "speechTracks": 2,
+  "originalCuratedClips": 16,
+  "trackDurationSeconds": 116.454,
+  "silenceDurationSeconds": 125,
+  "textBudgets": {
+    "cer": 0.1,
+    "wer": 0.2
+  },
+  "wordBoundaryP95BudgetSeconds": 0.25,
+  "wordBoundaryP95Seconds": null,
+  "readOnlySourceHashesUnchanged": 23,
+  "requests": {
+    "full": 3,
+    "bounded": 7
+  },
+  "rawScores": {
+    "full": {
+      "referenceCharacters": 2003,
+      "characterEdits": 226,
+      "referenceSyllables": 616,
+      "syllableEdits": 84,
+      "cer": 0.11283075386919621,
+      "wer": 0.13636363636363635,
+      "textBudgetPassed": false,
+      "timingAccuracyPassed": null
+    },
+    "bounded": {
+      "referenceCharacters": 2003,
+      "characterEdits": 157,
+      "referenceSyllables": 616,
+      "syllableEdits": 59,
+      "cer": 0.0783824263604593,
+      "wer": 0.09577922077922078,
+      "textBudgetPassed": true,
+      "timingAccuracyPassed": null
+    }
+  },
+  "publicationScores": {
+    "full": {
+      "referenceCharacters": 2003,
+      "characterEdits": 226,
+      "referenceSyllables": 616,
+      "syllableEdits": 84,
+      "cer": 0.11283075386919621,
+      "wer": 0.13636363636363635,
+      "textBudgetPassed": false,
+      "timingAccuracyPassed": null,
+      "pureSilenceInsertions": 0
+    },
+    "bounded": {
+      "referenceCharacters": 2003,
+      "characterEdits": 157,
+      "referenceSyllables": 616,
+      "syllableEdits": 59,
+      "cer": 0.0783824263604593,
+      "wer": 0.09577922077922078,
+      "textBudgetPassed": true,
+      "timingAccuracyPassed": null,
+      "pureSilenceInsertions": 0
+    }
+  },
+  "timing": [
+    {
+      "case": "speech-1",
+      "mode": "full",
+      "rawIntervals": {
+        "words": 271,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationIntervals": {
+        "words": 271,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "partial",
+      "untrustedWords": 2,
+      "wordsWhollyInInsertedZeroPcm": 3,
+      "wordCountChanged": false,
+      "textChanged": false
+    },
+    {
+      "case": "speech-1",
+      "mode": "bounded",
+      "rawIntervals": {
+        "words": 262,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationIntervals": {
+        "words": 262,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "partial",
+      "untrustedWords": 1,
+      "wordsWhollyInInsertedZeroPcm": 0,
+      "wordCountChanged": false,
+      "textChanged": false
+    },
+    {
+      "case": "speech-2",
+      "mode": "full",
+      "rawIntervals": {
+        "words": 368,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationIntervals": {
+        "words": 368,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "partial",
+      "untrustedWords": 1,
+      "wordsWhollyInInsertedZeroPcm": 0,
+      "wordCountChanged": false,
+      "textChanged": false
+    },
+    {
+      "case": "speech-2",
+      "mode": "bounded",
+      "rawIntervals": {
+        "words": 350,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 1
+      },
+      "publicationIntervals": {
+        "words": 350,
+        "invalid": 0,
+        "structurallyValid": true,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "partial",
+      "untrustedWords": 1,
+      "wordsWhollyInInsertedZeroPcm": 1,
+      "wordCountChanged": false,
+      "textChanged": false
+    },
+    {
+      "case": "silence",
+      "mode": "full",
+      "rawIntervals": {
+        "words": 0,
+        "invalid": 0,
+        "structurallyValid": false,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationIntervals": {
+        "words": 0,
+        "invalid": 0,
+        "structurallyValid": false,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "needs-alignment",
+      "untrustedWords": 0,
+      "wordsWhollyInInsertedZeroPcm": 0,
+      "wordCountChanged": false,
+      "textChanged": false
+    },
+    {
+      "case": "silence",
+      "mode": "bounded",
+      "rawIntervals": {
+        "words": 0,
+        "invalid": 0,
+        "structurallyValid": false,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationIntervals": {
+        "words": 0,
+        "invalid": 0,
+        "structurallyValid": false,
+        "accuracy": "unmeasured-without-reviewed-word-anchors",
+        "overlaps": 0
+      },
+      "publicationQuality": "needs-alignment",
+      "untrustedWords": 0,
+      "wordsWhollyInInsertedZeroPcm": 0,
+      "wordCountChanged": false,
+      "textChanged": false
+    }
+  ],
+  "ownerPassage": {
+    "candidateWordCount": 101,
+    "postHocTextualScope": true,
+    "gapOnly": false,
+    "wordBoundaryAccuracy": null,
+    "referenceCharacters": 310,
+    "characterEdits": 30,
+    "referenceSyllables": 101,
+    "syllableEdits": 13,
+    "cer": 0.0967741935483871,
+    "wer": 0.12871287128712872,
+    "silenceInsertions": 0
+  },
+  "validation": {
+    "focusedApiTests": 34,
+    "focusedApiSeconds": 5.6,
+    "carriedFullApiTests": 718,
+    "carriedFrontendTests": 701,
+    "carriedFrontendFiles": 77
+  },
+  "nextRound": "STT-TIMING-ACCURACY-01"
+}

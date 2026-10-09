@@ -1,5 +1,34 @@
 # Project Status — 2026-10-10
 
+## STT-GAP-02 — retained gap review and common-context screen (2026-10-10)
+
+Measurement `cd86683` freezes reference PCM/protocol and retains real Studio
+responses plus publication artifacts. Serial cached large-v3 A/B uses two
+116.454s curated speech tracks and125s zero PCM:10 requests. Common60s owned
+blocks +2s context improve micro CER11.2831 ->7.8382% and WER13.6364 ->9.5779%;
+bounded text passes the inherited10%/20% screen. Pure silence emits zero words
+in both modes. Publication handoff keeps the same text/counts, resolves one
+raw seam overlap and has zero final overlaps; timing provenance stays partial.
+
+Owner supplied independently heard/reference OBS9 text. The corresponding
+expanded101-word passage scores CER30/310=9.6774%, WER13/101=12.8713%; this is
+post hoc lexical review with context, not a77-word-only or acoustic timing gate.
+All1,177 retained OBS words map one-to-one to owning raw records; starts are
+unchanged and ends shorten at most20ms. No owner word data was replaced.
+
+One bounded word interval remains wholly inside inserted zero PCM; lexical
+hallucination versus neighboring-word displacement is unresolved. Independent
+word anchors are absent, so <=250ms IN/OUT p95 is unmeasured. Focused API34
+passed5.60s, profiler compile/reanalysis/diff pass,23 source hashes unchanged.
+Full API718 and frontend701/77/typecheck/build are carried, not rerun. Studio
+health ok/controller running; no restart/browser automation/source mutation.
+Gate `docs/gates/stt-gap-02-context-screen.md` and aggregate JSON retain evidence.
+
+Bounded STT-GAP-02 review/screen is complete; Phase03 stays60%, no acceptance
+budget changes. Exact next **STT-TIMING-ACCURACY-01** independently anchors OBS
+and boundary/zero-PCM words, measures timing, and screens a bounded correction.
+Native Script/Timeline audio acceptance and broader speaker coverage remain.
+
 ## USER-FEEDBACK-16 — profile nesting and OBS word sync (2026-10-10)
 
 Product `cc1a8fa` nests trained ProjectVoice models inside independently
