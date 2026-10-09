@@ -1,5 +1,22 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-11 — Script boundary correction (2026-10-09)
+
+Commit `9c6c696` repairs React185 at an archived Script boundary. Row minimum
+height changed with a one-word continuation; measured offsets updated while
+viewport still held the previous position, alternating windows/corrections.
+Publish matching corrected viewport and measurements in one batch, retaining
+postcommit browser clamp/readback and existing presentation/scrollbar. Minimal
+65+600-word hook and OBS9-shaped ChannelScript caller both reproduce the exact
+maximum-update-depth error on baseline and pass after repair. Full frontend659/75,
+focused20/4, typecheck/build/diff pass; API687 remains carried08 baseline.
+Owner confirms jitter/runaway ceased and scrollbar present after10; end error
+acceptance is now UX-SCRIPT-END-DEVICE-01 after reload. Gate
+`docs/gates/user-feedback-11-script-end-react-depth.md`, ADR0058. Exact next
+executable STT-GAP-01 retains isolated recognizer/merge results before replacing
+owner text. No source media/transcript, services/models, schema/upstream or
+Phase03-budget changes; stays60%. Native all-route/audible/device gates remain.
+
 ## USER-FEEDBACK-10 — consistent Script scrolling (2026-10-09)
 
 Commit `9fcd554` stabilizes shared Script scrolling: semantic measurement caches,

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-10 shared Script scroll.
-last_activity_desc: Stable measurement caches and anchors, manual browsing priority, common scrollbar across table/prose/channel/live routes. Frontend654/75 plus final focused53/4, typecheck/build pass; API687 carried08. Native scroll acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-11 Script end React185.
+last_activity_desc: Atomic corrected viewport/measurement publication prevents boundary layout loops. Owner confirms prior jitter/runaway/scrollbar improvements. Frontend659/75, focused20/4, typecheck/build pass; API687 carried08. Native end acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,23 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-11 — 2026-10-09
+
+Commit `9c6c696` repairs React185 at an archived Script boundary. Row minimum
+height changed with a one-word continuation; measured offsets updated while
+viewport still held the previous position, alternating windows/corrections.
+Publish matching corrected viewport and measurements in one batch, retaining
+postcommit browser clamp/readback and existing presentation/scrollbar. Minimal
+65+600-word hook and OBS9-shaped ChannelScript caller both reproduce the exact
+maximum-update-depth error on baseline and pass after repair. Full frontend659/75,
+focused20/4, typecheck/build/diff pass; API687 remains carried08 baseline.
+Owner confirms jitter/runaway ceased and scrollbar present after10; end error
+acceptance is now UX-SCRIPT-END-DEVICE-01 after reload. Gate
+`docs/gates/user-feedback-11-script-end-react-depth.md`, ADR0058. Exact next
+executable STT-GAP-01 retains isolated recognizer/merge results before replacing
+owner text. No source media/transcript, services/models, schema/upstream or
+Phase03-budget changes; stays60%. Native all-route/audible/device gates remain.
 
 ## USER-FEEDBACK-10 — 2026-10-09
 

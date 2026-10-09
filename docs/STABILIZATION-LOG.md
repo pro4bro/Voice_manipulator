@@ -786,3 +786,41 @@ copy; native Script acceptance can proceed alongside. No owner media/transcript,
 normal service/model, schema/upstream or Phase03-budget change. Phase03 stays60%.
 
 Full test log và topology ở `.scratch/user-feedback-10`; chưa xác nhận nghiệm thu cuộn bằng chuột thật. R5/R6 và ngưỡng timing cũ không đổi.
+
+## USER-FEEDBACK-11 — 2026-10-09
+
+### Feedback
+
+**Nguyên văn (copy từ chat):**
+
+> ở job test OBS 9, khi scroll tới hết script thì nó báo như hình. Hiện tại thì không còn giật giật nữa. Đã có thanh scroll rồi.
+>
+> lăn chuột cũng không còn tự chạy nữa.
+>
+> Em sửa lỗi cho anh
+
+Ảnh: "Không hiển thị được script", "Minified React error #185"; bản sao ở
+`.scratch/user-feedback-11/owner-script-end.png`. Cách hiểu: giữ các cải thiện
+cuộn đã được xác nhận, sửa vòng cập nhật khi cuộn qua vùng cuối Script OBS.
+
+## Agent tự kiểm
+
+Commit `9c6c696` repairs React185 at an archived Script boundary. Row minimum
+height changed with a one-word continuation; measured offsets updated while
+viewport still held the previous position, alternating windows/corrections.
+Publish matching corrected viewport and measurements in one batch, retaining
+postcommit browser clamp/readback and existing presentation/scrollbar. Minimal
+65+600-word hook and OBS9-shaped ChannelScript caller both reproduce the exact
+maximum-update-depth error on baseline and pass after repair. Full frontend659/75,
+focused20/4, typecheck/build/diff pass; API687 remains carried08 baseline.
+Owner confirms jitter/runaway ceased and scrollbar present after10; end error
+acceptance is now UX-SCRIPT-END-DEVICE-01 after reload. Gate
+`docs/gates/user-feedback-11-script-end-react-depth.md`, ADR0058. Exact next
+executable STT-GAP-01 retains isolated recognizer/merge results before replacing
+owner text. No source media/transcript, services/models, schema/upstream or
+Phase03-budget changes; stays60%. Native all-route/audible/device gates remain.
+
+Nguyên nhân: prefix offsets mới và viewport cũ được render xen giữa trước khi
+bù vị trí; row controls làm hai cửa sổ liên tục thay nhau. Sửa bằng cập nhật
+viewport/measurement cùng batch; không tăng ngưỡng/tắt lỗi React. Gate có log đỏ
+và xanh; việc nghiệm thu hết Script trên thiết bị sau reload vẫn chờ chủ dự án.
