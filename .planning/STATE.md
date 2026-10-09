@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-15 Collection profile/model import selection.
-last_activity_desc: All/subset checks, exact origin profile reuse, independent consent and retry. Frontend696/77, API712, typecheck/build pass. Native acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
+last_activity: 2026-10-10 — STT-GAP-01 OBS recognition-context repair.
+last_activity_desc: Real full-context omission reproduced; 60s common requests recover77 gap words, source1325 unchanged. API718, focused31; frontend baseline carried. STT-GAP-02 and reviewed timing/native acceptance remain; Phase03 budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,32 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## STT-GAP-01 — OBS recognizer context repair (2026-10-10)
+
+Product `2ebada4` repairs a reproduced recognition-context omission on real
+OBS9 audio. Full406s input returns1,094 words and none in240.352–269.020s
+before merging; raw recognizer segments also omit the region. VAD retains
+speech there and a guard-off candidate is identical/rejected. Common Studio
+requests now use60s owned intervals with2s context; initial frozen OBS snapshot
+semantics remain. Both detailed and ordinary archive production copies retain
+1,177 words, including77 in the gap. Each submitted PCM slice matches source;
+1,325 source hashes stay unchanged and the owner still has its original words.
+
+Merge recovers nonconflicting padding words, gives owning intervals priority,
+sorts final output and rejects untimed segment text instead of hiding it.
+Final retained real-response merge is unchanged; stored intervals have no
+overlap/reversal. Source timing warnings remain. Full API718/twoexistingwarnings,
+focused31, script compile/diff pass. Frontend696/77/typecheck/build is the
+unchanged carried baseline. Gate stt-gap-01-obs-recognizer-context; ADR0063.
+
+Normal controller/API/Studio health is ok; no service restart or browser
+workaround. Restart loads the changed API, then explicitly rerun the selected
+footage for new STT. Phase03 stays60%; word accuracy and reviewed IN/OUT budgets
+are not satisfied by restored coverage. Exact next **STT-GAP-02** reviews77
+recovered words and screens other long/boundary/silence samples; existing
+STT-TIMING-ACCURACY-01 and native UX acceptance remain open.
+
 
 ## USER-FEEDBACK-15 — Collection profile/model import selection (2026-10-09)
 
