@@ -731,3 +731,19 @@ _(chưa có)_
 ### Feedback
 
 _(chưa có)_
+
+## USER-FEEDBACK-05 — 2026-10-09
+
+Timeline individual-word density and local timing edits supersede the04 overview
+snippets. Atomic promoted IN/OUT and direct edits preserve untouched neighbours;
+actual collisions retain10% and warn. Unsafe editable intervals become explicitly
+untrusted positive estimates with source timing retained. Studio phrase-edge snaps
+are fenced against original neighbours and already-refined adjacent gaps.
+Frontend627/71, API679/two existing warnings, typecheck/build and focused Studio
+regressions pass; see `docs/gates/user-feedback-05-timeline-word-timing.md`, ADR0052.
+No new acoustic accuracy claim is made. The historical250h candidate worsened
+mean/tail proxy error; R5/R6 remain unaccepted under their frozen gates. Exact next
+STT-TIMING-ACCURACY-01 requires reviewed word IN/OUT truth and isolated comparison
+in `docs/STT-TIMING-ACCURACY-PLAN.md`. Real visual/audio and older prerequisites
+remain. No model dispatch, normal service restart, owner audio or phase-budget
+change occurred.

@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-04
+### 2026-10-09 — current: USER-FEEDBACK-05
+
+Timeline routes word edit history in normal/imported/archived OBS overview and
+focused editors; live gestures cancel before undo. One source word per subtitle
+box uses spatial4px filtering with zoom detail and direct index hit tests. Atomic
+middle IN/OUT and direct drags trim actual collisions only, blinking neighbours
+and retaining10%, including tiny words and noncontiguous selection. Positive
+untrusted editable estimates preserve original source timing; promotion guidance
+is a2s hover portal without a layout row. Studio phrase refinement cannot cross
+neighbour words or claim a previously refined gap. Frontend627/71 (tracked626/70),
+API679/two existing warnings, typecheck/build pass. Gate:
+`docs/gates/user-feedback-05-timeline-word-timing.md`, ADR0052.
+Exact next STT-TIMING-ACCURACY-01 needs reviewed word IN/OUT truth and isolated
+comparison in `docs/STT-TIMING-ACCURACY-PLAN.md`; acoustic improvement is unmeasured.
+UX-EDITING-DEVICE-01 remains for permitted visual/history/audio acceptance. No
+normal services/models, owner media, schema or Phase03 budget changed.
+
+### 2026-10-09 — previous: USER-FEEDBACK-04
 
 Owner confirms improved responsiveness. Logical speaker rows now contain their
 virtual fragments, with one fixed24px selector and original ordinal. Same explicit/

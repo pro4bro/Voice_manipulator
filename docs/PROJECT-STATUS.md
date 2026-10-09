@@ -1,5 +1,24 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-05 — Timeline identity and local timing edits (2026-10-09)
+
+Timeline word edits share30-step undo/redo across normal/imported/archived OBS
+overview and focused editors, cancelling live drags before history navigation.
+Individual source-word boxes use4px spatial filtering and zoom detail; no multiword
+overview summaries remain. Atomic promoted IN/OUT fixes unintended neighbour
+mutation; actual collisions blink and retain10%. Tiny intervals and internal
+unchecked neighbours remain valid. Unsafe intervals and new text get positive,
+explicitly untrusted estimates with original source timing. Promotion instructions
+float after2s hover without changing waveform layout. Studio phrase-edge candidates
+cannot cross neighbour words or a previously refined end. Frontend627/71,
+API679/two existing warnings and typecheck/build pass. Evidence:
+`docs/gates/user-feedback-05-timeline-word-timing.md`, ADR0052.
+Next STT-TIMING-ACCURACY-01 needs reviewed per-word IN/OUT truth and isolated model
+comparison in `docs/STT-TIMING-ACCURACY-PLAN.md`; acoustic improvement is unmeasured.
+UX-EDITING-DEVICE-01 visual/history/audible checks and prior browser restriction
+remain. Existing R5/R6 acceptance and Phase03 budgets are unchanged. No owner
+media, normal service/model dispatch, upstream or project-schema mutation occurred.
+
 ## USER-FEEDBACK-04 — logical Script rows, attribution and history (2026-10-09)
 
 Owner confirms responsiveness from03. Virtual word fragments now share one

@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-05 — individual subtitles and local timing edits (2026-10-09)
+
+Timeline word-edit history works in normal/imported/archived OBS overview and
+focused editors. Individual4px subtitle filtering replaces multiword summaries.
+Atomic middle IN/OUT, neighbour blink/10% reservation, positive untrusted estimates
+and2s hover guidance are implemented; Studio phrase fences prevent neighbour/gap
+overlap. Frontend627/71, API679/two existing warnings and typecheck/build pass:
+`docs/gates/user-feedback-05-timeline-word-timing.md`, ADR0052.
+Exact next STT-TIMING-ACCURACY-01 follows `docs/STT-TIMING-ACCURACY-PLAN.md` with
+reviewed word truth and isolated comparison. Acoustic improvement is unmeasured;
+prior aligner/R5 gates are retained. UX-EDITING-DEVICE-01 real visual/history/audio
+acceptance and existing browser/physical/quality/download/LAN prerequisites remain.
+Phase03 budgets, project schema and Queue proposal are unchanged.
+
 ## USER-FEEDBACK-04 — Script row and history consistency (2026-10-09)
 
 Owner confirms improved response. Logical speaker rows own their view fragments;

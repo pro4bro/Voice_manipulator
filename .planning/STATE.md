@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-04 Logical Script rows and edit history.
-last_activity_desc: Single logical speaker rows, fixed selection/ordinals, checked-row attribution, hover Ctrl+A, thirty-step undo/redo and readable dense subtitles delivered. Owner confirms prior responsiveness. Frontend611/70, API677/two existing warnings, typecheck/build pass. Next UX-EDITING-DEVICE-01 visual/history/scroll/native/audio evidence. Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-05 Timeline word identity and local timing edits.
+last_activity_desc: Timeline word history routing, individual four-pixel subtitle filtering, atomic IN/OUT, blinking ten-percent neighbour reservation, positive untrusted estimates, hover portal and STT phrase fences delivered. Frontend627/71, API679/two existing warnings, typecheck/build pass. Next STT-TIMING-ACCURACY-01 reviewed word truth and isolated comparison; UX-EDITING-DEVICE-01 remains. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,21 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-05 — 2026-10-09
+
+Timeline word edits route shared30-step history across overview/focused editors;
+live drags cancel before undo. Per-word4px spatial filtering preserves source
+identity with zoom detail. Atomic IN/OUT and direct drags warn at actual collisions,
+retaining10%; tiny words/noncontiguous selections remain valid. Positive estimates
+retain original timing and remain untrusted. Promotion guidance is a2s hover portal.
+Studio phrase-edge fences prevent cross-word/adjacent-gap overlap. Frontend627/71,
+API679/two existing warnings, typecheck/build pass; gate:
+`docs/gates/user-feedback-05-timeline-word-timing.md`, ADR0052.
+Next STT-TIMING-ACCURACY-01 needs reviewed word truth and isolated comparison;
+`docs/STT-TIMING-ACCURACY-PLAN.md` records previous aligner tail regression.
+UX-EDITING-DEVICE-01 visual/audio and older prerequisites remain. No normal
+service/model, owner-media or schema change; Phase03 stays60% and R5/R6 gates hold.
 
 ## USER-FEEDBACK-04 — 2026-10-09
 
