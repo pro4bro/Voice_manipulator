@@ -1,5 +1,23 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-09 — OBS archive viewport and PCM detail (2026-10-09)
+
+Paused Timeline browsing survives zoom/metadata; stale drag-release follow removed.
+Archived OBS playback follows the view; Stop requests the ordinary source PCM
+waveform with bounded screen density, shared filled/accent/gain style and fenced
+loading. Repeated idle status/journal refreshes keep the chosen window. Actual
+owner media has a28.668s detailed-word gap despite audio/final realtime text;
+segment-level review notes preserve that text without invented word timing.
+Commit4568e3f, ADR0056, `docs/gates/user-feedback-09-obs-archive-view.md`.
+Frontend646/74, typecheck/build and relevant API waveform2 pass; full API687 is
+carried08 baseline. Original MKA/WAV hashes unchanged. Exact next STT-GAP-01 must
+retain isolated recognizer/merge artifacts to attribute and repair missing words.
+Native UX-EDITING-DEVICE-01 scroll/Stop/playback and RUNTIME-READINESS-DEVICE-01
+idle/cold evidence remain, as do reviewed word truth, physical/LAN/quality budgets.
+No normal service/inference, schema/upstream or Phase03-budget change. API was
+observed stopped with Studio running/busyfalse at closure; native acceptance needs
+normal service operation. Original rapid jumping is not fully device-verified.
+
 ## USER-FEEDBACK-08 — controller startup and retained retry evidence (2026-10-09)
 
 Controller fixed HTTP loopback clients avoid CA/proxy setup before binding.

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-08 controller readiness.
-last_activity_desc: Fixed HTTP loopback clients avoid CA/proxy startup work; early bounded stack watcher and retained retry logs delivered. API687/two existing warnings passes on E temp storage after transient C full setup errors. Actual normal startup passes controller1.897s, Studio4.354s, API11.393s; runtime running and left up. Original PID25916 cause/cold reliability remains unproven. Next RUNTIME-READINESS-DEVICE-01 idle/cold evidence then UX-EDITING-DEVICE-01. Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-09 OBS archive view.
+last_activity_desc: Paused browsing preserved; archived playback follows view and Stop loads standard PCM detail. Actual28.668s detailed-word gap exposed with segment-level realtime review notes. Frontend646/74, typecheck/build and API waveform2 pass; API687 carried08 baseline. Next STT-GAP-01 retains isolated recognizer/merge evidence; native UX and startup gates remain. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,24 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-09 — 2026-10-09
+
+Commit4568e3f repairs paused zoom/metadata/drag-release view movement, archived
+playback follow and standard PCM detail after Stop. Repeated status/journal refresh
+regression preserves the04:00 window. Actual owner media verifies normalized1ms
+peaks and unchanged source hashes. Final realtime segment notes expose gaps in
+trusted detailed-word coverage without changing word data or STT completion.
+Frontend646/74, typecheck/build and relevant API waveform2 pass; full API687 is
+carried08 baseline. Gate `docs/gates/user-feedback-09-obs-archive-view.md`, ADR0056.
+Exact next STT-GAP-01 reproduces missing words on an isolated copy with retained
+recognizer/merge artifacts: actual28.668s gap has audio/realtime text but no raw
+segment checkpoints. UX-EDITING-DEVICE-01 natural scrolling, Stop waveform and
+audible playback acceptance remains; original rapid jumping is not device-proven.
+No services/inference/owner media or transcripts/schema/upstream changed. Read-only
+normal closure status is API stopped/Studio running/busyfalse; restore normal
+service operation before owner acceptance. Startup/device/LAN/word-truth and
+Phase03-budget requirements remain.
 
 ## USER-FEEDBACK-08 — 2026-10-09
 

@@ -1,5 +1,25 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-09 — archived OBS views and PCM waveform (2026-10-09)
+
+Paused zoom/metadata no longer follow the idle playhead; the old drag-release
+callback is removed. Archived OBS playback follows its viewport edge and paused
+browsing survives repeated status/journal replies. Completed tracks load standard
+source-derived PCM detail, shared filled geometry/accent/gain and bounded density,
+with fenced loading and retries. Live green utterance bands are absent after Stop.
+Real owner artifacts prove28.668s of missing detailed words on Channel1 despite
+continuous capture/audio and final realtime text; jobs still report complete.
+Review notes expose segment-level realtime text without fabricating word timing.
+Frontend646/74, typecheck/build, relevant API waveform2 pass; full API687 carried
+from08. Original media hashes match. Commit4568e3f, ADR0056, gate
+`docs/gates/user-feedback-09-obs-archive-view.md`. Exact next STT-GAP-01 needs an
+isolated reproduction with retained recognizer/merge artifacts because this
+recording's raw segment results are absent. UX-EDITING-DEVICE-01 native scroll,
+Stop waveform and audible playback acceptance remains; full rapid jumping is not
+device-verified. No service/model dispatch or owner audio/transcript/schema/
+upstream/Phase03-budget change. Normal read-only closure status reports API stopped,
+Studio running and busyfalse; reopen the normal app before native acceptance.
+
 ## USER-FEEDBACK-08 — controller readiness (2026-10-09)
 
 Controller HTTP loopback clients no longer load system CA/proxy settings before

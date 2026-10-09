@@ -12,7 +12,26 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-08
+### 2026-10-09 — current: USER-FEEDBACK-09
+
+Commit4568e3f preserves paused Timeline browsing across zoom/metadata and removes
+the stale drag-release follow callback. Archived OBS playback advances its view;
+Stop loads standard screen-density PCM peaks with shared accent geometry/gain,
+retaining same-track feedback through loading. Repeated idle status/journal updates
+keep the selected window. Actual owner Channel1 has a28.668s detailed-word gap
+despite continuous audio/final realtime text; segment-level review notes expose
+realtime text without fabricated words/timing. Cause cannot be attributed because
+raw segment checkpoints are absent. Frontend646/74, typecheck/build, relevant API
+waveform2 pass; full API687 is carried08 baseline. Real WAV1ms peaks and original
+MKA/WAV hashes checked. Gate `docs/gates/user-feedback-09-obs-archive-view.md`,
+ADR0056. Exact next STT-GAP-01 retains recognizer/merge artifacts on an isolated
+copy before repairing missing recognition; UX-EDITING-DEVICE-01 still needs native
+scroll/Stop/playback acceptance after reload. Read-only normal status now API
+stopped/Studio running/busyfalse; this round changed no services or inference.
+Existing startup/device/LAN/word-truth gates, schema/upstream and Phase03 budgets
+remain unchanged. Original rapid jumping is not fully device-verified.
+
+### 2026-10-09 — previous: USER-FEEDBACK-08
 
 Controller readiness repair removes system CA/proxy loading from fixed HTTP
 loopback clients; real-Uvicorn stalled-certificate and invalid-environment tests
