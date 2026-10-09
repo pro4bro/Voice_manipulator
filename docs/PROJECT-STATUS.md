@@ -1,5 +1,24 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-10 — shared Script scrolling (2026-10-09)
+
+Commit `9fcd554` stabilizes shared Script scrolling: semantic measurement caches,
+anchor-preserving height changes, logical-row chrome and header offsets, and
+manual browsing priority over playback/data-refresh follow. Table, prose,
+archived channels and OBS realtime now share an explicit keyboard/pointer
+scrollbar. Table toolbar no longer expands the scrollbar's region. Read-only
+owner topology explains different routes: OBS1,136 words/10 turns/25 fragments;
+Conviction665/15/19; PDCA42,107/3/659. Three red regressions reproduce anchor
+movement, refresh cache churn and Script refresh returning5,000->0; green now.
+Full frontend654/75 before final toolbar containment refinement; final focused
+53/4, typecheck/build pass. Backend unchanged; API687 is carried08 baseline.
+Gate `docs/gates/user-feedback-10-script-scroll.md`, ADR0057. Natural wheel
+smoothness, end reachability and visible OBS scrollbar on the owner device still
+need UX-EDITING-DEVICE-01 after reload; source/jsdom is not that acceptance.
+Exact next executable STT-GAP-01 retains recognizer/merge artifacts on an isolated
+copy; native Script acceptance can proceed alongside. No owner media/transcript,
+normal service/model, schema/upstream or Phase03-budget change. Phase03 stays60%.
+
 ## USER-FEEDBACK-09 — archived OBS views and PCM waveform (2026-10-09)
 
 Paused zoom/metadata no longer follow the idle playhead; the old drag-release

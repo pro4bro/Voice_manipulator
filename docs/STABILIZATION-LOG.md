@@ -747,3 +747,42 @@ STT-TIMING-ACCURACY-01 requires reviewed word IN/OUT truth and isolated comparis
 in `docs/STT-TIMING-ACCURACY-PLAN.md`. Real visual/audio and older prerequisites
 remain. No model dispatch, normal service restart, owner audio or phase-budget
 change occurred.
+
+## USER-FEEDBACK-10 — 2026-10-09
+
+### Feedback
+
+**Nguyên văn (copy từ chat):**
+
+> anh thấy giao diện nó không nhất quán.&#x20;
+>
+> hiện tại, trong project "test OBS 9", "Conviction" khi lăn chuột xuống thì nó hay bị giật giật, không đến được đoạn cuối.
+>
+> còn trong project "**PDCA_CLDNDD_K4_V02**" thì khi lăn chuột được vài lần thì nó tự scroll xuống rất nhanh, không dừng lại được. Phải nắm kéo thanh scroll mới được.
+>
+> anh để ý thấy mỗi dự án test OBS Livelink là thanh scroll bị mất.
+>
+> em phải kiểm tra lại rõ vì sao lại có sự khác nhau này? anh muốn chia module là để nhất quán ở mọi tình huống. Nó phải hoạt động đúng thiết kế. Chứ không phải mỗi nơi một kiểu, mỗi dự án một kiểu.
+
+Phản hồi xác định module: **script**. Cách hiểu: sửa cơ chế cuộn Script dùng chung, không thêm ngoại lệ theo project.
+
+## Agent tự kiểm
+
+Commit `9fcd554` stabilizes shared Script scrolling: semantic measurement caches,
+anchor-preserving height changes, logical-row chrome and header offsets, and
+manual browsing priority over playback/data-refresh follow. Table, prose,
+archived channels and OBS realtime now share an explicit keyboard/pointer
+scrollbar. Table toolbar no longer expands the scrollbar's region. Read-only
+owner topology explains different routes: OBS1,136 words/10 turns/25 fragments;
+Conviction665/15/19; PDCA42,107/3/659. Three red regressions reproduce anchor
+movement, refresh cache churn and Script refresh returning5,000->0; green now.
+Full frontend654/75 before final toolbar containment refinement; final focused
+53/4, typecheck/build pass. Backend unchanged; API687 is carried08 baseline.
+Gate `docs/gates/user-feedback-10-script-scroll.md`, ADR0057. Natural wheel
+smoothness, end reachability and visible OBS scrollbar on the owner device still
+need UX-EDITING-DEVICE-01 after reload; source/jsdom is not that acceptance.
+Exact next executable STT-GAP-01 retains recognizer/merge artifacts on an isolated
+copy; native Script acceptance can proceed alongside. No owner media/transcript,
+normal service/model, schema/upstream or Phase03-budget change. Phase03 stays60%.
+
+Full test log và topology ở `.scratch/user-feedback-10`; chưa xác nhận nghiệm thu cuộn bằng chuột thật. R5/R6 và ngưỡng timing cũ không đổi.

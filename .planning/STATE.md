@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-09 OBS archive view.
-last_activity_desc: Paused browsing preserved; archived playback follows view and Stop loads standard PCM detail. Actual28.668s detailed-word gap exposed with segment-level realtime review notes. Frontend646/74, typecheck/build and API waveform2 pass; API687 carried08 baseline. Next STT-GAP-01 retains isolated recognizer/merge evidence; native UX and startup gates remain. Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-10 shared Script scroll.
+last_activity_desc: Stable measurement caches and anchors, manual browsing priority, common scrollbar across table/prose/channel/live routes. Frontend654/75 plus final focused53/4, typecheck/build pass; API687 carried08. Native scroll acceptance and STT-GAP-01 remain; Phase03 budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,25 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-10 — 2026-10-09
+
+Commit `9fcd554` stabilizes shared Script scrolling: semantic measurement caches,
+anchor-preserving height changes, logical-row chrome and header offsets, and
+manual browsing priority over playback/data-refresh follow. Table, prose,
+archived channels and OBS realtime now share an explicit keyboard/pointer
+scrollbar. Table toolbar no longer expands the scrollbar's region. Read-only
+owner topology explains different routes: OBS1,136 words/10 turns/25 fragments;
+Conviction665/15/19; PDCA42,107/3/659. Three red regressions reproduce anchor
+movement, refresh cache churn and Script refresh returning5,000->0; green now.
+Full frontend654/75 before final toolbar containment refinement; final focused
+53/4, typecheck/build pass. Backend unchanged; API687 is carried08 baseline.
+Gate `docs/gates/user-feedback-10-script-scroll.md`, ADR0057. Natural wheel
+smoothness, end reachability and visible OBS scrollbar on the owner device still
+need UX-EDITING-DEVICE-01 after reload; source/jsdom is not that acceptance.
+Exact next executable STT-GAP-01 retains recognizer/merge artifacts on an isolated
+copy; native Script acceptance can proceed alongside. No owner media/transcript,
+normal service/model, schema/upstream or Phase03-budget change. Phase03 stays60%.
 
 ## USER-FEEDBACK-09 — 2026-10-09
 
