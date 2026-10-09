@@ -27,6 +27,11 @@ import type {
   ProjectMediaImportResult,
   ProjectAsrAdapter,
   ProjectVoice,
+  ConsentEvidence,
+  VoiceCollection,
+  VoiceCollectionProperties,
+  VoiceCollectionImport,
+  VoiceCollectionEntry,
   SpeakerEmbedderInfo,
   VoiceModelSet,
   VoiceOutput,
@@ -179,6 +184,18 @@ export const api = {
     request<Project>(`/api/projects/${projectId}/last-page?page=${page}`, { method: "PATCH" }),
   getOmniVoiceStatus: () => request<EngineStatus>("/api/engines/omnivoice"),
   getOmniVoiceProfileSchema: () => request<EngineProfileSchema>("/api/engines/omnivoice/profile-schema"),
+  listVoiceCollections: () => request<VoiceCollection[]>("/api/voice-collections"),
+  createVoiceCollection: (name: string, properties: VoiceCollectionProperties) =>
+    request<VoiceCollection>("/api/voice-collections", { method: "POST", body: JSON.stringify({ name, properties }) }),
+  addVoiceToCollection: (collectionId: string, projectId: string, voiceId: string) =>
+    request<VoiceCollectionEntry>(`/api/voice-collections/${collectionId}/entries`, { method: "POST", body: JSON.stringify({ projectId, voiceId }) }),
+  importCollectionVoice: (collectionId: string, entryId: string, projectId: string) =>
+    request<VoiceCollectionImport>(`/api/voice-collections/${collectionId}/entries/${entryId}/import`, { method: "POST", body: JSON.stringify({ projectId }) }),
+  uploadConsentEvidence: (projectId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<ConsentEvidence>(`/api/projects/${projectId}/consent-evidence`, { method: "POST", body });
+  },
   getPreferences: () => request<AppPreferences>("/api/preferences"),
   getObsPluginInstallation: (obsRoot?: string) =>
     request<ObsPluginInstallationStatus>(`/api/obs-plugin/installation${obsRoot ? `?obsRoot=${encodeURIComponent(obsRoot)}` : ""}`),

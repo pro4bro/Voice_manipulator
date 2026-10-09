@@ -81,3 +81,16 @@ export function rulerMarks(duration: number, pixelWidth: number, view?: RulerVie
   }
   return marks;
 }
+
+/** Visible, absolutely aligned marks mapped to a zoomed timeline window. */
+export function visibleRulerMarks(duration: number, windowStart: number, windowSpan: number,
+                                 pixelWidth: number): RulerMark[] {
+  if (duration <= 0 || windowSpan <= 0 || pixelWidth <= 0) return [];
+  const fullWidth = duration / windowSpan * pixelWidth;
+  const marks = rulerMarks(duration, fullWidth, {
+    left: windowStart / windowSpan * pixelWidth,
+    width: pixelWidth,
+  });
+  return marks.filter((mark) => mark.time >= windowStart && mark.time <= windowStart + windowSpan)
+    .map((mark) => ({ ...mark, position: (mark.time - windowStart) / windowSpan }));
+}

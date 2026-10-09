@@ -2,8 +2,20 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ProjectHub } from "./ProjectHub";
+import { api } from "../api/client";
 
 describe("ProjectHub", () => {
+  it("opens the functioning Voice Collection browser and returns to projects", async () => {
+    const list = vi.spyOn(api, "listVoiceCollections").mockResolvedValue([]);
+    const schema = vi.spyOn(api, "getOmniVoiceProfileSchema").mockResolvedValue({ languages: [], facets: [] } as never);
+    render(<ProjectHub projects={[{ id: "project-1", name: "Source", projectPath: "projects/Source", updatedAt: "2026-10-09" } as never]} busy={false} defaultLocation="projects" engine={null} error={null} onCreate={vi.fn()} onOpen={vi.fn()} onOpenExisting={vi.fn()} onPickLocation={vi.fn()} onRetry={vi.fn()} onRevealProject={vi.fn()} onRemoveProject={vi.fn()} theme="dark" onToggleTheme={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Voice Collection" }));
+    await screen.findByText("Tạo collection để gom voice đã train từ các project.");
+    expect(screen.queryByText("Source")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /All projects/ }));
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    list.mockRestore(); schema.mockRestore();
+  });
   it("keeps the create form and draft open when persistence fails", async () => {
     const onCreate = vi.fn().mockResolvedValue(false);
     render(

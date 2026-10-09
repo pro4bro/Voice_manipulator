@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
-import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
+import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceCollectionImport } from "../../domain/types";
+import { api } from "../../api/client";
+import { CollectionDialog } from "../voice-collection/CollectionDialog";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "../../ui/list-canvas.css";
 
 interface VoiceVaultProps {
+  projectId?: string;
+  onCollectionImported?: (result: VoiceCollectionImport) => void;
+  onPrepareCollectionExport?: () => Promise<void>;
   catalog: TrainingCatalog;
   assets: ProjectMediaAsset[];
   profileSchema: EngineProfileSchema | null;
@@ -60,7 +65,20 @@ function speakerSummary(speaker: SpeakerProfile) {
   return [speaker.language, speaker.region, speaker.age, speaker.gender === "male" ? "Male" : speaker.gender === "female" ? "Female" : null].filter(Boolean).join(" · ") || "Chưa bổ sung thuộc tính";
 }
 
-export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = EMPTY_PROJECT_VOICES, onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment, onDeleteVoices, onDeleteSpeakers, onDeleteEnvironments }: VoiceVaultProps) {
+export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectionExport, catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = EMPTY_PROJECT_VOICES, onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment, onDeleteVoices, onDeleteSpeakers, onDeleteEnvironments }: VoiceVaultProps) {
+  const [addMenu, setAddMenu] = useState(false);
+  const [collectionMode, setCollectionMode] = useState<{ voice?: ProjectVoice } | null>(null);
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const evidenceSerial = useRef(0);
+  useEffect(() => () => { evidenceSerial.current += 1; }, []);
+  useEffect(() => {
+    if (!addMenu) return;
+    const close = (event: globalThis.PointerEvent) => { if (!(event.target as Element)?.closest(".voice-vault-add-options")) setAddMenu(false); };
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") setAddMenu(false); };
+    document.addEventListener("pointerdown", close); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [addMenu]);
   const [activeType, setActiveType] = useState<ProfileType>("speaker");
   const [profileMenu, setProfileMenu] = useState<{ type: ProfileType; id: string; left: number; top: number } | null>(null);
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
@@ -83,12 +101,14 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
   const isChinese = languageId === "zh" || languageId.startsWith("zh-") || languageLabel.includes("chinese") || languageLabel.includes("tiếng trung");
 
   function editSpeaker(profile?: SpeakerProfile) {
+    evidenceSerial.current += 1; setEvidenceBusy(false); setEvidenceError(null); setAddMenu(false);
     setActiveType("speaker");
     setEditingEnvironment(null);
     setEditingSpeaker(profile ? { ...profile, attributes: { ...profile.attributes } } : freshSpeaker(catalog.speakers.length));
   }
 
   function editEnvironment(profile?: EnvironmentNoiseProfile) {
+    setAddMenu(false);
     setActiveType("environment");
     setEditingSpeaker(null);
     setEditingEnvironment(profile ? { ...profile, assetIds: [...profile.assetIds], attributes: { ...profile.attributes } } : freshEnvironment());
@@ -96,7 +116,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
 
   function saveSpeaker(event: FormEvent) {
     event.preventDefault();
-    if (!editingSpeaker?.name.trim()) return;
+    if (!editingSpeaker?.name.trim() || evidenceBusy) return;
     const profile = { ...editingSpeaker, name: editingSpeaker.name.trim() };
     const exists = catalog.speakers.some((speaker) => speaker.id === profile.id);
     onCatalogChange({ ...catalog, speakers: exists ? catalog.speakers.map((speaker) => speaker.id === profile.id ? profile : speaker) : [...catalog.speakers, profile] });
@@ -119,6 +139,20 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
 
   function updateEnvironmentAttribute(id: string, value: string) {
     setEditingEnvironment((current) => current ? { ...current, attributes: { ...current.attributes, [id]: value } } : current);
+  }
+
+  async function attachEvidence(file: File) {
+    if (!projectId || !editingSpeaker?.voiceConsent) return;
+    const serial = ++evidenceSerial.current;
+    const profileId = editingSpeaker.id;
+    setEvidenceBusy(true); setEvidenceError(null);
+    try {
+      const evidence = await api.uploadConsentEvidence(projectId, file);
+      if (serial !== evidenceSerial.current) return;
+      setEditingSpeaker((current) => current?.id === profileId && current.voiceConsent ? { ...current, voiceConsent: { ...current.voiceConsent, evidence } } : current);
+    } catch (reason) {
+      if (serial === evidenceSerial.current) setEvidenceError(reason instanceof Error ? reason.message : "Không lưu được bằng chứng.");
+    } finally { if (serial === evidenceSerial.current) setEvidenceBusy(false); }
   }
 
   function selectProfile(event: MouseEvent<HTMLButtonElement>, id: string) {
@@ -185,7 +219,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
 
   return (
     <ModuleFrame
-      action={<button aria-label={activeType === "speaker" ? "Thêm Speaker Profile" : "Thêm Environment Profile"} className="voice-vault-add" onClick={() => activeType === "speaker" ? editSpeaker() : editEnvironment()} type="button"><Icon name="plus" /> ADD</button>}
+      action={<div className="voice-vault-add-options"><button aria-expanded={addMenu} aria-label={activeType === "speaker" ? "Thêm Speaker Profile" : "Thêm Environment Profile"} className="voice-vault-add" onClick={() => projectId && activeType === "speaker" ? setAddMenu(!addMenu) : activeType === "speaker" ? editSpeaker() : editEnvironment()} type="button"><Icon name="plus" /> ADD</button>{addMenu ? <div role="menu"><button role="menuitem" onClick={() => editSpeaker()} type="button">Tạo mới</button><button role="menuitem" onClick={() => { setAddMenu(false); setCollectionMode({}); }} type="button">Import from Collection</button></div> : null}</div>}
       className="voice-vault-module"
       eyebrow="SOUND LIBRARY"
       title="Profiles"
@@ -218,14 +252,18 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
           </details>
           <fieldset className="profile-consent is-wide">
             <legend>Đồng ý dùng giọng</legend>
-            <label className="profile-consent__check"><input checked={Boolean(editingSpeaker.voiceConsent)} onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: event.target.checked ? { grantedBy: editingSpeaker.name.trim(), note: null, confirmedAt: new Date().toISOString() } : null })} type="checkbox" /><span>Chủ giọng đã đồng ý cho dùng giọng này để đổi giọng trong project</span></label>
+            <label className="profile-consent__check"><input checked={Boolean(editingSpeaker.voiceConsent)} onChange={(event) => { evidenceSerial.current += 1; setEvidenceBusy(false); setEvidenceError(null); setEditingSpeaker({ ...editingSpeaker, voiceConsent: event.target.checked ? { grantedBy: editingSpeaker.name.trim(), note: null, confirmedAt: new Date().toISOString(), uploadAllowed: false } : null }); }} type="checkbox" /><span>Chủ giọng đã đồng ý cho dùng giọng này để đổi giọng trong project</span></label>
             {editingSpeaker.voiceConsent ? <>
               <label><span>Người đồng ý</span><input aria-label="Người đồng ý" onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: { ...editingSpeaker.voiceConsent!, grantedBy: event.target.value } })} value={editingSpeaker.voiceConsent.grantedBy} /></label>
               <label><span>Căn cứ</span><input aria-label="Căn cứ đồng ý" onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: { ...editingSpeaker.voiceConsent!, note: event.target.value || null } })} placeholder="Ví dụ: hợp đồng, tin nhắn ngày…" value={editingSpeaker.voiceConsent.note ?? ""} /></label>
+              <label className="profile-consent__check"><input type="checkbox" checked={Boolean(editingSpeaker.voiceConsent.uploadAllowed)} onChange={(event) => setEditingSpeaker({ ...editingSpeaker, voiceConsent: { ...editingSpeaker.voiceConsent!, uploadAllowed: event.target.checked } })} /><span>Chủ giọng đồng ý cho upload voice lên server</span></label>
+              {projectId ? <label className="profile-consent__browse"><span>{evidenceBusy ? "Đang lưu bằng chứng…" : "Browse · bằng chứng / hợp đồng"}</span><input aria-label="Browse bằng chứng đồng ý" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" disabled={evidenceBusy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void attachEvidence(file); }} type="file" /></label> : null}
+              {editingSpeaker.voiceConsent.evidence ? <small>Bằng chứng: {editingSpeaker.voiceConsent.evidence.name}</small> : null}
+              {evidenceError ? <small role="alert">{evidenceError}</small> : null}
               <small>Ghi nhận lúc {new Date(editingSpeaker.voiceConsent.confirmedAt).toLocaleString("vi-VN")}. Voice Changer chỉ đổi sang giọng của profile có xác nhận này.</small>
             </> : <small>Chưa có xác nhận: profile vẫn dùng được cho STT và training, nhưng không làm giọng giả trong Voice Changer.</small>}
           </fieldset>
-          <div className="speaker-profile-actions">{onDeleteSpeaker && catalog.speakers.some((speaker) => speaker.id === editingSpeaker.id) ? <button className="button button--quiet is-danger" onClick={() => { const target = catalog.speakers.find((speaker) => speaker.id === editingSpeaker.id); setEditingSpeaker(null); if (target) onDeleteSpeaker(target); }} type="button">Xoá profile</button> : null}<button className="button button--quiet" onClick={() => setEditingSpeaker(null)} type="button">Hủy</button><button className="button button--accent" disabled={!editingSpeaker.name.trim() || Boolean(editingSpeaker.voiceConsent && !editingSpeaker.voiceConsent.grantedBy.trim())} type="submit">Xác nhận & lưu profile</button></div>
+          <div className="speaker-profile-actions">{onDeleteSpeaker && catalog.speakers.some((speaker) => speaker.id === editingSpeaker.id) ? <button className="button button--quiet is-danger" onClick={() => { const target = catalog.speakers.find((speaker) => speaker.id === editingSpeaker.id); evidenceSerial.current += 1; setEditingSpeaker(null); if (target) onDeleteSpeaker(target); }} type="button">Xoá profile</button> : null}<button className="button button--quiet" onClick={() => { evidenceSerial.current += 1; setEvidenceBusy(false); setEditingSpeaker(null); }} type="button">Hủy</button><button className="button button--accent" disabled={evidenceBusy || !editingSpeaker.name.trim() || Boolean(editingSpeaker.voiceConsent && !editingSpeaker.voiceConsent.grantedBy.trim())} type="submit">Xác nhận & lưu profile</button></div>
         </form>
       ) : null}
       {editingEnvironment ? (
@@ -256,6 +294,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
                     <button aria-label={`Chọn voice ${voice.name}`} aria-pressed={selectedVoiceIds.includes(voice.id)} className="sound-library-select" onClick={(event) => selectVoiceItem(event, voice.id)} type="button">{selectedVoiceIds.includes(voice.id) ? "✓" : "□"}</button>
                     <span>{voice.name}</span>
                     <small>{VOICE_KIND_LABELS[voice.kind] ?? voice.kind} · {new Date(voice.createdAt).toLocaleDateString("vi-VN")}</small>
+                    {projectId && voice.kind !== "clone" ? <button aria-label={`Add to Collection ${voice.name}`} onClick={() => setCollectionMode({ voice })} type="button">Add to Collection</button> : null}
                     {onDeleteVoice ? <button aria-label={`Xoá voice ${voice.name}`} onClick={() => onDeleteVoice(voice)} title="Xoá voice" type="button">×</button> : null}
                   </li>
                 ))}
@@ -275,6 +314,7 @@ export function VoiceVault({ catalog, assets, profileSchema, selectedVoice, onCa
           {activeType === "environment" && !catalog.environmentProfiles.length ? <div className="voice-vault-empty"><Icon name="landscape" /><b>Chưa có Environment Profile</b><span>Đặt profile cho tiếng ồn/môi trường và gán cho footage hoặc từ trong transcript.</span></div> : null}
         </div>
       ) : null}
+      {collectionMode ? <CollectionDialog onClose={() => setCollectionMode(null)} projectId={projectId} exportVoiceId={collectionMode.voice?.id} speaker={catalog.speakers.find((item) => item.id === collectionMode.voice?.speakerProfileId)} schema={profileSchema} onImported={onCollectionImported} onPrepareExport={onPrepareCollectionExport} /> : null}
       {profileMenu ? createPortal(
         <div className="sound-profile-context-menu" role="menu" style={{ left: profileMenu.left, top: profileMenu.top }}>
           <button onClick={() => {

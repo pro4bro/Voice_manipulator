@@ -191,7 +191,7 @@ it("opens a long multitrack footage at its full duration", () => {
     tracks={tracks.map((track) => ({ ...track, duration: 7200 }))} selectedTrackId={null}
     onSelectTrack={() => undefined} onCutsChange={async () => true} />);
   expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
-  expect(screen.getByText("7200s")).toBeInTheDocument();
+  expect(screen.getByTitle("Cửa sổ 7200s")).toBeInTheDocument();
 });
 
 it("does not preload six long PCM files just to show their waveforms", () => {
@@ -354,9 +354,10 @@ it("fits the full long footage at minimum zoom and reaches 0.01 seconds per 10 p
   render(<ImportedMultitrackTimeline parent={{ ...parent, duration: 4000 }} tracks={tracks.map((track) => ({ ...track, duration: 4000 }))}
     selectedTrackId="a" onSelectTrack={() => undefined} onCutsChange={async () => true} />);
   fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
-  expect(screen.getByRole("group", { name: "Zoom Timeline" })).toHaveTextContent("4000s");
+  expect(screen.getByTitle("Cửa sổ 4000s")).toBeInTheDocument();
   fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "1000" } });
   expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveAttribute("aria-valuetext", "0.01s / 10px");
+  expect(screen.getByLabelText("Ruler chung")).toHaveTextContent("0.1s");
 });
 
 it("requests source PCM detail for the visible window instead of stretching sparse overview peaks", async () => {

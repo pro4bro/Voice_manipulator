@@ -314,6 +314,15 @@ class VoiceConsent(DomainModel):
     granted_by: str = Field(min_length=1, max_length=120)
     note: str | None = Field(default=None, max_length=500)
     confirmed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Local project permission to retain or share consent evidence. This is
+    # separate from the existing permission to use the voice in Voice Changer.
+    upload_allowed: bool = False
+    evidence: "ConsentEvidence | None" = None
+
+
+class ConsentEvidence(DomainModel):
+    path: str = Field(min_length=1, max_length=1024)
+    name: str = Field(min_length=1, max_length=255)
 
 
 class SpeakerProfile(DomainModel):
@@ -1226,6 +1235,51 @@ class ProjectVoice(DomainModel):
     # intentionally remain standalone.
     model_set_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VoiceCollectionProperties(DomainModel):
+    language: str | None = Field(default=None, max_length=120)
+    language_id: str | None = Field(default=None, max_length=32)
+    region: str | None = Field(default=None, max_length=120)
+    age: str | None = Field(default=None, max_length=80)
+    gender: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+
+class VoiceCollectionCreate(DomainModel):
+    name: str = Field(min_length=1, max_length=120)
+    properties: VoiceCollectionProperties = Field(default_factory=VoiceCollectionProperties)
+
+
+class VoiceCollectionEntryCreate(DomainModel):
+    project_id: str = Field(min_length=1, max_length=160)
+    voice_id: str = Field(min_length=1, max_length=160)
+
+
+class VoiceCollectionImport(DomainModel):
+    project_id: str = Field(min_length=1, max_length=160)
+
+
+class VoiceCollectionEntry(DomainModel):
+    id: str
+    source_project_id: str
+    source_project_name: str
+    voice: ProjectVoice
+    speaker: SpeakerProfile
+
+
+class VoiceCollection(DomainModel):
+    id: str
+    name: str
+    properties: VoiceCollectionProperties = Field(default_factory=VoiceCollectionProperties)
+    entries: list[VoiceCollectionEntry] = Field(default_factory=list)
+
+
+class VoiceCollectionImportResult(DomainModel):
+    voice: ProjectVoice
+    speaker: SpeakerProfile
+    catalog: TrainingCatalog
 
 
 VoiceModelSetStatus = Literal["pending-gate", "published", "rejected"]

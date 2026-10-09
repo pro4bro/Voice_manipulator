@@ -8,6 +8,9 @@ import { VoiceVault } from "../voice-vault/VoiceVault";
 import { Icon } from "../../ui/Icon";
 
 interface LibraryPanelProps {
+  projectId?: string;
+  onCollectionImported?: (result: import("../../domain/types").VoiceCollectionImport) => void;
+  onPrepareCollectionExport?: () => Promise<void>;
   assets: ProjectMediaAsset[];
   selectedAssetId: string | null;
   selectedImportedTrackId?: string | null;
@@ -59,12 +62,15 @@ export function LibraryPanel(props: LibraryPanelProps) {
         <button aria-selected={tab === "media"} className={tab === "media" ? "is-active" : ""} onClick={() => setTab("media")} role="tab" type="button"><Icon name="folder" />Media Pool <b>{props.assets.length}</b></button>
         <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
       </div>
-      {tab === "media" ? <MediaPool {...props} /> : <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />}
+      {tab === "media" ? <MediaPool {...props} /> : <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />}
     </section>
   );
 }
 
 interface ManipulatorLibraryProps {
+  projectId?: string;
+  onCollectionImported?: (result: import("../../domain/types").VoiceCollectionImport) => void;
+  onPrepareCollectionExport?: () => Promise<void>;
   assets: ProjectMediaAsset[];
   speakers: SpeakerProfile[];
   environments: EnvironmentNoiseProfile[];
@@ -101,7 +107,7 @@ export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
         <button aria-selected={tab === "output"} className={tab === "output" ? "is-active" : ""} onClick={() => setTab("output")} role="tab" type="button"><Icon name="file" />Voice Output <b>{props.outputs.length}</b></button>
       </div>
       {tab === "sound"
-        ? <VoiceVault assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
+        ? <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
         : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onExport={props.onExportOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>
   );

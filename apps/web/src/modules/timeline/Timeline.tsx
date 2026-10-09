@@ -20,6 +20,7 @@ import { visibleSubtitleWordLayout } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { minimumTimelineSpan, timelineSpanAtZoomPosition, timelineZoomPosition, timelineZoomResolution } from "./zoom";
 
 export interface ActiveTake {
   id?: string;
@@ -88,7 +89,6 @@ const GAIN_PREVIEW_PARTS = [1, 5, 9];
 const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
 const MAX_GAIN_RANGES = 96;
 const CLOCK_STATE_INTERVAL_MS = 80;
-const MAX_TIMELINE_PIXELS_PER_SECOND = 1000;
 const DETAIL_WAVEFORM_DEBOUNCE_MS = 160;
 const DETAIL_WAVEFORM_MAX_POINTS = 12_000;
 
@@ -924,32 +924,36 @@ export function Timeline({
     timelineNavigatorDraggingRef.current = false;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
-  function baseTimelinePixelsPerSecond() {
+  function maxTimelineZoom() {
     const baseWidth = timelinePixelWidthRef.current > 0
       ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
       : 1000;
-    return baseWidth / Math.max(duration, 0.001);
-  }
-  function maxTimelineZoom() {
-    return Math.max(1, MAX_TIMELINE_PIXELS_PER_SECOND / Math.max(baseTimelinePixelsPerSecond(), 0.001));
+    const minimumSpan = minimumTimelineSpan(duration, baseWidth);
+    return Math.max(1, duration / minimumSpan);
   }
   function zoomResolutionLabel() {
-    const secondsPerTenPixels = 10 / Math.max(0.001, baseTimelinePixelsPerSecond() * zoom);
-    return (secondsPerTenPixels >= 1 ? secondsPerTenPixels.toFixed(1) : secondsPerTenPixels.toFixed(2)) + "s / 10px";
+    const baseWidth = timelinePixelWidthRef.current > 0
+      ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
+      : 1000;
+    return timelineZoomResolution(duration / Math.max(zoom, 0.001), baseWidth);
   }
   function zoomSliderValue() {
-    const maximum = maxTimelineZoom();
-    if (maximum <= 1) return 0;
-    const ratio = Math.log(Math.max(1, Math.min(maximum, zoom))) / Math.log(maximum);
-    return Math.round(Math.max(0, Math.min(1, ratio)) * 1000);
+    const baseWidth = timelinePixelWidthRef.current > 0
+      ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
+      : 1000;
+    const minimumSpan = minimumTimelineSpan(duration, baseWidth);
+    return timelineZoomPosition(duration, duration / Math.max(zoom, 0.001), minimumSpan);
   }
   function setZoomFromSlider(value: number) {
-    const maximum = maxTimelineZoom();
-    if (maximum <= 1) {
+    const baseWidth = timelinePixelWidthRef.current > 0
+      ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
+      : 1000;
+    const minimumSpan = minimumTimelineSpan(duration, baseWidth);
+    if (duration <= minimumSpan) {
       setZoom(1);
       return;
     }
-    setZoom(Math.max(1, Math.min(maximum, maximum ** (Math.max(0, Math.min(1000, value)) / 1000))));
+    setZoom(duration / timelineSpanAtZoomPosition(value, duration, minimumSpan));
   }
 
   function modifiersOf(event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }) {

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { VoiceVault } from "./VoiceVault";
+import { api } from "../../api/client";
 import type { ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
 
 function speaker(id: string, name: string): SpeakerProfile {
@@ -38,6 +39,38 @@ function show(props: Partial<Parameters<typeof VoiceVault>[0]> = {}) {
 }
 
 describe("Sound Library", () => {
+  it("stores evidence with explicit upload consent and preserves it when saving the profile", async () => {
+    const upload = vi.spyOn(api, "uploadConsentEvidence").mockResolvedValue({ path: "assets/consent-evidence/proof.pdf", name: "proof.pdf" });
+    const save = vi.fn();
+    show({ projectId: "project-test", onCatalogChange: save });
+    fireEvent.doubleClick(screen.getByText("An"));
+    expect(screen.queryByLabelText("Browse bằng chứng đồng ý")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Chủ giọng đã đồng ý cho dùng giọng này để đổi giọng trong project"));
+    fireEvent.click(screen.getByLabelText("Chủ giọng đồng ý cho upload voice lên server"));
+    const file = new File(["%PDF-1.7 proof"], "proof.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Browse bằng chứng đồng ý"), { target: { files: [file] } });
+    expect(screen.getByRole("button", { name: "Xác nhận & lưu profile" })).toBeDisabled();
+    await screen.findByText("Bằng chứng: proof.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận & lưu profile" }));
+    expect(upload).toHaveBeenCalledWith("project-test", file);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ speakers: [expect.objectContaining({ voiceConsent: expect.objectContaining({ uploadAllowed: true, evidence: { path: "assets/consent-evidence/proof.pdf", name: "proof.pdf" } }) })] }));
+    upload.mockRestore();
+  });
+
+  it("does not attach a cancelled upload to a subsequently opened profile", async () => {
+    let resolve!: (value: { path: string; name: string }) => void;
+    const upload = vi.spyOn(api, "uploadConsentEvidence").mockImplementation(() => new Promise((resolver) => { resolve = resolver; }));
+    show({ projectId: "project-test" });
+    fireEvent.doubleClick(screen.getByText("An"));
+    fireEvent.click(screen.getByLabelText("Chủ giọng đã đồng ý cho dùng giọng này để đổi giọng trong project"));
+    fireEvent.change(screen.getByLabelText("Browse bằng chứng đồng ý"), { target: { files: [new File(["proof"], "proof.txt")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+    fireEvent.doubleClick(screen.getByText("An"));
+    resolve({ path: "assets/proof.txt", name: "proof.txt" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Xác nhận & lưu profile" })).toBeEnabled());
+    expect(screen.queryByText("Bằng chứng: proof.txt")).not.toBeInTheDocument();
+    upload.mockRestore();
+  });
   it("clears profile selection from the blank side canvas", () => {
     show();
     fireEvent.click(screen.getByRole("button", { name: "Chọn profile An" }));

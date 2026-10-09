@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rulerLabel, rulerMarks, rulerStep } from "./ruler";
+import { rulerLabel, rulerMarks, rulerStep, visibleRulerMarks } from "./ruler";
 
 describe("rulerStep", () => {
   it("walks down the units as the view is zoomed in", () => {
@@ -63,4 +63,10 @@ describe("rulerMarks", () => {
     expect(nearEnd.length).toBeGreaterThan(0);
     expect(nearEnd[nearEnd.length - 1].time).toBeGreaterThan(234);
   });
+});
+
+it("keeps absolute sub-second labels while mapping marks to the zoomed window", () => {
+  const marks = visibleRulerMarks(900, 10, 1, 1_000);
+  expect(marks[0]).toMatchObject({ time: 10, label: "10.0s", position: 0 });
+  expect(marks.at(-1)).toMatchObject({ time: 11, label: "11.0s", position: 1 });
 });

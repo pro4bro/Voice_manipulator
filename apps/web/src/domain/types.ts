@@ -264,6 +264,37 @@ export interface VoiceConsent {
   grantedBy: string;
   note: string | null;
   confirmedAt: string;
+  uploadAllowed?: boolean;
+  evidence?: ConsentEvidence | null;
+}
+
+export interface ConsentEvidence { path: string; name: string }
+export interface VoiceCollectionProperties {
+  language: string | null;
+  languageId: string | null;
+  region: string | null;
+  age: string | null;
+  gender: string | null;
+  color?: string;
+  attributes: Record<string, string>;
+}
+export interface VoiceCollectionEntry {
+  id: string;
+  sourceProjectId: string;
+  sourceProjectName: string;
+  voice: ProjectVoice;
+  speaker: SpeakerProfile;
+}
+export interface VoiceCollection {
+  id: string;
+  name: string;
+  properties: VoiceCollectionProperties;
+  entries: VoiceCollectionEntry[];
+}
+export interface VoiceCollectionImport {
+  voice: ProjectVoice;
+  speaker: SpeakerProfile;
+  catalog: TrainingCatalog;
 }
 
 export interface EnvironmentNoiseProfile {

@@ -62,15 +62,15 @@ it("follows archive playback across the view edge without recentering paused bro
   await screen.findByRole("img", { name: "Sóng âm Channel 1" });
   const ruler = screen.getByLabelText("Ruler chung");
   fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
-  expect(ruler).toHaveTextContent("00:15");
+  expect(ruler).toHaveTextContent("30s");
   const audio = container.querySelector("audio")!;
   // A paused media event at zero must not cancel manual browsing.
   fireEvent.timeUpdate(audio);
-  expect(ruler).toHaveTextContent("00:15");
+  expect(ruler).toHaveTextContent("30s");
   fireEvent.play(audio);
   audio.currentTime = 76;
   fireEvent.timeUpdate(audio);
-  expect(ruler).toHaveTextContent("01:10");
+  expect(ruler).toHaveTextContent("1:30");
   expect(container.querySelector<HTMLElement>(".obs-timeline__playhead")?.style.left).toBe("10%");
   fireEvent.pause(audio);
   fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
@@ -111,7 +111,7 @@ it("keeps the archive window and PCM detail across repeated idle status and jour
   await screen.findByRole("img", { name: "Sóng âm Channel 1" });
   for (let i = 0; i < 16; i++) fireEvent.click(screen.getByRole("button", { name: "Tiến cửa sổ Timeline" }));
   const ruler = screen.getByLabelText("Ruler chung");
-  expect(ruler).toHaveTextContent("04:00");
+  expect(ruler).toHaveTextContent("4:00");
   await waitFor(() => expect(container.querySelector("svg[data-waveform-source='pcm-detail']")).toBeInTheDocument());
   const saved = ruler.textContent;
   vi.useFakeTimers();
@@ -276,6 +276,10 @@ it("retains saved waveform when a cursor reply contains no audio in the viewed w
   expect(saved).toBeTruthy();
   expect(saved).toMatch(/Z$/u);
   expect(lane.querySelector("svg")).toHaveClass("timeline-waveform__svg");
+  act(() => onSnapshot(wave(ids[0], 12000, "mka")));
+  expect(lane.querySelector("path")).toHaveAttribute("d", "");
+  act(() => onSnapshot(wave(ids[0], 12000, "pcm")));
+  expect(lane.querySelector("path")?.getAttribute("d")).toBe(saved);
   // PCM beyond this window advances the cursor but supplies no replacement bins.
   act(() => onSnapshot({ ...wave(ids[0], 0, "pcm"), sampleRate: null,
     lastDurableSequence: 2, lastIncludedSequence: 2, points: [], gaps: [] }));
@@ -690,9 +694,9 @@ it("reopens a stopped MKA recording with source-owned playback and seek", async 
   const lane = screen.getByRole("img", { name: "Sóng âm Channel 2" });
   vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
   fireEvent.click(lane, { clientX: 30 });
-  expect(screen.getByText("00:00:03.000")).toBeInTheDocument();
+  expect(screen.getByText("00:00:01.800")).toBeInTheDocument();
   fireEvent.loadedMetadata(container.querySelector("audio") as HTMLAudioElement);
-  expect((container.querySelector("audio") as HTMLAudioElement).currentTime).toBe(3);
+  expect((container.querySelector("audio") as HTMLAudioElement).currentTime).toBeCloseTo(1.8);
   expect(screen.getByLabelText("Channel 1: transport-gap")).toBeInTheDocument();
 });
 
@@ -762,7 +766,7 @@ it("keeps archive seek and each preview gain across layout and zoom changes", as
   expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" })).toHaveValue("42");
   expect(screen.getByText("00:00:12.000")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
-  expect(screen.getByText("30s")).toBeInTheDocument();
+  expect(screen.getByTitle("Cửa sổ 20s")).toBeInTheDocument();
   expect(screen.getByText("00:00:12.000")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "LAYER" }));
   expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" })).toHaveValue("42");
@@ -913,16 +917,31 @@ it("routes undo and redo in both the archived OBS root and focused editor", asyn
 
 it("shows the actual visible time span for a short archive", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
-    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 7_000_000_000 },
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 1_500_000_000 },
     channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
     sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
       assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
   }]);
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   await screen.findByRole("img", { name: "Sóng âm Channel 1" });
-  expect(screen.getByText("10s")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Phóng to Timeline OBS" })).toBeDisabled();
+  expect(screen.getByTitle("Cửa sổ 0.5s")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Phóng to Timeline OBS" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
+  expect(screen.getByRole("group", { name: "Zoom Timeline OBS" })).toHaveTextContent("0.01s / 10px");
+});
+
+it("fits an archive shorter than ten milliseconds and keeps its resolution readable", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 1_005_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  expect(await screen.findByTitle("Cửa sổ 0.005s")).toBeInTheDocument();
+  expect(screen.getByText("0.0002s / 10px")).toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "Zoom timeline" })).toBeDisabled();
 });
 
 it("boosts only preview playback through a channel-scoped Web Audio gain node", async () => {
@@ -1012,13 +1031,73 @@ it("can zoom out to the entire archived recording", async () => {
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   await screen.findByRole("img", { name: "Sóng âm Channel 1" });
   fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
-  expect(screen.getByText("900s")).toBeInTheDocument();
+  expect(screen.getByTitle("Cửa sổ 900s")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" })).toBeDisabled();
   await waitFor(() => expect(mocks.getObsLiveLinkWaveform).toHaveBeenCalledWith("project", "recording", ids[0], 0, 900, 600));
   expect(screen.getByRole("img", { name: "Sóng âm Channel 1" }).querySelector("path")?.getAttribute("d")).toBeTruthy();
   // A new live take can arrive before the overview viewport reset effect runs.
   const liveWindow = mocks.subscribe.mock.calls[0][1]("new-recording", ids[0]);
   expect(liveWindow.endSeconds - liveWindow.startSeconds).toBeLessThanOrEqual(120);
+});
+
+it("gives archived and live OBS timelines density-based zoom across viewport widths", async () => {
+  let viewportWidth = 1_000;
+  const observers: Array<{ notify: () => void }> = [];
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("obs-timeline__viewport") ? viewportWidth : 0;
+  });
+  vi.stubGlobal("ResizeObserver", class {
+    private readonly callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+      observers.push({ notify: () => this.callback([], this as unknown as ResizeObserver) });
+    }
+    observe() { this.callback([], this as unknown as ResizeObserver); }
+    disconnect() {}
+  });
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 901_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const zoom = screen.getByRole("slider", { name: "Zoom timeline" });
+  expect(zoom).toHaveAttribute("max", "1000");
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
+  expect(screen.getByTitle("Cửa sổ 30s")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" }));
+  expect(screen.getByTitle("Cửa sổ 60s")).toBeInTheDocument();
+  fireEvent.change(zoom, { target: { value: "0" } });
+  expect(screen.getByTitle("Cửa sổ 900s")).toBeInTheDocument();
+  fireEvent.change(zoom, { target: { value: "1000" } });
+  expect(zoom).toHaveAttribute("aria-valuetext", "0.01s / 10px");
+  expect(screen.getByLabelText("Ruler chung")).toHaveTextContent("0.1s");
+
+  viewportWidth = 700;
+  act(() => observers.forEach((observer) => observer.notify()));
+  expect(zoom).toHaveAttribute("aria-valuetext", "0.02s / 10px");
+  fireEvent.change(zoom, { target: { value: "1000" } });
+  expect(zoom).toHaveAttribute("aria-valuetext", "0.01s / 10px");
+  expect(screen.getByRole("button", { name: "Phóng to Timeline OBS" })).toBeDisabled();
+
+  view.unmount();
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
+  const live = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const liveFeed = mocks.subscribe.mock.calls[mocks.subscribe.mock.calls.length - 1];
+  await act(async () => liveFeed[4]({ appRecording: { ...recording, endedMonotonicNs: null,
+    startedAtUtc: new Date(Date.now() - 200_000).toISOString() }, channels: [{ channelId: ids[0],
+    alias: "Channel 1", slot: 1, appliedForward: true, capture: { recordingId: "recording", durableChunkCount: 0 } }] }));
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const liveZoom = screen.getByRole("slider", { name: "Zoom timeline" });
+  fireEvent.change(liveZoom, { target: { value: "1000" } });
+  expect(liveZoom).toHaveAttribute("aria-valuetext", "0.01s / 10px");
+  fireEvent.change(liveZoom, { target: { value: "0" } });
+  expect(screen.getByTitle("Cửa sổ 120s")).toBeInTheDocument();
+  const liveWindow = liveFeed[1]("recording", ids[0]);
+  expect(liveWindow.endSeconds - liveWindow.startSeconds).toBeLessThanOrEqual(120);
+  live.unmount();
 });
 
 it("does not seek back to zero after dragging a waveform", async () => {

@@ -22,11 +22,14 @@ import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
+import { visibleRulerMarks as visibleTimelineRulerMarks } from "./ruler";
+import { minimumTimelineSpan, timelineSpanAtZoomPosition, timelineZoomPosition, timelineZoomResolution,
+  TIMELINE_ZOOM_STEPS } from "./zoom";
 import { subtitleIndexAtTime, visibleSubtitleWordLayout } from "./subtitle-density";
 import "./waveform.css";
 import "./subtitle-density.css";
 
-const WINDOW_OPTIONS = [15, 30, 60, 120] as const;
+const MAX_LIVE_WINDOW_SECONDS = 120;
 const DEFAULT_WINDOW_SECONDS = 60;
 const EMPTY_ASSETS: ProjectMediaAsset[] = [];
 type Layout = "layers" | "columns";
@@ -302,12 +305,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }, [recordingId, requestedRecordingId, onRecordingIdChange]);
   const isLive = Boolean(active);
   const duration = recording ? recordingSeconds(recording, now) : 0;
-  const visibleSpan = (seconds: number) => isLive ? seconds :
-    Math.min(seconds, Math.max(10, Math.ceil(duration / 10) * 10));
-  const zoomOptions = !isLive && duration > WINDOW_OPTIONS[WINDOW_OPTIONS.length - 1]
-    ? [...WINDOW_OPTIONS, duration] : [...WINDOW_OPTIONS];
-  const windowSpan = visibleSpan(windowSeconds);
-  windowRef.current = { start: windowStart, end: windowStart + windowSpan };
   recordingIdRef.current = recordingId;
   const lanes = useMemo(() => sourceLanes(!journal && !isLive ? retainedLive : status, journal,
     recordingId, isLive || Boolean(!journal && retainedLive)).filter((lane) => {
@@ -316,6 +313,19 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }), [status, journal, recordingId, isLive, assets, retainedLive]);
   const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
   const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
+  const defaultColumnWidth = viewportWidth
+    ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length))))
+    : 360;
+  const waveformWidth = layout === "columns"
+    ? (columnWidths[visibleLanes[0]?.channelId ?? ""] ?? defaultColumnWidth) * 0.62
+    : Math.max(240, viewportWidth - 216);
+  const maximumWindowSpan = isLive ? MAX_LIVE_WINDOW_SECONDS : Math.max(Number.EPSILON, duration);
+  const minimumWindowSpan = Math.min(maximumWindowSpan, minimumTimelineSpan(maximumWindowSpan, waveformWidth));
+  const visibleSpan = (seconds: number) => Math.max(minimumWindowSpan, Math.min(maximumWindowSpan, seconds));
+  const windowSpan = visibleSpan(windowSeconds);
+  const rulerWidth = layout === "layers" ? Math.max(waveformWidth, viewportWidth - 124) : waveformWidth;
+  const rulerMarks = visibleTimelineRulerMarks(duration, windowStart, windowSpan, waveformWidth);
+  windowRef.current = { start: windowStart, end: windowStart + windowSpan };
   const laneTargets = lanes.map((lane) => `${lane.channelId}:${lane.assetId ?? ""}`).join(",");
   const overlapByUtterance = useMemo(() => obsOverlapByUtterance(transcriptRows), [transcriptRows]);
   const archivedTranscriptGaps = useMemo(() => new Map(lanes.filter((lane) => lane.assetId).map((lane) => [lane.channelId,
@@ -339,7 +349,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     return byAsset;
   }, [assets, recordingId]);
   const laneIds = lanes.map((lane) => lane.channelId).join(",");
-  const defaultColumnWidth = viewportWidth ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length)))) : 360;
   const clampColumnWidth = (value: number) => Math.max(240, Math.min(1200, Math.round(value)));
 
   function beginColumnResize(event: PointerEvent<HTMLDivElement>, channelId: string) {
@@ -609,19 +618,15 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }
 
   function zoomTarget(direction: -1 | 1): number | null {
-    let index = zoomOptions.findIndex((value) => value === windowSeconds) + direction;
-    while (index >= 0 && index < zoomOptions.length) {
-      const next = zoomOptions[index];
-      if (visibleSpan(next) !== windowSpan) return next;
-      index += direction;
-    }
-    return null;
+    const next = visibleSpan(windowSpan * (direction === 1 ? 2 : 0.5));
+    return next === windowSpan ? null : next;
   }
 
   function selectWindow(next: number) {
     const nextSpan = visibleSpan(next);
+    const playheadRatio = windowSpan ? (currentTime - windowStart) / windowSpan : 0.5;
     setWindowStart(isLive ? Math.max(0, duration - nextSpan) :
-      Math.max(0, Math.min(duration - nextSpan, currentTime - nextSpan / 2)));
+      Math.max(0, Math.min(Math.max(0, duration - nextSpan), currentTime - playheadRatio * nextSpan)));
     setWindowSeconds(next);
   }
 
@@ -789,10 +794,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       </div>
       <div aria-label="Zoom Timeline OBS" className="timeline-zoom obs-timeline__zoom" role="group">
         <button aria-label="Thu nhỏ Timeline OBS" disabled={zoomTarget(1) === null} onClick={() => changeWindow(1)} type="button">−</button>
-        <input aria-label="Zoom timeline" disabled={zoomTarget(-1) === null && zoomTarget(1) === null}
-          max={zoomOptions.length - 1} min={0} onChange={(event) => selectWindow(zoomOptions[zoomOptions.length - 1 - Number(event.target.value)])}
-          step={1} type="range" value={zoomOptions.length - 1 - Math.max(0, zoomOptions.indexOf(windowSeconds))} />
-        <span>{windowSpan}s</span>
+        <input aria-label="Zoom timeline" aria-valuetext={timelineZoomResolution(windowSpan, waveformWidth)}
+          disabled={maximumWindowSpan <= minimumWindowSpan} max={TIMELINE_ZOOM_STEPS} min={0}
+          onChange={(event) => selectWindow(timelineSpanAtZoomPosition(Number(event.target.value), maximumWindowSpan, minimumWindowSpan))}
+          step={1} type="range" value={timelineZoomPosition(maximumWindowSpan, windowSpan, minimumWindowSpan)} />
+        <span title={`Cửa sổ ${windowSpan}s`}>{timelineZoomResolution(windowSpan, waveformWidth)}</span>
         <button aria-label="Phóng to Timeline OBS" disabled={zoomTarget(-1) === null} onClick={() => changeWindow(-1)} type="button">+</button>
       </div>
     </div>}>
@@ -810,14 +816,17 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
           style={{ "--obs-layer-height": `${Math.max(110, Math.round(viewportHeight * 0.6))}px` } as CSSProperties}>
           {layout === "layers" ? <><div className="obs-timeline__label-spacer" />
             <div className="obs-timeline__ruler" aria-label="Ruler chung" onClick={clickSeek} onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
-              {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>
-                {clock(windowStart + (part * windowSpan) / 4)}
+              {rulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * waveformWidth / rulerWidth * 100}%` }}>
+                {mark.label}
               </span>)}
             </div></> : null}
           {visibleLanes.map((lane) => {
             const subtitleLaneWidth = layout === "columns"
               ? (columnWidths[lane.channelId] ?? defaultColumnWidth) * 0.62
               : Math.max(240, viewportWidth - 124);
+            const laneRulerMarks = layout === "columns"
+              ? visibleTimelineRulerMarks(duration, windowStart, windowSpan, subtitleLaneWidth)
+              : rulerMarks;
             const captions = transcriptRows.filter((row) => row.recordingId === recordingId && row.channelId === lane.channelId);
             const archivedAsset = !isLive && lane.assetId ? assets.find((asset) => asset.id === lane.assetId) : undefined;
             const overlaps: TimelineOverlap[] = detailedOverlaps
@@ -838,9 +847,12 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
             const waveform = waveforms[lane.channelId];
             const sampleRate = waveform?.sampleRate ?? null;
             // Reproject received bins while Stop/archive or zoom data is loading.
-            // Never borrow another take or draw samples outside the viewport.
-            const sameWindow = waveform?.startSeconds === windowStart && waveform.endSeconds === windowStart + windowSpan;
-            const points = waveform?.recordingId === recordingId && (sameWindow || !isLive) && sampleRate
+            // Retain only this recording/channel's live PCM axis and reproject
+            // bins that overlap the new viewport; never stretch an older window.
+            const overlapsWindow = waveform && waveform.endSeconds > windowStart && waveform.startSeconds < windowStart + windowSpan;
+            const sameSource = waveform?.recordingId === recordingId && waveform.channelId === lane.channelId &&
+              (!isLive || waveform.sampleAxis === "channel");
+            const points = sameSource && (overlapsWindow || !isLive) && sampleRate
               ? waveform.points.filter((point) => point.endFrame > windowStart * sampleRate &&
                 point.startFrame < (windowStart + windowSpan) * sampleRate) : [];
             const hasPcm = points.some((point) => point.peak !== null);
@@ -889,9 +901,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 onPointerMove={moveColumnResize} onPointerUp={endColumnResize} role="separator" tabIndex={0}
                 title={`Kéo vách để đổi độ rộng Timeline ${lane.label}`} /> : null}
               {layout === "columns" ? <div aria-label={`Ruler ${lane.label}`} className="obs-timeline__ruler obs-timeline__column-ruler" onClick={clickSeek} onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
-                {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>
-                  {clock(windowStart + (part * windowSpan) / 4)}
-                </span>)}
+                {laneRulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}
               </div> : null}
               <div aria-label={`Sóng âm ${lane.label}`} className="obs-timeline__wave" role="img"
                 onClick={(event) => clickSeek(event, lane, overlaps)}

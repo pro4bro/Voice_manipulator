@@ -11,13 +11,15 @@ import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { waveformEnvelopePath } from "./waveform-path";
+import { visibleRulerMarks } from "./ruler";
 import { subtitleIndexAtTime, visibleSubtitleWordLayout } from "./subtitle-density";
 import { Timeline } from "./Timeline";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
+import { minimumTimelineSpan, timelineSpanAtZoomPosition, timelineZoomPosition, timelineZoomResolution,
+  TIMELINE_ZOOM_STEPS } from "./zoom";
 import "./waveform.css";
 import "./subtitle-density.css";
 
-const MAX_WAVEFORM_PIXELS_PER_SECOND = 1000;
 type Layout = "layers" | "columns";
 type Envelope = { duration: number; points: WaveformPoint[]; start?: number; end?: number };
 
@@ -114,8 +116,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     ? columnWidths[selected?.id] ?? Math.max(240, (viewportWidth - 12 - Math.max(0, tracks.length - 1) * 6) / Math.max(1, tracks.length))
     : Math.max(240, viewportWidth - 140);
   const waveWidth = measuredWaveWidth || estimatedWaveWidth;
-  const minSpan = Math.min(Math.max(duration, 0.01), Math.max(0.01, waveWidth / MAX_WAVEFORM_PIXELS_PER_SECOND));
+  const minSpan = minimumTimelineSpan(duration, waveWidth);
   const span = duration > 0 ? Math.min(duration, Math.max(minSpan, windowSeconds)) : 1;
+  const commonRulerMarks = visibleRulerMarks(duration, windowStart, span, waveWidth);
   const sharedCuts = tracks[0]?.removedRanges ?? [];
   const sharedWorkingRange = tracks[0]?.workingRange ?? null;
   const sharedCutPoints = tracks[0]?.cutPoints ?? [];
@@ -374,10 +377,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     setWindowStart(Math.max(0, Math.min(duration - nextSpan, currentTime - nextSpan / 2)));
   }
 
-  const zoomRatio = duration > minSpan ? Math.log(duration / span) / Math.log(duration / minSpan) : 0;
-  const zoomValue = Math.round(Math.max(0, Math.min(1, zoomRatio)) * 1000);
-  const secondsPerTenPixels = span / waveWidth * 10;
-  const zoomResolution = `${secondsPerTenPixels >= 1 ? secondsPerTenPixels.toFixed(1) : secondsPerTenPixels.toFixed(2)}s / 10px`;
+  const zoomValue = timelineZoomPosition(duration, span, minSpan);
+  const zoomResolution = timelineZoomResolution(span, waveWidth);
 
   const playhead = (currentTime - windowStart) / span * 100;
   if (editFocus) {
@@ -415,11 +416,10 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       </div>
       <div aria-label="Zoom Timeline" className="timeline-zoom obs-timeline__zoom" role="group">
         <button aria-label="Thu nhỏ Timeline" disabled={!duration || span >= duration} onClick={() => selectZoom(span * 2)} type="button">−</button>
-        <input aria-label="Zoom timeline" aria-valuetext={zoomResolution} disabled={!duration || duration <= minSpan} max={1000} min={0} onChange={(event) => {
-          const fraction = Number(event.target.value) / 1000;
-          selectZoom(duration / (duration / minSpan) ** fraction);
-        }} type="range" value={zoomValue} />
-        <span>{span >= 10 ? span.toFixed(0) : span.toFixed(2)}s</span>
+        <input aria-label="Zoom timeline" aria-valuetext={zoomResolution} disabled={!duration || duration <= minSpan}
+          max={TIMELINE_ZOOM_STEPS} min={0} onChange={(event) => selectZoom(timelineSpanAtZoomPosition(Number(event.target.value), duration, minSpan))}
+          type="range" value={zoomValue} />
+        <span title={`Cửa sổ ${span}s`}>{zoomResolution}</span>
         <button aria-label="Phóng to Timeline" disabled={!duration || span <= minSpan} onClick={() => selectZoom(span / 2)} type="button">+</button>
       </div>
     </div>}>
@@ -430,13 +430,16 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
           style={{ "--obs-layer-height": `${Math.max(110, Math.round(viewportHeight * .6))}px` } as CSSProperties}>
           {layout === "layers" ? <><div className="obs-timeline__label-spacer" /><div aria-label="Ruler chung" className="obs-timeline__ruler"
             onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>
-            {[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}
+            {commonRulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}
           </div></> : null}
           {visibleTracks.map((track) => {
             const index = orderedTracks.findIndex((item) => item.id === track.id);
             const subtitleLaneWidth = layout === "columns"
               ? columnWidths[track.id] ?? Math.max(240, (viewportWidth - 12 - 6 * Math.max(0, visibleTracks.length - 1)) / Math.max(1, visibleTracks.length))
               : Math.max(240, viewportWidth - 140);
+            const laneRulerMarks = layout === "columns"
+              ? visibleRulerMarks(duration, windowStart, span, subtitleLaneWidth)
+              : commonRulerMarks;
             const trackName = track.name.startsWith(`${parent.name} · `) ? track.name.slice(parent.name.length + 3) : track.name;
             const overview = envelopes[track.id];
             const detail = detailEnvelopes[track.id];
@@ -447,7 +450,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
               <button aria-pressed={selected?.id === track.id} className="obs-timeline__lane-label" onClick={() => onSelectTrack(track.id)} type="button">
                 <TimelineLaneLabel text={`Channel ${index + 1} - ${trackName}`} title={track.name} />
               </button>
-              {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>{[0, 1, 2, 3, 4].map((part) => <span key={part} style={{ left: `${part * 25}%` }}>{clock(windowStart + part * span / 4)}</span>)}</div> : null}
+              {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>{laneRulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { if (scrubbingRef.current) seekFrom(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>
                 <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
                 {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-label="Đoạn đã loại khỏi tính toán" className="timeline-removed-range" key={`${range.id}-${range.start}`} style={style} /> : null; })}

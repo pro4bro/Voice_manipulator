@@ -34,6 +34,7 @@ from app.adapters.file_reading_sessions import FileReadingSessions
 from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
+from app.adapters.file_voice_collections import FileVoiceCollections
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.speaker_embedders import default_speaker_embedders
@@ -170,6 +171,13 @@ from app.domain.models import (
     SystemMetrics,
     SystemPaths,
     TrainingCatalog,
+    ConsentEvidence,
+    VoiceCollection,
+    VoiceCollectionCreate,
+    VoiceCollectionEntry,
+    VoiceCollectionEntryCreate,
+    VoiceCollectionImport,
+    VoiceCollectionImportResult,
     WorkspacePage,
 )
 from app.domain.media_organization import MediaPoolOrganization
@@ -323,6 +331,9 @@ def create_app(
     )
     project_voices = FileProjectVoices(projects, OmniVoiceDatasetExporter(settings.ffmpeg_path)._slice)
     voice_model_sets = FileVoiceModelSets(projects)
+    voice_collections = FileVoiceCollections(
+        settings.data_root, projects, project_voices, training_catalogs, voice_model_sets, training_runs,
+    )
     voice_generators = FileTrainingModelCatalog(
         settings.voice_generators_root,
         engine_roots,
@@ -2255,6 +2266,76 @@ def create_app(
     @app.get("/api/training-models", response_model=list[TrainingModelOption])
     def training_model_options() -> list[TrainingModelOption]:
         return training_models.options()
+
+    @app.get("/api/voice-collections", response_model=list[VoiceCollection])
+    def list_voice_collections() -> list[VoiceCollection]:
+        return voice_collections.list()
+
+    @app.post(
+        "/api/voice-collections",
+        response_model=VoiceCollection,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_voice_collection(payload: VoiceCollectionCreate) -> VoiceCollection:
+        try:
+            return voice_collections.create(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/voice-collections/{collection_id}/entries",
+        response_model=VoiceCollectionEntry,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def add_voice_collection_entry(
+        collection_id: str, payload: VoiceCollectionEntryCreate
+    ) -> VoiceCollectionEntry:
+        try:
+            return voice_collections.add_entry(collection_id, payload.project_id, payload.voice_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Collection, project, or voice not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail="Required voice artifact could not be copied") from exc
+
+    @app.post(
+        "/api/voice-collections/{collection_id}/entries/{entry_id}/import",
+        response_model=VoiceCollectionImportResult,
+    )
+    def import_voice_collection_entry(
+        collection_id: str, entry_id: str, payload: VoiceCollectionImport
+    ) -> VoiceCollectionImportResult:
+        try:
+            return voice_collections.import_entry(collection_id, entry_id, payload.project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Collection entry or project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail="Required voice artifact could not be copied") from exc
+
+    @app.post(
+        "/api/projects/{project_id}/consent-evidence",
+        response_model=ConsentEvidence,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def upload_consent_evidence(project_id: str, file: UploadFile = File(...)) -> ConsentEvidence:
+        try:
+            pieces: list[bytes] = []
+            total = 0
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > 10 * 1024 * 1024:
+                    raise ValueError("Consent evidence must be at most 10 MiB.")
+                pieces.append(chunk)
+            return voice_collections.store_consent_evidence(project_id, file.filename or "evidence", b"".join(pieces))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            await file.close()
 
     @app.get(
         "/api/projects/{project_id}/training-catalog", response_model=TrainingCatalog

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { EngineStatus, Project, ProjectCreate, ThemeMode } from "../domain/types";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../domain/listSelection";
 import { Icon } from "../ui/Icon";
+import { VoiceCollections } from "../modules/voice-collection/VoiceCollections";
 
 interface ProjectHubProps {
   projects: Project[];
@@ -37,6 +38,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
   const menuRef = useRef<HTMLDivElement>(null);
   const [showCreate, setShowCreate] = useState(projects.length === 0);
   const [showDetails, setShowDetails] = useState(false);
+  const [libraryPage, setLibraryPage] = useState<"projects" | "voices">("projects");
 
   useEffect(() => {
     if (!menu) return undefined;
@@ -143,8 +145,8 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
         <aside className="library-rail">
           <div className="library-rail__title"><span>PROJECT LIBRARY</span><b>Local Workspace</b></div>
           <nav aria-label="Project library">
-            <button className="is-active" type="button"><Icon name="grid" /><span>All projects</span><b>{projects.length}</b></button>
-            <button disabled type="button"><Icon name="folder" /><span>Collections</span><small>SOON</small></button>
+            <button className={libraryPage === "projects" ? "is-active" : ""} onClick={() => setLibraryPage("projects")} type="button"><Icon name="grid" /><span>All projects</span><b>{projects.length}</b></button>
+            <button className={libraryPage === "voices" ? "is-active" : ""} onClick={() => setLibraryPage("voices")} type="button"><Icon name="folder" /><span>Voice Collection</span></button>
             <button disabled type="button"><Icon name="waveform" /><span>Quick recordings</span><small>SOON</small></button>
           </nav>
           <div className="library-location"><span>DEFAULT LOCATION</span><b title={defaultLocation}>{defaultLocation || "Đang tải..."}</b></div>
@@ -152,6 +154,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
         </aside>
 
         <section className="project-browser">
+          {libraryPage === "voices" ? <VoiceCollections /> : <>
           <header className="project-browser__header">
             <div><span>LOCAL / PROJECTS</span><h1>Projects</h1><p>Mở lại phiên làm việc hoặc tạo một workspace mới.</p></div>
             <div className="browser-tools">
@@ -204,6 +207,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
 
           {!visibleProjects.length && query ? <div className="project-empty"><Icon name="search" /><b>Không tìm thấy project</b><span>Thử tên hoặc đường dẫn khác.</span></div> : null}
           <footer className="project-browser__footer"><span>{visibleProjects.length} PROJECT{visibleProjects.length === 1 ? "" : "S"}</span><span>PRO4BRO LOCAL LIBRARY</span></footer>
+          </>}
         </section>
       </div>
 

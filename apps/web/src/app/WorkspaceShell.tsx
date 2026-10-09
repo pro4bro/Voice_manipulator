@@ -267,6 +267,10 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [catalogRevision, setCatalogRevision] = useState(0);
   const catalogRevisionRef = useRef(0);
+  const catalogWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const catalogSaveTimer = useRef<number | null>(null);
+  const currentCatalog = useRef(trainingCatalog);
+  currentCatalog.current = trainingCatalog;
   const [notice, setNotice] = useState<string | null>(null);
   const reading = useReadingSession(project.id, setNotice);
   const readingSession = reading.session;
@@ -690,14 +694,18 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     const revision = catalogRevision;
     const snapshot = trainingCatalog;
     const timer = window.setTimeout(() => {
-      void api.saveTrainingCatalog(project.id, snapshot).then((saved) => {
+      if (catalogSaveTimer.current === timer) catalogSaveTimer.current = null;
+      const write = catalogWrites.current.catch(() => undefined).then(() => api.saveTrainingCatalog(project.id, snapshot));
+      catalogWrites.current = write;
+      void write.then((saved) => {
         if (catalogRevisionRef.current === revision) {
           setTrainingCatalog(saved);
           setCatalogRevision(0);
         }
       }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "Không lưu được Sound Library"));
     }, 350);
-    return () => window.clearTimeout(timer);
+    catalogSaveTimer.current = timer;
+    return () => { window.clearTimeout(timer); if (catalogSaveTimer.current === timer) catalogSaveTimer.current = null; };
   }, [catalogRevision, project.id, trainingCatalog]);
 
   useEffect(() => {
@@ -916,6 +924,34 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
     catalogRevisionRef.current += 1;
     setTrainingCatalog(catalog);
     setCatalogRevision(catalogRevisionRef.current);
+  }
+
+  async function prepareCollectionOperation() {
+    if (catalogSaveTimer.current !== null) {
+      window.clearTimeout(catalogSaveTimer.current);
+      catalogSaveTimer.current = null;
+    }
+    const snapshot = currentCatalog.current;
+    const revision = catalogRevisionRef.current;
+    const write = catalogWrites.current.catch(() => undefined).then(() => api.saveTrainingCatalog(project.id, snapshot));
+    catalogWrites.current = write;
+    const saved = await write;
+    // A debounce may have fired during the flush. Finish that write before the
+    // server imports a profile, otherwise its old catalog could overwrite it.
+    let pending = catalogWrites.current;
+    while (pending !== write) {
+      await pending;
+      if (pending === catalogWrites.current) break;
+      pending = catalogWrites.current;
+    }
+    if (catalogRevisionRef.current === revision) { setTrainingCatalog(saved); setCatalogRevision(0); }
+  }
+
+  function collectionImported(result: import("../domain/types").VoiceCollectionImport) {
+    const catalog = currentCatalog.current;
+    changeCatalog({ ...catalog, speakers: [...catalog.speakers.filter((speaker) => speaker.id !== result.speaker.id), result.speaker] });
+    setProjectVoices((voices) => [...voices.filter((voice) => voice.id !== result.voice.id), result.voice]);
+    setSelectedVoice(result.speaker.id);
   }
 
   async function updateTimelineEdits(ranges: TimelineEditRange[], gainKeyframes?: TimelineGainKeyframe[], assetId = selectedAssetId, workingRange?: TimelineEditRange | null, cutPoints?: number[]) {
@@ -2468,6 +2504,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onScriptUndo: () => restoreScriptEdit("undo"),
     onScriptRedo: () => restoreScriptEdit("redo"),
     onCatalogChange: changeCatalog,
+    onCollectionImported: collectionImported,
+    onPrepareCollectionExport: prepareCollectionOperation,
     onSendToTraining: sendSelectedToTraining,
     onGenerate: () => void generateVoice(),
     onStopDiarization: stopDiarization,
