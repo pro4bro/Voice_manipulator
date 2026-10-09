@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-09 — current: USER-FEEDBACK-05
+### 2026-10-09 — current: USER-FEEDBACK-06
+
+Selected-word deletion is one bulk identity pass and one commit; large documents
+use a Worker with snapshot fences, cancellation and pending/error feedback.
+Surviving timing/annotations stay intact; changed-text history avoids full snapshot
+serialization. Both yellow Script notices scroll with content outside editable
+text, including measured virtual/prose offsets. Actual normal logs exposed a
+removed historical project's KeyError blocking fresh OBS journal persistence;
+stale machine completions no longer block current capture or fabricate old journals.
+Frontend637/73 (tracked636/72), API680/two existing warnings, typecheck/build pass;
+actual built Worker bundle and fresh-journal/PCM/waveform fixtures pass. Gate:
+`docs/gates/user-feedback-06-script-deletion-and-obs-journal.md`, ADR0053.
+Exact next UX-EDITING-DEVICE-01 needs permitted real long-footage deletion/scroll
+and fresh native OBS Record acceptance after reload. STT-TIMING-ACCURACY-01 still
+needs reviewed word truth. No normal service/model/owner-media/schema or Phase03
+budget change; previously absent journals were not fabricated or marked recovered.
+
+### 2026-10-09 — previous: USER-FEEDBACK-05
 
 Timeline routes word edit history in normal/imported/archived OBS overview and
 focused editors; live gestures cancel before undo. One source word per subtitle

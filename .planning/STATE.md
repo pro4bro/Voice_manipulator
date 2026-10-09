@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-09 — USER-FEEDBACK-05 Timeline word identity and local timing edits.
-last_activity_desc: Timeline word history routing, individual four-pixel subtitle filtering, atomic IN/OUT, blinking ten-percent neighbour reservation, positive untrusted estimates, hover portal and STT phrase fences delivered. Frontend627/71, API679/two existing warnings, typecheck/build pass. Next STT-TIMING-ACCURACY-01 reviewed word truth and isolated comparison; UX-EDITING-DEVICE-01 remains. Phase budgets unchanged.
+last_activity: 2026-10-09 — USER-FEEDBACK-06 Script deletion and OBS journal persistence.
+last_activity_desc: Bulk/background word deletion with stale-result fences, scrolling timing notices and isolation of missing historical OBS owners delivered. Frontend637/73, API680/two existing warnings, typecheck/build and actual Worker bundle pass. Next UX-EDITING-DEVICE-01 real deletion/scroll/native OBS Record after reload. STT-TIMING-ACCURACY-01 reviewed word truth remains. Phase budgets unchanged.
 ---
 
 # Project State
@@ -21,6 +21,21 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-06 — 2026-10-09
+
+One-pass deletion preserves surviving word identity and commits once. Large Script
+deletion runs in a Worker with cancellation/fences; pending/error feedback retains
+UI control and source data. Changed-text history skips full snapshot serialization.
+Table/prose timing notices scroll outside the transcript value with measured
+virtual/overlay offsets. Logged historical-owner KeyError no longer blocks current
+OBS journal writes; missing completed journals retain explicit errors. Fresh PCM,
+waveform/transcript fixture and actual Worker bundle pass. Frontend637/73,
+API680/two existing warnings, typecheck/build pass; gate:
+`docs/gates/user-feedback-06-script-deletion-and-obs-journal.md`, ADR0053.
+Next UX-EDITING-DEVICE-01 real long-footage deletion/scroll and native OBS acceptance
+needs permitted device checks after reload. STT-TIMING-ACCURACY-01 word truth remains.
+No normal service/model, owner media or schema mutation; Phase03 stays60%.
 
 ## USER-FEEDBACK-05 — 2026-10-09
 

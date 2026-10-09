@@ -1,5 +1,23 @@
 # Project Status — 2026-10-09
 
+## USER-FEEDBACK-06 — Script deletion and OBS journal recovery path (2026-10-09)
+
+Bulk deletion replaces repeated full transcript reconciliation; large documents
+use a Worker with asset/text/word snapshot fencing, cancellation and visible
+feedback. Surviving word timing/annotations stay intact and history avoids
+serialization when changed text proves the edit. Yellow notices scroll outside
+editable text in table/prose, with measured virtual/overlay offsets. Normal logs
+showed a removed historical project's KeyError blocking current OBS journal writes.
+Machine-history persistence now isolates missing owners and does not fabricate
+missing completed journals. Fresh connection/capture fixtures retain durable PCM,
+waveform and transcript reads. Frontend637/73, API680/two existing warnings and
+typecheck/build pass; bundled Worker computation also passes. Evidence:
+`docs/gates/user-feedback-06-script-deletion-and-obs-journal.md`, ADR0053.
+Next UX-EDITING-DEVICE-01 needs allowed real-browser deletion/scroll and native
+OBS Record after reload; existing browser rejection and acoustic/device/LAN gates
+remain. STT-TIMING-ACCURACY-01 still needs reviewed word truth. No owner-media,
+normal service/model, upstream, schema or Phase03-budget mutation occurred.
+
 ## USER-FEEDBACK-05 — Timeline identity and local timing edits (2026-10-09)
 
 Timeline word edits share30-step undo/redo across normal/imported/archived OBS

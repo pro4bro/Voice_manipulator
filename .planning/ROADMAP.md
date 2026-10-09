@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-06 — responsive deletion and fresh OBS journal (2026-10-09)
+
+One-pass/Worker deletion retains surviving word identity and one history commit,
+with stale-result cancellation and pending/error feedback. Yellow notices scroll
+outside editable text; virtual/prose offsets account for their height. Removed
+historical machine project owners no longer block fresh OBS journal persistence;
+missing completed journals are not fabricated. Frontend637/73, API680/two existing
+warnings, typecheck/build, actual Worker bundle and fresh PCM/waveform fixtures pass:
+`docs/gates/user-feedback-06-script-deletion-and-obs-journal.md`, ADR0053.
+Exact next UX-EDITING-DEVICE-01 needs permitted real long-footage deletion/scroll
+and native OBS Record after reload. STT-TIMING-ACCURACY-01 needs reviewed word truth;
+existing physical/quality/download/LAN and browser-tool prerequisites remain.
+Phase03 budgets, portable schema and the Queue proposal are unchanged.
+
 ## USER-FEEDBACK-05 — individual subtitles and local timing edits (2026-10-09)
 
 Timeline word-edit history works in normal/imported/archived OBS overview and
