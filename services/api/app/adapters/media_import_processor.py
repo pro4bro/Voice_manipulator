@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import shutil
 import subprocess
 import time
@@ -15,10 +16,12 @@ from uuid import UUID, uuid4
 
 TranscriptionProgressCallback = Callable[[float], Awaitable[None]]
 
-# The Studio request has been validated to 90 minutes. Use 99% of that ceiling
-# so a boundary never fails due to container metadata or sample rounding.
+# Transport can accept 90 minutes, but recognition needs bounded context:
+# a real 406s OBS request omitted 28.668s of speech before conversion/merge.
+# 60s requests with the existing overlap recovered it (STT-GAP-01). This also
+# bounds the initial full OBS snapshot without changing its frozen cursor.
 STT_MAX_REQUEST_SECONDS = 90 * 60
-STT_CHUNK_SECONDS = STT_MAX_REQUEST_SECONDS * 0.99
+STT_CHUNK_SECONDS = min(60.0, STT_MAX_REQUEST_SECONDS * 0.99)
 STT_CHUNK_OVERLAP_SECONDS = 2.0
 
 
@@ -941,9 +944,25 @@ class MediaImportProcessor:
         merged = dict(results[-1][1])
         words: list[dict[str, Any]] = []
         fallback_text: list[str] = []
+        previous_words: list[dict[str, Any]] = []
+        pending_tail: list[dict[str, Any]] = []
         for chunk, item in results:
             item_words = item.get("words", [])
+            # Untimed segment text cannot be assigned safely to an overlap's
+            # owning interval. Do not turn a partially timed recognizer result
+            # into a successful transcript that silently omits that text.
+            if str(item.get("text") or "").strip() and (
+                item.get("word_timing_quality") == "needs-alignment"
+                or not isinstance(item_words, list) or not item_words
+            ):
+                raise RuntimeError(
+                    "STT block có lời nhận dạng thiếu word timestamp; "
+                    "chưa thể ghép transcript an toàn. Cần chạy lại hoặc căn chỉnh timing."
+                )
             has_words = False
+            chunk_words: list[dict[str, Any]] = []
+            leading: list[dict[str, Any]] = []
+            trailing: list[dict[str, Any]] = []
             for raw_word in item_words if isinstance(item_words, list) else []:
                 if not isinstance(raw_word, dict):
                     continue
@@ -953,14 +972,37 @@ class MediaImportProcessor:
                     end = max(start, chunk.source_start + float(word.get("end", word.get("start", 0.0))))
                 except (TypeError, ValueError):
                     continue
-                if start < chunk.timeline_start or start >= chunk.timeline_end:
+                if not math.isfinite(start) or not math.isfinite(end) or end <= start:
                     continue
                 word["start"] = round(min(duration, start), 6)
                 word["end"] = round(min(duration, end), 6)
-                words.append(word)
+                if start < chunk.source_start or start >= chunk.source_end:
+                    continue
+                if start < chunk.timeline_start:
+                    leading.append(word)
+                    continue
+                if start >= chunk.timeline_end:
+                    trailing.append(word)
+                    continue
+                chunk_words.append(word)
                 has_words = True
+            # Owned words win conflicts. Padding may recover a word that its
+            # owner request omitted, but cannot duplicate or replace an existing
+            # interval. Only adjacent request windows can share this context.
+            for word in leading + pending_tail:
+                if not any(word["start"] < other["end"] and word["end"] > other["start"]
+                           for other in previous_words + chunk_words):
+                    chunk_words.append(word)
+                    has_words = True
+            chunk_words.sort(key=lambda word: word["start"])
+            words.extend(chunk_words)
+            previous_words = chunk_words
+            pending_tail = trailing
             if not has_words and item.get("text"):
                 fallback_text.append(str(item["text"]).strip())
+        # A recovered leading word can precede a later word already emitted
+        # by its owner. Keep the final Script/SRT order chronological.
+        words.sort(key=lambda word: word["start"])
         merged["words"] = words
         merged["text"] = " ".join(
             str(word.get("text", "")).strip() for word in words if str(word.get("text", "")).strip()

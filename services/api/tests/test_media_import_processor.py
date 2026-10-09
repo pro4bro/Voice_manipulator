@@ -3,6 +3,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import wave
 from io import BytesIO
 from pathlib import Path
 
@@ -140,7 +141,7 @@ def test_import_preserves_each_audio_track_under_one_footage(tmp_path, extension
     assert len([asset for asset in reopened.list(project.id)
                 if asset.source_archive_asset_id == chosen.asset.id]) == 2
 
-def test_long_audio_uses_99_percent_of_the_ninety_minute_stt_ceiling_with_overlap():
+def test_long_audio_uses_bounded_stt_context_with_overlap():
     duration = STT_CHUNK_SECONDS + 1.0
     chunks = MediaImportProcessor._stt_chunks(duration)
 
@@ -162,7 +163,8 @@ def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
                     "text": "xin duplicate",
                     "words": [
                         {"text": "xin", "start": STT_CHUNK_SECONDS - 0.6, "end": STT_CHUNK_SECONDS - 0.2},
-                        {"text": "duplicate", "start": STT_CHUNK_SECONDS + 0.1, "end": STT_CHUNK_SECONDS + 0.5},
+                        # Conflicting context for the next owner's "chao".
+                        {"text": "duplicate", "start": STT_CHUNK_SECONDS + 0.8, "end": STT_CHUNK_SECONDS + 1.1},
                     ],
                 },
             ),
@@ -188,6 +190,57 @@ def test_chunk_results_keep_original_timestamps_and_drop_overlap_duplicates():
         ("chao", STT_CHUNK_SECONDS + 0.7),
     ]
     assert merged["duration"] == duration
+
+
+@pytest.mark.parametrize("partial_words", [[], [{"text": "timed", "start": 1.0, "end": 1.3}]])
+def test_chunk_merge_rejects_recognized_untimed_text_instead_of_hiding_it(partial_words):
+    chunks = MediaImportProcessor._stt_chunks(120.0)
+    with pytest.raises(RuntimeError, match="thiếu word timestamp"):
+        MediaImportProcessor._merge_studio_chunks([
+            (chunks[0], {"text": "complete", "words": [{"text": "complete", "start": 1.0, "end": 1.3}]}),
+            (chunks[1], {"text": "timed and an untimed segment", "words": partial_words,
+                         "word_timing_quality": "needs-alignment"}),
+        ], 120.0)
+
+
+def test_chunk_merge_recovers_a_leading_overlap_word_missed_by_its_owner():
+    chunks = MediaImportProcessor._stt_chunks(120.0)
+    merged = MediaImportProcessor._merge_studio_chunks([
+        (chunks[0], {"text": "earlier late", "words": [
+            {"text": "earlier", "start": 20.0, "end": 20.4},
+            {"text": "late", "start": 59.6, "end": 59.9},
+        ]}),
+        (chunks[1], {"text": "recovered later", "words": [
+            {"text": "recovered", "start": 1.0, "end": 1.4},
+            {"text": "later", "start": 3.0, "end": 3.4},
+        ]}),
+    ], 120.0)
+    assert [(w["text"], w["start"]) for w in merged["words"]] == [
+        ("earlier", 20.0), ("recovered", 59.0), ("late", 59.6), ("later", 61.0),
+    ]
+
+
+def test_overlap_recovery_cannot_replace_an_existing_word_with_conflicting_text():
+    chunks = MediaImportProcessor._stt_chunks(120.0)
+    merged = MediaImportProcessor._merge_studio_chunks([
+        (chunks[0], {"text": "owner", "words": [{"text": "owner", "start": 59.0, "end": 59.4}]}),
+        (chunks[1], {"text": "alternative", "words": [{"text": "alternative", "start": 1.1, "end": 1.5}]}),
+    ], 120.0)
+    assert [(w["text"], w["start"], w["end"]) for w in merged["words"]] == [("owner", 59.0, 59.4)]
+
+
+def test_chunk_merge_recovers_trailing_context_only_after_its_owner_is_seen():
+    chunks = MediaImportProcessor._stt_chunks(120.0)
+    merged = MediaImportProcessor._merge_studio_chunks([
+        (chunks[0], {"text": "earlier recovered", "words": [
+            {"text": "earlier", "start": 20.0, "end": 20.4},
+            {"text": "recovered", "start": 60.2, "end": 60.6},
+        ]}),
+        (chunks[1], {"text": "later", "words": [{"text": "later", "start": 3.0, "end": 3.4}]}),
+    ], 120.0)
+    assert [(w["text"], w["start"]) for w in merged["words"]] == [
+        ("earlier", 20.0), ("recovered", 60.2), ("later", 61.0),
+    ]
 
 
 def test_stt_artifact_round_trip_preserves_timing_provenance_and_transcript(tmp_path):
@@ -217,3 +270,48 @@ def test_stt_artifact_round_trip_preserves_timing_provenance_and_transcript(tmp_
             "timingSource": "faster-whisper-dtw",
         }
     ]
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg required")
+def test_archive_stt_bounds_recognizer_context_and_retains_gap_words(tmp_path, monkeypatch):
+    """Exercise the import caller where a long request omitted a spoken interval.
+
+    Recognition itself is represented by the observed long/short response
+    pattern; the real-media causal comparison is retained in STT-GAP-01.
+    """
+    source = tmp_path / "analysis.wav"
+    with wave.open(str(source), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(24000)
+        audio.writeframes(b"\0\0" * (400 * 24000))
+    processor = MediaImportProcessor("http://studio", None, shutil.which("ffmpeg"))
+    offsets = {source: 0.0}
+    rendered = processor._extract_stt_chunk
+    durations = []
+
+    def extract(path, chunk, destination):
+        rendered(path, chunk, destination)
+        offsets[destination] = chunk.source_start
+
+    async def recognize(path, *args, **kwargs):
+        with wave.open(str(path), "rb") as audio:
+            duration = audio.getnframes() / audio.getframerate()
+        durations.append(duration)
+        offset = offsets[path]
+        candidates = [("before", 239.0, 240.0), ("after", 269.0, 270.0)]
+        if duration <= 64.01:
+            candidates.insert(1, ("recovered", 245.0, 245.4))
+        words = [{"text": text, "start": start - offset, "end": end - offset,
+                  "timingSource": "faster-whisper-dtw"}
+                 for text, start, end in candidates if offset <= start < offset + duration]
+        return {"text": " ".join(w["text"] for w in words), "words": words}, 0.0
+
+    monkeypatch.setattr(processor, "_extract_stt_chunk", extract)
+    monkeypatch.setattr(processor, "_upload_studio_audio", recognize)
+    item, _ = asyncio.run(processor._run_studio_import(source, "import", "", model="large-v3"))
+    assert [(w["text"], w["start"], w["end"]) for w in item["words"]] == [
+        ("before", 239.0, 240.0), ("recovered", 245.0, 245.4), ("after", 269.0, 270.0),
+    ]
+    assert max(durations) <= 64.01
+    assert not (tmp_path / "cache/stt-chunks").exists()
