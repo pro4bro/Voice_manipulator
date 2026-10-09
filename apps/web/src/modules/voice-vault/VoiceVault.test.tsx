@@ -38,7 +38,37 @@ function show(props: Partial<Parameters<typeof VoiceVault>[0]> = {}) {
   );
 }
 
+function expandSpeaker(name: string, count: number) {
+  fireEvent.click(screen.getByRole("button", { name: `Mở model giọng của ${name} (${count})` }));
+}
+
 describe("Sound Library", () => {
+  it("nests voice models under independently expandable Speaker Profiles, collapsed by default", () => {
+    const catalog = { ...CATALOG, speakers: [...CATALOG.speakers, speaker("speaker-binh", "Bình")] };
+    const voices = [voice("an-1", "An LoRA", "speaker-an"), voice("an-2", "An Full", "speaker-an"), voice("binh-1", "Bình LoRA", "speaker-binh")];
+    show({ catalog, voices });
+
+    expect(screen.getByRole("button", { name: "Mở model giọng của An (2)" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Mở model giọng của Bình (1)" })).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById("speaker-models-speaker-an")).toHaveAttribute("hidden");
+    expect(document.getElementById("speaker-models-speaker-binh")).toHaveAttribute("hidden");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mở model giọng của An (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở model giọng của Bình (1)" }));
+    expect(screen.getByLabelText("Voice của An")).toBeInTheDocument();
+    expect(screen.getByLabelText("Voice của Bình")).toBeInTheDocument();
+    const selectedVoice = screen.getByRole("button", { name: "Chọn voice An LoRA" });
+    fireEvent.click(selectedVoice);
+    expect(selectedVoice).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Thu gọn model giọng của An (2)" }));
+    expect(document.getElementById("speaker-models-speaker-an")).toHaveAttribute("hidden");
+    expect(screen.getByLabelText("Voice của Bình")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mở model giọng của An (2)" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Thu gọn model giọng của Bình (1)" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Mở model giọng của An (2)" }));
+    expect(screen.getByRole("button", { name: "Chọn voice An LoRA" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("keeps bulk actions hidden until right-click and applies them to the selected range", () => {
     const onCatalogChange = vi.fn();
     show({ catalog: { ...CATALOG, speakers: [...CATALOG.speakers, speaker("speaker-binh", "Bình")] }, onCatalogChange });
@@ -60,10 +90,12 @@ describe("Sound Library", () => {
     const imported = { ...voice("imported", "An imported", "speaker-an"), collectionSource: { collectionId: "collection-1", entryId: "entry-1" } };
     const local = voice("local", "An local", "speaker-an");
     const view = show({ projectId: "project-test", voices: [imported, local] });
+    expandSpeaker("An", 2);
     expect(screen.queryByRole("button", { name: "Add to Collection An imported" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add to Collection An local" })).toBeInTheDocument();
     view.unmount();
     show({ projectId: "project-test", voices: [imported] });
+    expandSpeaker("An", 1);
     expect(screen.queryByRole("button", { name: /Add to Collection/ })).not.toBeInTheDocument();
   });
 
@@ -100,6 +132,7 @@ describe("Sound Library", () => {
     const onDeleteVoices = vi.fn();
     const voices = [voice("v1", "Voice A", "speaker-an"), voice("v2", "Voice B", "speaker-an")];
     show({ voices, onDeleteVoices });
+    expandSpeaker("An", 2);
     fireEvent.click(screen.getByRole("button", { name: "Chọn voice Voice A" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn voice Voice B" }), { shiftKey: true });
     expect(screen.queryByText("2 voice đã chọn")).not.toBeInTheDocument();
@@ -118,6 +151,7 @@ describe("Sound Library", () => {
   });
   it("toggles profile and voice checkboxes off without modifier keys", () => {
     show({ voices: [voice("voice-1", "An · LoRA", "speaker-an")] });
+    expandSpeaker("An", 1);
     const profileCheck = screen.getByRole("button", { name: "Chọn profile An" });
     fireEvent.click(profileCheck);
     expect(profileCheck).toHaveAttribute("aria-pressed", "true");
@@ -171,6 +205,7 @@ describe("Sound Library", () => {
   it("lists the voices a Speaker Profile has, each with a way to remove it", () => {
     const onDeleteVoice = vi.fn();
     show({ voices: [voice("voice-1", "An · LoRA", "speaker-an"), voice("voice-2", "An · nhái giọng", "speaker-an")], onDeleteVoice });
+    expandSpeaker("An", 2);
 
     const list = screen.getByLabelText("Voice của An");
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
@@ -198,6 +233,7 @@ describe("Sound Library", () => {
 
   it("shows no delete when the page did not pass one", () => {
     show({ voices: [voice("voice-1", "An · LoRA", "speaker-an")] });
+    expandSpeaker("An", 1);
 
     expect(screen.queryByLabelText("Xoá voice An · LoRA")).toBeNull();
   });

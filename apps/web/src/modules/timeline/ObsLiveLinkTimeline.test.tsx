@@ -1,11 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ProjectMediaAsset } from "../../domain/types";
 import { ObsLiveLinkTimeline } from "./ObsLiveLinkTimeline";
+import { ModuleRegistry, type StudioContext } from "../registry/ModuleRegistry";
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
+import { publishPlaybackWords, requestPlaybackSeek } from "../../domain/playback-sync";
 
 const mocks = vi.hoisted(() => ({
   listObsLiveLinkRecordings: vi.fn(), getObsLiveLinkWaveform: vi.fn(),
@@ -52,7 +55,108 @@ beforeEach(() => {
     wave(channel, channel === ids[0] ? 12000 : 3000, "mka"));
   mocks.subscribe.mockReturnValue(() => undefined);
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { publishPlaybackWords({}); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+function archivedWorkspace(singleTrack = false) {
+  const tracks = [
+    { id: "asset-0", name: "Channel 1", words: [{ text: "Xin", start: 1, end: 2 }, { text: "chào", start: 3, end: 4 }] },
+    { id: "asset-1", name: "Channel 2", words: [{ text: "Đồng", start: 3, end: 4 }, { text: "thời", start: 5, end: 6 }] },
+  ].map((track) => ({ ...track, duration: 10, text: track.words.map((word) => word.text).join(" "),
+    obsRecordingId: "recording", sourceArchiveAssetId: "parent", importSelected: true })) as ProjectMediaAsset[];
+  const assets = [{ id: "parent", name: "OBS footage", obsRecordingId: "recording", words: [], text: "" }, ...tracks] as ProjectMediaAsset[];
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const playhead = vi.fn();
+  let refreshAssets = () => {};
+  function Workspace() {
+    const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
+    const [mediaAssets, setMediaAssets] = useState(assets);
+    refreshAssets = () => setMediaAssets((current) => structuredClone(current));
+    const context = { workflow: "speech-to-text", projectId: "project", projectName: "OBS test",
+      selectedAssetId: "parent", selectedImportedTrackId: singleTrack ? "asset-0" : null,
+      selectedScriptAssetIds: [singleTrack ? "asset-0" : "parent"], mediaAssets,
+      take: singleTrack ? tracks[0] : null, script: singleTrack ? tracks[0].text : "",
+      trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null,
+      wordSelection: selection, onWordSelectionChange: setSelection, onScriptChange: vi.fn(),
+      obsTimelineActive: true, obsTimelineRecordingId: "recording", obsTranscriptRows: [],
+      obsPlayheadSeconds: 0, obsSeekRequest: null, onObsPlayheadChange: playhead,
+      onSelectImportedTrack: vi.fn(), onSelectAsset: vi.fn(),
+      onAssetWordsChange: vi.fn(), onAssetTimelineStateChange: vi.fn().mockResolvedValue(undefined),
+    } as unknown as StudioContext;
+    return <><ModuleRegistry context={context} id="script" /><ModuleRegistry context={context} id="timeline" /></>;
+  }
+  return { ...render(<Workspace />), playhead, refreshAssets: () => refreshAssets() };
+}
+
+it("synchronizes archived OBS Script words with the shared audio clock in both directions without live rows", async () => {
+  const { container, playhead } = archivedWorkspace();
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const script = within(screen.getByLabelText("Script theo channel"));
+  const word = script.getByRole("button", { name: "chào · 00:03.000–00:04.000" });
+  fireEvent.click(word);
+  expect([...container.querySelectorAll("audio")].map((audio) => audio.currentTime)).toEqual([3, 3]);
+  expect(word).toHaveClass("is-active");
+  expect(script.getByRole("button", { name: "Đồng · 00:03.000–00:04.000" })).toHaveClass("is-active");
+  expect(playhead).toHaveBeenLastCalledWith(3);
+  const audio = container.querySelector("audio")!;
+  audio.currentTime = 5.2;
+  fireEvent.timeUpdate(audio);
+  expect(word).not.toHaveClass("is-active");
+  expect(script.getByRole("button", { name: "thời · 00:05.000–00:06.000" })).toHaveClass("is-active");
+  fireEvent.click(within(screen.getByLabelText("Subtitle Channel 1")).getByRole("button", { name: /^Xin ·/ }));
+  expect([...container.querySelectorAll("audio")].map((element) => element.currentTime)).toEqual([1, 1]);
+  expect(script.getByRole("button", { name: "Xin · 00:01.000–00:02.000" })).toHaveClass("is-active");
+  act(() => requestPlaybackSeek("unrelated-footage", 9));
+  expect(audio.currentTime).toBe(1);
+});
+
+it("seeks an archived OBS single-track Script selection and follows playback without transcript-refresh rewinds", async () => {
+  const { container, refreshAssets } = archivedWorkspace(true);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const word = screen.getByRole("button", { name: "Chọn từ chào" });
+  fireEvent.pointerDown(word, { button: 0 });
+  fireEvent.pointerUp(word, { button: 0 });
+  const audio = container.querySelector("audio")!;
+  expect(audio.currentTime).toBe(3);
+  audio.currentTime = 1.2;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByRole("button", { name: "Chọn từ Xin" })).toHaveClass("is-active");
+  act(() => refreshAssets());
+  expect(audio.currentTime).toBe(1.2);
+  fireEvent.pointerDown(word, { button: 0 });
+  fireEvent.pointerUp(word, { button: 0 });
+  fireEvent.click(word);
+  expect(audio.currentTime).toBe(3);
+});
+
+it("lets the focused OBS word editor own playback highlights while archived assets refresh", async () => {
+  const { container, refreshAssets } = archivedWorkspace(true);
+  const subtitle = await screen.findByLabelText("Subtitle Channel 1");
+  fireEvent.doubleClick(within(subtitle).getByRole("button", { name: /^Xin ·/ }));
+  await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  const audio = container.querySelector("audio")!;
+  audio.currentTime = 3.2;
+  fireEvent.timeUpdate(audio);
+  const scriptWord = screen.getByRole("button", { name: "Chọn từ chào" });
+  expect(scriptWord).toHaveClass("is-active");
+  act(() => refreshAssets());
+  expect(scriptWord).toHaveClass("is-active");
+  expect(audio.currentTime).toBe(3.2);
+});
+
+it("selects words in the focused editor opened from the OBS multitrack view", async () => {
+  const { container } = archivedWorkspace();
+  const subtitle = await screen.findByLabelText("Subtitle Channel 1");
+  fireEvent.doubleClick(within(subtitle).getByRole("button", { name: /^Xin ·/ }));
+  fireEvent.keyDown(await screen.findByRole("textbox", { name: "Sửa subtitle" }), { key: "Escape" });
+  const word = screen.getByRole("button", { name: "Subtitle word chào" });
+  fireEvent.pointerDown(word, { button: 0 });
+  fireEvent.pointerUp(word, { button: 0 });
+  expect(word).toHaveAttribute("aria-pressed", "true");
+  expect(container.querySelector("audio")!.currentTime).toBe(3);
+  expect(within(screen.getByLabelText("Script theo channel")).getByRole("button", { name: "chào · 00:03.000–00:04.000" })).toHaveClass("is-active");
+});
 
 it("follows archive playback across the view edge without recentering paused browsing", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEve
 import { useAudioScrubber } from "./audio-scrubbing";
 
 import { api } from "../../api/client";
+import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, SpeakerProfile, TimelineEditRange } from "../../domain/types";
 import type { TimelineEditState } from "../../domain/timeline-editing";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
@@ -190,7 +192,7 @@ function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): n
 export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
                                       transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
                                       assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, speakers = [], onAssetWordsChange,
-                                      onAssetTimelineStateChange, onUndo, onRedo }: {
+                                      onAssetTimelineStateChange, onUndo, onRedo, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
   projectId: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
@@ -202,6 +204,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   onUndo?: () => void;
   onRedo?: () => void;
   visibleAssetId?: string | null;
+  wordSelection?: WordSelection;
+  onWordSelectionChange?: (selection: WordSelection) => void;
   onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
   seekRequest?: ObsTimelineSeekRequest | null;
   selectedOverlap?: ObsOverlapSelection | null;
@@ -216,6 +220,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const [currentTime, setCurrentTime] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [playing, setPlaying] = useState(false);
+  const [focusedWordSelection, setFocusedWordSelection] = useState<WordSelection>(EMPTY_SELECTION);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -397,8 +402,32 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }, [primaryAsset?.id, sharedWorkingRange?.start, sharedWorkingRange?.end]);
 
   useEffect(() => {
-    if (transcriptRows.length) onPlayheadChange?.(currentTime);
-  }, [currentTime, onPlayheadChange, transcriptRows.length]);
+    onPlayheadChange?.(currentTime);
+  }, [currentTime, onPlayheadChange]);
+  useEffect(() => {
+    // The focused standard Timeline owns the clock while editing a track.
+    if (editFocus) return;
+    publishPlaybackWords(Object.fromEntries(lanes.flatMap((lane) => {
+      if (!lane.assetId) return [];
+      const words = assets.find((asset) => asset.id === lane.assetId)?.words ?? [];
+      const index = subtitleIndexAtTime(words, currentTime);
+      const word = words[index];
+      return [[lane.assetId, !isLive && word && word.start <= currentTime && currentTime < word.end ? index : -1]];
+    })));
+  }, [lanes, assets, currentTime, isLive, editFocus]);
+  useEffect(() => () => publishPlaybackWords({}), []);
+  useEffect(() => subscribePlaybackSeek((assetId, seconds) => {
+    if (isLive || !lanes.some((lane) => lane.assetId === assetId)) return;
+    setEditFocus(null);
+    seekTime(seconds);
+  }));
+  useEffect(() => {
+    if (isLive || editFocus || !visibleAssetId || !wordSelection.indexes.length || wordSelection.anchor === null) return;
+    const word = assets.find((asset) => asset.id === visibleAssetId)?.words?.[wordSelection.anchor];
+    if (word) seekTime(word.start);
+  // Only a new selection may seek; refreshed words and playback must not rewind it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wordSelection, visibleAssetId]);
 
   useEffect(() => {
     setWaveforms({});
@@ -448,10 +477,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     handledSeekRef.current = key;
     setSelectedChannelId(target.channelId);
     if (seekRequest.selectOnly) return;
-    setCurrentTime(seekRequest.seconds);
-    setWindowStart(Math.max(0, seekRequest.seconds - windowSpan / 3));
-    setFollowLive(false);
-    forEachPlaybackAudio((audio) => { audio.currentTime = seekRequest.seconds; });
+    seekTime(seekRequest.seconds);
   }, [seekRequest?.serial, recordingId, laneTargets]);
   useEffect(() => {
     if (!isLive && recording) setCurrentTime((time) => Math.min(time, duration));
@@ -499,6 +525,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     const lane = lanes.find((item) => item.assetId === asset.id);
     if (lane) setSelectedChannelId(lane.channelId);
     pausePlayback();
+    setFocusedWordSelection(EMPTY_SELECTION);
     setEditFocus({ assetId: asset.id, request: { ...request, serial: Date.now() } });
   }
 
@@ -643,9 +670,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       ? position * duration : windowStart + position * windowSpan);
   }
 
-  function seek(clientX: number, element: HTMLElement) {
-    const next = positionSeconds(clientX, element);
-    if (next === null) return;
+  function seekTime(seconds: number) {
+    if (!Number.isFinite(seconds)) return;
+    const next = Math.max(0, Math.min(duration, seconds));
     setCurrentTime(next);
     setFollowLive(false);
     if (next < windowStart || next > windowStart + windowSpan) {
@@ -653,6 +680,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     }
     if (audioScrubber.active) audioScrubber.move(next);
     else forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, audio.duration || next); });
+  }
+
+  function seek(clientX: number, element: HTMLElement) {
+    const next = positionSeconds(clientX, element);
+    if (next !== null) seekTime(next);
   }
 
   function clickSeek(event: MouseEvent<HTMLElement>, lane?: Lane, overlaps: TimelineOverlap[] = []) {
@@ -752,6 +784,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }
 
   if (focusedAsset && editFocus && !isLive) return <Timeline onUndo={onUndo} onRedo={onRedo}
+    wordSelection={visibleAssetId === focusedAsset.id ? wordSelection : focusedWordSelection}
+    onWordSelectionChange={visibleAssetId === focusedAsset.id ? onWordSelectionChange : setFocusedWordSelection}
     editRequest={editFocus.request}
     gain={previewPercentToDb(selectedMuted ? 0 : selectedGain)}
     onGainChange={(value) => {
@@ -1001,7 +1035,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                         const rect = event.currentTarget.parentElement?.getBoundingClientRect();
                         const ratio = rect ? Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) : 0;
                         focusArchivedTrack(archivedAsset, { insertTime: Math.max(0, Math.min(duration, windowStart + ratio * windowSpan)) });
-                      } else setCurrentTime(word.start);
+                      } else {
+                        seekTime(word.start);
+                        if (visibleAssetId === archivedAsset.id) onWordSelectionChange?.({ indexes: [wordIndex], anchor: wordIndex });
+                      }
                     }}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); focusArchivedTrack(archivedAsset, { wordIndex }); }}
                     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); focusArchivedTrack(archivedAsset, { contextIndex: wordIndex }); }}

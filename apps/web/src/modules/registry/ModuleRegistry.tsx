@@ -321,6 +321,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
         return <ObsLiveLinkTimeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} onRecordingIdChange={context.onObsTimelineRecordingChange}
+          wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           onPlayheadChange={context.onObsPlayheadChange}
           assets={context.mediaAssets} onCutsChange={context.onObsTimelineCutsChange}

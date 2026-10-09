@@ -8,6 +8,7 @@ import { CollectionDialog } from "../voice-collection/CollectionDialog";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "../../ui/list-canvas.css";
+import "./voice-vault-hierarchy.css";
 
 interface VoiceVaultProps {
   projectId?: string;
@@ -101,6 +102,7 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
   const [editingEnvironment, setEditingEnvironment] = useState<EnvironmentNoiseProfile | null>(null);
   const [profileSelection, setProfileSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const [voiceSelection, setVoiceSelection] = useState<ListSelection>({ ids: [], anchorId: null });
+  const [expandedSpeakerIds, setExpandedSpeakerIds] = useState<Set<string>>(() => new Set());
   const [bulkSpeakerColor, setBulkSpeakerColor] = useState("#ff6745");
   const profileItems = activeType === "speaker" ? catalog.speakers : catalog.environmentProfiles;
   const profileIds = profileItems.map((item) => item.id);
@@ -328,6 +330,7 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
         <div aria-label="Danh sách Sound Library" className="voice-vault__list sound-library-list" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("button, input, .voice-card-group")) { setProfileSelection({ ids: [], anchorId: null }); setVoiceSelection({ ids: [], anchorId: null }); setProfileMenu(null); } }} onKeyDown={selectAllInLibrary} role="region" tabIndex={0}>
           {activeType === "speaker" ? catalog.speakers.map((speaker) => {
             const own = voices.filter((voice) => voice.speakerProfileId === speaker.id);
+            const expanded = expandedSpeakerIds.has(speaker.id);
             return (
             <div className={`voice-card-group ${selectedProfileIds.includes(speaker.id) ? "is-selected" : ""}`} key={speaker.id} onContextMenu={(event) => libraryContextMenu(event, "profile", speaker.id)} onKeyDown={(event) => libraryMenuKey(event, "profile", speaker.id)}>
             <div className="voice-card-group__header">
@@ -335,9 +338,11 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
             <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} onClick={() => onSelectVoice(speaker.id)} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
               <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong title={speaker.name}>{speaker.name}</strong><small className="sound-library-object-kind">Hồ sơ người nói · {own.length} model giọng</small><span title={speakerSummary(speaker)}>{speakerSummary(speaker)}</span><small title={speaker.voiceConsent ? "Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"}</small></span><i aria-hidden="true" />
             </button>
+            {own.length ? <button aria-controls={`speaker-models-${speaker.id}`} aria-expanded={expanded} aria-label={`${expanded ? "Thu gọn" : "Mở"} model giọng của ${speaker.name} (${own.length})`} className="voice-card-group__expand" onClick={() => setExpandedSpeakerIds((current) => { const next = new Set(current); if (expanded) next.delete(speaker.id); else next.add(speaker.id); return next; })} type="button">{expanded ? "▾" : "▸"}</button> : null}
             <button className="sound-library-properties" aria-label={`Properties profile ${speaker.name}`} title="Properties" onClick={() => editSpeaker(speaker)} type="button"><Icon name="settings" /></button>
             </div>
             {own.length ? (
+              <div className="voice-card-group__children" hidden={!expanded} id={`speaker-models-${speaker.id}`}>
               <ul aria-label={`Voice của ${speaker.name}`} className="voice-card__voices">
                 {own.map((voice) => (
                   <li key={voice.id} onContextMenu={(event) => libraryContextMenu(event, "voice", voice.id)} onKeyDown={(event) => libraryMenuKey(event, "voice", voice.id)} title={`${voice.id} · tạo ${new Date(voice.createdAt).toLocaleString("vi-VN", { hour12: false })}`}>
@@ -352,6 +357,7 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
                   </li>
                 ))}
               </ul>
+              </div>
             ) : null}
             </div>
             );

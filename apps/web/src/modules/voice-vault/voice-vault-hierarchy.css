@@ -1,0 +1,56 @@
+.sound-library-list .voice-card-group__header {
+  grid-template-columns: 20px minmax(0, 1fr) 24px 26px;
+  align-items: center;
+}
+
+.sound-library-list .voice-card-group__expand {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--surface-field);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sound-library-list .voice-card-group__expand:hover,
+.sound-library-list .voice-card-group__expand:focus-visible {
+  border-color: var(--accent);
+}
+
+.sound-library-list .voice-card-group__header .sound-library-properties {
+  grid-column: 4;
+}
+
+.sound-library-list .voice-card-group__children {
+  min-width: 0;
+  margin: 0 6px 6px 24px;
+  overflow: hidden;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--surface-panel);
+}
+
+.sound-library-list .voice-card-group__children[hidden] {
+  display: none;
+}
+
+.sound-library-list .voice-card-group__children .voice-card__voices {
+  padding-left: 6px;
+}
+
+.sound-library-list .voice-card-group__children .voice-card__voices > li {
+  padding: 7px 6px;
+}
+
+@media (max-width: 360px) {
+  .sound-library-list .voice-card-group__header {
+    grid-template-columns: 20px minmax(0, 1fr) 24px 26px;
+    gap: 3px;
+    padding: 5px;
+  }
+}
