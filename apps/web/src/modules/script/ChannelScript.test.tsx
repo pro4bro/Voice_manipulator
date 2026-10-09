@@ -103,3 +103,24 @@ it("selects the same trusted overlap on both archived tracks", () => {
   expect(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Track 1 từ 00:01.30 đến 00:02.00" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Track 2 từ 00:01.30 đến 00:02.00" })).toHaveAttribute("aria-pressed", "true");
 });
+
+it("provides a keyboard scrollbar that reaches the end of archived channel rows", () => {
+  const words = Array.from({ length: 650 }, (_, index) => ({ text: `word-${String(index).padStart(3, "0")}`, start: index, end: index + 0.4 }));
+  render(<ChannelScript tracks={[{ id: "channel", name: "OBS LiveLink · Channel 1", text: "words", words } as ProjectMediaAsset]}
+    onSelectTrack={vi.fn()} />);
+  const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
+  const scrollbar = screen.getByRole("scrollbar", { name: "Thanh cuộn Script theo channel" });
+  let scrollTop = 0;
+  Object.defineProperties(list, {
+    scrollTop: { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = Math.max(0, Math.min(3296, value)); } },
+    scrollHeight: { configurable: true, get: () => 3496 },
+    clientHeight: { configurable: true, get: () => 200 },
+  });
+  Object.defineProperty(scrollbar, "getBoundingClientRect", { configurable: true,
+    value: () => ({ x: 0, y: 0, top: 0, left: 0, right: 13, bottom: 100, width: 13, height: 100, toJSON: () => ({}) }) });
+  fireEvent.scroll(list);
+  fireEvent.keyDown(scrollbar, { key: "End" });
+  expect(scrollbar).toHaveAttribute("aria-controls", list.id);
+  expect(scrollTop).toBe(3296);
+  expect(screen.getByRole("button", { name: /word-649 ·/ })).toBeInTheDocument();
+});

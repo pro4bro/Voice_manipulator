@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
@@ -7,6 +7,8 @@ import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
 import { useTranscriptWindow } from "./transcript-window";
 import { useScriptShortcuts } from "./script-shortcuts";
+import { useScriptPlaybackFollow } from "./script-playback-follow";
+import { ScriptScrollbar } from "./ScriptScrollbar";
 import "./script-selection.css";
 
 export interface ScriptTableColumn {
@@ -176,13 +178,6 @@ interface ScriptTableProps {
   selection: WordSelection;
   onSelectionChange: (selection: WordSelection) => void;
 }
-interface ScrollMetrics {
-  top: number;
-  clientHeight: number;
-  scrollHeight: number;
-  trackHeight: number;
-}
-
 interface ResizeState {
   id: string;
   startX: number;
@@ -308,9 +303,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
   const scrollRef = useRef<HTMLDivElement>(null);
   const leadingContentRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLButtonElement>(null);
-  const draggingRef = useRef(false);
   const resizeRef = useRef<ResizeState | null>(null);
   const selectedWordIndexes = useMemo(() => new Set(selection.indexes), [selection.indexes]);
   const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
@@ -318,6 +312,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const rowIds = rows.map((row) => row.id);
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   const commandRef = useRef<HTMLDivElement>(null);
+  const playbackFollow = useScriptPlaybackFollow(commandRef, assetId ?? storageKey);
   useScriptShortcuts(commandRef, { selectAll: () => setRowSelection((current) => selectAllListItems(current, rowIds)) });
   const selectedRowWords = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.id)).flatMap((row) => row.words.map((item) => item.index)), [rows, selectedRowIds.join("\0")]);
   useEffect(() => { onSelectedRowWordsChange?.(selectedRowWords); }, [selectedRowWords.join(","), onSelectedRowWordsChange]);
@@ -340,23 +335,23 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const rowDropRef = useRef<{ rowId: string; direction: RowMoveDirection } | null>(null);
   const [rowDrop, setRowDrop] = useState<{ rowId: string; direction: RowMoveDirection } | null>(null);
   selectionRef.current = selection;
-  const [scroll, setScroll] = useState<ScrollMetrics>({ top: 0, clientHeight: 0, scrollHeight: 0, trackHeight: 0 });
   const [leadingContentHeight, setLeadingContentHeight] = useState(0);
   const transcriptWindow = useTranscriptWindow(rows, scrollRef, columns.find((column) => column.builtin === "content")?.width ?? 620, leadingContentHeight);
 
   useLayoutEffect(() => {
     const element = leadingContentRef.current;
-    if (!element || !leadingContent) { setLeadingContentHeight((current) => current ? 0 : current); return undefined; }
     const measure = () => {
-      const height = element.getBoundingClientRect().height;
+      const height = (leadingContent && element ? element.getBoundingClientRect().height : 0)
+        + (headerRef.current?.getBoundingClientRect().height ?? 0);
       setLeadingContentHeight((current) => Math.abs(current - height) > 0.5 ? height : current);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(measure);
-    observer.observe(element);
+    if (element) observer.observe(element);
+    if (headerRef.current) observer.observe(headerRef.current);
     return () => observer.disconnect();
-  }, [leadingContent]);
+  }, [leadingContent, columns]);
 
   useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
   useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [words, speakers, defaultSpeakerId]);
@@ -365,6 +360,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   useLayoutEffect(() => {
     const view = scrollRef.current;
     if (!view || selection.anchor === null) return;
+    playbackFollow.resume();
     if (transcriptWindow.reveal(selection.anchor)) { updateScroll(view); return; }
     const target = view.querySelector<HTMLElement>(`[data-script-word-index="${selection.anchor}"]`);
     if (target && keepWordInView(view, target) !== null) updateScroll(view);
@@ -394,21 +390,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   }, []);
 
   const gridTemplateColumns = useMemo(() => [...columns.map((column) => `${column.width}px`), "30px", "30px"].join(" "), [columns]);
-  const thumb = useMemo(() => {
-    const visible = scroll.clientHeight;
-    const total = Math.max(visible, scroll.scrollHeight);
-    const cssMinimum = Math.min(100, (28 / Math.max(1, scroll.trackHeight)) * 100);
-    const height = total > 0 ? Math.min(100, Math.max(cssMinimum, (visible / total) * 100)) : 100;
-    const maxScroll = Math.max(0, total - visible);
-    const top = maxScroll > 0 ? Math.max(0, Math.min(100 - height, (scroll.top / maxScroll) * (100 - height))) : 0;
-    return { top, height, enabled: maxScroll > 0.5 };
-  }, [scroll]);
-
   function updateScroll(element: HTMLDivElement) {
-    const trackHeight = trackRef.current?.clientHeight ?? 0;
-    setScroll((current) => current.top === element.scrollTop && current.clientHeight === element.clientHeight && current.scrollHeight === element.scrollHeight && current.trackHeight === trackHeight
-      ? current
-      : { top: element.scrollTop, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, trackHeight });
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
   }
 
   function selectScriptRow(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -444,62 +427,12 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (!element) return undefined;
-    const update = () => updateScroll(element);
-    update();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    if (trackRef.current) observer.observe(trackRef.current);
-    return () => observer.disconnect();
-  }, [rows.length, words]);
-
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
     const activeWord = activeWordRef.current;
-    if (!element || activeWordIndex < 0) return;
+    if (!element || !playbackFollow.shouldFollow(activeWordIndex)) return;
     if (transcriptWindow.reveal(activeWordIndex)) { updateScroll(element); return; }
     if (!activeWord) return;
     if (keepWordInView(element, activeWord) !== null) updateScroll(element);
   }, [activeWordIndex, rows]);
-
-  function syncScroll(event: UIEvent<HTMLDivElement>) {
-    updateScroll(event.currentTarget);
-  }
-
-  function seekScrollbar(clientY: number) {
-    const element = scrollRef.current;
-    const track = trackRef.current;
-    if (!element || !track || element.scrollHeight <= element.clientHeight) return;
-    const bounds = track.getBoundingClientRect();
-    const pointerRatio = Math.max(0, Math.min(1, (clientY - bounds.top) / Math.max(bounds.height, 1)));
-    const thumbRatio = thumb.height / 100;
-    const travel = Math.max(0.0001, 1 - thumbRatio);
-    const targetRatio = Math.max(0, Math.min(1, (pointerRatio - thumbRatio / 2) / travel));
-    element.scrollTop = targetRatio * (element.scrollHeight - element.clientHeight);
-    updateScroll(element);
-  }
-
-  function beginScrollbar(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!thumb.enabled) return;
-    event.preventDefault();
-    draggingRef.current = true;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    seekScrollbar(event.clientY);
-  }
-
-  function moveScrollbar(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!draggingRef.current) return;
-    event.preventDefault();
-    seekScrollbar(event.clientY);
-  }
-
-  function endScrollbar(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!draggingRef.current) return;
-    seekScrollbar(event.clientY);
-    draggingRef.current = false;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
 
   function beginColumnResize(event: ReactPointerEvent<HTMLButtonElement>, column: ScriptTableColumn) {
     event.preventDefault();
@@ -722,20 +655,21 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   return <div className="script-table-shell" ref={commandRef} onKeyDown={selectScriptRow}>
     {selectedRowIds.length ? <div aria-label="Thao tác transcript rows đã chọn" className="script-row-bulk-actions"><b>{selectedRowIds.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho transcript rows" onChange={(event) => assignProfileToSelectedRows(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label>{onDeleteWords ? <button className="is-danger" disabled={deleteBusy} onClick={deleteSelectedRows} type="button">Xoá rows đã chọn</button> : null}<button onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
     {deleteMessage ? <p role="status">{deleteMessage}</p> : null}
+    <div className="script-table-scroll-region">
     <div className="script-table-scroll" onPointerDown={(event) => {
       if (event.button !== 0) return;
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
       onSelectionChange(EMPTY_SELECTION);
-    }} onScroll={syncScroll} ref={scrollRef}>
+    }} ref={scrollRef}>
         {leadingContent ? <div className="script-table__leading-content" ref={leadingContentRef}>{leadingContent}</div> : null}
         <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ gridTemplateColumns }}>
-        <div className="script-table__header" role="row" style={{ gridTemplateColumns }}>
+        <div className="script-table__header" role="row" ref={headerRef} style={{ gridTemplateColumns }}>
           {columns.map((column) => <div className="script-table__header-cell" key={column.id} role="columnheader"><b>{column.label}</b><button aria-label={`Kéo rộng cột ${column.label}`} className="script-table__resize" onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, column)} onPointerMove={resizeColumn} onPointerUp={endColumnResize} type="button" />{columns.length > 1 ? <button aria-label={`Xóa cột ${column.label}`} className="script-table__remove" onClick={() => removeColumn(column.id)} type="button">×</button> : null}</div>)}
           <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
         </div>
           {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-          {transcriptWindow.visibleRows.map(({ row, fragments, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${fragments.some((fragment) => fragment.words.some(({ index }) => index === activeWordIndex)) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} key={row.id} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
+          {transcriptWindow.visibleRows.map(({ row, fragments, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${fragments.some((fragment) => fragment.words.some(({ index }) => index === activeWordIndex)) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} data-transcript-row={rowIndex} key={row.id} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
             {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column, fragments, rowIndex)}</div>)}
             <i aria-hidden="true" className="script-table__add-space" />
             {!columns.some((column) => column.builtin === "speaker") ? rowSelectionControl(row, rowIndex) : null}
@@ -743,8 +677,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
           {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
       </div>
     </div>
-    <div aria-label="Thanh cuộn bảng Script" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(thumb.top)} className={`script-table-scrollbar ${thumb.enabled ? "" : "is-static"}`} onPointerCancel={endScrollbar} onPointerDown={beginScrollbar} onPointerMove={moveScrollbar} onPointerUp={endScrollbar} ref={trackRef} role="scrollbar" tabIndex={0}>
-      <i style={{ height: `${thumb.height}%`, top: `${thumb.top}%` }} />
+    <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn bảng Script" className="script-table-scrollbar" />
     </div>
     {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>

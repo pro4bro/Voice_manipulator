@@ -1294,8 +1294,9 @@
 .script-scrollbar.is-static { cursor: default; opacity: .46; }
 .script-scrollbar.is-static i { min-height: 0; }
 /* The default spreadsheet Script view gets the same direct-click navigation as Text Edit. */
-.script-table-shell { position: relative; min-width: 0; min-height: 100px; height: 100%; }
-.script-table-scroll { height: 100%; padding-right: 22px; }
+.script-table-shell { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 100px; height: 100%; }
+.script-table-scroll-region { position: relative; display: flex; flex: 1; min-height: 0; }
+.script-table-scroll { flex: 1; min-height: 0; height: auto; padding-right: 22px; }
 /* Columns are sized in pixels and the user can widen them past the module, so the
    table has to scroll sideways. Hiding every scrollbar to make room for the custom
    vertical one also removed the horizontal bar, leaving content reachable only by

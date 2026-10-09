@@ -8,6 +8,7 @@ import { obsOverlapSelectionMatches, type ObsOverlapSelection } from "../obs-cap
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import { replaceScriptWord } from "./script-text-reconciliation";
 import { useTranscriptWindow } from "./transcript-window";
+import { ScriptScrollbar } from "./ScriptScrollbar";
 import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
 
@@ -107,9 +108,10 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
       </select></label>
       <button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button>
     </div> : null}
-    <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
-      {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-      {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => <li data-channel-id={row.trackId} key={rowIds[index]}>
+    <div className="script-feed-scroll-region">
+      <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
+        {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
+        {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => <li data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]}>
         <div className="obs-script__row-button">
           <div className="obs-script__source">
             {onAssignWords ? <div className="script-row-selection"><button className="script-table__row-select" type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
@@ -143,9 +145,11 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
             <span aria-hidden="true">●</span> CHỒNG TIẾNG {timecode(overlap.startSeconds)}–{timecode(overlap.endSeconds)}
           </button>)}
         </div> : null}
-      </li>)}
-      {transcriptWindow.bottom ? <li aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
-    </ol>
+        </li>)}
+        {transcriptWindow.bottom ? <li aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
+      </ol>
+      <ScriptScrollbar label="Thanh cuộn Script theo channel" viewportRef={viewRef} />
+    </div>
     {!rows.length ? <p className="obs-script__empty">Các track đã Import chưa có transcript.</p> : null}
   </section>;
 }

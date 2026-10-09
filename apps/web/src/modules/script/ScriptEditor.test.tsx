@@ -16,6 +16,14 @@ function SelectableScriptEditor(props: Parameters<typeof ScriptEditor>[0]) {
 }
 
 describe("ScriptEditor", () => {
+  it("keeps the shared table scrollbar beside its viewport when row actions appear", () => {
+    const view = render(<ScriptEditor onChange={vi.fn()} value="Xin" words={[{ text: "Xin", start: 0, end: 1 }]} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Speaker 1" }));
+    const scrollRegion = view.container.querySelector(".script-table-scroll-region")!;
+    expect(scrollRegion).toContainElement(view.container.querySelector(".script-table-scroll") as HTMLElement);
+    expect(scrollRegion).toContainElement(screen.getByRole("scrollbar", { name: "Thanh cuộn bảng Script" }));
+    expect(scrollRegion).not.toContainElement(screen.getByLabelText("Thao tác transcript rows đã chọn"));
+  });
   it("keeps timing notices at the start of the active Script scroll content, separate from transcript text", () => {
     const words = [
       { text: "Xin", start: 0, end: 0.3 },

@@ -96,3 +96,22 @@ it("colors both rows only while reviewing their shared segment and seeks each so
   expect(screen.getByText("B chen vào rồi nói tiếp")).not.toHaveClass("is-overlap");
   expect(screen.getByText("A nói liên tục")).not.toHaveClass("is-overlap");
 });
+
+it("provides a keyboard scrollbar that reaches the end of the OBS live transcript", () => {
+  const rows = Array.from({ length: 12 }, (_, index) => row(`row-${index}`, `C${index % 2}`, index * 2, "final", `speech ${index}`));
+  render(<ObsLiveLinkScript embedded error={null} onSeek={vi.fn()} playheadSeconds={0} recordingId="recording" rows={rows} />);
+  const list = screen.getByRole("list", { name: "Lượt nói theo track OBS" });
+  const scrollbar = screen.getByRole("scrollbar", { name: "Thanh cuộn lượt nói OBS" });
+  let scrollTop = 0;
+  Object.defineProperties(list, {
+    scrollTop: { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = Math.max(0, Math.min(600, value)); } },
+    scrollHeight: { configurable: true, get: () => 800 },
+    clientHeight: { configurable: true, get: () => 200 },
+  });
+  Object.defineProperty(scrollbar, "getBoundingClientRect", { configurable: true,
+    value: () => ({ x: 0, y: 0, top: 0, left: 0, right: 13, bottom: 100, width: 13, height: 100, toJSON: () => ({}) }) });
+  fireEvent.scroll(list);
+  fireEvent.keyDown(scrollbar, { key: "End" });
+  expect(scrollbar).toHaveAttribute("aria-controls", list.id);
+  expect(scrollTop).toBe(600);
+});

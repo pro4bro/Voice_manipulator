@@ -8,6 +8,23 @@ const words: StudioWord[] = Array.from({ length: 6000 }, (_, index) => ({
   text: `word${index}`, start: index * .3, end: index * .3 + .28, timingTrusted: true,
 }));
 
+it("keeps manual Script browsing through transcript refresh and playback ticks", () => {
+  const props = { value: words.map((word) => word.text).join(" "), words,
+    workflow: "speech-to-text" as const, activeWordIndex: 0, playbackAssetId: "browse", onChange: vi.fn() };
+  const mounted = render(<ScriptEditor {...props} />);
+  const view = mounted.container.querySelector<HTMLElement>(".script-table-scroll")!;
+  view.scrollTop = 5000;
+  fireEvent.wheel(view, { deltaY: 100 });
+  fireEvent.scroll(view);
+  mounted.rerender(<ScriptEditor {...props} words={[...words]} />);
+  expect(view.scrollTop).toBe(5000);
+  mounted.rerender(<ScriptEditor {...props} activeWordIndex={1} />);
+  expect(view.scrollTop).toBe(5000);
+  // An explicit Timeline word selection still reveals the word immediately.
+  mounted.rerender(<ScriptEditor {...props} activeWordIndex={1} wordSelection={{ indexes: [1], anchor: 1 }} />);
+  expect(view.scrollTop).toBeLessThan(5000);
+});
+
 it("bounds a long single speaker turn and reaches a far selected word without mounting the whole transcript", async () => {
   const props = { value: words.map((word) => word.text).join(" "), words, workflow: "speech-to-text" as const,
     playbackAssetId: "large", onChange: vi.fn() };

@@ -1,9 +1,11 @@
+import { useRef } from "react";
 import type { ObsLiveLinkTranscriptRow } from "../../domain/types";
 import { obsTranscriptText } from "../obs-capture/obs-transcript-feed";
 import { obsOverlapAt, obsOverlapByUtterance, obsOverlapSelectionMatches, obsOverlapTime,
   type ObsOverlapInterval, type ObsOverlapSelection } from "../obs-capture/obs-overlap";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { obsTrackLabel } from "../../domain/obs-track-label";
+import { ScriptScrollbar } from "./ScriptScrollbar";
 
 interface SpeechTurn { first: ObsLiveLinkTranscriptRow; rows: ObsLiveLinkTranscriptRow[]; text: string; endSeconds: number; }
 
@@ -76,11 +78,13 @@ export function ObsLiveLinkScript({ rows, recordingId, playheadSeconds, error, o
 }) {
   const overlapByUtterance = obsOverlapByUtterance(rows);
   const turns = groupObsSpeechTurns(rows);
+  const viewRef = useRef<HTMLOListElement>(null);
   const content = <>
     {embedded ? <header className="obs-script__embedded-heading"><strong>OBS LIVELINK · {recordingId?.slice(0, 8) ?? "chưa ghi"}</strong><span className="obs-script__badge">LIVE DRAFT · {turns.length} LƯỢT</span></header> : <div className="obs-script__intro">Mỗi track là một nguồn âm OBS, chưa xác nhận danh tính người nói. Thời gian theo đoạn; text và từng từ cần duyệt lại.</div>}
     {error ? <p className="obs-script__error" role="alert">Live STT: {error}</p> : null}
-    <ol aria-label="Lượt nói theo track OBS" className="obs-script__rows">
-      {turns.map((turn) => {
+    <div className="script-feed-scroll-region">
+      <ol aria-label="Lượt nói theo track OBS" className="obs-script__rows" ref={viewRef}>
+        {turns.map((turn) => {
         const row = turn.first;
         const text = turn.text;
         const overlaps = turn.rows.flatMap((item) => overlapByUtterance.get(item.utteranceId) ?? [])
@@ -116,8 +120,10 @@ export function ObsLiveLinkScript({ rows, recordingId, playheadSeconds, error, o
             </button>)}
           </div> : null}
         </li>;
-      })}
-    </ol>
+        })}
+      </ol>
+      <ScriptScrollbar label="Thanh cuộn lượt nói OBS" viewportRef={viewRef} />
+    </div>
     {!rows.length ? <p className="obs-script__empty">{recordingId ? "Chưa có lời nói được nhận dạng trên bản ghi này." : "Chọn OBS LiveLink và bấm Record để xem Script theo track."}</p> : null}
     {!embedded ? <div className="obs-script__footer">BẢN NHÁP · Đỏ khi playhead ở đoạn chồng tiếng; thời gian theo đoạn, chưa xác định từ nào trùng. Không dùng làm SRT cuối trước khi xác thực timing.</div> : null}
   </>;
