@@ -9,6 +9,22 @@ const words: StudioWord[] = Array.from({ length: 1_280 }, (_, index) => ({
   text: `word${index}`, start: index, end: index + 0.5,
 }));
 const rows = [{ id: "speaker-1", words: words.map((word, index) => ({ index, word })) }];
+const obsRows = [31, 3, 3, 833, 12, 49, 17, 40, 7, 141].map((count, rowIndex) => ({
+  id: `row-${rowIndex}`, words: Array.from({ length: count }, (_, index) => ({ index,
+    word: { text: "từ", start: index, end: index + .5 } })),
+}));
+
+function EndProbe({ inputRows = obsRows }: { inputRows?: typeof obsRows }) {
+  const view = useRef<HTMLDivElement>(null);
+  const transcript = useTranscriptWindow(inputRows, view, 500);
+  return <div aria-label="OBS end probe" ref={view}>
+    {transcript.top ? <div aria-hidden="true" style={{ height: transcript.top }} /> : null}
+    {transcript.visibleRows.map((row) => <div data-transcript-row={row.rowIndex} key={row.rowIndex}>
+      {row.fragments.map((fragment) => <div data-transcript-fragment={fragment.key} data-count={fragment.words.length} key={fragment.key} />)}
+    </div>)}
+    {transcript.bottom ? <div aria-hidden="true" style={{ height: transcript.bottom }} /> : null}
+  </div>;
+}
 
 function WindowProbe({ topInset }: { topInset: number }) {
   const view = useRef<HTMLDivElement>(null);
@@ -26,6 +42,56 @@ function WindowProbe({ topInset }: { topInset: number }) {
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+it.each([80, 240])("settles OBS final fragments with a clamped %ipx viewport", (viewHeight) => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const height = this.hasAttribute("data-transcript-fragment") ? Math.ceil(Number(this.dataset.count) / 16) * 28
+      : this.hasAttribute("data-transcript-row") ? Math.max(100,
+        [...this.children].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)) + 21 : 100;
+    return { height } as DOMRect;
+  });
+  render(<EndProbe />);
+  const view = screen.getByLabelText("OBS end probe");
+  let position = 0;
+  const total = () => [...view.children].reduce((sum, node) => sum + ((node as HTMLElement).hasAttribute("data-transcript-row")
+    ? node.getBoundingClientRect().height : Number.parseFloat((node as HTMLElement).style.height) || 0), 0);
+  Object.defineProperties(view, {
+    clientHeight: { configurable: true, get: () => viewHeight }, scrollHeight: { configurable: true, get: total },
+    scrollTop: { configurable: true, get: () => Math.min(position, Math.max(0, total() - viewHeight)),
+      set: (value: number) => { position = Math.max(0, Math.min(total() - viewHeight, value)); } },
+  });
+  for (let pass = 0; pass < 10; pass++) { view.scrollTop = view.scrollHeight; fireEvent.scroll(view); }
+  expect(view.querySelector('[data-transcript-fragment="9:128"]')).toBeInTheDocument();
+  expect(view.scrollTop).toBe(view.scrollHeight - viewHeight);
+});
+
+it("settles wheel scrolling past a one-word continuation beside taller row controls", () => {
+  const viewHeight = 140;
+  const minimalRows = [65, 600].map((count, rowIndex) => ({ id: `row-${rowIndex}`,
+    words: Array.from({ length: count }, (_, index) => ({ index, word: { text: "từ", start: index, end: index + .5 } })),
+  }));
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const height = this.hasAttribute("data-transcript-fragment") ? Math.ceil(Number(this.dataset.count) / 16) * 28
+      : this.hasAttribute("data-transcript-row") ? Math.max(100,
+        [...this.children].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)) + 21 : 100;
+    return { height } as DOMRect;
+  });
+  render(<EndProbe inputRows={minimalRows} />);
+  const view = screen.getByLabelText("OBS end probe");
+  let position = 0;
+  const total = () => [...view.children].reduce((sum, node) => sum + ((node as HTMLElement).hasAttribute("data-transcript-row")
+    ? node.getBoundingClientRect().height : Number.parseFloat((node as HTMLElement).style.height) || 0), 0);
+  Object.defineProperties(view, {
+    clientHeight: { configurable: true, get: () => viewHeight }, scrollHeight: { configurable: true, get: total },
+    scrollTop: { configurable: true, get: () => Math.min(position, Math.max(0, total() - viewHeight)),
+      set: (value: number) => { position = Math.max(0, Math.min(total() - viewHeight, value)); } },
+  });
+  for (let pass = 0; pass < 250 && view.scrollTop < view.scrollHeight - viewHeight; pass++) {
+    view.scrollTop += 17;
+    fireEvent.scroll(view);
+  }
+  expect(view.querySelector('[data-transcript-fragment="1:576"]')).toBeInTheDocument();
+});
 
 function MeasuredProbe({ refreshed = false, rowChrome = false }: { refreshed?: boolean; rowChrome?: boolean }) {
   const view = useRef<HTMLDivElement>(null);

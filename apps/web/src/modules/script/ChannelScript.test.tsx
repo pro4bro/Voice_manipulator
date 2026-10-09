@@ -124,3 +124,49 @@ it("provides a keyboard scrollbar that reaches the end of archived channel rows"
   expect(scrollTop).toBe(3296);
   expect(screen.getByRole("button", { name: /word-649 ·/ })).toBeInTheDocument();
 });
+
+it("wheels through the OBS 9 turn shape to the final word with measured sidebar controls", () => {
+  const tracks = [1, 4].map((channel) => ({ id: `channel-${channel}`, name: `OBS LiveLink · Channel ${channel}`,
+    sourceArchiveAssetId: "archive", text: "words", words: [] as { text: string; start: number; end: number; speakerId: string }[] }));
+  let clock = 0;
+  [31, 3, 3, 833, 12, 49, 17, 40, 7, 141].forEach((count, rowIndex) => {
+    const track = tracks[[0, 3, 5, 7, 9].includes(rowIndex) ? 0 : 1];
+    for (let index = 0; index < count; index++) track.words.push({ text: `row${rowIndex}-word${index}`,
+      start: clock + index * .3, end: clock + index * .3 + .28, speakerId: `speaker-${rowIndex}` });
+    clock += count * .3 + 1;
+  });
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    let height = 100;
+    if (this.hasAttribute("data-transcript-fragment")) height = Math.ceil(this.querySelectorAll(".channel-script-word").length / 16) * 28;
+    if (this.hasAttribute("data-transcript-row")) height = Math.max(100,
+      [...this.querySelectorAll<HTMLElement>("[data-transcript-fragment]")].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)) + 20;
+    return { top: 0, left: 0, right: 500, bottom: height, width: 500, height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+  });
+  try {
+    render(<ChannelScript tracks={tracks as ProjectMediaAsset[]} onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
+    const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
+    let position = 0;
+    const total = () => [...list.children].reduce((sum, node) => sum + ((node as HTMLElement).hasAttribute("data-transcript-row")
+      ? node.getBoundingClientRect().height : Number.parseFloat((node as HTMLElement).style.height) || 0), 0);
+    Object.defineProperties(list, {
+      scrollTop: { configurable: true, get: () => Math.min(position, Math.max(0, total() - 200)),
+        set: (value: number) => { position = Math.max(0, Math.min(total() - 200, value)); } },
+      scrollHeight: { configurable: true, get: total }, clientHeight: { configurable: true, get: () => 200 },
+    });
+    // Warm the preceding measurements, then land in the one-word tail's
+    // overscan boundary instead of skipping it with a direct End jump.
+    for (let pass = 0; pass < 30 && list.scrollTop < 2020; pass++) {
+      list.scrollTop = Math.min(2020, list.scrollTop + 200);
+      fireEvent.scroll(list);
+    }
+    list.scrollTop = 2057;
+    fireEvent.scroll(list);
+    for (let pass = 0; pass < 30 && list.scrollTop < list.scrollHeight - 200; pass++) {
+      list.scrollTop += 200;
+      fireEvent.scroll(list);
+    }
+    fireEvent.keyDown(screen.getByRole("scrollbar"), { key: "End" });
+    expect(screen.getByRole("button", { name: /row9-word140 ·/ })).toBeInTheDocument();
+    expect(list.scrollTop).toBe(list.scrollHeight - 200);
+  } finally { rect.mockRestore(); }
+});

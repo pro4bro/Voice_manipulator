@@ -121,7 +121,14 @@ export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
           - (measurements.heights.get(fragment.measurementKey) ?? estimate);
         if (!fragment.continuation) correction += (chrome.get(rowKeys.get(fragment.rowIndex)!) ?? 0) - (measurements.chrome.get(rowKeys.get(fragment.rowIndex)!) ?? 0);
       }
-      if (correction) pendingTop.current = element.scrollTop + correction;
+      if (correction) {
+        const correctedTop = element.scrollTop + correction;
+        pendingTop.current = correctedTop;
+        // Publish offsets and their matching viewport atomically. Measuring a
+        // new height against the previous viewport can mount another fragment
+        // window, remeasure different row minima, and alternate forever.
+        setViewport({ top: Math.max(0, correctedTop - topInset), height: element.clientHeight || 400 });
+      }
       // Discard old edited/layout versions without clearing unchanged offscreen measurements.
       const keys = new Set(fragments.map((fragment) => fragment.measurementKey));
       for (const key of heights.keys()) if (!keys.has(key)) heights.delete(key);
