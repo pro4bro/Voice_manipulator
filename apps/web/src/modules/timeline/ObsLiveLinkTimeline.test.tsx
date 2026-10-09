@@ -210,6 +210,49 @@ it("retains saved waveform when a cursor reply contains no audio in the viewed w
   expect(lane).toHaveTextContent("PCM đã lưu · cửa sổ này chưa có dữ liệu");
 });
 
+it("keeps received PCM visible after Stop while the archive waveform is loading", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
+    status: "stopped", endedMonotonicNs: 8_000_000_000 },
+    channels: [{ channelId: ids[0], relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [] }]);
+  let resolveWave!: (value: ObsLiveLinkWaveform) => void;
+  mocks.getObsLiveLinkWaveform.mockImplementation(() => new Promise((resolve) => { resolveWave = resolve; }));
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const args = mocks.subscribe.mock.calls[0];
+  await act(async () => { args[4]({ appRecording: recording, channels: [{ channelId: ids[0],
+    alias: "Channel 1", slot: 1, appliedForward: true,
+    capture: { recordingId: "recording", durableChunkCount: 1 } }] }); });
+  act(() => args[2](wave(ids[0], 12000, "pcm")));
+  const lane = screen.getByRole("img", { name: "Sóng âm Channel 1" });
+  expect(lane.querySelector("path")?.getAttribute("d")).toBeTruthy();
+  await act(async () => { args[4]({ appRecording: null, channels: [] }); });
+  expect(lane.querySelector("path")?.getAttribute("d")).toBeTruthy();
+  await act(async () => { resolveWave(wave(ids[0], 3000, "mka")); });
+  expect(lane.querySelector("path")?.getAttribute("d")).toBeTruthy();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("retains the stopped lane until its journal arrives and refreshes it immediately", async () => {
+  let resolveJournals!: (value: unknown[]) => void;
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  const args = mocks.subscribe.mock.calls[0];
+  await act(async () => { args[4]({ appRecording: recording, channels: [{ channelId: ids[0],
+    alias: "Channel 1", slot: 1, appliedForward: true,
+    capture: { recordingId: "recording", durableChunkCount: 1 } }] }); });
+  act(() => args[2](wave(ids[0], 12000, "pcm")));
+  mocks.listObsLiveLinkRecordings.mockImplementation(() => new Promise((resolve) => { resolveJournals = resolve; }));
+  mocks.listObsLiveLinkRecordings.mockClear();
+  await act(async () => { args[4]({ appRecording: null, channels: [] }); });
+  const lane = screen.getByRole("img", { name: "Sóng âm Channel 1" });
+  expect(lane.querySelector("path")?.getAttribute("d")).toBeTruthy();
+  expect(mocks.listObsLiveLinkRecordings).toHaveBeenCalledTimes(1);
+  await act(async () => { resolveJournals([{ recording: { ...recording,
+    status: "stopped", archiveStatus: "ready", endedMonotonicNs: 8_000_000_000 },
+    channels: [{ channelId: ids[0], relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [] }]); });
+  expect(screen.getByText("MKA READY")).toBeInTheDocument();
+});
+
 it("omits historical missing sources without PCM and retains sources recorded earlier in this take", async () => {
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
@@ -871,6 +914,9 @@ it("uses Space to toggle playback only while the pointer is over Timeline", asyn
 });
 
 it("can zoom out to the entire archived recording", async () => {
+  mocks.getObsLiveLinkWaveform.mockImplementation(async (_project, _recording, channel, start, end) => ({
+    ...wave(channel, 12000, "mka"), startSeconds: start, endSeconds: end,
+  }));
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
     recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 901_000_000_000 },
     channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
@@ -882,6 +928,11 @@ it("can zoom out to the entire archived recording", async () => {
   fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
   expect(screen.getByText("900s")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" })).toBeDisabled();
+  await waitFor(() => expect(mocks.getObsLiveLinkWaveform).toHaveBeenCalledWith("project", "recording", ids[0], 0, 900, 600));
+  expect(screen.getByRole("img", { name: "Sóng âm Channel 1" }).querySelector("path")?.getAttribute("d")).toBeTruthy();
+  // A new live take can arrive before the overview viewport reset effect runs.
+  const liveWindow = mocks.subscribe.mock.calls[0][1]("new-recording", ids[0]);
+  expect(liveWindow.endSeconds - liveWindow.startSeconds).toBeLessThanOrEqual(120);
 });
 
 it("does not seek back to zero after dragging a waveform", async () => {

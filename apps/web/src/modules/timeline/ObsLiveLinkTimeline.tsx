@@ -237,6 +237,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const audioGraphRef = useRef<PreviewAudioGraph | null>(null);
   const windowRef = useRef({ start: 0, end: DEFAULT_WINDOW_SECONDS });
   const recordingIdRef = useRef<string | null>(null);
+  const lastLiveStatusRef = useRef<ObsLiveLinkStatus | null>(null);
   const scrubbingRef = useRef(false);
   const scrubStartXRef = useRef(0);
   const suppressClickRef = useRef(false);
@@ -249,19 +250,22 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   useEffect(() => setSelectedRecordingId(requestedRecordingId), [projectId, requestedRecordingId]);
   useEffect(() => {
-    let active = true;
     setJournals([]);
     setRecordingsError(null);
+  }, [projectId]);
+  useEffect(() => {
+    let active = true;
     const refresh = () => void api.listObsLiveLinkRecordings(projectId)
       .then((records) => { if (active) { setJournals(records); setRecordingsError(null); } })
       .catch((reason) => { if (active) setRecordingsError(reason instanceof Error ? reason.message : "Không đọc được bản ghi OBS."); });
     refresh();
     const timer = window.setInterval(refresh, 3_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [projectId]);
+  }, [projectId, status?.appRecording?.recordingId]);
 
   useEffect(() => subscribeObsLiveLinkWaveforms(projectId,
-    () => ({ startSeconds: windowRef.current.start, endSeconds: windowRef.current.end, maxPoints: 600 }),
+    () => ({ startSeconds: windowRef.current.start,
+      endSeconds: Math.min(windowRef.current.end, windowRef.current.start + 120), maxPoints: 600 }),
     (incoming) => {
       if (incoming.recordingId !== recordingIdRef.current) return;
       setError(null);
@@ -273,7 +277,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       setStatus(next);
       setStatusError(null);
       const liveId = next.appRecording?.projectId === projectId ? next.appRecording.recordingId : null;
-      if (liveId) { recordingIdRef.current = liveId; setSelectedRecordingId(liveId); }
+      if (liveId) {
+        lastLiveStatusRef.current = next;
+        recordingIdRef.current = liveId;
+        setSelectedRecordingId(liveId);
+      }
     },
     (reason) => setStatusError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS.")), [projectId]);
 
@@ -282,7 +290,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   // otherwise the previous footage is echoed back and both selections oscillate.
   const recordingId = active?.recordingId ?? requestedRecordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
   const journal = journals.find((item) => item.recording.recordingId === recordingId);
-  const recording = active ?? journal?.recording ?? null;
+  // Stop status can precede the journal-list reply. Retain only this take's
+  // received lanes/clock until its durable journal replaces the live snapshot.
+  const retainedLive = lastLiveStatusRef.current?.appRecording?.projectId === projectId &&
+    lastLiveStatusRef.current.appRecording.recordingId === recordingId ? lastLiveStatusRef.current : null;
+  const recording = active ?? journal?.recording ?? retainedLive?.appRecording ?? null;
   useEffect(() => {
     if (recordingId && recordingId !== requestedRecordingId) onRecordingIdChange?.(recordingId);
   }, [recordingId, requestedRecordingId, onRecordingIdChange]);
@@ -295,10 +307,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const windowSpan = visibleSpan(windowSeconds);
   windowRef.current = { start: windowStart, end: windowStart + windowSpan };
   recordingIdRef.current = recordingId;
-  const lanes = useMemo(() => sourceLanes(status, journal, recordingId, isLive).filter((lane) => {
+  const lanes = useMemo(() => sourceLanes(!journal && !isLive ? retainedLive : status, journal,
+    recordingId, isLive || Boolean(!journal && retainedLive)).filter((lane) => {
     if (isLive || !lane.assetId) return true;
     return assets.find((asset) => asset.id === lane.assetId)?.importSelected !== false;
-  }), [status, journal, recordingId, isLive, assets]);
+  }), [status, journal, recordingId, isLive, assets, retainedLive]);
   const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
   const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
   const overlapByUtterance = useMemo(() => obsOverlapByUtterance(transcriptRows), [transcriptRows]);
@@ -817,10 +830,14 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
               ? [...captions].reverse().find((row) => duration - row.endSeconds < 4)
               : [...captions].reverse().find((row) => row.startSeconds <= currentTime && currentTime <= Math.max(row.endSeconds, row.startSeconds + 1));
             const waveform = waveforms[lane.channelId];
-            const points = waveform?.recordingId === recordingId && waveform.startSeconds === windowStart &&
-              waveform.endSeconds === windowStart + windowSpan ? waveform.points : [];
-            const hasPcm = points.some((point) => point.peak !== null);
             const sampleRate = waveform?.sampleRate ?? null;
+            // Reproject received bins while Stop/archive or zoom data is loading.
+            // Never borrow another take or draw samples outside the viewport.
+            const sameWindow = waveform?.startSeconds === windowStart && waveform.endSeconds === windowStart + windowSpan;
+            const points = waveform?.recordingId === recordingId && (sameWindow || !isLive) && sampleRate
+              ? waveform.points.filter((point) => point.endFrame > windowStart * sampleRate &&
+                point.startFrame < (windowStart + windowSpan) * sampleRate) : [];
+            const hasPcm = points.some((point) => point.peak !== null);
             const path = waveformPath(points, sampleRate, windowStart, windowSpan,
               mutedByChannel[`${recordingId}:${lane.channelId}`] ? 0 : (gainByChannel[`${recordingId}:${lane.channelId}`] ?? 100) / 100);
             const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null

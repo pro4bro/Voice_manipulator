@@ -152,7 +152,6 @@ class ObsLiveLinkWaveform:
                  max_points: int = 600, after_sequence: int | None = None) -> dict:
         if (not math.isfinite(start_seconds) or not math.isfinite(end_seconds) or
                 start_seconds < 0 or end_seconds <= start_seconds or
-                end_seconds - start_seconds > MAX_WINDOW_SECONDS or
                 not 1 <= max_points <= MAX_POINTS or
                 (after_sequence is not None and after_sequence < -1)):
             raise LiveLinkError("Invalid OBS waveform window or resolution.", 422)
@@ -165,14 +164,60 @@ class ObsLiveLinkWaveform:
         recording = journal["recording"]
         if recording["recordingId"] != recording_id or recording["projectId"] != project_id:
             raise LiveLinkError("OBS waveform recording ownership mismatch.", 409)
+        ended_ns = recording.get("endedMonotonicNs")
+        started_ns = recording.get("startedMonotonicNs")
+        recorded_duration = (max(0, ended_ns - started_ns) / 1e9
+                             if isinstance(ended_ns, (int, float)) and
+                             isinstance(started_ns, (int, float)) else 0)
+        window_seconds = end_seconds - start_seconds
+        # Live/cursor requests remain small. A stopped overview can cover the
+        # recorded duration while still rejecting arbitrary or corrupt ranges.
+        window_limit = (MAX_WINDOW_SECONDS if ended_ns is None or after_sequence is not None
+                        else max(MAX_WINDOW_SECONDS, recorded_duration))
+        if window_seconds > window_limit + 1e-6:
+            raise LiveLinkError("Invalid OBS waveform window or resolution.", 422)
         known = {item["channelId"] for item in journal["channels"]}
         if channel_id not in known:
             raise LiveLinkError("OBS waveform channel is unknown.", 404)
         archive = recording.get("sourceArchive") if recording.get("archiveStatus") == "ready" else None
         track = next((item for item in archive["tracks"] if item["channelId"] == channel_id), None) if archive else None
         source = "pcm"
-        documents = []
         last_sequence, last_included_sequence, has_more = -1, -1, False
+        rate = None
+        first_frame = last_frame = point_count = width = None
+        bins: dict[int, dict] = {}
+
+        def prepare_bins(sample_rate: int) -> None:
+            nonlocal rate, first_frame, last_frame, point_count, width
+            if first_frame is not None:
+                return
+            rate = sample_rate
+            first_frame, last_frame = round(start_seconds * rate), round(end_seconds * rate)
+            point_count = max(1, min(max_points, math.ceil(window_seconds * BASE_HZ)))
+            width = max(1, math.ceil((last_frame - first_frame) / point_count))
+
+        def add_document(document: dict) -> None:
+            prepare_bins(document.get("sampleRate", rate))
+            for point in document["points"]:
+                if point["endFrame"] <= first_frame or point["startFrame"] >= last_frame:
+                    continue
+                index = min(point_count - 1,
+                            (max(point["startFrame"], first_frame) - first_frame) // width)
+                existing = bins.get(index)
+                if existing is None:
+                    bins[index] = dict(point)
+                else:
+                    existing["min"] = min(existing["min"], point["min"])
+                    existing["max"] = max(existing["max"], point["max"])
+                    existing["peak"] = max(existing["peak"], point["peak"])
+                    existing["firstSampleIndex"] = min(
+                        (value for value in (existing["firstSampleIndex"], point["firstSampleIndex"])
+                         if value is not None), default=None)
+                    existing["lastSampleIndexExclusive"] = max(
+                        (value for value in (existing["lastSampleIndexExclusive"],
+                                             point["lastSampleIndexExclusive"])
+                         if value is not None), default=None)
+
         if track:
             block_folder = channel_folder / "archive-envelope-v1"
             manifest_path = block_folder / "manifest.json"
@@ -184,11 +229,12 @@ class ObsLiveLinkWaveform:
                             for index in range(manifest.get("blockCount", 0)))):
                     manifest = self._archive_points(root, folder, channel_folder,
                                                     {**recording, "archiveSha256": journal.get("archiveSha256")}, track)
-            rate = manifest["sampleRate"]
+            prepare_bins(manifest["sampleRate"])
             first_block = max(0, int(start_seconds // ARCHIVE_BLOCK_SECONDS))
             last_block = min(manifest["blockCount"], math.ceil(end_seconds / ARCHIVE_BLOCK_SECONDS))
             for index in range(first_block, last_block):
-                documents.append(json.loads((block_folder / f"{index:06d}.json").read_text(encoding="utf-8")))
+                document = json.loads((block_folder / f"{index:06d}.json").read_text(encoding="utf-8"))
+                add_document(document)
             source = "mka"
         else:
             metadata_paths = sorted((channel_folder / "chunks").glob("*.json"))
@@ -220,8 +266,7 @@ class ObsLiveLinkWaveform:
                     document = json.loads(envelope_path.read_text(encoding="utf-8"))
                 if document.get("pcmSha256") != metadata["sha256"]:
                     raise LiveLinkError("OBS waveform PCM provenance changed.", 409)
-                documents.append(document)
-        rate = (manifest["sampleRate"] if track else documents[0]["sampleRate"]) if (track or documents) else None
+                add_document(document)
         if rate is None:
             return {"recordingId": recording_id, "projectId": project_id,
                     "channelId": channel_id, "source": source, "sampleAxis": "channel",
@@ -229,7 +274,6 @@ class ObsLiveLinkWaveform:
                     "lastDurableSequence": last_sequence,
                     "lastIncludedSequence": last_included_sequence, "hasMore": has_more,
                     "points": [], "gaps": []}
-        first_frame, last_frame = round(start_seconds * rate), round(end_seconds * rate)
         gap_ranges = []
         if track:
             chunk_paths = sorted((channel_folder / "chunks").glob("*.json"))
@@ -245,27 +289,6 @@ class ObsLiveLinkWaveform:
                     if end > first_frame and start < last_frame:
                         gap_ranges.append({"startFrame": start, "endFrame": end,
                                            "classification": gap["classification"]})
-        point_count = max(1, min(max_points, math.ceil((end_seconds - start_seconds) * BASE_HZ)))
-        width = max(1, math.ceil((last_frame - first_frame) / point_count))
-        bins: dict[int, dict] = {}
-        for document in documents:
-            for point in document["points"]:
-                if point["endFrame"] <= first_frame or point["startFrame"] >= last_frame:
-                    continue
-                index = min(point_count - 1, (max(point["startFrame"], first_frame) - first_frame) // width)
-                existing = bins.get(index)
-                if existing is None:
-                    bins[index] = dict(point)
-                else:
-                    existing["min"] = min(existing["min"], point["min"])
-                    existing["max"] = max(existing["max"], point["max"])
-                    existing["peak"] = max(existing["peak"], point["peak"])
-                    existing["firstSampleIndex"] = min(
-                        (value for value in (existing["firstSampleIndex"], point["firstSampleIndex"])
-                        if value is not None), default=None)
-                    existing["lastSampleIndexExclusive"] = max(
-                        (value for value in (existing["lastSampleIndexExclusive"], point["lastSampleIndexExclusive"])
-                        if value is not None), default=None)
         points = []
         # A cursor response is sparse: the browser merges changed time bins
         # into its earlier full snapshot instead of receiving null padding.

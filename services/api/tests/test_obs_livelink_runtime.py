@@ -4,6 +4,7 @@ import os
 import struct
 import wave
 import shutil
+import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -489,6 +490,101 @@ def test_waveform_separates_channels_and_preserves_silence_gap_and_restart(tmp_p
     assert response.json()["points"][-1]["peak"] == 0
     assert client.get(route, params={"channelId": identities[0][0],
                                      "startSeconds": 0, "endSeconds": 121}).status_code == 422
+
+
+def test_stopped_waveform_supports_recording_overview_but_keeps_live_and_cursor_windows_capped(tmp_path):
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    recording_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 0, "span-1")[
+        "appRecording"]["recordingId"]
+    audio = FileObsLiveLinkAudio(link, runtime, runtime.projects,
+                                 FileMediaLibrary(runtime.projects), None)
+
+    def send(sequence, first_sample, at_ns, amplitude):
+        pcm = struct.pack("<480h", *([amplitude] * 480))
+        return audio.chunk(token, install_id=hello["installId"],
+                           connection_id=snapshot["connectionId"],
+                           epoch=snapshot["connectionEpoch"], recording_id=recording_id,
+                           channel_id=channel_id, source_uuid=source_id, sequence=sequence,
+                           first_sample_index=first_sample, frame_count=480,
+                           sample_rate=48000, channels=1, obs_audio_timestamp_ns=at_ns,
+                           plugin_monotonic_ns=at_ns, sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm)
+
+    assert send(0, 0, 100_000_000, 1200)["durable"]
+    assert send(1, 480, 406_000_000_000, 9000)["durable"]
+    waveform = ObsLiveLinkWaveform(runtime.projects, None)
+    with pytest.raises(LiveLinkError, match="window") as live_error:
+        waveform.snapshot(project.id, recording_id, channel_id, start_seconds=0,
+                          end_seconds=120.00001)
+    assert live_error.value.status == 422
+    lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 406_405_226_200, "span-1")
+
+    result = waveform.snapshot(project.id, recording_id, channel_id,
+                               start_seconds=0, end_seconds=406.4052262, max_points=600)
+    assert result["source"] == "pcm"
+    assert len(result["points"]) == 600
+    assert max(point["peak"] or 0 for point in result["points"][:5]) == 1200
+    assert max(point["peak"] or 0 for point in result["points"][-5:]) == 9000
+    with pytest.raises(LiveLinkError, match="window") as cursor_error:
+        waveform.snapshot(project.id, recording_id, channel_id,
+                          start_seconds=0, end_seconds=406.4052262, after_sequence=0)
+    assert cursor_error.value.status == 422
+    with pytest.raises(LiveLinkError, match="window") as range_error:
+        waveform.snapshot(project.id, recording_id, channel_id,
+                          start_seconds=0, end_seconds=406.405228)
+    assert range_error.value.status == 422
+    with pytest.raises(LiveLinkError, match="window") as ordering_error:
+        waveform.snapshot(project.id, recording_id, channel_id,
+                          start_seconds=2, end_seconds=1)
+    assert ordering_error.value.status == 422
+    with pytest.raises(LiveLinkError, match="window") as finite_error:
+        waveform.snapshot(project.id, recording_id, channel_id,
+                          start_seconds=0, end_seconds=float("inf"))
+    assert finite_error.value.status == 422
+
+
+def test_stopped_ready_mka_waveform_supports_full_recording_overview(tmp_path):
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("FFmpeg is required for MKA waveform overview")
+    link, runtime, project, token, hello, snapshot = setup(tmp_path)
+    channel_id, source_id = str(uuid4()), str(uuid4())
+    advertise(runtime, link, token, hello, snapshot, [source(channel_id, source_id)])
+    recording_id = lifecycle(runtime, token, hello, snapshot, 0, "obs-start", 0, "span-1")[
+        "appRecording"]["recordingId"]
+    lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 121_000_000_000, "span-1")
+
+    project_root = Path(project.project_path)
+    folder = project_root / "assets" / "obs-livelink" / recording_id
+    archive_path = folder / "source.mka"
+    subprocess.run([ffmpeg, "-y", "-nostdin", "-v", "error", "-f", "lavfi",
+                    "-i", "anullsrc=channel_layout=mono:sample_rate=8000", "-t", "121",
+                    "-c:a", "pcm_s16le", str(archive_path)], check=True,
+                   capture_output=True, text=True)
+    archive_sha256 = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    journal_path = folder / "recording.json"
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    journal["recording"]["archiveStatus"] = "ready"
+    journal["recording"]["sourceArchive"] = {
+        "sourcePath": archive_path.relative_to(project_root).as_posix(),
+        "tracks": [{"channelId": channel_id, "streamIndex": 0}],
+    }
+    journal["archiveSha256"] = archive_sha256
+    journal_path.write_text(json.dumps(journal), encoding="utf-8")
+    (folder / "pro4bro-session.json").write_text(json.dumps({
+        "tracks": [{"channelId": channel_id, "sampleRate": 8000, "audioChannels": 1}],
+    }), encoding="utf-8")
+
+    result = ObsLiveLinkWaveform(runtime.projects, ffmpeg).snapshot(
+        project.id, recording_id, channel_id, start_seconds=0, end_seconds=121, max_points=600)
+    assert result["source"] == "mka"
+    assert result["sampleAxis"] == "recording"
+    assert len(result["points"]) == 600
+    assert all(point["peak"] == 0 for point in result["points"])
+    block_folder = folder / "channels" / channel_id / "archive-envelope-v1"
+    assert (block_folder / "manifest.json").is_file()
+    assert (block_folder / "000012.json").is_file()
 
 
 def test_waveform_rebuilds_from_correct_mka_track_after_stop(tmp_path):
