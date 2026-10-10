@@ -31,6 +31,11 @@ describe("subtitle trim styling", () => {
       const outGrip = getComputedStyle(word.querySelector(".timeline-word__grip--out"));
       expect(Number.parseFloat(inGrip.left) + Number.parseFloat(inGrip.width)).toBeLessThanOrEqual(0);
       expect(Number.parseFloat(outGrip.right) + Number.parseFloat(outGrip.width)).toBeLessThanOrEqual(0);
+      // Touching neighbours occupy the same text row. External grips must also
+      // sit above it, otherwise the OUT grip covers the next word's first glyph.
+      expect(Number.parseFloat(inGrip.top)).toBeLessThan(0);
+      expect(Number.parseFloat(inGrip.top) + Number.parseFloat(inGrip.height)).toBeLessThanOrEqual(0);
+      expect(Number.parseFloat(outGrip.top) + Number.parseFloat(outGrip.height)).toBeLessThanOrEqual(0);
       expect(getComputedStyle(word).overflow).toBe("visible");
       expect(word.querySelector(".timeline-word__label")).toHaveTextContent("trong");
       expect([word.style.left, word.style.width, neighbour.style.left, neighbour.style.width]).toEqual(original);
