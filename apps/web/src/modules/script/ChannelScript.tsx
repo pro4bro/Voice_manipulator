@@ -43,7 +43,7 @@ function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; ro
     return () => { window.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
   }, [tooltip]);
   return <span className="script-transcript-words">{row.words.length ? row.words.map(({ word, index }) =>
-    <span key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
+    <span className="script-table__word-wrap" key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
       aria-describedby={tooltip?.index === index ? tooltipId : undefined}
       onMouseEnter={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
