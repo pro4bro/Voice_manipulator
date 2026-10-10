@@ -1,5 +1,34 @@
 # Project Status — 2026-10-10
 
+## USER-FEEDBACK-19 — shared Script table (2026-10-10)
+
+Product `278188d` makes ordinary footage, imported/archived channels, pending
+OBS and VoiceScript use shared transcript table/header/row/speaker/selection
+components. Separate channel cards are removed. Default columns and browser
+column preferences now apply across projects and sources; legacy per-footage
+keys are retained but no longer applied.
+
+The profile dropdown is beside the16.8px checkbox (30% smaller), with its row
+number underneath and channel name directly below the dropdown. Selected-only
+assignment/unassignment remains; VoiceScript plain-click untick is repaired.
+Text formatting and vertical scrollbar chrome are shared. Aggregate/live
+export/clear/AI controls remain visible but disabled until a child document is
+opened; live segment timing/profile readiness is not represented as archived
+word data.
+
+Focused92/7 and full frontend728/80 pass; typecheck/build/diff pass. Backend:
+741 passed /2 existing warnings in206.62s. Full frontend preceded the final
+code-tag timestamp/title polish, then all92 affected tests and typecheck/build
+passed again. Evidence: `docs/gates/user-feedback-19-script-layout.md`;
+shared presentation contract: ADR0065.
+
+Native acceptance remains after refresh: compare Conviction and OBS9 parent/
+child rows, checkbox/profile/track layout, long scroll and Voice Model selection.
+DOM/CSS regressions establish structure and styles, not appearance on the owner's
+device. Exact next: **STT-TIMING-ACCURACY-01 independent anchor review** after the
+owner completes the Conviction benchmark. Phase03 stays60%; acoustic timing
+accuracy, production defaults, media and model jobs are unchanged.
+
 ## USER-FEEDBACK-18 — subtitle text insertion (2026-10-10)
 
 Product `3186a8e` adds **Add text** to subtitle context menus and an
