@@ -40,3 +40,13 @@ edits; processing, media lifecycle, audio gain and footage cut commands are not
 new history commands in this round. There is no manifest migration or audio
 mutation. A new aligner requires the measured gate in
 `docs/STT-TIMING-ACCURACY-PLAN.md`; R5/R6 acceptance is not overridden.
+
+## Rendering correction — 2026-10-10, USER-FEEDBACK-17
+
+Readable intervals that touch at one source timestamp must both survive density
+filtering when the active word changes. Screen arithmetic tolerates rounding
+at 1e-6 pixel precision; compact 4px stripes retain strict occupancy. This does
+not change source timestamps or editing collision reservations. Trim grips are
+external overlays on the timestamped box, with text clipped separately inside
+the box. Grips sit above the label row so adjoining glyphs are clear. Their width
+reserves no time or layout space for neighbouring words.

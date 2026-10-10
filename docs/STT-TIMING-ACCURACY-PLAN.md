@@ -65,3 +65,9 @@ confidence, safe identity mapping and the unchanged proxy budget do not accept
 the candidate. The blind24-target worksheet is ready, but independent human
 IN/OUT anchors are absent. Continue STT-TIMING-ACCURACY-01 with the matching
 review JSON before claiming acoustic error improvement or changing a default.
+
+Owner update, 2026-10-10: the owner will carefully review timing in Conviction.
+After confirmation of completion and reviewed regions, preserve a separate
+reference copy with source PCM hashes and explicit word IN/OUT. This reviewed
+project can supply independent anchors; do not require duplicate work in the
+offline worksheet or score unreviewed original STT timings as acoustic truth.

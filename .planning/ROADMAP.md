@@ -1,5 +1,35 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-17 — subtitle grips and word visibility (2026-10-10)
+
+Product `3669099` / `05a5ce9` repairs subtitle rendering in one bounded round. Trim grips
+sit outside and above readable word boxes; a separate clipped label keeps text inside.
+Grip width reserves no layout/time space and selection changes no source words
+or neighbouring timestamps. Compact overview stripes retain hidden grips.
+
+The missing previous word was reproduced through Timeline audio-clock updates:
+floating-point pixel collisions/search boundaries dropped a touching readable
+box when the active neighbour changed. Shared density arithmetic now preserves
+these boundaries at1e-6 pixel precision, with strict4px compact occupancy and
+visual overshoot clipping. Ordinary, imported and archived OBS views use the
+same helper; focused editors share the Timeline label/grips.
+
+Original-product replay has3 regression failures (5px grip intrusion, density
+omission, missing DOM word). Repaired focused36/4 and full frontend704/78 pass;
+typecheck/build/diff pass. The full pass uses two workers with original test
+budgets retained, after a loaded default run failed Script wheel/live-caption
+checks; affected files also pass separately58/2. Full backend: 741 passed / two existing warnings in223.39s.
+Gate `docs/gates/user-feedback-17-subtitle-grips-visibility.md` records evidence
+and resolved test-setup failures. No owner runtime restart/model job/media edit.
+
+Native screenshot/audio acceptance remains after reloading the built UI; the
+prior automatic browser approval rejection is respected without a workaround.
+The owner will carefully review timing in Conviction. Exact next remains
+**STT-TIMING-ACCURACY-01 independent anchor review**: after owner confirmation,
+freeze the reviewed regions/PCM/word identities as a separate benchmark copy.
+That project can supply anchors without repeating the offline worksheet. Human
+IN/OUT accuracy remains unmeasured, timing defaults unchanged; Phase03 stays60%.
+
 ## STT-TIMING-ACCURACY-01 — isolated screen and anchor tooling (2026-10-10)
 
 Measurement/tooling `08918b7` retains three exact mono PCM16/24kHz crops
