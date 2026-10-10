@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-10 — USER-FEEDBACK-17 subtitle grips and word visibility.
-last_activity_desc: External trim grips and touching-word visibility fixed; frontend704/78 and build/typecheck pass. Owner preparing Conviction timing reference; acoustic review remains open. Phase03 stays60%.
+last_activity: 2026-10-10 — USER-FEEDBACK-18 subtitle text insertion.
+last_activity_desc: Subtitle Add text and gap double-click implemented; frontend715/78 and build/typecheck pass. Owner preparing Conviction timing reference; acoustic review remains open. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,30 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-18 — subtitle text insertion (2026-10-10)
+
+Product `3186a8e` adds **Add text** to subtitle context menus and an
+inline multiword editor on double-clicking a timing gap. Ordinary, imported
+multitrack and archived OBS lanes share the editor. Hidden words still edit by
+source timestamp; Ctrl-click and existing word actions remain available.
+
+Inserted tokens receive separate equal positive provisional spans with small
+spacing, bounded by adjacent words/audio end. Exact old word identities and
+timestamps survive, including repeated text and tiny gaps. A no-room insertion
+shows an inline alert and commits nothing. Enter/blur commits once; Escape
+cancels. The input remains inside the viewport and Script updates through the
+existing asset callback/history path.
+
+Focused102/5 and final frontend715/78 pass; typecheck/build/diff pass. The first
+full run714/1 exposed hidden-word editing and was repaired without changing its
+assertion or DOM budget. Full backend: 741 passed /2 existing warnings in227.20s.
+Evidence: `docs/gates/user-feedback-18-subtitle-text-insertion.md`.
+
+Native device acceptance remains after refreshing the built UI. Exact next:
+**STT-TIMING-ACCURACY-01 independent anchor review** when the owner finishes
+Conviction. That reference matters because provisional interpolation is not
+acoustic truth. Phase03 stays60%; timing defaults/budgets remain unchanged.
 
 ## USER-FEEDBACK-17 — subtitle grips and word visibility (2026-10-10)
 

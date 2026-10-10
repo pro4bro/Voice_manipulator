@@ -1,5 +1,29 @@
 # Project Status — 2026-10-10
 
+## USER-FEEDBACK-18 — subtitle text insertion (2026-10-10)
+
+Product `3186a8e` adds **Add text** to subtitle context menus and an
+inline multiword editor on double-clicking a timing gap. Ordinary, imported
+multitrack and archived OBS lanes share the editor. Hidden words still edit by
+source timestamp; Ctrl-click and existing word actions remain available.
+
+Inserted tokens receive separate equal positive provisional spans with small
+spacing, bounded by adjacent words/audio end. Exact old word identities and
+timestamps survive, including repeated text and tiny gaps. A no-room insertion
+shows an inline alert and commits nothing. Enter/blur commits once; Escape
+cancels. The input remains inside the viewport and Script updates through the
+existing asset callback/history path.
+
+Focused102/5 and final frontend715/78 pass; typecheck/build/diff pass. The first
+full run714/1 exposed hidden-word editing and was repaired without changing its
+assertion or DOM budget. Full backend: 741 passed /2 existing warnings in227.20s.
+Evidence: `docs/gates/user-feedback-18-subtitle-text-insertion.md`.
+
+Native device acceptance remains after refreshing the built UI. Exact next:
+**STT-TIMING-ACCURACY-01 independent anchor review** when the owner finishes
+Conviction. That reference matters because provisional interpolation is not
+acoustic truth. Phase03 stays60%; timing defaults/budgets remain unchanged.
+
 ## USER-FEEDBACK-17 — subtitle grips and word visibility (2026-10-10)
 
 Product `3669099` / `05a5ce9` repairs subtitle rendering in one bounded round. Trim grips

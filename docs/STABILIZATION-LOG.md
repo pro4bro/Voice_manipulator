@@ -1117,3 +1117,35 @@ The owner will carefully review timing in Conviction. Exact next remains
 freeze the reviewed regions/PCM/word identities as a separate benchmark copy.
 That project can supply anchors without repeating the offline worksheet. Human
 IN/OUT accuracy remains unmeasured, timing defaults unchanged; Phase03 stays60%.
+
+## 2026-10-10 — USER-FEEDBACK-18
+
+### Feedback
+
+Owner requests Add text on subtitle right-click and a multiword input on
+double-clicking empty subtitle space, splitting words into individual boxes
+with evenly divided timing.
+
+### Agent tự kiểm / Kết quả so với ngưỡng
+
+Product `3186a8e` adds **Add text** to subtitle context menus and an
+inline multiword editor on double-clicking a timing gap. Ordinary, imported
+multitrack and archived OBS lanes share the editor. Hidden words still edit by
+source timestamp; Ctrl-click and existing word actions remain available.
+
+Inserted tokens receive separate equal positive provisional spans with small
+spacing, bounded by adjacent words/audio end. Exact old word identities and
+timestamps survive, including repeated text and tiny gaps. A no-room insertion
+shows an inline alert and commits nothing. Enter/blur commits once; Escape
+cancels. The input remains inside the viewport and Script updates through the
+existing asset callback/history path.
+
+Focused102/5 and final frontend715/78 pass; typecheck/build/diff pass. The first
+full run714/1 exposed hidden-word editing and was repaired without changing its
+assertion or DOM budget. Full backend: 741 passed /2 existing warnings in227.20s.
+Evidence: `docs/gates/user-feedback-18-subtitle-text-insertion.md`.
+
+Native device acceptance remains after refreshing the built UI. Exact next:
+**STT-TIMING-ACCURACY-01 independent anchor review** when the owner finishes
+Conviction. That reference matters because provisional interpolation is not
+acoustic truth. Phase03 stays60%; timing defaults/budgets remain unchanged.

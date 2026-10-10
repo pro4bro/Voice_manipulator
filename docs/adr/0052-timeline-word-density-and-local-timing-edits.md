@@ -50,3 +50,18 @@ not change source timestamps or editing collision reservations. Trim grips are
 external overlays on the timestamped box, with text clipped separately inside
 the box. Grips sit above the label row so adjoining glyphs are clear. Their width
 reserves no time or layout space for neighbouring words.
+
+## Subtitle insertion — 2026-10-10, USER-FEEDBACK-18
+
+Add text retains the clicked source time independently of selected word indexes.
+A double-click inside an occupied source interval still edits that word even
+when density filtering hid its box; a genuine gap opens phrase insertion.
+Ordinary, imported multitrack and stopped OBS lanes delegate to the same editor.
+
+Bounded insertion uses an exact word-array splice and the existing transcript
+boundary mapper. It equally allocates provisional positive intervals with small
+spacing inside the gap/audio bounds. It must not normalize, borrow from or
+realign untouched word anchors. If no gap exists it leaves the transcript intact
+and requests timing adjustment through an inline alert. These estimates retain
+untrusted/manual metadata and require audio review; they are not STT accuracy
+truth. No persistent-format migration or new processing success state is added.
