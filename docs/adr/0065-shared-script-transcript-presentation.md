@@ -43,6 +43,10 @@ an archived word document exists. Controls requiring one archived document
 (export, clear and AI review) stay visible but disabled in the aggregate/live
 view; opening a child document uses the established functional actions.
 
+Word-aware source adapters also use `script-table__word-wrap` per word. Its
+inline-block whitespace layout, together with common word button padding, is
+the canonical inter-word spacing contract (USER-FEEDBACK-21).
+
 ## Evidence and limits
 
 Cross-source DOM and real stylesheet tests cover canonical columns, inline

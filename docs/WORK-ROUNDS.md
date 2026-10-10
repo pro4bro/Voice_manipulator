@@ -12,7 +12,27 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-10 — current: USER-FEEDBACK-20
+### 2026-10-10 — current: USER-FEEDBACK-21
+
+Product `9faf5d3`: ChannelScript now uses the canonical `script-table__word-wrap` around each
+word, as ordinary ScriptTable and VoiceScript already do. Inline spans had
+allowed trailing spaces to contribute extra inter-word spacing in imported/OBS
+channel transcripts. The existing inline-block wrapper gives these transcripts
+the Conviction/screenshot1 spacing without a project-specific CSS adjustment.
+Text, timestamps and commands are unchanged.
+
+Two stylesheet regressions failed before the fix and pass after it. Focused38/4
+passes, including editing, command routing and transcript-window tests. Full
+frontend752/83 passes in97.32s; typecheck/build/diff pass. Backend741 passes /2 existing warnings in224.01s. Evidence:
+`docs/gates/user-feedback-21-script-word-spacing.md`.
+
+Refresh and compare Conviction and OBS9 at the same Script SIZE. Native glyph
+geometry remains owner acceptance; computed-style/markup checks do not measure
+it on the owner's device. Exact next: **STT-TIMING-ACCURACY-01 independent anchor
+review** after the owner finishes the Conviction timing reference, needed for
+independent acoustic boundary measurement. Phase03 stays60%.
+
+### 2026-10-10 — previous: USER-FEEDBACK-20
 
 Product `c253313` removes row-selection/source-feed disabling of valid Script
 controls. Row profile dropdowns always open, including an empty catalog, and
