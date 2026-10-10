@@ -8,7 +8,7 @@ import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/wo
 import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import { keepWordInView } from "./script-table";
+import { useScriptPlaybackVisibility } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
@@ -102,6 +102,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   const [underline, setUnderline] = useState(false);
   const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const followRoot = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const focusRef = useRef<{ rowId: string; start: number; end: number } | null>(null);
   const [, setFocusTick] = useState(0);
@@ -255,12 +256,8 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     });
   });
 
-  useLayoutEffect(() => {
-    const view = scrollRef.current;
-    if (!view || activeWordIndex < 0) return;
-    const target = view.querySelector<HTMLElement>(`[data-script-word-index="${activeWordIndex}"]`);
-    if (target) keepWordInView(view, target);
-  }, [activeWordIndex]);
+  useScriptPlaybackVisibility(followRoot, scrollRef, playbackId ? [playbackId] : [],
+    playbackId ? { [playbackId]: activeWordIndex } : {}, undefined, view === "table");
 
   useEffect(() => {
     if (!voiceMenu) return undefined;
@@ -489,7 +486,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       {timingNote ? <div className="script-timing-warning" role="status">{timingNote}</div> : null}
       {findOpen ? <div aria-label="Tìm và thay thế" className="script-find-replace"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}
     </div>
-    {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey}>
+    {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey} ref={followRoot}>
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;

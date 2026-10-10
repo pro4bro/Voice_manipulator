@@ -7,7 +7,8 @@ import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
 import { useTranscriptWindow } from "./transcript-window";
 import { useScriptShortcuts } from "./script-shortcuts";
-import { useScriptPlaybackFollow } from "./script-playback-follow";
+import { keepWordInView, useScriptPlaybackVisibility } from "./script-playback-follow";
+export { keepWordInView } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 import "./script-selection.css";
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout, type ScriptTableColumn } from "./script-transcript-layout";
@@ -154,28 +155,6 @@ interface SpeakerTextProps {
 }
 
 /* The non-table view keeps each diarized turn intact while giving the user a compact reading layout. */
-/** Scroll `view` so `target` sits in its comfortable band, and report the new offset.
- *
- * Measured from rects rather than offsetTop. offsetTop is relative to the nearest
- * positioned ancestor, and `.script-table__word-wrap` is positioned so it can host
- * the word editor popover - so every word reported offsetTop 0, the arithmetic
- * produced 0, and playback scrolled the transcript back to the top on every tick
- * instead of following the word being spoken.
- */
-export function keepWordInView(view: HTMLElement, target: HTMLElement): number | null {
-  const viewRect = view.getBoundingClientRect();
-  const targetRect = target.getBoundingClientRect();
-  const top = targetRect.top - viewRect.top + view.scrollTop;
-  const bottom = top + targetRect.height;
-  if (top >= view.scrollTop + view.clientHeight * 0.18 && bottom <= view.scrollTop + view.clientHeight * 0.76) {
-    return null;
-  }
-  const furthest = Math.max(0, view.scrollHeight - view.clientHeight);
-  const next = Math.max(0, Math.min(furthest, top - view.clientHeight * 0.38));
-  view.scrollTop = next;
-  return next;
-}
-
 export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection, onSelectionChange, defaultSpeakerId = null }: SpeakerTextProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
@@ -271,7 +250,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   const rowIds = rows.map((row) => row.id);
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   const commandRef = useRef<HTMLDivElement>(null);
-  const playbackFollow = useScriptPlaybackFollow(commandRef, assetId ?? storageKey);
   useScriptShortcuts(commandRef, { selectAll: () => setRowSelection((current) => selectAllListItems(current, rowIds)) });
   const selectedRowWords = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.id)).flatMap((row) => row.words.map((item) => item.index)), [rows, selectedRowIds.join("\0")]);
   useEffect(() => { onSelectedRowWordsChange?.(selectedRowWords); }, [selectedRowWords.join(","), onSelectedRowWordsChange]);
@@ -296,6 +274,9 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   selectionRef.current = selection;
   const [leadingContentHeight, setLeadingContentHeight] = useState(0);
   const transcriptWindow = useTranscriptWindow(rows, scrollRef, columns.find((column) => column.builtin === "content")?.width ?? 620, leadingContentHeight);
+  const playbackIdentity = assetId ?? storageKey;
+  const playbackFollow = useScriptPlaybackVisibility(commandRef, scrollRef, [playbackIdentity],
+    { [playbackIdentity]: activeWordIndex }, (_assetId, index) => transcriptWindow.reveal(index));
 
   useLayoutEffect(() => {
     const element = leadingContentRef.current;
@@ -380,15 +361,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     setDeleteMessage(null);
     setRowSelection({ ids: [], anchorId: null });
   }
-
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    const activeWord = activeWordRef.current;
-    if (!element || !playbackFollow.shouldFollow(activeWordIndex)) return;
-    if (transcriptWindow.reveal(activeWordIndex)) { updateScroll(element); return; }
-    if (!activeWord) return;
-    if (keepWordInView(element, activeWord) !== null) updateScroll(element);
-  }, [activeWordIndex, rows]);
 
   function modifiersOf(event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }) {
     return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey };

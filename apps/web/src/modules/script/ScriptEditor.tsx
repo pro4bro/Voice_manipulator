@@ -165,7 +165,7 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
       textarea.scrollTop = nextTop;
       syncScriptEditorScroll({ currentTarget: textarea } as UIEvent<HTMLTextAreaElement>);
     }
-  }, [activeWordIndex, reviewActive, tagMode, useNativePlayback, value, wordRangesByIndex]);
+  }, [activeWordIndex, reviewActive, tagMode, useNativePlayback, value, wordRangesByIndex, playbackFollow.revision]);
 
   useEffect(() => {
     if (!selectionMenu) return;

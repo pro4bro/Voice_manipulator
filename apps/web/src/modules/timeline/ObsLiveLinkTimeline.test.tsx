@@ -1264,3 +1264,26 @@ it("does not seek back to zero after dragging a waveform", async () => {
   fireEvent.click(wave, { clientX: 0 });
   expect(screen.getByText("00:00:24.000")).toBeInTheDocument();
 });
+
+it.each([false, true])("resumes Script following by dragging an archived OBS waveform (single track=%s)", async (singleTrack) => {
+  const { container } = archivedWorkspace(singleTrack);
+  const waveform = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const view = container.querySelector<HTMLElement>(".script-table-scroll")!;
+  Object.defineProperties(view, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 2000 } });
+  vi.spyOn(view, "getBoundingClientRect").mockReturnValue({ top: 100, height: 200 } as DOMRect);
+  container.querySelectorAll<HTMLElement>(".script-table__word").forEach((word) => {
+    vi.spyOn(word, "getBoundingClientRect").mockImplementation(() => ({ top: 500 - view.scrollTop, height: 20 } as DOMRect));
+  });
+  vi.spyOn(waveform, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.wheel(view);
+  fireEvent.pointerDown(waveform, { pointerId: 1, clientX: 35, button: 0 });
+  fireEvent.pointerUp(waveform, { pointerId: 1, clientX: 35, button: 0 });
+  await waitFor(() => expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("chào"));
+  expect(view.scrollTop).toBeGreaterThan(0);
+  fireEvent.wheel(view);
+  view.scrollTop = 0;
+  // The second drag remains in the same word, so no new word publication is needed.
+  fireEvent.pointerDown(waveform, { pointerId: 2, clientX: 36, button: 0 });
+  fireEvent.pointerUp(waveform, { pointerId: 2, clientX: 36, button: 0 });
+  expect(view.scrollTop).toBeGreaterThan(0);
+});

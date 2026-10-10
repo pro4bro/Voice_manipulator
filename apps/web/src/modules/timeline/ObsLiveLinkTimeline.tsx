@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEve
 import { useAudioScrubber } from "./audio-scrubbing";
 
 import { api } from "../../api/client";
-import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { notifyPlaybackInteraction, publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, SpeakerProfile, TimelineEditRange } from "../../domain/types";
 import type { TimelineEditState } from "../../domain/timeline-editing";
@@ -693,6 +693,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (seconds === null) return;
     const overlap = overlaps.find((item) => item.startSeconds <= seconds && seconds < item.endSeconds);
     if (isLive && !overlap) { onOverlapSelect?.(null); return; }
+    notifyPlaybackInteraction(lane?.assetId ? [lane.assetId] : assetIds);
     seek(event.clientX, event.currentTarget);
     if (overlap && lane && recordingId) {
       setSelectedChannelId(lane.channelId);
@@ -703,6 +704,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   function beginScrub(event: PointerEvent<HTMLElement>) {
     if (isLive || event.button !== 0) return;
+    notifyPlaybackInteraction(assetIds);
     const audios: HTMLAudioElement[] = [];
     forEachPlaybackAudio((audio) => audios.push(audio));
     audioScrubber.begin(audios, (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),

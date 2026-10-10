@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
-import { publishPlaybackWord } from "../../domain/playback-sync";
+import { notifyPlaybackInteraction, publishPlaybackWord } from "../../domain/playback-sync";
 import { editableWordTimings } from "../../domain/editable-word-timing";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections, type TimelineEditState } from "../../domain/timeline-editing";
 import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
@@ -1300,6 +1300,7 @@ export function Timeline({
   }
 
   function beginAudioScrub() {
+    if (take?.id) notifyPlaybackInteraction([take.id]);
     const audio = audioRef.current;
     if (!audio) return;
     audioScrubber.begin([audio], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),

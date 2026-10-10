@@ -140,9 +140,9 @@ export function useTranscriptWindow<T extends { words: IndexedWord[] }>(
     element.querySelectorAll<HTMLElement>("[data-transcript-fragment], [data-transcript-row]").forEach((node) => observer?.observe(node));
     return () => observer?.disconnect();
   }, [enabled, first, last, fragments, measurements, offsets, contentWidth, topInset, rowKeys, view]);
-  function reveal(index: number) {
+  function reveal(index: number, matchesRow: (row: T) => boolean = () => true) {
     if (!enabled || !view.current || index < 0) return false;
-    const target = fragments.findIndex((fragment) => fragment.words[0]?.index <= index && fragment.words.at(-1)!.index >= index);
+    const target = fragments.findIndex((fragment) => matchesRow(fragment.row) && fragment.words[0]?.index <= index && fragment.words.at(-1)!.index >= index);
     if (target < 0 || target >= first && target < last) return false;
     const top = Math.max(0, offsets[target] - 60);
     view.current.scrollTop = topInset + top;

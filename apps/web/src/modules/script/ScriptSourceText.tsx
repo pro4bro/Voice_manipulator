@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectMediaAsset, StudioWord } from "../../domain/types";
-import { requestPlaybackSeek } from "../../domain/playback-sync";
+import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
 import { mapScriptWordsToText, reconcileScriptTextEdit } from "./script-text-reconciliation";
 import { buildReviewPieces } from "./review-diff";
 
@@ -10,6 +10,11 @@ export function ScriptSourceText({ source, onChange }: { source: ProjectMediaAss
   const editing = useRef(false);
   const baseline = useRef(source);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const activeIndex = usePlaybackWord(source.id);
+  const [isEditing, setIsEditing] = useState(false);
+  const ranges = useMemo(() => mapScriptWordsToText(draft, source.words ?? []), [draft, source.words]);
+  const activeRange = ranges.find((range) => range.index === activeIndex);
+  const tracking = Boolean(activeRange && !isEditing && draft === source.text);
   const candidate = [...(source.revisions ?? [])].reverse().find((revision) => revision.source === "ai");
   const [reviewBase, setReviewBase] = useState(source.text);
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -43,13 +48,16 @@ export function ScriptSourceText({ source, onChange }: { source: ProjectMediaAss
         {manual?.id === piece.id ? <input autoFocus aria-label="Sửa thủ công" value={manual.text} onChange={(event) => setManual({ ...manual, text: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); choose(piece.id, manual.text); } if (event.key === "Escape") setManual(null); }} /> : null}
       </span>)}
     </div> : null}
+    <div className={`script-source-editor-stack ${tracking ? "is-tracking" : ""}`}>
+    {tracking && activeRange ? <div aria-hidden="true" className="script-source-playback-layer">{draft.slice(0, activeRange.start)}<span className="is-active" data-script-word-index={activeIndex} data-script-source-id={source.id}>{draft.slice(activeRange.start, activeRange.end)}</span>{draft.slice(activeRange.end)}</div> : null}
     <textarea ref={textarea} aria-label={`Script transcript · ${source.name}`} data-script-source-id={source.id} value={draft}
-      onFocus={() => { editing.current = true; baseline.current = source; }}
+      onFocus={() => { editing.current = true; setIsEditing(true); baseline.current = source; }}
       onChange={(event) => setDraft(event.currentTarget.value)}
-      onBlur={() => { editing.current = false; if (draft !== baseline.current.text) commit(draft); }}
+      onBlur={() => { editing.current = false; setIsEditing(false); if (draft !== baseline.current.text) commit(draft); }}
       onClick={(event) => {
-        const range = mapScriptWordsToText(draft, source.words ?? []).find((word) => word.start <= event.currentTarget.selectionStart && word.end >= event.currentTarget.selectionStart);
+        const range = ranges.find((word) => word.start <= event.currentTarget.selectionStart && word.end >= event.currentTarget.selectionStart);
         if (range) requestPlaybackSeek(source.id, source.words[range.index].start);
       }} />
+    </div>
   </section>;
 }

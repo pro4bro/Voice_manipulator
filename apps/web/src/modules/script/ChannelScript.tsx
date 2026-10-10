@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { channelScriptRows, type ChannelScriptRow } from "./channel-script";
-import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
+import { requestPlaybackSeek, usePlaybackWord, usePlaybackWords } from "../../domain/playback-sync";
 import { obsOverlapSelectionMatches, type ObsOverlapSelection } from "../obs-capture/obs-overlap";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 import { replaceScriptWord } from "./script-text-reconciliation";
@@ -13,6 +13,7 @@ import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 import { ScriptSourceText } from "./ScriptSourceText";
+import { useScriptPlaybackVisibility } from "./script-playback-follow";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -45,6 +46,7 @@ function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; ro
   return <span className="script-transcript-words">{row.words.length ? row.words.map(({ word, index }) =>
     <span className="script-table__word-wrap" key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
+      data-script-word-index={index} data-script-source-id={row.trackId}
       aria-describedby={tooltip?.index === index ? tooltipId : undefined}
       onMouseEnter={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
       onFocus={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
@@ -83,6 +85,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     return [...groups.values()].flatMap(channelScriptRows);
   }, [tracks, groupByTrack]);
   const viewRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const layout = useScriptTableLayout();
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -98,6 +101,9 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     return () => observer.disconnect();
   }, [layout.columns]);
   const transcriptWindow = useTranscriptWindow(rows, viewRef, layout.columns.find((column) => column.builtin === "content")?.width ?? 620, headerHeight);
+  const activeWords = usePlaybackWords();
+  useScriptPlaybackVisibility(rootRef, viewRef, tracks.map((track) => track.id), activeWords,
+    viewMode === "table" ? (assetId, index) => transcriptWindow.reveal(index, (row) => row.trackId === assetId) : undefined);
   const rowIds = rows.map((row) => `${row.trackId}:${row.words[0]?.index ?? "untimed"}`);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const selected = reconcileListSelection(selection, rowIds).ids;
@@ -116,7 +122,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     const result = replaceScriptWord(track.text, index, text, track.words ?? []);
     onWordsChange(trackId, result.words, result.text);
   }
-  return <section aria-label="Script theo channel" className="script-transcript-feed">
+  return <section aria-label="Script theo channel" className="script-transcript-feed" ref={rootRef}>
     {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn"><b>{selected.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button></div> : null}
     <div className="script-table-scroll-region">
       <div aria-label="Lượt nói theo thời gian" role="grid" className="script-table-scroll" ref={viewRef}>

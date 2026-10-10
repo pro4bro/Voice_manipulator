@@ -7,6 +7,7 @@ type PlaybackWordSnapshot = {
 
 let snapshot: PlaybackWordSnapshot = { assetId: null, wordIndex: -1 };
 let channelWords: Record<string, number> = {};
+let playbackWords: Readonly<Record<string, number>> = {};
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -23,20 +24,38 @@ export function publishPlaybackWord(assetId: string | null | undefined, wordInde
   if (snapshot.assetId === next.assetId && snapshot.wordIndex === next.wordIndex && !Object.keys(channelWords).length) return;
   snapshot = next;
   channelWords = {};
+  playbackWords = next.assetId ? { [next.assetId]: wordIndex } : {};
   listeners.forEach((listener) => listener());
 }
 
 /** All imported channels share one playhead and may speak simultaneously. */
 export function publishPlaybackWords(words: Record<string, number>) {
-  if (JSON.stringify(channelWords) === JSON.stringify(words)) return;
+  if (snapshot.assetId === null && JSON.stringify(channelWords) === JSON.stringify(words)) return;
   channelWords = words;
+  playbackWords = words;
   snapshot = { assetId: null, wordIndex: -1 };
   listeners.forEach((listener) => listener());
 }
 
 const seekListeners = new Set<(assetId: string, seconds: number) => void>();
+const interactionListeners = new Set<(assetIds: readonly string[]) => void>();
+/** A deliberate Timeline gesture resumes Script following without seeking audio again. */
+export function notifyPlaybackInteraction(assetIds: readonly string[]) {
+  interactionListeners.forEach((listener) => listener(assetIds));
+}
+export function subscribePlaybackInteraction(listener: (assetIds: readonly string[]) => void) {
+  interactionListeners.add(listener);
+  return () => { interactionListeners.delete(listener); };
+}
 export function requestPlaybackSeek(assetId: string, seconds: number) {
+  notifyPlaybackInteraction([assetId]);
   seekListeners.forEach((listener) => listener(assetId, seconds));
+}
+
+const EMPTY_PLAYBACK_WORDS: Readonly<Record<string, number>> = {};
+/** Source IDs remain distinct even when two tracks have the same word index. */
+export function usePlaybackWords() {
+  return useSyncExternalStore(subscribe, () => playbackWords, () => EMPTY_PLAYBACK_WORDS);
 }
 export function subscribePlaybackSeek(listener: (assetId: string, seconds: number) => void) {
   seekListeners.add(listener);

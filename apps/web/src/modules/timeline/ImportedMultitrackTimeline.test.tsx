@@ -19,6 +19,31 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it("resumes Script following by dragging an imported multitrack waveform", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const sources = tracks.map((track) => ({ ...track, words: [{ text: "hello", start: 30, end: 40 }], text: "hello" }));
+  const { container } = render(<><ChannelScript tracks={sources} onSelectTrack={vi.fn()} />
+    <ImportedMultitrackTimeline parent={parent} tracks={sources} selectedTrackId={null} onSelectTrack={vi.fn()} onCutsChange={vi.fn()} /></>);
+  const view = container.querySelector<HTMLElement>(".script-table-scroll")!;
+  Object.defineProperties(view, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 2000 } });
+  vi.spyOn(view, "getBoundingClientRect").mockReturnValue({ top: 100, height: 200 } as DOMRect);
+  container.querySelectorAll<HTMLElement>(".script-table__word").forEach((word) => {
+    vi.spyOn(word, "getBoundingClientRect").mockImplementation(() => ({ top: 500 - view.scrollTop, height: 20 } as DOMRect));
+  });
+  const waveform = screen.getByLabelText("Waveform Channel 1");
+  vi.spyOn(waveform, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.wheel(view);
+  fireEvent.pointerDown(waveform, { button: 0, clientX: 55, pointerId: 1 });
+  fireEvent.pointerUp(waveform, { button: 0, clientX: 55, pointerId: 1 });
+  expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("hello");
+  expect(view.scrollTop).toBeGreaterThan(0);
+  fireEvent.wheel(view);
+  view.scrollTop = 0;
+  fireEvent.pointerDown(waveform, { button: 0, clientX: 56, pointerId: 2 });
+  fireEvent.pointerUp(waveform, { button: 0, clientX: 56, pointerId: 2 });
+  expect(view.scrollTop).toBeGreaterThan(0);
+});
+
 it("positions timed subtitle words on the same axis as each waveform", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   render(<ImportedMultitrackTimeline parent={parent} tracks={[{ ...tracks[0], text: "hello world", words: [

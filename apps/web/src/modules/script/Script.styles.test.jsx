@@ -5,6 +5,27 @@ import { ScriptEditor } from "./ScriptEditor";
 import { ChannelScript } from "./ChannelScript";
 import { ObsLiveLinkScript } from "./ObsLiveLinkScript";
 import { VoiceScript } from "./VoiceScript";
+import { ScriptSourceText } from "./ScriptSourceText";
+import { act } from "@testing-library/react";
+import { publishPlaybackWords } from "../../domain/playback-sync";
+
+it("aligns the source playback overlay with native text without changing selection or layout", () => {
+  const sheet = document.createElement("style");
+  sheet.textContent = ["./script-transcript-layout.css"].map((path) => readFileSync(new URL(path, import.meta.url), "utf-8")).join("\n");
+  document.head.append(sheet);
+  try {
+    const view = render(<ScriptSourceText source={{ id: "source", name: "Track", text: "Xin chào", words: [{ text: "Xin", start: 1, end: 2 }, { text: "chào", start: 3, end: 4 }] }} />);
+    act(() => publishPlaybackWords({ source: 1 }));
+    const field = screen.getByRole("textbox");
+    const layer = view.container.querySelector(".script-source-playback-layer");
+    expect(layer).toHaveTextContent("Xin chào");
+    for (const property of ["padding", "borderWidth", "font", "lineHeight"]) expect(getComputedStyle(layer)[property]).toBe(getComputedStyle(field)[property]);
+    expect(getComputedStyle(layer).position).toBe("absolute");
+    expect(getComputedStyle(layer).pointerEvents).toBe("none");
+    fireEvent.focus(field);
+    expect(view.container.querySelector(".script-source-playback-layer")).toBeNull();
+  } finally { act(() => publishPlaybackWords({})); sheet.remove(); }
+});
 
 it.each(["import", "obs"])("uses the footage word spacing for %s channel transcripts", (origin) => {
   const sheet = document.createElement("style");

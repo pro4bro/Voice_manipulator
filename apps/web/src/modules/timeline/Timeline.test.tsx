@@ -2,10 +2,34 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Timeline, normalizeWordTimings } from "./Timeline";
+import { ScriptEditor } from "../script/ScriptEditor";
 
 import { useState } from "react";
 
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
+
+it("resumes the ordinary Script follow policy by dragging its Timeline", () => {
+  const words = [{ text: "hello", start: 3, end: 4 }];
+  const { container } = render(<><ScriptEditor playbackAssetId="file" value="hello" words={words} workflow="speech-to-text" onChange={vi.fn()} />
+    <Timeline gain={0} onGainChange={vi.fn()} take={{ id: "file", name: "file.wav", url: "/audio.wav", duration: 10, words }} /></>);
+  const view = container.querySelector<HTMLElement>(".script-table-scroll")!;
+  Object.defineProperties(view, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 2000 } });
+  vi.spyOn(view, "getBoundingClientRect").mockReturnValue({ top: 100, height: 200 } as DOMRect);
+  const word = container.querySelector<HTMLElement>(".script-table__word")!;
+  vi.spyOn(word, "getBoundingClientRect").mockImplementation(() => ({ top: 500 - view.scrollTop, height: 20 } as DOMRect));
+  const waveform = screen.getByLabelText("Waveform timeline");
+  vi.spyOn(container.querySelector<HTMLElement>(".timeline-canvas")!, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  fireEvent.wheel(view);
+  fireEvent.pointerDown(waveform, { button: 0, pointerId: 1, clientX: 35 });
+  fireEvent.pointerUp(waveform, { button: 0, pointerId: 1, clientX: 35 });
+  expect(word).toHaveClass("is-active");
+  expect(view.scrollTop).toBeGreaterThan(0);
+  fireEvent.wheel(view);
+  view.scrollTop = 0;
+  fireEvent.pointerDown(waveform, { button: 0, pointerId: 2, clientX: 36 });
+  fireEvent.pointerUp(waveform, { button: 0, pointerId: 2, clientX: 36 });
+  expect(view.scrollTop).toBeGreaterThan(0);
+});
 
 /** The workspace owns the selection; render it here the way the app does. */
 function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {

@@ -6,7 +6,7 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptShortcuts } from "../script/script-shortcuts";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
-import { publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { notifyPlaybackInteraction, publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
 import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain/timestamp-promotion";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
@@ -340,6 +340,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
 
   function beginScrub(event: PointerEvent<HTMLElement>, full = false) {
     if (event.button !== 0) return;
+    notifyPlaybackInteraction(ids);
     audioScrubber.begin([...audioRefs.current.values()], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
       (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
     setPlaying(false);

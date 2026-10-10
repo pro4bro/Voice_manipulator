@@ -26,5 +26,9 @@
 
 .script-source-text { font-size: clamp(calc(14px * var(--font-scale, 1) * var(--script-font-adjust, 1)), calc(1.05vw * var(--font-scale, 1) * var(--script-font-adjust, 1)), calc(17px * var(--font-scale, 1) * var(--script-font-adjust, 1))); padding: 12px; min-width: 0; border-bottom: 1px solid var(--line); }
 .script-source-text > strong { display: block; margin-bottom: 8px; color: var(--text-muted); }
-.script-source-text > textarea { display: block; width: 100%; resize: none; overflow: hidden; border: 1px solid var(--line); padding: 8px; background: var(--surface-field); color: var(--text); font: inherit; line-height: 1.8; }
+.script-source-editor-stack { position: relative; }
+.script-source-editor-stack > textarea { display: block; width: 100%; resize: none; overflow: hidden; border: 1px solid transparent; border-color: var(--line); padding: 8px; background: var(--surface-field); color: var(--text); font: inherit; line-height: 1.8; }
+.script-source-editor-stack.is-tracking > textarea { color: transparent; }
+.script-source-playback-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; border: 1px solid transparent; padding: 8px; white-space: pre-wrap; overflow-wrap: break-word; overflow: hidden; font: inherit; line-height: 1.8; }
+.script-source-playback-layer .is-active { color: var(--surface-field); background: var(--accent); }
 .script-source-review { padding: 8px 0; white-space: pre-wrap; line-height: 1.8; }
