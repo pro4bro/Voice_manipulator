@@ -85,14 +85,14 @@ export function ScriptRowSelection({ number, label, selected, onSelect }: { numb
   return <div className="script-row-selection"><button aria-label={label} aria-pressed={selected} className="script-table__row-select" onClick={onSelect} type="button"><span aria-hidden="true">{selected ? "✓" : ""}</span></button><small aria-label={`Row ${number}`}>{number}</small></div>;
 }
 
-export function ScriptRowSpeaker({ selection, label, profileId, profiles, disabled, onProfileChange, track, extra }: {
-  selection: ReactNode; label: string; profileId: string | null; profiles: SpeakerProfile[]; disabled?: boolean;
-  onProfileChange?: (id: string | null) => void; track?: ReactNode; extra?: ReactNode;
+export function ScriptRowSpeaker({ selection, label, profileId, profiles, onActivate, onProfileChange, track, extra }: {
+  selection: ReactNode; label: string; profileId: string | null; profiles: SpeakerProfile[];
+  onActivate?: () => void; onProfileChange?: (id: string | null) => void; track?: ReactNode; extra?: ReactNode;
 }) {
   const profile = profiles.find((item) => item.id === profileId);
   return <div className="script-table__speaker script-row-speaker" role="gridcell">
     {selection}<div className="script-row-speaker__details">
-      <select aria-label={label} disabled={disabled || !onProfileChange} value={profile?.id ?? ""} style={{ borderLeftColor: profile?.color }} onChange={(event) => onProfileChange?.(event.target.value || null)}>
+      <select aria-label={label} onFocus={onActivate} onPointerDown={onActivate} value={profile?.id ?? ""} style={{ borderLeftColor: profile?.color }} onChange={(event) => onProfileChange?.(event.target.value || null)}>
         <option value="">Chưa gán Profile</option>{profiles.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
       </select>
       {extra}

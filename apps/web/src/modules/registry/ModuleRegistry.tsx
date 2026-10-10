@@ -18,6 +18,7 @@ import { Recorder } from "../recorder/Recorder";
 import { ObsCapture } from "../obs-capture/ObsCapture";
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
 import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
+import type { ScriptDocumentChange } from "../script/script-document-actions";
 import { ScriptEditor } from "../script/ScriptEditor";
 import { ObsLiveLinkScript } from "../script/ObsLiveLinkScript";
 import { VoiceScript } from "../script/VoiceScript";
@@ -177,14 +178,15 @@ export interface StudioContext {
   onWordsChange: (words: StudioWord[], text?: string) => void;
   onScriptUndo?: () => void;
   onScriptRedo?: () => void;
+  onScriptDocumentsChange?: (changes: ScriptDocumentChange[]) => void;
   onAssetWordsChange: (assetId: string, words: StudioWord[], text?: string) => void;
   onCatalogChange: (catalog: TrainingCatalog) => void;
   onCollectionImported?: (result: import("../../domain/types").VoiceCollectionImport) => void;
   onPrepareCollectionExport?: () => Promise<void>;
   onSendToTraining: () => void;
   onGenerate: () => void;
-  onDeferredAction: (action: string) => void;
-  onRunAiReview: () => void;
+  onDeferredAction: (action: string, assetIds?: string[]) => void;
+  onRunAiReview: (assetIds?: string[]) => void;
   onRunDiarization: () => void;
   onStopDiarization: TaskStopHandler;
   onStopTraining: TaskStopHandler;
@@ -296,12 +298,12 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       }).map((asset) => [asset.id, asset])).values()];
       const singleOpen = selectedTracks.length === 1 && selectedTracks[0].id === selectedAsset?.id;
       const showSelectedFeed = selectedTracks.length > 0 && !singleOpen;
-      const parentFeed = showSelectedFeed
-        ? <ChannelScript onWordsChange={context.onAssetWordsChange} tracks={selectedTracks} speakers={context.trainingCatalog.speakers} onAssignWords={context.onAssignScriptWords}
+      const renderSources = showSelectedFeed ? (mode: "table" | "edit") => <ChannelScript viewMode={mode} onWordsChange={context.onAssetWordsChange} tracks={selectedTracks} speakers={context.trainingCatalog.speakers} onAssignWords={context.onAssignScriptWords}
           onSelectTrack={(id) => { const asset = workingAssets.find((item) => item.id === id); if (asset?.sourceArchiveAssetId) context.onSelectImportedTrack(id); else context.onSelectAsset(id); }}
           recordingId={context.obsTimelineActive ? context.obsTimelineRecordingId : null}
           selectedOverlap={context.obsOverlapSelection}
-          onSelectOverlap={context.obsTimelineActive ? context.onObsArchivedOverlapSelect : undefined} /> : null;
+          onSelectOverlap={context.obsTimelineActive ? context.onObsArchivedOverlapSelect : undefined} /> : undefined;
+      const parentFeed = renderSources?.("table") ?? null;
       // Pending recordings have no archived Media Pool asset yet, but the
       // selected recording itself still owns the live Script.
       const pendingObsSelected = context.obsTimelineActive && !context.selectedAssetId && Boolean(context.obsTimelineRecordingId);
@@ -310,7 +312,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
           onSelectOverlap={context.onObsOverlapSelect} selectedOverlap={context.obsOverlapSelection}
           playheadSeconds={context.obsPlayheadSeconds} recordingId={context.obsTimelineRecordingId} rows={context.obsTranscriptRows.filter((row) => (!context.obsTimelineRecordingId || row.recordingId === context.obsTimelineRecordingId) && (!context.obsSeekRequest?.selectOnly || row.channelId === context.obsSeekRequest.channelId))} />
         : null;
-      return <ScriptEditor trackName={singleOpen && selectedAsset?.sourceArchiveAssetId ? selectedAsset.name.replace(/^OBS LiveLink · Channel (\d+)/, "Track $1") : undefined} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={singleOpen && selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={singleOpen ? context.take?.name ?? null : parentFeed ? `${selectedTracks.length} track đã chọn` : null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={parentFeed ? selectedTracks.map((asset) => asset.text).join("\n") : singleOpen || pendingObsSelected || context.liveTranscriptActive || context.readingSession ? context.script : ""} words={singleOpen ? context.take?.words : []} workflow={context.workflow} />;
+      return <ScriptEditor sourceDocuments={renderSources ? selectedTracks : undefined} renderSources={renderSources} onSourceDocumentsChange={(changes) => { if (context.onScriptDocumentsChange) context.onScriptDocumentsChange(changes); else changes.forEach((change) => context.onAssetWordsChange(change.assetId, change.words, change.text)); }} trackName={singleOpen && selectedAsset?.sourceArchiveAssetId ? selectedAsset.name.replace(/^OBS LiveLink · Channel (\d+)/, "Track $1") : undefined} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={context.selectedImportedTrackId ?? context.selectedAssetId ?? "none"} obsFeed={parentFeed ?? liveFeed} feedMode={parentFeed ? "channels" : "obs"} onSpeakerProfileChange={singleOpen && selectedAsset ? (speakerProfileId) => context.onAssignAssetSpeaker(selectedAsset.id, speakerProfileId) : undefined} speakerProfileId={selectedAsset?.speakerProfileIds?.[0] ?? null} readingCard={context.readingSession?.card ?? null} readingCardNumber={context.readingSession?.cardNumber ?? 0} readingCardTotal={context.readingSession?.cardTotal ?? 0} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} wordTimingNote={selectedAsset?.wordTimingNote} wordTimingQuality={selectedAsset?.wordTimingQuality} playbackAssetId={context.take?.id ?? null} footageName={singleOpen ? context.take?.name ?? null : parentFeed ? `${selectedTracks.length} track đã chọn` : null} emotionStyle={context.emotionStyle} aiReviewBusy={context.aiReviewBusy} aiReviewKey={context.aiReviewKey} aiReviewText={context.aiReviewText} canRunAiReview={renderSources ? selectedTracks.some((asset) => asset.transcriptionStatus === "complete" && Boolean(asset.text.trim())) : context.canRunAiReview} environments={context.trainingCatalog.environmentProfiles} isLiveTranscript={context.liveTranscriptActive} liveTranscriptText={context.liveTranscriptText} onChange={context.onScriptChange} onDeferredAction={context.onDeferredAction} onGenerate={context.onGenerate} onRunAiReview={context.onRunAiReview} onWordsChange={context.onWordsChange} speakers={context.trainingCatalog.speakers} value={parentFeed ? selectedTracks.map((asset) => asset.text).join("\n") : singleOpen || pendingObsSelected || context.liveTranscriptActive || context.readingSession ? context.script : ""} words={singleOpen ? context.take?.words : []} workflow={context.workflow} />;
     }
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;

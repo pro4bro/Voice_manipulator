@@ -12,6 +12,7 @@ import { ScriptScrollbar } from "./ScriptScrollbar";
 import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
+import { ScriptSourceText } from "./ScriptSourceText";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -59,7 +60,8 @@ function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; ro
   </span>;
 }
 
-export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords, onWordsChange }: {
+export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords, onWordsChange, viewMode = "table" }: {
+  viewMode?: "table" | "edit";
   tracks: ProjectMediaAsset[];
   onSelectTrack: (id: string) => void;
   recordingId?: string | null;
@@ -118,7 +120,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn"><b>{selected.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button></div> : null}
     <div className="script-table-scroll-region">
       <div aria-label="Lượt nói theo thời gian" role="grid" className="script-table-scroll" ref={viewRef}>
-        <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
+        {viewMode === "edit" ? tracks.map((track) => <ScriptSourceText key={track.id} source={track} onChange={onWordsChange} />) : <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
         <ScriptTranscriptHeader layout={layout} headerRef={headerRef} />
         {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
         {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => {
@@ -127,8 +129,8 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
             onSelect={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }))} />;
           const profileId = row.explicitlyUnassigned ? null : speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? null : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? null;
           return <ScriptTranscriptRow data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]} columns={layout.columns} gridTemplateColumns={layout.gridTemplateColumns} className={checked ? "is-selected" : ""} selectionFallback={control} cells={{
-            speaker: <ScriptRowSpeaker selection={control} label={`Speaker Profile của ${row.trackName} row ${index + 1}`} profileId={profileId} profiles={speakers} disabled={!checked}
-              onProfileChange={onAssignWords ? (id) => { if (checked) assignSelected(id); } : undefined}
+            speaker: <ScriptRowSpeaker selection={control} label={`Speaker Profile của ${row.trackName} row ${index + 1}`} profileId={profileId} profiles={speakers} onActivate={() => { if (!selected.length) setSelection({ ids: [rowIds[index]], anchorId: rowIds[index] }); }}
+              onProfileChange={onAssignWords ? (id) => { if (selected.length) assignSelected(id); } : undefined}
               track={<button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button">{row.trackName}</button>} />,
             content: <div className="script-table__content" role="gridcell">
               {fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}
@@ -153,7 +155,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
           }} />;
         })}
         {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
-        </div>
+        </div>}
       </div>
       <ScriptScrollbar className="script-table-scrollbar" label="Thanh cuộn Script theo channel" viewportRef={viewRef} />
     </div>

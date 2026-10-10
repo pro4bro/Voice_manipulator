@@ -47,6 +47,8 @@ const apiMocks = vi.hoisted(() => ({
   getObsLiveLinkTranscriptEvents: vi.fn(),
   updateMediaScript: vi.fn(),
   updateMediaAnnotations: vi.fn(),
+  exportProjectSubtitles: vi.fn(),
+  reviewMediaTranscript: vi.fn(),
   pickMediaFiles: vi.fn(),
   inspectLocalMediaTracks: vi.fn(),
   startGrowingMkvFollow: vi.fn(),
@@ -1137,6 +1139,65 @@ it("keeps what each page has open: footage in Speech to Text, the generated voic
     expect(apiMocks.importExistingAudioTrack).toHaveBeenCalledWith(project.id, "archive", 3);
     expect(screen.getByTestId("script-track")).toHaveTextContent("channel-b");
     expect(screen.getByTestId("script-value")).toHaveTextContent("Edited channel B");
+  });
+
+  async function openCommandParent() {
+    const archive = { ...mediaAsset("not-applicable", "", "now"), id: "archive", name: "archive.mkv" };
+    const tracks = ["channel-a", "channel-b"].map((id) => ({ ...mediaAsset("complete", "xin chào", "now"), id, name: id,
+      sourceArchiveAssetId: "archive", wordTimingQuality: "source" as const,
+      words: [{ text: "xin", start: 1, end: 2 }, { text: "chào", start: 3, end: 4 }] }));
+    let assets = [archive, ...tracks];
+    apiMocks.listProjectMedia.mockImplementation(async () => assets);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.updateMediaScript.mockImplementation(async (_project, id, text, _source, words) => {
+      assets = assets.map((asset) => asset.id === id ? { ...asset, text, words } : asset);
+      return assets.find((asset) => asset.id === id);
+    });
+    apiMocks.updateMediaAnnotations.mockImplementation(async (_project, id) => assets.find((asset) => asset.id === id));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("archive"));
+    fireEvent.click(screen.getByRole("button", { name: "open imported parent" }));
+    return tracks;
+  }
+
+  it("exports the child documents from a parent and never sends the archive to the subtitle processor", async () => {
+    await openCommandParent();
+    apiMocks.exportProjectSubtitles.mockResolvedValue(undefined);
+    act(() => collectionContext.current!.onDeferredAction("Export SRT từng từ", ["channel-a", "channel-b"]));
+    await waitFor(() => expect(apiMocks.exportProjectSubtitles).toHaveBeenCalledTimes(2));
+    expect(apiMocks.exportProjectSubtitles.mock.calls.map((call) => call.slice(1))).toEqual([["channel-a", "word"], ["channel-b", "word"]]);
+  });
+
+  it("reviews both source documents while preserving concurrent user edits", async () => {
+    const tracks = await openCommandParent();
+    const pending = deferred<unknown>();
+    apiMocks.reviewMediaTranscript.mockImplementation(async (_project, id) => id === "channel-a" ? pending.promise : { status: "complete", reviewedText: "xin chào", asset: tracks[1] });
+    act(() => collectionContext.current!.onRunAiReview(["channel-a", "channel-b"]));
+    await waitFor(() => expect(apiMocks.reviewMediaTranscript).toHaveBeenCalledWith(project.id, "channel-a"));
+    act(() => collectionContext.current!.onAssetWordsChange("channel-a", [{ text: "owner", start: 1, end: 2 }], "owner"));
+    await waitFor(() => expect(apiMocks.updateMediaAnnotations).toHaveBeenCalled());
+    await act(async () => pending.resolve({ status: "complete", reviewedText: "AI correction", asset: { ...tracks[0], revisions: [{ id: "ai-1", source: "ai", text: "AI correction", createdAt: "now" }] } }));
+    await waitFor(() => expect(apiMocks.reviewMediaTranscript).toHaveBeenCalledTimes(2));
+    const updated = collectionContext.current!.mediaAssets.find((asset) => asset.id === "channel-a")!;
+    expect(updated.text).toBe("owner");
+    expect(updated.words[0].text).toBe("owner");
+    expect(updated.revisions).toContainEqual(expect.objectContaining({ id: "ai-1" }));
+  });
+
+  it("clears, undoes and redoes multiple source transcripts in one history step", async () => {
+    const tracks = await openCommandParent();
+    act(() => collectionContext.current!.onScriptDocumentsChange!(tracks.map((track) => ({ assetId: track.id, text: "", words: [] }))));
+    await waitFor(() => expect(apiMocks.updateMediaAnnotations).toHaveBeenCalledTimes(2));
+    expect(collectionContext.current!.mediaAssets.filter((asset) => asset.sourceArchiveAssetId).map((asset) => asset.text)).toEqual(["", ""]);
+    act(() => collectionContext.current!.onScriptUndo!());
+    await waitFor(() => expect(apiMocks.updateMediaAnnotations).toHaveBeenCalledTimes(4));
+    expect(collectionContext.current!.mediaAssets.filter((asset) => asset.sourceArchiveAssetId).map((asset) => asset.words)).toEqual(tracks.map((track) => track.words));
+    act(() => collectionContext.current!.onScriptRedo!());
+    await waitFor(() => expect(apiMocks.updateMediaAnnotations).toHaveBeenCalledTimes(6));
+    expect(collectionContext.current!.mediaAssets.filter((asset) => asset.sourceArchiveAssetId).map((asset) => asset.text)).toEqual(["", ""]);
+    expect(apiMocks.updateMediaScript.mock.calls.every((call) => call[1] !== "archive")).toBe(true);
   });
 
 });

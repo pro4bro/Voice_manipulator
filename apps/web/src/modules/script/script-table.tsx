@@ -549,7 +549,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, fragments: typeof transcriptWindow.visible, rowIndex: number) {
     if (column.builtin === "speaker") {
       return <ScriptRowSpeaker selection={rowSelectionControl(row, rowIndex)} label={`Speaker Profile của row ${rowIndex + 1}`} profileId={row.profileId} profiles={speakers} track={trackName}
-        disabled={!selectedRowIds.includes(row.id)} onProfileChange={(id) => { if (selectedRowIds.includes(row.id)) assignProfileToSelectedRows(id || "__none__"); }} />;
+        onActivate={() => { if (!selectedRowIds.length) setRowSelection({ ids: [row.id], anchorId: row.id }); }} onProfileChange={(id) => { if (selectedRowIds.length) assignProfileToSelectedRows(id || "__none__"); }} />;
     }
     if (column.builtin === "content") {
       return <div className="script-table__content" role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">

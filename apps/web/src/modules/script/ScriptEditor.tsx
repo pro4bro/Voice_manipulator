@@ -16,15 +16,19 @@ import { mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptTextRange, 
 import { useScriptWordDeletion } from "./use-script-word-deletion";
 import { useScriptPlaybackFollow } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
+import { findScriptDocumentMatches, replaceScriptDocumentMatches, formatScriptDocumentPauses, type ScriptDocument, type ScriptDocumentChange, type ScriptDocumentMatch } from "./script-document-actions";
 
 export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
 export interface ScriptFormatIntent { kind: ScriptFormatKind; value: string | boolean; selection: { start: number; end: number; text: string }; }
 interface ScriptEditorProps {
   onUndo?: () => void;
   onRedo?: () => void;
-  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string) => void; onRunAiReview?: () => void; words?: StudioWord[]; wordTimingQuality?: WordTimingQuality; wordTimingNote?: string | null; activeWordIndex?: number; playbackAssetId?: string | null; footageName?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; liveTranscriptText?: string | null; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; readingCard?: ReadingPlanCard | null; readingCardNumber?: number; readingCardTotal?: number; readingHeard?: string[]; readingSpeaking?: boolean; readingFollowerReady?: boolean; onWordsChange?: (words: StudioWord[], text?: string) => void; onFormatIntent?: (intent: ScriptFormatIntent) => void; wordSelection?: WordSelection; onWordSelectionChange?: (selection: WordSelection) => void;
+  value: string; onChange: (value: string) => void; workflow: WorkspacePage; onGenerate?: () => void; onDeferredAction?: (action: string, assetIds?: string[]) => void; onRunAiReview?: (assetIds?: string[]) => void; words?: StudioWord[]; wordTimingQuality?: WordTimingQuality; wordTimingNote?: string | null; activeWordIndex?: number; playbackAssetId?: string | null; footageName?: string | null; speakers?: SpeakerProfile[]; environments?: EnvironmentNoiseProfile[]; isLiveTranscript?: boolean; emotionStyle?: EmotionStylePreferences; liveTranscriptText?: string | null; aiReviewText?: string | null; aiReviewKey?: string | null; aiReviewBusy?: boolean; canRunAiReview?: boolean; readingCard?: ReadingPlanCard | null; readingCardNumber?: number; readingCardTotal?: number; readingHeard?: string[]; readingSpeaking?: boolean; readingFollowerReady?: boolean; onWordsChange?: (words: StudioWord[], text?: string) => void; onFormatIntent?: (intent: ScriptFormatIntent) => void; wordSelection?: WordSelection; onWordSelectionChange?: (selection: WordSelection) => void;
   trackName?: string;
   obsFeed?: ReactNode;
+  sourceDocuments?: ScriptDocument[];
+  renderSources?: (mode: "table" | "edit") => ReactNode;
+  onSourceDocumentsChange?: (changes: ScriptDocumentChange[]) => void;
   feedMode?: "obs" | "channels";
   /** The Speaker Profile this whole take belongs to, when one is assigned. */
   speakerProfileId?: string | null;
@@ -66,8 +70,12 @@ function scriptSegments(value: string, ranges: ScriptWordRange[]): ScriptSegment
 }
 function reviewText(pieces: ReviewPiece[], resolutions: Record<string, ReviewResolution>) { return pieces.map((piece) => piece.kind === "same" ? piece.text : resolutions[piece.id]?.text ?? piece.stt).join(""); }
 
-export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange, obsFeed, trackName, feedMode = "obs" }: ScriptEditorProps) {
+export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange, obsFeed, sourceDocuments, renderSources, onSourceDocumentsChange, trackName, feedMode = "obs" }: ScriptEditorProps) {
   const commandRef = useRef<HTMLElement>(null);
+  const sourceMatchRef = useRef<ScriptDocumentMatch | null>(null);
+  const readOnlyFeed = Boolean(obsFeed && !renderSources);
+  const hasTimedWords = words.length > 0 || Boolean(sourceDocuments?.some((source) => source.words.length));
+  const sourceIds = sourceDocuments?.map((source) => source.id);
   const playbackFollow = useScriptPlaybackFollow(commandRef, playbackAssetId);
   const wordDeletion = useScriptWordDeletion(playbackAssetId, value, words, (edit) => {
     onWordsChange?.(edit.words, edit.text);
@@ -110,7 +118,7 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
   const liveSttPieces = useMemo(() => !liveTranscriptText || !value || liveTranscriptText.trim() === value.trim() ? [] : buildReviewPieces(liveTranscriptText, value), [liveTranscriptText, value]);
   useEffect(() => { if (!aiReviewText || !value || aiReviewText.trim() === value.trim()) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } const nextPieces = buildReviewPieces(value, aiReviewText); if (!nextPieces.some((piece) => piece.kind === "change")) { setReviewPieces([]); setReviewResolutions({}); setShowReview(false); return; } setReviewPieces(nextPieces); setReviewResolutions({}); setShowReview(true); setDismissedLiveComparisonSignature(liveComparisonSignature); /* A persisted AI revision starts a comparison; normal typing must not reset choices. */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewSignature]);
-  const resolvedReview = useMemo(() => reviewPieces.flatMap((piece) => { if (piece.kind !== "change") return []; const resolution = reviewResolutions[piece.id]; return resolution ? [{ piece, resolution }] : []; }), [reviewPieces, reviewResolutions]); const reviewActive = showReview && !tagMode && !isLiveTranscript && reviewPieces.length > 0; const liveComparisonActive = !reviewActive && !tagMode && !isLiveTranscript && dismissedLiveComparisonSignature !== liveComparisonSignature && liveSttPieces.some((piece) => piece.kind === "change"); const comparisonActive = reviewActive || liveComparisonActive; const hasEmotion = words.some((word) => Boolean(word.emotion && word.emotion !== "normal" && word.emotion !== "mix")); const wordCount = value.trim() ? value.trim().split(/\s+/u).length : 0; const duration = Math.round(wordCount / 2.65); const canGenerate = workflow === "voice-manipulator"; const tableVisible = scriptView === "table" && words.length > 0 && !comparisonActive && !isLiveTranscript;
+  const resolvedReview = useMemo(() => reviewPieces.flatMap((piece) => { if (piece.kind !== "change") return []; const resolution = reviewResolutions[piece.id]; return resolution ? [{ piece, resolution }] : []; }), [reviewPieces, reviewResolutions]); const reviewActive = showReview && !tagMode && !isLiveTranscript && reviewPieces.length > 0; const liveComparisonActive = !reviewActive && !tagMode && !isLiveTranscript && dismissedLiveComparisonSignature !== liveComparisonSignature && liveSttPieces.some((piece) => piece.kind === "change"); const comparisonActive = reviewActive || liveComparisonActive; const hasEmotion = words.some((word) => Boolean(word.emotion && word.emotion !== "normal" && word.emotion !== "mix")); const wordCount = value.trim() ? value.trim().split(/\s+/u).length : 0; const duration = Math.round(wordCount / 2.65); const canGenerate = workflow === "voice-manipulator"; const tableVisible = scriptView === "table" && (words.length > 0 || Boolean(renderSources)) && !comparisonActive && !isLiveTranscript;
   const showTimingQualityNotice = wordTimingQuality !== "source" && (words.length > 0 || Boolean(wordTimingNote));
   const showEstimatedTimingNotice = words.some((word) => word.timingSource === "user-interpolated");
   const hasTimingNotices = showTimingQualityNotice || showEstimatedTimingNotice || wordDeletion.busy || Boolean(wordDeletion.error);
@@ -253,6 +261,11 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
     onFormatIntent?.({ kind, value: formatValue, selection: selectionSnapshot() });
   }
   function focusRange(start: number, end: number) {
+    if (scriptView === "table") {
+      setScriptView("edit");
+      requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(start, end); });
+      return;
+    }
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.focus({ preventScroll: true });
@@ -316,8 +329,26 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
     if (!textEditBaselineRef.current) pendingTextRef.current = value;
   }, [value]);
   function comparable(text: string) { return findCaseSensitive ? text : text.toLocaleLowerCase("vi"); }
+  function focusSourceMatch(match: ScriptDocumentMatch) {
+    sourceMatchRef.current = match;
+    setScriptView("edit");
+    requestAnimationFrame(() => {
+      const textarea = Array.from(commandRef.current?.querySelectorAll<HTMLTextAreaElement>("textarea[data-script-source-id]") ?? []).find((element) => element.dataset.scriptSourceId === match.assetId);
+      textarea?.focus({ preventScroll: true });
+      textarea?.setSelectionRange(match.start, match.end);
+      textarea?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
   function findNext(reverse = false) {
     if (!findQuery) return;
+    if (sourceDocuments) {
+      const matches = findScriptDocumentMatches(sourceDocuments, findQuery, findCaseSensitive);
+      const previous = sourceMatchRef.current;
+      const index = matches.findIndex((match) => match.assetId === previous?.assetId && match.start === previous.start && match.end === previous.end);
+      const next = matches[index < 0 ? reverse ? matches.length - 1 : 0 : (index + (reverse ? -1 : 1) + matches.length) % matches.length];
+      if (next) focusSourceMatch(next);
+      return;
+    }
     const query = comparable(findQuery); const source = comparable(value); const textarea = textareaRef.current;
     const pivot = reverse ? textarea?.selectionStart ?? value.length : textarea?.selectionEnd ?? 0;
     let index = reverse ? source.lastIndexOf(query, Math.max(0, pivot - 1)) : source.indexOf(query, pivot);
@@ -325,6 +356,14 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
     if (index >= 0) focusRange(index, index + findQuery.length);
   }
   function replaceCurrent() {
+    if (sourceDocuments) {
+      const match = sourceMatchRef.current;
+      const valid = findScriptDocumentMatches(sourceDocuments, findQuery, findCaseSensitive).find((item) => item.assetId === match?.assetId && item.start === match.start && item.end === match.end);
+      if (!valid) { findNext(); return; }
+      onSourceDocumentsChange?.(replaceScriptDocumentMatches(sourceDocuments, [valid], replaceQuery));
+      focusSourceMatch({ ...valid, end: valid.start + replaceQuery.length });
+      return;
+    }
     const selection = selectionSnapshot();
     if (selection.end > selection.start && comparable(selection.text) === comparable(findQuery)) {
       const next = value.slice(0, selection.start) + replaceQuery + value.slice(selection.end);
@@ -336,28 +375,33 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
   }
   function replaceAll() {
     if (!findQuery) return;
+    if (sourceDocuments) {
+      onSourceDocumentsChange?.(replaceScriptDocumentMatches(sourceDocuments, findScriptDocumentMatches(sourceDocuments, findQuery, findCaseSensitive), replaceQuery));
+      return;
+    }
     const escaped = findQuery.replaceAll("\\", "\\\\").replaceAll(".", "\\.").replaceAll("?", "\\?").replaceAll("*", "\\*").replaceAll("+", "\\+").replaceAll("^", "\\^").replaceAll("$", "\\$").replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("{", "\\{").replaceAll("}", "\\}").replaceAll("|", "\\|");
     const expression = new RegExp(escaped, findCaseSensitive ? "gu" : "giu");
     commitScriptTextEdit(value.replace(expression, () => replaceQuery));
   }
   function autoFormatFromPauses() {
-    const rangeByIndex = new Map(wordRanges.map((range) => [range.index, range]));
-    const edits: { start: number; end: number; text: string }[] = [];
-    for (let index = 0; index < words.length - 1; index += 1) {
-      const current = rangeByIndex.get(index); const next = rangeByIndex.get(index + 1);
-      if (!current || !next || next.start < current.end) continue;
-      const pause = words[index + 1].start - words[index].end;
-      if (pause < 0.28 || value.slice(current.end, next.start).trim()) continue;
-      const tail = value.slice(0, current.end).trimEnd();
-      const punctuation = /[.!?,;:…]$/u.test(tail) ? "" : pause >= 1.05 ? "." : pause >= 0.56 ? "," : "";
-      const lineBreak = pause >= 1.05 ? "\n\n" : pause >= 0.36 ? "\n" : " ";
-      edits.push({ start: current.end, end: next.start, text: punctuation + lineBreak });
+    if (sourceDocuments) {
+      onSourceDocumentsChange?.(sourceDocuments.flatMap((source) => {
+        const text = formatScriptDocumentPauses(source);
+        return text === source.text ? [] : [{ assetId: source.id, text, words: reconcileScriptTextEdit(source.text, text, source.words).words }];
+      }));
+      return;
     }
-    if (!edits.length) return;
-    const nextValue = edits.reverse().reduce((draft, edit) => draft.slice(0, edit.start) + edit.text + draft.slice(edit.end), value);
-    commitScriptTextEdit(nextValue);
+    const text = formatScriptDocumentPauses({ text: value, words });
+    if (text !== value) commitScriptTextEdit(text);
   }
+
   function clearScript() {
+    if (sourceDocuments) {
+      if (!window.confirm("Xóa transcript, word timing và nhãn theo từ của các track đang hiển thị?")) return;
+      onSourceDocumentsChange?.(sourceDocuments.map((source) => ({ assetId: source.id, text: "", words: [] })));
+      setScriptView("edit");
+      return;
+    }
     if (!value && !words.length) return;
     const clearsTimedWords = workflow !== "voice-manipulator" && words.length > 0 && Boolean(onWordsChange);
     const warning = clearsTimedWords
@@ -428,12 +472,12 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
       <button aria-pressed={scriptBold} className={scriptBold ? "is-active" : ""} onClick={() => { const next = !scriptBold; setScriptBold(next); emitFormatIntent("bold", next); }} type="button"><b>B</b></button>
       <button aria-pressed={scriptItalic} className={scriptItalic ? "is-active" : ""} onClick={() => { const next = !scriptItalic; setScriptItalic(next); emitFormatIntent("italic", next); }} type="button"><i>I</i></button>
       <button aria-pressed={scriptUnderline} className={scriptUnderline ? "is-active" : ""} onClick={() => { const next = !scriptUnderline; setScriptUnderline(next); emitFormatIntent("underline", next); }} type="button"><u>U</u></button>
-      <button disabled={!words.length || isLiveTranscript} onClick={autoFormatFromPauses} type="button">AUTO NHỊP</button>
-      {words.length || obsFeed ? <button disabled={Boolean(obsFeed)} aria-pressed={Boolean(obsFeed) || tableVisible} onClick={() => { if (comparisonActive) { setShowReview(false); setDismissedLiveComparisonSignature(liveComparisonSignature); setScriptView("table"); } else setScriptView(tableVisible ? "edit" : "table"); }} title={obsFeed ? "Chọn một track để sửa tài liệu dạng text thường" : "Bật/tắt bảng Script để chuyển giữa bảng và text thường"} type="button">DẠNG BẢNG</button> : null}
+      <button disabled={!hasTimedWords || isLiveTranscript || readOnlyFeed} onClick={autoFormatFromPauses} type="button">AUTO NHỊP</button>
+      {words.length || obsFeed ? <button disabled={readOnlyFeed || isLiveTranscript} aria-pressed={tableVisible || readOnlyFeed} onClick={() => { if (comparisonActive) { setShowReview(false); setDismissedLiveComparisonSignature(liveComparisonSignature); setScriptView("table"); } else setScriptView(tableVisible ? "edit" : "table"); }} title="Bật/tắt bảng Script để chuyển giữa bảng và text thường" type="button">DẠNG BẢNG</button> : null}
     </div>
     {findOpen ? <div className="script-find-replace" aria-label="Tìm và thay thế"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={findCaseSensitive} onChange={(event) => setFindCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}    {resolvedReview.length ? <div className="script-review-history" aria-label="Các phương án đã chọn">{resolvedReview.map(({ piece, resolution }) => <span className={`is-${resolution.choice}`} key={piece.id}><b>{resolution.choice === "stt" ? "STT" : resolution.choice === "ai" ? "AI" : "Sửa tay"}</b><s>{piece.stt.trim() || "∅"}</s><i>→</i><em>{resolution.text.trim() || "∅"}</em></span>)}</div> : null}</div>
     <div className="script-document" style={{ "--script-format-scale": scriptFontScale / 100, "--script-font-adjust": scriptFontScale / 100, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
-    {obsFeed ? obsFeed : tableVisible ? <ScriptTable trackName={trackName} deleteBusy={wordDeletion.busy} leadingContent={hasTimingNotices ? timingNotices : undefined} onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={emotionVisualStyle} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, "--script-timing-inset": `${timingNoticeHeight}px`, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
+    {renderSources ? renderSources(scriptView) : obsFeed ? obsFeed : tableVisible ? <ScriptTable trackName={trackName} deleteBusy={wordDeletion.busy} leadingContent={hasTimingNotices ? timingNotices : undefined} onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={emotionVisualStyle} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, "--script-timing-inset": `${timingNoticeHeight}px`, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
       {!tagMode && hasTimingNotices ? <div aria-label="Cảnh báo thời gian Script" className="script-timing-notice-layer" style={{ transform: `translateY(-${scriptScrollTop}px)` }}><div className="script-timing-notices" ref={timingNoticeContentRef}>{timingNoticeItems}</div></div> : null}
       {tagMode ? <div aria-label="Gán profile theo từ" className="script-tag-editor">{words.map((word, index) => { const speaker = speakers.find((profile) => profile.id === word.speakerId); const previousSpeakerId = index ? words[index - 1]?.speakerId : null; const wordStyle = { ...emotionVisualStyle(word.emotion, emotionStyle), ...(speaker ? { borderBottomColor: speaker.color } : {}) }; return <Fragment key={`${word.start}-${index}`}>{speaker && speaker.id !== previousSpeakerId ? <span className="script-speaker-cue" style={{ borderColor: speaker.color }}><i style={{ background: speaker.color }} />{speaker.name}</span> : null}<button aria-label={`Gán nhãn cho từ ${word.text}`} className={index === activeWordIndex ? "is-active" : ""} data-emotion={word.emotion ?? "normal"} onClick={() => tagWord(index)} style={wordStyle} title={`${speaker?.name ?? "Chưa gán speaker"} · ${emotionLabel(word.emotion ?? "normal")} · ${word.start.toFixed(2)}s`} type="button">{word.text}<small>{emotionLabel(word.emotion ?? "normal")}</small></button></Fragment>; })}</div> : <><>{comparisonActive ? renderComparisonLayer() : useNativePlayback ? null : <div aria-hidden="true" className="script-playback-layer" ref={playbackLayerRef}>{playbackSegments.map((segment, index) => { const word = segment.wordIndex === null ? undefined : words[segment.wordIndex]; const emotion = word?.emotion; return <span className={`${segment.wordIndex === activeWordIndex ? "is-active" : ""} ${word?.reviewState === "manual" ? "is-edited" : ""} ${word?.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`} data-script-word-index={segment.wordIndex ?? undefined} data-time-estimated={word?.timingSource === "user-interpolated" ? "true" : undefined} key={`${segment.wordIndex ?? "text"}-${index}`} ref={segment.wordIndex === activeWordIndex ? activePlaybackWordRef : undefined} style={emotionVisualStyle(emotion, emotionStyle)}>{segment.text}</span>; })}</div>}</><textarea aria-label="Script transcript" className="script-editor" onBlur={() => { clearEstimatedWordHover(); finishNativeTextEdit(); }} onContextMenu={openSelectionMenu} onFocus={() => { textEditBaselineRef.current = { text: value, words: [...words] }; pendingTextRef.current = value; }} onKeyDown={handleScriptKeyDown} onPointerLeave={clearEstimatedWordHover} onPointerMove={trackEstimatedWordHover} ref={textareaRef} onChange={(event) => { clearEstimatedWordHover(); const nextText = event.target.value; pendingTextRef.current = nextText; if (comparisonActive) { setShowReview(false); setReviewResolutions({}); setDismissedLiveComparisonSignature(liveComparisonSignature); } onChange(nextText); }} onScroll={syncScriptEditorScroll} placeholder="Transcript realtime, STT kỹ và AI fix sẽ cùng xuất hiện ở đây..." readOnly={isLiveTranscript} spellCheck value={value} /><ScriptScrollbar viewportRef={textareaRef} label="Thanh cuộn Script" className="script-scrollbar" /></>}</div>}
     </div>
@@ -445,6 +489,6 @@ export function ScriptEditor({ onUndo, onRedo, value, onChange, workflow, onGene
       {speakers.length ? <section><strong>Speaker</strong><div>{speakers.map((speaker) => <button key={speaker.id} disabled={!selectedRowWordIndexes.length} onClick={() => applySelectionAnnotation((word) => ({ ...word, speakerId: speaker.id }), true)} style={{ borderLeftColor: speaker.color }} type="button">{speaker.name}</button>)}</div></section> : null}
       {environments.length ? <section><strong>Environment</strong><div>{environments.map((profile) => <button key={profile.id} onClick={() => applySelectionAnnotation((word) => ({ ...word, environmentProfileIds: [...new Set([...(word.environmentProfileIds ?? []), profile.id])] }))} type="button">{profile.name}</button>)}</div></section> : null}
       <button className="script-selection-menu__clear" onClick={() => applySelectionAnnotation((word) => ({ ...word, environmentProfileIds: [], emotion: "normal" }))} type="button">Xóa nhãn emotion và môi trường</button>
-    </div> : null}    <div className="script-module__footer"><div className="script-stats"><span><b>{wordCount}</b> từ</span><span><b>{value.length.toLocaleString("vi-VN")}</b> ký tự</span></div><div className="script-actions">{workflow === "speech-to-text" ? <>{words.length || obsFeed ? <span className="script-export"><button aria-expanded={srtExportOpen} className="button button--quiet" disabled={isLiveTranscript || Boolean(obsFeed)} title={obsFeed ? "Chọn một track để export transcript của nguồn đó" : undefined} onClick={() => setSrtExportOpen((open) => !open)} type="button">EXPORT ▾</button>{srtExportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setSrtExportOpen(false); onDeferredAction?.("Export SRT theo câu"); }} role="menuitem" type="button"><b>Theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button onClick={() => { setSrtExportOpen(false); onDeferredAction?.("Export SRT từng từ"); }} role="menuitem" type="button"><b>Từng từ</b><small>Đồng bộ timestamp chính xác</small></button><button onClick={() => { setSrtExportOpen(false); onDeferredAction?.("Export bảng Script"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}<button className="button button--quiet is-danger" disabled={isLiveTranscript || Boolean(obsFeed) || (!value && !words.length)} onClick={clearScript} title={obsFeed ? "Chọn một track để xóa transcript của nguồn đó" : "Xóa transcript và dữ liệu word timing của footage đang mở"} type="button">Clear Text</button>{canRunAiReview || obsFeed ? <button className="button button--lime" disabled={isLiveTranscript || Boolean(obsFeed) || aiReviewBusy} onClick={onRunAiReview} type="button"><Icon name="spark" />{aiReviewBusy ? "AI đang check…" : "AI fix"}</button> : null}</> : null}{workflow === "voice-training" ? <button className="button button--lime" onClick={() => onDeferredAction?.("Dataset review")} type="button"><Icon name="spark" />Duyệt cho dataset</button> : null}{canGenerate ? <button aria-label="Tạo voice" className="button button--accent" onClick={onGenerate} type="button"><span><b>Tạo voice</b><small>OmniVoice · 32 steps</small></span><Icon name="arrow" /></button> : null}</div></div>
+    </div> : null}    <div className="script-module__footer"><div className="script-stats"><span><b>{wordCount}</b> từ</span><span><b>{value.length.toLocaleString("vi-VN")}</b> ký tự</span></div><div className="script-actions">{workflow === "speech-to-text" ? <>{words.length || obsFeed ? <span className="script-export"><button aria-expanded={srtExportOpen} className="button button--quiet" disabled={isLiveTranscript || readOnlyFeed} title="Xuất transcript của các nguồn đang hiển thị" onClick={() => setSrtExportOpen((open) => !open)} type="button">EXPORT ▾</button>{srtExportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setSrtExportOpen(false); if (sourceIds) onDeferredAction?.("Export SRT theo câu", sourceIds); else onDeferredAction?.("Export SRT theo câu"); }} role="menuitem" type="button"><b>Theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button onClick={() => { setSrtExportOpen(false); if (sourceIds) onDeferredAction?.("Export SRT từng từ", sourceIds); else onDeferredAction?.("Export SRT từng từ"); }} role="menuitem" type="button"><b>Từng từ</b><small>Đồng bộ timestamp chính xác</small></button><button onClick={() => { setSrtExportOpen(false); if (sourceIds) onDeferredAction?.("Export bảng Script", sourceIds); else onDeferredAction?.("Export bảng Script"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}<button className="button button--quiet is-danger" disabled={isLiveTranscript || readOnlyFeed || (!value && !hasTimedWords)} onClick={clearScript} title="Xóa transcript và word timing của các nguồn đang hiển thị" type="button">Clear Text</button>{canRunAiReview || obsFeed ? <button className="button button--lime" disabled={isLiveTranscript || readOnlyFeed || !canRunAiReview || aiReviewBusy} onClick={() => { if (renderSources) setScriptView("edit"); if (sourceIds) onRunAiReview?.(sourceIds); else onRunAiReview?.(); }} type="button"><Icon name="spark" />{aiReviewBusy ? "AI đang check…" : "AI fix"}</button> : null}</> : null}{workflow === "voice-training" ? <button className="button button--lime" onClick={() => onDeferredAction?.("Dataset review")} type="button"><Icon name="spark" />Duyệt cho dataset</button> : null}{canGenerate ? <button aria-label="Tạo voice" className="button button--accent" onClick={onGenerate} type="button"><span><b>Tạo voice</b><small>OmniVoice · 32 steps</small></span><Icon name="arrow" /></button> : null}</div></div>
   </ModuleFrame>;
 }

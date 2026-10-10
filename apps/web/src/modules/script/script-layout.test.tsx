@@ -41,7 +41,7 @@ it("assigns a profile only to checked channel rows and can untick them again", (
   render(<ChannelScript tracks={tracks} speakers={[profile]} onSelectTrack={vi.fn()} onAssignWords={assign} />);
   const row = screen.getByRole("button", { name: "Chọn row 1 của Track 1" });
   const select = screen.getByLabelText("Speaker Profile của Track 1 row 1");
-  expect(select).toBeDisabled();
+  expect(select).toBeEnabled();
   fireEvent.click(row);
   fireEvent.change(select, { target: { value: "an" } });
   expect(assign).toHaveBeenLastCalledWith("a", [0, 1], "an");
@@ -49,7 +49,10 @@ it("assigns a profile only to checked channel rows and can untick them again", (
   expect(assign).toHaveBeenLastCalledWith("a", [0, 1], null);
   fireEvent.click(row);
   expect(row).toHaveAttribute("aria-pressed", "false");
-  expect(select).toBeDisabled();
+  expect(select).toBeEnabled();
+  assign.mockClear();
+  fireEvent.change(select, { target: { value: "an" } });
+  expect(assign).not.toHaveBeenCalled();
 });
 
 it("keeps a shared column layout when moving from footage to channels and live OBS", () => {

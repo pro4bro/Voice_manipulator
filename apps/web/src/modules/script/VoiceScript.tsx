@@ -416,8 +416,8 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     const detail = voice ? `${VOICE_KIND_LABELS[voice.kind]} · ${ENGINE_LABELS[voice.engine] ?? voice.engine}` : "Chọn model voice";
     const checked = selectedRowIds.includes(row.id);
     return <ScriptRowSpeaker selection={<ScriptRowSelection number={number} label={`Chọn đoạn ${number}`} selected={checked} onSelect={(event) => selectRow(event, row.id)} />}
-      label={`Speaker Profile của đoạn ${number}`} profileId={speaker?.id ?? null} profiles={speakers} disabled={!checked}
-      onProfileChange={(id) => { if (checked) assignSpeakerToSelected(id ?? "__none__"); }}
+      label={`Speaker Profile của đoạn ${number}`} profileId={speaker?.id ?? null} profiles={speakers} onActivate={() => { if (!selectedRowIds.length) setRowSelection({ ids: [row.id], anchorId: row.id }); }}
+      onProfileChange={(id) => { if (selectedRowIds.length) assignSpeakerToSelected(id ?? "__none__"); }}
       extra={<button aria-expanded={voiceMenu?.rowId === row.id} aria-haspopup="menu" aria-label={`Voice đọc đoạn ${number}`} className="script-row-model" onClick={(event) => openVoiceMenu(event, row.id)} type="button">{detail} ▾</button>} />;
   }
 

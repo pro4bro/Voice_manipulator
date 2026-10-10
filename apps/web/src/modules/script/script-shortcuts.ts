@@ -21,7 +21,7 @@ export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands
       if (event.key.toLowerCase() === "a" && !input && latest.current.selectAll) {
         event.preventDefault(); latest.current.selectAll();
       } else if (event.key.toLowerCase() === "z") {
-        if (input && !input.closest(".script-editor, .script-table__word-editor, .channel-script-word-editor, .timeline-word-edit")) return;
+        if (input && !input.closest(".script-editor, .script-source-text, .script-table__word-editor, .channel-script-word-editor, .timeline-word-edit")) return;
         const action = event.shiftKey ? latest.current.redo : latest.current.undo;
         if (action) { event.preventDefault(); action(); }
       }

@@ -2015,60 +2015,69 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setNotice(error instanceof Error ? error.message : "Không thể chạy Speaker Diarization.");
     }
   }
-  async function exportSubtitles(mode: "sentence" | "word" | "table") {
-    if (!scriptAssetId) {
-      setNotice("Hãy chọn footage đã có transcript trước khi xuất SRT.");
-      return;
-    }
-    const selected = mediaAssets.find((asset) => asset.id === scriptAssetId);
-    if (!selected?.words.length) {
-      setNotice("Footage này chưa có word timing. Hãy chạy STT kỹ trước khi xuất SRT.");
-      return;
-    }
-    if (mode !== "table" && selected.wordTimingQuality === "needs-alignment") {
-      setNotice(selected.wordTimingNote ?? "Word timing chưa đáng tin; hãy căn chỉnh trước khi xuất SRT.");
-      return;
-    }
-    try {
-      await api.exportProjectSubtitles(project.id, selected.id, mode);
-      setNotice(mode === "sentence" ? "Đã xuất SRT theo câu, gồm nhãn Speaker và tải file về máy." : mode === "word" ? "Đã xuất SRT từng từ, giữ timestamp chính xác và nhãn Speaker." : "Đã xuất bảng Script CSV theo Speaker và tải file về máy.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không thể xuất SRT.");
-    }
+  function scriptCommandTargets(assetIds?: string[]) {
+    const ids = assetIds ?? (scriptAssetId ? [scriptAssetId] : []);
+    const current = mediaAssetsRef.current;
+    return [...new Map(ids.flatMap((id) => {
+      const children = current.filter((asset) => asset.sourceArchiveAssetId === id && !asset.deletedAt && asset.importSelected !== false);
+      return children.length ? children : current.filter((asset) => asset.id === id && !asset.deletedAt);
+    }).map((asset) => [asset.id, asset])).values()];
   }
-  async function runAiReview() {
-    if (!scriptAssetId) {
-      setNotice("Hãy chọn footage trong Media Pool trước khi dùng AI fix.");
-      return;
+  async function exportSubtitles(mode: "sentence" | "word" | "table", assetIds?: string[]) {
+    const targets = scriptCommandTargets(assetIds);
+    if (!targets.length) { setNotice("Hãy chọn footage đã có transcript trước khi xuất."); return; }
+    const results: string[] = [];
+    for (const target of targets) {
+      try {
+        await wordWriteQueues.current.get(target.id);
+        const selected = mediaAssetsRef.current.find((asset) => asset.id === target.id && !asset.deletedAt);
+        if (!selected?.words.length) { results.push(`${target.name}: chưa có word timing.`); continue; }
+        if (mode !== "table" && selected.wordTimingQuality === "needs-alignment") {
+          results.push(`${target.name}: ${selected.wordTimingNote ?? "cần căn chỉnh word timing trước khi xuất SRT."}`); continue;
+        }
+        await api.exportProjectSubtitles(project.id, selected.id, mode);
+        results.push(`${selected.name}: đã xuất ${mode === "table" ? "bảng Script CSV" : "SRT"} và tải file về máy.`);
+      } catch (error) { results.push(`${target.name}: ${error instanceof Error ? error.message : "Không thể xuất transcript."}`); }
     }
-    const selected = mediaAssets.find((asset) => asset.id === scriptAssetId);
-    if (!selected || selected.transcriptionStatus !== "complete" || !scriptRef.current.trim()) {
-      setNotice("AI fix chỉ khả dụng sau khi STT kỹ hoàn tất và đã có transcript.");
-      return;
-    }
+    setNotice(results.join("\n"));
+  }
+  async function runAiReview(assetIds?: string[]) {
+    if (aiReviewBusy) return;
+    const targets = scriptCommandTargets(assetIds).filter((asset) => asset.transcriptionStatus === "complete" && Boolean(asset.text.trim()));
+    if (!targets.length) { setNotice("AI fix chỉ khả dụng sau khi STT kỹ hoàn tất và đã có transcript."); return; }
     setAiReviewBusy(true);
+    const results: string[] = [];
     try {
-      if (selected.text !== scriptRef.current) {
-        const saved = await api.updateMediaScript(project.id, selected.id, scriptRef.current, "user", take?.words);
-        storeMediaAsset(saved);
-        setScriptDirty(false);
+      for (const target of targets) {
+        try {
+          await wordWriteQueues.current.get(target.id);
+          let selected = mediaAssetsRef.current.find((asset) => asset.id === target.id && !asset.deletedAt);
+          if (!selected) continue;
+          if (!assetIds && selected.id === scriptAssetId && selected.text !== scriptRef.current) {
+            const saved = await api.updateMediaScript(project.id, selected.id, scriptRef.current, "user", take?.words);
+            storeMediaAsset(saved);
+            selected = saved;
+            setScriptDirty(false);
+          }
+          const version = wordWriteVersions.current.get(selected.id);
+          const reviewed = await api.reviewMediaTranscript(project.id, selected.id);
+          // A review is a candidate. An edit or removal while AI is running must
+          // never be overwritten by the earlier request's asset snapshot.
+          const current = mediaAssetsRef.current.find((asset) => asset.id === selected.id && !asset.deletedAt);
+          if (!current) continue;
+          const changed = wordWriteVersions.current.get(selected.id) !== version || current.text !== selected.text;
+          const aiRevisions = reviewed.asset.revisions.filter((revision) => revision.source === "ai");
+          const merged = changed ? { ...current, aiReviewStatus: reviewed.asset.aiReviewStatus,
+            revisions: [...current.revisions.filter((revision) => !aiRevisions.some((candidate) => candidate.id === revision.id)), ...aiRevisions] } : reviewed.asset;
+          mediaAssetsRef.current = mediaAssetsRef.current.map((asset) => asset.id === merged.id ? merged : asset);
+          setMediaAssets(mediaAssetsRef.current);
+          if (reviewed.status === "skipped") results.push(`${selected.name}: AI fix chưa được cấu hình. Mở Windows → Preferences để nhập endpoint, model và API key.`);
+          else if (reviewed.status === "complete") results.push(`${selected.name}: ${reviewed.reviewedText.trim() !== selected.text.trim() ? "AI đã tạo phương án sửa. Chọn từng cụm vàng/xanh trực tiếp trong Script." : "AI không thấy lỗi nhận diện cần sửa."}`);
+          else results.push(`${selected.name}: ${reviewed.error ?? "AI fix không hoàn tất."}`);
+        } catch (error) { results.push(`${target.name}: ${error instanceof Error ? error.message : "Không thể chạy AI fix."}`); }
       }
-      const reviewed = await api.reviewMediaTranscript(project.id, selected.id);
-      storeMediaAsset(reviewed.asset);
-      if (reviewed.status === "complete" && reviewed.reviewedText.trim() !== scriptRef.current.trim()) {
-        setNotice("AI đã tạo phương án sửa. Chọn từng cụm vàng/xanh trực tiếp trong Script.");
-      } else if (reviewed.status === "skipped") {
-        setNotice("AI fix chưa được cấu hình. Mở Windows → Preferences để nhập endpoint, model và API key.");
-      } else if (reviewed.status === "complete") {
-        setNotice("AI không thấy lỗi nhận diện cần sửa.");
-      } else {
-        setNotice(reviewed.error ?? "AI fix không hoàn tất.");
-      }
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không thể chạy AI fix.");
-    } finally {
-      setAiReviewBusy(false);
-    }
+      setNotice(results.join("\n"));
+    } finally { setAiReviewBusy(false); }
   }
   async function generateVoice() {
     const offered = voicesInCategory(projectVoices, voiceCategory);
@@ -2527,6 +2536,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     projectLanguage: project.language ?? null,
     onUpdateAnnotations: (assetId, speakerProfileIds, environmentProfileIds, emotion) => { if (!blockedByRecycleBin()) void updateMediaAnnotations(assetId, speakerProfileIds, environmentProfileIds, emotion); },
     onUpdateDiarizationAssignments: (assetId, assignments) => { if (!blockedByRecycleBin()) void updateDiarizationAssignments(assetId, assignments); },
+    onScriptDocumentsChange: (changes) => {
+      if (blockedByRecycleBin()) return;
+      scriptEditHistory.current.batch(() => changes.forEach((change) => { void changeWordAnnotations(change.words, change.text, change.assetId); }));
+    },
     onAssetWordsChange: (assetId, words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text, assetId); },
     onWordsChange: (words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text); },
     onScriptUndo: () => restoreScriptEdit("undo"),
@@ -2539,13 +2552,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onStopDiarization: stopDiarization,
     onStopTraining: stopTraining,
     onStopGeneration: stopGeneration,
-    onDeferredAction: (action) => {
-      if (action === "Export SRT theo câu") void exportSubtitles("sentence");
-      else if (action === "Export SRT từng từ") void exportSubtitles("word");
-      else if (action === "Export bảng Script") void exportSubtitles("table");
+    onDeferredAction: (action, assetIds) => {
+      if (action === "Export SRT theo câu") void exportSubtitles("sentence", assetIds);
+      else if (action === "Export SRT từng từ") void exportSubtitles("word", assetIds);
+      else if (action === "Export bảng Script") void exportSubtitles("table", assetIds);
       else setNotice(`${action} chưa có processor phù hợp.`);
     },
-    onRunAiReview: () => { if (!blockedByRecycleBin()) void runAiReview(); },
+    onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
   }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
