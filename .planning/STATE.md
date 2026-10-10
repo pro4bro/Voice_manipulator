@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-10 — USER-FEEDBACK-21 canonical Script word spacing.
-last_activity_desc: Channel word wrappers match ordinary Script; focused38/4 and frontend752/83 pass; typecheck/build and backend741 pass. Native spacing acceptance and Conviction acoustic review remain open. Phase03 stays60%.
+last_activity: 2026-10-10 — USER-FEEDBACK-22 shared Script playback following.
+last_activity_desc: Source-aware follow shared across ordinary/imported/OBS parent and child transcripts; frontend772/84, typecheck/build and backend741 pass. Native follow acceptance and Conviction acoustic reference remain open. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,33 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-22 — source-independent Script playback following (2026-10-10)
+
+Product `6c2d714` fixes the missing archived/multitrack Script follow behavior.
+ChannelScript previously highlighted source words but had no viewport-follow
+effect. Ordinary footage, imported parent/child and archived OBS parent/child
+now use shared source-aware playback following and virtual reveal. Deliberate
+Timeline scrubbing resumes follow even within the same word; manual reading
+still pauses it. Simultaneous tracks keep their highlights with one stable
+scroll focus. Multitrack plain text follows/highlights without replacing native
+editing selection, and VoiceScript tables share the follow policy. Audio and
+word timings are unchanged. ADR0067 records the behavior contract.
+
+Initial registry regressions failed5/6 before the correction. Final full frontend
+772/84 passes in98.94s with two workers; typecheck/build/diff pass. Backend741
+passes /2 existing warnings in192.19s. Default-worker validation initially had
+an existing scroll timeout and live-caption assertion failure; the complete
+bounded runs passed without changing assertions or timeouts. Evidence:
+`docs/gates/user-feedback-22-script-playback-parity.md`.
+
+Native browser acceptance remains: refresh OBS9 and an imported project, drag
+to offscreen words, scroll Script manually, drag again within the same word and
+switch parent/child or plain text. Controlled DOM geometry does not prove native
+scroll/pixel behavior. Exact next planned round: **STT-TIMING-ACCURACY-01
+independent anchor review** after the owner finishes the Conviction timing
+reference, required for independent acoustic boundary measurement. Phase03
+stays60%.
 
 ## USER-FEEDBACK-21 — canonical Script word spacing (2026-10-10)
 
