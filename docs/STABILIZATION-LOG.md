@@ -1187,3 +1187,32 @@ DOM/CSS regressions establish structure and styles, not appearance on the owner'
 device. Exact next: **STT-TIMING-ACCURACY-01 independent anchor review** after the
 owner completes the Conviction benchmark. Phase03 stays60%; acoustic timing
 accuracy, production defaults, media and model jobs are unchanged.
+
+
+## 2026-10-10 — USER-FEEDBACK-20
+
+Product `c253313` removes row-selection/source-feed disabling of valid Script
+controls. Row profile dropdowns always open, including an empty catalog, and
+always offer Chưa gán Profile. Opening an unselected row selects it only when
+there is no existing selection; assignment/unassignment touches selected rows.
+The same control rule applies to ordinary footage, channels and VoiceScript.
+
+Archived parents now supply real child documents to table/text, Find/Replace,
+AUTO NHỊP, Clear Text, Export and AI fix. Each source retains its own offsets,
+word timings and labels. Multi-document edits use one Undo/Redo step. AI
+candidates remain choices; late replies preserve newer edits and removals.
+Other shared-module routing was audited; matrix and limits are in
+`docs/gates/user-feedback-20-script-actions.md`. ADR0066 supersedes ADR0065's
+archived-aggregate action restriction. Pending live drafts still require an
+archived word document for destructive/word-document operations.
+
+Five original caller repros failed before the fix. Final frontend750/83 passes
+in93.46s; typecheck/build/diff pass. Backend741 passes /2 existing warnings in189.09s.
+No selection assertion or performance budget was removed or relaxed.
+
+Native acceptance remains after refresh: try profile assign/unassign, selected
+rows only, table/text, Find/Replace, pause formatting, Undo/Redo and parent
+Export/AI fix in Conviction and OBS9. Automated evidence does not prove native
+popup rendering. Exact next: **STT-TIMING-ACCURACY-01 independent anchor review**
+after the owner finishes the Conviction reference, required for independent
+acoustic boundary measurement. Phase03 stays60%.

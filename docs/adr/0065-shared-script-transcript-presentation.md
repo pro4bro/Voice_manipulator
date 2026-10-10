@@ -2,6 +2,9 @@
 
 2026-10-10. Accepted for USER-FEEDBACK-19.
 
+Update: ADR0066 supersedes the archived-aggregate command restriction below.
+The shared presentation contract remains in effect.
+
 ## Context
 
 Ordinary footage used ScriptTable, imported/archived channels used ChannelScript
