@@ -109,6 +109,22 @@ describe("script text timing reconciliation", () => {
     expect(result.words[2].end).toBeLessThan(before[1].start);
     expect(result.words[3]).toBe(before[1]);
   });
+  it("keeps repeated neighbouring identities intact even when the insertion gap is tiny", () => {
+    const before: StudioWord[] = [{ text: "rồi", start: 1, end: 2, speakerId: "a" }, { text: "rồi", start: 2.0001, end: 3, speakerId: "b" }];
+    const result = insertScriptTextAtWordBoundary("rồi rồi", 1, "rồi rồi", before, 2.00005, 10);
+    expect(result.text).toBe("rồi rồi rồi rồi");
+    expect(result.changedWordIndexes).toEqual([1, 2]);
+    expect(result.words[0]).toBe(before[0]); expect(result.words[3]).toBe(before[1]);
+    expect(result.words[1].start).toBeGreaterThanOrEqual(2);
+    expect(result.words[1].end).toBeGreaterThan(result.words[1].start);
+    expect(result.words[1].end).toBeLessThan(result.words[2].start);
+    expect(result.words[2].end).toBeLessThan(2.0001);
+  });
+  it("rejects insertion between touching anchors instead of moving either old word", () => {
+    const before: StudioWord[] = [{ text: "xin", start: 1, end: 2 }, { text: "chào", start: 2, end: 3 }];
+    const result = insertScriptTextAtWordBoundary("xin chào", 1, "mới", before, 1.5, 10);
+    expect(result).toEqual({ text: "xin chào", words: before, changedWordIndexes: [] });
+  });
 
   it("replaces a known word with a positive provisional interval at the selected time", () => {
     const result = replaceScriptWordAtTime("rồi rồi đi", 1, "về", [

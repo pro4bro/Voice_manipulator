@@ -16,6 +16,67 @@ function geometry(container: HTMLElement) {
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, right: 1000, width: 1000, top: 0, bottom: 100, height: 100, x: 0, y: 0, toJSON: () => ({}) });
 }
 describe("time-aware timeline editing", () => {
+  it.each(["menu", "doubleclick"])("adds a phrase from blank subtitle space via %s with equal separate intervals", (gesture) => {
+    const change = vi.fn();
+    const { container, rerender } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    geometry(container);
+    const lane = container.querySelector(".word-track")!;
+    if (gesture === "menu") {
+      fireEvent.contextMenu(lane, { clientX: 250, clientY: 80 });
+      expect(screen.queryByRole("menuitem", { name: "Sửa text" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    } else fireEvent.doubleClick(lane, { clientX: 250, clientY: 80 });
+    const input = screen.getByLabelText("Sửa subtitle");
+    expect(input).toHaveValue("");
+    fireEvent.change(input, { target: { value: "hai từ mới" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(change).toHaveBeenCalledTimes(1);
+    const [edited, text] = change.mock.calls[0];
+    expect(text).toBe("xin hai từ mới chào");
+    expect(edited[0]).toEqual(words[0]); expect(edited[4]).toEqual(words[1]);
+    expect(edited[1].start).toBe(2.5);
+    for (let i = 1; i <= 3; i += 1) {
+      expect(edited[i]).toMatchObject({ timingTrusted: false, timingSource: "user-interpolated" });
+      expect(edited[i].end).toBeGreaterThan(edited[i].start);
+      expect(edited[i].end - edited[i].start).toBeCloseTo(edited[1].end - edited[1].start);
+      expect(edited[i].end).toBeLessThan(edited[i + 1].start);
+    }
+    // The same committed array renders each token as its own editable box.
+    rerender(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={{ ...take, words: edited, text }} />);
+    for (const token of ["hai", "từ", "mới"]) expect(screen.getByRole("button", { name: `Subtitle word ${token}` })).toBeInTheDocument();
+  });
+  it("keeps a no-room insertion uncommitted and allows Escape to discard it", () => {
+    const change = vi.fn();
+    const touching = [{ ...words[0], end: 3 }, words[1]];
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={{ ...take, words: touching }} />);
+    geometry(container);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Subtitle word xin" }), { clientX: 200 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    const editor = screen.getByLabelText("Sửa subtitle");
+    fireEvent.change(editor, { target: { value: "mới" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    expect(change).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Không còn khoảng trống timing");
+    fireEvent.keyDown(editor, { key: "Escape" }); fireEvent.blur(editor);
+    expect(change).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("offers Add text on a word and on an empty subtitle lane, bounded by the audio end", () => {
+    const change = vi.fn();
+    const view = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Subtitle word xin" }), { clientX: 150 });
+    expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
+    view.rerender(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={{ ...take, id: "empty", words: [], text: "" }} />);
+    geometry(view.container);
+    fireEvent.contextMenu(view.container.querySelector(".word-track")!, { clientX: 999 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    fireEvent.change(screen.getByLabelText("Sửa subtitle"), { target: { value: "một hai ba" } });
+    fireEvent.blur(screen.getByLabelText("Sửa subtitle"));
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(change.mock.calls[0][0]).toHaveLength(3);
+    expect(change.mock.calls[0][0].every((word: { start: number; end: number }) => word.end > word.start && word.end <= 10)).toBe(true);
+  });
   it("routes undo/redo from hovered Timeline and flushes an inline subtitle edit first", () => {
     const undo = vi.fn(), redo = vi.fn(), change = vi.fn();
     const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} onUndo={undo} onRedo={redo} take={take} />);

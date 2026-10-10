@@ -266,18 +266,20 @@ export function replaceScriptWord(previousText: string, wordIndex: number, repla
 }
 
 /** Insert subtitle text before a known word boundary; a clicked timeline time is provisional, not source alignment. */
-function pinInsertedWords(result: ReconciledScriptEdit, sourceTime: number, originalWords: StudioWord[]) {
+function pinInsertedWords(result: ReconciledScriptEdit, sourceTime: number, originalWords: StudioWord[], sourceEnd?: number) {
   const indexes = result.changedWordIndexes;
   if (!indexes.length) return;
   const first = indexes[0], last = indexes[indexes.length - 1];
   const low = result.words[first - 1]?.end ?? 0;
   const nextStart = result.words[last + 1]?.start;
-  const start = Math.max(low, nextStart === undefined ? sourceTime : Math.min(sourceTime, nextStart - .02 * indexes.length));
-  const end = nextStart ?? start + .09 * indexes.length;
-  const step = Math.max(.000001, (end - start) / indexes.length);
+  const end = Math.min(nextStart ?? Math.max(low, sourceTime) + .09 * indexes.length, sourceEnd ?? Infinity);
+  if (end <= low) return false;
+  const start = Math.max(low, Math.min(sourceTime, end - Math.min(.02 * indexes.length, (end - low) / 2)));
+  const step = (end - start) / indexes.length;
   const gap = Math.min(.01, step / 5);
   indexes.forEach((index, offset) => { result.words[index] = { ...result.words[index], start: start + offset * step, end: start + (offset + 1) * step - gap, timingSource: "user-interpolated", timingTrusted: false }; });
-  result.words = editableWordTimings(result.words, originalWords.reduce((limit, word) => Math.max(limit, word.end), end));
+  if (sourceEnd === undefined) result.words = editableWordTimings(result.words, originalWords.reduce((limit, word) => Math.max(limit, word.end), end));
+  return true;
 }
 
 /** Delete known word identities in one document pass, without realigning survivors. */
@@ -316,7 +318,7 @@ export function deleteScriptWords(text: string, indexes: readonly number[], word
   return { text: nextText, words: removed.size ? words.filter((_, index) => !removed.has(index)) : words, changedWordIndexes: [] };
 }
 
-export function insertScriptTextAtWordBoundary(previousText: string, wordBoundaryIndex: number, insertedText: string, words: StudioWord[], sourceTime?: number) {
+export function insertScriptTextAtWordBoundary(previousText: string, wordBoundaryIndex: number, insertedText: string, words: StudioWord[], sourceTime?: number, sourceEnd?: number) {
   const ranges = mapScriptWordsToText(previousText, words);
   const boundary = Math.max(0, Math.min(words.length, Math.trunc(wordBoundaryIndex)));
   const nextWordRange = ranges.find((range) => range.index === boundary);
@@ -325,10 +327,28 @@ export function insertScriptTextAtWordBoundary(previousText: string, wordBoundar
   const trimmed = insertedText.trim();
   const prefix = position > 0 && !/\s/u.test(previousText[position - 1]) ? " " : "";
   const suffix = position < previousText.length && !/\s/u.test(previousText[position]) ? " " : "";
-  const text = previousText.slice(0, position) + prefix + trimmed + suffix + previousText.slice(position);
-  const result = reconcileScriptTextEdit(previousText, text, words);
+  if (sourceTime !== undefined && Number.isFinite(sourceTime) && sourceEnd !== undefined) {
+    // A Timeline insertion has an exact word boundary and audio bounds. Splice
+    // directly so provisional timing cannot repair or borrow from old anchors.
+    const added: StudioWord[] = tokenize(trimmed).map((token) => ({ text: token.text, start: 0, end: 0,
+      timingSource: "user-interpolated", timingTrusted: false, reviewState: "manual", selectedVariant: "manual" }));
+    if (!added.length) return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
+    const result: ReconciledScriptEdit = {
+      text: previousText.slice(0, position) + prefix + trimmed + suffix + previousText.slice(position),
+      words: [...words.slice(0, boundary), ...added, ...words.slice(boundary)],
+      changedWordIndexes: added.map((_, offset) => boundary + offset),
+    };
+    if (pinInsertedWords(result, Math.max(0, sourceTime), words, sourceEnd) === false) {
+      return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
+    }
+    return result;
+  }
+  // Preserve exact surrounding word identities, including repeated phrases.
+  const result = replaceScriptTextRange(previousText, { start: position, end: position }, prefix + trimmed + suffix, words);
   if (sourceTime !== undefined && Number.isFinite(sourceTime)) {
-    pinInsertedWords(result, Math.max(0, sourceTime), words);
+    if (pinInsertedWords(result, Math.max(0, sourceTime), words, sourceEnd) === false) {
+      return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
+    }
   }
   return result;
 }

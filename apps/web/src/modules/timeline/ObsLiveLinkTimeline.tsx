@@ -237,7 +237,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [editBusy, setEditBusy] = useState(false);
   const [followLive, setFollowLive] = useState(true);
-  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } } | null>(null);
+  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number; serial: number } } | null>(null);
   const editFocusRef = useRef(editFocus);
   const moduleRef = useRef<HTMLElement>(null);
   useScriptShortcuts(moduleRef, { undo: onUndo, redo: onRedo }, ".timeline-module", !editFocus);
@@ -520,8 +520,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const markInPosition = markIn === null ? null : ((markIn - windowStart) / windowSpan) * 100;
   const canPlay = !isLive && lanes.some((lane) => lane.assetId);
 
-  function focusArchivedTrack(asset: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number }) {
-    if (isLive || (!asset.words?.length && request.insertTime === undefined) || !onAssetWordsChange || !onAssetTimelineStateChange) return;
+  function focusArchivedTrack(asset: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number }) {
+    if (isLive || (!asset.words?.length && request.insertTime === undefined && request.contextTime === undefined) || !onAssetWordsChange || !onAssetTimelineStateChange) return;
     const lane = lanes.find((item) => item.assetId === asset.id);
     if (lane) setSelectedChannelId(lane.channelId);
     pausePlayback();
@@ -1001,8 +1001,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 })}
               </div>
               {archivedAsset ? <div aria-label={`Subtitle ${lane.label}`} className="obs-timeline__caption imported-timeline__words"
-                onDoubleClick={(event) => { if (event.target !== event.currentTarget) return; const time = positionSeconds(event.clientX, event.currentTarget); const wordIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (wordIndex >= 0) focusArchivedTrack(archivedAsset, { wordIndex }); }}
-                onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); const time = positionSeconds(event.clientX, event.currentTarget); const contextIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (contextIndex >= 0) focusArchivedTrack(archivedAsset, { contextIndex }); }}
+                onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const time = positionSeconds(event.clientX, event.currentTarget); if (time === null) return; const index = subtitleIndexAtTime(archivedAsset.words ?? [], time); const word = archivedAsset.words?.[index]; focusArchivedTrack(archivedAsset, word && word.start <= time && time < word.end ? { wordIndex: index } : { insertTime: time }); }}
+                onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; event.preventDefault(); const time = positionSeconds(event.clientX, event.currentTarget); if (time !== null) focusArchivedTrack(archivedAsset, { contextTime: time }); }}
                 onPointerDown={(event) => { if (event.button !== 1 || event.target !== event.currentTarget) return; event.preventDefault(); const time = positionSeconds(event.clientX, event.currentTarget); const promoteIndex = subtitleIndexAtTime(archivedAsset.words ?? [], time ?? 0); if (promoteIndex >= 0) focusArchivedTrack(archivedAsset, { promoteIndex }); }}
                 onClick={(event) => {
                   if (event.target !== event.currentTarget) return;
@@ -1041,7 +1041,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                       }
                     }}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); focusArchivedTrack(archivedAsset, { wordIndex }); }}
-                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); focusArchivedTrack(archivedAsset, { contextIndex: wordIndex }); }}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); const lane = event.currentTarget.parentElement; focusArchivedTrack(archivedAsset, { contextIndex: wordIndex, contextTime: lane ? positionSeconds(event.clientX, lane) ?? word.start : word.start }); }}
                     onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); focusArchivedTrack(archivedAsset, { promoteIndex: wordIndex }); } }}
                   >{word.text}</button> : null;
                 })}

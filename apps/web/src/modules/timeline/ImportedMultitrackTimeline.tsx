@@ -97,7 +97,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [viewportHeight, setViewportHeight] = useState(220);
   const [viewportWidth, setViewportWidth] = useState(1000);
   const [measuredWaveWidth, setMeasuredWaveWidth] = useState(0);
-  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } } | null>(null);
+  const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number; serial: number } } | null>(null);
   const editFocusRef = useRef(editFocus);
   const moduleRef = useRef<HTMLElement>(null);
   useScriptShortcuts(moduleRef, { undo: onUndo, redo: onRedo }, ".timeline-module", !editFocus);
@@ -105,7 +105,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const duration = Math.max(parent.duration, ...tracks.map((track) => track.duration), 0);
   const selected = tracks.find((track) => track.id === selectedTrackId) ?? tracks[0];
 
-  function focusTrack(track: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number }) {
+  function focusTrack(track: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number }) {
     if (readOnly || !onAssetWordsChange || !onAssetTimelineStateChange) return;
     if (editFocus?.assetId === track.id && editFocus.request.promoteIndex === request.promoteIndex && request.promoteIndex !== undefined) return;
     audioRefs.current.forEach((audio) => audio.pause());
@@ -460,8 +460,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                 {markOut !== null ? <i aria-label="Mark Out" className="obs-timeline__mark" style={{ left: `${(markOut - windowStart) / span * 100}%` }} /> : null}
               </div>
               <div aria-label={`Subtitle Channel ${index + 1}`} className="obs-timeline__caption imported-timeline__words"
-                onDoubleClick={(event) => { if (event.target !== event.currentTarget) return; const rect = event.currentTarget.getBoundingClientRect(); const time = windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span; const wordIndex = subtitleIndexAtTime(track.words, time); if (wordIndex >= 0) focusTrack(track, { wordIndex }); }}
-                onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const contextIndex = subtitleIndexAtTime(track.words, windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span); if (contextIndex >= 0) focusTrack(track, { contextIndex }); }}
+                onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const rect = event.currentTarget.getBoundingClientRect(); const time = windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span; const index = subtitleIndexAtTime(track.words, time); const word = track.words[index]; focusTrack(track, word && word.start <= time && time < word.end ? { wordIndex: index } : { insertTime: time }); }}
+                onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); focusTrack(track, { contextTime: windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span }); }}
                 onPointerDown={(event) => { if (event.button !== 1 || event.target !== event.currentTarget) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); const promoteIndex = subtitleIndexAtTime(track.words, windowStart + (event.clientX - rect.left) / Math.max(1, rect.width) * span); if (promoteIndex >= 0) focusTrack(track, { promoteIndex }); }}
                 onClick={(event) => {
                   if (event.target !== event.currentTarget) return;
@@ -490,7 +490,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                       else seek(word.start);
                     }}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); focusTrack(track, { wordIndex }); }}
-                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); focusTrack(track, { contextIndex: wordIndex }); }}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.parentElement?.getBoundingClientRect(); const time = rect ? windowStart + Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) * span : word.start; focusTrack(track, { contextIndex: wordIndex, contextTime: time }); }}
                     onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); focusTrack(track, { promoteIndex: wordIndex }); } }}
                     >{word.text}</button> : null;
                 }) : <span>{track.text ? "Transcript chưa có word timestamp" : "Chưa có lời nói"}</span>}

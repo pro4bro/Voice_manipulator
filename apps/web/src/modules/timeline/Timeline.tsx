@@ -62,7 +62,7 @@ interface TimelineProps {
   workingRange?: TimelineEditRange | null;
   cutPoints?: number[];
   onEditStateChange?: (state: TimelineEditState) => void;
-  editRequest?: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; serial: number } | null;
+  editRequest?: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number; serial: number } | null;
   gainKeyframes?: TimelineGainKeyframe[];
   onGainChange: (value: number) => void;
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
@@ -283,7 +283,8 @@ export function Timeline({
   const [autoCalibrate, setAutoCalibrate] = useState(false);
   const [timelineCanvasWidth, setTimelineCanvasWidth] = useState(0);
   const [timelineViewport, setTimelineViewport] = useState({ left: 0, width: 0 });
-  const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
+  const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; time: number; x: number; y: number } | null>(null);
+  const [insertionError, setInsertionError] = useState<string | null>(null);
   const selectedWordIndexes = useMemo(() => new Set(wordSelection.indexes), [wordSelection.indexes]);
   useEffect(() => {
     if (!speakerMenu) return undefined;
@@ -535,6 +536,10 @@ export function Timeline({
       audio.pause();
       audio.currentTime = 0;
     }
+    wordEditorRef.current = null;
+    setWordEditor(null);
+    setSpeakerMenu(null);
+    setInsertionError(null);
     setCurrentTime(0);
     setPlaying(false);
     setDecodedDuration(0);
@@ -563,14 +568,14 @@ export function Timeline({
   useEffect(() => {
     if (!editRequest) return;
     if (editRequest.promoteIndex !== undefined) promoteTimestampWord(take?.id ?? null, editRequest.promoteIndex);
-    if (editRequest.contextIndex !== undefined && words[editRequest.contextIndex]) {
+    if (editRequest.contextTime !== undefined || (editRequest.contextIndex !== undefined && words[editRequest.contextIndex])) {
       const bounds = wordTrackRef.current?.getBoundingClientRect();
-      openSpeakerMenu(editRequest.contextIndex, Math.max(8, bounds?.left ?? 8), Math.max(8, (bounds?.top ?? 8) - 80));
+      openSpeakerMenu(editRequest.contextIndex ?? -1, Math.max(8, bounds?.left ?? 8), Math.max(8, (bounds?.top ?? 8) - 80), editRequest.contextTime);
     }
     if (editRequest.wordIndex !== undefined && words[editRequest.wordIndex]) {
       const word = words[editRequest.wordIndex];
       setWordEditor({ index: editRequest.wordIndex, time: word.start, text: word.text });
-    } else if (editRequest.insertTime !== undefined) setWordEditor({ index: null, time: editRequest.insertTime, text: "" });
+    } else if (editRequest.insertTime !== undefined) beginTextInsertion(editRequest.insertTime);
   }, [editRequest?.serial, take?.id]);
 
   useEffect(() => {
@@ -1007,13 +1012,20 @@ export function Timeline({
     if (index >= 0) extendWordSelection(index, modifiers);
   }
 
-  function openSpeakerMenu(index: number, x: number, y: number) {
-    const indexes = selectedWordIndexes.has(index) ? [...selectedWordIndexes].sort((left, right) => left - right) : [index];
-    if (!selectedWordIndexes.has(index)) {
+  function beginTextInsertion(time: number) {
+    if (!take || isRecording || !onWordsChange) return;
+    setInsertionError(null);
+    setWordEditor({ index: null, time: Math.max(0, Math.min(duration, time)), text: "" });
+    setSpeakerMenu(null);
+  }
+
+  function openSpeakerMenu(index: number, x: number, y: number, time = words[index]?.start ?? 0) {
+    const indexes = !words[index] ? [] : selectedWordIndexes.has(index) ? [...selectedWordIndexes].sort((left, right) => left - right) : [index];
+    if (indexes.length && !selectedWordIndexes.has(index)) {
       sweepOriginRef.current = index;
       onWordSelectionChange?.({ indexes, anchor: index });
     }
-    setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), x, y });
+    setSpeakerMenu({ indexes: indexes.sort((left, right) => left - right), time, x, y });
   }
 
   function deleteSelectedSubtitleWords() {
@@ -1148,12 +1160,18 @@ export function Timeline({
     } else if (wordEditor.text.trim()) {
       const boundary = words.findIndex((word) => word.start >= wordEditor.time);
       const index = boundary < 0 ? words.length : boundary;
-      const edit = insertScriptTextAtWordBoundary(text, index, wordEditor.text, words, wordEditor.time);
+      const edit = insertScriptTextAtWordBoundary(text, index, wordEditor.text, words, wordEditor.time, duration);
+      if (!edit.changedWordIndexes.length) {
+        setInsertionError("Không còn khoảng trống timing ở đây. Hãy chỉnh timing các từ bên cạnh rồi thêm text.");
+        wordEditorRef.current = wordEditor;
+        return;
+      }
       onWordsChange?.(edit.words, edit.text);
       setPromotedIndex(index);
       promotedRef.current = index;
     }
     setWordEditor(null);
+    setInsertionError(null);
   }
 
   function dragWord(event: PointerEvent<HTMLElement>) {
@@ -1434,7 +1452,20 @@ export function Timeline({
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
-            <div className="word-track" onDoubleClick={(event) => { if ((event.target as HTMLElement).closest("button, input")) return; const index = wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index >= 0) setWordEditor({ index, time: words[index].start, text: words[index].text }); }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); setWordEditor({ index: null, time: sourceTimeAt(event.clientX), text: "" }); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            <div className="word-track" onDoubleClick={(event) => {
+              if ((event.target as HTMLElement).closest("button, input")) return;
+              event.preventDefault(); event.stopPropagation();
+              const time = sourceTimeAt(event.clientX);
+              const index = wordIndexAtTimelinePoint(event.clientX, event.clientY);
+              const word = words[index];
+              if (word && word.start <= time && time < word.end) setWordEditor({ index, time: word.start, text: word.text });
+              else beginTextInsertion(time);
+            }} onContextMenu={(event) => {
+              if ((event.target as HTMLElement).closest("input")) return;
+              event.preventDefault(); event.stopPropagation();
+              const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
+              openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
+            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
@@ -1475,7 +1506,7 @@ export function Timeline({
                 );
               }) : <em className={timingUnavailable ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingUnavailable ? take?.wordTimingNote ?? "WORD TIMING · chưa có nguồn căn chỉnh đáng tin; cần chạy lại STT" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}
               {excludedRanges.map((range) => <i key={range.id} className="timeline-removed-range" style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}
-              {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" style={{ left: `${wordEditor.time / duration * 100}%` }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { if (!(event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey))) event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); } }} /> : null}
+              {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" placeholder={wordEditor.index === null ? "Nhập text mới · Enter để lưu" : undefined} style={{ left: `${Math.max(timelineViewport.left, Math.min(wordEditor.time / duration * wordTrackCanvasWidth, timelineViewport.left + wordTrackViewportWidth - Math.min(320, wordTrackViewportWidth))) / wordTrackCanvasWidth * 100}%`, width: Math.min(320, wordTrackViewportWidth) }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { if (!(event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey))) event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); setInsertionError(null); } }} /> : null}
             </div>
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
@@ -1485,7 +1516,18 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}><strong>TEXT · {speakerMenu.indexes.length} TỪ</strong><button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button><button disabled={wordDeletion.busy || !onWordsChange} role="menuitem" type="button" onClick={deleteSelectedSubtitleWords}>Xóa text đã chọn</button><button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>{speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}</div> : null}      <div className="transport-bar">
+      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
+        <strong>TEXT · {speakerMenu.indexes.length} TỪ</strong>
+        <button disabled={!take || isRecording || !onWordsChange} role="menuitem" type="button" onClick={() => beginTextInsertion(speakerMenu.time)}>Add text</button>
+        {speakerMenu.indexes.length ? <>
+          <button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button>
+          <button disabled={wordDeletion.busy || !onWordsChange} role="menuitem" type="button" onClick={deleteSelectedSubtitleWords}>Xóa text đã chọn</button>
+          <button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
+          {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+        </> : null}
+      </div> : null}
+      {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
+      <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
         </button>

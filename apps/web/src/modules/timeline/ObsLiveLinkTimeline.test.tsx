@@ -82,12 +82,29 @@ function archivedWorkspace(singleTrack = false) {
       obsTimelineActive: true, obsTimelineRecordingId: "recording", obsTranscriptRows: [],
       obsPlayheadSeconds: 0, obsSeekRequest: null, onObsPlayheadChange: playhead,
       onSelectImportedTrack: vi.fn(), onSelectAsset: vi.fn(),
-      onAssetWordsChange: vi.fn(), onAssetTimelineStateChange: vi.fn().mockResolvedValue(undefined),
+      onAssetWordsChange: (id: string, words: ProjectMediaAsset["words"], text: string) => setMediaAssets((current) => current.map((asset) => asset.id === id ? { ...asset, words, text } : asset)),
+      onAssetTimelineStateChange: vi.fn().mockResolvedValue(undefined),
     } as unknown as StudioContext;
     return <><ModuleRegistry context={context} id="script" /><ModuleRegistry context={context} id="timeline" /></>;
   }
   return { ...render(<Workspace />), playhead, refreshAssets: () => refreshAssets() };
 }
+
+it("commits a new subtitle phrase into Script and the archived lane together", async () => {
+  archivedWorkspace();
+  const lane = await screen.findByLabelText("Subtitle Channel 1");
+  vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  fireEvent.doubleClick(lane, { clientX: 25 });
+  const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  fireEvent.change(editor, { target: { value: "hai từ" } });
+  fireEvent.keyDown(editor, { key: "Enter" });
+  const script = within(screen.getByLabelText("Script theo channel"));
+  expect(await script.findByRole("button", { name: /^hai ·/ })).toBeInTheDocument();
+  expect(script.getByRole("button", { name: /^từ ·/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Subtitle word hai" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "← TẤT CẢ TRACK OBS" }));
+  expect(await within(screen.getByLabelText("Subtitle Channel 1")).findByRole("button", { name: /^hai ·/ })).toBeInTheDocument();
+});
 
 it("synchronizes archived OBS Script words with the shared audio clock in both directions without live rows", async () => {
   const { container, playhead } = archivedWorkspace();
@@ -922,6 +939,33 @@ it("persists work marks, cuts at playhead and restores selected shared sections"
   fireEvent.click(screen.getByRole("button", { name: "UNCUT" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(8));
   expect(assets.every((asset) => !asset.removedRanges?.length && !asset.cutPoints?.length && asset.workingRange?.start === 10)).toBe(true);
+});
+
+it.each(["menu", "doubleclick"])("adds multiple words to an empty archived OBS subtitle lane via %s", async (gesture) => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 41_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1", assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const asset = { id: "asset-0", name: "OBS Mic 1", duration: 41, text: "", words: [] } as unknown as ProjectMediaAsset;
+  const change = vi.fn();
+  render(<ObsLiveLinkTimeline assets={[asset]} onAssetWordsChange={change}
+    onAssetTimelineStateChange={vi.fn().mockResolvedValue(undefined)} projectId="project" requestedRecordingId="recording" />);
+  const lane = await screen.findByLabelText("Subtitle Channel 1");
+  vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  if (gesture === "menu") {
+    fireEvent.contextMenu(lane, { clientX: 50 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add text" }));
+  } else fireEvent.doubleClick(lane, { clientX: 50 });
+  const input = await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  expect(input).toHaveValue("");
+  fireEvent.change(input, { target: { value: "hello world" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(change).toHaveBeenCalledTimes(1);
+  expect(change.mock.calls[0][0]).toBe("asset-0");
+  expect(change.mock.calls[0][1].map((word: { text: string }) => word.text)).toEqual(["hello", "world"]);
+  expect(change.mock.calls[0][1][0].start).toBeCloseTo(20);
+  expect(change.mock.calls[0][2]).toBe("hello world");
 });
 
 it("edits timestamped words from an archived OBS track in the shared Timeline editor", async () => {

@@ -168,6 +168,29 @@ it("opens insertion and timestamp-promotion requests from subtitle gestures", as
   expect(await screen.findByRole("textbox", { name: "Sửa subtitle" })).toBeInTheDocument();
 });
 
+it.each(["menu", "doubleclick"])("adds multiple words to the clicked imported channel via %s", async (gesture) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const onAssetWordsChange = vi.fn();
+  render(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track, text: "hello", words: [{ text: "hello", start: 15, end: 18 }] }))}
+    selectedTrackId={null} onSelectTrack={() => undefined} onCutsChange={async () => true}
+    onAssetWordsChange={onAssetWordsChange} onAssetTimelineStateChange={vi.fn().mockResolvedValue(undefined)} />);
+  const lane = screen.getByLabelText("Subtitle Channel 2");
+  vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100, right: 100 } as DOMRect);
+  if (gesture === "menu") {
+    fireEvent.contextMenu(lane, { clientX: 10 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add text" }));
+  } else fireEvent.doubleClick(lane, { clientX: 10 });
+  const editor = await screen.findByRole("textbox", { name: "Sửa subtitle" });
+  expect(editor).toHaveValue("");
+  fireEvent.change(editor, { target: { value: "new phrase" } });
+  fireEvent.keyDown(editor, { key: "Enter" });
+  expect(onAssetWordsChange).toHaveBeenCalledTimes(1);
+  expect(onAssetWordsChange.mock.calls[0][0]).toBe("b");
+  expect(onAssetWordsChange.mock.calls[0][1].map((word: { text: string }) => word.text)).toEqual(["new", "phrase", "hello"]);
+  expect(onAssetWordsChange.mock.calls[0][1][0].start).toBe(6);
+  expect(onAssetWordsChange.mock.calls[0][2]).toBe("new phrase hello");
+});
+
 it("keeps each Script word and both subtitle lanes synchronized without opening a child", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const timed = tracks.map((track) => ({ ...track, text: "hello world", words: [
