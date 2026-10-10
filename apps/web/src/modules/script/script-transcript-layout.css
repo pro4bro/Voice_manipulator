@@ -1,0 +1,25 @@
+.script-table__speaker.script-row-speaker { display: grid; grid-template-columns: 16.8px minmax(0, 1fr); align-items: start; gap: 8px; padding: 9px 10px; }
+.script-row-speaker__details { display: grid; align-content: start; min-width: 0; gap: 4px; }
+.script-table__speaker .script-row-speaker__details > select { width: 100%; max-width: none; min-width: 0; margin: 0; color: var(--text); background: var(--surface-field); border-left-width: 3px; }
+.script-row-speaker__track { min-width: 0; color: var(--text-muted); font-family: var(--mono); font-size: calc(10px * var(--font-scale)); }
+.script-row-speaker__track > button { display: block; width: 100%; min-width: 0; overflow: hidden; padding: 0; color: inherit; background: transparent; border: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
+.script-row-speaker__track > button:hover { color: var(--accent-ink); }
+.script-transcript-feed.script-transcript-feed { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0; gap: 0; padding: 0; border: 0; background: transparent; overflow: hidden; }
+.script-table-scroll-region > .script-table-scroll { min-width: 0; min-height: 0; flex: 1 1 auto; padding: 0 22px 0 0; overflow: auto; overflow-anchor: none; }
+.script-document { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; flex-direction: column; overflow: hidden; }
+.script-document .script-table { font-weight: inherit; font-style: inherit; text-decoration: inherit; }
+.script-table .script-table__content { font-size: clamp(calc(14px * var(--font-scale, 1) * var(--script-font-adjust, 1)), calc(1.05vw * var(--font-scale, 1) * var(--script-font-adjust, 1)), calc(17px * var(--font-scale, 1) * var(--script-font-adjust, 1))); line-height: 1.72; }
+.script-table .script-table__word { font: inherit; }
+.script-table .script-table__timestamp { grid-template-rows: auto auto; align-content: start; }
+.script-transcript-words { font: inherit; }
+.script-table__content > .script-transcript-seek { width: 100%; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; line-height: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.script-table__content > .script-transcript-seek.is-overlap { color: var(--red-ink); }
+.script-table__timestamp .obs-script__state { margin-top: 4px; }
+
+.script-row-model { min-width: 0; padding: 3px 5px; border: 1px solid var(--line); background: var(--surface-field); color: var(--text-muted); font: inherit; text-align: left; overflow-wrap: anywhere; }
+.script-table .voice-script__row-actions { display: flex; flex-direction: column; min-width: 0; padding: 3px; }
+.script-table .voice-script__row-actions > button { width: 24px; min-width: 0; }
+.script-table .script-row-selection { display: grid; gap: 3px; }
+.script-table .script-row-selection small { text-align: center; }
+
+.script-table__row-tools { display: flex; min-width: 0; flex-direction: column; align-items: center; }

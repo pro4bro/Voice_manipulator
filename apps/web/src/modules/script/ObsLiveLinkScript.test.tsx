@@ -33,8 +33,8 @@ it("shows one row through long silence and empty listening events until another 
     row("a2", "A", 60, "final", "chào"), row("b1", "B", 80, "final", "Vâng"),
     row("a3", "A", 100, "final", "tiếp")];
   render(<ObsLiveLinkScript error={null} onSeek={onSeek} playheadSeconds={0} recordingId="recording" rows={rows} />);
-  const list = screen.getByRole("list", { name: "Lượt nói theo track OBS" });
-  expect([...list.querySelectorAll("li")].map((item) => [item.dataset.channelId, item.textContent?.includes("Xin chào")])).toEqual([
+  const list = screen.getByRole("grid", { name: "Lượt nói theo track OBS" });
+  expect([...list.querySelectorAll<HTMLElement>(".script-table__row")].map((item) => [item.dataset.channelId, item.textContent?.includes("Xin chào")])).toEqual([
     ["A", true], ["B", false], ["A", false],
   ]);
   fireEvent.click(screen.getByRole("button", { name: "Chọn Channel A tại 00:01" }));
@@ -57,9 +57,9 @@ it("shows concurrent source rows and seeks the clicked channel sample span", () 
   const rows = [row("a-1", "A", 1, "partial", "A đang nói"),
     row("b-1", "B", 2, "final", "B chen vào"), row("a-2", "A", 4, "final", "A nói tiếp")];
   render(<ObsLiveLinkScript error={null} onSeek={onSeek} playheadSeconds={0} recordingId="recording" rows={rows} />);
-  const list = screen.getByRole("list", { name: "Lượt nói theo track OBS" });
-  expect(list.querySelectorAll("li")).toHaveLength(3);
-  expect([...list.querySelectorAll("li")].map((item) => item.dataset.channelId)).toEqual(["A", "B", "A"]);
+  const list = screen.getByRole("grid", { name: "Lượt nói theo track OBS" });
+  expect(list.querySelectorAll<HTMLElement>(".script-table__row")).toHaveLength(3);
+  expect([...list.querySelectorAll<HTMLElement>(".script-table__row")].map((item) => item.dataset.channelId)).toEqual(["A", "B", "A"]);
   expect(screen.getByText("A đang nói")).toBeInTheDocument();
   expect(screen.getByText("B chen vào")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Chọn Channel B tại 00:02" }));
@@ -70,7 +70,7 @@ it("shows concurrent source rows and seeks the clicked channel sample span", () 
 it("keeps one listening placeholder before any recognized speech", () => {
   render(<ObsLiveLinkScript error={null} onSeek={vi.fn()} playheadSeconds={0} recordingId="recording"
     rows={[row("idle", "A", 1, "listening", "")]} />);
-  expect(screen.getByRole("listitem")).toHaveTextContent("Đang nghe…");
+  expect(document.querySelector(".script-table__row")!).toHaveTextContent("Đang nghe…");
 });
 
 it("colors both rows only while reviewing their shared segment and seeks each source marker", () => {
@@ -100,7 +100,7 @@ it("colors both rows only while reviewing their shared segment and seeks each so
 it("provides a keyboard scrollbar that reaches the end of the OBS live transcript", () => {
   const rows = Array.from({ length: 12 }, (_, index) => row(`row-${index}`, `C${index % 2}`, index * 2, "final", `speech ${index}`));
   render(<ObsLiveLinkScript embedded error={null} onSeek={vi.fn()} playheadSeconds={0} recordingId="recording" rows={rows} />);
-  const list = screen.getByRole("list", { name: "Lượt nói theo track OBS" });
+  const list = screen.getByRole("grid", { name: "Lượt nói theo track OBS" });
   const scrollbar = screen.getByRole("scrollbar", { name: "Thanh cuộn lượt nói OBS" });
   let scrollTop = 0;
   Object.defineProperties(list, {

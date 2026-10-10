@@ -10,19 +10,8 @@ import { useScriptShortcuts } from "./script-shortcuts";
 import { useScriptPlaybackFollow } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 import "./script-selection.css";
-
-export interface ScriptTableColumn {
-  id: string;
-  label: string;
-  width: number;
-  builtin?: "speaker" | "content" | "timestamp";
-}
-
-const DEFAULT_COLUMNS: readonly ScriptTableColumn[] = [
-  { id: "speaker", label: "SPEAKER", width: 220, builtin: "speaker" },
-  { id: "content", label: "NỘI DUNG", width: 620, builtin: "content" },
-  { id: "timestamp", label: "TIMESTAMP", width: 164, builtin: "timestamp" },
-];
+import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout, type ScriptTableColumn } from "./script-transcript-layout";
+export type { ScriptTableColumn } from "./script-transcript-layout";
 
 export interface SpeakerScriptRow {
   id: string;
@@ -51,33 +40,6 @@ function timecode(seconds: number) {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
   const minutes = Math.floor(safe / 60);
   return `${String(minutes).padStart(2, "0")}:${(safe - minutes * 60).toFixed(3).padStart(6, "0")}`;
-}
-
-function parsedBuiltin(value: unknown): ScriptTableColumn["builtin"] {
-  return value === "speaker" || value === "content" || value === "timestamp" ? value : undefined;
-}
-function copyDefaultColumns() {
-  return DEFAULT_COLUMNS.map((column) => ({ ...column }));
-}
-
-function loadColumns(storageKey: string) {
-  try {
-    const raw = window.localStorage.getItem(`pro4bro:script-table:${storageKey}`);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (!Array.isArray(parsed) || !parsed.length) return copyDefaultColumns();
-    const columns = parsed
-      .filter((column): column is Record<string, unknown> => Boolean(column && typeof column === "object"))
-      .map((column) => ({
-        id: String(column.id ?? ""),
-        label: String(column.label ?? "").trim(),
-        width: Math.max(24, Number(column.width) || 160),
-        builtin: parsedBuiltin(column.builtin),
-      }))
-      .filter((column) => column.id && column.label);
-    return columns.length ? columns : copyDefaultColumns();
-  } catch {
-    return copyDefaultColumns();
-  }
 }
 
 /**
@@ -161,6 +123,7 @@ export function updateWordText(words: StudioWord[], index: number, text: string)
 }
 
 interface ScriptTableProps {
+  trackName?: string;
   leadingContent?: ReactNode;
   deleteBusy?: boolean;
   onSelectedRowWordsChange?: (indexes: number[]) => void;
@@ -180,12 +143,6 @@ interface ScriptTableProps {
   selection: WordSelection;
   onSelectionChange: (selection: WordSelection) => void;
 }
-interface ResizeState {
-  id: string;
-  startX: number;
-  startWidth: number;
-}
-
 interface SpeakerTextProps {
   /** The profile the whole take belongs to, for words nobody named. */
   defaultSpeakerId?: string | null;
@@ -300,14 +257,14 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection,
     })}
   </div>;
 }
-export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null, onSelectedRowWordsChange, leadingContent, deleteBusy = false }: ScriptTableProps) {
+export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null, onSelectedRowWordsChange, leadingContent, deleteBusy = false, trackName }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
-  const [columns, setColumns] = useState<ScriptTableColumn[]>(() => loadColumns(storageKey));
+  const layout = useScriptTableLayout();
+  const { columns, gridTemplateColumns } = layout;
   const scrollRef = useRef<HTMLDivElement>(null);
   const leadingContentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLButtonElement>(null);
-  const resizeRef = useRef<ResizeState | null>(null);
   const selectedWordIndexes = useMemo(() => new Set(selection.indexes), [selection.indexes]);
   const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
@@ -355,7 +312,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     return () => observer.disconnect();
   }, [leadingContent, columns]);
 
-  useEffect(() => { setColumns(loadColumns(storageKey)); }, [storageKey]);
   useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [words, speakers, defaultSpeakerId]);
   // A selection made in the Timeline has to be reachable here without hunting
   // for it, so the table follows the last word touched either side.
@@ -367,7 +323,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     const target = view.querySelector<HTMLElement>(`[data-script-word-index="${selection.anchor}"]`);
     if (target && keepWordInView(view, target) !== null) updateScroll(view);
   }, [selection.anchor]);
-  useEffect(() => { window.localStorage.setItem(`pro4bro:script-table:${storageKey}`, JSON.stringify(columns)); }, [columns, storageKey]);
   useEffect(() => {
     if (!speakerMenu) return undefined;
     const closeMenu = (event: globalThis.PointerEvent) => {
@@ -391,7 +346,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     };
   }, []);
 
-  const gridTemplateColumns = useMemo(() => [...columns.map((column) => `${column.width}px`), "30px", "30px"].join(" "), [columns]);
   function updateScroll(element: HTMLDivElement) {
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   }
@@ -435,38 +389,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     if (!activeWord) return;
     if (keepWordInView(element, activeWord) !== null) updateScroll(element);
   }, [activeWordIndex, rows]);
-
-  function beginColumnResize(event: ReactPointerEvent<HTMLButtonElement>, column: ScriptTableColumn) {
-    event.preventDefault();
-    event.stopPropagation();
-    resizeRef.current = { id: column.id, startX: event.clientX, startWidth: column.width };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function resizeColumn(event: ReactPointerEvent<HTMLButtonElement>) {
-    const resize = resizeRef.current;
-    if (!resize) return;
-    event.preventDefault();
-    const width = Math.max(24, resize.startWidth + event.clientX - resize.startX);
-    setColumns((current) => current.map((column) => column.id === resize.id ? { ...column, width } : column));
-  }
-
-  function endColumnResize(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (!resizeRef.current) return;
-    resizeColumn(event);
-    resizeRef.current = null;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
-
-  function addColumn() {
-    const label = window.prompt("Tên cột mới", "Thuộc tính")?.trim();
-    if (!label) return;
-    setColumns((current) => [...current, { id: `custom-${Date.now()}-${current.length}`, label: label.toUpperCase(), width: 180 }]);
-  }
-
-  function removeColumn(id: string) {
-    setColumns((current) => current.length > 1 ? current.filter((column) => column.id !== id) : current);
-  }
 
   function modifiersOf(event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }) {
     return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey };
@@ -621,23 +543,13 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   }
 
   function rowSelectionControl(row: SpeakerScriptRow, rowIndex: number) {
-    return <div className="script-row-selection"><button aria-label={`Chọn Script row ${row.diarizationLabel}`} aria-pressed={selectedRowIds.includes(row.id)} className="script-table__row-select" onClick={(event) => toggleScriptRow(event, row.id)} type="button"><span aria-hidden="true">{selectedRowIds.includes(row.id) ? "✓" : ""}</span></button><small aria-label={`Row ${rowIndex + 1}`}>{rowIndex + 1}</small></div>;
+    return <ScriptRowSelection number={rowIndex + 1} label={`Chọn Script row ${row.diarizationLabel}`} selected={selectedRowIds.includes(row.id)} onSelect={(event) => toggleScriptRow(event, row.id)} />;
   }
 
   function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, fragments: typeof transcriptWindow.visible, rowIndex: number) {
     if (column.builtin === "speaker") {
-      return <div className="script-table__speaker" role="gridcell">
-        {rowSelectionControl(row, rowIndex)}
-        <i style={{ background: row.profile?.color ?? "var(--text-muted)" }} />
-        <div>
-          <b style={{ color: row.profile?.color }}>{row.diarizationLabel}</b>
-          <select aria-label={`Speaker Profile của row ${rowIndex + 1}`} value={row.profileId ?? ""} disabled={!selectedRowIds.includes(row.id)}
-            onChange={(event) => { if (selectedRowIds.includes(row.id)) assignProfileToSelectedRows(event.target.value || "__none__"); }}>
-            <option value="">Chưa gán Profile</option>
-            {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
-          </select>
-        </div>
-      </div>;
+      return <ScriptRowSpeaker selection={rowSelectionControl(row, rowIndex)} label={`Speaker Profile của row ${rowIndex + 1}`} profileId={row.profileId} profiles={speakers} track={trackName}
+        disabled={!selectedRowIds.includes(row.id)} onProfileChange={(id) => { if (selectedRowIds.includes(row.id)) assignProfileToSelectedRows(id || "__none__"); }} />;
     }
     if (column.builtin === "content") {
       return <div className="script-table__content" role="gridcell" tabIndex={0} title="Kéo quét nhiều từ · chuột phải để gán Speaker Profile hoặc chuyển row">
@@ -665,17 +577,13 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
       onSelectionChange(EMPTY_SELECTION);
     }} ref={scrollRef}>
         {leadingContent ? <div className="script-table__leading-content" ref={leadingContentRef}>{leadingContent}</div> : null}
-        <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ gridTemplateColumns }}>
-        <div className="script-table__header" role="row" ref={headerRef} style={{ gridTemplateColumns }}>
-          {columns.map((column) => <div className="script-table__header-cell" key={column.id} role="columnheader"><b>{column.label}</b><button aria-label={`Kéo rộng cột ${column.label}`} className="script-table__resize" onPointerCancel={endColumnResize} onPointerDown={(event) => beginColumnResize(event, column)} onPointerMove={resizeColumn} onPointerUp={endColumnResize} type="button" />{columns.length > 1 ? <button aria-label={`Xóa cột ${column.label}`} className="script-table__remove" onClick={() => removeColumn(column.id)} type="button">×</button> : null}</div>)}
-          <button aria-label="Thêm cột Script" className="script-table__add" onClick={addColumn} title="Thêm cột" type="button">+</button>
-        </div>
+        <div aria-label="Bảng Script theo người nói" className="script-table" role="grid" style={{ minWidth: columns.reduce((sum, column) => sum + column.width, 60) }}>
+        <ScriptTranscriptHeader layout={layout} headerRef={headerRef} />
           {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-          {transcriptWindow.visibleRows.map(({ row, fragments, rowIndex }) => <div className={`script-table__row ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${fragments.some((fragment) => fragment.words.some(({ index }) => index === activeWordIndex)) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`} data-script-row-id={row.id} data-transcript-row={rowIndex} key={row.id} role="row" aria-rowindex={rowIndex + 2} style={{ gridTemplateColumns }}>
-            {columns.map((column) => <div className="script-table__cell" key={column.id}>{renderCell(row, column, fragments, rowIndex)}</div>)}
-            <i aria-hidden="true" className="script-table__add-space" />
-            {!columns.some((column) => column.builtin === "speaker") ? rowSelectionControl(row, rowIndex) : null}
-        </div>)}
+          {transcriptWindow.visibleRows.map(({ row, fragments, rowIndex }) => <ScriptTranscriptRow
+            className={`${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${fragments.some((fragment) => fragment.words.some(({ index }) => index === activeWordIndex)) ? "is-active" : ""} ${rowDrop?.rowId === row.id ? `is-drop-target is-drop-${rowDrop.direction}` : ""}`}
+            data-script-row-id={row.id} data-transcript-row={rowIndex} key={row.id} aria-rowindex={rowIndex + 2}
+            columns={columns} gridTemplateColumns={gridTemplateColumns} renderCell={(column) => renderCell(row, column, fragments, rowIndex)} selectionFallback={rowSelectionControl(row, rowIndex)} />)}
           {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
       </div>
     </div>

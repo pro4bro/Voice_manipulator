@@ -69,7 +69,7 @@ it("keeps the full Script editor while OBS LiveLink rows are visible", () => {
   expect(screen.getByRole("region", { name: "Lượt nói OBS LiveLink" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /MỞ SCRIPT|MỞ LIVE DRAFT/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox", { name: "Script transcript" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Clear Text" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clear Text" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "FIND / REPLACE" }));
   expect(screen.getByRole("textbox", { name: "Tìm text" })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Lượt nói OBS LiveLink" })).toBeInTheDocument();
@@ -109,8 +109,8 @@ it("shows the parent's imported channel turns in chronological order and opens a
     onScriptChange: vi.fn(), trainingCatalog: { speakers: [], environmentProfiles: [] },
     wordSelection: EMPTY_SELECTION, readingSession: null, obsTimelineActive: false } as unknown as StudioContext;
   render(<ModuleRegistry context={context} id="script" />);
-  const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
-  expect([...list.querySelectorAll("li")].map((item) => item.dataset.channelId)).toEqual(["b", "a"]);
+  const list = screen.getByRole("grid", { name: "Lượt nói theo thời gian" });
+  expect([...list.querySelectorAll<HTMLElement>(".script-table__row")].map((item) => item.dataset.channelId)).toEqual(["b", "a"]);
   fireEvent.click(screen.getByRole("button", { name: "Mở Desk tại 00:01.00" }));
   expect(onSelectImportedTrack).toHaveBeenCalledWith("b");
 });

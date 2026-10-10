@@ -56,7 +56,7 @@ describe("VoiceScript", () => {
     fireEvent.click(within(menu).getAllByRole("menuitemradio")[1]);
 
     expect(onRows).toHaveBeenLastCalledWith([{ id: "r1", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Được không sao" }]);
-    expect(screen.getByRole("button", { name: "Voice đọc đoạn 1" })).toHaveTextContent("Khoa Trịnh");
+    expect(screen.getByRole("combobox", { name: "Speaker Profile của đoạn 1" })).toHaveValue("speaker-khoa");
   });
 
   it("starts a new turn with Enter, read by the same voice, and joins turns with Backspace", () => {

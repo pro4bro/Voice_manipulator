@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
@@ -11,7 +11,7 @@ import { useTranscriptWindow } from "./transcript-window";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
-import "./channel-script-row-controls.css";
+import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 function timecode(seconds: number | null, precision = 2) {
   if (seconds === null) return "--:--";
@@ -41,8 +41,8 @@ function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; ro
     window.addEventListener("resize", hide);
     return () => { window.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
   }, [tooltip]);
-  return <span className="obs-script__content">{row.words.length ? row.words.map(({ word, index }) =>
-    <span key={index}><button type="button" className={`channel-script-word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
+  return <span className="script-transcript-words">{row.words.length ? row.words.map(({ word, index }) =>
+    <span key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
       aria-describedby={tooltip?.index === index ? tooltipId : undefined}
       onMouseEnter={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
@@ -80,8 +80,22 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     tracks.forEach((track) => { const group = groupByTrack.get(track.id)!; const own = groups.get(group) ?? []; own.push(track); groups.set(group, own); });
     return [...groups.values()].flatMap(channelScriptRows);
   }, [tracks, groupByTrack]);
-  const viewRef = useRef<HTMLOListElement>(null);
-  const transcriptWindow = useTranscriptWindow(rows, viewRef, 500);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const layout = useScriptTableLayout();
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const height = headerRef.current?.getBoundingClientRect().height ?? 0;
+      setHeaderHeight((current) => Math.abs(current - height) > 0.5 ? height : current);
+    };
+    measure();
+    if (!headerRef.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(headerRef.current);
+    return () => observer.disconnect();
+  }, [layout.columns]);
+  const transcriptWindow = useTranscriptWindow(rows, viewRef, layout.columns.find((column) => column.builtin === "content")?.width ?? 620, headerHeight);
   const rowIds = rows.map((row) => `${row.trackId}:${row.words[0]?.index ?? "untimed"}`);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const selected = reconcileListSelection(selection, rowIds).ids;
@@ -100,40 +114,25 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     const result = replaceScriptWord(track.text, index, text, track.words ?? []);
     onWordsChange(trackId, result.words, result.text);
   }
-  return <section aria-label="Script theo channel" className="obs-script obs-script--embedded">
-    {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn">
-      <b>{selected.length} row đã chọn</b>
-      <label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}>
-        <option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>
-        {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
-      </select></label>
-      <button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button>
-    </div> : null}
-    <div className="script-feed-scroll-region">
-      <ol aria-label="Lượt nói theo thời gian" className="obs-script__rows" ref={viewRef}>
-        {transcriptWindow.top ? <li aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
-        {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => <li data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]}>
-        <div className={`obs-script__row-button ${onAssignWords ? "channel-script__row-button" : ""}`}>
-          <div className="obs-script__source">
-            {onAssignWords ? <div className="channel-script__row-controls">
-              <div className="script-row-selection"><button className="script-table__row-select" type="button" aria-label={`Chọn row ${index + 1} của ${row.trackName}`} aria-pressed={selected.includes(rowIds[index])}
-                onClick={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }))}
-                onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelection((current) => selectAllListItems(current, rowIds)); }
-                }}><span aria-hidden="true">{selected.includes(rowIds[index]) ? "✓" : ""}</span></button><small aria-label={`Row ${index + 1}`}>{index + 1}</small></div>
-              <select className="channel-script__profile" aria-label={`Speaker Profile của ${row.trackName} row ${index + 1}`}
-                value={row.explicitlyUnassigned ? "" : speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? "" : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? ""}
-                disabled={!selected.includes(rowIds[index])} onChange={(event) => { if (selected.includes(rowIds[index])) assignSelected(event.target.value || null); }}>
-                <option value="">Chưa gán Profile</option>
-                {speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
-              </select>
-            </div> : null}
-            <button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button"><b>{row.trackName}</b><small>{timecode(row.start)}–{timecode(row.end)}</small></button>
-          </div>
-          <div>{fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}</div>
-          {!onAssignWords && row.speakerId ? <span className="obs-script__state">{speakers.find((speaker) => speaker.id === row.speakerId)?.name ?? row.speakerId}</span> : null}
-        </div>
-        {row.overlaps.length ? <div aria-label={`Đoạn chồng tiếng ${row.trackName}`} className="obs-script__overlaps">
+  return <section aria-label="Script theo channel" className="script-transcript-feed">
+    {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn"><b>{selected.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button></div> : null}
+    <div className="script-table-scroll-region">
+      <div aria-label="Lượt nói theo thời gian" role="grid" className="script-table-scroll" ref={viewRef}>
+        <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
+        <ScriptTranscriptHeader layout={layout} headerRef={headerRef} />
+        {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
+        {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => {
+          const checked = selected.includes(rowIds[index]);
+          const control = <ScriptRowSelection number={index + 1} label={`Chọn row ${index + 1} của ${row.trackName}`} selected={checked}
+            onSelect={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }))} />;
+          const profileId = row.explicitlyUnassigned ? null : speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? null : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? null;
+          return <ScriptTranscriptRow data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]} columns={layout.columns} gridTemplateColumns={layout.gridTemplateColumns} className={checked ? "is-selected" : ""} selectionFallback={control} cells={{
+            speaker: <ScriptRowSpeaker selection={control} label={`Speaker Profile của ${row.trackName} row ${index + 1}`} profileId={profileId} profiles={speakers} disabled={!checked}
+              onProfileChange={onAssignWords ? (id) => { if (checked) assignSelected(id); } : undefined}
+              track={<button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button">{row.trackName}</button>} />,
+            content: <div className="script-table__content" role="gridcell">
+              {fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}
+              {row.overlaps.length ? <div aria-label={`Đoạn chồng tiếng ${row.trackName}`} className="obs-script__overlaps">
           {row.overlaps.map((overlap) => <button key={`${overlap.startSeconds}-${overlap.endSeconds}`}
             aria-pressed={recordingId ? obsOverlapSelectionMatches(selectedOverlap, recordingId, row.trackId, overlap) : undefined}
             aria-label={`Đến đoạn chồng tiếng ${row.trackName} từ ${timecode(overlap.startSeconds)} đến ${timecode(overlap.endSeconds)}`}
@@ -149,10 +148,14 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
             <span aria-hidden="true">●</span> CHỒNG TIẾNG {timecode(overlap.startSeconds)}–{timecode(overlap.endSeconds)}
           </button>)}
         </div> : null}
-        </li>)}
-        {transcriptWindow.bottom ? <li aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
-      </ol>
-      <ScriptScrollbar label="Thanh cuộn Script theo channel" viewportRef={viewRef} />
+            </div>,
+            timestamp: <div className="script-table__timestamp" role="gridcell"><code>IN {timecode(row.start, 3)}</code><code>OUT {timecode(row.end, 3)}</code></div>,
+          }} />;
+        })}
+        {transcriptWindow.bottom ? <div aria-hidden="true" style={{ height: transcriptWindow.bottom }} /> : null}
+        </div>
+      </div>
+      <ScriptScrollbar className="script-table-scrollbar" label="Thanh cuộn Script theo channel" viewportRef={viewRef} />
     </div>
     {!rows.length ? <p className="obs-script__empty">Các track đã Import chưa có transcript.</p> : null}
   </section>;

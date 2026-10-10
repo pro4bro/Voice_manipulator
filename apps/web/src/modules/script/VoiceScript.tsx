@@ -9,10 +9,11 @@ import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBre
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { keepWordInView } from "./script-table";
+import { ScriptScrollbar } from "./ScriptScrollbar";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
-const GRID = "minmax(150px, 210px) minmax(260px, 1fr) 150px 64px";
+import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
   rows: VoiceScriptRow[];
@@ -367,7 +368,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   }
 
   function selectRow(event: ReactMouseEvent<HTMLButtonElement>, rowId: string) {
-    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }));
+    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }));
   }
 
   function deleteSelectedRows() {
@@ -412,17 +413,12 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
   function renderSpeaker(row: VoiceScriptRow, number: number) {
     const voice = resolveRowVoice(row, voices);
     const speaker = speakerOf(voice?.speakerProfileId ?? row.speakerProfileId);
-    const color = speaker?.color ?? "var(--text-muted)";
-    const detail = voice
-      ? `${VOICE_KIND_LABELS[voice.kind]} · ${ENGINE_LABELS[voice.engine] ?? voice.engine}`
-      : speaker
-        ? `Chưa có voice ${CATEGORY_LABELS[category].toLowerCase()}`
-        : "Bấm để chọn voice";
-    return <button aria-expanded={voiceMenu?.rowId === row.id} aria-haspopup="menu" aria-label={`Voice đọc đoạn ${number}`} className={`voice-script__speaker ${voice ? "" : "is-missing"}`} onClick={(event) => openVoiceMenu(event, row.id)} type="button">
-      <i style={{ background: color }} />
-      <span><b style={{ color: speaker ? color : undefined }}>{speaker?.name ?? "Chọn voice"}</b><small>{detail}</small></span>
-      <em aria-hidden="true">▾</em>
-    </button>;
+    const detail = voice ? `${VOICE_KIND_LABELS[voice.kind]} · ${ENGINE_LABELS[voice.engine] ?? voice.engine}` : "Chọn model voice";
+    const checked = selectedRowIds.includes(row.id);
+    return <ScriptRowSpeaker selection={<ScriptRowSelection number={number} label={`Chọn đoạn ${number}`} selected={checked} onSelect={(event) => selectRow(event, row.id)} />}
+      label={`Speaker Profile của đoạn ${number}`} profileId={speaker?.id ?? null} profiles={speakers} disabled={!checked}
+      onProfileChange={(id) => { if (checked) assignSpeakerToSelected(id ?? "__none__"); }}
+      extra={<button aria-expanded={voiceMenu?.rowId === row.id} aria-haspopup="menu" aria-label={`Voice đọc đoạn ${number}`} className="script-row-model" onClick={(event) => openVoiceMenu(event, row.id)} type="button">{detail} ▾</button>} />;
   }
 
   function renderContent(row: VoiceScriptRow, number: number) {
@@ -461,6 +457,7 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     return <div className="script-table__timestamp voice-script__timestamp" role="gridcell"><code>IN&nbsp;&nbsp;—</code><code>{timing ? "ĐÃ SỬA · ĐỌC LẠI" : normalizedRowText(row.text) ? "CHƯA ĐỌC" : "—"}</code></div>;
   }
 
+  const layout = useScriptTableLayout();
   const menuRow = voiceMenu ? shownRows.find((row) => row.id === voiceMenu.rowId) ?? null : null;
   const menuVoice = menuRow ? resolveRowVoice(menuRow, voices) : null;
   const bySpeaker = speakers
@@ -494,35 +491,30 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
     </div>
     {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey}>
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
-      <div className="script-table-scroll" onPointerDown={(event) => {
+      <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
         if (wordSelection.indexes.length) onWordSelectionChange?.(EMPTY_SELECTION);
       }} ref={scrollRef}>
-        <div aria-label="Bảng Script theo lượt nói" className="script-table voice-script__table" role="grid" style={{ gridTemplateColumns: GRID }}>
-          <div className="script-table__header" role="row" style={{ gridTemplateColumns: GRID }}>
-            <div className="script-table__header-cell" role="columnheader"><b>SPEAKER · VOICE</b></div>
-            <div className="script-table__header-cell" role="columnheader"><b>NỘI DUNG</b></div>
-            <div className="script-table__header-cell" role="columnheader"><b>TIMESTAMP</b></div>
-            <div className="script-table__header-cell" role="columnheader"><b>&nbsp;</b></div>
-          </div>
+        <div aria-label="Bảng Script theo lượt nói" className="script-table voice-script__table" role="grid" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
+          <ScriptTranscriptHeader layout={layout} />
           {shownRows.map((row, index) => {
             const timing = timings.get(row.id);
             const active = Boolean(timing?.fresh && activeWordIndex >= timing.firstWord && activeWordIndex < timing.lastWord);
-            return <div className={`script-table__row ${active ? "is-active" : ""} ${job?.status === "running" && job.currentRowId === row.id ? "is-reading" : ""}`} data-script-row-id={row.id} key={row.id} role="row" style={{ gridTemplateColumns: GRID }}>
-              <div className="script-table__cell">{renderSpeaker(row, index + 1)}</div>
-              <div className="script-table__cell">{renderContent(row, index + 1)}</div>
-              <div className="script-table__cell">{renderTimestamp(row)}</div>
+            return <ScriptTranscriptRow className={`${active ? "is-active" : ""} ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${job?.status === "running" && job.currentRowId === row.id ? "is-reading" : ""}`} data-script-row-id={row.id} key={row.id} columns={layout.columns} gridTemplateColumns={layout.gridTemplateColumns}
+              cells={{ speaker: renderSpeaker(row, index + 1), content: renderContent(row, index + 1), timestamp: renderTimestamp(row) }}
+              selectionFallback={<ScriptRowSelection number={index + 1} label={`Chọn đoạn ${index + 1}`} selected={selectedRowIds.includes(row.id)} onSelect={(event) => selectRow(event, row.id)} />}>
               <div className="script-table__cell voice-script__row-actions">
-                <button aria-label={`Chọn đoạn ${index + 1}`} aria-pressed={selectedRowIds.includes(row.id)} className="voice-script__row-select" onClick={(event) => selectRow(event, row.id)} type="button">{selectedRowIds.includes(row.id) ? "✓" : "□"}</button>
                 <button aria-label={`Đưa đoạn ${index + 1} lên`} disabled={index === 0 || !rows.length} onClick={() => moveRow(row.id, -1)} type="button">↑</button>
                 <button aria-label={`Đưa đoạn ${index + 1} xuống`} disabled={index >= rows.length - 1} onClick={() => moveRow(row.id, 1)} type="button">↓</button>
                 <button aria-label={`Xoá đoạn ${index + 1}`} disabled={!rows.length} onClick={() => removeRow(row.id)} type="button">×</button>
               </div>
-            </div>;
+            </ScriptTranscriptRow>;
           })}
           <button className="voice-script__add" onClick={() => insertAfter(shownRows[shownRows.length - 1]?.id ?? null)} type="button"><Icon name="plus" />THÊM ĐOẠN</button>
         </div>
+      </div>
+      <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn Voice Script" className="script-table-scrollbar" />
       </div>
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
       <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} onPaste={handleTextPaste} placeholder={"Anh Vũ: Xin chào mọi người\nKhoa Trịnh: Chào anh"} ref={textRef} spellCheck value={textDraft} />

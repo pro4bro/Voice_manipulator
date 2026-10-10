@@ -16,7 +16,7 @@ it("shows word timing outside the transcript flow and dismisses it on scroll", (
   expect(popup).toHaveTextContent("00:01.000–00:02.000");
   expect(popup.parentElement).toBe(document.body);
   expect(word).toHaveTextContent(/^Một$/);
-  fireEvent.scroll(screen.getByRole("list", { name: "Lượt nói theo thời gian" }));
+  fireEvent.scroll(screen.getByRole("grid", { name: "Lượt nói theo thời gian" }));
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 });
 
@@ -24,7 +24,7 @@ it("does not invent speech overlaps between independently selected footage", () 
   const tracks = ["a", "b"].map((id) => ({ id, name: `Footage ${id}`, text: id,
     words: [{ text: id, start: 1, end: 2, timingTrusted: true }] })) as ProjectMediaAsset[];
   render(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} recordingId="unrelated-obs-recording" />);
-  expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  expect(document.querySelectorAll(".script-table__row")).toHaveLength(2);
   expect(screen.queryByRole("button", { name: /Đến đoạn chồng tiếng/ })).not.toBeInTheDocument();
 });
 
@@ -65,7 +65,7 @@ it("toggles channel row checkboxes on plain clicks while preserving ranges and C
   expect(rowC).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(rowB);
   expect(rowB).toHaveAttribute("aria-pressed", "true");
-  fireEvent.keyDown(screen.getByRole("list", { name: "Lượt nói theo thời gian" }), { key: "a", ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("grid", { name: "Lượt nói theo thời gian" }), { key: "a", ctrlKey: true });
   expect([rowA, rowB, rowC].every((row) => row.getAttribute("aria-pressed") === "true")).toBe(true);
 });
 
@@ -74,8 +74,8 @@ it("places the per-row profile selector beside the channel row controls", () => 
     { text: "Xin", start: 0, end: 1, speakerId: "s1" },
   ] } as ProjectMediaAsset]} speakers={[{ id: "s1", name: "An" }] as SpeakerProfile[]}
   onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
-  const row = screen.getByRole("listitem");
-  const controls = row.querySelector(".channel-script__row-controls");
+  const row = document.querySelector(".script-table__row")!;
+  const controls = row.querySelector(".script-row-speaker");
   expect(controls).toContainElement(screen.getByRole("button", { name: "Chọn row 1 của Mic" }));
   expect(controls).toContainElement(screen.getByRole("combobox", { name: "Speaker Profile của Mic row 1" }));
 });
@@ -141,9 +141,10 @@ it("shows compact OBS labels, timed rows and word-level overlap after detailed S
   const onSelectTrack = vi.fn();
   render(<ChannelScript onSelectTrack={onSelectTrack} tracks={tracks} />);
 
-  const rows = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
-  expect(rows.querySelectorAll("li")).toHaveLength(2);
-  expect(screen.getByText("00:01.00–00:02.00")).toBeInTheDocument();
+  const rows = screen.getByRole("grid", { name: "Lượt nói theo thời gian" });
+  expect(rows.querySelectorAll(".script-table__row")).toHaveLength(2);
+  expect(screen.getByText("IN 00:01.000")).toBeInTheDocument();
+  expect(screen.getByText("OUT 00:02.000")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Một · 00:01.000–00:02.000" })).toHaveAttribute("data-time", "00:01.000–00:02.000");
   expect(screen.getByRole("button", { name: "Đến đoạn chồng tiếng Track 1 từ 00:01.30 đến 00:02.00" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Mở Track 2 · Desktop Audio tại 00:01.30" }));
@@ -173,7 +174,7 @@ it("provides a keyboard scrollbar that reaches the end of archived channel rows"
   const words = Array.from({ length: 650 }, (_, index) => ({ text: `word-${String(index).padStart(3, "0")}`, start: index, end: index + 0.4 }));
   render(<ChannelScript tracks={[{ id: "channel", name: "OBS LiveLink · Channel 1", text: "words", words } as ProjectMediaAsset]}
     onSelectTrack={vi.fn()} />);
-  const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
+  const list = screen.getByRole("grid", { name: "Lượt nói theo thời gian" });
   const scrollbar = screen.getByRole("scrollbar", { name: "Thanh cuộn Script theo channel" });
   let scrollTop = 0;
   Object.defineProperties(list, {
@@ -202,16 +203,16 @@ it("wheels through the OBS 9 turn shape to the final word with measured sidebar 
   });
   const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     let height = 100;
-    if (this.hasAttribute("data-transcript-fragment")) height = Math.ceil(this.querySelectorAll(".channel-script-word").length / 16) * 28;
+    if (this.hasAttribute("data-transcript-fragment")) height = Math.ceil(this.querySelectorAll(".script-table__word").length / 16) * 28;
     if (this.hasAttribute("data-transcript-row")) height = Math.max(100,
       [...this.querySelectorAll<HTMLElement>("[data-transcript-fragment]")].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0)) + 20;
     return { top: 0, left: 0, right: 500, bottom: height, width: 500, height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
   });
   try {
     render(<ChannelScript tracks={tracks as ProjectMediaAsset[]} onAssignWords={vi.fn()} onSelectTrack={vi.fn()} />);
-    const list = screen.getByRole("list", { name: "Lượt nói theo thời gian" });
+    const list = screen.getByRole("grid", { name: "Lượt nói theo thời gian" });
     let position = 0;
-    const total = () => [...list.children].reduce((sum, node) => sum + ((node as HTMLElement).hasAttribute("data-transcript-row")
+    const total = () => [...list.querySelector(".script-table")!.children].reduce((sum, node) => sum + ((node as HTMLElement).hasAttribute("data-transcript-row")
       ? node.getBoundingClientRect().height : Number.parseFloat((node as HTMLElement).style.height) || 0), 0);
     Object.defineProperties(list, {
       scrollTop: { configurable: true, get: () => Math.min(position, Math.max(0, total() - 200)),
