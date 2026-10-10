@@ -14,6 +14,20 @@ function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {
 }
 
 describe("Timeline", () => {
+  it("keeps the previous readable subtitle rendered after the playhead enters its touching neighbour", () => {
+    const onWordsChange = vi.fn();
+    const take = { id: "touching", name: "touching.wav", url: "/audio.wav", duration: 1,
+      words: [{ text: "Thì", start: 0, end: .01 }, { text: "trong", start: .01, end: .1 }, { text: "lúc", start: .1, end: .3 }] };
+    const { container } = render(<SelectableTimeline gain={0} onGainChange={() => undefined} take={take} onWordsChange={onWordsChange} />);
+    const audio = container.querySelector("audio")!;
+    audio.currentTime = .05; fireEvent.timeUpdate(audio);
+    expect(screen.getByRole("button", { name: "Subtitle word trong" })).toHaveClass("is-active");
+    audio.currentTime = .15; fireEvent.timeUpdate(audio);
+    expect(screen.getByRole("button", { name: "Subtitle word lúc" })).toHaveClass("is-active");
+    expect(screen.getByRole("button", { name: "Subtitle word trong" })).not.toHaveClass("is-compact");
+    expect(onWordsChange).not.toHaveBeenCalled();
+  });
+
   it("keeps paused browsing at the end when zoom changes instead of following the idle playhead", () => {
     const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
       take={{ id: "archive", name: "archive.wav", url: "/audio.wav", duration: 300 }} />);

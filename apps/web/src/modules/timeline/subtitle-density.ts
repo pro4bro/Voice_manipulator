@@ -1,6 +1,9 @@
 /** Keep short timestamped words selectable while suppressing labels that cannot fit. */
 export const SUBTITLE_WORD_LABEL_MIN_WIDTH_PX = 22;
 export const SUBTITLE_WORD_STRIPE_MIN_WIDTH_PX = 4;
+// Screen arithmetic must not treat a floating-point fraction of a pixel as an
+// overlap or skip the word exactly at the preceding rectangle's right edge.
+const PIXEL_ROUNDING_TOLERANCE = 1e-6;
 
 export function isCompactSubtitleWord(widthPixels: number): boolean {
   return !Number.isFinite(widthPixels) || widthPixels < SUBTITLE_WORD_LABEL_MIN_WIDTH_PX;
@@ -48,14 +51,19 @@ export function visibleSubtitleWordLayout(
   if (first >= last) return [];
   const layoutFor = (sourceIndex: number): VisibleSubtitleWord => {
     const word = words[sourceIndex];
-    const sourceWidth = Math.max(0, (word.end - word.start) * pixelsPerSecond);
-    return { sourceIndex, leftPixels: (word.start - windowStart) * pixelsPerSecond,
+    const leftPixels = (word.start - windowStart) * pixelsPerSecond;
+    const sourceWidth = Math.max(0, (word.end - windowStart) * pixelsPerSecond - leftPixels);
+    return { sourceIndex, leftPixels,
       widthPixels: Math.max(SUBTITLE_WORD_STRIPE_MIN_WIDTH_PX, sourceWidth), isCompact: isCompactSubtitleWord(sourceWidth) };
   };
   const visibleBounds = (item: VisibleSubtitleWord) => ({ left: Math.max(0, item.leftPixels), right: Math.min(laneWidth, item.leftPixels + item.widthPixels) });
   const collides = (a: VisibleSubtitleWord, b: VisibleSubtitleWord) => {
     const firstBounds = visibleBounds(a), secondBounds = visibleBounds(b);
-    return firstBounds.left < secondBounds.right && firstBounds.right > secondBounds.left;
+    // Overview stripes retain their strict four-pixel occupancy. Only readable
+    // source intervals need tolerance at their shared timestamp boundary.
+    const tolerance = a.isCompact || b.isCompact ? 0 : PIXEL_ROUNDING_TOLERANCE;
+    return firstBounds.left < secondBounds.right - tolerance
+      && firstBounds.right > secondBounds.left + tolerance;
   };
   const selected: VisibleSubtitleWord[] = [];
   const forcedIndexes = [...new Set(includeIndexes)].filter((index) => index >= first && index < last).slice(-16).reverse();
@@ -65,7 +73,8 @@ export function visibleSubtitleWordLayout(
     if (bounds.left < bounds.right && selected.every((existing) => !collides(item, existing))) selected.push(item);
   }
 
-  const startIndexAtOrAfterPixel = (pixel: number) => Math.max(first, lowerBound(windowStart + (pixel / pixelsPerSecond), "start"));
+  const startIndexAtOrAfterPixel = (pixel: number) => Math.max(first,
+    lowerBound(windowStart + ((pixel - PIXEL_ROUNDING_TOLERANCE) / pixelsPerSecond), "start"));
   const maxItems = Math.ceil(laneWidth / SUBTITLE_WORD_STRIPE_MIN_WIDTH_PX) + forcedIndexes.length;
   let index = first;
   while (index < last && selected.length < maxItems) {
@@ -84,5 +93,10 @@ export function visibleSubtitleWordLayout(
     const next = startIndexAtOrAfterPixel(Math.max(0, item.leftPixels + item.widthPixels));
     index = next > index ? next : index + 1;
   }
-  return selected.sort((a, b) => a.leftPixels - b.leftPixels || a.sourceIndex - b.sourceIndex);
+  return selected.sort((a, b) => a.leftPixels - b.leftPixels || a.sourceIndex - b.sourceIndex).map((item, index, ordered) => {
+    const next = ordered[index + 1];
+    const overshoot = next ? item.leftPixels + item.widthPixels - next.leftPixels : 0;
+    return !item.isCompact && overshoot > 0 && overshoot <= PIXEL_ROUNDING_TOLERANCE
+      ? { ...item, widthPixels: next.leftPixels - item.leftPixels } : item;
+  });
 }

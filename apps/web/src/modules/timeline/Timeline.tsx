@@ -1462,7 +1462,7 @@ export function Timeline({
                       onPointerMove={dragWord}
                       onPointerUp={endWordDrag}
                     />
-                    {word.text}
+                    <span className="timeline-word__label">{word.text}</span>
                     <i
                       aria-hidden="true"
                       className="timeline-word__grip timeline-word__grip--out"

@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { isCompactSubtitleWord, subtitleIndexAtTime, visibleSubtitleWordLayout } from "./subtitle-density";
 
 describe("subtitle density", () => {
+  it("keeps adjoining readable words when the playhead forces their neighbour", () => {
+    const words = [{ start: 0, end: .01 }, { start: .01, end: .1 }, { start: .1, end: .3 }];
+    for (const active of [0, 1, 2, 1, -1]) {
+      expect(visibleSubtitleWordLayout(words, 0, 1, 1000, [active]).map((item) => item.sourceIndex)).toEqual([0, 1, 2]);
+    }
+  });
+
   it("hides labels only when their exact rendered interval is too narrow", () => {
     expect(isCompactSubtitleWord(21.99)).toBe(true);
     expect(isCompactSubtitleWord(22)).toBe(false);

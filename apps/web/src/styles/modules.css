@@ -537,13 +537,11 @@
 .timeline-empty b { font-size: calc(10px * var(--font-scale)); }.timeline-empty span { font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
 .word-track { position: relative; overflow: hidden; border-top: 1px solid var(--audio-line); background: var(--soft-fill); cursor: text; touch-action: none; user-select: none; }
 .timeline-word { position: absolute; top: 3px; min-width: 0; height: 21px; overflow: hidden; padding: 4px 1px; color: var(--text); border: 1px solid var(--audio-line); background: var(--soft-fill); font-family: var(--editorial); font-size: calc(10px * var(--font-scale)); line-height: 1; pointer-events: none; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-/* The word body stays untouchable so a sweep runs across the track uninterrupted
-   and a word only a few pixels wide cannot swallow the gesture; the track works
-   out which word the pointer is over from its position instead. The grips are the
-   one exception - they have to be grabbable for the edges to be draggable at all. */
+/* The label clips to its timestamped box; trim grips extend outside that box.
+   Only a trim gesture changes timing, never this visual grip width. */
 .timeline-word__grip { position: absolute; z-index: 2; top: 0; bottom: 0; width: 5px; cursor: ew-resize; pointer-events: auto; opacity: 0; background: var(--accent); }
-.timeline-word__grip--in { left: 0; }
-.timeline-word__grip--out { right: 0; }
+.timeline-word__grip--in { left: -6px; }
+.timeline-word__grip--out { right: -6px; }
 .timeline-word:hover .timeline-word__grip,
 .timeline-word.is-selected .timeline-word__grip { opacity: .85; }
 .timeline-word__grip:hover { opacity: 1; }
@@ -1341,7 +1339,8 @@
 .timeline-waveform-detail-status { position: absolute; z-index: 8; right: 8px; top: 6px; padding: 2px 5px; color: var(--text); background: color-mix(in srgb, var(--surface-audio) 80%, transparent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); pointer-events: none; }
 /* PCM and subtitle positions share the exact same zero point; labels no longer offset the waveform. */
 .waveform { padding-left: 0; }
-.timeline-word { box-sizing: border-box; overflow: hidden; text-overflow: clip; }
+.timeline-word { box-sizing: border-box; overflow: visible; text-overflow: clip; }
+.timeline-word__label { display: block; width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap; pointer-events: none; }
 .timeline-word.is-active { z-index: 2; }
 /* Do not tint a whole Script panel, table row or speaker block during word follow. */
 .script-editor-stack { background: var(--surface-field); }
