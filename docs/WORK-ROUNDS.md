@@ -12,7 +12,19 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-10 — current: USER-FEEDBACK-22
+### 2026-10-12 — current: PORT-NOVIBE-01
+
+Built a 35.98 GiB `NoVibeVoice` portable folder with OmniVoice base checkpoint
+and the existing STT/RVC runtimes. VibeVoice stays in the model catalogs as
+unavailable. Source gate 22/0, built gate 27/0; bundled Studio/API health and
+catalog smoke passed. Evidence: `docs/gates/portable-no-vibevoice-20261012.md`.
+Phase03 stays 60%. Physical copy and clean-machine GPU/media acceptance remain
+open; the exact next portable round is to copy this folder to the target machine,
+run `VERIFY-PORTABLE.bat`, and benchmark fixed audio with installed models.
+STT-TIMING-ACCURACY-01 remains the next planned product feature round after the
+owner supplies the Conviction timing reference.
+
+### 2026-10-10 — previous: USER-FEEDBACK-22
 
 Product `6c2d714` fixes the missing archived/multitrack Script follow behavior.
 ChannelScript previously highlighted source words but had no viewport-follow

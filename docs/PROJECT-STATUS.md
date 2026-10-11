@@ -1,4 +1,13 @@
-# Project Status — 2026-10-10
+# Project Status — 2026-10-12
+
+## PORT-NOVIBE-01 — no-VibeVoice portable test bundle (2026-10-12)
+
+The 35.98 GiB `NoVibeVoice` bundle includes the OmniVoice base checkpoint,
+existing STT/RVC runtimes, application and OBS bridge. VibeVoice choices remain
+visible but unavailable. Source gate 22/0, built gate 27/0, Studio/API health
+and model-catalog smoke passed on this machine. Target-machine transfer, audio
+inference and GPU/OBS acceptance remain open. Phase03 remains 60%. Evidence:
+`docs/gates/portable-no-vibevoice-20261012.md`.
 
 ## USER-FEEDBACK-22 — source-independent Script playback following (2026-10-10)
 

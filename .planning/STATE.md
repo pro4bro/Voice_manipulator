@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-10 — USER-FEEDBACK-22 shared Script playback following.
-last_activity_desc: Source-aware follow shared across ordinary/imported/OBS parent and child transcripts; frontend772/84, typecheck/build and backend741 pass. Native follow acceptance and Conviction acoustic reference remain open. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-NOVIBE-01 portable bundle without VibeVoice.
+last_activity_desc: Built 35.98 GiB no-VibeVoice folder with OmniVoice checkpoint. Source gate22/0, bundle gate27/0 and bundled service/catalog smoke pass. Clean-machine GPU/media acceptance remains open. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,14 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-NOVIBE-01 — portable variant without VibeVoice (2026-10-12)
+
+Built and locally verified the 35.98 GiB `NoVibeVoice` folder. VibeVoice model
+choices remain listed as unavailable. Exact next portable round: copy the folder
+to another machine, run its gate, and benchmark installed models against fixed
+media. Evidence: `docs/gates/portable-no-vibevoice-20261012.md`. Phase03 stays
+60%; STT-TIMING-ACCURACY-01 is still the next planned feature round.
 
 ## USER-FEEDBACK-22 — source-independent Script playback following (2026-10-10)
 

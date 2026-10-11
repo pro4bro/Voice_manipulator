@@ -2,13 +2,15 @@
 param(
     [string]$OutputRoot,
     [ValidateSet("HardLink", "Copy")]
-    [string]$Mode = "HardLink"
+    [string]$Mode = "HardLink",
+    [ValidateSet("All", "NoVibeVoice")]
+    [string]$Profile = "All"
 )
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $root = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path.TrimEnd("\")
-$releaseName = "Pro4Bro-Portable-{0}" -f (Get-Date -Format "yyyyMMdd")
+$releaseName = "Pro4Bro-Portable-{0}{1}" -f (Get-Date -Format "yyyyMMdd"), $(if ($Profile -eq "NoVibeVoice") { "-NoVibeVoice" } else { "" })
 if (-not $OutputRoot) {
     $OutputRoot = Join-Path $root ".scratch\portable-release\$releaseName"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputRoot)) {
@@ -22,7 +24,7 @@ if (Test-Path -LiteralPath $destination) {
     throw "OutputRoot already exists. Choose a new empty destination: $destination"
 }
 
-& (Join-Path $root "scripts\test-portable-runtime.ps1") -Profile All
+& (Join-Path $root "scripts\test-portable-runtime.ps1") -Profile $Profile
 if ($LASTEXITCODE -ne 0) { throw "Source tree failed the portable gate." }
 
 $components = [System.Collections.Generic.List[object]]::new()
@@ -113,11 +115,15 @@ Set-Content -LiteralPath (Join-Path $destination ".bundle-incomplete") -Value "B
 Add-BundleTree ".runtime\python\core"
 Add-BundleTree ".runtime\python\stt"
 Add-BundleTree ".runtime\python\omnivoice-training"
-Add-BundleTree ".runtime\python\vibevoice-training"
+if ($Profile -eq "All") { Add-BundleTree ".runtime\python\vibevoice-training" }
 Add-BundleTree ".runtime\python\rvc"
 Add-BundleTree ".runtime\python\voice-changer"
 Add-SingleFile ".runtime\python\runtime-manifest.json"
-Add-BundleTree ".runtime\engines" ".runtime\engines" @("research\Applio\logs\*", "research\Applio\*\__pycache__\*")
+if ($Profile -eq "All") {
+    Add-BundleTree ".runtime\engines" ".runtime\engines" @("research\Applio\logs\*", "research\Applio\*\__pycache__\*")
+} else {
+    Add-BundleTree ".runtime\engines\research" ".runtime\engines\research" @("Applio\logs\*", "Applio\*\__pycache__\*")
+}
 Add-BundleTree ".runtime\omnivoice-studio\models"
 Add-BundleTree ".runtime\omnivoice-studio\studio_app" ".runtime\omnivoice-studio\studio_app" @("__pycache__\*")
 Add-BundleTree ".runtime\omnivoice-studio\nltk_data"
@@ -137,7 +143,11 @@ foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pr
 foreach ($entrypoint in @("start-pro4bro.bat", "open-pro4bro-console.bat", "restart-pro4bro.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat")) {
     Add-SingleFile $entrypoint
 }
-Add-SingleFile "docs\PORTABLE-QUICKSTART.md" "PORTABLE-README.md"
+if ($Profile -eq "NoVibeVoice") {
+    Add-SingleFile "docs\PORTABLE-NO-VIBEVOICE.md" "PORTABLE-README.md"
+} else {
+    Add-SingleFile "docs\PORTABLE-QUICKSTART.md" "PORTABLE-README.md"
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $destination "data") | Out-Null
 
 $criticalFiles = @(
@@ -153,6 +163,11 @@ $criticalFiles = @(
     "obs-plugin-package/data/brand/pro4bro-livelink.svg",
     ".runtime/python/runtime-manifest.json"
 )
+if ($Profile -eq "NoVibeVoice") {
+    $modelRef = Join-Path $destination ".cache\huggingface\hub\models--k2-fsa--OmniVoice\refs\main"
+    $modelRevision = (Get-Content -Raw -LiteralPath $modelRef).Trim()
+    $criticalFiles += ".cache/huggingface/hub/models--k2-fsa--OmniVoice/snapshots/$modelRevision/model.safetensors"
+}
 $criticalHashes = foreach ($relative in $criticalFiles) {
     $path = Join-Path $destination $relative
     [ordered]@{ path = $relative; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
@@ -165,13 +180,15 @@ $manifest = [ordered]@{
     bundleName = Split-Path -Leaf $destination
     createdAt = [DateTimeOffset]::Now.ToString("o")
     creationMode = $Mode
+    profile = $Profile
+    omnivoiceModelRevision = $(if ($Profile -eq "NoVibeVoice") { $modelRevision } else { $null })
     sourceRevision = $gitCommit
     sourceWorkingTreeDirty = $gitDirty
     files = $fileCount
     bytes = $byteCount
     components = $components
     criticalFiles = $criticalHashes
-    excluded = @("Git metadata", "developer virtual environments", "Node modules", "build caches", "logs", "tests", "user projects and recordings")
+    excluded = @("Git metadata", "developer virtual environments", "Node modules", "build caches", "logs", "tests", "user projects and recordings") + $(if ($Profile -eq "NoVibeVoice") { @("VibeVoice source, runtime and weights") } else { @() })
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $destination ".portable-bundle.json") -Encoding utf8
 Remove-Item -LiteralPath (Join-Path $destination ".bundle-incomplete") -Force
@@ -180,6 +197,7 @@ Remove-Item -LiteralPath (Join-Path $destination ".bundle-incomplete") -Force
     ready = $true
     path = $destination
     mode = $Mode
+    profile = $Profile
     files = $fileCount
     bytes = $byteCount
     gibibytes = [math]::Round($byteCount / 1GB, 2)

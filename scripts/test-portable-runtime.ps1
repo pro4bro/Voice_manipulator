@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Core", "Capture", "STT", "Training", "All")]
+    [ValidateSet("Core", "Capture", "STT", "Training", "All", "NoVibeVoice", "Auto")]
     [string]$Profile = "All",
     [string]$OutputPath,
     [switch]$Json
@@ -97,7 +97,15 @@ if (-not [Environment]::Is64BitOperatingSystem -or $env:OS -ne "Windows_NT") {
     Add-Result "host.windows-x64" "PASS" "64-bit Windows detected."
 }
 
-$selected = if ($Profile -eq "All") { @("Core", "Capture", "STT", "Training") } else { @($Profile) }
+$bundleManifestPath = Join-Path $root ".portable-bundle.json"
+$bundleProfile = $null
+if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
+    try { $bundleProfile = (Get-Content -Raw -LiteralPath $bundleManifestPath | ConvertFrom-Json).profile } catch { }
+}
+$effectiveProfile = if ($Profile -eq "Auto") {
+    if ($bundleProfile -eq "NoVibeVoice") { "NoVibeVoice" } else { "All" }
+} else { $Profile }
+$selected = if ($effectiveProfile -in @("All", "NoVibeVoice")) { @("Core", "Capture", "STT", "Training") } else { @($effectiveProfile) }
 
 if ($selected -contains "Core") {
     Test-LocalPath "core.readiness" "scripts\pro4bro-readiness.ps1" "Runtime readiness helper"
@@ -147,16 +155,22 @@ if ($selected -contains "STT") {
 if ($selected -contains "Training") {
     Test-LocalPath "training.omnivoice-source" "engines\OmniVoice\pyproject.toml" "OmniVoice source"
     Test-PythonRuntime "training.omnivoice-python" ".runtime\python\omnivoice-training" @("torch", "torchaudio", "transformers", "accelerate", "peft")
-    Test-PythonRuntime "training.vibevoice-python" ".runtime\python\vibevoice-training" @("torch", "transformers")
+    if ($effectiveProfile -ne "NoVibeVoice") {
+        Test-PythonRuntime "training.vibevoice-python" ".runtime\python\vibevoice-training" @("torch", "transformers")
+    }
     Test-PythonRuntime "training.rvc-python" ".runtime\python\rvc" @("torch", "numpy")
     Test-PythonRuntime "training.voice-changer-python" ".runtime\python\voice-changer" @("numpy", "sounddevice")
-    Test-LocalPath "training.vibevoice-source" ".runtime\engines\vibevoice\VibeVoice\pyproject.toml" "Bundled VibeVoice source"
-    Test-NonEmptyTree "training.vibevoice-models" ".runtime\engines\vibevoice\VibeVoice_models" "Bundled VibeVoice models" "*.safetensors"
+    if ($effectiveProfile -ne "NoVibeVoice") {
+        Test-LocalPath "training.vibevoice-source" ".runtime\engines\vibevoice\VibeVoice\pyproject.toml" "Bundled VibeVoice source"
+        Test-NonEmptyTree "training.vibevoice-models" ".runtime\engines\vibevoice\VibeVoice_models" "Bundled VibeVoice models" "*.safetensors"
+    }
     Test-LocalPath "training.applio-source" ".runtime\engines\research\Applio\requirements.txt" "Bundled Applio source"
     Test-NonEmptyTree "training.model-hub" ".cache\huggingface\hub" "Bundled Hugging Face model cache" "*.safetensors"
+    if ($effectiveProfile -eq "NoVibeVoice") {
+        Test-NonEmptyTree "training.omnivoice-checkpoint" ".cache\huggingface\hub\models--k2-fsa--OmniVoice\snapshots" "OmniVoice checkpoint" "model.safetensors"
+    }
 }
 
-$bundleManifestPath = Join-Path $root ".portable-bundle.json"
 if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
     try {
         $bundleManifest = Get-Content -Raw -LiteralPath $bundleManifestPath | ConvertFrom-Json
@@ -164,6 +178,18 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
             Add-Result "bundle.manifest" "FAIL" "Portable bundle manifest has an unsupported schema." $bundleManifestPath
         } else {
             Add-Result "bundle.manifest" "PASS" "Portable bundle manifest is readable." $bundleManifestPath
+        }
+        if ($bundleProfile -and $effectiveProfile -in @("All", "NoVibeVoice") -and $bundleProfile -ne $effectiveProfile) {
+            Add-Result "bundle.profile" "FAIL" "Requested profile differs from bundle manifest profile." $bundleManifestPath
+        }
+        if ($effectiveProfile -eq "NoVibeVoice") {
+            $vibePaths = @(".runtime\python\vibevoice-training", ".runtime\engines\vibevoice")
+            $present = @($vibePaths | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
+            if ($present.Count) {
+                Add-Result "bundle.no-vibevoice" "FAIL" "VibeVoice payload is present: $($present -join ', ')." $root
+            } else {
+                Add-Result "bundle.no-vibevoice" "PASS" "VibeVoice runtime, source, and weights are absent." $root
+            }
         }
         foreach ($critical in @($bundleManifest.criticalFiles)) {
             $criticalPath = Join-Path $root ([string]$critical.path)
@@ -211,7 +237,7 @@ $failed = @($checks | Where-Object { $_.status -eq "FAIL" }).Count
 $passed = @($checks | Where-Object { $_.status -eq "PASS" }).Count
 $report = [ordered]@{
     schemaVersion = 1
-    profile = $Profile
+    profile = $effectiveProfile
     applicationRoot = $root
     portable = ($failed -eq 0)
     passed = $passed
