@@ -80,6 +80,16 @@ it("places the per-row profile selector beside the channel row controls", () => 
   expect(controls).toContainElement(screen.getByRole("combobox", { name: "Speaker Profile của Mic row 1" }));
 });
 
+it("shows channel diarization speakers before a profile is assigned", () => {
+  const track = { id: "a", name: "Mic", text: "Một hai", words: [
+    { text: "Một", start: 0, end: 0.4, diarizationSpeakerId: "speaker-1" },
+    { text: "hai", start: 0.5, end: 0.9, diarizationSpeakerId: "speaker-2" },
+  ] } as ProjectMediaAsset;
+  const view = render(<ChannelScript tracks={[track]} onSelectTrack={vi.fn()} />);
+  expect([...view.container.querySelectorAll(".script-row-speaker__label")].map((node) => node.textContent)).toEqual(["Speaker 1", "Speaker 2"]);
+  expect(screen.getAllByRole("combobox", { name: /Speaker Profile của Mic row/ })).toHaveLength(2);
+});
+
 it("clears a channel row instead of reapplying the track's fallback profile", () => {
   const original = { id: "a", name: "Mic", text: "Xin", speakerProfileIds: ["s1"], words: [
     { text: "Xin", start: 0, end: 1, speakerId: "s1", diarizationSpeakerId: "s1" },

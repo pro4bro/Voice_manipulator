@@ -1,5 +1,17 @@
 # Project Status — 2026-10-12
 
+## USER-FEEDBACK-24 — Script speaker labels and selected passages (2026-10-12)
+
+Script shows diarization Speaker 1/2 even before a Speaker Profile is assigned.
+Its word menu can map a selected passage to an existing diarization speaker;
+interior passages form A–B–A rows and edge passages merge with a neighboring
+matching row. The raw label and word timings remain unchanged; Profile mapping
+and checked-row bulk actions retain their separate scope. Ordinary and channel
+tables display the label. Focused70/70 (final ScriptEditor40/40),
+frontend777/777, typecheck/build and backend742/742 pass.
+Native acceptance is recorded in
+`docs/gates/user-feedback-24-script-speaker-turns.md`. Phase03 remains60%.
+
 ## USER-FEEDBACK-23 — API listener readiness during recovery (2026-10-12)
 
 Product startup no longer waits for a slow persisted-project scan before the

@@ -85,8 +85,8 @@ export function ScriptRowSelection({ number, label, selected, onSelect }: { numb
   return <div className="script-row-selection"><button aria-label={label} aria-pressed={selected} className="script-table__row-select" onClick={onSelect} type="button"><span aria-hidden="true">{selected ? "✓" : ""}</span></button><small aria-label={`Row ${number}`}>{number}</small></div>;
 }
 
-export function ScriptRowSpeaker({ selection, label, profileId, profiles, onActivate, onProfileChange, track, extra }: {
-  selection: ReactNode; label: string; profileId: string | null; profiles: SpeakerProfile[];
+export function ScriptRowSpeaker({ selection, label, speakerLabel, profileId, profiles, onActivate, onProfileChange, track, extra }: {
+  selection: ReactNode; label: string; speakerLabel?: string; profileId: string | null; profiles: SpeakerProfile[];
   onActivate?: () => void; onProfileChange?: (id: string | null) => void; track?: ReactNode; extra?: ReactNode;
 }) {
   const profile = profiles.find((item) => item.id === profileId);
@@ -97,6 +97,7 @@ export function ScriptRowSpeaker({ selection, label, profileId, profiles, onActi
       </select>
       {extra}
       {track ? <div className="script-row-speaker__track">{track}</div> : null}
+      {speakerLabel ? <strong className="script-row-speaker__label">{speakerLabel}</strong> : null}
     </div>
   </div>;
 }

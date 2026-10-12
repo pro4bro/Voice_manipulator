@@ -12,7 +12,22 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: USER-FEEDBACK-23
+### 2026-10-12 — current: USER-FEEDBACK-24
+
+Script now displays diarization Speaker 1/2 separately from its still-unassigned
+Speaker Profile. The selected-word menu can reassign a phrase to an existing
+diarization speaker without checking its whole row; derived rows split A–B–A
+for an interior phrase or join the adjacent matching row at an edge. Raw
+speaker provenance, text and timing remain intact. Ordinary and channel tables
+show labels. Focused70/70 (final ScriptEditor40/40), full frontend777/777,
+typecheck/build and backend742/742 pass. Evidence:
+`docs/gates/user-feedback-24-script-speaker-turns.md`.
+Phase03 stays60%. Native visual/pointer, Undo/Redo and Timeline acceptance on
+the owner's diarized project remains open. Exact next round:
+USER-FEEDBACK-24B native Script/Timeline acceptance after source refresh;
+STT-TIMING-ACCURACY-01 independent anchor review still awaits Conviction.
+
+### 2026-10-12 — previous: USER-FEEDBACK-23
 
 The source API could not bind within launcher readiness because lifespan
 awaited a 41.657-second recovery scan across 23 projects. Recovery now runs as

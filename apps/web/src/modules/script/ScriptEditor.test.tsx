@@ -361,11 +361,10 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     confirm.mockRestore();
   });
 
-  it("assigns one word without changing its diarization provenance", () => {
+  it("assigns one selected word without checking its row or changing diarization provenance", () => {
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} speakers={[{ id: "speaker-profile-2", name: "Chị Lan", language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", age: null, gender: "female", attributes: {}, color: "#86b5d8", createdAt: "2026-08-23T00:00:00Z" }]} value="Xin chào" words={words} workflow="speech-to-text" />);
-    fireEvent.click(screen.getByRole("button", { name: "Chọn Script row Speaker 2" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Chị Lan" }));
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: "speaker-profile-2" }]);
@@ -459,6 +458,18 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByRole("menuitem", { name: "↓ Speaker 2 · 00:00.800" }));
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: null, manualDiarizationSpeakerId: "speaker-2" }, words[2]]);
+  });
+
+  it("shows diarization labels before profile mapping and assigns a selected interior word to Speaker 2", () => {
+    const onWordsChange = vi.fn();
+    const words = ["đầu", "giữa", "cuối", "sau"].map((text, index) => ({ text, start: index, end: index + 0.4,
+      diarizationSpeakerId: index === 3 ? "speaker-2" : "speaker-1" }));
+    const view = render(<SelectableScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="đầu giữa cuối sau" words={words} workflow="speech-to-text" />);
+    expect([...view.container.querySelectorAll(".script-row-speaker__label")].map((node) => node.textContent)).toEqual(["Speaker 1", "Speaker 2"]);
+    expect(screen.getAllByRole("combobox", { name: /Speaker Profile của row/ })).toHaveLength(2);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ giữa" }), { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Speaker 2" }));
+    expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: null, manualDiarizationSpeakerId: "speaker-2" }, words[2], words[3]]);
   });
 
   it("offers no row to a word in the middle of its row, which would reorder the transcript", () => {

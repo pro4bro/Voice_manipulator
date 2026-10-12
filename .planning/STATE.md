@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — USER-FEEDBACK-23 API readiness during persisted recovery.
-last_activity_desc: API now binds while slow project recovery continues after a one-second fast path. Real listener regression and backend742/742 pass. Owner source-launcher restart remains to verify. Phase03 stays60%.
+last_activity: 2026-10-12 — USER-FEEDBACK-24 Script speaker labels and selected passage reassignment.
+last_activity_desc: Script exposes diarization Speaker labels before Profile mapping. Selected middle/edge words split or merge derived rows; frontend777/777, typecheck/build and backend742/742 pass. Native acceptance remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,15 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-24 — Script speaker turns (2026-10-12)
+
+Ordinary and channel Script tables now show Speaker 1/2 labels before a Profile
+is mapped. The selected-word menu reassigns a phrase to an existing
+diarization speaker, deriving A–B–A or joining a neighboring matching row.
+Word timing and raw speaker provenance remain unchanged. Focused70/70, full
+frontend777/777, typecheck/build and backend742/742 pass. Native acceptance is in
+`docs/gates/user-feedback-24-script-speaker-turns.md`. Phase03 stays60%.
 
 ## USER-FEEDBACK-23 — API readiness during project recovery (2026-10-12)
 

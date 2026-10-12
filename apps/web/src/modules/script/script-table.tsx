@@ -454,8 +454,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   function assignProfileToSelectedWords(profileId: string | null) {
     if (!speakerMenu?.indexes.length) return;
-    const indexes = speakerMenu.indexes.filter((index) => selectedRowWords.includes(index));
-    if (indexes.length) onAssignWords(indexes, profileId);
+    onAssignWords(speakerMenu.indexes, profileId);
     setSpeakerMenu(null);
   }
 
@@ -520,7 +519,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   function renderCell(row: SpeakerScriptRow, column: ScriptTableColumn, fragments: typeof transcriptWindow.visible, rowIndex: number) {
     if (column.builtin === "speaker") {
-      return <ScriptRowSpeaker selection={rowSelectionControl(row, rowIndex)} label={`Speaker Profile của row ${rowIndex + 1}`} profileId={row.profileId} profiles={speakers} track={trackName}
+      return <ScriptRowSpeaker selection={rowSelectionControl(row, rowIndex)} label={`Speaker Profile của row ${rowIndex + 1}`} speakerLabel={row.diarizationLabel} profileId={row.profileId} profiles={speakers} track={trackName}
         onActivate={() => { if (!selectedRowIds.length) setRowSelection({ ids: [row.id], anchorId: row.id }); }} onProfileChange={(id) => { if (selectedRowIds.length) assignProfileToSelectedRows(id || "__none__"); }} />;
     }
     if (column.builtin === "content") {
@@ -564,8 +563,15 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
       {speakerMenu.indexes.length === 1 ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes[0], value: words[speakerMenu.indexes[0]].text }); setSpeakerMenu(null); }} role="menuitem" type="button">Sửa text</button> : null}
-      <button disabled={!speakerMenu.indexes.some((index) => selectedRowWords.includes(index))} onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
-      {speakers.map((speaker) => <button disabled={!speakerMenu.indexes.some((index) => selectedRowWords.includes(index))} key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+      <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
+      {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+      {(() => {
+        const distinct = [...new Map(rows.filter((row) => !row.speakerKey.startsWith("profile:"))
+          .map((row) => [row.speakerKey, row] as const)).values()];
+        return distinct.length > 1 ? <><small>GÁN NGƯỜI NÓI CHO ĐOẠN CHỌN</small>
+          {distinct.map((row) => <button key={row.speakerKey} onClick={() => moveSelectedWordsToRow(row)} role="menuitem" type="button">{row.diarizationLabel}</button>)}
+        </> : null;
+      })()}
       {(() => {
         // Only the neighbouring rows, and only from a row's edge: anything else
         // would reorder the transcript, which recognition already got right.

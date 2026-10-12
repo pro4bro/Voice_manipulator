@@ -134,8 +134,11 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
           const control = <ScriptRowSelection number={index + 1} label={`Chọn row ${index + 1} của ${row.trackName}`} selected={checked}
             onSelect={(event) => setSelection((current) => selectListItem(current, rowIds, rowIds[index], { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }))} />;
           const profileId = row.explicitlyUnassigned ? null : speakers.some((speaker) => speaker.id === row.speakerId) ? row.speakerId! : row.speakerId ? null : tracks.find((track) => track.id === row.trackId)?.speakerProfileIds?.[0] ?? null;
+          const diarizationId = row.words[0]?.word.manualDiarizationSpeakerId ?? row.words[0]?.word.diarizationSpeakerId;
+          const speakerNumber = /(?:speaker|spk)[-_ ]?(\d+)$/iu.exec(diarizationId ?? "")?.[1];
+          const speakerLabel = diarizationId ? (speakerNumber ? `Speaker ${speakerNumber}` : diarizationId) : undefined;
           return <ScriptTranscriptRow data-channel-id={row.trackId} data-transcript-row={index} key={rowIds[index]} columns={layout.columns} gridTemplateColumns={layout.gridTemplateColumns} className={checked ? "is-selected" : ""} selectionFallback={control} cells={{
-            speaker: <ScriptRowSpeaker selection={control} label={`Speaker Profile của ${row.trackName} row ${index + 1}`} profileId={profileId} profiles={speakers} onActivate={() => { if (!selected.length) setSelection({ ids: [rowIds[index]], anchorId: rowIds[index] }); }}
+            speaker: <ScriptRowSpeaker selection={control} label={`Speaker Profile của ${row.trackName} row ${index + 1}`} speakerLabel={speakerLabel} profileId={profileId} profiles={speakers} onActivate={() => { if (!selected.length) setSelection({ ids: [rowIds[index]], anchorId: rowIds[index] }); }}
               onProfileChange={onAssignWords ? (id) => { if (selected.length) assignSelected(id); } : undefined}
               track={<button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button">{row.trackName}</button>} />,
             content: <div className="script-table__content" role="gridcell">

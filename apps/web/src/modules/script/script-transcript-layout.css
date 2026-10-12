@@ -1,5 +1,6 @@
 .script-table__speaker.script-row-speaker { display: grid; grid-template-columns: 16.8px minmax(0, 1fr); align-items: start; gap: 8px; padding: 9px 10px; }
 .script-row-speaker__details { display: grid; align-content: start; min-width: 0; gap: 4px; }
+.script-row-speaker__label { order: -1; min-width: 0; overflow: hidden; color: var(--text); font-size: calc(12px * var(--font-scale)); line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .script-table__speaker .script-row-speaker__details > select { width: 100%; max-width: none; min-width: 0; margin: 0; color: var(--text); background: var(--surface-field); border-left-width: 3px; }
 .script-row-speaker__track { min-width: 0; color: var(--text-muted); font-family: var(--mono); font-size: calc(10px * var(--font-scale)); }
 .script-row-speaker__track > button { display: block; width: 100%; min-width: 0; overflow: hidden; padding: 0; color: inherit; background: transparent; border: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
