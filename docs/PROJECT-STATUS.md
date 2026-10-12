@@ -1,4 +1,20 @@
-# Project Status — 2026-10-12
+# Project Status — 2026-10-13
+
+## PORT-STT-01 — portable STT eligibility (2026-10-13)
+
+The grey Speech to text button was reproduced with a ticked footage: the
+production API looked for the development-only services/stt_studio folder,
+while the portable ships .runtime/omnivoice-studio. Settings now resolves the
+bundled sidecar first and the portable gate verifies actual catalog eligibility.
+API/moved-folder and native Windows PowerShell regressions pass; related
+backend34, Media Pool56, typecheck/build pass. Full backend755pass/3fail; all3
+unchanged timing checks pass separately. Candidate0.5.4 was rejected by the new
+gate (native quoting) and rollback verified. Automatically issued alpha0.5.5
+actual BAT passes31/0,153payload hashes/1.16MiB ZIP verified, base manifest
+unchanged. Real portable CPU/int8 offline Largev3/Medium return21timestamped words
+from4s Vietnamese speech, cached source identical and PCM24k mono verified.
+Evidence: docs/gates/portable-stt-20261013.md. Owner's D-drive STT/GPU retry
+remains the next acceptance round; Phase03 stays60%.
 
 ## PORT-IMPORT-01 — repair native media import module connection (2026-10-12)
 

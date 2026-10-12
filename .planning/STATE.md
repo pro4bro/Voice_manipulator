@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-IMPORT-01 native Media Pool connection.
-last_activity_desc: Fixed missing native import props in both real registry branches. Frontend784/784, relevant backend9/9, typecheck/build pass. Alpha 0.5.3 actual pack BAT passes30/0; portable UI imports WAV/MP4/two-track MKV and displays errors/retry. Six audio artifacts verified. Owner's second-machine import/benchmark remains. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-STT-01 portable STT catalog.
+last_activity_desc: Resolved the bundled sidecar root so Whisper and Speech to text remain available after moving the portable. Related backend34 and Media Pool56, typecheck/build pass; full backend755pass/3fail and those3pass separately. Automatically issued alpha0.5.5 actual pack BAT31/0, ZIP153payload hashes verified, base unchanged. Real portable offline CPU Largev3/Medium return21words with preserved source and visible Script. Owner's second-machine STT/GPU retry remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,20 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-STT-01 — portable STT catalog (2026-10-13)
+
+The API catalog checked a development-only path, disabling all Whisper choices
+and the STT button despite ticked footage. Resolve the bundled sidecar first;
+production-endpoint/moved-root regressions and native Windows PowerShell probe
+pass. Candidate0.5.4 was rejected and rollback confirmed before issuing0.5.5.
+Actual alpha0.5.5 BAT31/0,153-file ZIP verified, base unchanged. Related
+backend34/Media Pool56/typecheck/build pass; full755pass/3fail then those3pass
+unchanged separately. Real portable CPU/int8 offline Largev3/Medium return21words,
+4s PCM/source artifacts verified. See docs/gates/portable-stt-20261013.md.
+Exact next round: owner's D-drive alpha0.5.5 update and Medium/Largev3 run.
+Target-device performance and independent timing/recognition gates remain;
+Phase03 stays60%.
 
 ## PORT-IMPORT-01 — native Media Pool connection (2026-10-12)
 

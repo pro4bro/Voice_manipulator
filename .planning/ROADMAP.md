@@ -1,5 +1,17 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-STT-01 — portable Speech to text availability (2026-10-13)
+
+Resolved the API catalog against the portable's bundled STT sidecar rather
+than the absent development folder. Actual grey-button reproduction and
+production-endpoint/moved-folder regressions pass. Alpha0.5.5 actual BAT31/0,
+153-file ZIP verified and base unchanged; real portable CPU/offline Largev3
+and Medium return21words with preserved source. Related backend34/Media Pool56 and
+typecheck/build pass; full755pass/3fail then those3pass separately.
+See docs/gates/portable-stt-20261013.md. Phase03 stays60%. Exact next portable
+round: owner's D-drive alpha0.5.5 STT retry and hardware benchmark. Planned
+STT-TIMING-ACCURACY-01 still awaits independent Conviction anchors.
+
 ## USER-FEEDBACK-23 — API readiness during project recovery (2026-10-12)
 
 The startup blocker was a 41.657-second recovery scan across 23 projects before

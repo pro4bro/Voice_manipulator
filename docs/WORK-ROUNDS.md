@@ -12,7 +12,26 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-IMPORT-01
+### 2026-10-13 — current: PORT-STT-01
+
+Owner's grey Speech to text button reproduced even with a footage ticked STT.
+The API catalog checked services/stt_studio, absent in the portable that ships
+the sidecar under .runtime/omnivoice-studio. Resolve the bundled root first;
+production-endpoint regressions cover source/portable/missing/moved layouts.
+The new catalog gate caught a Windows PowerShell quoting error in candidate
+0.5.4 and verified rollback to0.5.3. Repaired native probe regression passes.
+Automatically issued alpha0.5.5 actual pack BAT passes31/0;153payload hashes
+and ZIP verified (1.16MiB), base manifest SHA256 unchanged. Relevant backend
+34pass, Media Pool56pass, typecheck/build pass. Full backend755pass/3fail;
+those3unchanged timing checks pass on isolated rerun. Real embedded-runtime
+CPU/int8 offline Largev3 and Medium each return21words from4s speech,
+source/audio verified; Medium's words are visible in fresh alpha0.5.5 Script.
+Evidence: docs/gates/portable-stt-20261013.md. Phase03 stays60%.
+Exact next portable round: owner's D-drive alpha0.5.5 update, reopen, tick STT
+and run Medium/Largev3 on the target hardware. Independent timing review stays
+STT-TIMING-ACCURACY-01 after the owner's Conviction reference.
+
+### 2026-10-12 — previous: PORT-IMPORT-01
 
 Owner-reported second-machine media import produced no slot or notice. The
 real ModuleRegistry dropped native paths, confirmation/cancel, pending rows
