@@ -68,6 +68,16 @@ of that checkpoint must follow its non-commercial terms. Other bundled model
 files have their own upstream terms. No user recordings, projects or tokens are
 included.
 
+## Speech to text after updating
+
+Alpha 0.5.4 fixes the STT catalog looking for the development-only service
+folder. The catalog now resolves the sidecar in this portable, and verification
+also checks that the production API exposes faster-whisper as available.
+After updating, start the app from the full portable folder, import footage,
+tick **STT** beside that footage, choose **Medium** or **Large v3**, then click
+**Speech to text**. Importing a native file alone does not select it for STT.
+CPU inference is supported when CUDA is unavailable and can take longer.
+
 For a direct offline comparison, start with the bundled faster-whisper Tiny,
 Base, Medium and Large-v3 selections on the same audio and keep language/device
 settings fixed. Small remains listed but its weights are not in this bundle;

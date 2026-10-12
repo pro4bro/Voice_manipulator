@@ -41,6 +41,15 @@ class Settings:
     # missing model fails loudly instead of quietly downloading gigabytes.
     model_hub_cache: Path | None
 
+    @property
+    def stt_studio_root(self) -> Path:
+        # The launcher runs this synchronized sidecar; app-only portable packs
+        # ship it here without the development services/stt_studio tree.
+        bundled = self.project_root / ".runtime" / "omnivoice-studio"
+        if (bundled / "studio_app" / "server.py").is_file():
+            return bundled
+        return self.project_root / "services" / "stt_studio"
+
     @classmethod
     def from_env(cls) -> "Settings":
         project_root = Path(__file__).resolve().parents[3]

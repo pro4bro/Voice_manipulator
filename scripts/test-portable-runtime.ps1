@@ -147,6 +147,24 @@ if ($selected -contains "Capture") {
 if ($selected -contains "STT") {
     Test-PythonRuntime "stt.python" ".runtime\python\stt" @("numpy", "faster_whisper", "whisperx")
     Test-LocalPath "stt.server" ".runtime\omnivoice-studio\studio_app\server.py" "STT service"
+    # Presence/import checks cannot catch the UI disabling a shipped engine
+    # because the production catalog resolves the development service path.
+    $corePython = Join-Path $root ".runtime\python\core\python.exe"
+    try {
+        if (-not (Test-Path -LiteralPath $corePython -PathType Leaf)) { throw "Core Python is missing." }
+        $catalogProbe = @'
+from app.main import app
+endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/api/stt-engines")
+whisper = next(option for option in endpoint() if option.id == "faster-whisper")
+assert whisper.available, whisper.status
+print("Production STT catalog exposes faster-whisper as available.")
+'@
+        $catalogOutput = (& $corePython -c $catalogProbe 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) { throw $catalogOutput }
+        Add-Result "stt.catalog" "PASS" $catalogOutput
+    } catch {
+        Add-Result "stt.catalog" "FAIL" "Production STT catalog verification failed: $($_.Exception.Message)"
+    }
     Test-NonEmptyTree "stt.whisper-large-v3" ".runtime\omnivoice-studio\models\models--Systran--faster-whisper-large-v3" "Final STT model" "model.bin"
     Test-NonEmptyTree "stt.whisper-medium" ".runtime\omnivoice-studio\models\models--Systran--faster-whisper-medium" "LiveLink STT model" "model.bin"
     Test-NonEmptyTree "stt.diarization-models" ".runtime\omnivoice-studio\models\diarization" "Speaker diarization models"

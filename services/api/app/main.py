@@ -448,7 +448,7 @@ def create_app(
     stt_engines = FileTrainingModelCatalog(
         settings.stt_engines_root,
         {
-            "studio": settings.project_root / "services" / "stt_studio",
+            "studio": settings.stt_studio_root,
             "vibevoice": settings.vibevoice_root,
         },
     )
