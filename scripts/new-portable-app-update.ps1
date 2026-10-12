@@ -9,6 +9,12 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $root = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path.TrimEnd('\')
+$release = Get-Content -Raw -LiteralPath (Join-Path $root 'APP-VERSION.json') | ConvertFrom-Json
+if ($release.schemaVersion -ne 1 -or $release.channel -notin @('alpha', 'stable') -or
+    [string]$release.version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+    ($release.channel -eq 'stable' -and [version]$release.version -lt [version]'1.0.0')) {
+    throw 'APP-VERSION.json has an invalid release version/channel.'
+}
 if ((& git -C $root rev-parse --show-toplevel 2>$null).Replace('/', '\').TrimEnd('\') -ne $root) {
     throw "Run from the Pro4Bro source checkout."
 }
@@ -85,6 +91,8 @@ $manifest = [ordered]@{
     schemaVersion = 1
     kind = 'Pro4BroAppUpdate'
     profile = $Profile
+    releaseVersion = [string]$release.version
+    releaseChannel = [string]$release.channel
     createdAt = [DateTimeOffset]::Now.ToString('o')
     sourceRevision = (& git -C $root rev-parse HEAD)
     sourceWorkingTreeDirty = [bool](& git -C $root status --porcelain)
@@ -95,9 +103,11 @@ $manifest = [ordered]@{
     entries = $entries
 }
 $manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $output 'app-update.json') -Encoding utf8
+Set-Content -LiteralPath (Join-Path $output 'VERSION.txt') -Value ("{0} {1}" -f $release.channel, $release.version) -Encoding utf8
 Write-Output ([ordered]@{
     kind = $manifest.kind
     profile = $manifest.profile
+    release = "{0} {1}" -f $release.channel, $release.version
     createdAt = $manifest.createdAt
     sourceRevision = $manifest.sourceRevision
     sourceWorkingTreeDirty = $manifest.sourceWorkingTreeDirty

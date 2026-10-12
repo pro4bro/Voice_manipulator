@@ -13,6 +13,24 @@ would require updating every engine loader and proving cross-drive portability.
 The app pack never includes `.cache`, `.runtime/python`, OmniVoice upstream
 source, or `.runtime/engines`.
 
+## App release version
+
+`APP-VERSION.json` in the source checkout is the release version for the app
+layer. The current release is **alpha 0.5.0**. Before shipping the next changed
+app pack, increase the patch to **alpha 0.5.1**. When work starts on the next
+planned phase, use **alpha 0.6.0**, then **alpha 0.6.1** for its next update.
+After all planned functions are finished and only fixes or later additions
+remain, publish **1.0.0** with channel `stable`.
+
+The update folder has a readable `VERSION.txt`; `app-update.json`, the portable
+`.portable-bundle.json`, and `.portable-app-layer.json` record `releaseChannel`
+and `releaseVersion`. A repeat click with identical app files keeps the same
+version. The updater rejects a changed app pack under an already installed
+version, and rejects older versions. Bump `APP-VERSION.json` once per new
+app release, then generate the pack. `schemaVersion` describes the JSON format
+and does not follow the app release number. The internal npm/API versions are
+independent.
+
 ## Same machine
 
 Double-click `UPDATE-PORTABLE.bat` inside a portable folder located under this

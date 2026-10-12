@@ -1,5 +1,15 @@
 # Project Status — 2026-10-12
 
+## PORT-VERSION-01 — portable app release version (2026-10-12)
+
+`APP-VERSION.json` starts the app release at alpha 0.5.0. Update packs have
+`VERSION.txt`; pack, bundle and app-layer manifests record the same release.
+Two BAT runs passed 30/0 and kept the version. A changed pack with the same
+version and a downgrade were rejected before altering the installed manifest.
+The 35.98 GiB NoVibeVoice portable now contains the versioned 3.94 MiB
+transfer pack. Target-machine copy/start/benchmark remains open. Evidence:
+docs/gates/portable-release-version-20261012.md. Phase03 remains60%.
+
 ## PORT-UPDATE-02 — portable transfer handoff (2026-10-12)
 
 The portable BAT is the single click for app changes while this bundle

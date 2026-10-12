@@ -10,6 +10,12 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $root = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path.TrimEnd("\")
+$release = Get-Content -Raw -LiteralPath (Join-Path $root 'APP-VERSION.json') | ConvertFrom-Json
+if ($release.schemaVersion -ne 1 -or $release.channel -notin @('alpha', 'stable') -or
+    [string]$release.version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+    ($release.channel -eq 'stable' -and [version]$release.version -lt [version]'1.0.0')) {
+    throw 'APP-VERSION.json has an invalid release version/channel.'
+}
 $releaseName = "Pro4Bro-Portable-{0}{1}" -f (Get-Date -Format "yyyyMMdd"), $(if ($Profile -eq "NoVibeVoice") { "-NoVibeVoice" } else { "" })
 if (-not $OutputRoot) {
     $OutputRoot = Join-Path $root ".scratch\portable-release\$releaseName"
@@ -179,6 +185,8 @@ $gitDirty = [bool](& git -C $root status --porcelain 2>$null)
 $manifest = [ordered]@{
     schemaVersion = 1
     product = "Pro4Bro Voice Manipulator"
+    releaseVersion = [string]$release.version
+    releaseChannel = [string]$release.channel
     bundleName = Split-Path -Leaf $destination
     createdAt = [DateTimeOffset]::Now.ToString("o")
     creationMode = $Mode
@@ -203,7 +211,7 @@ $appEntries = foreach ($relative in $appTrees + $appFiles) {
         [ordered]@{ path = $item.FullName.Substring($destination.Length).TrimStart('\').Replace('\', '/'); bytes = $item.Length; sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash }
     }
 }
-[ordered]@{ schemaVersion = 1; kind = 'app'; sourceRevision = $gitCommit; sourceWorkingTreeDirty = $gitDirty; updatedAt = $manifest.createdAt; entries = @($appEntries) } |
+[ordered]@{ schemaVersion = 1; kind = 'app'; releaseVersion = [string]$release.version; releaseChannel = [string]$release.channel; sourceRevision = $gitCommit; sourceWorkingTreeDirty = $gitDirty; updatedAt = $manifest.createdAt; entries = @($appEntries) } |
     ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $destination '.portable-app-layer.json') -Encoding utf8
 $appOwnedComponents = @($appTrees) + @($appFiles) + @('scripts/pro4bro-console.ps1', 'scripts/pro4bro-process-tree.ps1', 'scripts/pro4bro-readiness.ps1', 'scripts/pro4bro-workloads.ps1', 'scripts/test-portable-runtime.ps1', 'scripts/install-obs-plugin.ps1', 'scripts/update-portable.ps1')
 [ordered]@{ schemaVersion = 1; kind = 'base-runtime-and-models'; profile = $Profile; components = @($components | Where-Object { $_.path -notin $appOwnedComponents }); omnivoiceModelRevision = $manifest.omnivoiceModelRevision; createdAt = $manifest.createdAt } |
@@ -215,6 +223,7 @@ Remove-Item -LiteralPath (Join-Path $destination ".bundle-incomplete") -Force
     path = $destination
     mode = $Mode
     profile = $Profile
+    release = "{0} {1}" -f $release.channel, $release.version
     files = $fileCount
     bytes = $byteCount
     gibibytes = [math]::Round($byteCount / 1GB, 2)

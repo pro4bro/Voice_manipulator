@@ -12,7 +12,20 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-UPDATE-02
+### 2026-10-12 — current: PORT-VERSION-01
+
+Portable app releases now use `APP-VERSION.json`, starting at alpha 0.5.0.
+Pack, bundle and app-layer manifests agree; the pack also has `VERSION.txt`.
+Two portable BAT updates built the UI and passed 30/0 without changing the
+version. Same-version changed payload and downgrade were rejected before
+mutating the installed manifest. Current NoVibeVoice bundle is 35.98 GiB;
+latest app pack is 3.94 MiB. Evidence:
+docs/gates/portable-release-version-20261012.md. Phase03 stays60%.
+Exact next portable round: physical copy to another Windows machine,
+verification, startup and fixed-media benchmark. STT-TIMING-ACCURACY-01
+still awaits Conviction.
+
+### 2026-10-12 — previous: PORT-UPDATE-02
 
 The portable's own UPDATE-PORTABLE.bat now keeps its result visible and
 leaves the newest transferable pack at updates/app-current. Repeated

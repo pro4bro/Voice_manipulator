@@ -27,7 +27,11 @@ If this portable folder is still under the source checkout on the development
 machine, double-click **`UPDATE-PORTABLE.bat` in this folder** after each code
 change. It finds the source, builds the web UI, applies the latest app code and
 leaves a small transfer pack at `updates/app-current`. Wait for the window to
-show `updated: true` and `gateFailed: 0`.
+show `updated: true` and `gateFailed: 0`. The result also shows the app release
+version. Read `updates/app-current/VERSION.txt` to check the pack before copying
+it; the installed version is in `.portable-bundle.json`. Increase the source
+`APP-VERSION.json` for each changed app release before clicking the BAT again.
+Clicking again with unchanged app files keeps the same release version.
 
 For the first move to another machine, copy this **whole portable folder**
 (about 36 GiB), run `VERIFY-PORTABLE.bat` there, then start the app with

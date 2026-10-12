@@ -54,6 +54,21 @@ if (-not (Test-Path -LiteralPath $updateManifestPath -PathType Leaf)) {
 $update = Get-Content -Raw -LiteralPath $updateManifestPath | ConvertFrom-Json
 if ($update.schemaVersion -ne 1 -or $update.kind -ne 'Pro4BroAppUpdate' -or
     $update.profile -ne $bundleManifest.profile) { throw 'App update profile or schema does not match this bundle.' }
+if ([string]$update.releaseVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+    $update.releaseChannel -notin @('alpha', 'stable') -or
+    ($update.releaseChannel -eq 'stable' -and [version]$update.releaseVersion -lt [version]'1.0.0')) {
+    throw 'App update has no valid release version/channel. Create a new versioned update pack.'
+}
+if ($bundleManifest.releaseVersion) {
+    if ([string]$bundleManifest.releaseVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+        $bundleManifest.releaseChannel -notin @('alpha', 'stable')) {
+        throw 'Installed portable has an invalid release version/channel.'
+    }
+    $versionOrder = ([version]$update.releaseVersion).CompareTo([version]$bundleManifest.releaseVersion)
+    if ($versionOrder -lt 0 -or ($versionOrder -eq 0 -and $bundleManifest.releaseChannel -eq 'stable' -and $update.releaseChannel -ne 'stable')) {
+        throw "Cannot install $($update.releaseChannel) $($update.releaseVersion) over $($bundleManifest.releaseChannel) $($bundleManifest.releaseVersion)."
+    }
+}
 $runtimeManifest = Assert-BundleChild '.runtime/python/runtime-manifest.json'
 if ((Get-FileHash -LiteralPath $runtimeManifest -Algorithm SHA256).Hash -ne $update.runtimeManifestSha256) {
     throw 'Python runtime dependencies changed. Rebuild the portable runtime before applying this app update.'
@@ -110,6 +125,17 @@ foreach ($tree in $allowedTrees) {
     }
 }
 foreach ($file in $allowedFiles) { if (-not $seen.Contains($file)) { throw "Update file is missing: $file" } }
+if ($bundleManifest.releaseVersion -and [version]$update.releaseVersion -eq [version]$bundleManifest.releaseVersion -and
+    $update.releaseChannel -eq $bundleManifest.releaseChannel) {
+    $installedAppLayerPath = Assert-BundleChild '.portable-app-layer.json'
+    if (-not (Test-Path -LiteralPath $installedAppLayerPath -PathType Leaf)) { throw 'Installed app layer manifest is missing.' }
+    $installedAppLayer = Get-Content -Raw -LiteralPath $installedAppLayerPath | ConvertFrom-Json
+    $installedHashes = @($installedAppLayer.entries | ForEach-Object { '{0}|{1}' -f $_.path, $_.sha256 } | Sort-Object)
+    $incomingHashes = @($entries | ForEach-Object { '{0}|{1}' -f $_.path, $_.sha256 } | Sort-Object)
+    if (($installedHashes -join "`n") -cne ($incomingHashes -join "`n")) {
+        throw "App files changed under $($update.releaseChannel) $($update.releaseVersion). Bump APP-VERSION.json before creating this update."
+    }
+}
 
 $ports = @(18081, 18120)
 $listeners = @(Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue)
@@ -198,11 +224,13 @@ try {
     }
     $bundleManifest.sourceRevision = $update.sourceRevision
     $bundleManifest.sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty
+    $bundleManifest | Add-Member -NotePropertyName releaseVersion -NotePropertyValue ([string]$update.releaseVersion) -Force
+    $bundleManifest | Add-Member -NotePropertyName releaseChannel -NotePropertyValue ([string]$update.releaseChannel) -Force
     $bundleManifest | Add-Member -NotePropertyName updatedAt -NotePropertyValue ([DateTimeOffset]::Now.ToString('o')) -Force
     $bundleManifest | Add-Member -NotePropertyName appUpdateCount -NotePropertyValue ([int]$bundleManifest.appUpdateCount + 1) -Force
     $bundleManifest | Add-Member -NotePropertyName layers -NotePropertyValue ([ordered]@{ app = '.portable-app-layer.json'; baseRuntimeAndModels = '.portable-model-layer.json' }) -Force
     $bundleManifest | ConvertTo-Json -Depth 9 | Set-Content -LiteralPath $bundleManifestPath -Encoding utf8
-    [ordered]@{ schemaVersion = 1; kind = 'app'; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; updatedAt = $bundleManifest.updatedAt; entries = $entries } |
+    [ordered]@{ schemaVersion = 1; kind = 'app'; releaseVersion = [string]$update.releaseVersion; releaseChannel = [string]$update.releaseChannel; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; updatedAt = $bundleManifest.updatedAt; entries = $entries } |
         ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $appLayerPath -Encoding utf8
     $appOwnedComponents = @($targets) + @($allowedScripts | ForEach-Object { "scripts/$_" })
     $baseComponents = @($bundleManifest.components | Where-Object { $_.path -notin $appOwnedComponents })
@@ -227,7 +255,7 @@ try {
             throw
         }
     }
-    $result = [ordered]@{ updated = $true; profile = $bundleManifest.profile; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; appFiles = $entries.Count; modelLayerChanged = $false; gatePassed = $audit.passed; gateFailed = $audit.failed; transferPack = $package }
+    $result = [ordered]@{ updated = $true; profile = $bundleManifest.profile; release = ("{0} {1}" -f $update.releaseChannel, $update.releaseVersion); sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; appFiles = $entries.Count; modelLayerChanged = $false; gatePassed = $audit.passed; gateFailed = $audit.failed; transferPack = $package }
 } catch {
     $failure = $_
     if ($moves.Count -gt 0) {

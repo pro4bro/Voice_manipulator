@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-UPDATE-02 portable transfer handoff.
-last_activity_desc: Portable BAT now leaves the latest 3.93 MiB app pack at updates/app-current; repeated updates and direct VERIFY pass 29/0. Full folder remains 35.98 GiB; target-machine transfer and benchmark remain. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-VERSION-01 portable app release version.
+last_activity_desc: Versioned alpha 0.5.0 app pack and installed portable; repeated BAT updates pass 30/0, changed same-version pack and downgrade rejected. Full folder 35.98 GiB, current pack 3.94 MiB; target-machine transfer and benchmark remain. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,14 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-VERSION-01 — portable app release version (2026-10-12)
+
+Source `APP-VERSION.json` defines alpha 0.5.0. The pack and installed app
+manifests record it, and `VERSION.txt` labels the pack. Two BAT updates passed
+30/0; same-version changed content and older version were rejected before
+mutation. See docs/gates/portable-release-version-20261012.md. Physical
+target-machine verification remains; Phase03 stays60%.
 
 ## PORT-UPDATE-02 — portable transfer handoff (2026-10-12)
 

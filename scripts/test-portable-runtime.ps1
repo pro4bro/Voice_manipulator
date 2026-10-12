@@ -212,6 +212,16 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
         } elseif (Test-Path -LiteralPath $appLayerPath) {
             $appLayer = Get-Content -Raw -LiteralPath $appLayerPath | ConvertFrom-Json
             $modelLayer = Get-Content -Raw -LiteralPath $modelLayerPath | ConvertFrom-Json
+            if ($bundleManifest.releaseVersion) {
+                if ([string]$bundleManifest.releaseVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+                    $bundleManifest.releaseChannel -notin @('alpha', 'stable') -or
+                    $appLayer.releaseVersion -cne $bundleManifest.releaseVersion -or
+                    $appLayer.releaseChannel -cne $bundleManifest.releaseChannel) {
+                    Add-Result 'bundle.release' 'FAIL' 'App release version differs between bundle and app-layer manifests.' $appLayerPath
+                } else {
+                    Add-Result 'bundle.release' 'PASS' ("App release is {0} {1}." -f $bundleManifest.releaseChannel, $bundleManifest.releaseVersion) $appLayerPath
+                }
+            }
             $appComponentPaths = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts', 'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
             $mixedComponents = @($modelLayer.components | Where-Object { $_.path -in $appComponentPaths -or $_.path -like 'scripts/*' })
             if ($appLayer.schemaVersion -ne 1 -or $appLayer.kind -ne 'app' -or
