@@ -53,7 +53,14 @@ renaming a received folder to `app-current`.
 
 ## Remaining gap and next round
 
-The owner must apply the new pack on the second machine to verify that physical
-copy and host runtime. Exact next portable round: copy alpha 0.5.1 into that
-portable's `updates`, use its APPLY launcher once, verify, start, and benchmark
-fixed media. Phase03 remains 60%; independent STT timing still awaits Conviction.
+The owner supplied the second machine's successful console output on
+2026-10-12. Its D-drive portable selected alpha 0.5.1 from
+`updates/App-alpha-0.5.1-NoVibeVoice`, reported `updated: true`, 153 app files,
+`createdFromSource: false`, `modelLayerChanged: false`, and **30 passed, 0 failed**.
+This is owner-reported evidence of transfer, application and the runtime gate;
+the agent did not execute commands on that host.
+
+Exact next portable round: start the updated app from the D-drive portable root
+and benchmark fixed media there. Startup and actual audio/GPU processing remain
+unverified on that host. Phase03 remains 60%; independent STT timing still awaits
+Conviction.

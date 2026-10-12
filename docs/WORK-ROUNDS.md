@@ -21,9 +21,9 @@ Pack entrypoints resolve the full portable and can bootstrap the old updater.
 Regression9/9, creator UI build, and two actual alpha 0.5.1 pack BAT runs
 passed 30/0. The 153-file update also has a 1.17 MiB ZIP. Evidence:
 docs/gates/portable-numbered-updates-20261012.md. Phase03 stays60%.
-Exact next portable round: apply alpha 0.5.1 on the owner's second machine,
-verify, start and benchmark fixed media. STT-TIMING-ACCURACY-01 still awaits
-Conviction.
+Owner-reported second-machine D-drive update selected alpha 0.5.1 and passed
+30/0. Exact next portable round: start that updated app and benchmark fixed
+media there. STT-TIMING-ACCURACY-01 still awaits Conviction.
 
 ### 2026-10-12 — previous: PORT-VERSION-01
 

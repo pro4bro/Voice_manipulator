@@ -9,8 +9,9 @@ updater, resolves the full portable and supports alpha 0.5.0 migration.
 The owner's payload-root error was reproduced before the fix; the same actual
 entrypoint now applies alpha 0.5.1 and passes 30/0. The pack launcher also
 passes 30/0 without allocating another version. Regression9/9 and UI build
-pass. Pack ZIP: 1.17 MiB; full portable remains 35.98 GiB. Second-machine
-apply/start/benchmark remains. Evidence:
+pass. Pack ZIP: 1.17 MiB; full portable remains 35.98 GiB. The owner supplied
+second-machine D-drive evidence: alpha 0.5.1 applied 153 files with 30/0 gate.
+Startup and fixed-media benchmark on that machine remain. Evidence:
 docs/gates/portable-numbered-updates-20261012.md. Phase03 remains60%.
 
 ## PORT-VERSION-01 — portable app release version (2026-10-12)
