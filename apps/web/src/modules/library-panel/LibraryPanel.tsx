@@ -24,7 +24,7 @@ interface LibraryPanelProps {
   onImport: (choices: MediaImportChoice[]) => void;
   pendingLocalMedia?: PendingLocalMedia | null;
   onPendingLocalTrackChange?: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
-  onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number) => void;
+  onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;
   onCancelPendingLocalMedia?: () => void;
   onFinishGrowingMkv?: (assetId: string) => void;
   onStartGrowingMkvDetailedStt?: (assetId: string, segmentSeconds: number) => void;
@@ -39,7 +39,7 @@ interface LibraryPanelProps {
   onRemove: (asset: ProjectMediaAsset) => void;
   onBatchAction: (action: MediaBatchAction) => void;
   onRestore: (asset: ProjectMediaAsset) => void;
-  onReveal: (asset: ProjectMediaAsset) => void;
+  onReveal: (asset: ProjectMediaAsset, location: "original" | "project") => void;
   onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;

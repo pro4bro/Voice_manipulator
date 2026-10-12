@@ -1926,9 +1926,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setScript("");
   }
 
-  async function revealMediaAsset(asset: ProjectMediaAsset) {
+  async function revealMediaAsset(asset: ProjectMediaAsset, location: "original" | "project") {
     try {
-      await api.revealMediaFile(project.id, asset.id);
+      await api.revealMediaFile(project.id, asset.id, location);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không mở được thư mục chứa footage");
     }
@@ -2507,7 +2507,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onCancelNativeMediaImport: cancelNativeMediaImport,
     onRetryPendingImport: retryPendingMediaImport,
     onPendingLocalTrackChange: changePendingLocalTrack,
-    onConfirmPendingLocalMedia: (mode, sttSegmentSeconds) => void confirmPendingLocalMedia(mode, sttSegmentSeconds),
+    onConfirmPendingLocalMedia: (mode, sttSegmentSeconds, cacheLocal) => void confirmPendingLocalMedia(mode, sttSegmentSeconds, cacheLocal),
     onCancelPendingLocalMedia: () => setPendingLocalMedia(null),
     onFinishGrowingMkv: (assetId) => void finishGrowingMkv(assetId),
     onStartGrowingMkvDetailedStt: (assetId, segmentSeconds) => void startGrowingMkvDetailedStt(assetId, segmentSeconds),
@@ -2530,7 +2530,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onRemoveAsset: (asset) => void removeMediaAsset(asset),
     onBatchMediaAction: (action) => { if (action.kind === "restore" || action.kind === "delete" || !blockedByRecycleBin()) void batchMediaAction(action); },
     onRestoreAsset: (asset) => void restoreMediaAsset(asset),
-    onRevealAsset: (asset) => void revealMediaAsset(asset),
+    onRevealAsset: (asset, location) => void revealMediaAsset(asset, location),
     onSetAssetDisabled: (asset, disabled) => void setMediaDisabled(asset, disabled),
     readOnlyAsset: previewingRecycled,
     projectLanguage: project.language ?? null,

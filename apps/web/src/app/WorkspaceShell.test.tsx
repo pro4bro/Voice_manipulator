@@ -693,6 +693,26 @@ describe("WorkspaceShell STT synchronization", () => {
     await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("mkv-track-2"));
   });
 
+  it("passes an unticked Cache file choice from pending tracks to the native import API", async () => {
+    const path = "C:/captures/two.mkv";
+    const parent = { ...mediaAsset("skipped", "", "2026-10-12T00:00:00Z"), id: "imported-parent", name: "two.mkv" };
+    apiMocks.listProjectMedia.mockResolvedValueOnce([]).mockResolvedValue([parent]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.pickMediaFiles.mockResolvedValue({ paths: [path] });
+    apiMocks.inspectLocalMediaTracks.mockResolvedValue({ tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2 },
+      { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2 },
+    ] });
+    apiMocks.importLocalProjectMedia.mockResolvedValue({ asset: parent, trackAssetIds: [], item: null, elapsed: 0 });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    fireEvent.click(screen.getByRole("button", { name: "pick native media" }));
+    await waitFor(() => expect(screen.getByTestId("pending-tracks")).toHaveTextContent("1:true:false,2:true:false"));
+    await act(async () => collectionContext.current?.onConfirmPendingLocalMedia("import", undefined, false));
+    await waitFor(() => expect(apiMocks.importLocalProjectMedia).toHaveBeenCalledWith(project.id, path, false, [1, 2], []));
+  });
+
   it("claims the OBS target while a project is open and releases the same owner on leave", async () => {
     apiMocks.listProjectMedia.mockResolvedValue([]);
     apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);

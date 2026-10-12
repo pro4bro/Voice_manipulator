@@ -21,6 +21,10 @@
 .media-import-choice-file { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-panel); }
 .media-import-choice-file b { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
 .media-import-choice-file small { overflow: hidden; color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.media-import-cache-choice { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid var(--line); background: var(--surface-panel); color: var(--text); }
+.media-import-cache-choice input { margin: 2px 0 0; }
+.media-import-cache-choice span { display: grid; gap: 3px; font-weight: 700; }
+.media-import-cache-choice small { color: var(--text-muted); font-size: calc(10px * var(--font-scale)); font-weight: 400; line-height: 1.4; }
 
 @keyframes media-pool-import-pulse {
   50% { opacity: .35; transform: scale(.84); }

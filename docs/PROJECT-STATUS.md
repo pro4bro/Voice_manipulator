@@ -1,5 +1,17 @@
 # Project Status — 2026-10-12
 
+## USER-FEEDBACK-25 — Media Pool cache choice and reveal (2026-10-12)
+
+The host import dialog and completed-container track dialog now offer a “Cache
+file” checkbox. Checked copies the source into the project; unchecked retains
+an original-file locator in the machine-local registry. That registry is now
+wired into production import. Footage context menus reveal the original and
+project copy separately, disabling project reveal for an uncached host source.
+Browser upload necessarily copies into the project. Focused backend7/7 and
+frontend104/104, full frontend780/780, backend744/744, typecheck/build pass.
+Native acceptance is tracked in `docs/gates/user-feedback-25-media-cache-reveal.md`.
+Phase03 remains60%.
+
 ## USER-FEEDBACK-24 — Script speaker labels and selected passages (2026-10-12)
 
 Script shows diarization Speaker 1/2 even before a Speaker Profile is assigned.

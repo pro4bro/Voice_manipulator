@@ -121,3 +121,45 @@ def test_project_local_container_adds_track_through_api_idempotently(tmp_path, s
     assert added.json()["sourceArchiveStreamIndex"] == 1
     assert added.json()["sourceArchiveAssetId"] == result.asset.id
     assert client.post(url.replace("/1/import", "/9/import")).status_code == 400
+
+
+@pytest.mark.parametrize("cache_local", [False, True])
+def test_native_import_reveals_original_and_only_cached_project_source(tmp_path, source, monkeypatch, cache_local):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Reveal sources"))
+    settings = replace(Settings.from_env(), data_root=tmp_path / "data", ffmpeg_path=source[1])
+    shown = []
+    monkeypatch.setattr("app.main.reveal", lambda path: shown.append(path.resolve()))
+    client = TestClient(create_app(project_repository=projects, settings=settings))
+    imported = client.post(f"/api/projects/{project.id}/media/import-local", json={
+        "sourcePath": str(source[0]), "cacheLocal": cache_local,
+    })
+    assert imported.status_code == 201, imported.text
+    parent = imported.json()["asset"]
+    project_source = Path(project.project_path) / parent["sourcePath"]
+    assert not Path(parent["sourcePath"]).is_absolute()
+    assert project_source.is_file() is cache_local
+    reveal_url = f"/api/projects/{project.id}/media/{parent['id']}/reveal"
+    assert client.post(reveal_url, params={"location": "original"}).status_code == 204
+    assert shown[-1] == source[0].resolve()
+    child_id = imported.json()["trackAssetIds"][0]
+    assert client.post(f"/api/projects/{project.id}/media/{child_id}/reveal",
+        params={"location": "original"}).status_code == 204
+    assert shown[-1] == source[0].resolve()
+    project_reveal = client.post(reveal_url, params={"location": "project"})
+    assert project_reveal.status_code == (204 if cache_local else 404)
+    if cache_local:
+        assert shown[-1] == project_source.resolve()
+        other_machine = TestClient(create_app(project_repository=projects,
+            settings=replace(settings, data_root=tmp_path / "other-machine")))
+        assert other_machine.post(reveal_url, params={"location": "original"}).status_code == 404
+        assert other_machine.post(reveal_url, params={"location": "project"}).status_code == 204
+        assert shown[-1] == project_source.resolve()
+    else:
+        assert "chưa được cache" in project_reveal.json()["detail"]
+        enabled = client.patch(f"/api/projects/{project.id}/media/{parent['id']}/local-cache",
+            json={"enabled": True})
+        assert enabled.status_code == 200, enabled.text
+        assert project_source.read_bytes() == source[0].read_bytes()
+        assert client.post(reveal_url, params={"location": "project"}).status_code == 204
+        assert shown[-1] == project_source.resolve()

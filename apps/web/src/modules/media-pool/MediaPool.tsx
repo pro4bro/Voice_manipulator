@@ -144,7 +144,7 @@ interface MediaPoolProps {
   onRemove: (asset: ProjectMediaAsset) => void;
   onBatchAction: (action: MediaBatchAction) => void;
   onRestore: (asset: ProjectMediaAsset) => void;
-  onReveal: (asset: ProjectMediaAsset) => void;
+  onReveal: (asset: ProjectMediaAsset, location: "original" | "project") => void;
   onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
@@ -469,6 +469,7 @@ export function MediaPool({
   const [mkvSttSegmentSeconds, setMkvSttSegmentSeconds] = useState(60);
   const [nativeCacheChoiceOpen, setNativeCacheChoiceOpen] = useState(false);
   const [localCacheChoiceOpen, setLocalCacheChoiceOpen] = useState(false);
+  const [cacheFile, setCacheFile] = useState(true);
   const [organization, setOrganization] = useState<MediaPoolOrganization>(EMPTY_MEDIA_POOL_ORGANIZATION);
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
   const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
@@ -539,6 +540,7 @@ export function MediaPool({
   }, [projectId]);
   useEffect(() => {
     setNativeCacheChoiceOpen(pendingNativeMediaPaths.length > 0);
+    if (pendingNativeMediaPaths.length) setCacheFile(true);
     if (pendingNativeMediaPaths.length) {
       setLocalImportPlaceholders((current) => {
         const existing = new Set(current.filter((row) => row.id.startsWith("native:")).map((row) => row.id));
@@ -590,6 +592,7 @@ export function MediaPool({
     if (next !== currentOrganization) persistOrganization(next);
   }, [busy, mediaAssetIdsKey, organization, projectId]);
   const contextAsset = assets.find((asset) => asset.id === contextMenu?.assetId) ?? null;
+  const contextSource = assets.find((asset) => asset.id === contextAsset?.sourceArchiveAssetId) ?? contextAsset;
   const footageAssets = assets.filter((asset) => !asset.sourceArchiveAssetId && !(asset.obsRecordingId && asset.sourceExtension !== ".mka"));
   const childrenOf = (asset: ProjectMediaAsset) => assets.filter((item) => item.sourceArchiveAssetId === asset.id);
   const liveAssets = footageAssets.filter((asset) => !asset.deletedAt);
@@ -999,9 +1002,9 @@ export function MediaPool({
       index="MP"
       title="Media Pool"
       action={<div className="media-import-actions">
-        <button aria-label="Import footage từ máy đang dùng" className="media-import media-import--primary" onClick={() => browserFileInput.current?.click()} title="Chọn một hoặc nhiều file từ thiết bị đang dùng" type="button"><Icon name="import" /></button>
+        <button aria-label="Import footage từ máy Host" className="media-import media-import--primary" onClick={onImportLocal} title="Chọn file gốc và quyết định có cache trong project" type="button"><Icon name="import" /></button>
         <input aria-label="Import file từ máy đang dùng" accept={MEDIA_ACCEPT} className="media-pool-file-input" multiple onChange={importFiles} ref={browserFileInput} type="file" />
-        <button aria-label="Import file trên máy Host" className="media-import media-import--host" onClick={onImportLocal} title="Chọn file nằm trên máy Host, gồm MKV đang ghi" type="button"><Icon name="window" /></button>
+        <button aria-label="Upload file qua trình duyệt" className="media-import media-import--host" onClick={() => browserFileInput.current?.click()} title="Upload từ máy đang dùng; trình duyệt không cung cấp đường dẫn file gốc" type="button"><Icon name="window" /></button>
         <button aria-label="Tạo thư mục" aria-expanded={createFolderOpen} className="media-import" onClick={() => { setCreateFolderParentId(null); setCreateFolderOpen((open) => !open); }} title="Tạo thư mục trong project" type="button"><Icon name="folder-plus" /></button>
       </div>}
     >
@@ -1073,17 +1076,19 @@ export function MediaPool({
           <header><span>IMPORT FILE GỐC</span><strong>{pendingNativeMediaPaths.length} file</strong></header>
           <p>Chọn cách app dùng các file nguồn. Cache sẽ sao chép vào project để project mang theo media; giữ file gốc sẽ lưu liên kết tới vị trí hiện tại.</p>
           <div aria-label="Các file sắp import" className="media-import-choices">{pendingNativeMediaPaths.map((path) => <div className="media-import-choice-file" key={path}><b>{path.split(/[\\/]/).pop() || path}</b><small>{path}</small></div>)}</div>
-          <footer><button className="button button--quiet" onClick={cancelNativeImport} type="button">Hủy</button><button className="button button--quiet" onClick={() => confirmNativeImport(false)} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => confirmNativeImport(true)} type="button">Cache trong project</button></footer>
+          <label className="media-import-cache-choice"><input aria-label="Cache file" checked={cacheFile} onChange={(event) => setCacheFile(event.target.checked)} type="checkbox" /><span>Cache file <small>Sao chép file gốc vào folder project</small></span></label>
+          <footer><button className="button button--quiet" onClick={cancelNativeImport} type="button">Hủy</button><button className="button button--accent" onClick={() => confirmNativeImport(cacheFile)} type="button">Import {pendingNativeMediaPaths.length} file</button></footer>
         </section>
       </div> : null}
       {localCacheChoiceOpen && pendingLocalMedia ? <div className="media-import-backdrop">
         <section aria-label="Tùy chọn cache file media" aria-modal="true" className="media-import-dialog media-import-dialog--cache" role="dialog">
           <header><span>IMPORT FILE GỐC</span><strong>{pendingLocalMedia.name}</strong></header>
           <p>Cache sẽ sao chép file vào project. Giữ file gốc sẽ liên kết tới vị trí hiện tại. Chọn các track và bật STT riêng trong menu sau khi import.</p>
-          <footer><button className="button button--quiet" onClick={() => setLocalCacheChoiceOpen(false)} type="button">Hủy</button><button className="button button--quiet" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, false); }} type="button">Giữ file gốc</button><button className="button button--accent" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, true); }} type="button">Cache trong project</button></footer>
+          <label className="media-import-cache-choice"><input aria-label="Cache file" checked={cacheFile} onChange={(event) => setCacheFile(event.target.checked)} type="checkbox" /><span>Cache file <small>Sao chép file gốc vào folder project</small></span></label>
+          <footer><button className="button button--quiet" onClick={() => setLocalCacheChoiceOpen(false)} type="button">Hủy</button><button className="button button--accent" onClick={() => { setLocalCacheChoiceOpen(false); onConfirmPendingLocalMedia("import", undefined, cacheFile); }} type="button">Import file</button></footer>
         </section>
       </div> : null}
-      {pendingImports.length ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelBrowserImport(); }}><section aria-label="Tùy chọn import media" aria-modal="true" className="media-import-dialog" role="dialog"><header><span>IMPORT QUEUE</span><strong>{pendingImports.length} footage</strong></header><p>{pendingGrowingMkv ? "MKV đang ghi cần theo dõi file gốc trên máy. Hãy chọn lại chính file này trong hộp chọn file gốc, rồi bấm mục chờ trong Media Pool để chọn Import/STT cho từng track. Upload chỉ gửi một bản sao và không nhận thêm dữ liệu khi OBS tiếp tục ghi." : "Chọn footage cần đưa vào hàng chờ STT. STT kỹ sẽ chỉ chạy khi bấm Speech to text."}</p><div className="media-import-choices">{pendingImports.map((choice, index) => <label key={`${choice.file.name}-${index}`}><span><b>{choice.file.name}</b><small>{(choice.file.size / 1024 / 1024).toFixed(1)} MB</small></span><input aria-label={`Đánh dấu STT cho ${choice.file.name}`} checked={choice.transcribe} onChange={(event) => togglePendingTranscript(index, event.target.checked)} type="checkbox" /><em>{choice.transcribe ? "TO STT" : "IMPORT ONLY"}</em></label>)}</div><footer><button className="button button--quiet" onClick={cancelBrowserImport} type="button">Hủy</button>{pendingGrowingMkv ? <button className="button button--accent" onClick={() => { cancelBrowserImport(); onImportLocal(); }} type="button">Theo dõi MKV đang ghi</button> : null}<button className={pendingGrowingMkv ? "button button--quiet" : "button button--accent"} onClick={confirmImport} type="button">{pendingGrowingMkv ? "Import file đã hoàn tất" : `Import ${pendingImports.length} file`}</button></footer></section></div> : null}
+      {pendingImports.length ? <div className="media-import-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelBrowserImport(); }}><section aria-label="Tùy chọn import media" aria-modal="true" className="media-import-dialog" role="dialog"><header><span>IMPORT QUEUE</span><strong>{pendingImports.length} footage</strong></header><p>{pendingGrowingMkv ? "MKV đang ghi cần theo dõi file gốc trên máy. Hãy chọn lại chính file này trong hộp chọn file gốc, rồi bấm mục chờ trong Media Pool để chọn Import/STT cho từng track. Upload chỉ gửi một bản sao và không nhận thêm dữ liệu khi OBS tiếp tục ghi." : "Chọn footage cần đưa vào hàng chờ STT. STT kỹ sẽ chỉ chạy khi bấm Speech to text."}</p><label className="media-import-cache-choice"><input aria-label="Cache file" checked disabled type="checkbox" /><span>Cache file <small>Trình duyệt không cung cấp đường dẫn file gốc; upload luôn lưu bản sao vào project. Để liên kết file gốc, dùng Import footage từ máy Host.</small></span></label><div className="media-import-choices">{pendingImports.map((choice, index) => <label key={`${choice.file.name}-${index}`}><span><b>{choice.file.name}</b><small>{(choice.file.size / 1024 / 1024).toFixed(1)} MB</small></span><input aria-label={`Đánh dấu STT cho ${choice.file.name}`} checked={choice.transcribe} onChange={(event) => togglePendingTranscript(index, event.target.checked)} type="checkbox" /><em>{choice.transcribe ? "TO STT" : "IMPORT ONLY"}</em></label>)}</div><footer><button className="button button--quiet" onClick={cancelBrowserImport} type="button">Hủy</button>{pendingGrowingMkv ? <button className="button button--accent" onClick={() => { cancelBrowserImport(); onImportLocal(); }} type="button">Theo dõi MKV đang ghi</button> : null}<button className={pendingGrowingMkv ? "button button--quiet" : "button button--accent"} onClick={confirmImport} type="button">{pendingGrowingMkv ? "Import file đã hoàn tất" : `Import ${pendingImports.length} file`}</button></footer></section></div> : null}
       {mkvSttDialogOpen && (pendingLocalMedia || mkvSttTargetId) ? <div className="media-import-backdrop">
         <section aria-label="Thiết lập STT MKV" aria-modal="true" className="media-import-dialog" role="dialog">
           <header><span>MKV STT KỸ</span><strong>{mkvSttTargetId ? assets.find((asset) => asset.id === mkvSttTargetId)?.name : pendingLocalMedia?.name}</strong></header>
@@ -1109,7 +1114,7 @@ export function MediaPool({
             </div>)}
           </div><p>MKV đang ghi: Live Transcribe chạy trên các track đã tick STT. Bấm Speech to text sau khi import để chốt audio hiện có và bắt đầu STT kỹ.</p></section>
           <footer>
-            <button disabled={!pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); setLocalCacheChoiceOpen(true); }} role="menuitem" type="button"><Icon name="upload" /> Import file đã hoàn tất</button>
+            <button disabled={!pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); setCacheFile(true); setLocalCacheChoiceOpen(true); }} role="menuitem" type="button"><Icon name="upload" /> Import file đã hoàn tất</button>
             {pendingLocalMedia.name.toLowerCase().endsWith(".mkv") ? <button disabled={busy || !pendingLocalMedia.tracks.some((track) => track.imported)} onClick={() => { setContextMenu(null); onConfirmPendingLocalMedia("follow", 60); }} role="menuitem" type="button"><Icon name="waveform" /> Theo dõi MKV đang ghi</button> : null}
             <button onClick={() => { setContextMenu(null); onCancelPendingLocalMedia(); }} role="menuitem" type="button">Hủy mục chờ</button>
           </footer>
@@ -1134,7 +1139,8 @@ export function MediaPool({
             </div>; })}
           </div><p>Tick Import để thêm track hoặc đưa track trở lại workspace. MKV đang ghi cần Finish trước khi thêm track đã bỏ qua.</p></section> : null}
           <footer>
-            <button onClick={() => { setContextMenu(null); onReveal(contextAsset); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Desktop</button>
+            <button onClick={() => { setContextMenu(null); onReveal(contextAsset, "original"); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Explorer</button>
+            <button disabled={Boolean(contextSource?.hasExternalSource && !contextSource.localCacheEnabled)} onClick={() => { setContextMenu(null); onReveal(contextAsset, "project"); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Project Folder</button>
             {contextAsset.hasExternalSource ? <button onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}
             {contextAsset.hasExternalSource && contextAsset.localCacheEnabled ? <button onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, true); }} role="menuitem" type="button"><Icon name="upload" /> Refresh local cache</button> : null}
             <button onClick={() => openHistory(contextAsset)} role="menuitem" type="button"><Icon name="file" /> Text History</button>

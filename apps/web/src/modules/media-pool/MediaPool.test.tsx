@@ -152,20 +152,22 @@ describe("MediaPool", () => {
       list.mockRestore();
     }
   });
-  it("opens the browser multi-file chooser from the primary IMPORT icon", () => {
-    const onImport = vi.fn();
-    render(<MediaPool {...props({ onImport })} />);
-    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
-    const click = vi.spyOn(input, "click");
-    fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy đang dùng" }));
-    expect(click).toHaveBeenCalledOnce();
-  });
-
-  it("keeps a separate host picker action for files currently on the host", () => {
+  it("opens the native file picker from the primary IMPORT icon", () => {
     const onImportLocal = vi.fn();
     render(<MediaPool {...props({ onImportLocal })} />);
-    fireEvent.click(screen.getByRole("button", { name: "Import file trên máy Host" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy Host" }));
     expect(onImportLocal).toHaveBeenCalledOnce();
+  });
+
+  it("keeps browser upload available and explains why it must cache", () => {
+    render(<MediaPool {...props()} />);
+    const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file qua trình duyệt" }));
+    expect(click).toHaveBeenCalledOnce();
+    fireEvent.change(input, { target: { files: [new File(["a"], "upload.wav")] } });
+    expect(screen.getByRole("checkbox", { name: "Cache file" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Cache file" })).toBeDisabled();
   });
 
   it("keeps multi-file upload choices and starts the batch from an in-app import dialog", () => {
@@ -175,7 +177,7 @@ describe("MediaPool", () => {
     render(<MediaPool {...props({ onImport })} />);
     const input = screen.getByLabelText("Import file từ máy đang dùng") as HTMLInputElement;
     const click = vi.spyOn(input, "click");
-    fireEvent.click(screen.getByRole("button", { name: "Import footage từ máy đang dùng" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload file qua trình duyệt" }));
     expect(click).toHaveBeenCalledOnce();
     fireEvent.change(input, { target: { files: [first, second] } });
     expect(screen.getByLabelText("Footage first.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
@@ -212,7 +214,8 @@ describe("MediaPool", () => {
     })} />);
     expect(await screen.findByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("2 file");
     expect(screen.getByLabelText("Footage one.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cache trong project" }));
+    expect(screen.getByRole("checkbox", { name: "Cache file" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Import 2 file" }));
     expect(onConfirmNativeMediaImport).toHaveBeenCalledWith(["C:/source/one.wav", "C:/source/two.wav"], true);
     expect(screen.getByLabelText("Footage one.wav: ĐANG IMPORT")).toBeInTheDocument();
     view.rerender(<MediaPool {...props({ assets: [], pendingMediaImports: [{ id: "pending-1", name: "one.wav", status: "caching" }] })} />);
@@ -226,6 +229,16 @@ describe("MediaPool", () => {
     view.unmount();
   });
 
+  it("imports a native file as a source link when Cache file is unticked", async () => {
+    const onConfirmNativeMediaImport = vi.fn();
+    render(<MediaPool {...props({ assets: [], pendingNativeMediaPaths: ["C:/source/one.wav"], onConfirmNativeMediaImport })} />);
+    const cache = await screen.findByRole("checkbox", { name: "Cache file" });
+    fireEvent.click(cache);
+    expect(cache).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Import 1 file" }));
+    expect(onConfirmNativeMediaImport).toHaveBeenCalledWith(["C:/source/one.wav"], false);
+  });
+
   it("replaces the browser cache confirmation for pending native tracks with an app dialog", async () => {
     const onConfirmPendingLocalMedia = vi.fn();
     const pendingLocalMedia = { sourcePath: "C:/recording.wav", name: "recording.wav", tracks: [
@@ -234,7 +247,8 @@ describe("MediaPool", () => {
     render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia })} />);
     fireEvent.click(await screen.findByRole("menuitem", { name: "Import file đã hoàn tất" }));
     expect(screen.getByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("recording.wav");
-    fireEvent.click(screen.getByRole("button", { name: "Giữ file gốc" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Cache file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import file" }));
     expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("import", undefined, false);
   });
 
@@ -757,17 +771,34 @@ describe("MediaPool", () => {
     expect(container.querySelector(".media-pool-summary span")).toHaveTextContent("1 ASSETS");
   });
 
-  it("reveals a footage in the desktop and can park it out of every batch", () => {
+  it("reveals a footage original and project copy separately and can park it out of every batch", () => {
     const onReveal = vi.fn();
     const onSetDisabled = vi.fn();
     render(<MediaPool {...props({ onReveal, onSetDisabled })} />);
     fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Reveal in Desktop/ }));
-    expect(onReveal).toHaveBeenCalledWith(asset);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reveal in Explorer" }));
+    expect(onReveal).toHaveBeenCalledWith(asset, "original");
+    fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reveal in Project Folder" }));
+    expect(onReveal).toHaveBeenLastCalledWith(asset, "project");
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /interview.mov/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Disable footage/ }));
     expect(onSetDisabled).toHaveBeenCalledWith(asset, true);
+  });
+
+  it("disables project reveal for an uncached original, including its child track", () => {
+    const parent = { ...asset, hasExternalSource: true, localCacheEnabled: false };
+    const child = { ...asset, id: "track-1", name: "Track 1", sourceArchiveAssetId: parent.id };
+    const onReveal = vi.fn();
+    const view = render(<MediaPool {...props({ assets: [parent, child], onReveal })} />);
+    fireEvent.contextMenu(view.container.querySelector(".media-pool-item__main")!);
+    expect(screen.getByRole("menuitem", { name: "Reveal in Project Folder" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reveal in Explorer" }));
+    expect(onReveal).toHaveBeenCalledWith(parent, "original");
+    fireEvent.click(screen.getByRole("button", { name: "Xổ track của interview.mov" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Track 1/ }));
+    expect(screen.getByRole("menuitem", { name: "Reveal in Project Folder" })).toBeDisabled();
   });
 
   it("selects recycled footage separately and restores a batch", () => {
@@ -919,7 +950,7 @@ describe("MediaPool", () => {
     const menu = screen.getByRole("menu");
     expect(menu.querySelector("footer")?.textContent).not.toContain("RCLICK MENU");
     expect(Array.from(menu.querySelectorAll("footer button")).map((button) => button.textContent?.trim())).toEqual([
-      "Reveal in Desktop", "Text History", "Disable footage", "Remove",
+      "Reveal in Explorer", "Reveal in Project Folder", "Text History", "Disable footage", "Remove",
     ]);
   });
 

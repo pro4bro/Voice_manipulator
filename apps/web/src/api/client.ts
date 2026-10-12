@@ -544,8 +544,8 @@ export const api = {
   },
   setMediaDisabled: async (projectId: string, assetId: string, disabled: boolean) =>
     normalizeMediaAsset(await request<ProjectMediaAsset>(`/api/projects/${projectId}/media/${assetId}/disabled?disabled=${disabled}`, { method: "POST" })),
-  revealMediaFile: (projectId: string, assetId: string) =>
-    request<void>(`/api/projects/${projectId}/media/${assetId}/reveal`, { method: "POST" }),
+  revealMediaFile: (projectId: string, assetId: string, location: "original" | "project") =>
+    request<void>(`/api/projects/${projectId}/media/${assetId}/reveal?location=${location}`, { method: "POST" }),
   revealProjectFolder: (projectId: string) =>
     request<void>(`/api/projects/${projectId}/reveal`, { method: "POST" }),
   /** Drop a project from the library; its files stay on disk. */

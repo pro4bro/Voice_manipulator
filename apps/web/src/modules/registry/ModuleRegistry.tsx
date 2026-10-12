@@ -148,7 +148,7 @@ export interface StudioContext {
   onImportLocalMedia: () => void;
   pendingLocalMedia: PendingLocalMedia | null;
   onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
-  onConfirmPendingLocalMedia: (mode: "import" | "follow", sttSegmentSeconds?: number) => void;
+  onConfirmPendingLocalMedia: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;
   onCancelPendingLocalMedia: () => void;
   onFinishGrowingMkv: (assetId: string) => void;
   onStartGrowingMkvDetailedStt: (assetId: string, segmentSeconds: number) => void;
@@ -168,7 +168,7 @@ export interface StudioContext {
   onRemoveAsset: (asset: ProjectMediaAsset) => void;
   onBatchMediaAction: (action: MediaBatchAction) => void;
   onRestoreAsset: (asset: ProjectMediaAsset) => void;
-  onRevealAsset: (asset: ProjectMediaAsset) => void;
+  onRevealAsset: (asset: ProjectMediaAsset, location: "original" | "project") => void;
   onSetAssetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   /** True while the selected footage is in the recycle bin: look, do not touch. */
   readOnlyAsset: boolean;

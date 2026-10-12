@@ -12,7 +12,23 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: USER-FEEDBACK-24
+### 2026-10-12 — current: USER-FEEDBACK-25
+
+Media Pool's primary host import now offers a checked-by-default “Cache file”
+checkbox; unticking links the original host file, while ticking copies it into
+the project. The completed-container track dialog passes the same choice all
+the way to the API. The API's machine-local source registry is now wired into
+native import. Footage menus separately reveal the original in Explorer and the
+project-owned copy; the project action is disabled for uncached host footage,
+including its child tracks. Browser upload stays available and always copies
+because the browser cannot give the host API an original path. Focused backend
+7/7, frontend104/104; full frontend780/780, backend744/744, typecheck/build
+pass. Evidence: `docs/gates/user-feedback-25-media-cache-reveal.md`.
+Phase03 stays60%. Exact next round: USER-FEEDBACK-25B native Explorer/import
+acceptance after source restart. Independent STT timing anchors still await
+Conviction.
+
+### 2026-10-12 — previous: USER-FEEDBACK-24
 
 Script now displays diarization Speaker 1/2 separately from its still-unassigned
 Speaker Profile. The selected-word menu can reassign a phrase to an existing

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — USER-FEEDBACK-24 Script speaker labels and selected passage reassignment.
-last_activity_desc: Script exposes diarization Speaker labels before Profile mapping. Selected middle/edge words split or merge derived rows; frontend777/777, typecheck/build and backend742/742 pass. Native acceptance remains. Phase03 stays60%.
+last_activity: 2026-10-12 — USER-FEEDBACK-25 Media Pool cache choice and reveal.
+last_activity_desc: Host import can cache in project or link the original; context menu reveals original/project copy separately. Frontend780/780, backend744/744, typecheck/build pass; native acceptance remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,16 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-25 — Media cache choice and reveal (2026-10-12)
+
+The primary host import and completed-container track dialogs offer “Cache
+file”. The API now records original paths in the machine-local registry and
+reveals original or project copy separately; project reveal is disabled when
+uncached. Browser upload always creates a project-owned source. Focused API7/7,
+frontend104/104, full frontend780/780, backend744/744, typecheck/build pass.
+Native limits: `docs/gates/user-feedback-25-media-cache-reveal.md`. Phase03
+stays60%.
 
 ## USER-FEEDBACK-24 — Script speaker turns (2026-10-12)
 

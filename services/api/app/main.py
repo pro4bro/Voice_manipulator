@@ -456,6 +456,7 @@ def create_app(
         settings.legacy_studio_url,
         media,
         settings.ffmpeg_path,
+        local_sources=local_media_sources,
         other_stt={"vibevoice-asr": vibevoice_stt},
     )
     growing_mkv = FileGrowingMkvFollower(
@@ -1735,16 +1736,31 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/media/{asset_id}/reveal", status_code=status.HTTP_204_NO_CONTENT)
-    def reveal_media_file(project_id: str, asset_id: str) -> Response:
+    def reveal_media_file(project_id: str, asset_id: str, location: Literal["original", "project"] = "original") -> Response:
         try:
             project = projects.get(project_id)
             asset = media.get(project_id, asset_id)
-            reveal(Path(project.project_path) / asset.source_path)
+            source = media.get(project_id, asset.source_archive_asset_id) if asset.source_archive_asset_id else asset
+            root = Path(project.project_path).resolve()
+            if location == "original" and source.has_external_source:
+                original = local_media_sources.get(project_id, source.id)
+                if not original:
+                    raise FileNotFoundError("Không còn đường dẫn file gốc trên máy này. Hãy chọn lại file nguồn.")
+                target = Path(original)
+            else:
+                if location == "project" and source.has_external_source and not source.local_cache_enabled:
+                    raise FileNotFoundError("Footage chưa được cache trong project.")
+                target = (root / source.source_path).resolve()
+                if not target.is_relative_to(root):
+                    raise ValueError("Đường dẫn media nằm ngoài project.")
+            reveal(target)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
     def remove_project(project_id: str, permanent: bool = False) -> Response:
