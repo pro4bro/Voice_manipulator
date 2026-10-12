@@ -1,5 +1,15 @@
 # Project Status — 2026-10-12
 
+## PORT-UPDATE-02 — portable transfer handoff (2026-10-12)
+
+The portable BAT is the single click for app changes while this bundle
+remains below the source checkout. A successful update leaves a stable
+updates/app-current transfer pack; repeated updates preserve older packs.
+Three update runs and a direct portable VERIFY passed 29/0. Full bundle:
+35.98 GiB; current app pack: 3.93 MiB. Target-machine copy/start/benchmark
+remains open. Evidence: docs/gates/portable-update-handoff-20261012.md.
+Phase03 remains60%.
+
 ## PORT-UPDATE-01 — app-only portable refresh (2026-10-12)
 
 The NoVibeVoice portable has separate app and base runtime/model inventories.

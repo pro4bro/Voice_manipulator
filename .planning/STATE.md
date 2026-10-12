@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-UPDATE-01 app-only portable refresh.
-last_activity_desc: 3.93 MiB app pack updates the 35.98 GiB NoVibeVoice bundle through BAT; 29/0 portable gate, tamper rejection and exact rollback verified. Backend744/744, frontend780/780 with two workers; target-machine acceptance remains. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-UPDATE-02 portable transfer handoff.
+last_activity_desc: Portable BAT now leaves the latest 3.93 MiB app pack at updates/app-current; repeated updates and direct VERIFY pass 29/0. Full folder remains 35.98 GiB; target-machine transfer and benchmark remain. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,14 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-UPDATE-02 — portable transfer handoff (2026-10-12)
+
+UPDATE-PORTABLE.bat inside the development portable now creates a stable
+updates/app-current pack after each successful app refresh. Repeated runs
+and direct VERIFY-PORTABLE.bat passed 29/0. See
+docs/gates/portable-update-handoff-20261012.md. The physical copy to
+another machine and fixed-media benchmark remain; Phase03 stays60%.
 
 ## PORT-UPDATE-01 — app-only portable refresh (2026-10-12)
 

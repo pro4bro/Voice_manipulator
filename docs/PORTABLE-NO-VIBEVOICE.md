@@ -23,13 +23,23 @@ successful until its output artifact exists.
 
 ## Update the app without copying models again
 
-On the development machine, double-click `MAKE-PORTABLE-UPDATE.bat` in the
-source repository. It builds the latest web UI and writes a small app update
-folder under `.scratch/portable-updates`. Copy that **whole update folder** to
-this portable folder as `updates/app-current`. Then double-click
-`UPDATE-PORTABLE.bat` here. If this portable folder still sits inside the
-source checkout, `UPDATE-PORTABLE.bat` finds the source and builds a fresh
-update automatically; no copying is needed.
+If this portable folder is still under the source checkout on the development
+machine, double-click **`UPDATE-PORTABLE.bat` in this folder** after each code
+change. It finds the source, builds the web UI, applies the latest app code and
+leaves a small transfer pack at `updates/app-current`. Wait for the window to
+show `updated: true` and `gateFailed: 0`.
+
+For the first move to another machine, copy this **whole portable folder**
+(about 36 GiB), run `VERIFY-PORTABLE.bat` there, then start the app with
+`start-pro4bro.bat`. For later code-only updates, copy only the development
+portable's `updates/app-current` folder (about 4 MiB) into the other portable
+at the same path, replacing the complete older pack. On the other machine,
+double-click its `UPDATE-PORTABLE.bat`, run `VERIFY-PORTABLE.bat`, then start.
+
+If this portable is not under the source checkout, first double-click
+`MAKE-PORTABLE-UPDATE.bat` in the source repository. Copy its resulting whole
+update folder into this portable as `updates/app-current`, then double-click
+`UPDATE-PORTABLE.bat` here.
 
 The updater checks each app file, replaces only app-owned paths, runs
 `VERIFY-PORTABLE` checks and rolls back app files if verification fails. If this

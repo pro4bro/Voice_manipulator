@@ -12,7 +12,19 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-UPDATE-01
+### 2026-10-12 — current: PORT-UPDATE-02
+
+The portable's own UPDATE-PORTABLE.bat now keeps its result visible and
+leaves the newest transferable pack at updates/app-current. Repeated
+updates preserve older packs as app-previous-*; three portable BAT runs
+passed 29/0 each. VERIFY-PORTABLE.bat also passed 29/0 when clicked.
+Full portable remains 35.98 GiB; latest app pack is 3.93 MiB.
+Evidence: docs/gates/portable-update-handoff-20261012.md. Phase03 stays60%.
+Exact next portable round: physical copy to another Windows machine,
+verification, startup and fixed-media benchmark. STT-TIMING-ACCURACY-01
+still awaits Conviction.
+
+### 2026-10-12 — previous: PORT-UPDATE-01
 
 Added click-to-create and click-to-apply app-only portable updates, with
 separate app/base inventories and unchanged loader paths. The 3.93 MiB pack
