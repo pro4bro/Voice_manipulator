@@ -70,7 +70,7 @@ included.
 
 ## Speech to text after updating
 
-Alpha 0.5.4 fixes the STT catalog looking for the development-only service
+Alpha 0.5.5 fixes the STT catalog looking for the development-only service
 folder. The catalog now resolves the sidecar in this portable, and verification
 also checks that the production API exposes faster-whisper as available.
 After updating, start the app from the full portable folder, import footage,

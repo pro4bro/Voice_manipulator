@@ -154,10 +154,10 @@ if ($selected -contains "STT") {
         if (-not (Test-Path -LiteralPath $corePython -PathType Leaf)) { throw "Core Python is missing." }
         $catalogProbe = @'
 from app.main import app
-endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/api/stt-engines")
-whisper = next(option for option in endpoint() if option.id == "faster-whisper")
+endpoint = next(route.endpoint for route in app.routes if getattr(route, 'path', '') == '/api/stt-engines')
+whisper = next(option for option in endpoint() if option.id == 'faster-whisper')
 assert whisper.available, whisper.status
-print("Production STT catalog exposes faster-whisper as available.")
+print('Production STT catalog exposes faster-whisper as available.')
 '@
         $catalogOutput = (& $corePython -c $catalogProbe 2>&1 | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw $catalogOutput }

@@ -1,4 +1,7 @@
 from dataclasses import replace
+import os
+import re
+import subprocess
 import pytest
 from fastapi.testclient import TestClient
 
@@ -47,3 +50,30 @@ def test_stt_api_stays_available_after_moving_the_portable(tmp_path):
     response = TestClient(create_app(settings=settings)).get("/api/stt-engines")
     whisper = next(option for option in response.json() if option["id"] == "faster-whisper")
     assert whisper["available"], whisper["status"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows portable entrypoint")
+def test_catalog_gate_probe_runs_in_windows_powershell(tmp_path):
+    root = Settings.from_env().project_root
+    python = root / ".runtime" / "python" / "core" / "python.exe"
+    if not python.is_file():
+        pytest.skip("Embedded core runtime is not prepared")
+    script = (root / "scripts" / "test-portable-runtime.ps1").read_text(encoding="utf-8-sig")
+    probe = re.search(r"\$catalogProbe = @'\r?\n(.*?)\r?\n'@", script, re.S)
+    assert probe is not None
+    entry = tmp_path / "catalog-probe.ps1"
+    quoted_python = str(python).replace("'", "''")
+    entry.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$corePython = '{quoted_python}'\n"
+        "$catalogProbe = @'\n" + probe.group(1) + "\n'@\n"
+        "& $corePython -c $catalogProbe 2>&1 | Out-String\nexit $LASTEXITCODE\n",
+        encoding="utf-8-sig",
+    )
+    environment = dict(os.environ, PRO4BRO_DATA_ROOT=str(tmp_path / "data"))
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(entry)],
+        capture_output=True, text=True, env=environment, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "exposes faster-whisper as available" in result.stdout
