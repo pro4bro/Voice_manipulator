@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-UPDATE-03
+### 2026-10-12 — current: PORT-IMPORT-01
+
+Owner-reported second-machine media import produced no slot or notice. The
+real ModuleRegistry dropped native paths, confirmation/cancel, pending rows
+and retry; the source and portable shared this bug. Four real-registry
+regressions reproduced it, and the old portable UI showed the same absent
+slot after selection. Fixed source: affected frontend117/117, full784/784,
+typecheck/build and relevant backend9/9 pass. Source embedded-core UI imports
+a real WAV. Alpha 0.5.3 is the automatically numbered 1.16 MiB app update;
+actual pack BAT passed30/0, and updated portable UI imported WAV, MP4 and
+two-track MKV, exposed failed imports/retry, and retained them after reopen.
+Six PCM24k mono artifacts/playback URLs passed. Detailed evidence is recorded in
+docs/gates/portable-media-import-20261012.md. Phase03 stays60%.
+Exact next portable round: apply alpha 0.5.3 on the owner's D-drive machine,
+retry that footage, then run the fixed-media STT benchmark. Native host/GPU
+acceptance there remains distinct from the local smoke checks.
+
+### 2026-10-12 — previous: PORT-UPDATE-03
 
 Update creation now allocates patch numbers and preserves a numbered folder.
 The portable picks the highest compatible manifest version under `updates`;

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-UPDATE-03 numbered portable updates.
-last_activity_desc: Automatic patch numbering and newest compatible pack discovery; regression9/9. Owner-reported second-machine alpha 0.5.1 update passes 30/0. Second-machine startup and benchmark remain. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-IMPORT-01 native Media Pool connection.
+last_activity_desc: Fixed missing native import props in both real registry branches. Frontend784/784, relevant backend9/9, typecheck/build pass. Alpha 0.5.3 actual pack BAT passes30/0; portable UI imports WAV/MP4/two-track MKV and displays errors/retry. Six audio artifacts verified. Owner's second-machine import/benchmark remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,20 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-IMPORT-01 — native Media Pool connection (2026-10-12)
+
+The real registry dropped selected native paths, confirmation/cancel, pending
+work/errors and retry. The owner-reported silent import was reproduced before
+the fix in tests and the installed portable UI. Four regressions now exercise
+both real registry branches; affected frontend117/117, full784/784, related
+backend9/9, typecheck/build pass. Source embedded-core UI imports real WAV.
+Alpha 0.5.3 was allocated automatically and has a verified 153-file app-only
+ZIP (1.16 MiB). Actual pack BAT passed30/0; updated portable UI imported WAV,
+MP4 and two-track MKV, displayed errors/retry and retained media after reopen.
+Six PCM24k mono artifacts and playback URLs passed; base manifest hash is
+unchanged. See docs/gates/portable-media-import-20261012.md. Exact next round: owner's D-drive alpha
+0.5.3 import retry and fixed-media STT benchmark. Phase03 stays60%.
 
 ## PORT-UPDATE-03 — numbered portable updates (2026-10-12)
 

@@ -1,5 +1,22 @@
 # Project Status — 2026-10-12
 
+## PORT-IMPORT-01 — repair native media import module connection (2026-10-12)
+
+The owner's silent second-machine import was reproduced at the real module
+registry and in the installed portable UI. Native selected paths and callbacks,
+pending work/errors and retry were missing from the registry's Media Pool props.
+Both standalone Media Pool and LibraryPanel now receive them through typed
+StudioContext. Four regressions failed before the fix; affected frontend117/117,
+full784/784, typecheck/build and related backend9/9 pass. Source UI with embedded
+core Python imported a real WAV and displayed its footage. Alpha 0.5.3 is the
+automatically allocated app-only update (153 files, 1.16 MiB ZIP, archive hashes
+verified). Actual pack BAT passed30/0; updated portable UI imported WAV, MP4 and
+two-track MKV, displayed errors/retry and retained media after reopen. Six real
+PCM24k mono analysis WAVs and playback URLs passed; the base manifest hash is
+unchanged. Evidence: docs/gates/portable-media-import-20261012.md.
+Owner's native dialog, import and STT/GPU benchmark on the D-drive machine remain
+the next acceptance round. Phase03 remains60%.
+
 ## PORT-UPDATE-03 — numbered portable updates (2026-10-12)
 
 Creating an app pack automatically allocates patch and folder name; copying
