@@ -1,5 +1,18 @@
 # Project Status — 2026-10-12
 
+## USER-FEEDBACK-23 — API listener readiness during recovery (2026-10-12)
+
+Product startup no longer waits for a slow persisted-project scan before the
+API binds. The incident scan took 41.657 seconds across 23 projects and pushed
+readiness to 61.067 seconds, beyond the launcher's 60-second limit. A one-second
+fast path preserves immediately reconciled state for small projects; slower
+recovery continues with completion/error logging and orderly shutdown. A
+blocked-scan test verified a real Uvicorn health response before recovery
+finished. Final backend: 742 passed, 2 existing warnings. The owner launcher
+restart remains to be verified; the existing portable bundle predates this
+source fix. Evidence: `docs/gates/user-feedback-23-api-readiness-recovery.md`;
+ADR0068. Phase03 remains 60%.
+
 ## PORT-NOVIBE-01 — no-VibeVoice portable test bundle (2026-10-12)
 
 The 35.98 GiB `NoVibeVoice` bundle includes the OmniVoice base checkpoint,

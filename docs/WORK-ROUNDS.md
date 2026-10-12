@@ -12,7 +12,24 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-NOVIBE-01
+### 2026-10-12 — current: USER-FEEDBACK-23
+
+The source API could not bind within launcher readiness because lifespan
+awaited a 41.657-second recovery scan across 23 projects. Recovery now runs as
+a lifespan-owned task after a one-second fast-path wait; health can answer while
+slow storage continues to be scanned. The original blocked-scan regression
+failed before the fix and passed against a real Uvicorn listener afterward.
+The affected 11 recovery tests and final backend 742/742 pass. Evidence:
+`docs/gates/user-feedback-23-api-readiness-recovery.md`; ADR0068.
+
+The owner's exact 23-project launcher restart is unverified because a separate
+portable bundle occupied the normal ports. That folder predates this source
+change and needs rebuilding to contain it. Phase03 stays 60%. Exact next
+verification: restart the source launcher and check API `state=ready`, then
+`Runtime recovery scan finished`. The next planned feature round remains
+STT-TIMING-ACCURACY-01 after the Conviction reference is available.
+
+### 2026-10-12 — previous: PORT-NOVIBE-01
 
 Built a 35.98 GiB `NoVibeVoice` portable folder with OmniVoice base checkpoint
 and the existing STT/RVC runtimes. VibeVoice stays in the model catalogs as

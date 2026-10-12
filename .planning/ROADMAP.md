@@ -1,5 +1,16 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## USER-FEEDBACK-23 — API readiness during project recovery (2026-10-12)
+
+The startup blocker was a 41.657-second recovery scan across 23 projects before
+API port binding; launcher readiness expired at 61.067 seconds. Recovery now
+continues after the listener opens when it exceeds a one-second fast path.
+Blocked-scan real-listener regression and backend742/742 pass. Owner source
+launcher restart and portable rebuild remain. Evidence:
+`docs/gates/user-feedback-23-api-readiness-recovery.md`. Phase03 stays60%.
+Next planned feature round: STT-TIMING-ACCURACY-01 after the Conviction timing
+reference.
+
 ## USER-FEEDBACK-22 — source-independent Script playback following (2026-10-10)
 
 Product `6c2d714` fixes the missing archived/multitrack Script follow behavior.

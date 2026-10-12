@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-NOVIBE-01 portable bundle without VibeVoice.
-last_activity_desc: Built 35.98 GiB no-VibeVoice folder with OmniVoice checkpoint. Source gate22/0, bundle gate27/0 and bundled service/catalog smoke pass. Clean-machine GPU/media acceptance remains open. Phase03 stays60%.
+last_activity: 2026-10-12 — USER-FEEDBACK-23 API readiness during persisted recovery.
+last_activity_desc: API now binds while slow project recovery continues after a one-second fast path. Real listener regression and backend742/742 pass. Owner source-launcher restart remains to verify. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,16 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## USER-FEEDBACK-23 — API readiness during project recovery (2026-10-12)
+
+The incident's 23-project recovery scan took 41.657 seconds; API readiness
+timed out at 61.067 seconds before Uvicorn bound its port. Slow recovery now
+continues after the listener opens, with a one-second wait for fast projects.
+Real Uvicorn regression and backend742/742 pass. Verify a source-launcher
+restart on the owner's project set; rebuild the older portable bundle before
+using it to test this source change. Evidence:
+`docs/gates/user-feedback-23-api-readiness-recovery.md`. Phase03 stays60%.
 
 ## PORT-NOVIBE-01 — portable variant without VibeVoice (2026-10-12)
 

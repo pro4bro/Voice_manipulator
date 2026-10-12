@@ -759,10 +759,36 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        await resume_mkv_watchers()
+        # Project manifests and OBS journals can live on slow/removable storage.
+        # The API listener must be available while their durable state is read.
+        recovery_task = asyncio.create_task(
+            resume_mkv_watchers(), name="pro4bro-startup-recovery"
+        )
+        _app.state.recovery_task = recovery_task
+
+        def report_recovery_result(task: asyncio.Task) -> None:
+            if task.cancelled():
+                return
+            error = task.exception()
+            if error is not None:
+                logging.getLogger(__name__).error(
+                    "Runtime recovery scan failed",
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        recovery_task.add_done_callback(report_recovery_result)
         try:
+            # Preserve fully reconciled state on the common fast path. Slow
+            # storage must not hold listener readiness for the whole scan.
+            try:
+                await asyncio.wait_for(asyncio.shield(recovery_task), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
             yield
         finally:
+            if not recovery_task.done():
+                recovery_task.cancel()
+            await asyncio.gather(recovery_task, return_exceptions=True)
             await stop_mkv_watchers()
             if obs_finalizers:
                 await asyncio.gather(*obs_finalizers.values(), return_exceptions=True)
