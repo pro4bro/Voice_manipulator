@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { EngineProfileSchema, EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, PendingLocalMedia, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceOutput, VoiceOutputExportMode, WorkspacePage } from "../../domain/types";
 import { MediaPool } from "../media-pool/MediaPool";
-import type { MediaBatchAction } from "../media-pool/MediaPool";
+import type { MediaBatchAction, PendingMediaImportRow } from "../media-pool/MediaPool";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 import { Icon } from "../../ui/Icon";
@@ -22,6 +22,12 @@ interface LibraryPanelProps {
   profileSchema: EngineProfileSchema | null;
   selectedVoice: string;
   onImport: (choices: MediaImportChoice[]) => void;
+  onImportLocal?: () => void;
+  pendingNativeMediaPaths?: string[];
+  onConfirmNativeMediaImport?: (paths: string[], cacheLocal: boolean) => void;
+  onCancelNativeMediaImport?: () => void;
+  pendingMediaImports?: PendingMediaImportRow[];
+  onRetryPendingImport?: (id: string) => void;
   pendingLocalMedia?: PendingLocalMedia | null;
   onPendingLocalTrackChange?: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
   onConfirmPendingLocalMedia?: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;

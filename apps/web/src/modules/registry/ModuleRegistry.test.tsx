@@ -7,6 +7,42 @@ import { EMPTY_SELECTION } from "../../domain/word-selection";
 import type { ProjectMediaAsset } from "../../domain/types";
 import { ModuleRegistry, type StudioContext } from "./ModuleRegistry";
 
+function importContext(values: Record<string, unknown>) {
+  return {
+    workflow: "speech-to-text", mediaAssets: [], selectedAssetId: null, mediaBusy: false,
+    trainingCatalog: { speakers: [], environmentProfiles: [], settings: {} },
+    profileSchema: null, selectedVoice: "", projectVoices: [], sttEngines: [], asrAdapters: [],
+    ...values,
+  } as unknown as StudioContext;
+}
+
+it.each(["media-pool", "library-panel"] as const)("%s shows the picked host file and dispatches the cache choice", async (id) => {
+  const onConfirmNativeMediaImport = vi.fn();
+  render(<ModuleRegistry id={id} context={importContext({
+    pendingNativeMediaPaths: ["D:/media/clip.wav"], onConfirmNativeMediaImport,
+  })} />);
+  expect(await screen.findByLabelText("Footage clip.wav: ĐANG CHỜ IMPORT")).toBeInTheDocument();
+  const cache = screen.getByRole("checkbox", { name: "Cache file" });
+  expect(cache).toBeChecked();
+  fireEvent.click(cache);
+  fireEvent.click(screen.getByRole("button", { name: "Import 1 file" }));
+  expect(onConfirmNativeMediaImport).toHaveBeenCalledWith(["D:/media/clip.wav"], false);
+});
+
+it.each(["media-pool", "library-panel"] as const)("%s displays queued failures and routes retry", (id) => {
+  const onRetryPendingImport = vi.fn();
+  render(<ModuleRegistry id={id} context={importContext({
+    pendingMediaImports: [
+      { id: "queued", name: "queued.wav", status: "caching" },
+      { id: "failed", name: "failed.mp4", status: "error", detail: "Cannot decode media", retryable: true },
+    ], onRetryPendingImport,
+  })} />);
+  expect(screen.getByLabelText("Footage queued.wav: ĐANG CACHE")).toBeInTheDocument();
+  expect(screen.getByLabelText("Footage failed.mp4: LỖI IMPORT")).toHaveTextContent("Cannot decode media");
+  fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+  expect(onRetryPendingImport).toHaveBeenCalledWith("failed");
+});
+
 it("shows no stale transcript or track switch when nothing is selected", () => {
   const context = { workflow: "speech-to-text", script: "stale", selectedAssetId: null, selectedImportedTrackId: null,
     mediaAssets: [], take: { words: [{ text: "stale", start: 0, end: 1 }] }, trainingCatalog: { speakers: [], environmentProfiles: [] },

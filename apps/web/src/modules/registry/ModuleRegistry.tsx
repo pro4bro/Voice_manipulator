@@ -10,7 +10,7 @@ import { ProjectOverview } from "../dashboard/ProjectOverview";
 import { LibraryPanel, ManipulatorLibrary } from "../library-panel/LibraryPanel";
 import { MediaPool } from "../media-pool/MediaPool";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import type { MediaBatchAction } from "../media-pool/MediaPool";
+import type { MediaBatchAction, PendingMediaImportRow } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { selectedTrainingModel } from "../train/trainingModels";
@@ -146,6 +146,11 @@ export interface StudioContext {
   onTakeChange: (take: CapturedAudio) => void;
   onImportMedia: (choices: MediaImportChoice[]) => void;
   onImportLocalMedia: () => void;
+  pendingNativeMediaPaths: string[];
+  onConfirmNativeMediaImport: (paths: string[], cacheLocal: boolean) => void;
+  onCancelNativeMediaImport: () => void;
+  pendingMediaImports: PendingMediaImportRow[];
+  onRetryPendingImport: (id: string) => void;
   pendingLocalMedia: PendingLocalMedia | null;
   onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
   onConfirmPendingLocalMedia: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;
@@ -226,6 +231,11 @@ function mediaPoolProps(context: StudioContext) {
     environments: context.trainingCatalog.environmentProfiles,
     onImport: context.onImportMedia,
     onImportLocal: context.onImportLocalMedia,
+    pendingNativeMediaPaths: context.pendingNativeMediaPaths,
+    onConfirmNativeMediaImport: context.onConfirmNativeMediaImport,
+    onCancelNativeMediaImport: context.onCancelNativeMediaImport,
+    pendingMediaImports: context.pendingMediaImports,
+    onRetryPendingImport: context.onRetryPendingImport,
     pendingLocalMedia: context.workflow === "voice-training" ? null : context.pendingLocalMedia,
     onPendingLocalTrackChange: context.onPendingLocalTrackChange,
     onConfirmPendingLocalMedia: context.onConfirmPendingLocalMedia,
