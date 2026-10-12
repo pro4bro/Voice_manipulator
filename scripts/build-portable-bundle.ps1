@@ -193,6 +193,7 @@ $manifest = [ordered]@{
     profile = $Profile
     omnivoiceModelRevision = $(if ($Profile -eq "NoVibeVoice") { $modelRevision } else { $null })
     sourceRevision = $gitCommit
+    sourceMachine = [Environment]::MachineName
     sourceWorkingTreeDirty = $gitDirty
     files = $fileCount
     bytes = $byteCount

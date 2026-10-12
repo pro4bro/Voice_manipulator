@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — PORT-VERSION-01 portable app release version.
-last_activity_desc: Versioned alpha 0.5.0 app pack and installed portable; repeated BAT updates pass 30/0, changed same-version pack and downgrade rejected. Full folder 35.98 GiB, current pack 3.94 MiB; target-machine transfer and benchmark remain. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-UPDATE-03 numbered portable updates.
+last_activity_desc: Automatic patch numbering and newest compatible pack discovery; alpha 0.5.1 payload and pack BATs pass 30/0, regression9/9. Full folder 35.98 GiB, ZIP 1.17 MiB; second-machine apply/start/benchmark remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,16 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-UPDATE-03 — numbered portable updates (2026-10-12)
+
+Creating a pack increments patch automatically. The owner copies its original
+numbered folder into `updates`; the portable discovers the newest compatible
+version. The payload-root failure was reproduced and repaired; new pack
+entrypoints apply alpha 0.5.1 to the actual portable with 30/0 gates.
+Regression9/9 and UI build pass. Evidence:
+docs/gates/portable-numbered-updates-20261012.md. Apply, startup and benchmark
+on the second machine remain; Phase03 stays60%.
 
 ## PORT-VERSION-01 — portable app release version (2026-10-12)
 

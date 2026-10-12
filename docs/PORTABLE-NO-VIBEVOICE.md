@@ -26,24 +26,29 @@ successful until its output artifact exists.
 If this portable folder is still under the source checkout on the development
 machine, double-click **`UPDATE-PORTABLE.bat` in this folder** after each code
 change. It finds the source, builds the web UI, applies the latest app code and
-leaves a small transfer pack at `updates/app-current`. Wait for the window to
+leaves a small, automatically numbered transfer folder inside `updates`. Wait for the window to
 show `updated: true` and `gateFailed: 0`. The result also shows the app release
-version. Read `updates/app-current/VERSION.txt` to check the pack before copying
-it; the installed version is in `.portable-bundle.json`. Increase the source
-`APP-VERSION.json` for each changed app release before clicking the BAT again.
-Clicking again with unchanged app files keeps the same release version.
+version and `transferPack` path. Read that folder's `VERSION.txt` before copying
+it; the installed version is in `.portable-bundle.json`. Creating a new pack
+automatically increases its patch number. Applying a copied pack keeps that
+number; no manual version editing or folder renaming is needed.
 
 For the first move to another machine, copy this **whole portable folder**
 (about 36 GiB), run `VERIFY-PORTABLE.bat` there, then start the app with
 `start-pro4bro.bat`. For later code-only updates, copy only the development
-portable's `updates/app-current` folder (about 4 MiB) into the other portable
-at the same path, replacing the complete older pack. On the other machine,
-double-click its `UPDATE-PORTABLE.bat`, run `VERIFY-PORTABLE.bat`, then start.
+portable's numbered folder (about 4 MiB), such as
+`updates/App-alpha-0.5.1-NoVibeVoice`, into the other portable's `updates`.
+Keep older folders if desired. On the other machine, double-click
+`UPDATE-PORTABLE.bat` beside `start-pro4bro.bat`; it reads manifests and applies
+the highest matching version. Then run `VERIFY-PORTABLE.bat` and start.
+For an older alpha 0.5.0 portable, click `APPLY-UPDATE.bat` inside the received
+pack once to install the new updater. Clicking the BAT under `payload` also
+finds the enclosing portable, but launch the actual app from the portable root.
 
 If this portable is not under the source checkout, first double-click
 `MAKE-PORTABLE-UPDATE.bat` in the source repository. Copy its resulting whole
-update folder into this portable as `updates/app-current`, then double-click
-`UPDATE-PORTABLE.bat` here.
+numbered update folder into this portable's `updates`, keeping its name, then
+double-click `UPDATE-PORTABLE.bat` here or `APPLY-UPDATE.bat` in the pack.
 
 The updater checks each app file, replaces only app-owned paths, runs
 `VERIFY-PORTABLE` checks and rolls back app files if verification fails. If this

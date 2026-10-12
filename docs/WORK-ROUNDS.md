@@ -12,7 +12,20 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: PORT-VERSION-01
+### 2026-10-12 — current: PORT-UPDATE-03
+
+Update creation now allocates patch numbers and preserves a numbered folder.
+The portable picks the highest compatible manifest version under `updates`;
+the owner no longer edits the version or renames a pack to `app-current`.
+Pack entrypoints resolve the full portable and can bootstrap the old updater.
+Regression9/9, creator UI build, and two actual alpha 0.5.1 pack BAT runs
+passed 30/0. The 153-file update also has a 1.17 MiB ZIP. Evidence:
+docs/gates/portable-numbered-updates-20261012.md. Phase03 stays60%.
+Exact next portable round: apply alpha 0.5.1 on the owner's second machine,
+verify, start and benchmark fixed media. STT-TIMING-ACCURACY-01 still awaits
+Conviction.
+
+### 2026-10-12 — previous: PORT-VERSION-01
 
 Portable app releases now use `APP-VERSION.json`, starting at alpha 0.5.0.
 Pack, bundle and app-layer manifests agree; the pack also has `VERSION.txt`.

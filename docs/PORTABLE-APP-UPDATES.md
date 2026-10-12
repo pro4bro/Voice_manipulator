@@ -15,19 +15,28 @@ source, or `.runtime/engines`.
 
 ## App release version
 
-`APP-VERSION.json` in the source checkout is the release version for the app
-layer. The current release is **alpha 0.5.0**. Before shipping the next changed
-app pack, increase the patch to **alpha 0.5.1**. When work starts on the next
-planned phase, use **alpha 0.6.0**, then **alpha 0.6.1** for its next update.
-After all planned functions are finished and only fixes or later additions
-remain, publish **1.0.0** with channel `stable`.
+Creating a new pack automatically allocates the next app release and names its
+folder, for example `App-alpha-0.5.1-NoVibeVoice`, then
+`App-alpha-0.5.2-NoVibeVoice`. The owner does not edit the version file or rename
+the transfer folder. The generator updates `APP-VERSION.json` under an exclusive
+lock; a failed build does not publish a completed pack. Applying an existing
+pack retains its number. Each new creation allocates another patch number,
+even if the app files are identical.
+
+When the next planned phase begins, the maintainer sets the next phase baseline
+to `alpha 0.6.0`; automatic patch numbering continues from there. After planned
+functions are complete, the maintainer sets channel `stable` and baseline
+`1.0.0`. `lastIssuedVersion` distinguishes a new phase baseline from an already
+issued release. These are maintenance steps, not steps for the owner to perform
+when copying an update.
 
 The update folder has a readable `VERSION.txt`; `app-update.json`, the portable
 `.portable-bundle.json`, and `.portable-app-layer.json` record `releaseChannel`
-and `releaseVersion`. A repeat click with identical app files keeps the same
-version. The updater rejects a changed app pack under an already installed
-version, and rejects older versions. Bump `APP-VERSION.json` once per new
-app release, then generate the pack. `schemaVersion` describes the JSON format
+and `releaseVersion`. The updater reads manifests in the immediate subfolders
+of `updates` and chooses the highest numeric version matching this portable's
+profile. It ranks `0.5.10` above `0.5.9`, regardless of folder name or date.
+Older folders can stay in place. The updater rejects a downgrade and conflicting
+app bytes sharing one version. `schemaVersion` describes the JSON format
 and does not follow the app release number. The internal npm/API versions are
 independent.
 
@@ -35,9 +44,11 @@ independent.
 
 Double-click `UPDATE-PORTABLE.bat` inside a portable folder located under this
 source checkout. It finds `scripts/new-portable-app-update.ps1`, builds the
-current web UI, checks the runtime manifest, applies the app-only update,
-verifies all app hashes and runs the portable gate. On success the transfer
-pack is at the predictable path `updates/app-current` inside this portable.
+current web UI, allocates a version, checks the runtime manifest, applies the
+app-only update, verifies app hashes and runs the portable gate. On success,
+`transferPack` reports its numbered folder inside `updates`. This source-build
+mode is enabled on the pack's recorded source machine. A newer received pack
+is applied first. A portable on another machine applies its copied packs.
 The BAT window stays open so the result can be read. Existing portable
 services are restarted after success.
 
@@ -46,11 +57,10 @@ folder (about 36 GiB). Keep its internal folder structure intact. On the
 other machine run `VERIFY-PORTABLE.bat`, then `start-pro4bro.bat`.
 
 For later app-only changes, click `UPDATE-PORTABLE.bat` in the development
-machine's portable first. Copy only its `updates/app-current` folder (about
-4 MiB) into the other machine's portable at the same relative path. Move an
-older `app-current` aside before copying, so the new pack is a complete
-folder. Then click `UPDATE-PORTABLE.bat` on the other machine. With no source
-checkout above that portable, it applies the copied pack. Run
+machine's portable first. Copy its whole numbered folder (about 4 MiB), such as
+`updates/App-alpha-0.5.1-NoVibeVoice`, into the other portable's `updates`.
+Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
+`start-pro4bro.bat` on the other machine; it selects the newest version. Run
 `VERIFY-PORTABLE.bat` before starting the app.
 
 ## Different machine
@@ -58,10 +68,17 @@ checkout above that portable, it applies the copied pack. Run
 1. If the development portable is not inside the source checkout, double-click
    `MAKE-PORTABLE-UPDATE.bat` in the source checkout. The resulting folder path
    appears in its output; it is under `.scratch/portable-updates`.
-2. Copy that whole folder to the portable machine and name it
-   `updates/app-current` inside the portable folder. Replace an older
-   `app-current` folder as a complete folder, not file by file.
-3. Double-click `UPDATE-PORTABLE.bat` in the portable folder.
+2. Copy that whole numbered folder into the portable machine's `updates` folder.
+   Keep its original name and its `payload`, `app-update.json`, `VERSION.txt`
+   and `APPLY-UPDATE.bat` together.
+3. Double-click `UPDATE-PORTABLE.bat` beside `start-pro4bro.bat`. For an older
+   alpha 0.5.0 portable, click the new pack's `APPLY-UPDATE.bat` once: it uses
+   the shipped updater to install support for automatic selection.
+
+`APPLY-UPDATE.bat` and the BAT inside `payload` resolve the enclosing full
+portable and apply the highest available compatible version. They do not
+generate from source. A pack extracted elsewhere explains that the complete
+portable is required and that the whole pack belongs under its `updates`.
 
 The update manifest records the source commit and whether uncommitted changes
 were included. The update is a snapshot at creation time. Model/checkpoint

@@ -1,5 +1,18 @@
 # Project Status — 2026-10-12
 
+## PORT-UPDATE-03 — numbered portable updates (2026-10-12)
+
+Creating an app pack automatically allocates patch and folder name; copying
+whole numbered folders into `updates` is sufficient. The updater picks the
+highest compatible numeric manifest version. A pack's launcher uses its own
+updater, resolves the full portable and supports alpha 0.5.0 migration.
+The owner's payload-root error was reproduced before the fix; the same actual
+entrypoint now applies alpha 0.5.1 and passes 30/0. The pack launcher also
+passes 30/0 without allocating another version. Regression9/9 and UI build
+pass. Pack ZIP: 1.17 MiB; full portable remains 35.98 GiB. Second-machine
+apply/start/benchmark remains. Evidence:
+docs/gates/portable-numbered-updates-20261012.md. Phase03 remains60%.
+
 ## PORT-VERSION-01 — portable app release version (2026-10-12)
 
 `APP-VERSION.json` starts the app release at alpha 0.5.0. Update packs have

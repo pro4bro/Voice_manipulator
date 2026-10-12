@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$OutputRoot,
+    [string]$UpdatesRoot,
+    [string]$MinimumVersion,
     [ValidateSet("All", "NoVibeVoice")]
     [string]$Profile = "NoVibeVoice",
     [switch]$SkipWebBuild
@@ -9,15 +11,42 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $root = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path.TrimEnd('\')
-$release = Get-Content -Raw -LiteralPath (Join-Path $root 'APP-VERSION.json') | ConvertFrom-Json
+if ((& git -C $root rev-parse --show-toplevel 2>$null).Replace('/', '\').TrimEnd('\') -ne $root) {
+    throw 'Run from the Pro4Bro source checkout.'
+}
+$lockRoot = Join-Path $root '.scratch'
+[IO.Directory]::CreateDirectory($lockRoot) | Out-Null
+try { $releaseLock = [IO.File]::Open((Join-Path $lockRoot 'portable-release.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+catch { throw 'Another app update is being created. Wait for that build to finish.' }
+$stage = $null
+try {
+$releasePath = Join-Path $root 'APP-VERSION.json'
+$release = Get-Content -Raw -LiteralPath $releasePath | ConvertFrom-Json
 if ($release.schemaVersion -ne 1 -or $release.channel -notin @('alpha', 'stable') -or
     [string]$release.version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
     ($release.channel -eq 'stable' -and [version]$release.version -lt [version]'1.0.0')) {
     throw 'APP-VERSION.json has an invalid release version/channel.'
 }
-if ((& git -C $root rev-parse --show-toplevel 2>$null).Replace('/', '\').TrimEnd('\') -ne $root) {
-    throw "Run from the Pro4Bro source checkout."
+if ($release.lastIssuedVersion -and [string]$release.lastIssuedVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+    throw 'APP-VERSION.json has an invalid lastIssuedVersion.'
 }
+$baseline = [version]$release.version
+$issued = if ($release.lastIssuedVersion) { [version]$release.lastIssuedVersion } else { $baseline }
+if ($MinimumVersion) {
+    if ($MinimumVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid installed MinimumVersion.' }
+    if ([version]$MinimumVersion -gt $issued) { $issued = [version]$MinimumVersion }
+}
+$nextVersion = if ($baseline -gt $issued) { $baseline.ToString() } else { '{0}.{1}.{2}' -f $issued.Major, $issued.Minor, ($issued.Build + 1) }
+$release.version = $nextVersion
+if (-not $UpdatesRoot) { $UpdatesRoot = Join-Path $root '.scratch\portable-updates' }
+elseif (-not [IO.Path]::IsPathRooted($UpdatesRoot)) { $UpdatesRoot = Join-Path $root $UpdatesRoot }
+if (-not $OutputRoot) { $OutputRoot = Join-Path $UpdatesRoot ("App-{0}-{1}-{2}" -f $release.channel, $nextVersion, $Profile) }
+elseif (-not [IO.Path]::IsPathRooted($OutputRoot)) { $OutputRoot = Join-Path $root $OutputRoot }
+$output = [IO.Path]::GetFullPath($OutputRoot).TrimEnd('\')
+if ($output -eq $root -or $root.StartsWith("$output\", [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'OutputRoot cannot be the source root or a parent.'
+}
+if (Test-Path -LiteralPath $output) { throw "Update folder already exists: $output" }
 if (-not $SkipWebBuild) {
     Push-Location (Join-Path $root 'apps\web')
     try {
@@ -33,16 +62,6 @@ if ($newestPluginSource -and $newestPluginSource.LastWriteTimeUtc -gt (Get-Item 
 }
 $captureAudit = & (Join-Path $root 'scripts\test-portable-runtime.ps1') -Profile Capture -Json | ConvertFrom-Json
 if (-not $captureAudit.portable -or $captureAudit.failed -ne 0) { throw "OBS plugin package gate failed: $(@($captureAudit.checks | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object { $_.id + ': ' + $_.message }) -join '; ')" }
-if (-not $OutputRoot) {
-    $OutputRoot = Join-Path $root ('.scratch\portable-updates\App-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-} elseif (-not [IO.Path]::IsPathRooted($OutputRoot)) {
-    $OutputRoot = Join-Path $root $OutputRoot
-}
-$output = [IO.Path]::GetFullPath($OutputRoot).TrimEnd('\')
-if ($output -eq $root -or $root.StartsWith("$output\", [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'OutputRoot cannot be the source root or a parent.'
-}
-if (Test-Path -LiteralPath $output) { throw "Update folder already exists: $output" }
 
 $trees = @(
     @{ source = 'services\api'; target = 'services/api' },
@@ -62,7 +81,8 @@ $guide = if ($Profile -eq 'NoVibeVoice') { 'docs\PORTABLE-NO-VIBEVOICE.md' } els
 $files += @{ source = $guide; target = 'PORTABLE-README.md' }
 $trees += @{ source = 'scripts'; target = 'scripts'; names = $scriptNames }
 
-$payload = Join-Path $output 'payload'
+$stage = Join-Path (Split-Path -Parent $output) ('.creating-{0}' -f [guid]::NewGuid().ToString('N'))
+$payload = Join-Path $stage 'payload'
 [IO.Directory]::CreateDirectory($payload) | Out-Null
 $entries = [Collections.Generic.List[object]]::new()
 function Add-UpdateFile([string]$Source, [string]$Target) {
@@ -95,6 +115,7 @@ $manifest = [ordered]@{
     releaseChannel = [string]$release.channel
     createdAt = [DateTimeOffset]::Now.ToString('o')
     sourceRevision = (& git -C $root rev-parse HEAD)
+    sourceMachine = [Environment]::MachineName
     sourceWorkingTreeDirty = [bool](& git -C $root status --porcelain)
     runtimeManifestSha256 = (Get-FileHash -LiteralPath $runtimeManifest -Algorithm SHA256).Hash
     apiRequirementsSha256 = (Get-FileHash -LiteralPath (Join-Path $root 'services\api\requirements.txt') -Algorithm SHA256).Hash
@@ -102,8 +123,37 @@ $manifest = [ordered]@{
     files = @($files | ForEach-Object { $_.target })
     entries = $entries
 }
-$manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $output 'app-update.json') -Encoding utf8
-Set-Content -LiteralPath (Join-Path $output 'VERSION.txt') -Value ("{0} {1}" -f $release.channel, $release.version) -Encoding utf8
+$manifest | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $stage 'app-update.json') -Encoding utf8
+Set-Content -LiteralPath (Join-Path $stage 'VERSION.txt') -Value ("{0} {1}" -f $release.channel, $release.version) -Encoding utf8
+[IO.File]::Copy((Join-Path $PSScriptRoot 'templates\APPLY-UPDATE.bat'), (Join-Path $stage 'APPLY-UPDATE.bat'))
+@"
+Pro4Bro app update: $($release.channel) $($release.version)
+
+Copy this WHOLE numbered folder into the full portable's updates folder.
+Keep its original name; do not rename it to app-current.
+Click APPLY-UPDATE.bat here, or UPDATE-PORTABLE.bat beside start-pro4bro.bat.
+The updater selects the highest compatible version inside updates.
+Start/verify the app from the full portable folder after the update succeeds.
+The full portable (about 36 GiB) is required; this small pack contains app files.
+"@ | Set-Content -LiteralPath (Join-Path $stage 'README-UPDATE.txt') -Encoding utf8
+$release | Add-Member -NotePropertyName lastIssuedVersion -NotePropertyValue $nextVersion -Force
+$versionTemp = Join-Path $lockRoot ('app-version-{0}.tmp' -f [guid]::NewGuid().ToString('N'))
+$versionBackup = "$versionTemp.previous"
+try {
+    [IO.File]::WriteAllText($versionTemp, (($release | ConvertTo-Json) + "`r`n"), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Replace($versionTemp, $releasePath, $versionBackup)
+    try {
+        Move-Item -LiteralPath $stage -Destination $output
+        $stage = $null
+    } catch {
+        [IO.File]::Replace($versionBackup, $releasePath, $versionTemp)
+        throw
+    }
+} finally {
+    foreach ($temporary in @($versionTemp, $versionBackup)) {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+    }
+}
 Write-Output ([ordered]@{
     kind = $manifest.kind
     profile = $manifest.profile
@@ -114,3 +164,12 @@ Write-Output ([ordered]@{
     files = $entries.Count
     path = $output
 } | ConvertTo-Json)
+} finally {
+    $releaseLock.Dispose()
+    if ($stage -and (Test-Path -LiteralPath $stage)) {
+        $stageFull = [IO.Path]::GetFullPath($stage)
+        $outputParent = [IO.Path]::GetFullPath((Split-Path -Parent $output)).TrimEnd('\')
+        if ($stageFull.StartsWith("$outputParent\", [StringComparison]::OrdinalIgnoreCase) -and
+            (Split-Path -Leaf $stageFull) -like '.creating-*') { Remove-Item -LiteralPath $stageFull -Recurse -Force }
+    }
+}
