@@ -1,5 +1,15 @@
 # Project Status — 2026-10-12
 
+## PORT-UPDATE-01 — app-only portable refresh (2026-10-12)
+
+The NoVibeVoice portable has separate app and base runtime/model inventories.
+Source and portable BAT files create/apply a 3.93 MiB app update without
+repacking the 35.98 GiB base. The portable BAT auto-found this source checkout,
+built the UI and passed its 29/0 gate. Tamper rejection and post-gate rollback
+were verified. Backend744/744, frontend780/780 with two workers,
+typecheck/build pass. Another-machine copy/start/benchmark remains open.
+Evidence: docs/gates/portable-app-update-20261012.md. Phase03 remains60%.
+
 ## USER-FEEDBACK-25 — Media Pool cache choice and reveal (2026-10-12)
 
 The host import dialog and completed-container track dialog now offer a “Cache

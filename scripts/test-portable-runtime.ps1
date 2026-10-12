@@ -205,6 +205,42 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
         if (@($checks | Where-Object { $_.id -eq "bundle.critical-file" -and $_.status -eq "FAIL" }).Count -eq 0) {
             Add-Result "bundle.critical-files" "PASS" "All critical bundle hashes match the manifest." $bundleManifestPath
         }
+        $appLayerPath = Join-Path $root '.portable-app-layer.json'
+        $modelLayerPath = Join-Path $root '.portable-model-layer.json'
+        if ((Test-Path -LiteralPath $appLayerPath) -xor (Test-Path -LiteralPath $modelLayerPath)) {
+            Add-Result 'bundle.layers' 'FAIL' 'App and base-model layer manifests must be present together.' $root
+        } elseif (Test-Path -LiteralPath $appLayerPath) {
+            $appLayer = Get-Content -Raw -LiteralPath $appLayerPath | ConvertFrom-Json
+            $modelLayer = Get-Content -Raw -LiteralPath $modelLayerPath | ConvertFrom-Json
+            $appComponentPaths = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts', 'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
+            $mixedComponents = @($modelLayer.components | Where-Object { $_.path -in $appComponentPaths -or $_.path -like 'scripts/*' })
+            if ($appLayer.schemaVersion -ne 1 -or $appLayer.kind -ne 'app' -or
+                $modelLayer.schemaVersion -ne 1 -or $modelLayer.kind -ne 'base-runtime-and-models' -or
+                $modelLayer.profile -ne $effectiveProfile -or $mixedComponents.Count) {
+                Add-Result 'bundle.layers' 'FAIL' 'Portable layer manifest identity/profile is invalid.' $root
+            } else {
+                $appFailures = 0
+                foreach ($entry in @($appLayer.entries)) {
+                    $relative = [string]$entry.path
+                    $path = if ($relative -and -not $relative.Contains(':') -and -not $relative.StartsWith('/') -and
+                        -not @($relative.Replace('\', '/').Split('/') | Where-Object { $_ -in @('.', '..') }).Count) {
+                        [IO.Path]::GetFullPath((Join-Path $root ($relative.Replace('/', '\'))))
+                    } else { '' }
+                    if (-not $path.StartsWith("$root\", [StringComparison]::OrdinalIgnoreCase) -or
+                        -not (Test-Path -LiteralPath $path -PathType Leaf) -or
+                        (Get-Item -LiteralPath $path).Length -ne [long]$entry.bytes -or
+                        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.sha256) {
+                        $appFailures++
+                    }
+                }
+                if ($appFailures) {
+                    Add-Result 'bundle.app-layer' 'FAIL' "$appFailures app-layer files are missing or changed." $appLayerPath
+                } else {
+                    Add-Result 'bundle.app-layer' 'PASS' "All $(@($appLayer.entries).Count) app-layer file hashes match." $appLayerPath
+                }
+                Add-Result 'bundle.model-layer' 'PASS' 'Base runtime/model layer inventory is separate from the app update.' $modelLayerPath
+            }
+        }
     } catch {
         Add-Result "bundle.manifest" "FAIL" "Portable bundle manifest could not be read: $($_.Exception.Message)" $bundleManifestPath
     }

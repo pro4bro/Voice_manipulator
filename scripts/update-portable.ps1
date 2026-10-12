@@ -1,0 +1,238 @@
+[CmdletBinding()]
+param(
+    [string]$BundleRoot,
+    [string]$PackagePath,
+    [switch]$NoRestart
+)
+
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+if (-not $BundleRoot) { $BundleRoot = Split-Path -Parent $PSScriptRoot }
+$bundle = [IO.Path]::GetFullPath($BundleRoot).TrimEnd('\')
+$bundleManifestPath = Join-Path $bundle '.portable-bundle.json'
+if (-not (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf)) { throw "Not a portable bundle: $bundle" }
+$oldManifestBytes = [IO.File]::ReadAllBytes($bundleManifestPath)
+$oldManifestText = Get-Content -Raw -LiteralPath $bundleManifestPath
+$bundleManifest = $oldManifestText | ConvertFrom-Json
+if ($bundleManifest.schemaVersion -ne 1 -or $bundleManifest.profile -notin @('All', 'NoVibeVoice')) {
+    throw 'Unsupported portable bundle manifest/profile.'
+}
+
+function Assert-BundleChild([string]$Relative) {
+    $path = [IO.Path]::GetFullPath((Join-Path $bundle ($Relative.Replace('/', '\'))))
+    if (-not $path.StartsWith("$bundle\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe portable path: $Relative"
+    }
+    return $path
+}
+
+if (-not $PackagePath) {
+    $cursor = Split-Path -Parent $bundle
+    while ($cursor) {
+        $creator = Join-Path $cursor 'scripts\new-portable-app-update.ps1'
+        if ((Test-Path -LiteralPath $creator -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $cursor 'apps\web\package.json') -PathType Leaf)) {
+            $autoOutput = Assert-BundleChild ('updates/generated-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+            & $creator -OutputRoot $autoOutput -Profile $bundleManifest.profile | Out-Host
+            $PackagePath = $autoOutput
+            break
+        }
+        $parent = Split-Path -Parent $cursor
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+    if (-not $PackagePath) { $PackagePath = Assert-BundleChild 'updates/app-current' }
+}
+if (-not [IO.Path]::IsPathRooted($PackagePath)) { $PackagePath = Join-Path $bundle $PackagePath }
+$package = [IO.Path]::GetFullPath($PackagePath).TrimEnd('\')
+$updateManifestPath = Join-Path $package 'app-update.json'
+if (-not (Test-Path -LiteralPath $updateManifestPath -PathType Leaf)) {
+    throw "No app update found at $package. Copy a generated update folder to updates\app-current, then click UPDATE-PORTABLE.bat."
+}
+$update = Get-Content -Raw -LiteralPath $updateManifestPath | ConvertFrom-Json
+if ($update.schemaVersion -ne 1 -or $update.kind -ne 'Pro4BroAppUpdate' -or
+    $update.profile -ne $bundleManifest.profile) { throw 'App update profile or schema does not match this bundle.' }
+$runtimeManifest = Assert-BundleChild '.runtime/python/runtime-manifest.json'
+if ((Get-FileHash -LiteralPath $runtimeManifest -Algorithm SHA256).Hash -ne $update.runtimeManifestSha256) {
+    throw 'Python runtime dependencies changed. Rebuild the portable runtime before applying this app update.'
+}
+$apiRequirements = Assert-BundleChild 'services/api/requirements.txt'
+if ((Get-FileHash -LiteralPath $apiRequirements -Algorithm SHA256).Hash -ne $update.apiRequirementsSha256) {
+    throw 'API Python requirements changed. Rebuild the portable runtime before applying this app update.'
+}
+
+$allowedTrees = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts')
+$allowedFiles = @(
+    'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll',
+    'plugins/obs-pro4bro-bridge/config.example.json',
+    'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat',
+    'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md'
+)
+$allowedScripts = @('pro4bro-console.ps1', 'pro4bro-process-tree.ps1', 'pro4bro-readiness.ps1', 'pro4bro-workloads.ps1', 'test-portable-runtime.ps1', 'install-obs-plugin.ps1', 'update-portable.ps1')
+if ((@($update.trees) -join '|') -ne ($allowedTrees -join '|')) { throw 'App update has an unexpected tree list.' }
+$listedFiles = @($update.files | Where-Object { $_ -notlike 'scripts/*' })
+if ((@($listedFiles | Sort-Object) -join '|') -ne (@($allowedFiles | Sort-Object) -join '|')) {
+    throw 'App update has an unexpected file list.'
+}
+$listedScripts = @($update.files | Where-Object { $_ -like 'scripts/*' } | ForEach-Object { $_.Substring(8) })
+if ((@($listedScripts | Sort-Object) -join '|') -ne (@($allowedScripts | Sort-Object) -join '|')) {
+    throw 'App update has an unexpected script list.'
+}
+$entries = @($update.entries)
+$seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in $entries) {
+    $relative = [string]$entry.path
+    if (-not $relative -or $relative.Contains('\') -or $relative.Contains(':') -or
+        $relative.StartsWith('/') -or $relative.Contains('//') -or
+        @($relative.Split('/') | Where-Object { $_ -in @('.', '..') }).Count) {
+        throw "Unsafe update path: $relative"
+    }
+    if (-not $seen.Add($relative)) { throw "Duplicate update path: $relative" }
+    $insideTree = @($allowedTrees | Where-Object { $relative.StartsWith("$_/", [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    if (-not $insideTree -and $relative -notin $allowedFiles) { throw "Update path is outside the app layer: $relative" }
+    if ($relative.StartsWith('scripts/', [StringComparison]::OrdinalIgnoreCase) -and $relative.Substring(8) -notin $allowedScripts) {
+        throw "Unknown updater script: $relative"
+    }
+    $payloadPath = [IO.Path]::GetFullPath((Join-Path $package ("payload\" + $relative.Replace('/', '\'))))
+    if (-not $payloadPath.StartsWith("$package\payload\", [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $payloadPath -PathType Leaf)) { throw "Unsafe or missing update file: $relative" }
+    $item = Get-Item -LiteralPath $payloadPath
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -ne [long]$entry.bytes -or
+        (Get-FileHash -LiteralPath $payloadPath -Algorithm SHA256).Hash -ne $entry.sha256) {
+        throw "Update file failed hash/size check: $relative"
+    }
+}
+foreach ($tree in $allowedTrees) {
+    if (-not @($entries | Where-Object { ([string]$_.path).StartsWith("$tree/", [StringComparison]::OrdinalIgnoreCase) }).Count) {
+        throw "App update tree is empty: $tree"
+    }
+}
+foreach ($file in $allowedFiles) { if (-not $seen.Contains($file)) { throw "Update file is missing: $file" } }
+
+$ports = @(18081, 18120)
+$listeners = @(Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue)
+$ownedListeners = 0
+$foreignListeners = 0
+foreach ($listener in $listeners) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)"
+    if ($process -and ([string]$process.ExecutablePath).StartsWith("$bundle\.runtime\python\", [StringComparison]::OrdinalIgnoreCase)) { $ownedListeners++ }
+    else { $foreignListeners++ }
+}
+if ($ownedListeners -and $foreignListeners) { throw 'Portable services are sharing ports with another program; stop them before updating.' }
+$wasRunning = $ownedListeners -gt 0
+
+$work = Assert-BundleChild ('.portable-update-work/{0}' -f [guid]::NewGuid().ToString('N'))
+$stage = Join-Path $work 'stage'
+$backup = Join-Path $work 'backup'
+[IO.Directory]::CreateDirectory($stage) | Out-Null
+[IO.Directory]::CreateDirectory($backup) | Out-Null
+$moves = [Collections.Generic.List[object]]::new()
+$modelLayerPath = Assert-BundleChild '.portable-model-layer.json'
+$appLayerPath = Assert-BundleChild '.portable-app-layer.json'
+$oldModelLayerBytes = if (Test-Path -LiteralPath $modelLayerPath) { [IO.File]::ReadAllBytes($modelLayerPath) } else { $null }
+$oldAppLayerBytes = if (Test-Path -LiteralPath $appLayerPath) { [IO.File]::ReadAllBytes($appLayerPath) } else { $null }
+$oldModelLayer = if (Test-Path -LiteralPath $modelLayerPath) { Get-Content -Raw -LiteralPath $modelLayerPath } else { $null }
+$oldAppLayer = if (Test-Path -LiteralPath $appLayerPath) { Get-Content -Raw -LiteralPath $appLayerPath } else { $null }
+$result = $null
+function Measure-Target([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @{ files = 0L; bytes = 0L } }
+    $item = Get-Item -LiteralPath $Path
+    $files = if ($item.PSIsContainer) { @(Get-ChildItem -LiteralPath $Path -Recurse -File -Force) } else { @($item) }
+    $sum = ($files | Measure-Object Length -Sum).Sum
+    return @{ files = [long]$files.Count; bytes = [long]$sum }
+}
+try {
+    foreach ($entry in $entries) {
+        $relative = [string]$entry.path
+        $source = Join-Path $package ("payload\" + $relative.Replace('/', '\'))
+        $dest = Join-Path $stage ($relative.Replace('/', '\'))
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $dest)) | Out-Null
+        [IO.File]::Copy($source, $dest, $false)
+        if ((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ne $entry.sha256) { throw "Staged file changed: $relative" }
+    }
+    if ($wasRunning) {
+        $stopped = & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action stop -SkipWebBuild | Select-Object -Last 1 | ConvertFrom-Json
+        if ($stopped.overall -ne 'stopped') { throw 'Could not stop the running portable services.' }
+    }
+    $targets = @($allowedTrees) + @($allowedFiles)
+    $oldCount = 0L; $oldBytes = 0L
+    foreach ($relative in $targets) {
+        $destination = Assert-BundleChild $relative
+        if ((Test-Path -LiteralPath $destination) -and ((Get-Item -LiteralPath $destination).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "App target is a link and cannot be replaced safely: $relative"
+        }
+        $stagedPath = Join-Path $stage ($relative.Replace('/', '\'))
+        $backupPath = Join-Path $backup ($relative.Replace('/', '\'))
+        $oldSize = Measure-Target $destination
+        $oldCount += $oldSize.files; $oldBytes += $oldSize.bytes
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $backupPath)) | Out-Null
+        $hadOld = Test-Path -LiteralPath $destination
+        if ($hadOld) { Move-Item -LiteralPath $destination -Destination $backupPath }
+        $moves.Add(@{ target = $destination; backup = $backupPath; hadOld = $hadOld })
+        Move-Item -LiteralPath $stagedPath -Destination $destination
+    }
+    $newCount = 0L; $newBytes = 0L
+    foreach ($relative in $targets) {
+        $size = Measure-Target (Assert-BundleChild $relative)
+        $newCount += $size.files; $newBytes += $size.bytes
+    }
+    $bundleManifest.files = [long]$bundleManifest.files - $oldCount + $newCount
+    $bundleManifest.bytes = [long]$bundleManifest.bytes - $oldBytes + $newBytes
+    foreach ($tree in $allowedTrees) {
+        $size = Measure-Target (Assert-BundleChild $tree)
+        $component = @($bundleManifest.components | Where-Object { $_.path -eq $tree }) | Select-Object -First 1
+        if ($component) { $component.files = $size.files; $component.bytes = $size.bytes }
+        else { $bundleManifest.components += [pscustomobject]@{ path = $tree; files = $size.files; bytes = $size.bytes } }
+    }
+    foreach ($critical in @($bundleManifest.criticalFiles)) {
+        $path = Assert-BundleChild ([string]$critical.path)
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $critical.sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+    }
+    foreach ($relative in @('UPDATE-PORTABLE.bat', 'scripts/update-portable.ps1')) {
+        if (-not @($bundleManifest.criticalFiles | Where-Object { $_.path -eq $relative }).Count) {
+            $bundleManifest.criticalFiles += [pscustomobject]@{ path = $relative; sha256 = (Get-FileHash -LiteralPath (Assert-BundleChild $relative) -Algorithm SHA256).Hash }
+        }
+    }
+    $bundleManifest.sourceRevision = $update.sourceRevision
+    $bundleManifest.sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty
+    $bundleManifest | Add-Member -NotePropertyName updatedAt -NotePropertyValue ([DateTimeOffset]::Now.ToString('o')) -Force
+    $bundleManifest | Add-Member -NotePropertyName appUpdateCount -NotePropertyValue ([int]$bundleManifest.appUpdateCount + 1) -Force
+    $bundleManifest | Add-Member -NotePropertyName layers -NotePropertyValue ([ordered]@{ app = '.portable-app-layer.json'; baseRuntimeAndModels = '.portable-model-layer.json' }) -Force
+    $bundleManifest | ConvertTo-Json -Depth 9 | Set-Content -LiteralPath $bundleManifestPath -Encoding utf8
+    [ordered]@{ schemaVersion = 1; kind = 'app'; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; updatedAt = $bundleManifest.updatedAt; entries = $entries } |
+        ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $appLayerPath -Encoding utf8
+    $appOwnedComponents = @($targets) + @($allowedScripts | ForEach-Object { "scripts/$_" })
+    $baseComponents = @($bundleManifest.components | Where-Object { $_.path -notin $appOwnedComponents })
+    $modelLayerCreatedAt = if ($oldModelLayer) { ($oldModelLayer | ConvertFrom-Json).createdAt } else { [DateTimeOffset]::Now.ToString('o') }
+    [ordered]@{ schemaVersion = 1; kind = 'base-runtime-and-models'; profile = $bundleManifest.profile; components = $baseComponents; omnivoiceModelRevision = $bundleManifest.omnivoiceModelRevision; createdAt = $modelLayerCreatedAt } |
+        ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $modelLayerPath -Encoding utf8
+    $auditJson = & (Assert-BundleChild 'scripts/test-portable-runtime.ps1') -Profile Auto -Json
+    $audit = $auditJson | ConvertFrom-Json
+    if (-not $audit.portable -or $audit.failed -ne 0) { throw 'Portable verification failed after app update.' }
+    $result = [ordered]@{ updated = $true; profile = $bundleManifest.profile; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; appFiles = $entries.Count; modelLayerChanged = $false; gatePassed = $audit.passed; gateFailed = $audit.failed }
+} catch {
+    $failure = $_
+    if ($moves.Count -gt 0) {
+        for ($i = $moves.Count - 1; $i -ge 0; $i--) {
+            $move = $moves[$i]
+            if (Test-Path -LiteralPath $move.target) { Remove-Item -LiteralPath $move.target -Recurse -Force }
+            if ($move.hadOld -and (Test-Path -LiteralPath $move.backup)) { Move-Item -LiteralPath $move.backup -Destination $move.target }
+        }
+    }
+    [IO.File]::WriteAllBytes($bundleManifestPath, $oldManifestBytes)
+    if ($null -ne $oldAppLayerBytes) { [IO.File]::WriteAllBytes($appLayerPath, $oldAppLayerBytes) }
+    elseif (Test-Path -LiteralPath $appLayerPath) { Remove-Item -LiteralPath $appLayerPath -Force }
+    if ($null -ne $oldModelLayerBytes) { [IO.File]::WriteAllBytes($modelLayerPath, $oldModelLayerBytes) }
+    elseif (Test-Path -LiteralPath $modelLayerPath) { Remove-Item -LiteralPath $modelLayerPath -Force }
+    if ($wasRunning -and -not $NoRestart) {
+        try { & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action start -SkipWebBuild | Out-Host } catch { }
+    }
+    throw $failure
+} finally {
+    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+}
+if ($wasRunning -and -not $NoRestart) {
+    & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action start -SkipWebBuild | Out-Host
+}
+Write-Output ($result | ConvertTo-Json)

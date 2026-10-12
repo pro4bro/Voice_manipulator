@@ -24,8 +24,8 @@ if (Test-Path -LiteralPath $destination) {
     throw "OutputRoot already exists. Choose a new empty destination: $destination"
 }
 
-& (Join-Path $root "scripts\test-portable-runtime.ps1") -Profile $Profile
-if ($LASTEXITCODE -ne 0) { throw "Source tree failed the portable gate." }
+$sourceAudit = & (Join-Path $root "scripts\test-portable-runtime.ps1") -Profile $Profile -Json | ConvertFrom-Json
+if (-not $sourceAudit.portable -or $sourceAudit.failed -ne 0) { throw "Source tree failed the portable gate." }
 
 $components = [System.Collections.Generic.List[object]]::new()
 $fileCount = 0L
@@ -137,10 +137,10 @@ Add-BundleTree "apps\web\dist"
 Add-BundleTree "build\obs-plugin-package" "obs-plugin-package"
 Add-SingleFile "build\obs-plugin\RelWithDebInfo\pro4bro-obs-bridge.dll"
 Add-SingleFile "plugins\obs-pro4bro-bridge\config.example.json"
-foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1", "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1")) {
+foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1", "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1", "update-portable.ps1")) {
     Add-SingleFile "scripts\$scriptName"
 }
-foreach ($entrypoint in @("start-pro4bro.bat", "open-pro4bro-console.bat", "restart-pro4bro.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat")) {
+foreach ($entrypoint in @("start-pro4bro.bat", "open-pro4bro-console.bat", "restart-pro4bro.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat", "UPDATE-PORTABLE.bat")) {
     Add-SingleFile $entrypoint
 }
 if ($Profile -eq "NoVibeVoice") {
@@ -155,6 +155,8 @@ $criticalFiles = @(
     "scripts/pro4bro-workloads.ps1",
     "scripts/pro4bro-readiness.ps1",
     "scripts/test-portable-runtime.ps1",
+    "scripts/update-portable.ps1",
+    "UPDATE-PORTABLE.bat",
     "scripts/install-obs-plugin.ps1",
     "build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll",
     "obs-plugin-package/manifest.json",
@@ -188,9 +190,24 @@ $manifest = [ordered]@{
     bytes = $byteCount
     components = $components
     criticalFiles = $criticalHashes
+    layers = [ordered]@{ app = '.portable-app-layer.json'; baseRuntimeAndModels = '.portable-model-layer.json' }
     excluded = @("Git metadata", "developer virtual environments", "Node modules", "build caches", "logs", "tests", "user projects and recordings") + $(if ($Profile -eq "NoVibeVoice") { @("VibeVoice source, runtime and weights") } else { @() })
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $destination ".portable-bundle.json") -Encoding utf8
+$appTrees = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts')
+$appFiles = @('build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
+$appEntries = foreach ($relative in $appTrees + $appFiles) {
+    $path = Join-Path $destination ($relative.Replace('/', '\'))
+    $paths = if (Test-Path -LiteralPath $path -PathType Container) { @(Get-ChildItem -LiteralPath $path -Recurse -File -Force) } else { @(Get-Item -LiteralPath $path) }
+    foreach ($item in $paths) {
+        [ordered]@{ path = $item.FullName.Substring($destination.Length).TrimStart('\').Replace('\', '/'); bytes = $item.Length; sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash }
+    }
+}
+[ordered]@{ schemaVersion = 1; kind = 'app'; sourceRevision = $gitCommit; sourceWorkingTreeDirty = $gitDirty; updatedAt = $manifest.createdAt; entries = @($appEntries) } |
+    ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $destination '.portable-app-layer.json') -Encoding utf8
+$appOwnedComponents = @($appTrees) + @($appFiles) + @('scripts/pro4bro-console.ps1', 'scripts/pro4bro-process-tree.ps1', 'scripts/pro4bro-readiness.ps1', 'scripts/pro4bro-workloads.ps1', 'scripts/test-portable-runtime.ps1', 'scripts/install-obs-plugin.ps1', 'scripts/update-portable.ps1')
+[ordered]@{ schemaVersion = 1; kind = 'base-runtime-and-models'; profile = $Profile; components = @($components | Where-Object { $_.path -notin $appOwnedComponents }); omnivoiceModelRevision = $manifest.omnivoiceModelRevision; createdAt = $manifest.createdAt } |
+    ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $destination '.portable-model-layer.json') -Encoding utf8
 Remove-Item -LiteralPath (Join-Path $destination ".bundle-incomplete") -Force
 
 [ordered]@{

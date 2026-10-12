@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-12 — USER-FEEDBACK-25 Media Pool cache choice and reveal.
-last_activity_desc: Host import can cache in project or link the original; context menu reveals original/project copy separately. Frontend780/780, backend744/744, typecheck/build pass; native acceptance remains. Phase03 stays60%.
+last_activity: 2026-10-12 — PORT-UPDATE-01 app-only portable refresh.
+last_activity_desc: 3.93 MiB app pack updates the 35.98 GiB NoVibeVoice bundle through BAT; 29/0 portable gate, tamper rejection and exact rollback verified. Backend744/744, frontend780/780 with two workers; target-machine acceptance remains. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,15 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-UPDATE-01 — app-only portable refresh (2026-10-12)
+
+Source and portable BAT files create and apply a hashed app-only update.
+The app and base runtime/model manifests are separate; the model payload is
+untouched. Auto-discovered source update passed 29/0, tamper was rejected and
+post-gate failure restored exact prior bytes. Evidence:
+docs/gates/portable-app-update-20261012.md. Physical target-machine
+verification and fixed-media benchmarking remain. Phase03 stays60%.
 
 ## USER-FEEDBACK-25 — Media cache choice and reveal (2026-10-12)
 

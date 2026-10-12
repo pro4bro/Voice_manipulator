@@ -21,6 +21,26 @@ successful until its output artifact exists.
    Existing for a project carried beside it. Keep `project.json` and its assets
    together. Do not edit absolute paths into the project file.
 
+## Update the app without copying models again
+
+On the development machine, double-click `MAKE-PORTABLE-UPDATE.bat` in the
+source repository. It builds the latest web UI and writes a small app update
+folder under `.scratch/portable-updates`. Copy that **whole update folder** to
+this portable folder as `updates/app-current`. Then double-click
+`UPDATE-PORTABLE.bat` here. If this portable folder still sits inside the
+source checkout, `UPDATE-PORTABLE.bat` finds the source and builds a fresh
+update automatically; no copying is needed.
+
+The updater checks each app file, replaces only app-owned paths, runs
+`VERIFY-PORTABLE` checks and rolls back app files if verification fails. If this
+portable instance was running, it stops and restarts its services. Another
+instance using the same ports is left alone. Python runtimes, upstream engine
+code, model caches and checkpoints stay in the separate base layer. Changes to
+those require a new base/runtime package; an app update cannot install a new
+model or Python dependency. The two inventories are
+`.portable-app-layer.json` and `.portable-model-layer.json`. Existing runtime
+paths remain in place so model loaders and copied projects stay portable.
+
 The bundled OmniVoice base checkpoint is from
 [`k2-fsa/OmniVoice`](https://huggingface.co/k2-fsa/OmniVoice), revision recorded
 in `.cache/huggingface/hub/models--k2-fsa--OmniVoice/refs/main`. The upstream

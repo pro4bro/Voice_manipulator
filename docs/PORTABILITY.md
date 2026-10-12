@@ -16,6 +16,11 @@ the activation script does not remove that dependency. A folder may be called a
 portable test bundle only after `scripts/test-portable-runtime.ps1 -Profile All`
 passes from the moved folder. See `docs/PORTABLE-RUNTIME.md`.
 
+For app-only refreshes of an already built portable folder, see
+`docs/PORTABLE-APP-UPDATES.md`. The app update excludes embedded runtimes,
+upstream engines, model caches and checkpoints; those remain a separate base
+layer and require a new validated base package when changed.
+
 Runtime processes use isolated CPython 3.11.9 embedded distributions below
 `.runtime/python/<profile>`. Their `python311._pth` files contain only relative
 paths to vendored packages and the product/engine source needed by that profile.

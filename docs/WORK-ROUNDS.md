@@ -12,7 +12,19 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-12 — current: USER-FEEDBACK-25
+### 2026-10-12 — current: PORT-UPDATE-01
+
+Added click-to-create and click-to-apply app-only portable updates, with
+separate app/base inventories and unchanged loader paths. The 3.93 MiB pack
+updated the 35.98 GiB NoVibeVoice folder through its BAT: 29/0 gate. Hash
+tampering was rejected before mutation; a post-gate OBS failure rolled back
+four checked files/manifests byte for byte. Backend744/744, frontend780/780
+with two workers, typecheck/build pass. Evidence:
+docs/gates/portable-app-update-20261012.md. Phase03 stays60%. Exact next
+portable round: copy the folder and app pack to another machine, verify, start
+and benchmark fixed media. STT-TIMING-ACCURACY-01 still awaits Conviction.
+
+### 2026-10-12 — previous: USER-FEEDBACK-25
 
 Media Pool's primary host import now offers a checked-by-default “Cache file”
 checkbox; unticking links the original host file, while ticking copies it into
