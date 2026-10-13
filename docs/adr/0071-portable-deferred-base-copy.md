@@ -32,6 +32,13 @@ check passing may atomically mark the base ready and remove the marker.
 Ordinary audits remain read-only. App updates retain the existing version
 allocation and four supported root launchers.
 
+OBS installer migration also recognizes the canonical console launcher under
+a previous `Pro4Bro-Portable-*` folder when the new portable has a different
+versioned folder name, including after the old folder was removed. Pairing and
+custom settings remain intact; unrelated custom launchers are preserved. This
+was found during rebuild review, so issued alpha 0.5.10 is retained internally
+and the corrected rebuild uses a newly allocated version.
+
 ## Consequences
 
 The small app kit cannot run before its base directories are copied. Initial

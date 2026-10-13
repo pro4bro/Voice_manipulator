@@ -89,6 +89,49 @@ def test_app_move_migrates_owned_launcher_and_preserves_pairing(
         assert updated[key] == original[key]
 
 
+@pytest.mark.parametrize("action", ["install", "repair"])
+@pytest.mark.parametrize("remove_old_folder", [False, True])
+def test_versioned_portable_rename_migrates_owned_launcher_and_preserves_pairing(
+    tmp_path: Path, action: str, remove_old_folder: bool,
+) -> None:
+    manager, _ = installation(tmp_path)
+    old_app_root = tmp_path / "Pro4Bro-Portable-20261012-NoVibeVoice"
+    manager.app_root.rename(old_app_root)
+    manager = ObsPluginInstallation(
+        old_app_root,
+        manager.data_root,
+        program_files=manager.program_files,
+        program_data=manager.program_data,
+        app_data=manager.app_data,
+        running=lambda: False,
+    )
+    manager.apply("install")
+    original = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    original["customSetting"] = {"keep": True}
+    manager.user_config.write_text(json.dumps(original), encoding="utf-8")
+
+    moved_app_root = tmp_path / "Pro4Bro-Portable-alpha-0.5.11-NoVibeVoice"
+    shutil.copytree(old_app_root, moved_app_root)
+    if remove_old_folder:
+        shutil.rmtree(old_app_root)
+    manager = ObsPluginInstallation(
+        moved_app_root,
+        manager.data_root,
+        program_files=manager.program_files,
+        program_data=manager.program_data,
+        app_data=manager.app_data,
+        running=lambda: False,
+    )
+
+    result = manager.apply(action)
+
+    updated = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    assert result["state"] == "installed"
+    assert updated["launcherPath"] == str(moved_app_root / "open-pro4bro-console.bat")
+    for key in ("installId", "token", "apiBase", "customSetting"):
+        assert updated[key] == original[key]
+
+
 @pytest.mark.parametrize("custom_launcher_name", [
     "launch-pro4bro-custom.bat",
     "open-pro4bro-console.bat",

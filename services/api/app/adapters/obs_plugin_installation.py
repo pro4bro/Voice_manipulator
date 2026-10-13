@@ -270,9 +270,10 @@ class ObsPluginInstallation:
             return True
         if name != "open-pro4bro-console.bat" or not launcher.is_absolute():
             return False
-        return (
-            launcher.parent.name.casefold() == self.app_root.name.casefold()
-            and launcher.parent.resolve() != self.app_root
+        previous_root = launcher.parent.resolve()
+        return previous_root != self.app_root and (
+            previous_root.name.casefold() == self.app_root.name.casefold()
+            or previous_root.name.casefold().startswith("pro4bro-portable-")
         )
 
     def reset_pairing(self, obs_root: str | None = None) -> dict:
