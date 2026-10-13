@@ -31,6 +31,8 @@
 .media-pool-item--obs-pending.is-selected { border-color: var(--accent); background: var(--strong-fill); }
 .media-pool-item__obs-retry { align-self: center; margin-right: 7px; padding: 6px; color: var(--text-inverse); background: var(--surface-inverse); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
 .media-pool-item__obs-retry:disabled { opacity: .5; }
+.media-pool-item__obs-actions { min-width: 0; max-width: 108px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 4px 6px; }
+.media-pool-item__obs-actions .media-pool-item__obs-retry { min-height: 28px; margin: 0; }
 .media-pool-item__live-channels { padding-left: 18px; }
 .media-pool-item__live-channel { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
 .media-pool-item__live-channel .media-pool-item__obs-retry { white-space: nowrap; }

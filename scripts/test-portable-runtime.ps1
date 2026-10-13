@@ -3,7 +3,8 @@ param(
     [ValidateSet("Core", "Capture", "STT", "Training", "All", "NoVibeVoice", "Auto")]
     [string]$Profile = "All",
     [string]$OutputPath,
-    [switch]$Json
+    [switch]$Json,
+    [switch]$FinalizeDeferredBase
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,6 +90,27 @@ function Test-NonEmptyTree {
         return
     }
     Add-Result $Id "PASS" "$Description is present." $candidate
+}
+
+function Complete-DeferredBase {
+    param([string]$ApplicationRoot, [psobject]$BundleManifest, [string]$EffectiveProfile, [object[]]$ValidationChecks)
+    if (-not $BundleManifest.deferredBaseLayer -or $BundleManifest.schemaVersion -ne 1 -or
+        $EffectiveProfile -notin @('All', 'NoVibeVoice') -or $BundleManifest.profile -ne $EffectiveProfile -or
+        -not $ValidationChecks.Count -or
+        @($ValidationChecks | Where-Object { $_.status -ne 'PASS' }).Count) { return $false }
+    $manifestPath = Join-Path $ApplicationRoot '.portable-bundle.json'
+    $markerPath = Join-Path $ApplicationRoot '.bundle-incomplete'
+    $temporaryPath = Join-Path $ApplicationRoot ('.portable-base-verified-' + [guid]::NewGuid().ToString('N') + '.json')
+    $BundleManifest | Add-Member -NotePropertyName baseLayerReady -NotePropertyValue $true -Force
+    $BundleManifest | Add-Member -NotePropertyName baseLayerVerifiedAt -NotePropertyValue ([DateTimeOffset]::Now.ToString('o')) -Force
+    try {
+        [IO.File]::WriteAllText($temporaryPath, ($BundleManifest | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
+        [IO.File]::Replace($temporaryPath, $manifestPath, [NullString]::Value)
+        Remove-Item -LiteralPath $markerPath -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
+    }
+    return $true
 }
 
 if (-not [Environment]::Is64BitOperatingSystem -or $env:OS -ne "Windows_NT") {
@@ -301,7 +323,12 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
         Add-Result "bundle.exclusions" "PASS" "Build-only environments, caches, tests, and Git metadata are absent." $root
     }
     if (Test-Path -LiteralPath (Join-Path $root ".bundle-incomplete")) {
-        Add-Result "bundle.complete" "FAIL" "Bundle creation did not complete." (Join-Path $root ".bundle-incomplete")
+        if ($FinalizeDeferredBase -and (Complete-DeferredBase $root $bundleManifest $effectiveProfile $checks.ToArray())) {
+            Add-Result "bundle.complete" "PASS" "Copied base runtime/models passed the full profile; bundle is ready." $bundleManifestPath
+        } else {
+            $message = if ($bundleManifest.deferredBaseLayer) { 'Copy the core/model folders from COPY-CORE-MODELS.md, then run VERIFY-PORTABLE.bat.' } else { 'Bundle creation did not complete.' }
+            Add-Result "bundle.complete" "FAIL" $message (Join-Path $root ".bundle-incomplete")
+        }
     } else {
         Add-Result "bundle.complete" "PASS" "Bundle completion marker is clean." $root
     }

@@ -1,5 +1,24 @@
 # Pro4Bro portable — without VibeVoice
 
+## Bản tách riêng app và core/model
+
+Nếu có `COPY-CORE-MODELS.md`, phần app đã đóng gói nhưng **chưa kèm core/model**.
+Đọc file đó để copy từng thư mục từ máy phát triển vào đúng đường dẫn bên trong
+portable. Giữ phần app mới; không chép đè `scripts`, `services/api`, giao diện
+hoặc plugin từ bản portable cũ. Không copy hai thư mục VibeVoice; VibeVoice vẫn
+hiện trong danh sách chọn với trạng thái chưa cài.
+
+Copy xong, bấm `VERIFY-PORTABLE.bat` ở gốc portable. Kiểm tra đầy đủ phải có
+**0 failed**; khi đó dấu chưa hoàn tất được gỡ tự động. Sau đó bấm
+`open-pro4bro-console.bat`. Muốn dùng OBS, đóng OBS rồi bấm
+`INSTALL-OBS-PLUGIN.bat` ở cùng thư mục và mở lại OBS.
+
+Lần đầu chuyển máy, copy **toàn bộ portable đã bổ sung core/model**. Những lần
+cập nhật code sau chỉ cần thư mục update có số phiên bản trong `updates`, rồi
+bấm `UPDATE-PORTABLE.bat` ở gốc portable trên máy nhận. Hướng dẫn cập nhật chi
+tiết ở bên dưới. `bytes` là lượng đã đóng gói, còn `logicalBytes` là lượng dự
+kiến khi bổ sung core/model, chưa tính project và media anh tạo sau này.
+
 This bundle includes the Pro4Bro UI and API, FFmpeg, OBS bridge, STT models,
 OmniVoice code and checkpoint, and the existing RVC/Applio runtime. The
 VibeVoice runtime, source and weights are omitted to keep the folder smaller.

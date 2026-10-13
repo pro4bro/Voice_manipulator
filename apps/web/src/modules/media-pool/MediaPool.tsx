@@ -297,6 +297,7 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
         <span className="media-kind media-kind--audio"><Icon name="waveform" /></span>
         <span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · {state}</small><em>{detailLabel}</em></span>
       </button>
+      <div aria-label={`Thao tác footage OBS ${recording.displayName || recording.recordingId}`} className="media-pool-item__obs-actions" role="group">
       <button className="media-pool-item__obs-retry" disabled={Boolean(detailedStt?.tracks && !detailedStt.error && (!detailedStt.stopMode || detailedStt.active)) || !durableChannelIds?.length} onClick={() => {
         const journal = journals.find((item) => item.recording.recordingId === recording.recordingId);
         if (!journal) return;
@@ -314,6 +315,7 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
       }} /> : null}
       {recording.status === "stopped" && recording.archiveStatus === "error" ?
         <button className="media-pool-item__obs-retry" disabled={retryingId === recording.recordingId} onClick={() => void retry(recording.recordingId)} type="button">Thử lại</button> : null}
+      </div>
       {expanded ? <div className="media-pool-item__channels media-pool-item__live-channels">
         {available.map((channel) => {
           const hasPcm = Boolean(durableChannelIds?.includes(channel.channelId));
