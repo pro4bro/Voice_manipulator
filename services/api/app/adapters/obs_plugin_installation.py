@@ -242,12 +242,38 @@ class ObsPluginInstallation:
 
     def _pairing(self, *, reset: bool = False) -> None:
         if self.user_config.exists() and not reset:
+            try:
+                config = json.loads(self.user_config.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return
+            if not isinstance(config, dict):
+                return
+            launcher = config.get("launcherPath")
+            if self._is_app_launcher(launcher):
+                current_launcher = str(self.app_root / "open-pro4bro-console.bat")
+                if launcher != current_launcher:
+                    config["launcherPath"] = current_launcher
+                    self._atomic_write(self.user_config, json.dumps(config, indent=2).encode("utf-8"))
             return
         self._atomic_write(self.user_config, json.dumps({
             "schemaVersion": 1, "installId": str(uuid.uuid4()),
             "token": secrets.token_urlsafe(32), "apiBase": "http://127.0.0.1:18120",
-            "launcherPath": str(self.app_root / "start-pro4bro.bat"),
+            "launcherPath": str(self.app_root / "open-pro4bro-console.bat"),
         }, indent=2).encode("utf-8"))
+
+    def _is_app_launcher(self, value: object) -> bool:
+        if not isinstance(value, str) or not value:
+            return False
+        launcher = Path(value)
+        name = launcher.name.casefold()
+        if name in {"start-pro4bro.bat", "restart-pro4bro.bat"}:
+            return True
+        if name != "open-pro4bro-console.bat" or not launcher.is_absolute():
+            return False
+        return (
+            launcher.parent.name.casefold() == self.app_root.name.casefold()
+            and launcher.parent.resolve() != self.app_root
+        )
 
     def reset_pairing(self, obs_root: str | None = None) -> dict:
         self._pairing(reset=True)

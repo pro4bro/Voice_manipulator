@@ -13,6 +13,9 @@ from app.adapters.obs_plugin_installation import ObsPluginInstallation, ObsPlugi
 
 def installation(tmp_path: Path, *, running=lambda: False) -> tuple[ObsPluginInstallation, Path]:
     app = tmp_path / "app"
+    launcher = Path(__file__).resolve().parents[3] / "open-pro4bro-console.bat"
+    app.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(launcher, app / launcher.name)
     package = app / "obs-plugin-package"
     files = [
         ("bin/64bit/pro4bro-obs-bridge.dll", "bin/64bit/pro4bro-obs-bridge.dll", "obs-plugins/64bit/pro4bro-obs-bridge.dll", b"plugin-v1"),
@@ -32,6 +35,81 @@ def installation(tmp_path: Path, *, running=lambda: False) -> tuple[ObsPluginIns
     exe.write_bytes(b"obs")
     manager = ObsPluginInstallation(app, tmp_path / "data", program_files=tmp_path / "program-files", program_data=tmp_path / "program-data", app_data=tmp_path / "app-data", running=running)
     return manager, obs
+
+
+def test_new_pairing_uses_current_console_launcher(tmp_path: Path) -> None:
+    manager, _ = installation(tmp_path)
+
+    manager.apply("install")
+
+    config = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    launcher = manager.app_root / "open-pro4bro-console.bat"
+    source_launcher = Path(__file__).resolve().parents[3] / "open-pro4bro-console.bat"
+    assert config["launcherPath"] == str(launcher)
+    assert launcher.is_file()
+    assert hashlib.sha256(launcher.read_bytes()).digest() == hashlib.sha256(source_launcher.read_bytes()).digest()
+
+
+@pytest.mark.parametrize("action", ["install", "repair"])
+@pytest.mark.parametrize("launcher_name", [
+    "start-pro4bro.bat",
+    "restart-pro4bro.bat",
+    "open-pro4bro-console.bat",
+])
+def test_app_move_migrates_owned_launcher_and_preserves_pairing(
+    tmp_path: Path, action: str, launcher_name: str,
+) -> None:
+    manager, _ = installation(tmp_path)
+    manager.apply("install")
+    old_app_root = manager.app_root
+    moved_app_root = tmp_path / "relocated" / old_app_root.name
+    moved_app_root.parent.mkdir()
+    old_app_root.rename(moved_app_root)
+    manager = ObsPluginInstallation(
+        moved_app_root,
+        manager.data_root,
+        program_files=manager.program_files,
+        program_data=manager.program_data,
+        app_data=manager.app_data,
+        running=lambda: False,
+    )
+    original = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    original.update({
+        "launcherPath": str(old_app_root / launcher_name),
+        "customSetting": {"keep": True},
+    })
+    manager.user_config.write_text(json.dumps(original), encoding="utf-8")
+
+    result = manager.apply(action)
+
+    updated = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    assert result["state"] == "installed"
+    assert updated["launcherPath"] == str(moved_app_root / "open-pro4bro-console.bat")
+    for key in ("installId", "token", "apiBase", "customSetting"):
+        assert updated[key] == original[key]
+
+
+@pytest.mark.parametrize("custom_launcher_name", [
+    "launch-pro4bro-custom.bat",
+    "open-pro4bro-console.bat",
+])
+def test_pairing_migration_preserves_custom_launcher_and_malformed_config(
+    tmp_path: Path, custom_launcher_name: str,
+) -> None:
+    manager, _ = installation(tmp_path)
+    manager.apply("install")
+    config = json.loads(manager.user_config.read_text(encoding="utf-8"))
+    custom_launcher = tmp_path / "user-tools" / custom_launcher_name
+    config["launcherPath"] = str(custom_launcher)
+    manager.user_config.write_text(json.dumps(config), encoding="utf-8")
+
+    manager.apply("repair")
+
+    assert json.loads(manager.user_config.read_text(encoding="utf-8"))["launcherPath"] == str(custom_launcher)
+    malformed = b"{not-json"
+    manager.user_config.write_bytes(malformed)
+    manager.apply("repair")
+    assert manager.user_config.read_bytes() == malformed
 
 
 def test_standard_install_repair_remove_preserves_pairing(tmp_path: Path) -> None:
