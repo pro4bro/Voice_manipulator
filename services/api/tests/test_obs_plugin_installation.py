@@ -178,6 +178,23 @@ def test_cli_uses_same_portable_installer(tmp_path: Path) -> None:
     assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
 
 
+def test_cli_rejects_malformed_argument_count(tmp_path: Path) -> None:
+    manager, _ = installation(tmp_path)
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1])}
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "app.adapters.obs_plugin_installation", "--cli",
+            str(manager.app_root), str(manager.data_root), "install", "not-a-boolean",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "Usage:" in result.stderr
+
+
 def _stage_native_installer(tmp_path: Path) -> tuple[ObsPluginInstallation, Path, dict[str, str]]:
     manager, _ = installation(tmp_path)
     project_root = Path(__file__).resolve().parents[3]
@@ -248,7 +265,8 @@ def test_native_bat_forwards_obs_root_with_spaces(tmp_path: Path) -> None:
     bat = manager.app_root / "INSTALL-OBS-PLUGIN.bat"
     runner = manager.app_root / "run-installer.cmd"
     cmdline = f'@call "{bat}" -Action install -ObsRoot "{portable}"\r\n'
-    runner.write_text(cmdline, encoding="utf-8")
+    runner.write_text(cmdline, encoding="cp850")
+    env["PYTHONIOENCODING"] = "ascii"
 
     result = subprocess.run(
         [command, "/d", "/c", "run-installer.cmd"],
@@ -257,6 +275,7 @@ def test_native_bat_forwards_obs_root_with_spaces(tmp_path: Path) -> None:
         input="\r\n",
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=30,
         check=False,
     )
@@ -264,3 +283,38 @@ def test_native_bat_forwards_obs_root_with_spaces(tmp_path: Path) -> None:
     assert result.returncode == 0, f"{cmdline}\n{result.stdout}{result.stderr}"
     assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
     assert not (manager.program_data / "obs-studio/plugins/pro4bro-obs-bridge").exists()
+    status_line = next(line for line in result.stdout.splitlines() if line.startswith("{"))
+    assert json.loads(status_line)["obsRoot"] == str(portable)
+
+
+def test_native_powershell_installer_emits_unicode_status_with_ascii_pythonioencoding(tmp_path: Path) -> None:
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("native Windows PowerShell is required")
+    manager, script, env = _stage_native_installer(tmp_path)
+    portable = tmp_path / "OBS café Portable"
+    (portable / "bin/64bit").mkdir(parents=True)
+    (portable / "bin/64bit/obs64.exe").write_bytes(b"fake OBS executable")
+    (portable / "portable_mode.txt").write_text("", encoding="utf-8")
+    (portable / "obs-plugins").mkdir()
+    (portable / "data").mkdir()
+    env["PYTHONIOENCODING"] = "ascii"
+
+    result = subprocess.run(
+        [
+            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+            "-ObsRoot", str(portable),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    status = json.loads(result.stdout)
+    assert status["obsRoot"] == str(portable)
+    assert status["state"] == "installed"
+    assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
