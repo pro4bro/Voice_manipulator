@@ -9,19 +9,25 @@ Start a fresh clone with submodules:
 ```powershell
 git clone --recurse-submodules https://github.com/pro4bro/Voice_manipulator.git
 cd Voice_manipulator
-.\setup-pro4bro.bat
+.\scripts\maintenance\setup-pro4bro.bat
 ```
+
+## Đồng bộ code trên máy thứ hai
+
+Xem [hướng dẫn GitHub Desktop](docs/SOURCE-SYNC.md). Branch đang chứa toàn bộ
+chức năng hiện tại là `feat/03-04-high-quality-training`. Đồng bộ code bằng Git;
+core/model/runtime và project là dữ liệu riêng từng máy, không nằm trên GitHub.
 
 ## Run
 
-1. Double-click `start-pro4bro.bat`.
-2. The local server opens `http://127.0.0.1:18120` in the default browser.
+1. Double-click `open-pro4bro-console.bat`.
+2. The local server opens `http://127.0.0.1:18119` in the default browser.
 3. Create a project, choose its storage location, then move between Speech to
    Text, Voice Training, and Voice Manipulator.
 4. Keep the launcher window open while using the app. `Ctrl+C` stops the local
    server.
 
-Run `setup-pro4bro.bat` only when installing or reinstalling dependencies. Python packages are
+Run `scripts/maintenance/setup-pro4bro.bat` only when installing or reinstalling dependencies. Python packages are
 isolated in `.venv`, npm packages stay in `apps/web/node_modules`, projects stay
 in `data` by default, and model caches stay in `.cache`/`.runtime`. None of these
 machine-local folders are committed.
@@ -157,7 +163,7 @@ directly from a page or UI module.
 
 ## Update OmniVoice
 
-Double-click `update-omnivoice.bat`. The updater refuses to continue if the
+Double-click `scripts/maintenance/update-omnivoice.bat`. The updater refuses to continue if the
 engine checkout is dirty and only uses `git pull --ff-only`, so it cannot silently
 rewrite local engine history.
 

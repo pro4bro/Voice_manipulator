@@ -46,5 +46,3 @@ I also inspected the closest TTS/subtitle implementation areas. The target's `en
 **Local clones used:** `C:\Users\vuhoang\AppData\Local\Temp\easyvoice-origin-check\XavierChuu__EasyVoice`, `...\rockbenben__easyvoice`, `...\cosin2077__easyVoice`, `...\randermin__easyVoice`, and `...\sparrow2015__EasyVoice`.
 
 This strengthens the public-evidence case for independent implementation, but exact-file hashing and selected-file inspection do not detect rewritten, translated, or partial copied code, and cannot cover private/deleted repositories.
-
-

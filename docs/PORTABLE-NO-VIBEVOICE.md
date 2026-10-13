@@ -79,7 +79,7 @@ also require it to accept the four-BAT inventory. Alpha 0.5.8 and newer can use
 enclosing portable, but launch the actual app from the portable root.
 
 If this portable is not under the source checkout, first double-click
-`MAKE-PORTABLE-UPDATE.bat` in the source repository. Copy its resulting whole
+`scripts/maintenance/MAKE-PORTABLE-UPDATE.bat` in the source repository. Copy its resulting whole
 numbered update folder into this portable's `updates`, keeping its name, then
 for alpha 0.5.7 and earlier click `APPLY-UPDATE.bat` in the pack once. For
 alpha 0.5.8 and newer, click `UPDATE-PORTABLE.bat` here or `APPLY-UPDATE.bat`.

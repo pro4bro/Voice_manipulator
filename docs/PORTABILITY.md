@@ -17,6 +17,13 @@ integrity checks, limits and the standalone model versus Model Set distinction.
 
 ## Application Folder
 
+Owner direction, 2026-10-13: GitHub Desktop source sync is now the preferred
+daily test route. Future portable folders must carry the full product source
+and declare one external core/model library per machine. SOURCE-SYNC-01 cleans
+and publishes the repo; SOURCE-EXTERNAL-ASSETS-01 must implement and validate
+that library configuration. Current launchers still use the layout described
+below. See `docs/SOURCE-SYNC.md` and ADR0074 for the migration/acceptance contract.
+
 All launcher paths are derived from the folder containing the repository.
 Application dependencies live under `.runtime`, FFmpeg lives in
 `.tools/ffmpeg`, caches live in `.cache`, and the built web application lives in

@@ -4,7 +4,7 @@ The portable has two operational layers:
 
 | Layer | Inventory | Contents | Update route |
 | --- | --- | --- | --- |
-| App | `.portable-app-layer.json` | API, built UI, Studio adapter, OBS bridge package, launchers and scripts | `MAKE-PORTABLE-UPDATE.bat` then `UPDATE-PORTABLE.bat` |
+| App | `.portable-app-layer.json` | API, built UI, Studio adapter, OBS bridge package, launchers and scripts | `scripts/maintenance/MAKE-PORTABLE-UPDATE.bat` then `UPDATE-PORTABLE.bat` |
 | Base runtime and models | `.portable-model-layer.json` | Embedded Python profiles, upstream engine code, model/checkpoint caches and tools | Rebuild or a separately validated base/model pack |
 
 The layer split is enforced by the app update's allowlist and file hashes.
@@ -60,7 +60,7 @@ An installed alpha 0.5.7 or earlier must receive the fixed updater through the
 pack entrypoint once: its root updater leaves the controller running and Windows
 can refuse to move `services/api`. Alpha 0.5.5 or earlier also accepts only the
 legacy six-BAT inventory and rejects a four-BAT update pack. For this update,
-create the numbered pack with `MAKE-PORTABLE-UPDATE.bat`, copy it
+create the numbered pack with `scripts/maintenance/MAKE-PORTABLE-UPDATE.bat`, copy it
 into `updates`, and click that pack's `APPLY-UPDATE.bat` once. It runs the
 updater shipped in the pack, removes the two verified legacy launchers, and
 installs the compatible root updater. After it succeeds, use the portable
@@ -81,7 +81,7 @@ Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
 ## Different machine
 
 1. If the development portable is not inside the source checkout, double-click
-   `MAKE-PORTABLE-UPDATE.bat` in the source checkout. The resulting folder path
+   `scripts/maintenance/MAKE-PORTABLE-UPDATE.bat` in the source checkout. The resulting folder path
    appears in its output; it is under `.scratch/portable-updates`.
 2. Copy that whole numbered folder into the portable machine's `updates` folder.
    Keep its original name and its `payload`, `app-update.json`, `VERSION.txt`

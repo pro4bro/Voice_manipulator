@@ -46,7 +46,7 @@ export function RuntimeMenuItems({ runtime, onAction }: RuntimeMenuItemsProps) {
       {foreign.length ? (
         <p className="runtime-menu-blocked" role="alert">
           {foreign.map((process) => `${process.label} (${process.port})`).join(", ")} đang bị
-          process khác giữ. Chạy <b>start-pro4bro.bat stop</b> rồi mở lại.
+          process khác giữ. Chạy <b>open-pro4bro-console.bat stop</b> rồi mở lại.
         </p>
       ) : null}
       <button disabled={busy || allRunning} onClick={() => void onAction("start")} role="menuitem" type="button">
