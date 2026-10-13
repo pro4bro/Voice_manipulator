@@ -193,6 +193,14 @@ export const api = {
     request<VoiceCollectionImport>(`/api/voice-collections/${collectionId}/entries/${entryId}/import`, { method: "POST", body: JSON.stringify({ projectId }) }),
   exportVoiceCollectionEntry: (collectionId: string, entryId: string) =>
     downloadFile(`/api/voice-collections/${collectionId}/entries/${entryId}/export`, `voice-entry-${entryId}.zip`),
+  exportSelectedCollectionVoices: (collectionId: string, entryIds: string[]) =>
+    request<{ cancelled: boolean; paths: string[] }>(`/api/voice-collections/${collectionId}/export-selected`, { method: "POST", body: JSON.stringify({ entryIds }) }),
+  importNativeCollectionVoices: (collectionId: string) =>
+    request<{ cancelled: boolean; entries: import("../domain/types").VoiceCollectionEntry[]; errors: string[] }>(`/api/voice-collections/${collectionId}/entries/import-native`, { method: "POST" }),
+  getCollectionVoicePreview: (collectionId: string, entryId: string) =>
+    request<import("../domain/types").CollectionVoicePreview>(`/api/voice-collections/${collectionId}/entries/${entryId}/preview`),
+  startCollectionVoicePreview: (collectionId: string, entryId: string) =>
+    request<import("../domain/types").CollectionVoicePreview>(`/api/voice-collections/${collectionId}/entries/${entryId}/preview`, { method: "POST" }),
   importVoiceCollectionPackage: (collectionId: string, file: File) => {
     const body = new FormData();
     body.append("file", file);

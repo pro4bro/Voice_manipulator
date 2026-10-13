@@ -4,6 +4,8 @@ import type { EngineStatus, Project, ProjectCreate, ThemeMode } from "../domain/
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../domain/listSelection";
 import { Icon } from "../ui/Icon";
 import { VoiceCollections } from "../modules/voice-collection/VoiceCollections";
+import { collectionProfileCount } from "../modules/voice-collection/collection-profiles";
+import { api } from "../api/client";
 
 interface ProjectHubProps {
   projects: Project[];
@@ -39,6 +41,12 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
   const [showCreate, setShowCreate] = useState(projects.length === 0);
   const [showDetails, setShowDetails] = useState(false);
   const [libraryPage, setLibraryPage] = useState<"projects" | "voices">("projects");
+  const [voiceProfileCount, setVoiceProfileCount] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    void api.listVoiceCollections().then((items) => { if (active) setVoiceProfileCount(collectionProfileCount(items)); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!menu) return undefined;
@@ -146,17 +154,17 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
           <div className="library-rail__title"><span>PROJECT LIBRARY</span><b>Local Workspace</b></div>
           <nav aria-label="Project library">
             <button className={libraryPage === "projects" ? "is-active" : ""} onClick={() => setLibraryPage("projects")} type="button"><Icon name="grid" /><span>All projects</span><b>{projects.length}</b></button>
-            <button className={libraryPage === "voices" ? "is-active" : ""} onClick={() => setLibraryPage("voices")} type="button"><Icon name="folder" /><span>Voice Collection</span></button>
+            <button aria-label="Voice Collection" className={libraryPage === "voices" ? "is-active" : ""} onClick={() => setLibraryPage("voices")} type="button"><Icon name="folder" /><span>Voice Collection</span><b title="Số profile trong các Collection">{voiceProfileCount ?? "…"}</b></button>
             <button disabled type="button"><Icon name="waveform" /><span>Quick recordings</span><small>SOON</small></button>
           </nav>
           <div className="library-location"><span>DEFAULT LOCATION</span><b title={defaultLocation}>{defaultLocation || "Đang tải..."}</b></div>
           <div className="library-engine"><span><i />LOCAL PROCESSING</span><p>Dữ liệu project và audio không rời khỏi máy.</p></div>
         </aside>
 
-        <section className="project-browser">
-          {libraryPage === "voices" ? <VoiceCollections /> : <>
+        <section className={`project-browser${libraryPage === "voices" ? " project-browser--voices" : ""}`}>
+          {libraryPage === "voices" ? <VoiceCollections onProfileCountChange={setVoiceProfileCount} /> : <>
           <header className="project-browser__header">
-            <div><span>LOCAL / PROJECTS</span><h1>Projects</h1><p>Mở lại phiên làm việc hoặc tạo một workspace mới.</p></div>
+            <div><h1>Projects</h1><p>Mở lại phiên làm việc hoặc tạo một workspace mới.</p></div>
             <div className="browser-tools">
               <label className="project-search"><Icon name="search" /><input aria-label="Tìm project" onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" value={query} /></label>
               <div className="view-toggle" aria-label="Kiểu hiển thị">

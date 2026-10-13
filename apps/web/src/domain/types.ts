@@ -298,6 +298,16 @@ export interface VoiceCollectionImport {
   catalog: TrainingCatalog;
 }
 
+export interface CollectionVoicePreview {
+  status: "missing" | "queued" | "running" | "ready" | "error" | "unsupported";
+  script: string;
+  duration: number | null;
+  audioUrl: string | null;
+  error: string | null;
+  trainingSeconds: number | null;
+  emotionSupport: string;
+}
+
 export interface EnvironmentNoiseProfile {
   id: string;
   name: string;

@@ -5,6 +5,17 @@ import { ProjectHub } from "./ProjectHub";
 import { api } from "../api/client";
 
 describe("ProjectHub", () => {
+  it("shows a count of unique archived profiles rather than models and removes the old project eyebrow", async () => {
+    const entry = { sourceProjectId: "source", speaker: { id: "speaker-1", name: "An" } };
+    const list = vi.spyOn(api, "listVoiceCollections").mockResolvedValue([
+      { id: "one", entries: [entry, entry] }, { id: "two", entries: [entry, { ...entry, speaker: { id: "speaker-2", name: "Bình" } }] },
+    ] as never);
+    try {
+      render(<ProjectHub projects={[{ id: "project-1", name: "Source", projectPath: "projects/Source", updatedAt: "2026-10-09" } as never]} busy={false} defaultLocation="projects" engine={null} error={null} onCreate={vi.fn()} onOpen={vi.fn()} onOpenExisting={vi.fn()} onPickLocation={vi.fn()} onRetry={vi.fn()} onRevealProject={vi.fn()} onRemoveProject={vi.fn()} theme="dark" onToggleTheme={vi.fn()} />);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Voice Collection" })).toHaveTextContent("2"));
+      expect(screen.queryByText("LOCAL / PROJECTS")).not.toBeInTheDocument();
+    } finally { list.mockRestore(); }
+  });
   it("opens the functioning Voice Collection browser and returns to projects", async () => {
     const list = vi.spyOn(api, "listVoiceCollections").mockResolvedValue([]);
     const schema = vi.spyOn(api, "getOmniVoiceProfileSchema").mockResolvedValue({ languages: [], facets: [] } as never);
