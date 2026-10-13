@@ -65,7 +65,9 @@ import { generatorForEngine } from "../modules/voice-generator/VoiceGenerator";
 import { resolveRowVoice, rowsFromOutput, scriptReadiness, voiceCategory as categoryForVoice, voicesInCategory, type VoiceCategory } from "../domain/voiceScript";
 import { isLive, newestBatch } from "../domain/trainingBatch";
 import { WorkspaceStatusBar } from "../modules/workspace-status/WorkspaceStatusBar";
-import type { CapturedAudio } from "../modules/recorder/Recorder";
+import type { CapturedAudio, RecordingSlotState } from "../modules/recorder/Recorder";
+import type { PendingObsRecordingSlot } from "../modules/recorder/ObsCaptureController";
+import type { PendingVoiceOutput } from "../modules/voice-output/VoiceOutputPanel";
 import type { ActiveTake } from "../modules/timeline/Timeline";
 import { workspaceManifest } from "../pages/workspaceManifest";
 import { mergeEvents } from "../domain/activity";
@@ -203,6 +205,8 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [pendingLocalMedia, setPendingLocalMedia] = useState<PendingLocalMedia | null>(null);
   const [pendingNativeMediaPaths, setPendingNativeMediaPaths] = useState<string[]>([]);
   const [pendingMediaImports, setPendingMediaImports] = useState<PendingMediaImportRow[]>([]);
+  const [pendingObsRecording, setPendingObsRecording] = useState<PendingObsRecordingSlot | null>(null);
+  const capturedMediaFailures = useRef(new Map<string, CapturedAudio>());
   const activeMediaProjectId = useRef(project.id);
   const mediaImportQueue = useRef<Promise<void>>(Promise.resolve());
   const failedMediaImports = useRef(new Map<string, {
@@ -215,7 +219,39 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     activeMediaProjectId.current = project.id;
     setPendingNativeMediaPaths([]);
     setPendingMediaImports([]);
+    setPendingObsRecording(null);
+    capturedMediaFailures.current.clear();
   }, [project.id]);
+  const pendingObsImportIds = pendingMediaImports.filter((row) => row.obsSessionId && row.status !== "error")
+    .map((row) => row.obsSessionId!).sort().join("\0");
+  useEffect(() => {
+    if (!pendingObsImportIds) return;
+    const ids = new Set(pendingObsImportIds.split("\0"));
+    let active = true;
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const sessions = (await api.listObsSessions(project.id)).filter((item) => ids.has(item.id));
+        if (!active) return;
+        const ready = sessions.filter((item) => item.status === "ready" && item.recordingAssetId);
+        const assets = ready.length ? await listProjectMediaWithLifecycleFence(project.id) : null;
+        if (!active) return;
+        const completed = new Set(ready.filter((item) => assets?.some((asset) => asset.id === item.recordingAssetId)).map((item) => item.id));
+        if (assets && completed.size) setMediaAssets(assets);
+        setPendingMediaImports((current) => current.filter((row) => !row.obsSessionId || !completed.has(row.obsSessionId))
+          .map((row) => {
+            const failed = sessions.find((item) => item.id === row.obsSessionId && item.status === "error");
+            return failed ? { ...row, status: "error", detail: failed.error || "Không nhập được bản ghi OBS." } : row;
+          }));
+      } catch { /* A reconnect keeps the slot pending; no artifact is invented. */ }
+      finally { refreshing = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [project.id, pendingObsImportIds]);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [obsTimelineActive, setObsTimelineActive] = useState(false);
   const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
@@ -265,6 +301,8 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   });
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
   const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
+  const [pendingVoiceOutput, setPendingVoiceOutput] = useState<PendingVoiceOutput | null>(null);
+  const generationStartInFlight = useRef(false);
   const [voiceChangers, setVoiceChangers] = useState<TrainingModelOption[]>([]);
   const [changerPreflight, setChangerPreflight] = useState<VoiceChangerPreflight | null>(null);
   const [changerStatus, setChangerStatus] = useState<VoiceChangerStatus | null>(null);
@@ -924,18 +962,20 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     else setObsSeekRequest(null);
   }
 
-  async function openObsAsset(assetId: string) {
+  async function openObsAsset(assetId: string, requireReceipt = false) {
     const revision = ++mediaOpenRevision.current;
     try {
       const assets = await listProjectMediaWithLifecycleFence(project.id);
-      if (revision !== mediaOpenRevision.current) return;
-      setMediaAssets(assets);
       const asset = assets.find((item) => item.id === assetId);
       if (!asset) throw new Error("Không tìm thấy track OBS trong Media Pool.");
+      if (revision !== mediaOpenRevision.current && !requireReceipt) return;
+      setMediaAssets(assets);
+      if (revision !== mediaOpenRevision.current) return;
       flushCurrentMediaDraft();
       applyMediaAsset(asset);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không mở được track OBS.");
+      if (requireReceipt) throw error;
     }
   }
 
@@ -1190,11 +1230,17 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     setGenerating(job.status === "running");
     if ((job.status === "complete" || job.status === "stopped") && job.output) {
       const output = job.output;
+      setPendingVoiceOutput(null);
       setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
       openVoiceOutput(output, false);
       setNotice(`${job.status === "stopped" ? "Đã dừng sau khi đọc" : "Đã đọc"} ${job.done} đoạn${job.reused ? ` (${job.reused} đoạn dùng lại)` : ""} · ${output.duration.toFixed(1)} giây; file nằm trong Voice Output.`);
-    } else if (job.status !== "running") {
-      setNotice(job.error ?? job.message ?? "Đọc Script đã dừng.");
+    } else {
+      setPendingVoiceOutput((current) => current ? {
+        ...current, status: job.status === "running" ? "running" : job.status === "cancelled" ? "cancelled" : "error",
+        completedRows: job.done, totalRows: job.total,
+        detail: job.error ?? job.message ?? undefined,
+      } : null);
+      if (job.status !== "running") setNotice(job.error ?? job.message ?? "Đọc Script đã dừng.");
     }
   }
 
@@ -1433,9 +1479,24 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
   }
 
+  function updateRecordingSlot(slot: RecordingSlotState) {
+    const row: PendingMediaImportRow = { ...slot, origin: "record", retryable: false };
+    updatePendingMediaSlot(row);
+  }
+
+  function updatePendingMediaSlot(row: PendingMediaImportRow) {
+    setPendingMediaImports((current) => current.some((item) => item.id === row.id)
+      ? current.map((item) => item.id === row.id ? row : item) : [...current, row]);
+  }
+
   async function processCapturedAudio(captured: CapturedAudio) {
+    const projectId = project.id;
+    const slotId = captured.captureId ?? `capture-${crypto.randomUUID()}`;
+    capturedMediaFailures.current.set(slotId, captured);
+    updateRecordingSlot({ id: slotId, name: captured.file.name, status: "saving" });
     setTake(captured);
     setMediaBusy(true);
+    let savedReceipt: ProjectMediaAsset | null = null;
     try {
       // A recording is an ordinary file that happens to arrive with a live
       // transcript. Running STT on it unasked spent GPU time on takes the user
@@ -1447,7 +1508,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       const assetReceipt = guided
         ? await reading.saveTake(captured)
         : (await api.importProjectMedia(project.id, captured.file, "record", captured.realtimeText, false, false, null)).asset;
-      if (!assetReceipt) return;
+      if (!assetReceipt) throw new Error("Chưa lưu được bản thu. Có thể thử lưu lại audio đang giữ trong phiên này.");
+      savedReceipt = assetReceipt;
+      if (activeMediaProjectId.current !== projectId) return;
       flushCurrentMediaDraft();
       let asset = assetReceipt;
       if (!guided && captured.words.length) {
@@ -1456,9 +1519,26 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }
       storeMediaAsset(asset);
       applyMediaAsset(asset);
+      capturedMediaFailures.current.delete(slotId);
+      setPendingMediaImports((current) => current.filter((item) => item.id !== slotId));
       setNotice(guided ? "Đã lưu bản thu theo thẻ, Speaker và cảm xúc. Tiến độ phiên đọc đã lưu." : "Bản thu đã vào Media Pool cùng live transcript. Tick STT rồi bấm Speech to text khi muốn chạy nhận dạng kỹ.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không xử lý được audio");
+      const detail = error instanceof Error ? error.message : "Không xử lý được audio";
+      if (activeMediaProjectId.current === projectId) {
+        if (savedReceipt) {
+          // The audio already exists. Keep that receipt if annotating it fails;
+          // retrying the upload would create a second footage for the same take.
+          storeMediaAsset(savedReceipt);
+          applyMediaAsset(savedReceipt);
+          capturedMediaFailures.current.delete(slotId);
+          setPendingMediaImports((current) => current.filter((item) => item.id !== slotId));
+          setNotice(`Đã lưu audio; chưa cập nhật được transcript: ${detail}`);
+        } else {
+          setPendingMediaImports((current) => current.map((item) => item.id === slotId
+            ? { ...item, status: "error", detail, retryable: true } : item));
+          setNotice(detail);
+        }
+      }
     } finally {
       setMediaBusy(false);
     }
@@ -1537,7 +1617,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           setPendingMediaImports((current) => [...current, { id: probeId, name: path.split(/[\\/]/).pop() ?? "media", status: "importing", detail: "Đang đọc thông tin file và các track…" }]);
           let inspection;
           try { inspection = await api.inspectLocalMediaTracks(projectId, path); }
-          finally { if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.filter((row) => row.id !== probeId)); }
+          catch (error) {
+            if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.map((row) => row.id === probeId
+              ? { ...row, status: "error", detail: error instanceof Error ? error.message : "Không đọc được thông tin file" } : row));
+            throw error;
+          }
+          if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.filter((row) => row.id !== probeId));
           if (activeMediaProjectId.current !== projectId) return;
           if (inspection.tracks.length && (inspection.tracks.length > 1 || extension === "mkv")) {
             setPendingLocalMedia({
@@ -1570,6 +1655,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   function retryPendingMediaImport(id: string) {
+    const captured = capturedMediaFailures.current.get(id);
+    if (captured) { void processCapturedAudio({ ...captured, captureId: id }); return; }
     const job = failedMediaImports.current.get(id);
     if (!job) return;
     setPendingMediaImports((current) => current.map((row) => row.id === id
@@ -1617,6 +1704,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     const streamIndexes = pending.tracks.filter((track) => track.imported).map((track) => track.streamIndex);
     const transcribeStreamIndexes = pending.tracks.filter((track) => track.imported && track.transcribe).map((track) => track.streamIndex);
     if (!streamIndexes.length) { setNotice("Hãy chọn ít nhất một track để import."); return; }
+    setPendingLocalMedia((current) => current ? { ...current, processing: true, error: undefined } : current);
     setMediaBusy(true);
     try {
       const cacheLocal = mode === "import" ? cacheChoice : true;
@@ -1632,7 +1720,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         ? `Đang theo dõi MKV với ${streamIndexes.length} track${transcribeStreamIndexes.length ? `; STT nhanh chạy cho ${transcribeStreamIndexes.length} track` : ""}. Bấm Speech to text để bắt đầu STT kỹ. Khi OBS dừng, chọn Finish MKV để hoàn tất file và xử lý nốt hàng đợi đã bật.`
         : `Đã import ${streamIndexes.length} track. Các track đã tick STT sẵn sàng trong hàng chờ.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Không import được track đã chọn");
+      const detail = error instanceof Error ? error.message : "Không import được track đã chọn";
+      setPendingLocalMedia((current) => current?.sourcePath === pending.sourcePath ? { ...current, processing: false, error: detail } : current);
+      setNotice(detail);
     } finally {
       setMediaBusy(false);
     }
@@ -2100,12 +2190,20 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } finally { setAiReviewBusy(false); }
   }
   async function generateVoice() {
+    if (generationStartInFlight.current || voiceScriptJobRef.current?.status === "running") return;
     const offered = voicesInCategory(projectVoices, voiceCategory);
     const readiness = scriptReadiness(voiceScriptRows, offered);
     if (readiness.problem) {
       setNotice(readiness.problem);
       return;
     }
+    generationStartInFlight.current = true;
+    const pendingId = `generation-${crypto.randomUUID()}`;
+    setPendingVoiceOutput({ id: pendingId, name: `Script · ${readiness.rows.length} đoạn`,
+      text: readiness.rows.map((row) => row.text).join("\n"), status: "starting", totalRows: readiness.rows.length });
+    setGenerating(true);
+    voiceScriptJobRef.current = null;
+    setVoiceScriptJob(null);
     // One generator per engine among the voices the rows use, each with the
     // values set in the panel, and reading speed from Control Rack where the
     // generator has such a setting.
@@ -2122,20 +2220,24 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       const effective = Object.fromEntries(generator.parameters.map((spec) => [spec.key, parameterValue(spec, parameters[generator.id])]));
       rowParameters[row.id] = { ...effective, language: effective.language || voice.language || null, speed: effective.speed ?? null };
     }
-    const choice = await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
-      completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
-    if (!choice) return;
-    const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
-    // No blocking overlay: the Script marks the row being read and the Voice
-    // Generator panel shows how many are done.
-    setGenerating(true);
-    voiceScriptJobRef.current = null;
-    setVoiceScriptJob(null);
     try {
+      const choice = await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
+        completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
+      if (!choice) {
+        setPendingVoiceOutput(null);
+        setGenerating(false);
+        return;
+      }
+      const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
+      setPendingVoiceOutput((current) => current ? { ...current, text: selectedRows.map((row) => row.text).join("\n"), totalRows: selectedRows.length } : current);
       acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: selectedRows, parameters, forceRegenerate: choice.rerunAll }));
     } catch (error) {
       setGenerating(false);
-      setNotice(error instanceof Error ? error.message : "Không bắt đầu đọc Script được");
+      const detail = error instanceof Error ? error.message : "Không bắt đầu đọc Script được";
+      setPendingVoiceOutput((current) => current?.id === pendingId ? { ...current, status: "error", detail } : current);
+      setNotice(detail);
+    } finally {
+      generationStartInFlight.current = false;
     }
   }
 
@@ -2419,6 +2521,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       if (!archived) {
         throw new Error(`OBS archive ${recordingId} is not in Media Pool yet`);
       }
+      setPendingObsRecording((current) => current?.recordingId === recordingId ? null : current);
       setMediaAssets((current) => {
         const known = new Set(current.map((asset) => asset.id));
         const added = assets.filter((asset) => !known.has(asset.id));
@@ -2457,6 +2560,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onVoiceScriptRowsChange: setVoiceScriptRows,
     voiceCategory,
     voiceScriptJob,
+    pendingVoiceOutput,
+    onDismissPendingVoiceOutput: (id) => setPendingVoiceOutput((current) => current?.id === id && current.status !== "starting" && current.status !== "running" ? null : current),
     onExportVoiceOutput: (output, mode) => void exportVoiceOutput(output, mode),
     voiceChangers,
     changerPreflight,
@@ -2518,6 +2623,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onSpeedChange: setSpeed,
     onGainChange: (value) => setGain(Math.max(-96, Math.min(96, value))),
     onTakeChange: (captured) => void processCapturedAudio(captured),
+    onRecordingSlotChange: updateRecordingSlot,
+    pendingObsRecording,
+    onObsRecordingSlotChange: setPendingObsRecording,
     onImportMedia: (choices) => void importMedia(choices),
     onImportLocalMedia: () => void importLocalMedia(),
     pendingLocalMedia,
@@ -2526,6 +2634,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onConfirmNativeMediaImport: confirmNativeMediaImport,
     onCancelNativeMediaImport: cancelNativeMediaImport,
     onRetryPendingImport: retryPendingMediaImport,
+    onDismissPendingImport: (id) => {
+      const row = pendingMediaImports.find((item) => item.id === id);
+      if (!row || row.status !== "error" && row.status !== "choosing") return;
+      capturedMediaFailures.current.delete(id);
+      failedMediaImports.current.delete(id);
+      setPendingMediaImports((current) => current.filter((item) => item.id !== id));
+    },
     onPendingLocalTrackChange: changePendingLocalTrack,
     onConfirmPendingLocalMedia: (mode, sttSegmentSeconds, cacheLocal) => void confirmPendingLocalMedia(mode, sttSegmentSeconds, cacheLocal),
     onCancelPendingLocalMedia: () => setPendingLocalMedia(null),
@@ -2535,7 +2650,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onSelectAsset: selectMediaAsset,
     onClearMediaSelection: clearMediaSelection,
     onOpenObsAsset: (assetId) => void openObsAsset(assetId),
-    onObsImportReady: (assetId) => void openObsAsset(assetId),
+    onObsImportReady: (assetId) => openObsAsset(assetId, true),
+    onObsImportSlotChange: updatePendingMediaSlot,
+    onObsImportSlotRemoved: (id) => setPendingMediaImports((current) => current.filter((item) => item.id !== id)),
     onRecordingPreview: setRecordingPreview,
     onLiveTranscript: handleLiveTranscript,
     onAssetTimelineStateChange: async (assetId, state) => { if (blockedByRecycleBin()) throw new Error("Footage đang ở Recycle Bin."); if (!await updateTimelineEdits(state.removedRanges, undefined, assetId, state.workingRange, state.cutPoints)) throw new Error("Không lưu được vùng làm việc."); },
@@ -2580,7 +2697,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

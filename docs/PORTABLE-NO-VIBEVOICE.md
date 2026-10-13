@@ -26,6 +26,19 @@ VibeVoice remains in the model lists with an unavailable/not-installed status;
 select an installed model for actual processing. No model should be reported as
 successful until its output artifact exists.
 
+## Phản hồi khi thêm footage hoặc Voice Output
+
+Import, thu micro/hệ thống, Start OBS và Generate Voice hiện slot ngay khi bắt
+đầu thao tác. Slot có animation và trạng thái đang mở nguồn, đang thu, đang lưu
+hoặc đang tạo voice. Khi hệ thống bật Reduce motion, trạng thái vẫn hiện nhưng
+animation tắt. Slot chờ xác nhận import đứng yên; lỗi cũng dừng animation.
+
+Slot chờ chỉ trở thành footage/voice sử dụng được khi có file kết quả đã lưu.
+Nếu lưu bản thu bị lỗi, bấm **Thử lại** trên slot đó để dùng lại audio còn giữ
+trong phiên hiện tại. Không đóng app trước khi lưu lại. Lỗi quyền microphone
+cần cấp quyền/chọn nguồn rồi thu lại. Voice Output lỗi/đã hủy có thể ẩn trạng
+thái; file thành công vẫn được quản lý bằng các thao tác Voice Output hiện có.
+
 ## Move and verify
 
 1. Copy the **whole** folder to a 64-bit Windows 10/11 machine with enough free

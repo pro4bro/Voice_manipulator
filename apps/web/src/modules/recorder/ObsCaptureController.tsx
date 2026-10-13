@@ -4,11 +4,33 @@ import { api } from "../../api/client";
 import type { ObsLiveLinkChannelCapture, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTriggerPolicy } from "../../domain/types";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 
+export interface PendingObsRecordingSlot {
+  id: string;
+  name: string;
+  status: "starting" | "error";
+  recordingId?: string;
+  detail?: string;
+}
+
 interface Props {
   projectId: string;
   onOpenAsset?: (assetId: string) => void;
   onOpenRecording?: (recordingId: string) => void;
   onArchiveReady?: (recordingId: string) => Promise<void>;
+  onPendingRecordingChange?: (slot: PendingObsRecordingSlot) => void;
+}
+
+interface StartAttempt {
+  slot: PendingObsRecordingSlot;
+  terminalError: boolean;
+  resolved: boolean;
+}
+
+let pendingRecordingSequence = 0;
+
+function nextPendingRecordingId() {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return uuid ?? `obs-start-${Date.now()}-${++pendingRecordingSequence}`;
 }
 
 const triggerChoices: Array<{ key: keyof ObsLiveLinkTriggerPolicy; label: string }> = [
@@ -23,7 +45,7 @@ const captureLabels: Record<ObsLiveLinkChannelCapture["state"], string> = {
   pending: "Waiting for PCM", receiving: "Recording", stalled: "PCM stalled",
 };
 
-export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, onArchiveReady }: Props) {
+export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, onArchiveReady, onPendingRecordingChange }: Props) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
   const [busy, setBusy] = useState(false);
@@ -34,6 +56,32 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
   const actionInFlight = useRef(false);
   const refreshedArchives = useRef(new Set<string>());
   const autoRetriedArchives = useRef(new Set<string>());
+  const onPendingRecordingChangeRef = useRef(onPendingRecordingChange);
+  onPendingRecordingChangeRef.current = onPendingRecordingChange;
+  const startAttempt = useRef<StartAttempt | null>(null);
+
+  function emitPendingRecording(slot: PendingObsRecordingSlot) {
+    onPendingRecordingChangeRef.current?.(slot);
+  }
+
+  function notifyObsRecordingsChanged() {
+    window.dispatchEvent(new Event("pro4bro:obs-recordings-changed"));
+  }
+
+  function resolvePendingStart(recording: ObsLiveLinkStatus["appRecording"]) {
+    const attempt = startAttempt.current;
+    if (!attempt || attempt.terminalError || attempt.resolved || !recording || recording.projectId !== projectId ||
+        (recording.status !== "recording" && recording.status !== "paused")) return;
+    const resolvedSlot: PendingObsRecordingSlot = {
+      ...attempt.slot,
+      name: recording.displayName || attempt.slot.name,
+      recordingId: recording.recordingId,
+    };
+    attempt.slot = resolvedSlot;
+    attempt.resolved = true;
+    emitPendingRecording(resolvedSlot);
+    notifyObsRecordingsChanged();
+  }
 
   useEffect(() => {
     let active = true;
@@ -45,6 +93,7 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
         ]);
         if (active && !actionInFlight.current && revision === actionRevision.current) {
           setStatus(next); setJournals(records); setError(null);
+          resolvePendingStart(next.appRecording);
           for (const journal of records) {
             const recording = journal.recording;
             if (recording.projectId !== projectId || recording.archiveStatus !== "ready" ||
@@ -72,11 +121,39 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
   }, [projectId]);
 
   async function act(action: "start" | "pause" | "resume" | "stop") {
+    const attempt: StartAttempt | null = action === "start" ? {
+      slot: {
+        id: nextPendingRecordingId(),
+        name: `OBS LiveLink · ${new Date().toLocaleString()}`,
+        status: "starting" as const,
+      },
+      terminalError: false,
+      resolved: false,
+    } : null;
+    if (attempt) {
+      startAttempt.current = attempt;
+      emitPendingRecording(attempt.slot);
+    }
     actionInFlight.current = true;
     actionRevision.current += 1;
     setBusy(true);
-    try { setStatus(await api.actOnObsLiveLinkRecording(action)); setError(null); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "OBS không áp dụng lệnh thu."); }
+    try {
+      const next = await api.actOnObsLiveLinkRecording(action);
+      setStatus(next); setError(null);
+      if (attempt && startAttempt.current === attempt) {
+        notifyObsRecordingsChanged();
+        resolvePendingStart(next.appRecording);
+      }
+    }
+    catch (reason) {
+      const detail = reason instanceof Error ? reason.message : "OBS không áp dụng lệnh thu.";
+      setError(detail);
+      if (attempt && startAttempt.current === attempt) {
+        attempt.terminalError = true;
+        attempt.slot = { ...attempt.slot, status: "error", detail };
+        emitPendingRecording(attempt.slot);
+      }
+    }
     finally { actionRevision.current += 1; actionInFlight.current = false; setBusy(false); }
   }
 

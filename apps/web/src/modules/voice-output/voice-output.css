@@ -1,0 +1,94 @@
+.voice-output-pending {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  background: var(--surface-raised);
+}
+
+.voice-output-pending__indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.voice-output-pending.is-working .voice-output-pending__indicator {
+  animation: voice-output-working 1s ease-in-out infinite alternate;
+}
+
+.voice-output-pending.is-error .voice-output-pending__indicator {
+  background: var(--danger);
+}
+
+.voice-output-pending.is-cancelled .voice-output-pending__indicator {
+  background: var(--text-muted);
+}
+
+.voice-output-pending__copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.voice-output-pending__copy strong,
+.voice-output-pending__copy small,
+.voice-output-pending__copy [role="status"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-output-pending__copy strong {
+  color: var(--text);
+  font-size: calc(9px * var(--font-scale));
+}
+
+.voice-output-pending__copy small {
+  color: var(--text-subtle);
+  font-size: calc(8px * var(--font-scale));
+}
+
+.voice-output-pending__copy [role="status"] {
+  color: var(--accent);
+  font-size: calc(8px * var(--font-scale));
+}
+
+.voice-output-pending.is-error .voice-output-pending__copy [role="status"] {
+  color: var(--danger);
+}
+
+.voice-output-pending.is-cancelled .voice-output-pending__copy [role="status"] {
+  color: var(--text-muted);
+}
+
+.voice-output-pending__copy .voice-output-pending__detail {
+  color: var(--text-muted);
+}
+
+.voice-output-pending__dismiss {
+  padding: 2px 6px;
+  color: var(--text-muted);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.voice-output-pending__dismiss:hover {
+  color: var(--text);
+  background: var(--soft-fill);
+}
+
+@keyframes voice-output-working {
+  from { opacity: .4; transform: scale(.75); }
+  to { opacity: 1; transform: scale(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-output-pending.is-working .voice-output-pending__indicator {
+    animation: none;
+  }
+}

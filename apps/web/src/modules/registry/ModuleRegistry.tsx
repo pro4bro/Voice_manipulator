@@ -12,12 +12,13 @@ import { MediaPool } from "../media-pool/MediaPool";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import type { MediaBatchAction, PendingMediaImportRow } from "../media-pool/MediaPool";
 import { RecentTakes } from "../recent-takes/RecentTakes";
-import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
+import { VoiceOutputPanel, type PendingVoiceOutput } from "../voice-output/VoiceOutputPanel";
 import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
 import { ObsCapture } from "../obs-capture/ObsCapture";
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
-import type { CapturedAudio, ReadingSessionView } from "../recorder/Recorder";
+import type { CapturedAudio, ReadingSessionView, RecordingSlotState } from "../recorder/Recorder";
+import type { PendingObsRecordingSlot } from "../recorder/ObsCaptureController";
 import type { ScriptDocumentChange } from "../script/script-document-actions";
 import { ScriptEditor } from "../script/ScriptEditor";
 import { ObsLiveLinkScript } from "../script/ObsLiveLinkScript";
@@ -87,6 +88,8 @@ export interface StudioContext {
   projectId: string;
   projectName: string;
   voiceOutputs: import("../../domain/types").VoiceOutput[];
+  pendingVoiceOutput?: PendingVoiceOutput | null;
+  onDismissPendingVoiceOutput?: (id: string) => void;
   activeOutputId: string | null;
   onOpenVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
   onDeleteVoiceOutput: (output: import("../../domain/types").VoiceOutput) => void;
@@ -144,6 +147,9 @@ export interface StudioContext {
   onTimelineStateChange: (state: TimelineEditState) => void;
   onAssetTimelineStateChange: (assetId: string, state: TimelineEditState) => Promise<void>;
   onTakeChange: (take: CapturedAudio) => void;
+  onRecordingSlotChange?: (slot: RecordingSlotState) => void;
+  pendingObsRecording?: PendingObsRecordingSlot | null;
+  onObsRecordingSlotChange?: (slot: PendingObsRecordingSlot) => void;
   onImportMedia: (choices: MediaImportChoice[]) => void;
   onImportLocalMedia: () => void;
   pendingNativeMediaPaths: string[];
@@ -151,6 +157,7 @@ export interface StudioContext {
   onCancelNativeMediaImport: () => void;
   pendingMediaImports: PendingMediaImportRow[];
   onRetryPendingImport: (id: string) => void;
+  onDismissPendingImport?: (id: string) => void;
   pendingLocalMedia: PendingLocalMedia | null;
   onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void;
   onConfirmPendingLocalMedia: (mode: "import" | "follow", sttSegmentSeconds?: number, cacheLocal?: boolean) => void;
@@ -161,7 +168,9 @@ export interface StudioContext {
   onSelectAsset: (assetId: string) => void;
   onClearMediaSelection: () => void;
   onOpenObsAsset: (assetId: string) => void;
-  onObsImportReady: (assetId: string) => void;
+  onObsImportReady: (assetId: string) => void | Promise<void>;
+  onObsImportSlotChange?: (slot: PendingMediaImportRow) => void;
+  onObsImportSlotRemoved?: (id: string) => void;
   onRecordingPreview: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript: (text: string, active: boolean) => void;
   onToggleTraining: (assetId: string, selected: boolean) => void;
@@ -235,7 +244,9 @@ function mediaPoolProps(context: StudioContext) {
     onConfirmNativeMediaImport: context.onConfirmNativeMediaImport,
     onCancelNativeMediaImport: context.onCancelNativeMediaImport,
     pendingMediaImports: context.pendingMediaImports,
+    pendingObsRecording: context.pendingObsRecording,
     onRetryPendingImport: context.onRetryPendingImport,
+    onDismissPendingImport: context.onDismissPendingImport,
     pendingLocalMedia: context.workflow === "voice-training" ? null : context.pendingLocalMedia,
     onPendingLocalTrackChange: context.onPendingLocalTrackChange,
     onConfirmPendingLocalMedia: context.onConfirmPendingLocalMedia,
@@ -336,9 +347,9 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder readingSpeakers={context.trainingCatalog.speakers} readingPending={context.readingPending} onRetryReadingTake={context.onRetryReadingTake} onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder onRecordingSlotChange={context.onRecordingSlotChange} onObsRecordingSlotChange={context.onObsRecordingSlotChange} readingSpeakers={context.trainingCatalog.speakers} readingPending={context.readingPending} onRetryReadingTake={context.onRetryReadingTake} onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "obs-capture":
-      return <ObsCapture onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
+      return <ObsCapture onImportSlotChange={context.onObsImportSlotChange} onImportSlotRemoved={context.onObsImportSlotRemoved} onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
         return <ObsLiveLinkTimeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} onRecordingIdChange={context.onObsTimelineRecordingChange}
@@ -390,7 +401,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "recent-takes":
       return <RecentTakes />;
     case "voice-output":
-      return <VoiceOutputPanel activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
+      return <VoiceOutputPanel pendingOutput={context.pendingVoiceOutput} onDismissPendingOutput={context.onDismissPendingVoiceOutput} activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onCategoryChange={context.onVoiceCategoryChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {

@@ -5,6 +5,17 @@ import type { SpeakerProfile, VoiceOutput, VoiceOutputExportMode } from "../../d
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "../../ui/list-canvas.css";
+import "./voice-output.css";
+
+export interface PendingVoiceOutput {
+  id: string;
+  name: string;
+  text: string;
+  status: "starting" | "running" | "error" | "cancelled";
+  detail?: string;
+  completedRows?: number;
+  totalRows?: number;
+}
 
 interface VoiceOutputPanelProps {
   outputs: VoiceOutput[];
@@ -14,6 +25,8 @@ interface VoiceOutputPanelProps {
   onExport?: (output: VoiceOutput, mode: VoiceOutputExportMode) => void;
   onDelete: (output: VoiceOutput) => void;
   onDeleteMany?: (outputs: VoiceOutput[]) => void;
+  pendingOutput?: PendingVoiceOutput | null;
+  onDismissPendingOutput?: (id: string) => void;
 }
 
 function clock(seconds: number) {
@@ -25,13 +38,15 @@ function clock(seconds: number) {
  * Speech made in Voice Manipulator. Kept out of Media Pool on purpose: Media
  * Pool is source material for STT and training, this is what came out.
  */
-export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onExport, onDelete, onDeleteMany }: VoiceOutputPanelProps) {
+export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onExport, onDelete, onDeleteMany, pendingOutput, onDismissPendingOutput }: VoiceOutputPanelProps) {
   // Deleting removes the file for good, so it takes a second, deliberate click.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const ids = outputs.map((output) => output.id);
   const selected = reconcileListSelection(selection, ids).ids;
+  const visiblePendingOutput = pendingOutput && !outputs.some((output) => output.id === pendingOutput.id) ? pendingOutput : null;
+  const outputCount = outputs.length + (visiblePendingOutput ? 1 : 0);
   useEffect(() => setSelection((current) => reconcileListSelection(current, ids)), [outputs]);
   const colorOf = (id: string) => speakers.find((speaker) => speaker.id === id)?.color;
 
@@ -49,11 +64,21 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
   const selectedOutputs = outputs.filter((output) => selected.includes(output.id));
 
   return (
-    <ModuleFrame className="voice-output-module" eyebrow="GENERATED SPEECH" index="VO" title="Voice Output" action={<span className="voice-output-count">{outputs.length}</span>}>
-      {outputs.length ? (
+    <ModuleFrame className="voice-output-module" eyebrow="GENERATED SPEECH" index="VO" title="Voice Output" action={<span className="voice-output-count">{outputCount}</span>}>
+      {outputs.length || visiblePendingOutput ? (
         <div aria-label="Danh sách Voice Output" className="voice-output-list-region" onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("li, button, input")) { setSelection({ ids: [], anchorId: null }); setConfirming(null); setExporting(null); } }} onKeyDown={selectAll} role="region" tabIndex={0}>
         {selected.length ? <div className="voice-output-bulk-actions"><span>{selected.length} đã chọn</span><button className="voice-output-delete is-confirming" onClick={() => setConfirming("bulk")} type="button">Xoá đã chọn</button>{confirming === "bulk" ? <><span role="status">Xoá {selected.length} Voice Output cùng file âm thanh?</span><button onClick={() => { setConfirming(null); if (onDeleteMany) onDeleteMany(selectedOutputs); else selectedOutputs.forEach(onDelete); setSelection({ ids: [], anchorId: null }); }} type="button">Xác nhận xoá {selected.length}</button><button onClick={() => setConfirming(null)} type="button">Huỷ</button></> : null}</div> : null}
         <ul className="voice-output-list">
+          {visiblePendingOutput ? <li aria-busy={visiblePendingOutput.status === "starting" || visiblePendingOutput.status === "running"} aria-label={visiblePendingOutput.name} className={`voice-output-pending ${visiblePendingOutput.status === "starting" || visiblePendingOutput.status === "running" ? "is-working" : `is-${visiblePendingOutput.status}`}`} key={visiblePendingOutput.id}>
+            <span aria-hidden="true" className="voice-output-pending__indicator" />
+            <div className="voice-output-pending__copy">
+              <strong>{visiblePendingOutput.name}</strong>
+              <small>{visiblePendingOutput.text}</small>
+              <span aria-live="polite" role="status">{visiblePendingOutput.status === "error" ? "Không thể tạo voice" : visiblePendingOutput.status === "cancelled" ? "Đã huỷ" : `Đang tạo voice${visiblePendingOutput.completedRows !== undefined && visiblePendingOutput.totalRows !== undefined ? ` · ${visiblePendingOutput.completedRows}/${visiblePendingOutput.totalRows} dòng` : ""}`}</span>
+              {visiblePendingOutput.detail ? <small className="voice-output-pending__detail">{visiblePendingOutput.detail}</small> : null}
+            </div>
+            {onDismissPendingOutput && visiblePendingOutput.status !== "starting" && visiblePendingOutput.status !== "running" ? <button aria-label="Ẩn trạng thái" className="voice-output-pending__dismiss" onClick={() => onDismissPendingOutput(visiblePendingOutput.id)} type="button">×</button> : null}
+          </li> : null}
           {outputs.map((output) => (
             <li className={`${output.id === activeOutputId ? "is-active" : ""} ${selected.includes(output.id) ? "is-selected" : ""}`} key={output.id}>
               <button aria-label={`Chọn ${output.name}`} aria-pressed={selected.includes(output.id)} className="voice-output-select" onClick={(event) => select(event, output.id)} type="button">{selected.includes(output.id) ? "✓" : "□"}</button>
@@ -77,6 +102,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
               </div> : null}
             </li>
           ))}
+
         </ul>
         </div>
       ) : (

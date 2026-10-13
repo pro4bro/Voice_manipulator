@@ -5,11 +5,14 @@ import { selectListItem } from "../../domain/listSelection";
 import type { ObsCaptureSession, ObsLiveCaptionQuality, ObsLiveSession, ObsRecordingInspection, ObsSessionSubtitleStatus, ObsTrackSource } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { ObsLiveLinkMixer } from "./ObsLiveLinkMixer";
+import type { PendingMediaImportRow } from "../media-pool/MediaPool";
 
 interface ObsCaptureProps {
   projectId: string;
   onOpenAsset: (assetId: string) => void;
-  onImportReady: (assetId: string) => void;
+  onImportReady: (assetId: string) => void | Promise<void>;
+  onImportSlotChange?: (slot: PendingMediaImportRow) => void;
+  onImportSlotRemoved?: (slotId: string) => void;
 }
 
 function messageFrom(reason: unknown, fallback: string): string {
@@ -17,7 +20,7 @@ function messageFrom(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
 }
 
-export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCaptureProps) {
+export function ObsCapture({ projectId, onOpenAsset, onImportReady, onImportSlotChange, onImportSlotRemoved }: ObsCaptureProps) {
   const [sessions, setSessions] = useState<ObsCaptureSession[]>([]);
   const [liveSessions, setLiveSessions] = useState<ObsLiveSession[]>([]);
   const [captionQuality, setCaptionQuality] = useState<Record<string, ObsLiveCaptionQuality>>({});
@@ -32,9 +35,17 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
   const [sources, setSources] = useState<ObsTrackSource[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const awaitingRef = useRef<string | null>(null);
+  const inspectingSlot = useRef<PendingMediaImportRow | null>(null);
+  const awaitingImports = useRef(new Map<string, { slot: PendingMediaImportRow; announcing: boolean }>());
   const onImportReadyRef = useRef(onImportReady);
   onImportReadyRef.current = onImportReady;
+  const slotCallbacks = useRef({ onImportSlotChange, onImportSlotRemoved });
+  slotCallbacks.current = { onImportSlotChange, onImportSlotRemoved };
+
+  function updateSlot(slot: PendingMediaImportRow) {
+    inspectingSlot.current = slot;
+    slotCallbacks.current.onImportSlotChange?.(slot);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +67,24 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
         const ready = next.filter((session) => session.status === "ready");
         const statuses = await Promise.all(ready.map(async (session) => [session.id, await api.getObsSessionSubtitleStatus(projectId, session.id)] as const));
         if (!cancelled) setSubtitleStatuses(Object.fromEntries(statuses));
-        const awaited = next.find((session) => session.id === awaitingRef.current);
-        if (awaited?.status === "ready") {
-          awaitingRef.current = null;
-          if (awaited.recordingAssetId) onImportReadyRef.current(awaited.recordingAssetId);
-        } else if (awaited?.status === "error") {
-          awaitingRef.current = null;
+        for (const awaited of next) {
+          const pending = awaitingImports.current.get(awaited.id);
+          if (!pending || pending.announcing) continue;
+          if (awaited.status === "ready" && awaited.recordingAssetId) {
+            pending.announcing = true;
+            try {
+              await onImportReadyRef.current(awaited.recordingAssetId);
+              if (cancelled) return;
+              slotCallbacks.current.onImportSlotRemoved?.(pending.slot.id);
+              awaitingImports.current.delete(awaited.id);
+            } catch (reason) {
+              pending.announcing = false;
+              if (!cancelled) setError(messageFrom(reason, "Chưa cập nhật được footage OBS."));
+            }
+          } else if (awaited.status === "error") {
+            slotCallbacks.current.onImportSlotChange?.({ ...pending.slot, status: "error", detail: awaited.error || "Không nhập được bản ghi OBS." });
+            awaitingImports.current.delete(awaited.id);
+          }
         }
       } catch (reason) {
         if (reason instanceof SyntaxError) unavailable = true;
@@ -101,17 +124,22 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
     try {
       const picked = await api.pickMediaFile();
       if (!picked.path) return;
+      if (inspectingSlot.current) slotCallbacks.current.onImportSlotRemoved?.(inspectingSlot.current.id);
+      updateSlot({ id: `obs-import-${crypto.randomUUID()}`, name: picked.path.split(/[\\/]/).pop() || picked.path, status: "importing", detail: "Đang đọc các track của file OBS…" });
       setBusy(true);
       setSourcePath(picked.path);
       setInspection(null);
       const result = await api.inspectObsRecording(projectId, picked.path);
+      if (inspectingSlot.current) updateSlot({ ...inspectingSlot.current, status: "choosing", detail: "Chọn nguồn cho từng track, rồi bấm Nhập." });
       setInspection(result);
       setSources(result.tracks.map((track) => ({
         streamIndex: track.streamIndex,
         sourceLabel: `Track ${track.obsTrack} (chưa xác định nguồn)`,
       })));
     } catch (reason) {
-      setError(messageFrom(reason, "Không đọc được file OBS."));
+      const detail = messageFrom(reason, "Không đọc được file OBS.");
+      if (inspectingSlot.current) updateSlot({ ...inspectingSlot.current, status: "error", detail });
+      setError(detail);
     } finally {
       setBusy(false);
     }
@@ -119,18 +147,24 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady }: ObsCapture
 
   async function importRecording() {
     if (!inspection || !sourcePath || sources.some((source) => !source.sourceLabel.trim())) return;
+    const slot = inspectingSlot.current ?? { id: `obs-import-${crypto.randomUUID()}`, name: sourcePath.split(/[\\/]/).pop() || sourcePath, status: "importing" as const };
+    updateSlot({ ...slot, status: "importing", detail: "Đang tạo footage và các track OBS…" });
     setBusy(true);
     setError(null);
     try {
       const queued = await api.createObsSession(projectId, sourcePath, sources.map((source) => ({
         ...source, sourceLabel: source.sourceLabel.trim(),
       })));
-      awaitingRef.current = queued.id;
+      slotCallbacks.current.onImportSlotChange?.({ ...slot, status: "importing", obsSessionId: queued.id });
+      awaitingImports.current.set(queued.id, { slot, announcing: false });
+      inspectingSlot.current = null;
       setSessions((current) => [queued, ...current.filter((session) => session.id !== queued.id)]);
       setInspection(null);
       setSourcePath("");
     } catch (reason) {
-      setError(messageFrom(reason, "Không nhập được bản ghi OBS."));
+      const detail = messageFrom(reason, "Không nhập được bản ghi OBS.");
+      updateSlot({ ...slot, status: "error", detail });
+      setError(detail);
     } finally {
       setBusy(false);
     }

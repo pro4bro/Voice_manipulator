@@ -495,6 +495,8 @@ export interface ProjectMediaImportResult {
 export interface PendingLocalMedia {
   sourcePath: string;
   name: string;
+  processing?: boolean;
+  error?: string;
   tracks: Array<{
     streamIndex: number;
     title: string;

@@ -21,6 +21,7 @@ const apiMocks = vi.hoisted(() => ({
   setMediaTrainingSelected: vi.fn(),
   startTrainingRun: vi.fn(),
   readVoiceScript: vi.fn(),
+  listObsSessions: vi.fn(),
   getVoiceScriptJob: vi.fn(),
   stopGeneration: vi.fn(),
   getOmniVoiceProfileSchema: vi.fn(),
@@ -421,6 +422,95 @@ describe("WorkspaceShell STT synchronization", () => {
     return { id: "generation-1", projectId: project.id, status, total: 2, done: 1, reused: 0,
       currentRowId: null, message: null, output: null, error: null, startedAt: "2026-10-07T00:00:00Z", finishedAt: null };
   }
+
+  it("creates a Voice Output slot before the generation start response and retains a start error", async () => {
+    const start = deferred<VoiceScriptJob>();
+    apiMocks.readVoiceScript.mockReturnValue(start.promise);
+    prepareGeneration();
+    await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "read test script" }));
+    await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
+    expect(collectionContext.current?.pendingVoiceOutput).toMatchObject({ status: "starting", text: "xin chào" });
+    await act(async () => start.resolve({ ...generationJob("failed"), error: "Generator did not create audio" }));
+    expect(collectionContext.current?.pendingVoiceOutput).toMatchObject({ status: "error", detail: "Generator did not create audio" });
+    expect(collectionContext.current?.voiceOutputs).toHaveLength(0);
+  });
+
+  it("keeps the recording slot while saving audio and replaces it with the returned asset", async () => {
+    const saved = deferred<{ asset: ProjectMediaAsset }>();
+    const finished = { ...mediaAsset("skipped", "", "2026-10-13T00:00:00Z"), name: "take.wav", origin: "record" as const };
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.importProjectMedia.mockReturnValue(saved.promise);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+    act(() => { collectionContext.current!.onRecordingSlotChange!({ id: "capture-test", name: "take", status: "recording" }); });
+    expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({ id: "capture-test", status: "recording" }));
+    act(() => { collectionContext.current!.onTakeChange({ name: "take.wav", url: "blob:test", duration: 1,
+      file: new File(["audio"], "take.wav"), origin: "record", realtimeText: "", words: [], captureId: "capture-test" }); });
+    await waitFor(() => expect(apiMocks.importProjectMedia).toHaveBeenCalled());
+    expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({ id: "capture-test", status: "saving" }));
+    await act(async () => saved.resolve({ asset: finished }));
+    expect(collectionContext.current!.pendingMediaImports).toHaveLength(0);
+    expect(collectionContext.current!.mediaAssets).toContainEqual(finished);
+  });
+
+  it("keeps failed audio in its slot for saving again and removes the slot only after a real receipt", async () => {
+    const finished = { ...mediaAsset("skipped", "", "2026-10-13T00:00:00Z"), name: "retry.wav", origin: "record" as const };
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.importProjectMedia.mockRejectedValueOnce(new Error("Upload interrupted")).mockResolvedValueOnce({ asset: finished });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+    const file = new File(["audio"], "retry.wav");
+    act(() => collectionContext.current!.onTakeChange({ name: file.name, url: "blob:retry", duration: 1,
+      file, origin: "record", realtimeText: "", words: [], captureId: "capture-retry" }));
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({
+      id: "capture-retry", status: "error", detail: "Upload interrupted", retryable: true,
+    })));
+    expect(collectionContext.current!.mediaAssets).toHaveLength(0);
+    act(() => collectionContext.current!.onRetryPendingImport("capture-retry"));
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toHaveLength(0));
+    expect(collectionContext.current!.mediaAssets).toContainEqual(finished);
+    expect(apiMocks.importProjectMedia.mock.calls[1][1]).toBe(file);
+  });
+
+  it("replaces a running Voice Output placeholder only when the generation job has an output", async () => {
+    const start = deferred<VoiceScriptJob>();
+    apiMocks.readVoiceScript.mockReturnValue(start.promise);
+    apiMocks.getVoiceScriptJob.mockResolvedValue({ ...generationJob("complete"), output: GENERATED });
+    prepareGeneration();
+    await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
+    fireEvent.click(screen.getByRole("button", { name: "read test script" }));
+    await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
+    const pendingId = collectionContext.current!.pendingVoiceOutput!.id;
+    await act(async () => start.resolve(generationJob("running")));
+    expect(collectionContext.current!.pendingVoiceOutput).toMatchObject({ id: pendingId, status: "running", completedRows: 1, totalRows: 2 });
+    expect(collectionContext.current!.voiceOutputs).toHaveLength(0);
+    await waitFor(() => expect(collectionContext.current!.voiceOutputs).toContainEqual(GENERATED), { timeout: 2000 });
+    expect(collectionContext.current!.pendingVoiceOutput).toBeNull();
+  });
+
+  it("keeps an OBS file slot across page changes until the ready session's asset really exists", async () => {
+    const sessions = deferred<Array<{ id: string; status: string; recordingAssetId: string }>>();
+    const finished = { ...mediaAsset("skipped", "", "2026-10-13T00:00:00Z"), name: "obs-import.mkv" };
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.listObsSessions.mockReturnValue(sessions.promise);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+    act(() => collectionContext.current!.onObsImportSlotChange!({ id: "obs-slot", name: finished.name, status: "importing", obsSessionId: "obs-import-session" }));
+    act(() => collectionContext.current!.onSelectPage("voice-manipulator"));
+    await act(async () => sessions.resolve([{ id: "obs-import-session", status: "ready", recordingAssetId: finished.id }]));
+    expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({ id: "obs-slot", status: "importing" }));
+    expect(collectionContext.current!.mediaAssets).toHaveLength(0);
+    apiMocks.listProjectMedia.mockResolvedValue([finished]);
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toHaveLength(0), { timeout: 2500 });
+    expect(collectionContext.current!.mediaAssets).toContainEqual(finished);
+  });
 
   it.each([true, false])("chooses Generate Voice rows before dispatch and requests true regeneration for all: %s", async (all) => {
     apiMocks.listVoiceOutputs.mockResolvedValue([{ ...GENERATED, segments: [{ rowId: "row-1", voiceId: "voice-1", generatorId: "gen", text: "xin chào" }] }]);

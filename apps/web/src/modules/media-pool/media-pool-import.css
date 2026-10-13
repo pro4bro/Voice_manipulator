@@ -33,3 +33,7 @@
 @media (prefers-reduced-motion: reduce) {
   .media-pool-importing__spinner { animation: none !important; }
 }
+
+.media-pool-importing--choosing .media-pool-importing__spinner { animation: none; }
+
+.media-pool-importing__actions { display: flex; align-items: center; gap: 3px; }

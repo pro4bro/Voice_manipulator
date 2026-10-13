@@ -23,6 +23,39 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("shows the OBS start slot immediately, then swaps to the journal on the Start acknowledgement event", async () => {
+    let records: ObsLiveLinkRecordingJournal[] = [];
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockImplementation(async () => records);
+    try {
+      const starting = { id: "start-1", name: "OBS new take", status: "starting" as const };
+      const view = render(<MediaPool {...props({ assets: [], projectId: "project", pendingObsRecording: starting })} />);
+      expect(screen.getByLabelText("Footage OBS OBS new take: ĐANG MỞ PHIÊN")).toHaveAttribute("aria-busy", "true");
+      expect(screen.queryByText("Chưa có footage")).not.toBeInTheDocument();
+      await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+      records = [{ recording: { recordingId: "obs-new", projectId: "project", displayName: "OBS new take", status: "recording", archiveStatus: "pending" } } as ObsLiveLinkRecordingJournal];
+      view.rerender(<MediaPool {...props({ assets: [], projectId: "project", pendingObsRecording: { ...starting, recordingId: "obs-new" } })} />);
+      act(() => window.dispatchEvent(new Event("pro4bro:obs-recordings-changed")));
+      expect(await screen.findByLabelText("Footage OBS OBS new take: ĐANG GHI")).toHaveAttribute("aria-busy", "true");
+      expect(screen.queryByLabelText("Footage OBS OBS new take: ĐANG MỞ PHIÊN")).not.toBeInTheDocument();
+      view.rerender(<MediaPool {...props({ projectId: "project", assets: [{ ...asset, id: "archive-new", name: "OBS new take", sourceExtension: ".mka", obsRecordingId: "obs-new" }], pendingObsRecording: { ...starting, recordingId: "obs-new" } })} />);
+      expect(screen.queryByLabelText(/Footage OBS OBS new take:/)).not.toBeInTheDocument();
+      expect(screen.getByText("OBS new take", { exact: true })).toBeInTheDocument();
+    } finally { list.mockRestore(); }
+  });
+  it("shows a busy recording footage before there is an asset and stops its animation on failure", () => {
+    const pending = { id: "capture-1", name: "Microphone take", origin: "record" as const, status: "recording" as const };
+    const view = render(<MediaPool {...props({ assets: [], pendingMediaImports: [pending] })} />);
+    const row = screen.getByLabelText("Footage Microphone take: ĐANG THU");
+    expect(row).toHaveAttribute("aria-busy", "true");
+    expect(row).toHaveTextContent("ĐANG THU ÂM");
+    view.rerender(<MediaPool {...props({ assets: [], pendingMediaImports: [{ ...pending, status: "error", detail: "No audio received" }] })} />);
+    expect(screen.getByLabelText("Footage Microphone take: LỖI THU ÂM")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByText("No audio received")).toBeInTheDocument();
+  });
+  it("animates the pending multitrack import while the selected tracks are being prepared", () => {
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia: { sourcePath: "C:/take.mkv", name: "take.mkv", processing: true, tracks: [] } })} />);
+    expect(screen.getByLabelText("Footage take.mkv: ĐANG IMPORT")).toHaveAttribute("aria-busy", "true");
+  });
   it("keeps a controlled two-track selection when Workspace opens its parent view", async () => {
     const tracks = ["a", "b", "c"].map((id) => ({ ...asset, id, name: `Mic ${id}`,
       sourceArchiveAssetId: asset.id, sourceArchiveStreamIndex: id.charCodeAt(0), importSelected: true }));

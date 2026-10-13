@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ObsCapture } from "./ObsCapture";
@@ -49,6 +49,25 @@ describe("ObsCapture", () => {
       { streamIndex: 1, sourceLabel: "Micro" },
       { streamIndex: 2, sourceLabel: "Tab họp" },
     ]));
+  });
+
+  it("creates a slot before inspecting an OBS file, keeps its identity during import and reports a start error", async () => {
+    let inspect!: (value: unknown) => void;
+    let rejectStart!: (error: Error) => void;
+    const inspection = await mock.inspectObsRecording();
+    mock.inspectObsRecording.mockReturnValue(new Promise((resolve) => { inspect = resolve; }));
+    mock.createObsSession.mockReturnValue(new Promise((_resolve, reject) => { rejectStart = reject; }));
+    const slot = vi.fn();
+    render(<ObsCapture onImportReady={vi.fn()} onImportSlotChange={slot} onOpenAsset={vi.fn()} projectId="project-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn MKV từ OBS" }));
+    await waitFor(() => expect(slot).toHaveBeenCalledWith(expect.objectContaining({ name: "meeting.mkv", status: "importing" })));
+    const id = slot.mock.calls[0][0].id;
+    await act(async () => inspect(inspection));
+    expect(slot).toHaveBeenLastCalledWith(expect.objectContaining({ id, status: "choosing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nhập 2 track" }));
+    expect(slot).toHaveBeenLastCalledWith(expect.objectContaining({ id, status: "importing" }));
+    await act(async () => rejectStart(new Error("OBS import unavailable")));
+    expect(slot).toHaveBeenLastCalledWith(expect.objectContaining({ id, status: "error", detail: "OBS import unavailable" }));
   });
 
   it("opens the video and each audio track from a ready session", async () => {

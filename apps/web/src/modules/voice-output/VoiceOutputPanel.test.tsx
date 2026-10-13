@@ -97,6 +97,47 @@ describe("VoiceOutputPanel", () => {
 
     expect(screen.getByText(/không lẫn vào Media Pool/)).toBeInTheDocument();
   });
+
+  it("shows and counts a working generated slot before any output is ready", () => {
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[]} pendingOutput={{
+      id: "pending-1", name: "An · câu mới", text: "Đang chào mọi người", status: "running", completedRows: 1, totalRows: 3,
+    }} speakers={[]} />);
+
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("An · câu mới")).toBeInTheDocument();
+    expect(screen.getByText("Đang chào mọi người")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Đang tạo voice · 1/3 dòng");
+    expect(screen.getByRole("listitem", { name: /An · câu mới/ })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it.each([
+    ["error", "Không thể tạo voice"],
+    ["cancelled", "Đã huỷ"],
+  ] as const)("keeps a %s slot visible without a working animation", (status, label) => {
+    const onDismissPendingOutput = vi.fn();
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onDismissPendingOutput={onDismissPendingOutput} onOpen={vi.fn()} outputs={[]} pendingOutput={{
+      id: "pending-1", name: "An · câu mới", text: "Đang chào mọi người", status, detail: "Worker đã dừng",
+    }} speakers={[]} />);
+
+    const pending = screen.getByRole("listitem", { name: /An · câu mới/ });
+    expect(pending).toHaveAttribute("aria-busy", "false");
+    expect(pending).not.toHaveClass("is-working");
+    expect(within(pending).getByText(label)).toBeInTheDocument();
+    expect(within(pending).getByText("Worker đã dừng")).toBeInTheDocument();
+    fireEvent.click(within(pending).getByRole("button", { name: "Ẩn trạng thái" }));
+    expect(onDismissPendingOutput).toHaveBeenCalledWith("pending-1");
+  });
+
+  it("does not count or render a pending slot twice when its ready output is present", () => {
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[output()]} pendingOutput={{
+      id: "output-1", name: "An · Xin chào", text: "Xin chào mọi người", status: "running",
+    }} speakers={[]} />);
+
+    expect(screen.getByText("1", { selector: ".voice-output-count" })).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("clears selection and pending bulk deletion from the blank list canvas", () => {
     render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[output()]} speakers={[]} />);
     fireEvent.click(screen.getByRole("button", { name: "Chọn An · Xin chào" }));

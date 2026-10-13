@@ -9,7 +9,7 @@ import type { EmotionLabel, ReadingPackSummary, RecordingWaveformPreview, Studio
 import { api } from "../../api/client";
 import { liveTranscriptWords, type LiveSegment } from "./live-words";
 import { downsample, encodeWav, int16FrameCount, isSilent, toInt16, wavFromInt16 } from "./pcm-chunk";
-import { ObsCaptureController } from "./ObsCaptureController";
+import { ObsCaptureController, type PendingObsRecordingSlot } from "./ObsCaptureController";
 import { recordingName } from "../../domain/recording-name";
 
 export interface CapturedAudio {
@@ -44,8 +44,17 @@ export interface ReadingSessionView {
   secondsSinceBreak: number;
 }
 
+export interface RecordingSlotState {
+  id: string;
+  name: string;
+  status: "preparing" | "recording" | "saving" | "error";
+  detail?: string;
+}
+
 interface RecorderProps {
   onRecordingReady: (take: CapturedAudio) => void;
+  onRecordingSlotChange?: (slot: RecordingSlotState) => void;
+  onObsRecordingSlotChange?: (slot: PendingObsRecordingSlot) => void;
   projectId?: string;
   projectName?: string;
   onOpenObsAsset?: (assetId: string) => void;
@@ -112,6 +121,8 @@ function speechConstructor(): SpeechRecognitionConstructor | null {
 
 export function Recorder({
   onRecordingReady,
+  onRecordingSlotChange,
+  onObsRecordingSlotChange,
   projectId,
   projectName = projectId ?? "project",
   onOpenObsAsset,
@@ -489,14 +500,19 @@ export function Recorder({
     const readingAtStart = session;
     const card = readingAtStart?.card;
     const captureId = crypto.randomUUID();
+    const captureName = recordingName(new Date(), projectName, captureSource === "display" ? "SYS" : "MIC", captureId);
+    const slot = { id: captureId, name: captureName };
+    onRecordingSlotChange?.({ ...slot, status: "preparing" });
     if (readingAtStart && !window.AudioContext) {
       setStatus("error");
       setMessage("Phiên đọc cần trình duyệt hỗ trợ thu WAV bằng AudioContext.");
+      onRecordingSlotChange?.({ ...slot, status: "error", detail: "Phiên đọc cần trình duyệt hỗ trợ thu WAV bằng AudioContext." });
       return;
     }
     if (!navigator.mediaDevices || !window.MediaRecorder) {
       setStatus("error");
       setMessage("Trình duyệt không hỗ trợ MediaRecorder");
+      onRecordingSlotChange?.({ ...slot, status: "error", detail: "Trình duyệt không hỗ trợ MediaRecorder" });
       return;
     }
     try {
@@ -537,7 +553,6 @@ export function Recorder({
       chunksRef.current = [];
       streamRef.current = stream;
       recorderRef.current = recorder;
-      const captureName = recordingName(new Date(), projectName, captureSource === "display" ? "SYS" : "MIC", crypto.randomUUID());
       recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
       recorder.onstop = () => {
         const frames = int16FrameCount(takePcmRef.current);
@@ -559,6 +574,7 @@ export function Recorder({
           : Math.max(0, (performance.now() - startedAtRef.current) / 1000);
         const realtimeText = [speechFinalRef.current, speechInterimRef.current].filter(Boolean).join(" ").trim();
         stopResources();
+        onRecordingSlotChange?.({ ...slot, name: file.name, status: "saving" });
         onRecordingReady({
           name: file.name,
           url,
@@ -580,6 +596,7 @@ export function Recorder({
         setPeakDb(-60);
       };
       recorder.start(250);
+      onRecordingSlotChange?.({ ...slot, status: "recording" });
       startedAtRef.current = performance.now();
       liveSamplesRef.current = [];
       lastPreviewAtRef.current = 0;
@@ -608,6 +625,7 @@ export function Recorder({
       onLiveTranscript?.("", false);
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Không mở được microphone");
+      onRecordingSlotChange?.({ ...slot, status: "error", detail: error instanceof Error ? error.message : "Không mở được microphone" });
     }
   }
 
@@ -631,7 +649,7 @@ export function Recorder({
         <option value="display">Tab trình duyệt / cửa sổ / âm thanh hệ thống</option>
         <option value="obs-livelink">OBS LiveLink</option>
       </select></label>
-      <ObsCaptureController onArchiveReady={onObsArchiveReady} onOpenAsset={onOpenObsAsset} onOpenRecording={onOpenObsRecording} projectId={projectId} />
+      <ObsCaptureController onPendingRecordingChange={onObsRecordingSlotChange} onArchiveReady={onObsArchiveReady} onOpenAsset={onOpenObsAsset} onOpenRecording={onOpenObsRecording} projectId={projectId} />
     </ModuleFrame>;
   }
 

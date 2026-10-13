@@ -104,6 +104,79 @@ it("arms OBS recording through the backend and prevents another Start until ACK"
   expect(await screen.findByRole("button", { name: "Đang bắt đầu…" })).toBeDisabled();
 });
 
+it("emits a pending slot before Start ACK and resolves it to the same journal recording", async () => {
+  const onPendingRecordingChange = vi.fn();
+  const onLatestPendingRecordingChange = vi.fn();
+  let resolveStart: (value: typeof connected) => void = () => undefined;
+  apiMocks.actOnObsLiveLinkRecording.mockReturnValue(new Promise<typeof connected>((resolve) => { resolveStart = resolve; }));
+  const recording = { recordingId: "rec-new", projectId: "project", displayName: "Lesson take",
+    status: "recording", archiveStatus: "pending", videoSpanIds: [], pauseCauses: [] };
+  const journal = { recording, sourceStems: [] };
+  apiMocks.getObsLiveLinkStatus.mockResolvedValueOnce(connected).mockResolvedValue({ ...connected, appRecording: recording });
+  apiMocks.listObsLiveLinkRecordings.mockResolvedValueOnce([]).mockResolvedValue([journal]);
+  const refreshSpy = vi.fn();
+  const timerCallbacks: Array<() => void> = [];
+  const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+    timerCallbacks.push(handler as () => void);
+    return 42;
+  });
+  window.addEventListener("pro4bro:obs-recordings-changed", refreshSpy);
+  try {
+    const { rerender } = render(<ObsCaptureController onPendingRecordingChange={onPendingRecordingChange} projectId="project" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Record" }));
+    await waitFor(() => expect(apiMocks.actOnObsLiveLinkRecording).toHaveBeenCalledWith("start"));
+    expect(onPendingRecordingChange).toHaveBeenCalledTimes(1);
+    const pending = onPendingRecordingChange.mock.calls[0]?.[0];
+    expect(pending).toMatchObject({ name: expect.any(String), status: "starting" });
+    expect(pending.id).toEqual(expect.any(String));
+    expect(refreshSpy).toHaveBeenCalledTimes(0);
+
+    await act(async () => resolveStart({ ...connected, pendingAction: "start" } as unknown as typeof connected));
+    expect(onPendingRecordingChange).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    rerender(<ObsCaptureController onPendingRecordingChange={onLatestPendingRecordingChange} projectId="project" />);
+    timerCallbacks[0]?.();
+    await waitFor(() => expect(apiMocks.listObsLiveLinkRecordings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onLatestPendingRecordingChange).toHaveBeenCalledTimes(1));
+    expect(onPendingRecordingChange).toHaveBeenCalledTimes(1);
+    expect(onLatestPendingRecordingChange.mock.calls[0]?.[0]).toEqual({
+      ...pending, name: "Lesson take", status: "starting", recordingId: "rec-new",
+    });
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+  } finally {
+    interval.mockRestore();
+    window.removeEventListener("pro4bro:obs-recordings-changed", refreshSpy);
+  }
+});
+
+it("surfaces a failed Start in the pending slot and does not revive it from later polls", async () => {
+  const onPendingRecordingChange = vi.fn();
+  apiMocks.actOnObsLiveLinkRecording.mockRejectedValue(new Error("OBS rejected Start"));
+  render(<ObsCaptureController onPendingRecordingChange={onPendingRecordingChange} projectId="project" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Record" }));
+  await waitFor(() => expect(onPendingRecordingChange).toHaveBeenCalledTimes(2));
+  const pending = onPendingRecordingChange.mock.calls[0]?.[0];
+  expect(pending).toMatchObject({ status: "starting", id: expect.any(String) });
+  expect(onPendingRecordingChange.mock.calls[1]?.[0]).toEqual({
+    ...pending, status: "error", detail: "OBS rejected Start",
+  });
+  await waitFor(() => expect(apiMocks.getObsLiveLinkStatus.mock.calls.length).toBeGreaterThan(1), { timeout: 2500 });
+  expect(onPendingRecordingChange).toHaveBeenCalledTimes(2);
+});
+
+it.each(["pause", "resume", "stop"] as const)("does not create a pending slot for %s", async (action) => {
+  const onPendingRecordingChange = vi.fn();
+  const state = action === "resume" ? "paused" : "recording";
+  apiMocks.getObsLiveLinkStatus.mockResolvedValue({ ...connected, appRecording: {
+    recordingId: "rec-existing", projectId: "project", status: state, videoSpanIds: [], pauseCauses: [],
+  } });
+  render(<ObsCaptureController onPendingRecordingChange={onPendingRecordingChange} projectId="project" />);
+  fireEvent.click(await screen.findByRole("button", { name: action === "stop" ? "Stop" : action === "pause" ? "Pause" : "Resume" }));
+  await waitFor(() => expect(apiMocks.actOnObsLiveLinkRecording).toHaveBeenCalledWith(action));
+  expect(onPendingRecordingChange).not.toHaveBeenCalled();
+});
+
 it("shows Stop as pending until the app recording receives its OBS ACK", async () => {
   const running = { ...connected, obsRecording: "recording",
     appRecording: { recordingId: "rec-1", projectId: "project", status: "recording",

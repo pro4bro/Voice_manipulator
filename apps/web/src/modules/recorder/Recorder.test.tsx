@@ -4,6 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Recorder } from "./Recorder";
 
 describe("Recorder", () => {
+  it("announces its footage slot before opening the microphone and retains a permission error", async () => {
+    let rejectPermission!: (reason: Error) => void;
+    const permission = new Promise<MediaStream>((_resolve, reject) => { rejectPermission = reject; });
+    vi.stubGlobal("MediaRecorder", class {});
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValue(permission);
+    const slot = vi.fn();
+    render(<Recorder onRecordingReady={vi.fn()} onRecordingSlotChange={slot} projectName="Immediate audit" />);
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu thu" }));
+    expect(slot).toHaveBeenCalledWith(expect.objectContaining({ status: "preparing", name: expect.stringContaining("Immediate-audit") }));
+    const first = slot.mock.calls[0][0];
+    rejectPermission(new Error("Microphone permission denied"));
+    await waitFor(() => expect(slot).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: first.id, name: first.name, status: "error", detail: "Microphone permission denied",
+    })));
+  });
   afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
