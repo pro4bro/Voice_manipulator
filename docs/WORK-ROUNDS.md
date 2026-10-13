@@ -12,7 +12,25 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-13 — current: PORT-OBS-REPAIR-01
+### 2026-10-13 — current: PORT-REBUILD-01
+
+Fresh alpha0.5.11 contains the current rebuilt app and a twelve-component manual
+copy guide; VibeVoice remains listed without its payload. Deferred bundles become
+ready only after root VERIFY succeeds. Shared OBS pending-row actions no longer
+autoplace Retry into the narrow grid column. OBS install/repair migrates canonical
+console paths from differently named older portable folders, preserving pairing.
+Frontend785/84files, backend799, installer33, native builder/completion9,
+typecheck/build pass. Hydrated actual root VERIFY33/0; thin kit correctly remains
+incomplete. ZIP1.17MiB/151app hashes verified; full base about35.6GiB. Production
+174routes/eightcatalogs match except omitted VibeVoice and recorded Git metadata.
+Real portable PCM produces verified MKA/analysis WAV and browser waveform; no-PCM
+meter control reproduces the owner's message, but D-device cause is unconfirmed.
+Evidence: docs/gates/portable-rebuild-20261013.md. Phase03 stays60%. Exact next:
+PORT-FEEDBACK-UAT-01 — new D-drive folder/copy guide/VERIFY/closed-OBS INSTALL,
+native Forward/durable PCM capture and prior playback/STT/bin acceptance.
+Independent timing still awaits Conviction.
+
+### 2026-10-13 — previous: PORT-OBS-REPAIR-01
 
 Owner's OBS install failure reproduced through native BAT: default Install
 refuses damaged files and WinPS Stop interrupts on redirected Python stderr.

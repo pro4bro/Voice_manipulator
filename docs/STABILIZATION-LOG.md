@@ -1494,3 +1494,91 @@ trong gói (hoặc root UPDATE nếu đã0.5.8). Chờ release0.5.9/updatedtrue/
 nếu cần. Tiếp tục nghiệm thu playback/bin của feedback trước. Loading/UAC trên
 máy đó chưa được xác nhận bằng các fixture. Phase03 giữ60%; planned
 STT-TIMING-ACCURACY-01 chờ Conviction reference. Round kỹ thuật này kết thúc.
+
+## 2026-10-13 — PORT-REBUILD-01
+
+### Feedback — 2026-10-13
+
+**Nguyên văn (copy từ chat):**
+
+```text
+khi record OBS Livelink thì có nhận được tín hiệu từ OBS gửi sang. Nhưng lúc record thì không thấy gì. Và khi xong thì slot nó bị chồng chéo như slot đầu tiên trong Media Pool. em hãy kiểm tra lại vì sao bản portable lại hoạt động khác so với bản chính vậy? anh kỳ vọng là nó phải như nhau chứ?
+anh nghĩ là em nên tạo lại một bản portable mới. Nhưng lần này nó phải đảm bảo copy toàn bộ chức năng, hoạt động của app chính. Còn với các file core, model nặng thì em hãy chỉ đường dẫn cho anh, anh sẽ tự copy cho nhanh
+Vẫn bỏ VibeVoice, giữ trong danh sách chọn
+```
+
+Ảnh owner: [PORT-REBUILD-01-owner.png](feedback/PORT-REBUILD-01-owner.png).
+
+**Cách agent hiểu:** cần app mới được build từ nguồn hiện tại, map các base nặng
+để owner tự chép, VibeVoice vẫn hiện nhưng chưa cài. Slot OBS có lỗi layout dùng
+chung ở source/portable. Meter và PCM là hai luồng riêng; chưa được xem project,
+outbox hay log PCM của take lỗi trên máy D nên chưa kết luận nguyên nhân vật lý.
+
+**Phạm vi:** một round đóng gói, readiness, shared OBS row và launcher migration.
+Không đổi core/model/audio processor, không đụng media/project/OBS profile thật,
+không tiến Phase03. Capture audit dùng PCM thật trong project scratch cô lập.
+
+### Agent tự kiểm
+
+Builder tự build web; app được copy độc lập dù base dùng hardlink. Studio app
+lấy từ canonical source. Deferred base có map12thành phần và guide tiếng Việt,
+chỉ VERIFY0fail mới atomically bỏ marker và đặt ready. Test native kiểm tra guard
+thiếu/sai profile/failed/empty report; sửa native null backup argument theo lỗi
+thực nghiệm. Kit mỏng VERIFY16pass/17fail/exit1 vẫn incomplete như thiết kế;
+copy kiểm tra đã có đủ base VERIFY33pass/0fail/exit0 và ready timestamp.
+
+Retry từng là item thứ4 trực tiếp trong grid, bị đẩy vào cột18px. Nhóm actions
+đã sửa source và portable: Retry65.328125x30.1875px nằm gọn trong row252x74.375px,
+thay vì rộng12px/cao45.59px trước sửa. Browser chạy API/UI thật của portable trên
+project PCM đã publish: parent MKA READY, child Audit Mic và waveform hiện đúng;
+không có console error/warning. Runtime status được thay trong fixture để tránh
+đụng controller source; không giả archive/media/waveform hoặc claim inference.
+
+Review fresh folder phát hiện installer chỉ migrate console khi tên folder cũ
+và mới giống nhau. Bốn native install/repair × old-present/old-removed red trước
+sửa, green sau sửa; installId/token/apiBase/customSetting được giữ. Candidate
+alpha0.5.10 bị loại và lưu debug, MAKE tự đánh alpha0.5.11 sau sửa. Payload phát
+hành không sửa tay. Root còn đúng4BAT owner yêu cầu.
+
+Audit source/bundle PCM-to-MKA đều pass. Control meterPeak75.0 nhưng không gửi
+PCM cho đúng thông báo missing stems,0JSON/0PCM. Alpha0.5.11 kiểm tra250ms PCM16
+48kmono/12000frames/24000bytes/durableACK tạo MKA4872bytes, manifest773bytes,
+analysis24kmono/6000frames/12078filebytes/nonzeroPCM11901bytes. Source WAV tạm
+được xóa có chủ đích sau publish, retained chunks còn. Đây là chứng minh đường
+xử lý PCM, không phải nghiệm thu plugin native hay nhận dạng lời nói trên máy D.
+
+### Kết quả so với ngưỡng
+
+Native builder/completion9pass13.12s; installer33pass19.05s; frontend785pass/
+84files210.35s với maxWorkers1; backend799pass329.76s/2existingwarnings;
+typecheck/build/diff pass. Frontend parallel ban đầu783pass/2timingfail, hai file
+đó64pass khi chạy riêng; rerun2workers784pass/1timeout; serialfull785pass với
+test/ngưỡng giữ nguyên. Không che first failure hay hạ gate.
+
+174productionroutes/eightcatalogs khớp chức năng trừ VibeVoice bị bỏ payload;
+cả6VibeVoice entries vẫn list/unavailable. Revision/branch upstream Git thiếu
+trong portable được ghi riêng, không coi là lệch capability. Chưa sửa label hub
+`detached · undefined` do thiếu metadata Git. Bốn cache symlink relative trỏ
+nội bộ copy kiểm tra; scratch inventory dùng lstat cho khớp WinPS sau count
+ban đầu nhầm bytes target. Không thay đổi gate sản phẩm.
+
+ZIP mới1,223,266bytes (~1.17MiB),158files,151app hash/size khớp folder và numbered
+update; complete components38,205,124,406bytes (~35.6GiB) chưa kể userdata.
+SHA25672a5c58ca797f66a1612fe7782ee0caef665be55d8dfbca567ccfdc94bf45825.
+Evidence: `docs/gates/portable-rebuild-20261013.md`. Listener kiểm tra đã đóng;
+source controller/API/Studio59812/47064/55788 vẫn sống trên18119/18120/18081.
+
+### Review (Claude)
+
+Chưa có review độc lập Claude trong round này. Lead review source/package,
+native regressions, catalog parity và browser/artifact evidence đã hoàn tất.
+
+### Nghiệm thu owner / bước tiếp theo
+
+**PORT-FEEDBACK-UAT-01:** giải nén alpha0.5.11 vào folder mới; chép12base đúng
+map, root VERIFY0fail, mở console rồi copy nguyên hydrated folder sang D-machine.
+Ở vị trí cuối đóng OBS/root INSTALL/reopen; kiểm tra Forward, durable PCM counts,
+outbox/rejection logs và native take, rồi parent/child playback, STT follow/bin.
+Máy thật/GPU/UAC/device/pairing cần bằng chứng owner; đóng gói/hash/catalog không
+đủ để đảm bảo mọi hành vi đó. Phase03 giữ60%; timing vẫn chờ Conviction.
+Round kỹ thuật này kết thúc sau delivery/gates.

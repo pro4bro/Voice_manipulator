@@ -1,5 +1,20 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-REBUILD-01 — new portable with deferred base (2026-10-13)
+
+Alpha0.5.11 includes the rebuilt current app, canonical Studio source, twelve
+heavy-component copy map and guarded deferred readiness. VibeVoice remains listed
+without payload. Shared OBS row Retry overlap and old versioned console migration
+repaired. Frontend785/84files, backend799, installer33, builder/completion9,
+typecheck/build pass. Actual hydrated root VERIFY33/0;151app hashes/1.17MiB ZIP
+verified; complete components about35.6GiB.174routes/eightcatalogs match except
+intentional availability/Git metadata; real portable PCM/MKA/browser waveform
+checks pass. Meter-only negative control matches error; native D-cause remains
+unconfirmed. See docs/gates/portable-rebuild-20261013.md. Exact next
+PORT-FEEDBACK-UAT-01: new D-folder/base copy/VERIFY/closed-OBS INSTALL, native
+Forward/durable PCM recording and prior playback/STT/bin acceptance. Phase03
+stays60%; independent timing awaits Conviction.
+
 ## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
 
 Alpha0.5.9 root BAT auto-selects Repair for damaged/missing installed files;

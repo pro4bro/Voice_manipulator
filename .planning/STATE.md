@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-OBS-REPAIR-01 default OBS installer recovery.
-last_activity_desc: Root BAT auto-selects Repair for damaged or missing installed files and captures native stderr with exit code. Installer29, frontend785, backend786, typecheck/build pass. Actual alpha0.5.9 pack33/0,151 installed/ZIP hashes verified, models unchanged. Embedded Python/real package recovery preserves pairing and blocks running OBS. Next PORT-FEEDBACK-UAT-01 on D-drive applies0.5.9, closes OBS, runs root INSTALL and confirms native loading after reopening, then prior playback/bin checks. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-REBUILD-01 fresh portable and manual base copy.
+last_activity_desc: Alpha0.5.11 contains current rebuilt app, twelve-component copy guide and deferred readiness verification. Shared OBS row and older versioned console path migration repaired. Frontend785, backend799, installer33, builder/completion9, typecheck/build pass. Hydrated root VERIFY33/0,151app hashes and1.17MiB ZIP verified; full components about35.6GiB. Catalog and real PCM/MKA/browser checks pass, actual D-device capture cause unconfirmed. Next PORT-FEEDBACK-UAT-01 copies new folder/base, runs VERIFY and closed-OBS INSTALL, checks native Forward/durable PCM plus prior playback/STT/bin. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,21 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-REBUILD-01 — fresh portable and manual base copy (2026-10-13)
+
+Alpha0.5.11 ships the current rebuilt app independently of twelve heavy base
+components; VibeVoice stays listed without payload. Canonical Studio source,
+atomic zero-failure readiness, shared OBS row actions and older versioned console
+launcher migration verified. Frontend785/84files, backend799, installer33,
+builder/completion9, typecheck/build pass. Actual hydrated root VERIFY33/0;
+thin kit remains incomplete.151app hashes/1.17MiB ZIP verified; complete components
+about35.6GiB.174routes/eightcatalogs match with intentional omissions/metadata
+recorded; real PCM publishes MKA/analysis WAV and proper browser waveform.
+No-PCM meter control matches error; owner D-take remains uninspected. Evidence:
+docs/gates/portable-rebuild-20261013.md. Exact next PORT-FEEDBACK-UAT-01 uses new
+D-folder/manual base copy/VERIFY/closed-OBS INSTALL, native Forward/durable PCM
+capture, prior playback/STT/bin. Timing awaits Conviction; Phase03 stays60%.
 
 ## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
 

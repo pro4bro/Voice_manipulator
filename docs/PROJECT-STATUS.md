@@ -1,5 +1,23 @@
 # Project Status — 2026-10-13
 
+## PORT-REBUILD-01 — fresh app and manual base copy (2026-10-13)
+
+Alpha0.5.11 rebuilds and independently copies the current app, uses canonical
+Studio source and supplies a twelve-component core/model copy guide. VibeVoice
+is listed but absent. Root VERIFY marks deferred readiness only on full success.
+Shared OBS row action grouping fixes the narrow-column Retry overlap; installer
+migrates console paths from older versioned portable folders without changing
+pairing. Frontend785/84files, backend799, installer33, native builder/completion9,
+typecheck/build pass. Actual hydrated VERIFY33/0; thin delivery remains pending.
+ZIP1.17MiB,151app hashes verified; complete component size about35.6GiB. Eight
+production catalogs/174routes match except intentional VibeVoice availability
+and recorded Git metadata. Real portable nonzero PCM publishes MKA/analysis WAV;
+browser shows proper parent/child/waveform. Meter without PCM reproduces the error
+but does not establish the D-device cause. See
+docs/gates/portable-rebuild-20261013.md. Next PORT-FEEDBACK-UAT-01 is new D-folder
+manual copy/VERIFY, closed-OBS INSTALL, native Forward/durable PCM recording and
+prior playback/STT/bin acceptance. Phase03 stays60%; timing awaits Conviction.
+
 ## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
 
 Alpha0.5.9 resolves the owner's damaged-manifest Install failure: root BAT
