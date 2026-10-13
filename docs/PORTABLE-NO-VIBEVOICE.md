@@ -72,6 +72,21 @@ of that checkpoint must follow its non-commercial terms. Other bundled model
 files have their own upstream terms. No user recordings, projects or tokens are
 included.
 
+## Install or repair the OBS bridge
+
+After applying alpha 0.5.9 or newer, close OBS completely and double-click
+`INSTALL-OBS-PLUGIN.bat` beside `open-pro4bro-console.bat`. Its default `auto`
+action installs a new bridge, updates an older one, or repairs missing/changed
+installed files. It validates the bundled package and installed hashes, preserves
+existing pairing, and refuses repair while OBS is running. Reopen OBS afterward.
+An OBS version mismatch still requires OBS Studio 32.2.2 for this plugin build.
+
+Explicit commands remain available in a terminal opened in the portable folder:
+`INSTALL-OBS-PLUGIN.bat -Action repair` and
+`INSTALL-OBS-PLUGIN.bat -Action remove`. Explicit `-Action install` still asks for
+Repair when installed files are damaged. Failures display the Python exit code
+and original reason; they do not mean the plugin was successfully installed.
+
 ## Speech to text after updating
 
 Alpha 0.5.5 fixes the STT catalog looking for the development-only service

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('install', 'repair', 'remove')][string]$Action = 'install',
+    [ValidateSet('auto', 'install', 'repair', 'remove')][string]$Action = 'auto',
     [string]$ObsRoot = '',
     [switch]$RemovePairing
 )
@@ -21,10 +21,21 @@ try {
     $env:PYTHONPATH = Join-Path $root 'services\api'
     $env:PYTHONIOENCODING = 'utf-8'
     $obsRootArgument = if ($ObsRoot) { $ObsRoot } else { '__PRO4BRO_AUTO_OBS_ROOT__' }
-    $output = & $python -m app.adapters.obs_plugin_installation --cli $root (Join-Path $root 'data') $Action $obsRootArgument ([string][bool]$RemovePairing).ToLowerInvariant() 2>&1
-    $pythonExitCode = $LASTEXITCODE
+    # Windows PowerShell treats redirected native stderr as ErrorRecord. Capture
+    # it before restoring Stop so the Python exit code and reason survive.
+    $previousErrorAction = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $python -m app.adapters.obs_plugin_installation --cli $root (Join-Path $root 'data') $Action $obsRootArgument ([string][bool]$RemovePairing).ToLowerInvariant() 2>&1
+        $pythonExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
     if ($pythonExitCode -ne 0) {
-        $details = ($output | Out-String).Trim()
+        $details = (($output | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message }
+            else { [string]$_ }
+        }) -join [Environment]::NewLine).Trim()
         if ($details) { throw "OBS plugin $Action failed (exit $pythonExitCode): $details" }
         throw "OBS plugin $Action failed (exit $pythonExitCode)."
     }

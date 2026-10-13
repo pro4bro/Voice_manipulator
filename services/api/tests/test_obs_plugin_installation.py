@@ -274,6 +274,8 @@ def test_cli_rejects_malformed_argument_count(tmp_path: Path) -> None:
 
 
 def _stage_native_installer(tmp_path: Path) -> tuple[ObsPluginInstallation, Path, dict[str, str]]:
+    if not shutil.which("powershell.exe") or not shutil.which("cmd.exe"):
+        pytest.skip("native Windows command processors are required")
     manager, _ = installation(tmp_path)
     project_root = Path(__file__).resolve().parents[3]
     (manager.app_root / "services/api/app/adapters").mkdir(parents=True)
@@ -324,7 +326,8 @@ def test_native_powershell_default_root_reports_actionable_failure(tmp_path: Pat
     )
 
     assert result.returncode != 0
-    assert "OBS plugin install failed:" in result.stdout + result.stderr
+    assert "OBS plugin auto failed (exit 1):" in result.stdout + result.stderr
+    assert "NativeCommandError" not in result.stdout + result.stderr
     assert not manager.program_data.exists()
 
 
@@ -396,3 +399,97 @@ def test_native_powershell_installer_emits_unicode_status_with_ascii_pythonioenc
     assert status["obsRoot"] == str(portable)
     assert status["state"] == "installed"
     assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
+
+
+def _native_portable_fixture(tmp_path: Path, manager: ObsPluginInstallation) -> Path:
+    portable = tmp_path / "OBS Portable With Spaces"
+    (portable / "bin/64bit").mkdir(parents=True)
+    (portable / "bin/64bit/obs64.exe").write_bytes(b"disposable OBS executable; never run")
+    (portable / "portable_mode.txt").write_text("")
+    (portable / "obs-plugins").mkdir()
+    (portable / "data").mkdir()
+    # Only the isolated child interpreter receives this fixture. It makes the
+    # global tasklist check deterministic without closing the user's real OBS.
+    (manager.app_root / "services/api/sitecustomize.py").write_text("""
+import os, subprocess
+_real_run = subprocess.run
+def _test_run(args, *extra, **kwargs):
+    if isinstance(args, list) and args and args[0] == 'tasklist':
+        output = '\"obs64.exe\"' if os.environ.get('OBS_TEST_RUNNING') == '1' else ''
+        return subprocess.CompletedProcess(args, 0, output, '')
+    return _real_run(args, *extra, **kwargs)
+subprocess.run = _test_run
+""", encoding="utf-8")
+    return portable
+
+
+@pytest.mark.parametrize("state", ["fresh", "installed", "damaged", "partial", "update"])
+def test_default_native_bat_installs_or_repairs_and_keeps_pairing(tmp_path: Path, state: str) -> None:
+    manager, _, env = _stage_native_installer(tmp_path)
+    portable = _native_portable_fixture(tmp_path, manager)
+    if state != "fresh":
+        manager.apply("install", str(portable))
+    previous_pairing = manager.user_config.read_bytes() if manager.user_config.exists() else None
+    dll = portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll"
+    if state == "damaged":
+        dll.write_bytes(b"different from the current manifest")
+    elif state == "partial":
+        dll.unlink()
+    elif state == "update":
+        (manager.package / "bin/64bit/pro4bro-obs-bridge.dll").write_bytes(b"plugin-v2")
+        manifest_file = manager.package / "manifest.json"
+        manifest = json.loads(manifest_file.read_text())
+        manifest["files"][0]["sha256"] = hashlib.sha256(b"plugin-v2").hexdigest()
+        manifest_file.write_text(json.dumps(manifest))
+    runner = manager.app_root / "run-default.cmd"
+    runner.write_text(f'@call "{manager.app_root / "INSTALL-OBS-PLUGIN.bat"}" -ObsRoot "{portable}"\r\n', encoding="utf-8")
+    result = subprocess.run(
+        ["cmd.exe", "/d", "/c", str(runner)], cwd=manager.app_root, env=env,
+        input="\n", capture_output=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    status = json.loads(next(line for line in result.stdout.splitlines() if line.startswith("{")))
+    assert status["appliedAction"] == ("repair" if state in ("damaged", "partial") else "install")
+    assert manager.status(str(portable))["state"] == "installed"
+    assert dll.read_bytes() == (b"plugin-v2" if state == "update" else b"plugin-v1")
+    if previous_pairing is not None:
+        assert manager.user_config.read_bytes() == previous_pairing
+
+
+def test_native_installer_retains_exit_code_and_details_for_damaged_explicit_install(tmp_path: Path) -> None:
+    manager, script, env = _stage_native_installer(tmp_path)
+    portable = _native_portable_fixture(tmp_path, manager)
+    manager.apply("install", str(portable))
+    dll = portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll"
+    dll.write_bytes(b"tampered")
+    before_pairing = manager.user_config.read_bytes()
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+         "-Action", "install", "-ObsRoot", str(portable)],
+        env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert result.returncode != 0
+    assert "OBS plugin install failed (exit 1):" in result.stdout + result.stderr
+    assert "Repair" in result.stdout + result.stderr
+    assert "NativeCommandError" not in result.stdout + result.stderr
+    assert dll.read_bytes() == b"tampered"
+    assert manager.user_config.read_bytes() == before_pairing
+
+
+def test_default_native_installer_blocks_repair_while_obs_running(tmp_path: Path) -> None:
+    manager, script, env = _stage_native_installer(tmp_path)
+    portable = _native_portable_fixture(tmp_path, manager)
+    manager.apply("install", str(portable))
+    dll = portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll"
+    dll.write_bytes(b"tampered")
+    env["OBS_TEST_RUNNING"] = "1"
+    before_pairing = manager.user_config.read_bytes()
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-ObsRoot", str(portable)],
+        env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert result.returncode != 0
+    assert "Đóng OBS" in result.stdout + result.stderr
+    assert "NativeCommandError" not in result.stdout + result.stderr
+    assert dll.read_bytes() == b"tampered"
+    assert manager.user_config.read_bytes() == before_pairing

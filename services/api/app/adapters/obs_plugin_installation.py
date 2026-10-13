@@ -393,14 +393,23 @@ if __name__ == "__main__":
         else:
             print(
                 "Usage: python -m app.adapters.obs_plugin_installation --cli "
-                "<app-root> <data-root> <install|repair|remove> <obs-root|auto-root> <true|false>",
+                "<app-root> <data-root> <auto|install|repair|remove> <obs-root|auto-root> <true|false>",
                 file=sys.stderr,
             )
             raise SystemExit(2)
         try:
+            if action not in ("auto", "install", "repair", "remove"):
+                raise ObsPluginInstallError("Unknown action")
             manager = ObsPluginInstallation(Path(app_root), Path(data_root))
             requested_root = None if obs_root == "__PRO4BRO_AUTO_OBS_ROOT__" else obs_root or None
-            print(json.dumps(manager.apply(action, requested_root, remove_pairing=remove_pairing == "true"), ensure_ascii=False))
+            # Only the command-line convenience mode chooses an action. The
+            # installer still validates package hashes, OBS version and locks.
+            applied_action = action
+            if action == "auto":
+                applied_action = "repair" if manager.status(requested_root)["state"] == "damaged" else "install"
+            outcome = manager.apply(applied_action, requested_root, remove_pairing=remove_pairing == "true")
+            outcome["appliedAction"] = applied_action
+            print(json.dumps(outcome, ensure_ascii=False))
         except Exception as exc:
             print(f"OBS plugin {action} failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc

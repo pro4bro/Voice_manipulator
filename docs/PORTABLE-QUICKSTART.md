@@ -23,8 +23,11 @@ already stored inside this folder. Do not install Python or run `npm install`.
 
 The installer places the bridge DLL and locale in the standard OBS plugin
 directory, or inside a selected OBS portable root. It keeps installation
-identity and token in the Windows user's OBS profile. `INSTALL-OBS-PLUGIN.bat`
-is a fallback using the same installer. The current plugin still uses v2
+identity and token in the Windows user's OBS profile. From alpha 0.5.9,
+close OBS and double-click `INSTALL-OBS-PLUGIN.bat` to install, update or repair
+automatically using the same validated installer. Repair keeps existing pairing;
+reopen OBS afterward. Explicit `-Action repair` and `-Action remove` remain
+available. The current plugin still uses v2
 `config.json` for live capture; source UUID and project setup remain manual
 until LIVELINK-03. Tokens are absent from the portable bundle.
 
