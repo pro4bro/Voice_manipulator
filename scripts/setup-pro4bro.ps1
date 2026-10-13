@@ -118,4 +118,4 @@ Invoke-WebNpm -Arguments "run build" -FailureMessage "Frontend build thất bạ
 & (Join-Path $PSScriptRoot "build-portable-python-runtimes.ps1") -Profiles Core
 if ($LASTEXITCODE -ne 0) { throw "Không tạo được portable API runtime." }
 
-Write-Host "`nSetup hoàn tất. Chạy start-pro4bro.bat để mở app." -ForegroundColor Green
+Write-Host "`nSetup hoàn tất. Chạy open-pro4bro-console.bat để mở app." -ForegroundColor Green

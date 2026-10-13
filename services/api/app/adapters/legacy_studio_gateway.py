@@ -36,7 +36,7 @@ class LegacyStudioGateway:
             return Response(
                 content=(
                     '{"detail":"OmniVoice Studio runtime chưa chạy. '
-                    'Hãy mở app bằng start-pro4bro.bat."}'
+                    'Hãy mở app bằng open-pro4bro-console.bat."}'
                 ),
                 status_code=503,
                 media_type="application/json",

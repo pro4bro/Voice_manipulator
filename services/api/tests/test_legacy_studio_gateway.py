@@ -17,5 +17,5 @@ def test_studio_gateway_reports_an_offline_runtime() -> None:
     response = TestClient(app).get("/studio/status")
 
     assert response.status_code == 503
-    assert "start-pro4bro.bat" in response.json()["detail"]
+    assert "open-pro4bro-console.bat" in response.json()["detail"]
 

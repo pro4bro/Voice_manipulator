@@ -136,7 +136,7 @@ function Start-Workloads {
     }
     foreach ($port in 18081, 18120) {
         if (-not (Wait-Pro4BroPortFree $port)) {
-            throw "Port $port did not become free. Run start-pro4bro.bat stop, then start again."
+            throw "Port $port did not become free. Run open-pro4bro-console.bat stop, then start again."
         }
     }
 

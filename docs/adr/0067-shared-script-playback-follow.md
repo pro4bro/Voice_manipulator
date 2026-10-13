@@ -17,6 +17,13 @@ footage, imported tracks and OBS archived tracks publish source ID/word index
 through the playback store. A parent subscribes to all of its displayed source
 documents; it does not subscribe to the archive ID or flatten their clocks.
 
+PORT-FEEDBACK-01 (2026-10-13) clarifies the identity after finalized STT:
+an imported/OBS child Script subscribes to the project track ID published by
+its multitrack Timeline. `take.id` can hold a different sidecar processing ID;
+it is not the multitrack playback owner. The ordinary single-file Timeline and
+Script continue to share that take's clock. Registry regressions deliberately
+use different asset and sidecar IDs and include the actual imported Timeline.
+
 - The viewport follows a changed active word during playback or paused seeking.
 - Virtual reveal addresses the source and word together. Mounting an offscreen
   fragment is followed by positioning its word on the next commit.
