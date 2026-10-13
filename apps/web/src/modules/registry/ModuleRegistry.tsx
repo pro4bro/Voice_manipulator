@@ -255,6 +255,7 @@ function mediaPoolProps(context: StudioContext) {
     onSelectTrack: context.onSelectImportedTrack,
     onScriptSelectionChange: context.onScriptSelectionChange,
     selectedImportedTrackId: context.selectedImportedTrackId,
+    selectedScriptAssetIds: context.selectedScriptAssetIds,
     onSendToTraining: context.onSendToTraining,
     onToggleTraining: context.onToggleTraining,
     onToggleTranscription: context.onToggleTranscription,
@@ -270,6 +271,9 @@ function mediaPoolProps(context: StudioContext) {
     onOpenObsTrack: context.onOpenObsTrack,
     selectedObsRecordingId: context.obsTimelineActive ? context.obsTimelineRecordingId : null,
     onObsArchiveReady: context.onObsArchiveReady,
+    onRemovedRecording: (recordingId: string) => {
+      if (context.obsTimelineRecordingId === recordingId) context.onClearMediaSelection();
+    },
   };
 }
 
@@ -282,9 +286,6 @@ function workflowMediaAssets(context: StudioContext) {
 }
 
 export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
-  if ((id === "script" || id === "timeline") && context.workflow !== "voice-manipulator" && (context.selectedScriptAssetIds?.length ?? 0) > 1) {
-    return <ModuleFrame title={id === "script" ? "Script" : "Timeline"}><p role="status">Đã chọn {context.selectedScriptAssetIds!.length} mục · chọn một footage để mở dữ liệu.</p></ModuleFrame>;
-  }
   const pageAssets = workflowMediaAssets(context);
   const parentsWithTracks = new Set(context.mediaAssets.map((asset) => asset.sourceArchiveAssetId).filter((id): id is string => Boolean(id)));
   const parentsWithImportedTracks = new Set(context.mediaAssets.filter((asset) => asset.sourceArchiveAssetId && asset.importSelected !== false).map((asset) => asset.sourceArchiveAssetId));
@@ -292,6 +293,16 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     if (asset.sourceArchiveAssetId) return asset.importSelected !== false;
     return parentsWithTracks.has(asset.id) ? parentsWithImportedTracks.has(asset.id) : asset.importSelected !== false;
   });
+  const selectedIds = context.selectedScriptAssetIds ?? [context.selectedImportedTrackId ?? context.selectedAssetId].filter((value): value is string => Boolean(value));
+  const selectedTracks = [...new Map(selectedIds.flatMap((selectedId) => {
+    const children = workingAssets.filter((asset) => asset.sourceArchiveAssetId === selectedId);
+    return children.length ? children : workingAssets.filter((asset) => asset.id === selectedId);
+  }).map((asset) => [asset.id, asset])).values()];
+  const selectedParents = new Set(selectedTracks.map((asset) => asset.sourceArchiveAssetId ?? asset.id));
+  if ((id === "script" || id === "timeline") && context.workflow !== "voice-manipulator" &&
+      (context.selectedScriptAssetIds?.length ?? 0) > 1 && selectedParents.size !== 1) {
+    return <ModuleFrame title={id === "script" ? "Script" : "Timeline"}><p role="status">Đã chọn {context.selectedScriptAssetIds!.length} mục · chọn các track trong cùng một footage để mở dữ liệu.</p></ModuleFrame>;
+  }
   switch (id) {
     case "library-panel":
       return <LibraryPanel onCollectionImported={context.onCollectionImported} onPrepareCollectionExport={context.onPrepareCollectionExport} {...mediaPoolProps(context)} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
@@ -301,11 +312,6 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceVault projectId={context.projectId} onCollectionImported={context.onCollectionImported} onPrepareCollectionExport={context.onPrepareCollectionExport} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} assets={workingAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
     case "script": {
       const selectedAsset = workingAssets.find((asset) => asset.id === (context.selectedImportedTrackId ?? context.selectedAssetId));
-      const selectedIds = context.selectedScriptAssetIds ?? [context.selectedImportedTrackId ?? context.selectedAssetId].filter((id): id is string => Boolean(id));
-      const selectedTracks = [...new Map(selectedIds.flatMap((id) => {
-        const children = workingAssets.filter((asset) => asset.sourceArchiveAssetId === id);
-        return children.length ? children : workingAssets.filter((asset) => asset.id === id);
-      }).map((asset) => [asset.id, asset])).values()];
       const singleOpen = selectedTracks.length === 1 && selectedTracks[0].id === selectedAsset?.id;
       // Multitrack timelines publish the project track ID. The STT sidecar's
       // item ID in take.id identifies its processing job, not that clock.
@@ -341,17 +347,20 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
           onPlayheadChange={context.onObsPlayheadChange}
           assets={context.mediaAssets} onCutsChange={context.onObsTimelineCutsChange}
           visibleAssetId={context.selectedImportedTrackId}
+          visibleAssetIds={!context.selectedAssetId ? null : selectedTracks.map((asset) => asset.id)}
           projectId={context.projectId} projectName={context.projectName} requestedRecordingId={context.obsTimelineRecordingId}
           onOverlapSelect={context.onObsOverlapSelect} selectedOverlap={context.obsOverlapSelection}
           seekRequest={context.obsSeekRequest} transcriptRows={context.obsTranscriptRows} />;
       }
-      const importedParent = workingAssets.find((asset) => asset.id === context.selectedAssetId);
+      const importedParent = workingAssets.find((asset) => asset.id === context.selectedAssetId ||
+        selectedParents.size === 1 && asset.id === [...selectedParents][0]);
       const importedTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === importedParent?.id)
         .sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0));
       if (context.workflow === "speech-to-text" && importedParent && importedTracks.length > 0) {
         return <ImportedMultitrackTimeline onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={importedParent.id} parent={importedParent} tracks={importedTracks}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           selectedTrackId={context.selectedImportedTrackId} singleTrackView={Boolean(context.selectedImportedTrackId)} onSelectTrack={context.onSelectImportedTrack} wordSelection={context.wordSelection}
+          visibleTrackIds={selectedTracks.map((asset) => asset.id)}
           onCutsChange={context.onObsTimelineCutsChange} readOnly={context.readOnlyAsset} />;
       }
       // Voice Manipulator shows only what the app generated, and none of the

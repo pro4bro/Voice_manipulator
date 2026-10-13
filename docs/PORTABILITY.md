@@ -1,5 +1,20 @@
 # Portability Contract
 
+## Feedback and release parity
+
+Owner decision, 2026-10-13: implement all feedback in the main app source first,
+then produce its numbered portable update. Validate the corrected behavior in
+both source and installed portable and verify matching app file hashes. A
+portable-only patch does not complete a product fix. Runtime/model weights
+remain separate from app updates.
+
+Voice Collection models can be exported individually as verified voice-entry ZIP
+packages and imported into a collection on another machine, then into its project.
+The package includes referenced trained artifacts, reference audio, consent and
+publication lineage with relative paths. Base weights stay outside the package;
+the destination needs a compatible installed engine. See ADR 0072 for format,
+integrity checks, limits and the standalone model versus Model Set distinction.
+
 ## Application Folder
 
 All launcher paths are derived from the folder containing the repository.

@@ -5,7 +5,7 @@ import type { VoiceCollection, VoiceCollectionImport } from "../../domain/types"
 import { VoiceCollections } from "./VoiceCollections";
 import { CollectionDialog } from "./CollectionDialog";
 
-vi.mock("../../api/client", () => ({ api: { listVoiceCollections: vi.fn(), createVoiceCollection: vi.fn(), importCollectionVoice: vi.fn(), addVoiceToCollection: vi.fn(), getOmniVoiceProfileSchema: vi.fn() } }));
+vi.mock("../../api/client", () => ({ api: { listVoiceCollections: vi.fn(), createVoiceCollection: vi.fn(), importCollectionVoice: vi.fn(), addVoiceToCollection: vi.fn(), importVoiceCollectionPackage: vi.fn(), exportVoiceCollectionEntry: vi.fn(), getOmniVoiceProfileSchema: vi.fn() } }));
 const collection = { id: "collection-1", name: "Giọng miền Nam", properties: { language: "Tiếng Việt", languageId: "vi", region: "Miền Nam", gender: "female", age: "adult", attributes: {} }, entries: [{ id: "entry-1", sourceProjectId: "source", sourceProjectName: "Project gốc", voice: { id: "voice-1", name: "Giọng An", kind: "lora" }, speaker: { id: "speaker-1", name: "An" } }] } as VoiceCollection;
 const makeEntry = (id: string, sourceProjectId: string, sourceProjectName: string, voiceId: string, voiceName: string, kind: VoiceCollection["entries"][number]["voice"]["kind"], speakerId: string, speakerName: string): VoiceCollection["entries"][number] => ({
   ...collection.entries[0], id, sourceProjectId, sourceProjectName,
@@ -30,7 +30,7 @@ it("renders collection entries for browsing without project import selection", a
   render(<VoiceCollections />);
   await screen.findByText("Giọng An");
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Import/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Import đã chọn/ })).not.toBeInTheDocument();
 });
 
 it("groups exact speaker/project tuples, lets a profile select all, and submits only chosen models serially", async () => {
@@ -159,4 +159,21 @@ it("keeps a collection dialog open while copying and reports artifact rejection 
   await screen.findByRole("alert");
   expect(screen.queryByText("Đã thêm voice vào collection.")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole("button", { name: "Đóng" })).toBeEnabled());
+});
+
+it("imports a package into the selected collection and exports an entry as a portable file", async () => {
+  const transferred = makeEntry("entry-external", "source-external", "Máy nguồn", "voice-external", "Giọng ngoài", "lora", "speaker-external", "Mai");
+  const packageFile = new File(["zip bytes"], "trained-voice.zip", { type: "application/zip" });
+  vi.mocked(api.importVoiceCollectionPackage).mockResolvedValue(transferred);
+  vi.mocked(api.exportVoiceCollectionEntry).mockResolvedValue({ skippedCues: 0 });
+  render(<VoiceCollections />);
+
+  await screen.findByText("Giọng An");
+  fireEvent.change(screen.getByLabelText("Import voice package"), { target: { files: [packageFile] } });
+  await waitFor(() => expect(api.importVoiceCollectionPackage).toHaveBeenCalledWith("collection-1", packageFile));
+  expect(await screen.findByText("Giọng ngoài")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(/imported.*collection/i);
+
+  fireEvent.click(screen.getByRole("button", { name: "Export package for Giọng ngoài" }));
+  await waitFor(() => expect(api.exportVoiceCollectionEntry).toHaveBeenCalledWith("collection-1", "entry-external"));
 });

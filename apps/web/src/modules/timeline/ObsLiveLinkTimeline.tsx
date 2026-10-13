@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 import { useAudioScrubber } from "./audio-scrubbing";
+import { usePreviewMixer } from "./preview-mixer";
 
 import { api } from "../../api/client";
 import { notifyPlaybackInteraction, publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
@@ -191,7 +192,7 @@ function sourceLevel(waveform: ObsLiveLinkWaveform | undefined, time: number): n
 
 export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
                                       transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
-                                      assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, speakers = [], onAssetWordsChange,
+                                      assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, visibleAssetIds = null, speakers = [], onAssetWordsChange,
                                       onAssetTimelineStateChange, onUndo, onRedo, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
   projectId: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
@@ -204,6 +205,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   onUndo?: () => void;
   onRedo?: () => void;
   visibleAssetId?: string | null;
+  visibleAssetIds?: string[] | null;
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
   onCutsChange?: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean> | boolean | void;
@@ -230,8 +232,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   const [layout, setLayout] = useState<Layout>("layers");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [windowSeconds, setWindowSeconds] = useState<number>(DEFAULT_WINDOW_SECONDS);
-  const [gainByChannel, setGainByChannel] = useState<Record<string, number>>({});
-  const [mutedByChannel, setMutedByChannel] = useState<Record<string, boolean>>({});
+  const { gains: gainByChannel, setGains: setGainByChannel, muted: mutedByChannel,
+    setMuted: setMutedByChannel, solo: soloByChannel, setSolo: setSoloByChannel } = usePreviewMixer();
   const [markIn, setMarkIn] = useState<number | null>(null);
   const [markOut, setMarkOut] = useState<number | null>(null);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
@@ -244,6 +246,23 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   editFocusRef.current = editFocus;
   const audioRef = useRef<HTMLAudioElement>(null);
   const otherAudioRefs = useRef(new Map<string, HTMLAudioElement>());
+  const otherAudioCallbacks = useRef(new Map<string, (element: HTMLAudioElement | null) => void>());
+  const setMainAudio = useCallback((element: HTMLAudioElement | null) => {
+    const previous = audioRef.current;
+    audioRef.current = element;
+    if (!element) previous?.pause();
+  }, []);
+  function otherAudioCallback(channelId: string) {
+    let callback = otherAudioCallbacks.current.get(channelId);
+    if (!callback) {
+      callback = (element) => {
+        if (element) otherAudioRefs.current.set(channelId, element);
+        else { otherAudioRefs.current.get(channelId)?.pause(); otherAudioRefs.current.delete(channelId); }
+      };
+      otherAudioCallbacks.current.set(channelId, callback);
+    }
+    return callback;
+  }
   const audioGraphRef = useRef<PreviewAudioGraph | null>(null);
   const windowRef = useRef({ start: 0, end: DEFAULT_WINDOW_SECONDS });
   const recordingIdRef = useRef<string | null>(null);
@@ -295,7 +314,8 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     },
     (reason) => setStatusError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS.")), [projectId]);
 
-  const active = status?.appRecording?.projectId === projectId ? status.appRecording : null;
+  const active = status?.appRecording?.projectId === projectId &&
+    (!requestedRecordingId || requestedRecordingId === status.appRecording.recordingId) ? status.appRecording : null;
   // A workspace selection must win before the local state sync effect runs;
   // otherwise the previous footage is echoed back and both selections oscillate.
   const recordingId = active?.recordingId ?? requestedRecordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
@@ -316,8 +336,16 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     if (isLive || !lane.assetId) return true;
     return assets.find((asset) => asset.id === lane.assetId)?.importSelected !== false;
   }), [status, journal, recordingId, isLive, assets, retainedLive]);
-  const matchedLanes = visibleAssetId ? lanes.filter((lane) => lane.assetId === visibleAssetId) : [];
-  const visibleLanes = visibleAssetId && matchedLanes.length ? matchedLanes : lanes;
+  const selectionIds = visibleAssetIds ?? (visibleAssetId ? [visibleAssetId] : null);
+  const visibleLanes = selectionIds !== null ? lanes.filter((lane) => lane.assetId && selectionIds.includes(lane.assetId))
+    : seekRequest?.selectOnly && seekRequest.recordingId === recordingId
+      ? lanes.filter((lane) => lane.channelId === seekRequest.channelId) : lanes;
+  const hasSolo = lanes.some((lane) => soloByChannel[`${projectId}:${recordingId}:${lane.channelId}`]);
+  const previewGain = (channelId: string) => {
+    const key = `${projectId}:${recordingId}:${channelId}`;
+    return mutedByChannel[key] || hasSolo && !soloByChannel[key] ? 0 : (gainByChannel[key] ?? 100) / 100;
+  };
+  const visibleLaneIds = visibleLanes.map((lane) => lane.channelId).join(",");
   const defaultColumnWidth = viewportWidth
     ? Math.max(240, Math.min(800, Math.floor((viewportWidth - 12 - (visibleLanes.length - 1) * 6) / Math.max(1, visibleLanes.length))))
     : 360;
@@ -407,17 +435,17 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   useEffect(() => {
     // The focused standard Timeline owns the clock while editing a track.
     if (editFocus) return;
-    publishPlaybackWords(Object.fromEntries(lanes.flatMap((lane) => {
+    publishPlaybackWords(Object.fromEntries(visibleLanes.flatMap((lane) => {
       if (!lane.assetId) return [];
       const words = assets.find((asset) => asset.id === lane.assetId)?.words ?? [];
       const index = subtitleIndexAtTime(words, currentTime);
       const word = words[index];
       return [[lane.assetId, !isLive && word && word.start <= currentTime && currentTime < word.end ? index : -1]];
     })));
-  }, [lanes, assets, currentTime, isLive, editFocus]);
+  }, [visibleLaneIds, assets, currentTime, isLive, editFocus]);
   useEffect(() => () => publishPlaybackWords({}), []);
-  useEffect(() => subscribePlaybackSeek((assetId, seconds) => {
-    if (isLive || !lanes.some((lane) => lane.assetId === assetId)) return;
+  useLayoutEffect(() => subscribePlaybackSeek((assetId, seconds) => {
+    if (isLive || !visibleLanes.some((lane) => lane.assetId === assetId)) return;
     setEditFocus(null);
     seekTime(seconds);
   }));
@@ -440,8 +468,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     setFollowLive(true);
     setWindowSeconds(DEFAULT_WINDOW_SECONDS);
   }, [recordingId]);
-  useEffect(() => setGainByChannel({}), [projectId]);
-  useEffect(() => setMutedByChannel({}), [projectId]);
   useEffect(() => setColumnWidths({}), [projectId]);
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -514,11 +540,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     ? `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(selectedLane.assetId)}/audio`
     : null;
   const audioScrubber = useAudioScrubber(`${recordingId}:${playbackUrl}:${isLive}`);
-  const selectedGain = selectedLane ? gainByChannel[`${recordingId}:${selectedLane.channelId}`] ?? 100 : 100;
-  const selectedMuted = selectedLane ? mutedByChannel[`${recordingId}:${selectedLane.channelId}`] ?? false : false;
+  const selectedGain = selectedLane ? gainByChannel[`${projectId}:${recordingId}:${selectedLane.channelId}`] ?? 100 : 100;
+  const selectedMuted = selectedLane ? mutedByChannel[`${projectId}:${recordingId}:${selectedLane.channelId}`] ?? false : false;
   const playhead = ((currentTime - windowStart) / windowSpan) * 100;
   const markInPosition = markIn === null ? null : ((markIn - windowStart) / windowSpan) * 100;
-  const canPlay = !isLive && lanes.some((lane) => lane.assetId);
+  const canPlay = !isLive && visibleLanes.some((lane) => lane.assetId);
 
   function focusArchivedTrack(asset: ProjectMediaAsset, request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number }) {
     if (isLive || (!asset.words?.length && request.insertTime === undefined && request.contextTime === undefined) || !onAssetWordsChange || !onAssetTimelineStateChange) return;
@@ -580,24 +606,24 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (audioGraphRef.current?.element === audioRef.current) {
-      audioGraphRef.current.gain.gain.value = selectedMuted ? 0 : selectedGain / 100;
+      audioGraphRef.current.gain.gain.value = selectedLane ? previewGain(selectedLane.channelId) : 0;
     } else if (audioRef.current) {
-      audioRef.current.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
+      audioRef.current.volume = selectedLane ? Math.min(1, previewGain(selectedLane.channelId)) : 0;
     }
-  }, [playbackUrl, selectedGain, selectedMuted]);
-  useEffect(() => {
+  }, [playbackUrl, selectedGain, selectedMuted, hasSolo, soloByChannel, visibleLaneIds]);
+  useLayoutEffect(() => {
     otherAudioRefs.current.forEach((audio, channelId) => {
-      const key = `${recordingId}:${channelId}`;
-      audio.volume = mutedByChannel[key] ? 0 : Math.min(1, (gainByChannel[key] ?? 100) / 100);
+      audio.volume = Math.min(1, previewGain(channelId));
     });
-  }, [recordingId, playbackUrl, gainByChannel, mutedByChannel]);
+  }, [recordingId, playbackUrl, gainByChannel, mutedByChannel, soloByChannel, hasSolo, visibleLaneIds]);
   useEffect(() => {
     forEachPlaybackAudio((audio) => { audio.playbackRate = playbackRate; });
   }, [playbackUrl, playbackRate]);
 
   useEffect(() => {
+    if (!visibleLanes.length) { setPlaying(false); return; }
     if (!playing || isLive) return;
     const audios: HTMLAudioElement[] = [];
     forEachPlaybackAudio((audio) => { audio.currentTime = currentTime; audios.push(audio); });
@@ -607,11 +633,12 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     });
   // Reconnect the selected player when the user changes the focused lane.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playbackUrl]);
+  }, [playbackUrl, visibleLaneIds]);
 
   useEffect(() => () => {
     const graph = audioGraphRef.current;
     if (!graph) return;
+    graph.element.pause();
     graph.source.disconnect();
     graph.gain.disconnect();
     void graph.context.close().catch(() => undefined);
@@ -636,10 +663,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     const graph = audioGraphRef.current;
     if (graph?.element === audio) {
       audio.volume = 1;
-      graph.gain.gain.value = selectedMuted ? 0 : selectedGain / 100;
+      graph.gain.gain.value = selectedLane ? previewGain(selectedLane.channelId) : 0;
       void graph.context.resume().catch(() => setError("Không kích hoạt được gain nghe lại."));
     } else {
-      audio.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
+      audio.volume = selectedLane ? Math.min(1, previewGain(selectedLane.channelId)) : 0;
       if (selectedGain > 100) setError("Trình duyệt không hỗ trợ tăng gain nghe lại trên 100%.");
     }
   }
@@ -789,10 +816,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     wordSelection={visibleAssetId === focusedAsset.id ? wordSelection : focusedWordSelection}
     onWordSelectionChange={visibleAssetId === focusedAsset.id ? onWordSelectionChange : setFocusedWordSelection}
     editRequest={editFocus.request}
-    gain={previewPercentToDb(selectedMuted ? 0 : selectedGain)}
+    gain={previewPercentToDb(selectedLane ? previewGain(selectedLane.channelId) * 100 : 0)}
     onGainChange={(value) => {
       if (!selectedLane) return;
-      const key = `${recordingId}:${selectedLane.channelId}`;
+      const key = `${projectId}:${recordingId}:${selectedLane.channelId}`;
       setMutedByChannel((current) => ({ ...current, [key]: false }));
       setGainByChannel((current) => ({ ...current, [key]: previewDbToPercent(value) }));
     }}
@@ -893,14 +920,14 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                 point.startFrame < (windowStart + windowSpan) * sampleRate) : [];
             const hasPcm = points.some((point) => point.peak !== null);
             const path = waveformPath(points, sampleRate, windowStart, windowSpan,
-              mutedByChannel[`${recordingId}:${lane.channelId}`] ? 0 : (gainByChannel[`${recordingId}:${lane.channelId}`] ?? 100) / 100);
+              mutedByChannel[`${projectId}:${recordingId}:${lane.channelId}`] ? 0 : (gainByChannel[`${projectId}:${recordingId}:${lane.channelId}`] ?? 100) / 100);
             const receivedUntil = sampleRate ? points.reduce((latest, point) => point.peak === null
               ? latest : Math.max(latest, point.endFrame / sampleRate), 0) : 0;
             const liveChannel = status?.channels.find((channel) => channel.channelId === lane.channelId);
             const livePeak = liveChannel?.meterPeak ?? 0;
             const level = isLive ? Math.max(0, Math.min(100, Math.round(livePeak * 100))) :
               sourceLevel(waveform, currentTime);
-            const gainKey = `${recordingId}:${lane.channelId}`;
+            const gainKey = `${projectId}:${recordingId}:${lane.channelId}`;
             const gain = gainByChannel[gainKey] ?? 100;
             const intervalOrigin = recording?.startedMonotonicNs ?? 0;
             const intervals = [
@@ -1058,7 +1085,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
                   <button aria-label={`${mutedByChannel[gainKey] ? "Bật tiếng" : "Tắt tiếng"} ${lane.label}`}
                     aria-pressed={Boolean(mutedByChannel[gainKey])} className="obs-timeline__mute"
                     onClick={() => setMutedByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
-                    title={mutedByChannel[gainKey] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button></div>
+                    title={mutedByChannel[gainKey] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button>
+                  <button aria-label={`${soloByChannel[gainKey] ? "Bỏ Solo" : "Solo"} ${lane.label}`}
+                    aria-pressed={Boolean(soloByChannel[gainKey])} className="obs-timeline__mute obs-timeline__solo"
+                    onClick={() => setSoloByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
+                    title="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực" type="button">S</button></div>
                   <input aria-label={`Gain nghe lại ${lane.label}`} max="200" min="0"
                     onChange={(event) => setGainByChannel((current) => ({ ...current,
                       [gainKey]: Number(event.target.value) }))} step="1" type="range" value={gain} />
@@ -1109,10 +1140,10 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
         Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : currentTime);
         event.currentTarget.playbackRate = playbackRate;
         if (audioGraphRef.current?.element !== event.currentTarget) {
-          event.currentTarget.volume = selectedMuted ? 0 : Math.min(1, selectedGain / 100);
+          event.currentTarget.volume = selectedLane ? Math.min(1, previewGain(selectedLane.channelId)) : 0;
         }
       }}
-      onPause={() => { if (!audioScrubber.active) setPlaying(false); }}
+      onPause={(event) => { if (event.currentTarget === audioRef.current && !audioScrubber.active) setPlaying(false); }}
       onPlay={() => { if (!audioScrubber.active) setPlaying(true); }} onTimeUpdate={(event) => {
         if (audioScrubber.active) return;
         const time = event.currentTarget.currentTime;
@@ -1126,18 +1157,14 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
           if (Math.abs(other.currentTime - next) > .001) other.currentTime = next;
         });
       }}
-      preload="metadata" ref={audioRef} src={playbackUrl} /> : null}
-    {lanes.filter((lane) => lane.assetId && lane.channelId !== selectedLane?.channelId).map((lane) => {
-      const gainKey = `${recordingId}:${lane.channelId}`;
+      preload="metadata" ref={setMainAudio} src={playbackUrl} /> : null}
+    {visibleLanes.filter((lane) => lane.assetId && lane.channelId !== selectedLane?.channelId).map((lane) => {
       return <audio key={lane.channelId}
         onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime,
           Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : currentTime);
           event.currentTarget.playbackRate = playbackRate;
-          event.currentTarget.volume = mutedByChannel[gainKey] ? 0 : Math.min(1, (gainByChannel[gainKey] ?? 100) / 100); }}
-        preload="metadata" ref={(element) => {
-          if (element) otherAudioRefs.current.set(lane.channelId, element);
-          else otherAudioRefs.current.delete(lane.channelId);
-        }} src={`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(lane.assetId!)}/audio`} />;
+          event.currentTarget.volume = Math.min(1, previewGain(lane.channelId)); }}
+        preload="metadata" ref={otherAudioCallback(lane.channelId)} src={`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(lane.assetId!)}/audio`} />;
     })}
   </ModuleFrame>;
 }

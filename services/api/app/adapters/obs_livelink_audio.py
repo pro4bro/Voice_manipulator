@@ -132,7 +132,15 @@ class FileObsLiveLinkAudio:
                 raise LiveLinkError("PCM arrived after the recording boundary.")
             if plugin_monotonic_ns < recording.started_monotonic_ns:
                 raise LiveLinkError("PCM precedes the recording boundary.")
-            _, folder = self._folder(recording.project_id, recording_id)
+            root, folder = self._folder(recording.project_id, recording_id)
+            if recording_id in deleted_recording_ids(root):
+                raise LiveLinkError("OBS recording was permanently deleted.", 404)
+            try:
+                journal = json.loads((folder / "recording.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                journal = {}
+            if journal.get("deletedAt"):
+                raise LiveLinkError("OBS recording is in the Recycle Bin.", 404)
             channel = next((item for item in state.channels if item.channel_id == channel_id), None)
             if channel is None or channel.source_uuid != source_uuid:
                 try:
@@ -226,6 +234,8 @@ class FileObsLiveLinkAudio:
         if not record_path.is_file():
             raise LiveLinkError("OBS recording journal is missing.", 404)
         record = json.loads(record_path.read_text(encoding="utf-8"))
+        if record.get("deletedAt"):
+            raise LiveLinkError("OBS recording is in the Recycle Bin.", 404)
         recording = ObsCaptureRecording.model_validate(record["recording"])
         if recording.recording_id != recording_id or recording.project_id != project_id:
             raise LiveLinkError("OBS recording ownership does not match project.", 409)
@@ -261,6 +271,10 @@ class FileObsLiveLinkAudio:
                 raise LiveLinkError("OBS recording has not stopped.")
             root, folder = self._folder(recording.project_id, recording_id)
             record = json.loads((folder / "recording.json").read_text(encoding="utf-8"))
+            if recording_id in deleted_recording_ids(root):
+                raise LiveLinkError("OBS recording was permanently deleted.", 404)
+            if record.get("deletedAt"):
+                raise LiveLinkError("OBS recording is in the Recycle Bin.", 404)
             archive = record["recording"].get("sourceArchive")
             if (record["recording"].get("archiveStatus") == "ready" and archive and
                     (root / archive["sourcePath"]).is_file() and

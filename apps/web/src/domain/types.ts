@@ -942,6 +942,7 @@ export interface ObsLiveLinkRecording {
 }
 
 export interface ObsLiveLinkRecordingJournal {
+  deletedAt?: string | null;
   protocolVersion: 3;
   recording: ObsLiveLinkRecording;
   durableChannelIds?: string[];

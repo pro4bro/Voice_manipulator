@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ProjectMediaAsset } from "../../domain/types";
 import { ObsLiveLinkTimeline } from "./ObsLiveLinkTimeline";
+import { PreviewMixerProvider } from "./preview-mixer";
 import { ModuleRegistry, type StudioContext } from "../registry/ModuleRegistry";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { publishPlaybackWords, requestPlaybackSeek } from "../../domain/playback-sync";
@@ -23,6 +24,85 @@ vi.mock("../obs-capture/obs-waveform-feed", () => ({
 }));
 
 const ids = ["channel-a", "channel-b"];
+
+it("limits selected archived OBS playback to one track while preserving mute and gain", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  fireEvent.change(screen.getByRole("slider", { name: "Gain nghe lại Channel 2" }), { target: { value: "37" } });
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" visibleAssetId="asset-1" />);
+  expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+  expect(view.container.querySelector("audio")?.getAttribute("src")).toContain("asset-1/audio");
+  expect(view.container.querySelector("audio")?.volume).toBe(.37);
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  expect(screen.getByRole("button", { name: "Bật tiếng Channel 1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 2" })).toHaveValue("37");
+});
+
+it("solos selected OBS tracks without resetting gain or overriding mute", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  fireEvent.change(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" }), { target: { value: "42" } });
+  fireEvent.click(screen.getByRole("button", { name: "Solo Channel 1" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([.42, 0]);
+  fireEvent.click(screen.getByRole("button", { name: "Solo Channel 2" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([.42, 1]);
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([0, 1]);
+  fireEvent.click(screen.getByRole("button", { name: "Bỏ Solo Channel 2" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([0, 0]);
+  expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 1" })).toHaveValue("42");
+});
+
+it("retains OBS preview controls across Timeline unmounts in the project session", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const timeline = <ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />;
+  const view = render(<PreviewMixerProvider>{timeline}</PreviewMixerProvider>);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  fireEvent.change(screen.getByRole("slider", { name: "Gain nghe lại Channel 2" }), { target: { value: "29" } });
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Solo Channel 2" }));
+  view.rerender(<PreviewMixerProvider><p>Another workspace view</p></PreviewMixerProvider>);
+  expect(view.container.querySelectorAll("audio")).toHaveLength(0);
+  view.rerender(<PreviewMixerProvider>{timeline}</PreviewMixerProvider>);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  expect(screen.getByRole("slider", { name: "Gain nghe lại Channel 2" })).toHaveValue("29");
+  expect(screen.getByRole("button", { name: "Bật tiếng Channel 2" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Bỏ Solo Channel 2" })).toHaveAttribute("aria-pressed", "true");
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([0, 0]);
+});
+
+it("uses one shared track subset for archived OBS Script and audio", async () => {
+  const channels = [...ids, "channel-c"];
+  const tracks = channels.map((channelId, index) => ({ id: `asset-${index}`, name: `Track ${index + 1}`,
+    sourceArchiveAssetId: "parent", obsRecordingId: "recording", importSelected: true, duration: 10,
+    text: `phrase${index}`, words: [{ text: `phrase${index}`, start: 1, end: 2 }] })) as ProjectMediaAsset[];
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: channels.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const context = { workflow: "speech-to-text", projectId: "project", selectedAssetId: "parent",
+    selectedImportedTrackId: null, selectedScriptAssetIds: ["asset-0", "asset-1"],
+    mediaAssets: [{ id: "parent", name: "Footage", importSelected: true, obsRecordingId: "recording", words: [], text: "" }, ...tracks],
+    take: null, script: "", trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null,
+    wordSelection: EMPTY_SELECTION, obsTimelineActive: true, obsTimelineRecordingId: "recording", obsTranscriptRows: [],
+    obsSeekRequest: null, onSelectImportedTrack: vi.fn(), onAssetWordsChange: vi.fn() } as unknown as StudioContext;
+  const view = render(<><ModuleRegistry context={context} id="script" /><ModuleRegistry context={context} id="timeline" /></>);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  expect(screen.queryByRole("img", { name: "Sóng âm Channel 3" })).not.toBeInTheDocument();
+  expect(view.container.querySelectorAll("audio")).toHaveLength(2);
+  const script = within(screen.getByLabelText("Script theo channel"));
+  expect(script.getByRole("button", { name: /^phrase0 ·/ })).toBeInTheDocument();
+  expect(script.getByRole("button", { name: /^phrase1 ·/ })).toBeInTheDocument();
+  expect(script.queryByRole("button", { name: /^phrase2 ·/ })).not.toBeInTheDocument();
+});
 const wave = (channelId: string, amplitude: number, source: "pcm" | "mka"): ObsLiveLinkWaveform => ({
   recordingId: "recording", projectId: "project", channelId, source,
   sampleAxis: source === "pcm" ? "channel" : "recording", sampleRate: 48000,

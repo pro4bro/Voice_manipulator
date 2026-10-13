@@ -55,6 +55,7 @@ import type {
   WorkspacePage,
 } from "../domain/types";
 import type { StudioContext } from "../modules/registry/ModuleRegistry";
+import { PreviewMixerProvider } from "../modules/timeline/preview-mixer";
 import { ProgressiveModule } from "./ProgressiveModule";
 import type { MediaBatchAction, PendingMediaImportRow } from "../modules/media-pool/MediaPool";
 import { useObsLiveLinkTranscript } from "../modules/obs-capture/obs-transcript-feed";
@@ -132,7 +133,11 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
   return ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus);
 }
 
-export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
+export function WorkspaceShell(props: WorkspaceShellProps) {
+  return <PreviewMixerProvider key={props.project.id}><WorkspaceSession {...props} /></PreviewMixerProvider>;
+}
+
+function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const processingChoice = useProcessingChoice();
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
 
@@ -820,7 +825,9 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   function selectImportedTrack(assetId: string) {
     ++mediaOpenRevision.current;
     const asset = mediaAssets.find((item) => item.id === assetId && item.sourceArchiveAssetId && item.importSelected !== false);
-    if (!asset || asset.id === selectedImportedTrackId) return;
+    if (!asset) return;
+    setSelectedScriptAssetIds([assetId]);
+    if (asset.id === selectedImportedTrackId) return;
     const parent = mediaAssets.find((item) => item.id === asset.sourceArchiveAssetId);
     if (!parent || !isImportedForWork(parent, mediaAssets)) return;
     flushCurrentMediaDraft();
@@ -853,6 +860,7 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
   function selectMediaAsset(assetId: string) {
     ++mediaOpenRevision.current;
     const asset = mediaAssets.find((item) => item.id === assetId);
+    if (asset) setSelectedScriptAssetIds([assetId]);
     if (asset && isImportedForWork(asset, mediaAssets) && (asset.id !== selectedAssetId || selectedImportedTrackId !== null)) {
       flushCurrentMediaDraft();
       applyMediaAsset(asset);
@@ -883,12 +891,24 @@ export function WorkspaceShell({ project, engine, onBack, onPageChange, runtime,
 
   function selectMediaList(assetIds: string[]) {
     setSelectedScriptAssetIds(assetIds);
+    if (assetIds.length > 1) {
+      const selected = assetIds.map((id) => mediaAssets.find((asset) => asset.id === id));
+      const parents = new Set(selected.map((asset) => asset?.sourceArchiveAssetId ?? asset?.id));
+      const parent = mediaAssets.find((asset) => asset.id === [...parents][0]);
+      if (parents.size === 1 && selected.every(Boolean) && parent &&
+          mediaAssets.some((asset) => asset.sourceArchiveAssetId === parent.id)) {
+        flushCurrentMediaDraft();
+        applyMediaAsset(parent);
+        return;
+      }
+    }
     if (assetIds.length > 1 || !assetIds.length && selectedAssetIdRef.current !== null) closeMediaDetails();
   }
 
   function openObsRecording(recordingId: string, channelId?: string) {
     ++mediaOpenRevision.current;
     flushCurrentMediaDraft();
+    setSelectedScriptAssetIds(null);
     selectedAssetIdRef.current = null;
     scriptAssetIdRef.current = null;
     setSelectedAssetId(null);

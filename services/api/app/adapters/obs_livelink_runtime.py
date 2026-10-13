@@ -177,10 +177,14 @@ class ObsLiveLinkRuntime:
             for project in self.projects.list():
                 path = Path(project.project_path).resolve() / "assets" / "obs-livelink" / recording_id / "recording.json"
                 try:
-                    recorded = ObsCaptureRecording.model_validate(
-                        json.loads(path.read_text(encoding="utf-8"))["recording"])
+                    journal = json.loads(path.read_text(encoding="utf-8"))
+                    recorded = ObsCaptureRecording.model_validate(journal["recording"])
                 except (OSError, ValueError, KeyError):
                     continue
+                if recording_id in deleted_recording_ids(Path(project.project_path).resolve()):
+                    raise LiveLinkError("OBS recording was permanently deleted.", 404)
+                if journal.get("deletedAt"):
+                    raise LiveLinkError("OBS recording is in the Recycle Bin.", 404)
                 if (recorded.recording_id == recording_id and recorded.project_id == project.id and
                         recorded.status == "stopped" and recorded.ended_monotonic_ns is not None):
                     matches.append(recorded)
@@ -238,8 +242,11 @@ class ObsLiveLinkRuntime:
                             if item.recording_id in deleted_recording_ids(root):
                                 continue
                             path = root / "assets" / "obs-livelink" / item.recording_id / "recording.json"
+                            journal = json.loads(path.read_text(encoding="utf-8"))
+                            if journal.get("deletedAt"):
+                                continue
                             recorded = ObsCaptureRecording.model_validate(
-                                json.loads(path.read_text(encoding="utf-8"))["recording"])
+                                journal["recording"])
                             if (recorded.archive_status == "ready" and recorded.source_archive and
                                     (root / recorded.source_archive.source_path).is_file()):
                                 item = recorded
@@ -499,6 +506,13 @@ class ObsLiveLinkRuntime:
             project_root = Path(project.project_path).resolve()
             if item.recording_id in deleted_recording_ids(project_root):
                 continue
+            existing_journal = project_root / "assets" / "obs-livelink" / item.recording_id / "recording.json"
+            try:
+                existing_value = json.loads(existing_journal.read_text(encoding="utf-8"))
+                if existing_value.get("deletedAt"):
+                    continue
+            except (FileNotFoundError, ValueError):
+                pass
             completed.append(item)
             completed_projects[item.project_id] = project
 
@@ -543,6 +557,10 @@ class ObsLiveLinkRuntime:
                         # journals as if they were valid completed recordings.
                         continue
                     raise
+                if previous.get("deletedAt"):
+                    # A stale in-memory completion may not rewrite or revive a
+                    # journal the user moved to the Recycle Bin.
+                    continue
                 if previous.get("liveSttRecoveryVersion") == 1:
                     record["liveSttRecoveryVersion"] = 1
                 for key in ("sourceStems", "transportGaps", "archiveSha256"):

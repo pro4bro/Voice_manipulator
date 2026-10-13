@@ -27,6 +27,7 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
   const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const mounted = useRef(true);
   const operation = useRef(false);
+  const packageInput = useRef<HTMLInputElement>(null);
   const selected = collections.find((item) => item.id === selectedId);
   const projectImport = Boolean(projectId && !exportVoiceId);
   useEffect(() => {
@@ -65,6 +66,28 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
       if (!mounted.current) return;
       setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, entries: [...item.entries.filter((voice) => voice.id !== entry.id), entry] } : item));
       setNotice("Đã thêm voice vào collection.");
+    });
+  }
+
+  function importPackage(file?: File) {
+    if (!selected || !file) return;
+    const collectionId = selected.id;
+    void run(async () => {
+      const entry = await api.importVoiceCollectionPackage(collectionId, file);
+      if (!mounted.current) return;
+      setCollections((items) => items.map((item) => item.id === collectionId
+        ? { ...item, entries: [...item.entries.filter((current) => current.id !== entry.id), entry] }
+        : item));
+      setNotice("Imported voice package into collection; select it below to import into a project.");
+    });
+  }
+
+  function exportEntry(entryId: string) {
+    if (!selected) return;
+    const collectionId = selected.id;
+    void run(async () => {
+      await api.exportVoiceCollectionEntry(collectionId, entryId);
+      if (mounted.current) setNotice("Voice package downloaded.");
     });
   }
 
@@ -159,6 +182,15 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
       <p className="collection-properties">{[selected.properties.language, selected.properties.region, selected.properties.age, selected.properties.gender, ...Object.values(selected.properties.attributes)].filter(Boolean).join(" · ")}</p>
       {projectImport ? <p className="collection-import-help">Tick hồ sơ để chọn toàn bộ model trong Collection này; xổ danh sách để chọn từng model.</p> : null}
       {exportVoiceId ? <button className="button button--accent" disabled={busy} onClick={add} type="button">{busy ? "Đang sao chép voice…" : "Add to Collection"}</button> : null}
+      <div className="collection-package-transfer">
+        <input accept=".zip,application/zip" aria-label="Import voice package" disabled={busy} hidden onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          importPackage(file);
+        }} ref={packageInput} type="file" />
+        <button className="button button--quiet" disabled={busy} onClick={() => packageInput.current?.click()} type="button">Import voice package</button>
+        {projectImport ? <small>Import the package into this collection, then select the voice below and use Import to project.</small> : null}
+      </div>
       <ul className="collection-entries">{profileGroups.map((group) => {
         const entryIds = group.entries.map((entry) => entry.id);
         const selectedCount = entryIds.filter((id) => selectedEntryIds.has(id)).length;
@@ -174,6 +206,7 @@ export function VoiceCollections({ projectId, exportVoiceId, speaker, schema: su
           </div>
           {expanded ? <ul className="collection-profile__models">{group.entries.map((entry) => <li key={entry.id}>
             {projectImport ? <label className="collection-model-choice"><input aria-label={`Chọn model ${entry.voice.name} · ${profileLabel}`} checked={selectedEntryIds.has(entry.id)} disabled={busy} type="checkbox" onChange={() => toggleEntry(entry.id)} /><span><strong>{entry.voice.name}</strong><small>{entry.voice.kind}</small></span></label> : <div className="collection-model-choice__browse"><strong>{entry.voice.name}</strong><small>{entry.voice.kind}</small></div>}
+            <button aria-label={`Export package for ${entry.voice.name}`} className="button button--quiet collection-entry-export" disabled={busy} onClick={() => exportEntry(entry.id)} type="button">Export file</button>
           </li>)}</ul> : null}
         </li>;
       })}</ul>

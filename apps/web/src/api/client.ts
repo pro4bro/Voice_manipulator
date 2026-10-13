@@ -191,6 +191,13 @@ export const api = {
     request<VoiceCollectionEntry>(`/api/voice-collections/${collectionId}/entries`, { method: "POST", body: JSON.stringify({ projectId, voiceId }) }),
   importCollectionVoice: (collectionId: string, entryId: string, projectId: string) =>
     request<VoiceCollectionImport>(`/api/voice-collections/${collectionId}/entries/${entryId}/import`, { method: "POST", body: JSON.stringify({ projectId }) }),
+  exportVoiceCollectionEntry: (collectionId: string, entryId: string) =>
+    downloadFile(`/api/voice-collections/${collectionId}/entries/${entryId}/export`, `voice-entry-${entryId}.zip`),
+  importVoiceCollectionPackage: (collectionId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<VoiceCollectionEntry>(`/api/voice-collections/${collectionId}/entries/import-package`, { method: "POST", body });
+  },
   uploadConsentEvidence: (projectId: string, file: File) => {
     const body = new FormData();
     body.append("file", file);
@@ -244,8 +251,14 @@ export const api = {
     request<ObsLiveLinkStatus>(`/api/obs-livelink/v3/projects/${encodeURIComponent(projectId)}/trigger-policy`, {
       method: "PUT", body: JSON.stringify(policy),
     }),
-  listObsLiveLinkRecordings: (projectId: string) =>
-    request<import("../domain/types").ObsLiveLinkRecordingJournal[]>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings`),
+  listObsLiveLinkRecordings: (projectId: string, includeDeleted = false) =>
+    request<import("../domain/types").ObsLiveLinkRecordingJournal[]>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings${includeDeleted ? "?includeDeleted=true" : ""}`),
+  recycleObsLiveLinkRecording: (projectId: string, recordingId: string) =>
+    request<{ recordingId: string; deletedAt: string | null }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/recycle`, { method: "POST" }),
+  restoreObsLiveLinkRecording: (projectId: string, recordingId: string) =>
+    request<{ recordingId: string; deletedAt: string | null }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}/restore`, { method: "POST" }),
+  deleteObsLiveLinkRecording: (projectId: string, recordingId: string) =>
+    request<{ recordingId: string; deletedAt: string | null }>(`/api/projects/${encodeURIComponent(projectId)}/obs-livelink/recordings/${encodeURIComponent(recordingId)}`, { method: "DELETE" }),
   previewObsLiveLinkChannel: async (projectId: string, recordingId: string, channelId: string,
                                     startSeconds?: number) => {
     const query = new URLSearchParams({ durationSeconds: "30" });

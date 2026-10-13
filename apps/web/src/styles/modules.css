@@ -461,7 +461,7 @@
 .obs-timeline__track-scroll.is-layers .obs-timeline__level > div { grid-column: 2; grid-row: 1; width: 9px; height: 100%; min-height: 0; align-self: stretch; }
 .obs-timeline__track-scroll.is-layers .obs-timeline__gain output,
 .obs-timeline__track-scroll.is-layers .obs-timeline__level output { grid-column: 1 / -1; grid-row: 2; align-self: end; line-height: 16px; }
-.obs-timeline__gain-label { min-width: 0; display: flex; align-items: center; gap: 3px; }
+.obs-timeline__gain-label { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .obs-timeline__mute { width: 18px; height: 18px; min-width: 18px; padding: 0; border: 1px solid var(--audio-line); background: transparent; color: var(--audio-muted); font: 900 10px var(--mono); cursor: pointer; }
 .obs-timeline__mute[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--text-on-accent); }
 .obs-timeline__track-scroll.is-layers .obs-timeline__gain-label { grid-column: 1; grid-row: 1; flex-direction: column; justify-content: center; }

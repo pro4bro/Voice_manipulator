@@ -114,6 +114,7 @@ interface MediaPoolProps {
   assets: ProjectMediaAsset[];
   selectedAssetId: string | null;
   selectedImportedTrackId?: string | null;
+  selectedScriptAssetIds?: string[] | null;
   busy: boolean;
   workflow: WorkspacePage;
   /** Speech-to-text engines from their descriptors; the select is built from these. */
@@ -152,6 +153,7 @@ interface MediaPoolProps {
   onOpenObsTrack?: (recordingId: string, channelId: string) => void;
   selectedObsRecordingId?: string | null;
   onObsArchiveReady?: (recordingId: string) => Promise<void>;
+  onRemovedRecording?: (recordingId: string) => void;
   pendingNativeMediaPaths?: string[];
   pendingMediaImports?: PendingMediaImportRow[];
   activeTrainingSpeakerIds?: string[];
@@ -160,7 +162,7 @@ interface MediaPoolProps {
   onRetryPendingImport?: (id: string) => void;
 }
 
-function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOpenTrack, selectedRecordingId, onArchiveReady }: {
+function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOpenTrack, selectedRecordingId, onArchiveReady, onRemovedRecording }: {
   projectId: string;
   assets: ProjectMediaAsset[];
   showEmpty: boolean;
@@ -168,8 +170,12 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
   onOpenTrack?: (recordingId: string, channelId: string) => void;
   selectedRecordingId?: string | null;
   onArchiveReady?: (recordingId: string) => Promise<void>;
+  onRemovedRecording?: (recordingId: string) => void;
 }) {
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
+  const [recordingMenu, setRecordingMenu] = useState<{ recordingId: string; left: number; top: number } | null>(null);
+  const [recycleError, setRecycleError] = useState<string | null>(null);
+  const [recycledOpen, setRecycledOpen] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [detailTarget, setDetailTarget] = useState<ObsLiveLinkRecordingJournal | null>(null);
@@ -188,6 +194,23 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
   const announced = useRef(new Set<string>());
   const retried = useRef(new Set<string>());
   archiveReady.current = onArchiveReady;
+
+  useEffect(() => {
+    if (!recordingMenu) return;
+    const dismiss = (event: globalThis.MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".media-obs-recording-menu"))
+        setRecordingMenu(null);
+    };
+    const keydown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setRecordingMenu(null);
+    };
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, [recordingMenu]);
 
   useEffect(() => {
     setPreview(null);
@@ -224,12 +247,52 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
     setRetryError(null);
     try {
       await api.retryObsLiveLinkArchive(projectId, recordingId);
-      setJournals(await api.listObsLiveLinkRecordings(projectId));
+      setJournals(await api.listObsLiveLinkRecordings(projectId, true));
       await archiveReady.current?.(recordingId);
     } catch (reason) {
       setRetryError(reason instanceof Error ? reason.message : "Không thể tạo MKA.");
     } finally {
       setRetryingId(null);
+    }
+  }
+
+  async function refreshJournals() {
+    setJournals(await api.listObsLiveLinkRecordings(projectId, true));
+  }
+
+  async function recycle(recordingId: string) {
+    setRecycleError(null);
+    try {
+      await api.recycleObsLiveLinkRecording(projectId, recordingId);
+      setRecordingMenu(null);
+      onRemovedRecording?.(recordingId);
+      await refreshJournals();
+    } catch (reason) {
+      setRecycleError(reason instanceof Error ? reason.message : "Không đưa được bản ghi OBS vào Recycle Bin.");
+    }
+  }
+
+  async function restore(recordingId: string) {
+    setRecycleError(null);
+    try {
+      await api.restoreObsLiveLinkRecording(projectId, recordingId);
+      await refreshJournals();
+    } catch (reason) {
+      setRecycleError(reason instanceof Error ? reason.message : "Không khôi phục được bản ghi OBS.");
+    }
+  }
+
+  async function permanentlyDelete(recordingId: string) {
+    const journal = recycled.find((item) => item.recording.recordingId === recordingId);
+    const name = journal?.recording.displayName || "bản ghi OBS này";
+    if (!window.confirm(`Xóa vĩnh viễn ${name} và PCM đã lưu? Không thể khôi phục thao tác này.`)) return;
+    setRecycleError(null);
+    try {
+      await api.deleteObsLiveLinkRecording(projectId, recordingId);
+      onRemovedRecording?.(recordingId);
+      await refreshJournals();
+    } catch (reason) {
+      setRecycleError(reason instanceof Error ? reason.message : "Không xóa vĩnh viễn được bản ghi OBS.");
     }
   }
 
@@ -239,17 +302,17 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
     retried.current.clear();
     const refresh = async () => {
       try {
-        const records = await api.listObsLiveLinkRecordings(projectId);
+        const records = await api.listObsLiveLinkRecordings(projectId, true);
         if (!active) return;
         setJournals(records);
         for (const journal of records) {
           const recording = journal.recording;
-          if (recording.archiveStatus !== "ready" || announced.current.has(recording.recordingId)) continue;
+          if (journal.deletedAt || recording.archiveStatus !== "ready" || announced.current.has(recording.recordingId)) continue;
           announced.current.add(recording.recordingId);
           void archiveReady.current?.(recording.recordingId).catch(() => announced.current.delete(recording.recordingId));
         }
         const latest = records[0]?.recording;
-        if (latest?.status === "stopped" && latest.archiveStatus === "error" &&
+        if (!records[0]?.deletedAt && latest?.status === "stopped" && latest.archiveStatus === "error" &&
             !retried.current.has(latest.recordingId)) {
           retried.current.add(latest.recordingId);
           void retry(latest.recordingId);
@@ -261,8 +324,12 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
     return () => { active = false; window.clearInterval(timer); };
   }, [projectId]);
 
-  const pending = journals.filter(({ recording }) => recording.projectId === projectId &&
+  const recycled = journals.filter(({ recording, deletedAt }) => recording.projectId === projectId && Boolean(deletedAt));
+  const pending = journals.filter(({ recording, deletedAt }) => recording.projectId === projectId && !deletedAt &&
     !assets.some((asset) => asset.obsRecordingId === recording.recordingId && asset.sourceExtension === ".mka"));
+  const canRecycleFor = ({ recording, detailedStt }: ObsLiveLinkRecordingJournal) =>
+    recording.status === "stopped" && recording.archiveStatus !== "pending" && !detailedStt?.active &&
+    !assets.some((asset) => asset.obsRecordingId === recording.recordingId);
   async function startDetail() {
     if (!detailTarget) return;
     setDetailBusy(true);
@@ -291,7 +358,7 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
       : recording.status === "stopped" ? "Đang kiểm tra PCM · chờ MKA" : "Phiên thu đang mở · MKA chưa hoàn tất";
     const available = (channels ?? []).filter((channel) => channel.forwardApplied || durableChannelIds?.includes(channel.channelId));
     const expanded = expandedIds.includes(recording.recordingId);
-    return <div aria-label={`Footage OBS ${recording.displayName || recording.recordingId}: ${state}`} className={`media-pool-item media-pool-item--obs-pending ${selectedRecordingId === recording.recordingId ? "is-selected" : ""}`} key={recording.recordingId}>
+    return <div aria-label={`Footage OBS ${recording.displayName || recording.recordingId}: ${state}`} className={`media-pool-item media-pool-item--obs-pending ${selectedRecordingId === recording.recordingId ? "is-selected" : ""}`} key={recording.recordingId} onContextMenu={(event) => { event.preventDefault(); setRecordingMenu({ recordingId: recording.recordingId, left: Math.min(event.clientX, window.innerWidth - 250), top: Math.min(event.clientY, window.innerHeight - 180) }); }}>
       <button aria-expanded={expanded} aria-label={`${expanded ? "Thu gọn" : "Xổ"} track của ${recording.displayName || recording.recordingId}`} className="media-pool-item__expand" onClick={() => setExpandedIds((current) => expanded ? current.filter((id) => id !== recording.recordingId) : [...current, recording.recordingId])} type="button">{expanded ? "▾" : "▸"}</button>
       <button aria-pressed={selectedRecordingId === recording.recordingId} className="media-pool-item__main" onClick={() => { onOpenRecording?.(recording.recordingId); setExpandedIds((current) => current.includes(recording.recordingId) ? current : [...current, recording.recordingId]); }} type="button">
         <span className="media-kind media-kind--audio"><Icon name="waveform" /></span>
@@ -331,6 +398,30 @@ function PendingObsFootage({ projectId, assets, showEmpty, onOpenRecording, onOp
       </div> : null}
     </div>;
   })}{showEmpty && !pending.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
+    {recycleError ? <small role="alert">{recycleError}</small> : null}
+    {recycled.length ? <section className={`media-recycle-bin ${recycledOpen ? "is-open" : ""}`}>
+      <div className="media-recycle-bin__header"><button aria-expanded={recycledOpen} className="media-recycle-bin__toggle" onClick={() => setRecycledOpen((open) => !open)} type="button"><Icon name="trash" /><b>OBS RECYCLE BIN</b><span>{recycled.length}</span><i aria-hidden="true">{recycledOpen ? "▾" : "▸"}</i></button></div>
+      {recycledOpen ? <div aria-label="OBS Recycle Bin" className="media-recycle-bin__list media-recycle-bin__list--obs">
+        {recycled.map(({ recording }) => <div className="media-pool-item media-pool-item--obs-pending is-recycled" key={recording.recordingId}>
+          <span aria-hidden="true" className="media-pool-item__expand">·</span>
+          <span className="media-pool-item__main"><span className="media-kind media-kind--audio"><Icon name="waveform" /></span><span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · RECYCLE BIN</small><em>PCM vẫn được giữ trong project</em></span></span>
+          <div className="media-pool-item__obs-actions"><button className="media-pool-item__obs-retry" onClick={() => void restore(recording.recordingId)} type="button">Restore</button><button className="media-pool-item__obs-retry media-obs-recording-menu__danger" onClick={() => void permanentlyDelete(recording.recordingId)} type="button">Delete permanently</button></div>
+        </div>)}
+      </div> : null}
+    </section> : null}
+    {recordingMenu ? createPortal(<div aria-label="Thao tác footage OBS đang chờ" className="media-context-menu media-obs-recording-menu" role="menu" style={{ left: recordingMenu.left, top: recordingMenu.top }}>
+      {(() => {
+        const journal = pending.find(({ recording }) => recording.recordingId === recordingMenu.recordingId);
+        if (!journal) return null;
+        const { recording, detailedStt } = journal;
+        return <>
+          <button onClick={() => { setRecordingMenu(null); onOpenRecording?.(recording.recordingId); }} role="menuitem" type="button"><Icon name="folder" /> Mở footage</button>
+          {recording.status === "stopped" && recording.archiveStatus === "error" ? <button onClick={() => { setRecordingMenu(null); void retry(recording.recordingId); }} role="menuitem" type="button"><Icon name="refresh" /> Thử lại MKA</button> : null}
+          {detailedStt?.error || (detailedStt?.stopMode && !detailedStt.active) ? <button onClick={() => { setRecordingMenu(null); const selected = journals.find((item) => item.recording.recordingId === recording.recordingId); if (selected) { setDetailTarget(selected); setDetailChannels(detailedStt?.tracks ? Object.keys(detailedStt.tracks) : (selected.channels ?? []).filter((channel) => selected.durableChannelIds?.includes(channel.channelId)).map((channel) => channel.channelId)); setDetailSeconds(detailedStt?.segmentSeconds ?? 60); setDetailMessage(null); } }} role="menuitem" type="button"><Icon name="refresh" /> Thử lại STT kỹ</button> : null}
+          <button className="media-obs-recording-menu__danger" disabled={!canRecycleFor(journal)} onClick={() => void recycle(recording.recordingId)} role="menuitem" type="button"><Icon name="trash" /> Move to Recycle Bin</button>
+        </>;
+      })()}
+    </div>, document.body) : null}
     {retryError ? <small role="alert">{retryError}</small> : null}
     {previewError ? <small role="alert">{previewError}</small> : null}
     {detailMessage ? <small role="status">{detailMessage}</small> : null}
@@ -418,6 +509,7 @@ export function MediaPool({
   assets,
   selectedAssetId,
   selectedImportedTrackId = null,
+  selectedScriptAssetIds,
   busy,
   workflow,
   sttEngines = [],
@@ -454,6 +546,7 @@ export function MediaPool({
   onOpenObsTrack,
   selectedObsRecordingId,
   onObsArchiveReady,
+  onRemovedRecording,
   pendingNativeMediaPaths = [],
   pendingMediaImports = [],
   activeTrainingSpeakerIds = [],
@@ -751,12 +844,21 @@ export function MediaPool({
   const scriptSelectionIds = selectedBinIds.length ? selectedBinIds : selectedListIds;
   useEffect(() => { selectionListener.current?.(scriptSelectionIds); }, [scriptSelectionIds.join("\0")]);
   useEffect(() => {
+    if (selectedScriptAssetIds != null) {
+      const live = selectedScriptAssetIds.filter((id) => selectableIds.includes(id));
+      const recycled = selectedScriptAssetIds.filter((id) => recycledIds.includes(id));
+      setSelection((current) => current.ids.join("\0") === live.join("\0") ? current
+        : { ids: live, anchorId: current.anchorId && live.includes(current.anchorId) ? current.anchorId : live[live.length - 1] ?? null });
+      setBinSelection((current) => current.ids.join("\0") === recycled.join("\0") ? current
+        : { ids: recycled, anchorId: recycled[recycled.length - 1] ?? null });
+      return;
+    }
     const opened = selectedImportedTrackId ?? selectedAssetId;
     if (opened && assets.some((asset) => asset.id === opened)) {
       if (recycledIds.includes(opened)) setBinSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
       else setSelection((current) => current.ids.includes(opened) ? current : { ids: [opened], anchorId: opened });
     }
-  }, [selectedAssetId, selectedImportedTrackId]);
+  }, [selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds?.join("\0")]);
   useEffect(() => {
     setBinSelection((current) => reconcileListSelection(current, recycledIds));
   }, [recycledIds.join("\0")]);
@@ -1042,7 +1144,7 @@ export function MediaPool({
           <span><b>{item.name}</b><small>{item.status === "error" ? "IMPORT THẤT BẠI" : item.status === "queued" ? "ĐANG CHỜ TRONG HÀNG IMPORT" : item.status === "caching" ? "ĐANG CACHE VÀ TẠO FOOTAGE" : "ĐANG ĐỌC MEDIA VÀ TẠO FOOTAGE"}</small>{item.detail ? <em>{item.detail}</em> : null}</span>
           {item.status === "error" && item.retryable ? <button className="media-pool-importing__retry" onClick={() => onRetryPendingImport(item.id)} type="button">Thử lại</button> : null}
         </div>)}
-        {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
+        {projectId ? <PendingObsFootage assets={assets} onArchiveReady={onObsArchiveReady} onRemovedRecording={onRemovedRecording} onOpenRecording={(recordingId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsRecording?.(recordingId); }} onOpenTrack={(recordingId, channelId) => { setSelection({ ids: [], anchorId: null }); setBinSelection({ ids: [], anchorId: null }); onOpenObsTrack?.(recordingId, channelId); }} selectedRecordingId={selectedObsRecordingId} projectId={projectId} showEmpty={!pendingLocalMedia && !liveAssets.length && !recycledAssets.length} /> : null}
         {projectId ? <div aria-label="Thư mục trong project" className="media-organization-root" onDragOver={handleAssetDragOver} onDrop={(event) => handleAssetDrop(event, null)}>
           {foldersIn(null).map((folder) => renderFolder(folder))}
           {assetsInFolder(null).map((asset) => renderAsset(asset, null))}

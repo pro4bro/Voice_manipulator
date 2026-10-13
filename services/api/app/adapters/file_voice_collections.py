@@ -476,6 +476,10 @@ class FileVoiceCollections:
         self, collection_id: str, entry_id: str, entry: VoiceCollectionEntry,
     ) -> dict:
         folder = self._entry_folder(collection_id, entry_id)
+        return self._verified_entry_lineage_at(folder, entry)
+
+    def _verified_entry_lineage_at(self, folder: Path, entry: VoiceCollectionEntry) -> dict:
+        """Verify an entry's artifacts and lineage while it is still in a transfer stage."""
         record = folder / "lineage.json"
         if record.is_symlink() or not record.is_file():
             raise ValueError("Collection entry is missing verified artifact lineage.")

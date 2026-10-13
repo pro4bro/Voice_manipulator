@@ -43,6 +43,10 @@ def _journal(folder: Path, project: ProjectRecord, recording_id: str) -> dict:
     recording = journal["recording"]
     if recording["recordingId"] != recording_id or recording["projectId"] != project.id:
         raise ValueError("OBS recording không thuộc project này")
+    if recording_id in deleted_recording_ids(Path(project.project_path)):
+        raise ValueError("OBS recording đã bị xóa vĩnh viễn")
+    if journal.get("deletedAt"):
+        raise ValueError("OBS recording đang ở Recycle Bin")
     return journal
 
 

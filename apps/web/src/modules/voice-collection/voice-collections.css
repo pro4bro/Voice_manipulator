@@ -23,6 +23,9 @@
 .collection-model-choice { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; cursor: pointer; }
 .collection-model-choice > span, .collection-model-choice__browse { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .collection-model-choice__browse { padding-left: 24px; }
+.collection-package-transfer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.collection-package-transfer small { flex-basis: 100%; color: var(--text-muted); }
+.collection-entry-export { flex: 0 0 auto; }
 .collection-import-action { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 4px 8px; }
 .collection-import-action > p { margin: 0 auto 0 0; color: var(--text-muted); }
 .voice-collection-overlay { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; background: #0008; padding: 16px; }

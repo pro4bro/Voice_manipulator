@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useAudioScrubber } from "./audio-scrubbing";
+import { usePreviewMixer } from "./preview-mixer";
 import type { ProjectMediaAsset, SpeakerProfile, TimelineEditRange, WaveformPoint } from "../../domain/types";
 import type { TimelineEditState } from "../../domain/timeline-editing";
 import { Icon } from "../../ui/Icon";
@@ -61,6 +62,7 @@ interface Props {
   tracks: ProjectMediaAsset[];
   selectedTrackId: string | null;
   singleTrackView?: boolean;
+  visibleTrackIds?: string[] | null;
   onSelectTrack: (assetId: string) => void;
   onCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
   readOnly?: boolean;
@@ -72,7 +74,7 @@ interface Props {
   onRedo?: () => void;
 }
 
-export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, onSelectTrack, onCutsChange, readOnly = false, wordSelection, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
+export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, visibleTrackIds = null, onSelectTrack, onCutsChange, readOnly = false, wordSelection, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
   const [layout, setLayout] = useState<Layout>("layers");
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
@@ -83,14 +85,31 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
-  const [gains, setGains] = useState<Record<string, number>>({});
-  const [muted, setMuted] = useState<Record<string, boolean>>({});
+  const { gains, setGains, muted, setMuted, solo, setSolo } = usePreviewMixer();
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [envelopes, setEnvelopes] = useState<Record<string, Envelope>>({});
   const [detailEnvelopes, setDetailEnvelopes] = useState<Record<string, Envelope>>({});
   const [error, setError] = useState<string | null>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
+  const playbackRevision = useRef(0);
+  const audioCallbacks = useRef(new Map<string, (element: HTMLAudioElement | null) => void>());
   const audioGraphRef = useRef<{ context: AudioContext; nodes: Map<string, { element: HTMLAudioElement; gain: GainNode }> } | null>(null);
+  function audioCallback(id: string) {
+    let callback = audioCallbacks.current.get(id);
+    if (!callback) {
+      callback = (element) => {
+        if (element) audioRefs.current.set(id, element);
+        else {
+          audioRefs.current.get(id)?.pause();
+          audioRefs.current.delete(id);
+          audioGraphRef.current?.nodes.get(id)?.gain.disconnect();
+          audioGraphRef.current?.nodes.delete(id);
+        }
+      };
+      audioCallbacks.current.set(id, callback);
+    }
+    return callback;
+  }
   const scrubbingRef = useRef(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const selectedWaveRef = useRef<HTMLDivElement>(null);
@@ -125,15 +144,19 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const excludedRanges = useMemo(() => excludedTimelineRanges(duration, sharedCuts, sharedWorkingRange), [duration, sharedCuts, sharedWorkingRange]);
   const sections = useMemo(() => timelineSections(duration, sharedCutPoints), [duration, sharedCutPoints]);
   const orderedTracks = useMemo(() => [...tracks].sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0)), [tracks]);
-  const visibleTracks = singleTrackView && selectedTrackId ? orderedTracks.filter((track) => track.id === selectedTrackId) : orderedTracks;
-  const trackSources = orderedTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
+  const selectionIds = visibleTrackIds ?? (singleTrackView && selectedTrackId ? [selectedTrackId] : null);
+  const visibleTracks = selectionIds !== null ? orderedTracks.filter((track) => selectionIds.includes(track.id)) : orderedTracks;
+  const hasSolo = orderedTracks.some((track) => solo[track.id]);
+  const previewGain = (id: string) => muted[id] || hasSolo && !solo[id] ? 0 : (gains[id] ?? 100) / 100;
+  const trackSources = visibleTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
+  useEffect(() => () => { ++playbackRevision.current; }, [trackSources]);
   const audioScrubber = useAudioScrubber(trackSources);
   const ids = orderedTracks.map((track) => track.id);
 
   useEffect(() => {
-    publishPlaybackWords(Object.fromEntries(orderedTracks.map((track) => [track.id,
+    publishPlaybackWords(Object.fromEntries(visibleTracks.map((track) => [track.id,
       track.words.findIndex((word) => word.start <= currentTime && word.end > currentTime)])));
-  }, [orderedTracks, currentTime]);
+  }, [trackSources, currentTime]);
   useEffect(() => () => publishPlaybackWords({}), []);
   useEffect(() => subscribePlaybackSeek((assetId, seconds) => {
     if (ids.includes(assetId)) seek(seconds);
@@ -238,12 +261,12 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   useEffect(() => {
     audioRefs.current.forEach((audio, id) => {
       audio.playbackRate = rate;
-      const gain = muted[id] ? 0 : (gains[id] ?? 100) / 100;
+      const gain = previewGain(id);
       const node = audioGraphRef.current?.nodes.get(id);
       if (node?.element === audio) { node.gain.gain.value = gain; audio.volume = 1; }
       else audio.volume = Math.min(1, gain);
     });
-  }, [rate, gains, muted, trackSources]);
+  }, [rate, gains, muted, solo, hasSolo, trackSources]);
 
   async function preparePlayback() {
     if (typeof AudioContext === "undefined") return;
@@ -254,7 +277,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
         if (graph.nodes.get(id)?.element === audio) return;
         const source = graph.context.createMediaElementSource(audio);
         const gain = graph.context.createGain();
-        gain.gain.value = muted[id] ? 0 : (gains[id] ?? 100) / 100;
+        gain.gain.value = previewGain(id);
         source.connect(gain); gain.connect(graph.context.destination);
         graph.nodes.set(id, { element: audio, gain });
         audio.volume = 1;
@@ -264,6 +287,31 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       // Browsers without Web Audio still play at the regular 0–100% media volume.
     }
   }
+  async function playSelectedTracks() {
+    const revision = ++playbackRevision.current;
+    const audios = [...audioRefs.current.values()];
+    setPlaying(true);
+    try {
+      await preparePlayback();
+      if (revision !== playbackRevision.current) return;
+      await Promise.all(audios.map(async (audio) => {
+        await audio.play();
+        if (![...audioRefs.current.values()].includes(audio)) audio.pause();
+      }));
+    } catch {
+      if (revision !== playbackRevision.current) return;
+      audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false);
+      setError("Không phát được các track đã chọn.");
+    }
+  }
+  const reconnectPlayback = useRef<() => void>(() => undefined);
+  reconnectPlayback.current = () => {
+    if (!visibleTracks.length) { setPlaying(false); return; }
+    if (!playing) return;
+    audioRefs.current.forEach((audio) => { audio.currentTime = currentTime; audio.playbackRate = rate; });
+    void playSelectedTracks();
+  };
+  useEffect(() => reconnectPlayback.current(), [trackSources]);
 
   useEffect(() => {
     setWindowStart((value) => Math.max(0, Math.min(value, duration - span)));
@@ -386,7 +434,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     const track = orderedTracks.find((item) => item.id === editFocus.assetId);
     if (track) return <Timeline onUndo={onUndo} onRedo={onRedo}
       editRequest={editFocus.request}
-      gain={previewPercentToDb(muted[track.id] ? 0 : gains[track.id] ?? 100)}
+      gain={previewPercentToDb(previewGain(track.id) * 100)}
       onGainChange={(value) => {
         setMuted((current) => ({ ...current, [track.id]: false }));
         setGains((current) => ({ ...current, [track.id]: previewDbToPercent(value) }));
@@ -498,7 +546,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
                 {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-hidden="true" className="timeline-removed-range" key={`caption-${range.id}-${range.start}`} style={style} /> : null; })}
               </div>
               <div className="obs-timeline__lane-controls">
-                <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span><button aria-label={`${muted[track.id] ? "Bật tiếng" : "Tắt tiếng"} Channel ${index + 1}`} aria-pressed={Boolean(muted[track.id])} className="obs-timeline__mute" onClick={() => setMuted((current) => ({ ...current, [track.id]: !current[track.id] }))} title={muted[track.id] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button></div><input aria-label={`Gain Channel ${index + 1}`} max="200" min="0" onChange={(event) => setGains((current) => ({ ...current, [track.id]: Number(event.target.value) }))} type="range" value={gains[track.id] ?? 100} /><output>{gains[track.id] ?? 100}%</output></div>
+                <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span><button aria-label={`${muted[track.id] ? "Bật tiếng" : "Tắt tiếng"} Channel ${index + 1}`} aria-pressed={Boolean(muted[track.id])} className="obs-timeline__mute" onClick={() => setMuted((current) => ({ ...current, [track.id]: !current[track.id] }))} title={muted[track.id] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button>
+                  <button aria-label={`${solo[track.id] ? "Bỏ Solo" : "Solo"} Channel ${index + 1}`} aria-pressed={Boolean(solo[track.id])}
+                    className="obs-timeline__mute obs-timeline__solo" onClick={() => setSolo((current) => ({ ...current, [track.id]: !current[track.id] }))}
+                    title="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực" type="button">S</button>
+                </div><input aria-label={`Gain Channel ${index + 1}`} max="200" min="0" onChange={(event) => setGains((current) => ({ ...current, [track.id]: Number(event.target.value) }))} type="range" value={gains[track.id] ?? 100} /><output>{gains[track.id] ?? 100}%</output></div>
                 <div aria-label={`Level Channel ${index + 1}`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={level} className="obs-timeline__level" role="meter"><span>LEVEL</span><div><i style={{ "--source-level": `${level}%` } as CSSProperties} /></div><output>{level}%</output></div>
               </div>
               {layout === "columns" && visibleTracks.indexOf(track) < visibleTracks.length - 1 ? <div aria-label={`Đổi độ rộng Channel ${index + 1}`} className="obs-timeline__column-resizer" onPointerDown={(event) => { event.stopPropagation(); resizeColumn(track.id, event); }} role="separator" tabIndex={0} /> : null}
@@ -520,14 +572,13 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       </div> : null}
       <div className="transport-bar obs-timeline__transport">
         <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={() => {
-          audioScrubber.end(); if (playing) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
+          audioScrubber.end(); if (playing) { ++playbackRevision.current; audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
           else {
             const startAt = nextPlayableTime(currentTime, duration, excludedRanges);
             if (startAt >= duration) { setCurrentTime(duration); return; }
             seek(startAt);
             audioRefs.current.forEach((audio) => { audio.currentTime = startAt; audio.playbackRate = rate; });
-            void preparePlayback().then(() => Promise.all([...audioRefs.current.values()].map((audio) => audio.play()))).then(() => setPlaying(true))
-              .catch(() => { audioRefs.current.forEach((audio) => audio.pause()); setError("Không phát được các channel cùng lúc."); });
+            void playSelectedTracks();
           }
         }} type="button"><Icon name={playing ? "pause" : "play"} /></button>
         <code>{clock(currentTime)}</code>
@@ -537,11 +588,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
         <div className="obs-timeline__transport-extras"><span>{selected?.name ?? "Chưa có channel"}</span></div>
       </div>
     </div>
-    {orderedTracks.map((track) => track.url ? <audio key={track.id} onEnded={() => {
+    {visibleTracks.map((track) => track.url ? <audio key={track.id} onEnded={() => {
       if (audioScrubber.active) return;
-      if (track.id === orderedTracks[0]?.id) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
+      if (track.id === visibleTracks[0]?.id) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
     }} onTimeUpdate={(event) => {
-      if (audioScrubber.active || track.id !== orderedTracks[0]?.id) return;
+      if (audioScrubber.active || track.id !== visibleTracks[0]?.id) return;
       const time = event.currentTarget.currentTime;
       const playable = nextPlayableTime(time, duration, excludedRanges);
       const next = playable > time + .001 ? playable : time;
@@ -550,6 +601,6 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       setWindowStart((start) => next <= start + span ? start : Math.min(Math.max(0, duration - span), next - span / 2));
       audioRefs.current.forEach((audio, id) => { if (Math.abs(audio.currentTime - next) > .08) audio.currentTime = next; });
     }} onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime, event.currentTarget.duration || currentTime); }}
-      preload="none" ref={(element) => { if (element) audioRefs.current.set(track.id, element); else audioRefs.current.delete(track.id); }} src={track.url} /> : null)}
+      preload="none" ref={audioCallback(track.id)} src={track.url} /> : null)}
   </ModuleFrame>;
 }

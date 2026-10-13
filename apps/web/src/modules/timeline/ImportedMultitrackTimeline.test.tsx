@@ -19,6 +19,56 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it("limits selected imported playback to one track and retains its previous gain", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const props = { parent, tracks, selectedTrackId: null, onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  fireEvent.change(screen.getByRole("slider", { name: "Gain Channel 2" }), { target: { value: "38" } });
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  view.rerender(<ImportedMultitrackTimeline {...props} selectedTrackId="b" singleTrackView />);
+  expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+  expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(tracks[1].url);
+  expect(view.container.querySelector("audio")?.volume).toBe(.38);
+  view.rerender(<ImportedMultitrackTimeline {...props} />);
+  expect(screen.getByRole("button", { name: "Bật tiếng Channel 1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("slider", { name: "Gain Channel 2" })).toHaveValue("38");
+});
+
+it("supports multiple Solo tracks while preserving imported mute and gain", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null} onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+  fireEvent.change(screen.getByRole("slider", { name: "Gain Channel 1" }), { target: { value: "54" } });
+  fireEvent.click(screen.getByRole("button", { name: "Solo Channel 1" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([.54, 0]);
+  fireEvent.click(screen.getByRole("button", { name: "Tắt tiếng Channel 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Solo Channel 2" }));
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.volume)).toEqual([0, 1]);
+  expect(screen.getByRole("slider", { name: "Gain Channel 1" })).toHaveValue("54");
+});
+
+it("discards pending playback of withdrawn imported tracks before audio activation", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  play.mockClear();
+  let activate = () => {};
+  const activated = new Promise<void>((resolve) => { activate = resolve; });
+  vi.stubGlobal("AudioContext", class {
+    destination = {};
+    createMediaElementSource = () => ({ connect: vi.fn() });
+    createGain = () => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() });
+    resume = () => activated;
+    close = async () => {};
+  });
+  const props = { parent, tracks, selectedTrackId: null, onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  view.rerender(<ImportedMultitrackTimeline {...props} selectedTrackId="b" singleTrackView />);
+  await act(async () => { activate(); await activated; });
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+  expect((play.mock.instances[0] as HTMLAudioElement).getAttribute("src")).toBe(tracks[1].url);
+  expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+});
+
 it("resumes Script following by dragging an imported multitrack waveform", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const sources = tracks.map((track) => ({ ...track, words: [{ text: "hello", start: 30, end: 40 }], text: "hello" }));
@@ -368,7 +418,9 @@ it("keeps the waveform mounted while dragging and mutes one track independently"
   vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 100 } as DOMRect);
   fireEvent.pointerDown(wave, { pointerId: 1, clientX: 20 });
   fireEvent.pointerMove(wave, { pointerId: 1, clientX: 60 });
-  expect(play).toHaveBeenCalledTimes(2);
+  expect(play).toHaveBeenCalledTimes(1);
+  expect(container.querySelectorAll("audio")).toHaveLength(1);
+  expect(container.querySelector("audio")?.getAttribute("src")).toBe(tracks[0].url);
   fireEvent.pointerUp(wave, { pointerId: 1, clientX: 60 });
   expect(onSelectTrack).not.toHaveBeenCalled();
   expect(wave).toBeInTheDocument();
@@ -425,6 +477,7 @@ it("requests source PCM detail for the visible window instead of stretching spar
 it("plays both channel audio elements together and resets every saved cut", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [{ min: 0, max: 0 }] }) }));
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  play.mockClear();
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   const onCutsChange = vi.fn().mockResolvedValue(true);
   const cut = { id: "cut-one", start: 10, end: 20 };
@@ -433,6 +486,7 @@ it("plays both channel audio elements together and resets every saved cut", asyn
     onSelectTrack={() => undefined} onCutsChange={onCutsChange} />);
   fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
   await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+  expect(play.mock.instances.map((audio) => (audio as HTMLAudioElement).getAttribute("src"))).toEqual(tracks.map((track) => track.url));
   fireEvent.click(screen.getByRole("button", { name: "RESET" }));
   await waitFor(() => expect(onCutsChange).toHaveBeenCalledWith(["a", "b"], []));
   play.mockRestore(); pause.mockRestore();

@@ -35,6 +35,7 @@ from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_voice_collections import FileVoiceCollections
+from app.adapters.voice_collection_transfer_routes import make_voice_collection_transfer_router
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.speaker_embedders import default_speaker_embedders
@@ -53,6 +54,7 @@ from app.adapters.obs_plugin_installation import ObsPluginInstallation, ObsPlugi
 from app.adapters.obs_livelink_connection import ObsLiveLinkConnection, LiveLinkError
 from app.adapters.obs_livelink_runtime import ObsLiveLinkRuntime
 from app.adapters.obs_livelink_deletions import deleted_recording_ids
+from app.adapters.obs_recording_management import make_obs_recording_management_router
 from app.adapters.obs_livelink_audio import FileObsLiveLinkAudio, MAX_CHUNK_BYTES
 from app.adapters.obs_session_subtitles import ObsSessionSubtitles
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
@@ -737,6 +739,9 @@ def create_app(
                 if journal.parent.name in deleted_ids:
                     continue
                 try:
+                    record = json.loads(await asyncio.to_thread(journal.read_text, encoding="utf-8"))
+                    if record.get("deletedAt"):
+                        continue
                     # This method schedules asyncio workers as well as reading
                     # their journal; it must retain event-loop ownership.
                     live_tracks += obs_livelink_stt.resume_recording(project.id, journal.parent.name)
@@ -796,6 +801,10 @@ def create_app(
             await obs_livelink_stt.close()
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.include_router(make_voice_collection_transfer_router(voice_collections))
+    app.include_router(make_obs_recording_management_router(
+        projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,
+    ))
     app.state.reading_sessions = reading_sessions
     app.add_middleware(
         CORSMiddleware,
@@ -3195,7 +3204,7 @@ def create_app(
                     )
 
     @app.get("/api/projects/{project_id}/obs-livelink/recordings")
-    def obs_livelink_recordings(project_id: str) -> list[dict]:
+    def obs_livelink_recordings(project_id: str, includeDeleted: bool = False) -> list[dict]:
         try:
             root = Path(projects.get(project_id).project_path).resolve() / "assets" / "obs-livelink"
         except KeyError as exc:
@@ -3207,9 +3216,13 @@ def create_app(
                    for path in sorted(root.glob("*/recording.json"),
                                       key=lambda item: item.stat().st_mtime, reverse=True)
                    if path.parent.name not in deleted_ids]
+        records = [(folder, record) for folder, record in records
+                   if includeDeleted or not record.get("deletedAt")]
         # Older deletes could leave a ready journal after its archive and PCM
         # disappeared. It is not a pending recording to offer in Media Pool.
         def orphan_ready(folder: Path, record: dict) -> bool:
+            if record.get("deletedAt"):
+                return False
             recording = record.get("recording", {})
             if recording.get("archiveStatus") != "ready":
                 return False
@@ -3225,7 +3238,7 @@ def create_app(
                 channel_folder.name for channel_folder in (recording_folder / "channels").glob("*")
                 if any((channel_folder / "chunks").glob("*.json"))
             ]
-            if (recording_folder / "detailed-stt-state.json").is_file():
+            if not record.get("deletedAt") and (recording_folder / "detailed-stt-state.json").is_file():
                 try:
                     record["detailedStt"] = {
                         **obs_livelink_detailed_stt.status(projects.get(project_id),

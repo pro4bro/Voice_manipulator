@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { api } from "../../api/client";
@@ -22,6 +23,27 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("keeps a controlled two-track selection when Workspace opens its parent view", async () => {
+    const tracks = ["a", "b", "c"].map((id) => ({ ...asset, id, name: `Mic ${id}`,
+      sourceArchiveAssetId: asset.id, sourceArchiveStreamIndex: id.charCodeAt(0), importSelected: true }));
+    const selected = vi.fn();
+    function WorkspaceSelection() {
+      const [ids, setIds] = useState<string[]>([asset.id]);
+      const [openedTrack, setOpenedTrack] = useState<string | null>(null);
+      return <MediaPool {...props({ assets: [asset, ...tracks], selectedAssetId: asset.id,
+        selectedImportedTrackId: openedTrack, selectedScriptAssetIds: ids,
+        onScriptSelectionChange: (next: string[]) => { selected(next); setIds(next); if (next.length > 1) setOpenedTrack(null); },
+        onSelectTrack: (id: string) => { setIds([id]); setOpenedTrack(id); } })} />;
+    }
+    render(<WorkspaceSelection />);
+    fireEvent.click(screen.getByRole("button", { name: `Xổ track của ${asset.name}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic a" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Script Mic b" }), { ctrlKey: true });
+    await waitFor(() => expect(selected).toHaveBeenLastCalledWith(["a", "b"]));
+    expect(screen.getByRole("button", { name: "Mở Script Mic a" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Mở Script Mic b" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Mở Script Mic c" })).toHaveAttribute("aria-pressed", "false");
+  });
   it("keeps cancelled footage's transcript while showing that STT was stopped", () => {
     render(<MediaPool {...props({ assets: [{ ...asset, transcriptionStatus: "cancelled" }] })} />);
     expect(screen.getByText(/STT ĐÃ HUỶ/)).toBeInTheDocument();
@@ -147,9 +169,55 @@ describe("MediaPool", () => {
       await waitFor(() => expect(onObsArchiveReady).toHaveBeenCalledWith("take-live"), { timeout: 2500 });
       view.rerender(<MediaPool {...props({ assets: [{ ...asset, id: "archive", name: "OBS take live", sourceExtension: ".mka", obsRecordingId: "take-live" }], projectId: "project", onObsArchiveReady })} />);
       expect(screen.queryByLabelText("Footage OBS OBS take live: ĐANG CẬP NHẬT MEDIA POOL")).not.toBeInTheDocument();
-      expect(list).toHaveBeenCalledWith("project");
+      expect(list).toHaveBeenCalledWith("project", true);
     } finally {
       list.mockRestore();
+    }
+  });
+  it("opens a context menu on failed pending OBS footage and exposes recycle, restore, and confirmed permanent removal", async () => {
+    const stopped = { protocolVersion: 3, recording: { recordingId: "take-failed", projectId: "project",
+      displayName: "Failed take", status: "stopped", archiveStatus: "error" } } as ObsLiveLinkRecordingJournal;
+    const recycled = { ...stopped, deletedAt: "2026-10-13T00:00:00Z" } as ObsLiveLinkRecordingJournal;
+    let current: ObsLiveLinkRecordingJournal[] = [stopped];
+    const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockImplementation(async () => current);
+    const move = vi.spyOn(api, "recycleObsLiveLinkRecording").mockImplementation(async () => {
+      current = [recycled];
+      return { recordingId: "take-failed", deletedAt: recycled.deletedAt! };
+    });
+    const restore = vi.spyOn(api, "restoreObsLiveLinkRecording").mockImplementation(async () => {
+      current = [stopped];
+      return { recordingId: "take-failed", deletedAt: null };
+    });
+    const remove = vi.spyOn(api, "deleteObsLiveLinkRecording").mockImplementation(async () => {
+      current = [];
+      return { recordingId: "take-failed", deletedAt: recycled.deletedAt! };
+    });
+    const retryArchive = vi.spyOn(api, "retryObsLiveLinkArchive").mockResolvedValue({ artifactReady: false });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onRemovedRecording = vi.fn();
+    try {
+      render(<MediaPool {...props({ assets: [], projectId: "project", onRemovedRecording })} />);
+      const row = await screen.findByLabelText("Footage OBS Failed take: MKA LỖI");
+      fireEvent.contextMenu(row, { clientX: 30, clientY: 40 });
+      expect(await screen.findByRole("menu", { name: "Thao tác footage OBS đang chờ" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Mở footage" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Thử lại MKA" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Move to Recycle Bin" }));
+      await waitFor(() => expect(move).toHaveBeenCalledWith("project", "take-failed"));
+      await waitFor(() => expect(screen.getByText("OBS RECYCLE BIN")).toBeInTheDocument());
+      expect(onRemovedRecording).toHaveBeenCalledWith("take-failed");
+      fireEvent.click(screen.getByRole("button", { name: /OBS RECYCLE BIN/ }));
+      fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
+      await waitFor(() => expect(restore).toHaveBeenCalledWith("project", "take-failed"));
+      fireEvent.contextMenu(await screen.findByLabelText("Footage OBS Failed take: MKA LỖI"), { clientX: 30, clientY: 40 });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Move to Recycle Bin" }));
+      await waitFor(() => expect(move).toHaveBeenCalledTimes(2));
+      fireEvent.click(await screen.findByRole("button", { name: "Delete permanently" }));
+      await waitFor(() => expect(remove).toHaveBeenCalledWith("project", "take-failed"));
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Không thể khôi phục"));
+      expect(onRemovedRecording).toHaveBeenCalledTimes(3);
+    } finally {
+      list.mockRestore(); move.mockRestore(); restore.mockRestore(); remove.mockRestore(); retryArchive.mockRestore(); confirm.mockRestore();
     }
   });
   it("opens the native file picker from the primary IMPORT icon", () => {
