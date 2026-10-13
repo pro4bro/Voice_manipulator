@@ -50,7 +50,9 @@
 .media-organization-folder__add { display: grid; min-width: 34px; min-height: 34px; place-items: center; color: var(--accent); border: 1px solid var(--line); background: var(--surface-raised); cursor: pointer; }
 .media-organization-folder__add svg { width: 18px; }
 .media-organization-children { display: grid; gap: 3px; padding: 3px 0 5px 8px; border-left: 1px solid var(--line); margin-left: 8px; }
-.media-organization-root { display: grid; gap: 3px; min-height: 100%; align-content: start; padding: 3px 4px 8px; }
+/* Size the grid row from its contents; a percentage height here makes the
+   scroll owner allocate too little space and the bin overlap live footage. */
+.media-organization-root { display: grid; gap: 3px; align-content: start; padding: 3px 4px 8px; }
 .media-organization-root > .media-organization-empty { min-height: 52px; }
 .media-organization-empty { padding: 18px 12px; color: var(--text-muted); font-size: calc(11px * var(--font-scale)); text-align: center; }
 .media-pool-item[draggable="true"] { cursor: grab; }
