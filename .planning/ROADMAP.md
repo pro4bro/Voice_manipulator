@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-FEEDBACK-02 — selected preview and external voice transfer (2026-10-13)
+
+Alpha0.5.12 follows source-first repair: selected tracks own audio/Script,
+project-session Gain/Mute/Solo retention, S below M, failed stopped OBS menu/bin/
+restore and verified external LoRA/full/RVC Voice Collection ZIP transfer.
+Frontend795/84files, backend819, typecheck/build pass. Actual root UPDATE33/0,
+154source/payload/installed byte/hash checks and1,223,639byte ZIP verified, base
+unchanged. Real source/embedded portable two-track DOM/mixer reports match;
+source voice export/native portable import/re-export preserves payload/lineage.
+See docs/gates/portable-feedback-02-20261013.md. Exact next PORT-FEEDBACK-UAT-02
+uses D-drive0.5.12, real failed take/bin/restore, selected audio/Script/Mute/Solo
+and actual trained-voice ZIP/inference. Physical zero-PCM OBS cause remains
+unconfirmed. Phase03 stays60%; independent timing still awaits Conviction.
+
 ## PORT-REBUILD-01 — new portable with deferred base (2026-10-13)
 
 Alpha0.5.11 includes the rebuilt current app, canonical Studio source, twelve

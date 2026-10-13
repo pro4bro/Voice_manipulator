@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-REBUILD-01 fresh portable and manual base copy.
-last_activity_desc: Alpha0.5.11 contains current rebuilt app, twelve-component copy guide and deferred readiness verification. Shared OBS row and older versioned console path migration repaired. Frontend785, backend799, installer33, builder/completion9, typecheck/build pass. Hydrated root VERIFY33/0,151app hashes and1.17MiB ZIP verified; full components about35.6GiB. Catalog and real PCM/MKA/browser checks pass, actual D-device capture cause unconfirmed. Next PORT-FEEDBACK-UAT-01 copies new folder/base, runs VERIFY and closed-OBS INSTALL, checks native Forward/durable PCM plus prior playback/STT/bin. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-FEEDBACK-02 source-first selection, OBS journal and voice transfer.
+last_activity_desc: Alpha0.5.12 shares selected players/Script, remembered Gain/Mute/Solo, failed OBS menu/bin/restore and external LoRA/full/RVC ZIP transfer with source. Frontend795, backend819, typecheck/build pass. Actual root UPDATE33/0;154source/payload/installed files and1,223,639byte ZIP verified, base unchanged. Real source/portable two-player/two-Script/mixer parity and native voice payload/lineage roundtrip pass. Next PORT-FEEDBACK-UAT-02 is D-drive0.5.12 apply and physical failed-take/selection/Solo/actual trained ZIP/inference. Native zero-PCM cause unconfirmed; Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,22 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-FEEDBACK-02 — source-first selection and voice transfer (2026-10-13)
+
+Main source repaired before issuing alpha0.5.12. Only selected tracks own
+players/Script; session Gain/Mute/Solo survives changing view/selection, S sits
+below M and Mute wins. Failed stopped OBS journals now support menu/bin/restore
+and confirmed deletion under processing/path guards. Voice Collection supports
+verified external LoRA/full/RVC ZIPs retaining artifacts/lineage without base.
+Frontend795/84files, backend819, typecheck/build pass; actual root UPDATE33/0,
+154app byte/hash checks and1,223,639byte ZIP verified; model layer unchanged.
+Source/embedded portable browser selection/mixer reports match; source export
+imports into portable and native re-export retains payload/lineage. Evidence:
+docs/gates/portable-feedback-02-20261013.md. Exact next PORT-FEEDBACK-UAT-02 is
+D-drive0.5.12 apply, failed OBS menu/bin/restore, one/two-track/Mute/Solo and
+actual trained voice ZIP/inference acceptance. Physical OBS zero-PCM cause
+remains unconfirmed; independent timing awaits Conviction. Phase03 stays60%.
 
 ## PORT-REBUILD-01 — fresh portable and manual base copy (2026-10-13)
 

@@ -12,7 +12,23 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-13 — current: PORT-REBUILD-01
+### 2026-10-13 — current: PORT-FEEDBACK-02
+
+Main source and alpha0.5.12 share selected-track players/Script, project-session
+Gain/Mute/Solo (S below M), stopped failed OBS context menu/bin/restore and
+external Voice Collection ZIP export/import for LoRA/full/RVC. Real source
+browser exposed the two-child-to-parent synchronization defect; controlled
+Media Pool selection regression red/green fixes it. Frontend795/84files,
+backend819, typecheck/build pass. Actual root UPDATE33/0;154source/payload/
+installed hashes and1,223,639byte ZIP verified, base unchanged. Two-player/two-
+Script DOM/mixer reports match in real source/embedded portable UI; native
+portable import/export retains payload/lineage. Evidence:
+docs/gates/portable-feedback-02-20261013.md. Phase03 stays60%. Exact next:
+PORT-FEEDBACK-UAT-02 — D-drive0.5.12 apply, real failed-take menu/bin/restore,
+selection/Mute/Solo and actual trained-voice ZIP/inference acceptance. Physical
+zero-PCM OBS cause remains unconfirmed; timing still awaits Conviction.
+
+### 2026-10-13 — previous: PORT-REBUILD-01
 
 Fresh alpha0.5.11 contains the current rebuilt app and a twelve-component manual
 copy guide; VibeVoice remains listed without its payload. Deferred bundles become

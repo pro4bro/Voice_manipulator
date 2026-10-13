@@ -1,5 +1,25 @@
 # Project Status — 2026-10-13
 
+## PORT-FEEDBACK-02 — selected playback and external voice packages (2026-10-13)
+
+Source repairs ship in alpha0.5.12: selected track subsets control audio players
+and Script; Gain/Mute/Solo survive view/selection changes within the project
+session, with S below M and Mute winning. Stopped failed OBS journals have
+context-menu Open/Retry/Recycle and reachable bin Restore/confirmed deletion;
+PCM survives recycling and processing/recovery guards respect deletedAt.
+Voice Collection exports/imports verified per-model ZIPs for LoRA/full/RVC,
+preserving referenced artifacts/lineage and excluding shared base/runtime.
+Frontend795/84files, backend819, typecheck/build pass. Actual root UPDATE33/0,
+154source/payload/installed app byte checks and1,223,639byte ZIP verified; base
+unchanged. Real source/portable UI matches two players/two Script rows and
+remembered mixer controls. Native portable imports source ZIP and exports
+identical payload/lineage. See docs/gates/portable-feedback-02-20261013.md and
+docs/VOICE-COLLECTION-TRANSFER.md. Next PORT-FEEDBACK-UAT-02 is D-machine0.5.12
+apply, failed-take menu/bin, selection/Mute/Solo and actual trained-voice transfer
+plus inference. Native zero-PCM capture cause remains unconfirmed; synthetic
+fixtures do not prove training/inference quality. Phase03 stays60%; timing
+awaits Conviction. Main-first/numbered-update parity is a durable owner rule.
+
 ## PORT-REBUILD-01 — fresh app and manual base copy (2026-10-13)
 
 Alpha0.5.11 rebuilds and independently copies the current app, uses canonical

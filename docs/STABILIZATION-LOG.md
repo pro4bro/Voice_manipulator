@@ -1582,3 +1582,119 @@ outbox/rejection logs và native take, rồi parent/child playback, STT follow/b
 Máy thật/GPU/UAC/device/pairing cần bằng chứng owner; đóng gói/hash/catalog không
 đủ để đảm bảo mọi hành vi đó. Phase03 giữ60%; timing vẫn chờ Conviction.
 Round kỹ thuật này kết thúc sau delivery/gates.
+
+## 2026-10-13 — PORT-FEEDBACK-02
+
+### Feedback — 2026-10-13
+
+**Nguyên văn (copy từ chat):**
+
+```text
+hiện tại khi đang test trên máy khác. với footage record bị lỗi từ OBS thì nó không có right click menu để có thể xóa hoặc thao tác. em hãy kiểm tra xem trên app chính có bị hay không, nếu bị thì sửa ngay từ app chính và rồi mang vào bản update.
+
+anh muốn em ghi nhớ 1 điều là các feedback của anh, anh muốn áp dụng cho app chính, rồi sau đó tạo ra bản updates. Và em hãy đảm bảo một khi đã sửa thì tất cả đều phải hoạt động như nhau, cả bản app chính lẫn bản portable.
+
+có vấn đề về logic khi thao tác với footage có nhiều track bên trong. Đó là khi anh đang view nhiều track bên trong 1 footage cùng lúc, nếu anh muốn nghe và đọc script của chỉ một hoặc vài track xác định, anh sẽ tạm thời lower volume hoặc bấm mute một vài track bên trong, lúc này các track sẽ hoạt động đúng, nghĩa là nếu chỉnh volume hoặc mute track nào thì track đó sẽ mất tiếng. Đúng ý anh. Nhưng nếu anh tạm thời chỉ select đúng track anh cần, thì bỗng nhiên các track khác lại tự động phát âm thanh. anh muốn là khi người dùng select track nào, footage nào thì chỉ có track đó, footage đó được phát âm thanh, đồng thời script cũng sẽ xuất hiện theo footage và track mà anh đang select. Và dù anh đang select mà nếu anh đã mute hoặc điều chỉnh volume của track nào thì track đó vẫn sẽ nhớ trạng thái và hoạt động tương ứng.
+
+Anh muốn có thêm nút solo nằm bên dưới nút Mute của mỗi track. khi bấm vào solo của track nào thì track đó sẽ được phát âm thanh, những track nào không bấm Solo thì sẽ không được phát âm.
+
+anh muốn khi training xong, voice được đưa vào Voice Collection sẽ có thể export hoặc import với bên ngoài. Người dùng có thể mang file model đã train để mang sang máy khác hoặc tài khoản khác.
+```
+
+Ảnh owner: [PORT-FEEDBACK-02-owner.png](feedback/PORT-FEEDBACK-02-owner.png).
+Ảnh có take OBS MKA LỖI/chờ PCM, ba child Track1–3 CHỜ PCM và thông báo missing
+source stems. Đây là journal chưa publish, khác asset đã có MKA.
+
+**Cách agent hiểu:** sửa source trước, build update cùng code và đối chiếu thực
+tế; take lỗi vẫn phải quản lý/xóa được. Selection trong một footage phải đồng
+bộ audio và Script; Gain/Mute/Solo nghe lại giữ qua selection/view trong phiên
+project. Solo có thể bật nhiều track, Mute vẫn thắng. Voice transfer phải mang
+đúng file model đã train và lineage, không phụ thuộc đường dẫn/account nguồn.
+
+**Phạm vi:** một round source/portable feedback, không sửa engine/model nặng,
+không nhận là đã sửa nguyên nhân native OBS không gửi PCM, không tiến Phase03.
+Preference source-first/parity đã được lưu thành công qua OpenViking, ADR0072
+và PORTABILITY. Giao diện, adapters và tests đều sửa trong project chính.
+
+### Agent tự kiểm
+
+Pending OBS dùng router quản lý journal stopped/unpublished, optional deletedAt,
+bin giữ PCM, Restore và xác nhận xóa vĩnh viễn; active capture/archive/STT locks
+chặn xóa. Recovery/publish/STT không chạy với journal đã recycle. Review phát
+hiện Restore409 do gọi status STT vốn từ chối recycled; production create_app
+test red/green, giữ lock/task guards và bỏ status call cho recycled khi restore.
+
+Timeline chỉ mount player thuộc selection, pause detached refs và chặn delayed
+activation ở imported path. Provider phiên project giữ mixer qua remount. Script
+và Timeline dùng cùng resolved subset, Solo S dưới M ở cả hai loại Timeline.
+Browser source phát hiện Ctrl-select2track lại bị opened-prop sync thay thành
+parent/3players; thêm controlled Media Pool prop và test two-way Workspace,
+red trước/green sau sửa. Quay lại parent vẫn nhớ Mute1/Gain2=37/Solo2.
+
+Voice Collection export/import ZIP schema1 kiểm inventory/hash/relative paths/
+lineage, stage có cleanup tất cả failure, bounds8GiB expanded/20kfiles. LoRA,
+full/RVC roundtrip vào collection/project độc lập có đúng shape/bytes. Lead
+review thêm failing stage cleanup/fresh missing-root404 regressions. Không load
+hoặc execute model trong import; base/runtime không nằm trong ZIP.
+
+Actual source API/UI18131 và installed portable core Python18132 dùng hai tree
+fixture độc lập. Runtime status là phần duy nhất được supply để tránh controller
+owner; media/journal/voice routes thật. Fixture3track có PCM16/48k/5s tones thật,
+MKA/analysis WAV publish; words tự viết và model synthetic, không claim ASR/
+training/inference. Cả hai UI có failed contextmenu/recycle/bin/restore; subset
+2tracks cho2audio-source elements/2Script rows và mixer reports giống hệt.
+Play tone thật; gain37/Solo2 và Mute1 giữ khi parent→subset. Source ZIP import
+qua UI vào portable collection mới rồi native API export lại giữ nguyên3payload
+files/lineage. Final source/portable console warning/error đều rỗng.
+
+### Kết quả so với ngưỡng
+
+Final frontend **795pass/84files**,185.37s; backend **819pass/3warnings**,322.92s;
+typecheck/build/diff pass. Focused integrated5files197pass34.66s. Vitest default
+fork ban đầu hết60s chưa khởi động worker/0tests; dùng threads/maxWorkers1.
+Backend ban đầu816pass/1controller deadlinefail dưới frontend load; unchanged
+isolatedpass1.16s và finalfull819pass. Hai warnings deprecation cũ; một warning
+duplicate ZIP member chủ động từ test reject. Không hạ thresholds.
+
+Test cũ singleTrackView phải đổi expected2player→1 theo contract owner. Test
+two-channel play clear lịch sử global mock trước action và thêm exact instance
+URLs; vẫn phải play đúng2channels. Voice browse cấm `/Import đã chọn/` thay broad
+`/Import/` vì Hub giờ có external Import voice package. Ghi lý do rõ, không dùng
+sửa test để né bug. Late controlled-selection regression giữ failure trước sửa.
+
+Actual MAKE tự cấp **alpha0.5.12**, sourcea8d09e0, rebuilt web. Actual root UPDATE
+chọn received numbered pack, **33pass/0fail**,updatedtrue/modelLayerChangedfalse.
+Native dependency import mất nhiều phút nhưng probe và gate hoàn tất nguyên
+trạng, không đổi env/threshold/runtime để pass. Harness scratch copy nhầm vào
+dest updates chưa tồn tại và verifier thiếu README mapping đã được sửa tại
+scratch, không chạm payload immutable.154source/payload/installed byte/hash/size
+khớp; eightcatalogs không lệch ngoài intentionalVibe/Gitmetadata; isolated app
+OpenAPI180operation signatures match, cả5route mới được kiểm.
+
+ZIP **1,223,639bytes (~1.17MiB)**/158files, SHA256
+`6c10de416abf03ddb3744dbbe32ffcc4348cc7cfbdcbea8ecf8683ad85f6c594`.
+Base model manifest hash giữ nguyên,6VibeVoice entries vẫn list/unavailable.
+Evidence: `docs/gates/portable-feedback-02-20261013.md`; screenshots portable:
+[selection](feedback/PORT-FEEDBACK-02-portable-selection.png),
+[OBS menu](feedback/PORT-FEEDBACK-02-portable-obs-menu.png),
+[voice import](feedback/PORT-FEEDBACK-02-portable-voice-import.png).
+
+### Review (Claude)
+
+Chưa có review độc lập Claude trong round này. Lead review source, worker fixes,
+test changes, artifact safety/shape, actual BAT, hashes và browser parity đã xong.
+
+### Nghiệm thu owner / bước tiếp theo
+
+**PORT-FEEDBACK-UAT-02:** giải nén nguyên App-alpha-0.5.12-NoVibeVoice vào updates
+máy D, bấm root UPDATE (portable0.5.7 hoặc cũ hơn dùng pack APPLY một lần).
+Chờ updatedtrue/release0.5.12/gateFailed0 rồi root open-pro4bro-console. Test
+take OBS lỗi menu→bin→Restore; một/hai track audio+Script, Gain/Mute/Solo và
+quay lại parent; export/import ZIP voice train thật, inference trên base tương
+thích. Không cần copy model nặng lại. Zero-PCM native OBS cause vẫn chưa được
+xác minh trên D-device; fixtures/hashes không đảm bảo GPU/UAC/native capture.
+
+Own listeners/probes được dọn sau chụp bằng chứng. Các source PIDs59812/47064/
+55788 đã vắng ngay lần check đầu turn; không có lệnh trong round này stop chúng.
+Không sửa profile OBS/project/media thật. Phase03 giữ60%, independent timing
+vẫn chờ Conviction. Round kỹ thuật kết thúc sau delivery và báo gap này.
