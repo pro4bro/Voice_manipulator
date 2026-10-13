@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
+
+Alpha0.5.9 root BAT auto-selects Repair for damaged/missing installed files;
+WinPS error capture retains Python exit code and reason. Existing hash,
+compatibility, running-OBS and pairing rules remain. Installer29pass,
+frontend785/84files, backend786pass, typecheck/build pass. Actual pack33/0,
+151 installed/ZIP hashes checked, models unchanged. Embedded Python/real
+package probe repairs DLL/brand, preserves pairing and refuses running-OBS
+repair. See docs/gates/portable-obs-repair-20261013.md. Next
+PORT-FEEDBACK-UAT-01 is owner D-drive0.5.9 apply, close OBS/root INSTALL/reopen
+native loading, then prior playback/bin checks. UAC/OBS loading needs physical
+evidence. Independent timing awaits Conviction; Phase03 stays60%.
+
 ## PORT-UPDATE-LOCK-01 — portable controller shutdown (2026-10-13)
 
 Alpha0.5.8 stops the controller as well as API/Studio before replacing app trees,

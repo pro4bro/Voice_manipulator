@@ -12,7 +12,23 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-13 — current: PORT-UPDATE-LOCK-01
+### 2026-10-13 — current: PORT-OBS-REPAIR-01
+
+Owner's OBS install failure reproduced through native BAT: default Install
+refuses damaged files and WinPS Stop interrupts on redirected Python stderr.
+CLI-only auto mode now chooses Repair for damaged/missing installed files;
+native error capture retains exit code/reason. Package hashes, running-OBS
+guard, compatibility and pairing remain enforced. Installer29pass, frontend
+785/84files, backend786pass, typecheck/build pass. Actual alpha0.5.9 pack33/0,
+151 installed/ZIP hashes verified, models unchanged. Embedded Python/real
+package probe repairs DLL and missing brand, keeps pairing and blocks running
+OBS. Evidence: docs/gates/portable-obs-repair-20261013.md. Phase03 stays60%.
+Exact next: PORT-FEEDBACK-UAT-01 — owner applies0.5.9 on D-drive, closes OBS,
+double-clicks root INSTALL and verifies native loading after reopening, then
+prior playback/bin acceptance. UAC/native OBS needs physical evidence;
+independent timing still awaits Conviction.
+
+### 2026-10-13 — previous: PORT-UPDATE-LOCK-01
 
 Owner's0.5.7 pack failed moving services/api because the controller still held
 that working directory after API/Studio stop. Native process CWD lock reproduces

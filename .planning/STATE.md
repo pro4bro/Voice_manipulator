@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-UPDATE-LOCK-01 portable controller shutdown.
-last_activity_desc: Fixed services/api directory lock during update by stopping controller/API/Studio before replacement and reopening through the console after success/rollback. Native16, frontend785, backend779, typecheck/build pass. Actual alpha0.5.8 pack with real embedded controller33/0,151 installed/ZIP hashes verified, models unchanged. Next PORT-FEEDBACK-UAT-01 on D-drive uses the new pack APPLY once and retries update/playback/bin/native OBS. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-OBS-REPAIR-01 default OBS installer recovery.
+last_activity_desc: Root BAT auto-selects Repair for damaged or missing installed files and captures native stderr with exit code. Installer29, frontend785, backend786, typecheck/build pass. Actual alpha0.5.9 pack33/0,151 installed/ZIP hashes verified, models unchanged. Embedded Python/real package recovery preserves pairing and blocks running OBS. Next PORT-FEEDBACK-UAT-01 on D-drive applies0.5.9, closes OBS, runs root INSTALL and confirms native loading after reopening, then prior playback/bin checks. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,21 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
+
+Alpha0.5.9 changes the root BAT default to CLI auto mode: damaged or missing
+installed files select Repair; healthy/fresh/older installs use Install.
+WinPS native stderr capture now retains Python exit code and original reason.
+Installer29pass, frontend785/84files, backend786pass, typecheck/build pass.
+Actual received pack33/0,151 installed/ZIP hashes verified, models unchanged.
+Embedded Python/real package probe repairs DLL/brand, preserves pairing and
+refuses repair while simulated OBS runs. Real OBS/user profile untouched.
+Evidence: docs/gates/portable-obs-repair-20261013.md. Exact next
+PORT-FEEDBACK-UAT-01: owner applies0.5.9 on D-drive, closes OBS, runs root INSTALL,
+reopens to confirm native plugin loading, then prior playback/bin acceptance.
+UAC/OBS loading needs physical evidence; timing awaits Conviction. Phase03
+stays60%.
 
 ## PORT-UPDATE-LOCK-01 — updater controller shutdown (2026-10-13)
 

@@ -1418,3 +1418,79 @@ trong gói một lần để thay updater cũ, kiểm tra update hết lỗi r�
 playback/bin/native OBS của feedback trước. Standard-port window, UAC/GPU/OBS
 loading trên máy đó còn cần nghiệm thu thực tế. Phase03 giữ60%; planned timing
 review tiếp tục chờ Conviction reference. Round kỹ thuật này kết thúc sau gates.
+
+## 2026-10-13 — PORT-OBS-REPAIR-01
+
+### Feedback — 2026-10-13
+
+**Nguyên văn (copy từ chat):**
+
+```text
+python.exe : OBS plugin install failed: Plugin bị hỏng hoặc khác manifest; dùng Repair sau khi đóng OBS.
+At D:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR\.scratch\portable-release\Pro4Bro-Portable-20261012-No
+VibeVoice\scripts\install-obs-plugin.ps1:24 char:15
++ ...   $output = & $python -m app.adapters.obs_plugin_installation --cli $ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (OBS plugin inst...u khi đóng OBS.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+Press any key to continue . . .
+```
+
+**Cách agent hiểu:** installer đã tìm thấy cài đặt plugin nhưng phát hiện file
+thiếu hoặc lệch hash so với manifest. BAT mặc định Install từ chối trạng thái
+damaged; WinPS Stop còn ngắt ngay khi Python ghi stderr. Cần cho thao tác bấm BAT
+tự chọn Repair khi cần, giữ guard và báo nguyên nhân/mã thoát đầy đủ. Log của
+owner chưa xác định được file nào lệch; không suy đoán đó là DLL cụ thể.
+
+**Phạm vi sửa:** CLI/PowerShell installer, native regression, hướng dẫn và gói
+app alpha0.5.9. Không đổi model, checkpoint, media hay tiến độ tính năng Phase03.
+
+### Agent tự kiểm
+
+Trước sửa: bảy ca native mới có4fail/3pass trong9.84s, gồm DLL khác bytes và
+DLL thiếu tái hiện đúng NativeCommandError của owner. BAT nay mặc định auto:
+CLI chọn Repair nếu damaged; trạng thái khác qua Install. Manager và REST vẫn
+giữ install/repair/remove. Hash package/file, OBS build, OBS đang chạy, atomic
+write/rollback, elevation và pairing giữ nguyên. Explicit Install vẫn từ chối
+damaged; explicit Repair vẫn từ chối cài đặt mới.
+
+WinPS bắt stderr dưới Continue có scope rồi khôi phục Stop trước xử lý exit
+code; thông báo giữ mã thoát và lý do gốc. UTF-8/env restoration giữ nguyên.
+Test cũ default-root failure đổi chuỗi expected sang `auto failed (exit 1)` vì
+CLI default/format lỗi đã đổi; thêm assertion không còn NativeCommandError,
+giữ nonzero/no-mutation. Không hạ gate.
+
+Actual received pack APPLY trên portable full33/0,151appfiles; tất cả hash/size
+cài và ZIP khớp manifest, bốn root BAT nguyên vẹn. Model inventory hash không
+đổi; source controller/API/Studio PIDs59812/47064/55788 còn sống.
+
+Probe cô lập dùng script/adapter/package từ portable đã cài0.5.9 và bootstrap
+Python embedded copy nguyên byte. Cài mới/healthy rerun thành công; đổi DLL
+và xóa brand đều được Repair, cả ba file khớp hash package; pairing nguyên byte.
+Mô phỏng tasklist có OBS thì Repair bị chặn với exit1/lý do đúng, không thay
+file/pairing. Chỉ tasklist được kiểm soát trong fixture sitecustomize, OBS exe
+giả không chạy; không chạm OBS/profile thật và không đóng OBS của owner.
+Fixture không nằm trong payload.
+
+### Kết quả so với ngưỡng
+
+Installer **29 passed**,20.21s; frontend **785 passed /84 files**,120.16s;
+backend **786 passed /2 existing warnings**,348.11s; typecheck/build/diff pass.
+Actual MAKE tự đánh **alpha0.5.9**, source62deace; actual APPLY **33 pass /0 fail**,
+`modelLayerChanged:false`. ZIP155entries,151payload hashes verified,
+**1,214,835bytes**, khoảng1.16MiB. Evidence:
+`docs/gates/portable-obs-repair-20261013.md`.
+
+### Review (Claude)
+
+Chưa có review độc lập trong round này.
+
+### Nghiệm thu owner / bước tiếp theo
+
+**PORT-FEEDBACK-UAT-01:** copy nguyên gói0.5.9 vào updates máy D-drive, bấm APPLY
+trong gói (hoặc root UPDATE nếu đã0.5.8). Chờ release0.5.9/updatedtrue/gateFailed0,
+đóng hẳn OBS rồi bấm root INSTALL; mở lại OBS để kiểm tra native loading và UAC
+nếu cần. Tiếp tục nghiệm thu playback/bin của feedback trước. Loading/UAC trên
+máy đó chưa được xác nhận bằng các fixture. Phase03 giữ60%; planned
+STT-TIMING-ACCURACY-01 chờ Conviction reference. Round kỹ thuật này kết thúc.

@@ -1,5 +1,20 @@
 # Project Status — 2026-10-13
 
+## PORT-OBS-REPAIR-01 — default OBS installer recovery (2026-10-13)
+
+Alpha0.5.9 resolves the owner's damaged-manifest Install failure: root BAT
+defaults to CLI auto mode, selecting Repair for missing/changed installed files.
+Scoped native stderr capture reports Python exit code and original reason.
+The manager still checks package hashes, OBS compatibility/running state and
+preserves pairing. Installer29pass; frontend785/84files, backend786pass,
+typecheck/build pass. Actual received pack33/0,151 installed/ZIP hashes checked,
+models unchanged and four root BATs retained. Embedded Python/real package
+probe covers fresh/healthy/damaged/missing installation and running-OBS refusal;
+pairing remains byte-identical. See docs/gates/portable-obs-repair-20261013.md.
+Next PORT-FEEDBACK-UAT-01 is owner's D-drive0.5.9 apply, closed-OBS root INSTALL,
+native loading after reopen, then prior playback/bin acceptance. Actual UAC/OBS
+loading remains physical evidence. Phase03 stays60%; timing awaits Conviction.
+
 ## PORT-UPDATE-LOCK-01 — stop controller during app updates (2026-10-13)
 
 Alpha0.5.8 fixes the owner's Move-Item failure: the updater previously stopped
