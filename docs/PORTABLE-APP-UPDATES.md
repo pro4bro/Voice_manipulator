@@ -42,15 +42,27 @@ independent.
 
 ## Same machine
 
-Double-click `UPDATE-PORTABLE.bat` inside a portable folder located under this
-source checkout. It finds `scripts/new-portable-app-update.ps1`, builds the
-current web UI, allocates a version, checks the runtime manifest, applies the
-app-only update, verifies app hashes and runs the portable gate. On success,
-`transferPack` reports its numbered folder inside `updates`. This source-build
-mode is enabled on the pack's recorded source machine. A newer received pack
-is applied first. A portable on another machine applies its copied packs.
-The BAT window stays open so the result can be read. Existing portable
-services are restarted after success.
+For alpha 0.5.6 and newer, double-click `UPDATE-PORTABLE.bat` inside a portable
+folder located under this source checkout. It finds
+`scripts/new-portable-app-update.ps1`, builds the current web UI, allocates a
+version, checks the runtime manifest, applies the app-only update, verifies app
+hashes and runs the portable gate. On success, `transferPack` reports its
+numbered folder inside `updates`. This source-build mode is enabled on the
+pack's recorded source machine. A newer received pack is applied first. A
+portable on another machine applies its copied packs. The BAT window stays open
+so the result can be read. Existing portable services are restarted after
+success.
+
+### One-time launcher migration
+
+An installed alpha 0.5.5 or earlier has a root updater that accepts only the
+legacy six-BAT inventory. It rejects the new four-BAT update pack. For the
+first update, create the numbered pack with `MAKE-PORTABLE-UPDATE.bat`, copy it
+into `updates`, and click that pack's `APPLY-UPDATE.bat` once. It runs the
+updater shipped in the pack, removes the two verified legacy launchers, and
+installs the compatible root updater. After it succeeds, use the portable
+root's `UPDATE-PORTABLE.bat` for later updates.
+Alpha 0.5.6 and newer can use either entrypoint.
 
 For the first transfer to another machine, copy the entire updated portable
 folder (about 36 GiB). Keep its internal folder structure intact. On the
@@ -71,9 +83,9 @@ Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
 2. Copy that whole numbered folder into the portable machine's `updates` folder.
    Keep its original name and its `payload`, `app-update.json`, `VERSION.txt`
    and `APPLY-UPDATE.bat` together.
-3. Double-click `UPDATE-PORTABLE.bat` beside `open-pro4bro-console.bat`. For an older
-   alpha 0.5.0 portable, click the new pack's `APPLY-UPDATE.bat` once: it uses
-   the shipped updater to install support for automatic selection.
+3. For alpha 0.5.5 and earlier, click the new pack's `APPLY-UPDATE.bat` once.
+   For alpha 0.5.6 and newer, double-click `UPDATE-PORTABLE.bat` beside
+   `open-pro4bro-console.bat`.
 
 `APPLY-UPDATE.bat` and the BAT inside `payload` resolve the enclosing full
 portable and apply the highest available compatible version. They do not

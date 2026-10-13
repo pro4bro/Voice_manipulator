@@ -319,6 +319,12 @@ def test_creation_increments_versions_and_names_folders_automatically(tmp_path: 
         assert {Path(item).name for item in update["files"] if item.lower().endswith(".bat")} == {
             "open-pro4bro-console.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat", "UPDATE-PORTABLE.bat",
         }
+        pack_readme = (pack / "README-UPDATE.txt").read_text(encoding="utf-8-sig")
+        assert "alpha 0.5.5 or earlier" in pack_readme
+        assert "APPLY-UPDATE.bat" in pack_readme
+        assert "new four-BAT inventory" in pack_readme
+        assert "later updates" in pack_readme
+        assert "Alpha 0.5.6 and newer" in pack_readme
     state = json.loads((source / "APP-VERSION.json").read_text(encoding="utf-8-sig"))
     assert state["version"] == state["lastIssuedVersion"] == "0.5.2"
 

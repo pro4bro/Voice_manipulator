@@ -38,17 +38,18 @@ For the first move to another machine, copy this **whole portable folder**
 `open-pro4bro-console.bat`. For later code-only updates, copy only the development
 portable's numbered folder (about 4 MiB), such as
 `updates/App-alpha-0.5.1-NoVibeVoice`, into the other portable's `updates`.
-Keep older folders if desired. On the other machine, double-click
-`UPDATE-PORTABLE.bat` beside `open-pro4bro-console.bat`; it reads manifests and applies
-the highest matching version. Then run `VERIFY-PORTABLE.bat` and start.
-For an older alpha 0.5.0 portable, click `APPLY-UPDATE.bat` inside the received
-pack once to install the new updater. Clicking the BAT under `payload` also
-finds the enclosing portable, but launch the actual app from the portable root.
+Keep older folders if desired. On the other machine, alpha 0.5.5 and earlier
+must use `APPLY-UPDATE.bat` inside the received pack once: their root updater
+cannot accept the new four-BAT inventory. Alpha 0.5.6 and newer can use
+`UPDATE-PORTABLE.bat` beside `open-pro4bro-console.bat`. Then run
+`VERIFY-PORTABLE.bat` and start. The BAT under `payload` also finds the
+enclosing portable, but launch the actual app from the portable root.
 
 If this portable is not under the source checkout, first double-click
 `MAKE-PORTABLE-UPDATE.bat` in the source repository. Copy its resulting whole
 numbered update folder into this portable's `updates`, keeping its name, then
-double-click `UPDATE-PORTABLE.bat` here or `APPLY-UPDATE.bat` in the pack.
+for alpha 0.5.5 and earlier click `APPLY-UPDATE.bat` in the pack once. For
+alpha 0.5.6 and newer, click `UPDATE-PORTABLE.bat` here or `APPLY-UPDATE.bat`.
 
 The updater checks each app file, replaces only app-owned paths, runs
 `VERIFY-PORTABLE` checks and rolls back app files if verification fails. If this
