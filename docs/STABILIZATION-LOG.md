@@ -1781,3 +1781,32 @@ protected on retry; no byte-identical marker claim. Focused native63/0, menu4/0,
 typecheck/build/diff pass; no skipped/weakened tests. Push origin feature branch
 verified9a00345. Full source/portable external library remains next acceptance,
 not an implemented feature. No independent Claude review, no phase progress.
+
+## HUB-COLLECTION-01 — 2026-10-14
+
+### Agent tự kiểm
+
+Sửa từ main source: hover không cắt hàng đầu, bỏ LOCAL/PROJECTS, detail waveform
+không tràn cột tên/path. Collection đếm profile, có hàng xổ model và tick để
+Export cạnh Import. Native chọn nhiều ZIP/thư mục đích; giữ checksum/cache/Script.
+Job tạo mẫu dùng archived model thật, chỉ công bố PCM có tín hiệu >=15s; có trạng
+thái/animation/error/retry, hủy đúng worker khi đóng. Dataset snapshot mới có hash
+run để tính giây train; archive cũ thiếu chứng cứ báo chưa có thông tin. RVC chưa
+hỗ trợ Script synthesis, vẫn chuyển package. Không tạo portable mới.
+
+### Kết quả so với ngưỡng
+
+Frontend818/84files, affected20/3files; typecheck/build/diff pass. Backend full
+848pass/3startup-timeout, exact unchanged rerun3/0; final focused88/0. Không nới
+timeout/ngưỡng hoặc bỏ test. IAB hover dư3px, sáu detail cards không overlap;
+Collection hai theme, profile/model selection và cuộn cuối6model đạt. Actual
+Anh Vũ CPU run dừng sau583.06s chưa có WAV; không nhận là model-inference pass.
+Worker review phát hiện và sửa cache/model tampering, JSON bool/int, shutdown
+continuation và metadata malformed; regressions đạt. Không có Claude review.
+
+### Còn lại / NEXT
+
+HUB-COLLECTION-UAT-01: Pull/restart source, thử native dialogs và mẫu trained >=15s
+bằng GPU đủ VRAM, nghe đối chiếu Script. SOURCE-EXTERNAL-ASSETS-01 vẫn là vòng
+implementation tiếp theo. Phase03 giữ60%; native OBS/identity/timing còn mở.
+Evidence: docs/gates/hub-collection-01-20261014.md, ADR0075.

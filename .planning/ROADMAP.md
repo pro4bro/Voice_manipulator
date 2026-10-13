@@ -1,5 +1,15 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## HUB-COLLECTION-01 — owner Hub/Collection feedback (2026-10-14)
+
+Main-source card/detail layout, compact header, profile count, expandable model
+rows, selection/native ZIP transfer and verified >=15s sample jobs delivered.
+Frontend818, focused backend88, three initial startup timeouts pass exact rerun;
+typecheck/build, IAB geometry/two themes/scroll-end pass. Actual CPU trained
+sample did not finish; HUB-COLLECTION-UAT-01 remains for sufficient GPU/native
+dialogs. See docs/gates/hub-collection-01-20261014.md and ADR0075. Phase03 stays
+60%, no new portable. SOURCE-EXTERNAL-ASSETS-01 remains next implementation.
+
 ## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
 
 Owner now prefers GitHub Desktop source sync for daily tests. Research notes

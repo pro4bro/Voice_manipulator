@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — SOURCE-SYNC-01 configuration cleanup and GitHub publication.
-last_activity_desc: Research committed, root BATs consolidated;7601temporary targets/2249empty dirs removed, project/core/model retained. Focused backend63/frontend4, typecheck/build pass; origin feature branch9a00345 verified. GitHub Desktop source sync is preferred; next SOURCE-EXTERNAL-ASSETS-01 implements one library path/full-source packaging. No phase advance/new portable; Phase03 remains60%, physical/timing acceptance open.
+last_activity: 2026-10-14 — HUB-COLLECTION-01 main-source Hub/Collection feedback.
+last_activity_desc: Hover/detail layout, profile count/model selection, native transfer and verified15s sample jobs implemented. Frontend818, backend focused88, three initial startup timeouts pass exact rerun; typecheck/build and real browser geometry pass. Actual CPU sample incomplete; GPU/native UAT remains open. Next implementation SOURCE-EXTERNAL-ASSETS-01; no new portable or phase advance, Phase03 remains60%.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## HUB-COLLECTION-01 — Hub and Collection feedback (2026-10-14)
+
+Main-source hover/detail geometry, compact header, profile count, expandable
+model rows and profile/model export selection delivered. Native ZIP selection /
+folder export and archived-model >=15s PCM sample jobs preserve hashes/Script.
+Verified Dataset Manifest snapshots provide duration for new archives; old
+unknown metadata remains explicit. Frontend818, focused backend88, typecheck /
+build and real browser evidence pass. Full backend848/3startup timeouts; exact
+unchanged rerun3/0. Actual Anh Vũ CPU attempt stopped without WAV after583.06s.
+HUB-COLLECTION-UAT-01 requires native dialogs and real trained GPU sample;
+SOURCE-EXTERNAL-ASSETS-01 remains next implementation. No Phase03 advance or new
+portable. See docs/gates/hub-collection-01-20261014.md.
 
 ## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
 

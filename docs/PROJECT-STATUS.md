@@ -1,4 +1,20 @@
-# Project Status — 2026-10-13
+# Project Status — 2026-10-14
+
+## HUB-COLLECTION-01 — main-source Hub and Collection
+
+Card hover/detail layout repaired; LOCAL/PROJECTS removed. Collection counts
+distinct profiles, expands model rows, selects profile/model checkboxes, and
+uses native multiselect ZIP import/folder export. Archived-model jobs cache and
+transfer measured >=15s PCM samples with adjacent metadata Script. New lineage
+may retain a raw-hash-verified Dataset Manifest for training seconds; legacy
+unknown metadata and RVC scripted-preview limitations remain honest.
+Frontend818pass, focused20, typecheck/build pass. Backend full848pass/3startup
+timeouts, unchanged exact rerun3pass, final focused88pass. IAB hover/detail/count/
+selection/two themes and six-model scroll-to-end verified. Actual Anh Vũ CPU run
+stopped after583.06s without WAV; trained GPU/native-dialog acceptance remains
+HUB-COLLECTION-UAT-01. See docs/gates/hub-collection-01-20261014.md and ADR0075.
+No new portable or Phase03 advance (60%). Pull the existing feature branch and
+restart the source app. SOURCE-EXTERNAL-ASSETS-01 remains next implementation.
 
 ## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
 

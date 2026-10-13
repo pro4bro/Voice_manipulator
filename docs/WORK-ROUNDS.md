@@ -10,6 +10,25 @@ work and repair waveform volume. Execute bounded rounds serially with separate
 evidence/commits; do not stop between executable rounds. Acceptance budgets and
 physical/human evidence requirements retain their meaning.
 
+## HUB-COLLECTION-01 — main-source Hub and Collection (2026-10-14)
+
+Owner screenshots repaired in main source: card hover gutter, compact title /
+search, detail waveform bounds, distinct profile count and expandable model rows.
+Profile/model selection drives native multi-ZIP import and folder export beside
+Import. Collection-owned inference jobs publish only measured >=15s PCM samples
+with adjacent metadata Script; verified cache/Script travels with each package.
+Optional raw-hash Dataset Manifest snapshot provides train seconds; legacy unknown
+and unsupported RVC synthesis remain explicit. Shutdown cancels owned workers.
+Frontend818/84files, affected20/3files, typecheck/build pass. Backend full848pass /
+3startup-timeout failures; exact unchanged rerun3/0, final focused88/0. Real IAB
+hover3px clearance, six detail cards without overlap, count/selection/dark/light
+and six-model scroll-end geometry verified. Actual Anh Vũ CPU attempt stopped
+after583.06s without WAV; no real-model success claimed. See ADR0075 and
+docs/gates/hub-collection-01-20261014.md. Phase03 stays60%, no portable pack.
+Next acceptance HUB-COLLECTION-UAT-01: source Pull/restart, native dialogs and
+trained >=15s sample on sufficient GPU. Next implementation remains
+SOURCE-EXTERNAL-ASSETS-01 for full-source packaging/one external library path.
+
 ## Configuration round — SOURCE-SYNC-01 (2026-10-13)
 
 Owner now prefers GitHub Desktop source sync for daily tests. Research notes
