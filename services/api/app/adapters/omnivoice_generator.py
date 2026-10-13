@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -150,6 +151,18 @@ class VoiceGenerator:
     def prepare(self, project_id: str, voice_id: str, generator_id: str, parameters: dict[str, Any]) -> SpeechPlan:
         """Everything about speaking with a voice except the text: checked once, used per request."""
         voice = self.voices.get(project_id, voice_id)
+        return self._prepare_voice(voice, generator_id, parameters, lambda relative: self.voices.absolute(project_id, relative))
+
+    def prepare_archived(self, voice: ProjectVoice, payload_root: Path, generator_id: str, parameters: dict[str, Any]) -> SpeechPlan:
+        """Resolve a verified Collection snapshot without creating a project or copying models."""
+        from app.adapters.file_voice_collections import FileVoiceCollections
+
+        return self._prepare_voice(
+            voice, generator_id, parameters,
+            lambda relative: FileVoiceCollections._safe_relative_source(payload_root, relative),
+        )
+
+    def _prepare_voice(self, voice: ProjectVoice, generator_id: str, parameters: dict[str, Any], absolute: Callable[[str], Path]) -> SpeechPlan:
         try:
             option = self.generators.get(generator_id)
         except KeyError as exc:
@@ -162,13 +175,15 @@ class VoiceGenerator:
         language = generation.pop("language", None) or voice.language
         speed = generation.pop("speed", None)
 
-        reference = self.voices.absolute(project_id, voice.reference_audio)
+        reference = absolute(voice.reference_audio)
         if not reference.is_file():
             raise ValueError(f"Thiếu file giọng mẫu của voice {voice.name}.")
-        adapter = self.voices.absolute(project_id, voice.adapter_path) if voice.adapter_path else None
+        adapter = absolute(voice.adapter_path) if voice.adapter_path else None
         if adapter is not None and not adapter.is_dir():
             raise ValueError(f"Thiếu adapter LoRA của voice {voice.name}.")
-        model_dir = self.voices.absolute(project_id, voice.model_path) if voice.model_path else None
+        model_dir = absolute(voice.model_path) if voice.model_path else None
+        if model_dir is not None and not model_dir.is_dir():
+            raise ValueError(f"Thiếu model đầy đủ của voice {voice.name}.")
         engine = self.engines.get(voice.engine)
         if engine is None:
             raise ValueError(f"Chưa có bộ tạo giọng cho engine {voice.engine}.")

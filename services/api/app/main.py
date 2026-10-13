@@ -36,6 +36,7 @@ from app.adapters.file_asr_adapters import FileAsrAdapters
 from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.file_voice_collections import FileVoiceCollections
 from app.adapters.voice_collection_transfer_routes import make_voice_collection_transfer_router
+from app.adapters.collection_voice_preview import CollectionVoicePreviews, make_collection_preview_router
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.speaker_embedders import default_speaker_embedders
@@ -763,6 +764,8 @@ def create_app(
             await asyncio.gather(*tasks, return_exceptions=True)
         await growing_mkv_stt.close()
 
+    collection_previews = CollectionVoicePreviews(voice_collections, voice_generator)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # Project manifests and OBS journals can live on slow/removable storage.
@@ -799,9 +802,11 @@ def create_app(
             if obs_finalizers:
                 await asyncio.gather(*obs_finalizers.values(), return_exceptions=True)
             await obs_livelink_stt.close()
+            await asyncio.to_thread(collection_previews.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.include_router(make_voice_collection_transfer_router(voice_collections))
+    app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,
     ))

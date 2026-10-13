@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import os
 import json
 from pathlib import Path
@@ -434,6 +435,138 @@ def test_collection_rejects_unsafe_source_run_id(tmp_path):
 
     with pytest.raises(ValueError, match="training run ID is invalid"):
         store.add_entry(collection.id, source.id, voice.id)
+
+
+def _write_training_manifest(
+    source_root: Path,
+    runs: FileTrainingRuns,
+    source_id: str,
+    *,
+    expected_hash: str | None = None,
+    manifest_id: str = "manifest-source",
+    speaker_id: str = "speaker-source",
+) -> str:
+    manifest = DatasetManifest(id=manifest_id, segments=[
+        DatasetSegment(
+            id="segment-train-a", asset_id="asset-a", audio_path="assets/media/source/analysis.wav",
+            start=0, end=4.25, text="hello", speaker_profile_id=speaker_id, split="train",
+        ),
+        DatasetSegment(
+            id="segment-dev", asset_id="asset-b", audio_path="assets/media/source/analysis.wav",
+            start=0, end=5.75, text="again", speaker_profile_id=speaker_id, split="dev",
+        ),
+        DatasetSegment(
+            id="segment-other", asset_id="asset-c", audio_path="assets/media/source/analysis.wav",
+            start=0, end=40, text="other speaker", speaker_profile_id="speaker-other", split="train",
+        ),
+    ])
+    raw = manifest.model_dump_json(by_alias=True, indent=4)
+    manifest_path = source_root / "assets/training/datasets/manifest-source.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_bytes = raw.encode("utf-8")
+    manifest_path.write_bytes(raw_bytes)
+    digest = hashlib.sha256(raw_bytes).hexdigest()
+    run = runs.get(source_id, "run-1")
+    runs._write(source_id, run.model_copy(update={
+        "manifest_hash": expected_hash if expected_hash is not None else digest,
+    }))
+    return raw
+
+
+def test_collection_archives_hashed_dataset_snapshot_and_measures_speaker_training_seconds(tmp_path):
+    *_, source, _target, source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    raw = _write_training_manifest(source_root, runs, source.id)
+    collection = store.create(VoiceCollectionCreate(name="Collection"))
+
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    lineage = json.loads((store._entry_folder(collection.id, entry.id) / "lineage.json").read_text(encoding="utf-8"))
+
+    assert lineage["provenance"]["sourceDataset"]["json"] == raw
+    assert lineage["provenance"]["sourceDataset"]["sha256"] == hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    assert store.training_seconds(lineage) == 10.0
+
+
+def test_imported_voice_reexport_keeps_original_dataset_duration_without_source_project_manifest(tmp_path):
+    *_, source, target, source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    raw = _write_training_manifest(source_root, runs, source.id)
+    collection = store.create(VoiceCollectionCreate(name="Source collection"))
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    imported = store.import_entry(collection.id, entry.id, target.id)
+    reexported_collection = store.create(VoiceCollectionCreate(name="Re-exported collection"))
+
+    reexported = store.add_entry(reexported_collection.id, target.id, imported.voice.id)
+    lineage = json.loads(
+        (store._entry_folder(reexported_collection.id, reexported.id) / "lineage.json").read_text(encoding="utf-8")
+    )
+
+    assert not (Path(target.project_path) / "assets/training/datasets/manifest-source.json").exists()
+    assert lineage["provenance"]["sourceDataset"]["json"] == raw
+    assert len(lineage["provenance"]["importChain"]) == 1
+    assert store.training_seconds(lineage) == 10.0
+
+
+@pytest.mark.parametrize("manifest_hash", ["", "a" * 64])
+def test_collection_keeps_legacy_dataset_duration_unknown(tmp_path, manifest_hash):
+    *_, source, _target, _source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    if manifest_hash:
+        runs._write(source.id, runs.get(source.id, "run-1").model_copy(update={"manifest_hash": manifest_hash}))
+    collection = store.create(VoiceCollectionCreate(name="Legacy collection"))
+
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    lineage = json.loads((store._entry_folder(collection.id, entry.id) / "lineage.json").read_text(encoding="utf-8"))
+
+    assert "sourceDataset" not in lineage["provenance"]
+    assert store.training_seconds(lineage) is None
+
+
+def test_collection_rejects_mismatched_training_manifest_hash(tmp_path):
+    *_, source, _target, source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    _write_training_manifest(source_root, runs, source.id, expected_hash="0" * 64)
+    collection = store.create(VoiceCollectionCreate(name="Invalid manifest"))
+
+    with pytest.raises(ValueError, match="Manifest hash"):
+        store.add_entry(collection.id, source.id, voice.id)
+    assert store.get(collection.id).entries == []
+
+
+def test_collection_rejects_manifest_id_or_speaker_mismatch(tmp_path):
+    *_, source, _target, source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    _write_training_manifest(source_root, runs, source.id, manifest_id="manifest-other")
+    collection = store.create(VoiceCollectionCreate(name="Invalid manifest ID"))
+
+    with pytest.raises(ValueError, match="Manifest ID"):
+        store.add_entry(collection.id, source.id, voice.id)
+
+    manifest_path = source_root / "assets/training/datasets/manifest-source.json"
+    manifest_path.unlink()
+    _write_training_manifest(source_root, runs, source.id, speaker_id="speaker-other")
+    with pytest.raises(ValueError, match="no segments for its training run speaker"):
+        store.add_entry(collection.id, source.id, voice.id)
+    assert store.get(collection.id).entries == []
+
+
+@pytest.mark.parametrize("mutation", ["bad-types", "corrupt-json", "wrong-id"])
+def test_archived_dataset_snapshot_is_revalidated_on_read(tmp_path, mutation):
+    *_, source, _target, source_root, _speaker, voice, _catalogs, _voices, _sets, runs, store = fixture(tmp_path)
+    _write_training_manifest(source_root, runs, source.id)
+    collection = store.create(VoiceCollectionCreate(name="Collection"))
+    entry = store.add_entry(collection.id, source.id, voice.id)
+    lineage_path = store._entry_folder(collection.id, entry.id) / "lineage.json"
+    lineage = json.loads(lineage_path.read_text(encoding="utf-8"))
+    snapshot = lineage["provenance"]["sourceDataset"]
+    if mutation == "bad-types":
+        snapshot["json"] = 123
+    elif mutation == "corrupt-json":
+        snapshot["json"] += " "
+    else:
+        manifest = DatasetManifest.model_validate_json(snapshot["json"])
+        snapshot["json"] = manifest.model_copy(update={"id": "manifest-other"}).model_dump_json(by_alias=True)
+        snapshot["sha256"] = hashlib.sha256(snapshot["json"].encode("utf-8")).hexdigest()
+        lineage["provenance"]["sourceRun"]["manifestHash"] = snapshot["sha256"]
+    lineage_path.write_text(json.dumps(lineage, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="dataset manifest"):
+        store._verified_entry_lineage(collection.id, entry.id, entry)
 
 
 def test_collection_rejects_dot_reference_and_recursive_copy(tmp_path):

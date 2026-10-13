@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import math
 import os
 import re
 import shutil
@@ -16,9 +17,11 @@ from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.safe_delete import child_folder
 from app.domain.models import (
     ConsentEvidence,
+    DatasetManifest,
     ProjectVoice,
     SpeakerProfile,
     TrainingCatalog,
+    TrainingRun,
     VoiceCollection,
     VoiceCollectionCreate,
     VoiceCollectionEntry,
@@ -460,7 +463,7 @@ class FileVoiceCollections:
             if (model_set.status != "published" or voice.id not in model_set.voice_ids
                     or model_set.gate is None or not model_set.gate.passed):
                 raise ValueError("Voice Model Set must pass its identity gate before collection export.")
-        return {
+        provenance = {
             "sourceProjectId": project_id,
             "sourceProjectName": self.projects.get(project_id).name,
             "sourceVoiceId": voice.id,
@@ -471,6 +474,10 @@ class FileVoiceCollections:
             "sourceModelSet": model_set.model_dump(mode="json", by_alias=True) if model_set else None,
             "importChain": [],
         }
+        source_dataset = self._source_dataset_snapshot(project_root, run)
+        if source_dataset is not None:
+            provenance["sourceDataset"] = source_dataset
+        return provenance
 
     def _verified_entry_lineage(
         self, collection_id: str, entry_id: str, entry: VoiceCollectionEntry,
@@ -498,6 +505,8 @@ class FileVoiceCollections:
             raise ValueError("Collection entry does not prove a completed training run.")
         if not source_run.get("id") or not source_run.get("checkpoints"):
             raise ValueError("Collection entry does not retain training checkpoint lineage.")
+        if "sourceDataset" in provenance:
+            self._validate_source_dataset(provenance)
         import_chain = provenance.get("importChain", [])
         if import_chain:
             last_import = import_chain[-1]
@@ -523,6 +532,98 @@ class FileVoiceCollections:
         elif not provenance.get("importChain") and entry.voice.model_set_id:
             raise ValueError("Collection entry is missing its Voice Model Set gate record.")
         return lineage
+
+    @staticmethod
+    def training_seconds(lineage: dict) -> float | None:
+        """Return duration measured from the verified archived training manifest."""
+        provenance = lineage.get("provenance") if isinstance(lineage, dict) else None
+        if not isinstance(provenance, dict) or "sourceDataset" not in provenance:
+            return None
+        manifest = FileVoiceCollections._validate_source_dataset(provenance)
+        source_run = provenance["sourceRun"]
+        speaker_id = source_run["speakerProfileId"]
+        return round(sum(
+            segment.duration for segment in manifest.segments
+            if segment.speaker_profile_id == speaker_id
+        ), 2)
+
+    @staticmethod
+    def _validate_source_dataset(provenance: dict) -> DatasetManifest:
+        source_run = provenance.get("sourceRun")
+        snapshot = provenance.get("sourceDataset")
+        if not isinstance(source_run, dict) or not isinstance(snapshot, dict):
+            raise ValueError("Archived dataset manifest snapshot has invalid types.")
+        if set(snapshot) != {"json", "sha256"}:
+            raise ValueError("Archived dataset manifest snapshot has invalid fields.")
+        raw_json = snapshot.get("json")
+        digest = snapshot.get("sha256")
+        if not isinstance(raw_json, str) or not isinstance(digest, str):
+            raise ValueError("Archived dataset manifest snapshot has invalid types.")
+        manifest_id = source_run.get("manifestId")
+        manifest_hash = source_run.get("manifestHash")
+        speaker_id = source_run.get("speakerProfileId")
+        if (not isinstance(manifest_id, str) or not manifest_id
+                or not isinstance(manifest_hash, str) or not manifest_hash
+                or not isinstance(speaker_id, str) or not speaker_id):
+            raise ValueError("Archived dataset manifest lineage is incomplete.")
+        actual_hash = hashlib.sha256(raw_json.encode("utf-8")).hexdigest()
+        if digest != actual_hash or digest != manifest_hash:
+            raise ValueError("Archived dataset manifest snapshot hash does not match its training run.")
+        try:
+            manifest = DatasetManifest.model_validate_json(raw_json)
+        except ValueError as exc:
+            raise ValueError("Archived dataset manifest snapshot is invalid.") from exc
+        if manifest.id != manifest_id:
+            raise ValueError("Archived dataset manifest ID does not match its training run.")
+        if not any(segment.speaker_profile_id == speaker_id for segment in manifest.segments):
+            raise ValueError("Archived dataset manifest has no segments for its training run speaker.")
+        FileVoiceCollections._validate_project_relative_dataset_paths(manifest)
+        return manifest
+
+    @staticmethod
+    def _validate_project_relative_dataset_paths(manifest: DatasetManifest) -> None:
+        for segment in manifest.segments:
+            if (not math.isfinite(segment.start) or not math.isfinite(segment.end)
+                    or segment.end <= segment.start):
+                raise ValueError("Dataset Manifest segments must have finite positive duration.")
+            path = PurePosixPath(segment.audio_path)
+            if (not segment.audio_path or not path.parts
+                    or "\\" in segment.audio_path or ":" in segment.audio_path
+                    or path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts)):
+                raise ValueError("Dataset Manifest audio paths must remain project-relative.")
+
+    @staticmethod
+    def _source_dataset_snapshot(project_root: Path, run: TrainingRun) -> dict | None:
+        if not run.manifest_hash:
+            return None
+        if not _SAFE_SOURCE_ID.fullmatch(run.manifest_id):
+            raise ValueError("Training Dataset Manifest ID is invalid.")
+        relative = f"assets/training/datasets/{run.manifest_id}.json"
+        candidate = project_root / relative
+        if candidate.is_symlink():
+            raise ValueError("Training Dataset Manifest cannot be a symbolic link.")
+        if not candidate.exists():
+            return None
+        source = FileVoiceCollections._safe_relative_source(project_root, relative)
+        if not source.is_file():
+            raise ValueError("Training Dataset Manifest must be a file.")
+        raw = source.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest != run.manifest_hash:
+            raise ValueError("Training Dataset Manifest hash does not match its training run.")
+        try:
+            raw_json = raw.decode("utf-8")
+            manifest = DatasetManifest.model_validate_json(raw_json)
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError("Training Dataset Manifest is invalid UTF-8 or JSON.") from exc
+        if manifest.id != run.manifest_id:
+            raise ValueError("Training Dataset Manifest ID does not match its training run.")
+        if not run.speaker_profile_id or not any(
+            segment.speaker_profile_id == run.speaker_profile_id for segment in manifest.segments
+        ):
+            raise ValueError("Training Dataset Manifest has no segments for its training run speaker.")
+        FileVoiceCollections._validate_project_relative_dataset_paths(manifest)
+        return {"json": raw_json, "sha256": digest}
 
     def _artifact_hashes_for_voice(
         self,

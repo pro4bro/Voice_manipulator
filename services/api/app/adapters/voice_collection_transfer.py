@@ -12,6 +12,7 @@ import zipfile
 from uuid import uuid4
 
 from app.adapters.file_voice_collections import FileVoiceCollections
+from app.adapters.collection_voice_preview import verified_preview
 from app.domain.models import VoiceCollectionEntry, VoiceCollectionProperties
 
 
@@ -69,6 +70,12 @@ class FileVoiceCollectionTransfer:
                 else:
                     raise ValueError("Collection payload must contain regular files and directories only.")
             sources.extend(payload_sources.items())
+            # Samples travel with the trained model when already generated.
+            # A queued/error job is not an artifact and is never exported.
+            cached = verified_preview(entry_folder, entry, lineage)
+            if cached:
+                sources.extend((f"preview/{name}", entry_folder / "preview" / name)
+                               for name in ("preview.json", "sample.wav"))
 
             if len(sources) > MAX_FILES:
                 raise ValueError("Voice package contains too many files.")
@@ -173,6 +180,7 @@ class FileVoiceCollectionTransfer:
                 verified = store._verified_entry_lineage_at(stage, entry)
                 if verified != lineage:
                     raise ValueError("Voice package lineage could not be verified.")
+                verified_preview(stage, entry, lineage)
 
                 duplicate = next((item for item in store.get(collection_id).entries
                                   if item.source_project_id == entry.source_project_id
