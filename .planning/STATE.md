@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-FEEDBACK-01 portable playback, bin, OBS and launchers.
-last_activity_desc: Fixed single-track Script playback identity after STT and Media Pool percentage-height overlap; repaired native WinPS OBS installer and pairing launcher migration; portable root has four BATs. Frontend785, backend774, typecheck/build pass. Actual alpha0.5.7 root UPDATE33/0, ZIP151payload hashes verified, base unchanged. Real embedded portable UI and isolated BAT installation pass. Next PORT-FEEDBACK-UAT-01 on the owner's D-drive machine includes native OBS loading/UAC/GPU. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-UPDATE-LOCK-01 portable controller shutdown.
+last_activity_desc: Fixed services/api directory lock during update by stopping controller/API/Studio before replacement and reopening through the console after success/rollback. Native16, frontend785, backend779, typecheck/build pass. Actual alpha0.5.8 pack with real embedded controller33/0,151 installed/ZIP hashes verified, models unchanged. Next PORT-FEEDBACK-UAT-01 on D-drive uses the new pack APPLY once and retries update/playback/bin/native OBS. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,19 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-UPDATE-LOCK-01 — updater controller shutdown (2026-10-13)
+
+Alpha0.5.8 detects/stops the whole portable stack before replacing services/api,
+which the surviving controller held as its CWD. Verified free ports and real
+process exit precede mutation; console reopening after update/rollback reloads
+all roles. Native16pass, frontend785/785, backend779/779, typecheck/build pass.
+Real embedded controller and installed pack33/0,151
+payload/ZIP hashes verified, base/model unchanged, source PIDs survive final
+isolated tests. Evidence: docs/gates/portable-update-lock-20261013.md. Exact next
+PORT-FEEDBACK-UAT-01 is owner D-drive0.5.8 pack APPLY once, update retry and prior
+playback/bin/native OBS checks. Native window/UAC/GPU evidence remains; Phase03
+stays60%.
 
 ## PORT-FEEDBACK-01 — portable feedback repairs (2026-10-13)
 

@@ -1,5 +1,19 @@
 # Project Status — 2026-10-13
 
+## PORT-UPDATE-LOCK-01 — stop controller during app updates (2026-10-13)
+
+Alpha0.5.8 fixes the owner's Move-Item failure: the updater previously stopped
+API/Studio while the controller retained services/api as its CWD. Native Windows
+repro goes red at the same old line272. Now all three roles are checked/stopped,
+ports must be free before replacement and console restart reloads the controller
+after update or rollback. Native16pass; frontend785/785, backend779/779,
+typecheck/build pass. Actual installed pack updater stops a real
+embedded controller and passes33/0;151 ZIP/installed hashes verified, base/model
+hash unchanged. Final isolated tests preserve standard-port source PIDs. Installed
+0.5.7 or earlier needs pack APPLY once. See
+docs/gates/portable-update-lock-20261013.md. Next PORT-FEEDBACK-UAT-01 is owner
+D-drive0.5.8 apply and prior playback/bin/native OBS retry. Phase03 stays60%.
+
 ## PORT-FEEDBACK-01 — portable playback, bin, OBS and launchers (2026-10-13)
 
 Repaired the owner's second-machine regressions in source and alpha0.5.7:

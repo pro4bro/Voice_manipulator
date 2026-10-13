@@ -1,5 +1,16 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-UPDATE-LOCK-01 — portable controller shutdown (2026-10-13)
+
+Alpha0.5.8 stops the controller as well as API/Studio before replacing app trees,
+fixing the owner's services/api CWD lock. Reopen after success/rollback uses the
+console. Native16pass, frontend785/785, backend779/779, typecheck/build pass.
+Real embedded controller + installed pack33/0,151 payload/ZIP hashes
+verified, models unchanged. Prior source PIDs survive final isolated checks.
+See docs/gates/portable-update-lock-20261013.md. Exact next PORT-FEEDBACK-UAT-01
+is owner D-drive pack APPLY once, update retry and prior playback/bin/native OBS
+acceptance. Independent STT timing awaits Conviction. Phase03 remains60%.
+
 ## PORT-FEEDBACK-01 — portable feedback repairs (2026-10-13)
 
 Source and alpha0.5.7 repair single-track Script/Timeline identity after STT,

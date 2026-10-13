@@ -12,7 +12,22 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-13 — current: PORT-FEEDBACK-01
+### 2026-10-13 — current: PORT-UPDATE-LOCK-01
+
+Owner's0.5.7 pack failed moving services/api because the controller still held
+that working directory after API/Studio stop. Native process CWD lock reproduces
+the exact MoveDirectoryItemIOError. Updater detects all three roles, stops the
+whole stack, verifies free ports and reopens via the console after success or
+rollback. Native16pass, frontend785/785, backend779/779, typecheck/build pass.
+Actual0.5.8 pack updater with embedded controller33/0;
+151 installed/ZIP hashes verified, model inventory unchanged. Source standard
+port PIDs survive final isolated tests. Evidence:
+docs/gates/portable-update-lock-20261013.md. Phase03 stays60%. Exact next:
+PORT-FEEDBACK-UAT-01 — owner uses0.5.8 pack APPLY once on D-drive, confirms the
+lock failure is gone, then retries prior playback/bin/OBS feedback. Native
+window/UAC/GPU/OBS loading remain physical acceptance. Timing awaits Conviction.
+
+### 2026-10-13 — previous: PORT-FEEDBACK-01
 
 Owner's second-machine feedback repaired in source and portable: single-track
 Script now observes the project track clock after STT; the Media Pool folder

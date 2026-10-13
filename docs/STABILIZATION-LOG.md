@@ -1355,3 +1355,66 @@ play/seek, bin qua nhiều lần thao tác; đóng OBS, cài plugin rồi mở l
 tra native loading/quyền UAC nếu cần. Chưa khẳng định nghiệm thu máy đó.
 Phase03 giữ60%; planned **STT-TIMING-ACCURACY-01** chờ Conviction reference để
 đánh giá acoustic timing độc lập. Round kỹ thuật này kết thúc.
+
+## 2026-10-13 — PORT-UPDATE-LOCK-01
+
+### Feedback — 2026-10-13
+
+**Nguyên văn (copy từ chat):**
+
+```text
+Selected update: alpha 0.5.7
+Portable folder: D:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR\.scratch\portable-release\Pro4Bro-Portable-20261012-NoVibeVoice
+Update folder: D:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR\.scratch\portable-release\Pro4Bro-Portable-20261012-NoVibeVoice\updates\App-alpha-0.5.7-NoVibeVoice
+{"overall":"running","api":{"state":"running","pid":8104},"studio":{"state":"running","pid":56528}}
+Move-Item : The process cannot access the file because it is being used by another process.
+At D:\AI_RND\PRO4BRO\VOICE_MANIPULATOR\PRO4BRO_VOICE_MANIPULATOR\.scratch\portable-release\Pro4Bro-Portable-20261012-NoV
+ibeVoice\updates\App-alpha-0.5.7-NoVibeVoice\payload\scripts\update-portable.ps1:272 char:24
++ ... ($hadOld) { Move-Item -LiteralPath $destination -Destination $backupP ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (D:\AI_RND\PRO4B...ce\services\api:DirectoryInfo) [Move-Item], IOException
+    + FullyQualifiedErrorId : MoveDirectoryItemIOError,Microsoft.PowerShell.Commands.MoveItemCommand
+
+Press any key to continue . . .
+```
+
+**Cách agent hiểu:** gói0.5.7 được tìm đúng nhưng không thay được services/api
+vì process giữ thư mục. Cần sửa lifecycle trong updater và phát hành bản có thể
+bootstrap từ pack, kể cả bản đã rollback còn mang version cũ.
+
+**Phạm vi sửa:** updater full-stack stop/reopen, native regression và hướng dẫn
+pack alpha0.5.8. Model, project/media và Phase03 không đổi.
+
+### Agent tự kiểm
+
+Native CWD lock tái hiện đúng lỗi tại dòng272. Controller chạy trong services/api
+vẫn giữ CWD sau khi API/Studio dừng. Updater nay kiểm tra cả18119/18120/18081
+bằng bundle interpreter/module, dừng toàn stack, chờ process thoát và port trống
+rồi mới move. Console launcher mở lại toàn app sau update/rollback;
+NoRestart giữ cả ba stopped. Mixed foreign process bị từ chối trước mutation.
+
+Năm ca mới dùng lock thật: controller riêng, cả stack với NoRestart, reopening,
+failed gate rollback/reopen bản cũ, foreign controller giữ nguyên mọi process/file.
+Harness đã sửa lazy NetTCPIP module import có thể đè function override; local
+source stack được mở lại và các ca cuối kiểm tra source PIDs còn sống.
+
+### Kết quả so với ngưỡng
+
+Native updater16pass; frontend785/84files, backend779pass/2existingwarnings,
+typecheck/build pass. Actual0.5.8 pack trên embedded controller thật, port18139
+được ánh xạ thành controller role:33pass/0fail,151appfiles. Controller thoát trước
+move; source PIDs còn sống, model inventory hash nguyên vẹn.151file cài và ZIP
+khớp hash/size; ZIP1,214,130bytes. Evidence:
+`docs/gates/portable-update-lock-20261013.md`.
+
+### Review (Claude)
+
+Chưa có review độc lập trong round này.
+
+### Nghiệm thu owner / bước tiếp theo
+
+**PORT-FEEDBACK-UAT-01:** copy cả gói0.5.8 vào updates máy D-drive, bấm APPLY
+trong gói một lần để thay updater cũ, kiểm tra update hết lỗi rồi thử lại
+playback/bin/native OBS của feedback trước. Standard-port window, UAC/GPU/OBS
+loading trên máy đó còn cần nghiệm thu thực tế. Phase03 giữ60%; planned timing
+review tiếp tục chờ Conviction reference. Round kỹ thuật này kết thúc sau gates.
