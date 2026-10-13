@@ -1698,3 +1698,57 @@ Own listeners/probes được dọn sau chụp bằng chứng. Các source PIDs5
 55788 đã vắng ngay lần check đầu turn; không có lệnh trong round này stop chúng.
 Không sửa profile OBS/project/media thật. Phase03 giữ60%, independent timing
 vẫn chờ Conviction. Round kỹ thuật kết thúc sau delivery và báo gap này.
+
+
+## PORT-FEEDBACK-03 — slot first, async work second (2026-10-13)
+
+### Triệu chứng / nguyên nhân
+
+Owner yêu cầu mọi thao tác thêm Media Pool/Voice Output hiện slot ngay và có
+animation khi đang làm việc. Source cũng thiếu phản hồi: Recorder chỉ gửi file
+sau Stop, OBS Start chờ polling, Generate chờ output; Choose MKV từ OBS chỉ hiện
+session sau create. Import multitrack chưa đánh dấu row đang decode.
+
+### Sửa app chính / bản update
+
+Slot client hiện trước await permission/Start/import/Generate; status preparing,
+recording,saving/progress và animation; choice/error/cancelled đứng yên. Capture
+ID giữ xuyên suốt, save lỗi giữ File để retry trong phiên; receipt audio không
+bị reupload nếu annotation lỗi. OBS ack refresh journal ngay, dedup theo recording
+ID; MKV session theo dõi tại Workspace cả khi đổi page, chỉ bỏ slot khi asset
+receipt tồn tại. Voice Output pending đứng đầu list, terminal status có thể ẩn.
+ADR0073; source commit d735469; không sửa engine/model. Main-first/portable parity
+và owner first-slot preference đã lưu OpenViking.
+
+### Test / failures / artifact
+
+Lead regression5failed/117passed; Workers OBS3failed/27passed→30pass,
+Voice Output3failed/9passed→12pass. OBS-file1failed/6passed→green. Sai biến
+integration gây55failed đã sửa; một assertion label MKA làm fullsuite1failed,
+sửa đúng accessible identity và rerun. Không skip/delete test hay hạ threshold.
+Final frontend814/84files, backend819/3warnings, typecheck/build/diff pass.
+Native root UPDATE alpha0.5.13 updatedtrue/154app/33pass/0fail/modelLayerChangedfalse.
+154source/payload/installed bytes khớp, ZIP CRC/158files/1,227,314bytes và SHA
+đã kiểm. Model manifest hash nguyên; VibeVoice listed/unavailable như profile.
+Source/embedded portable held-import DOM busytrue/pulse/status text khớp; release
+hold chạy decoder thật, pending0 và footage thật hiện. WAV5s/120000frames/24kHz/
+mono16-bit nguồn/cache SHA khớp. Console errors/warnings rỗng. UTF-8 parity-helper
+và generic Python-path launch lỗi đã sửa, không ảnh hưởng product/gói issued.
+
+Evidence: docs/gates/portable-feedback-03-20261013.md;
+docs/feedback/PORT-FEEDBACK-03-source-import.jpg,
+docs/feedback/PORT-FEEDBACK-03-portable-import.jpg,
+docs/feedback/PORT-FEEDBACK-03-portable-ready.jpg.
+
+### Review / owner nghiệm thu tiếp
+
+Lead review source/workers/wiring/test changes, receipts, native BAT, bytes và
+browser parity; chưa có Claude review độc lập. Exact next PORT-FEEDBACK-UAT-03:
+D-machine giải nén nguyên App-alpha-0.5.13-NoVibeVoice vào updates, root UPDATE,
+chờ0failed rồi root open-pro4bro-console. Test first slot/working/error/ready
+cho browser/native/multitrack import, mic/system/HQ, OBS và Generate, đồng thời
+prior selected audio/Script/Mute/Solo, failed OBS bin và trained voice transfer.
+Không cần copy core/model lại. Fixtures không chứng minh native OBS PCM/mic/GPU
+quality/timing; zero-PCM cause cũ chưa xác minh. Phase03 giữ60%, independent timing
+vẫn chờ Conviction. Own fixture servers/tabs đóng; không sửa project/profile thật.
+Bounded technical round dừng sau delivery và báo gap.

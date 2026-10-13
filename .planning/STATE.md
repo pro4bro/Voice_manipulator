@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-FEEDBACK-02 source-first selection, OBS journal and voice transfer.
-last_activity_desc: Alpha0.5.12 shares selected players/Script, remembered Gain/Mute/Solo, failed OBS menu/bin/restore and external LoRA/full/RVC ZIP transfer with source. Frontend795, backend819, typecheck/build pass. Actual root UPDATE33/0;154source/payload/installed files and1,223,639byte ZIP verified, base unchanged. Real source/portable two-player/two-Script/mixer parity and native voice payload/lineage roundtrip pass. Next PORT-FEEDBACK-UAT-02 is D-drive0.5.12 apply and physical failed-take/selection/Solo/actual trained ZIP/inference. Native zero-PCM cause unconfirmed; Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-FEEDBACK-03 source-first immediate media/voice slots.
+last_activity_desc: Alpha0.5.13 provides immediate import/capture/OBS/generation slots, working animation and real receipt replacement. Frontend814, backend819, typecheck/build pass; root UPDATE33/0,154source/payload/installed entries and1,227,314byte ZIP verified; base unchanged. Source/portable real WAV pending-to-ready DOM/animation and hashes match. Next PORT-FEEDBACK-UAT-03 is D-drive0.5.13 physical slot/mixer/bin/voice acceptance. Zero-PCM cause remains unconfirmed; Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,23 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-FEEDBACK-03 — immediate media and voice slots (2026-10-13)
+
+Main source emits slots before import/capture/generation awaits, with working
+animation, static choice/error states and real receipt replacement. Mic/system/
+HQ keeps capture identity and save retry; OBS Start ack refreshes/deduplicates
+journals; separate OBS MKV import stays tracked across pages. Generate Voice
+shows progress in the first Output row. No engine/model changes. Alpha0.5.13
+ships identical154source/payload/installed entries; ZIP1,227,314bytes; native
+root UPDATE33/0, base-layer manifest unchanged. Frontend814/84files, backend819,
+typecheck/build/diff pass. Source/embedded portable held-import DOM/animation
+match; real5s24kHz mono16-bit WAV source/cache hashes match, then pending clears.
+See docs/gates/portable-feedback-03-20261013.md and ADR0073. Next exact round:
+PORT-FEEDBACK-UAT-03 — D-drive0.5.13 apply and physical first-slot/working/error/
+ready acceptance for import, mic/system/HQ, OBS and Generate, plus prior mixer/
+bin/voice-transfer checks. Physical zero-PCM OBS cause and GPU/native acceptance
+remain open; independent timing awaits Conviction. Phase03 stays60%.
 
 ## PORT-FEEDBACK-02 — source-first selection and voice transfer (2026-10-13)
 

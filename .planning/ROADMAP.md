@@ -1,5 +1,22 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-FEEDBACK-03 — immediate media and voice slots (2026-10-13)
+
+Main source emits slots before import/capture/generation awaits, with working
+animation, static choice/error states and real receipt replacement. Mic/system/
+HQ keeps capture identity and save retry; OBS Start ack refreshes/deduplicates
+journals; separate OBS MKV import stays tracked across pages. Generate Voice
+shows progress in the first Output row. No engine/model changes. Alpha0.5.13
+ships identical154source/payload/installed entries; ZIP1,227,314bytes; native
+root UPDATE33/0, base-layer manifest unchanged. Frontend814/84files, backend819,
+typecheck/build/diff pass. Source/embedded portable held-import DOM/animation
+match; real5s24kHz mono16-bit WAV source/cache hashes match, then pending clears.
+See docs/gates/portable-feedback-03-20261013.md and ADR0073. Next exact round:
+PORT-FEEDBACK-UAT-03 — D-drive0.5.13 apply and physical first-slot/working/error/
+ready acceptance for import, mic/system/HQ, OBS and Generate, plus prior mixer/
+bin/voice-transfer checks. Physical zero-PCM OBS cause and GPU/native acceptance
+remain open; independent timing awaits Conviction. Phase03 stays60%.
+
 ## PORT-FEEDBACK-02 — selected preview and external voice transfer (2026-10-13)
 
 Alpha0.5.12 follows source-first repair: selected tracks own audio/Script,
