@@ -18,8 +18,15 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 $previousPythonPath = $env:PYTHONPATH
 try {
     $env:PYTHONPATH = Join-Path $root 'services\api'
-    & $python -m app.adapters.obs_plugin_installation --cli $root (Join-Path $root 'data') $Action $ObsRoot ([string][bool]$RemovePairing).ToLowerInvariant()
-    if ($LASTEXITCODE -ne 0) { throw "OBS plugin $Action failed." }
+    $obsRootArgument = if ($ObsRoot) { $ObsRoot } else { '__PRO4BRO_AUTO_OBS_ROOT__' }
+    $output = & $python -m app.adapters.obs_plugin_installation --cli $root (Join-Path $root 'data') $Action $obsRootArgument ([string][bool]$RemovePairing).ToLowerInvariant() 2>&1
+    $pythonExitCode = $LASTEXITCODE
+    if ($pythonExitCode -ne 0) {
+        $details = ($output | Out-String).Trim()
+        if ($details) { throw "OBS plugin $Action failed (exit $pythonExitCode): $details" }
+        throw "OBS plugin $Action failed (exit $pythonExitCode)."
+    }
+    $output
 } finally {
     $env:PYTHONPATH = $previousPythonPath
 }

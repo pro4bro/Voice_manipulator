@@ -357,10 +357,20 @@ class ObsPluginInstallation:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 7 and sys.argv[1] == "--cli":
-        _, _, app_root, data_root, action, obs_root, remove_pairing = sys.argv
-        manager = ObsPluginInstallation(Path(app_root), Path(data_root))
-        print(json.dumps(manager.apply(action, obs_root or None, remove_pairing=remove_pairing == "true"), ensure_ascii=False))
+    if sys.argv[1:2] == ["--cli"] and len(sys.argv) in (6, 7):
+        if len(sys.argv) == 6 and sys.argv[5].lower() in ("true", "false"):
+            # Older Windows PowerShell callers could silently omit an empty native argument.
+            _, _, app_root, data_root, action, remove_pairing = sys.argv
+            obs_root = None
+        else:
+            _, _, app_root, data_root, action, obs_root, remove_pairing = sys.argv
+        try:
+            manager = ObsPluginInstallation(Path(app_root), Path(data_root))
+            requested_root = None if obs_root == "__PRO4BRO_AUTO_OBS_ROOT__" else obs_root or None
+            print(json.dumps(manager.apply(action, requested_root, remove_pairing=remove_pairing == "true"), ensure_ascii=False))
+        except Exception as exc:
+            print(f"OBS plugin {action} failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
     elif len(sys.argv) == 4 and sys.argv[1] == "--elevated":
         request_path, result_path = Path(sys.argv[2]), Path(sys.argv[3])
         try:

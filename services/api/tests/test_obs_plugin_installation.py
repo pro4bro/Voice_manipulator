@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -175,3 +176,91 @@ def test_cli_uses_same_portable_installer(tmp_path: Path) -> None:
     ], env=env, capture_output=True, text=True, check=True)
     assert json.loads(result.stdout)["state"] == "installed"
     assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
+
+
+def _stage_native_installer(tmp_path: Path) -> tuple[ObsPluginInstallation, Path, dict[str, str]]:
+    manager, _ = installation(tmp_path)
+    project_root = Path(__file__).resolve().parents[3]
+    (manager.app_root / "services/api/app/adapters").mkdir(parents=True)
+    shutil.copy2(
+        project_root / "services/api/app/adapters/obs_plugin_installation.py",
+        manager.app_root / "services/api/app/adapters/obs_plugin_installation.py",
+    )
+    scripts = manager.app_root / "scripts"
+    scripts.mkdir()
+    shutil.copy2(project_root / "scripts/install-obs-plugin.ps1", scripts)
+    shutil.copy2(project_root / "INSTALL-OBS-PLUGIN.bat", manager.app_root)
+    # A junction gives the fixture the repository interpreter without copying its runtime.
+    junction = subprocess.run(
+        [
+            "powershell.exe", "-NoProfile", "-Command",
+            f"New-Item -ItemType Junction -Path '{manager.app_root / '.venv'}' -Target '{project_root / '.venv'}' | Out-Null",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if junction.returncode:
+        pytest.skip(f"could not create runtime junction: {junction.stderr}")
+    env = {
+        **os.environ,
+        "ProgramFiles": str(manager.program_files),
+        "ProgramData": str(manager.program_data),
+        "APPDATA": str(manager.app_data),
+    }
+    return manager, scripts / "install-obs-plugin.ps1", env
+
+
+def test_native_powershell_default_root_reports_actionable_failure(tmp_path: Path) -> None:
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("native Windows PowerShell is required")
+    manager, script, env = _stage_native_installer(tmp_path)
+    # Missing package guarantees this real entrypoint cannot write into a user's OBS installation.
+    (manager.package / "manifest.json").unlink()
+
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "OBS plugin install failed:" in result.stdout + result.stderr
+    assert not manager.program_data.exists()
+
+
+def test_native_bat_forwards_obs_root_with_spaces(tmp_path: Path) -> None:
+    powershell = shutil.which("powershell.exe")
+    command = shutil.which("cmd.exe")
+    if not powershell or not command:
+        pytest.skip("native Windows command processors are required")
+    manager, _, env = _stage_native_installer(tmp_path)
+    portable = tmp_path / "OBS Portable With Spaces"
+    (portable / "bin/64bit").mkdir(parents=True)
+    (portable / "bin/64bit/obs64.exe").write_bytes(b"fake OBS executable")
+    (portable / "portable_mode.txt").write_text("", encoding="utf-8")
+    (portable / "obs-plugins").mkdir()
+    (portable / "data").mkdir()
+    bat = manager.app_root / "INSTALL-OBS-PLUGIN.bat"
+    runner = manager.app_root / "run-installer.cmd"
+    cmdline = f'@call "{bat}" -Action install -ObsRoot "{portable}"\r\n'
+    runner.write_text(cmdline, encoding="utf-8")
+
+    result = subprocess.run(
+        [command, "/d", "/c", "run-installer.cmd"],
+        cwd=manager.app_root,
+        env=env,
+        input="\r\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, f"{cmdline}\n{result.stdout}{result.stderr}"
+    assert (portable / "obs-plugins/64bit/pro4bro-obs-bridge.dll").read_bytes() == b"plugin-v1"
+    assert not (manager.program_data / "obs-studio/plugins/pro4bro-obs-bridge").exists()
