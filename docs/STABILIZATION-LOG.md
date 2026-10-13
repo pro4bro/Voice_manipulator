@@ -1752,3 +1752,32 @@ Không cần copy core/model lại. Fixtures không chứng minh native OBS PCM/
 quality/timing; zero-PCM cause cũ chưa xác minh. Phase03 giữ60%, independent timing
 vẫn chờ Conviction. Own fixture servers/tabs đóng; không sửa project/profile thật.
 Bounded technical round dừng sau delivery và báo gap.
+
+
+## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
+
+Owner now prefers GitHub Desktop source sync for daily tests. Research notes
+committed; redundant start/restart BATs removed; unique setup/upstream-update/
+legacy pack BATs moved to scripts/maintenance. Root retains console/OBS install/
+verify/update.7601temporary targets and2249empty directories removed; owner
+projects/media/core/model/dependencies and issued packs retained. Final pass
+0failures; Syncthing marker classification error recovered and protected.
+Native focused63pass/2warnings, frontend menu4pass, typecheck/build pass.
+Actual push of9a00345 to origin/feat/03-04-high-quality-training verified by SHA.
+See docs/SOURCE-SYNC.md, ADR0074 and docs/gates/source-sync-01-20261013.md.
+This configuration round does not advance Phase03 (60%) or issue a new portable.
+Next SOURCE-EXTERNAL-ASSETS-01 implements full-source packaging and one local
+core/model library path, verified Python/app/Studio origins and cross-drive
+artifact parity. Current launchers still require the existing local runtime
+layout; cloning alone is not runtime provisioning. Physical OBS/GPU and timing
+acceptance remain open.
+
+### Cleanup / review evidence
+
+Read-only Worker audit and Lead source/reference review. Removed only verified
+checkout-contained temporary targets; no model/owner recording/project deletion.
+Marker informational-text classification mistake interrupted/recovered, metadata
+protected on retry; no byte-identical marker claim. Focused native63/0, menu4/0,
+typecheck/build/diff pass; no skipped/weakened tests. Push origin feature branch
+verified9a00345. Full source/portable external library remains next acceptance,
+not an implemented feature. No independent Claude review, no phase progress.

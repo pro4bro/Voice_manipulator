@@ -1,5 +1,23 @@
 # Project Status — 2026-10-13
 
+## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
+
+Owner now prefers GitHub Desktop source sync for daily tests. Research notes
+committed; redundant start/restart BATs removed; unique setup/upstream-update/
+legacy pack BATs moved to scripts/maintenance. Root retains console/OBS install/
+verify/update.7601temporary targets and2249empty directories removed; owner
+projects/media/core/model/dependencies and issued packs retained. Final pass
+0failures; Syncthing marker classification error recovered and protected.
+Native focused63pass/2warnings, frontend menu4pass, typecheck/build pass.
+Actual push of9a00345 to origin/feat/03-04-high-quality-training verified by SHA.
+See docs/SOURCE-SYNC.md, ADR0074 and docs/gates/source-sync-01-20261013.md.
+This configuration round does not advance Phase03 (60%) or issue a new portable.
+Next SOURCE-EXTERNAL-ASSETS-01 implements full-source packaging and one local
+core/model library path, verified Python/app/Studio origins and cross-drive
+artifact parity. Current launchers still require the existing local runtime
+layout; cloning alone is not runtime provisioning. Physical OBS/GPU and timing
+acceptance remain open.
+
 ## PORT-FEEDBACK-03 — immediate media and voice slots (2026-10-13)
 
 Main source emits slots before import/capture/generation awaits, with working

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-FEEDBACK-03 source-first immediate media/voice slots.
-last_activity_desc: Alpha0.5.13 provides immediate import/capture/OBS/generation slots, working animation and real receipt replacement. Frontend814, backend819, typecheck/build pass; root UPDATE33/0,154source/payload/installed entries and1,227,314byte ZIP verified; base unchanged. Source/portable real WAV pending-to-ready DOM/animation and hashes match. Next PORT-FEEDBACK-UAT-03 is D-drive0.5.13 physical slot/mixer/bin/voice acceptance. Zero-PCM cause remains unconfirmed; Phase03 stays60%.
+last_activity: 2026-10-13 — SOURCE-SYNC-01 configuration cleanup and GitHub publication.
+last_activity_desc: Research committed, root BATs consolidated;7601temporary targets/2249empty dirs removed, project/core/model retained. Focused backend63/frontend4, typecheck/build pass; origin feature branch9a00345 verified. GitHub Desktop source sync is preferred; next SOURCE-EXTERNAL-ASSETS-01 implements one library path/full-source packaging. No phase advance/new portable; Phase03 remains60%, physical/timing acceptance open.
 ---
 
 # Project State
@@ -21,6 +21,24 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## SOURCE-SYNC-01 — source publication and cleanup (2026-10-13)
+
+Owner now prefers GitHub Desktop source sync for daily tests. Research notes
+committed; redundant start/restart BATs removed; unique setup/upstream-update/
+legacy pack BATs moved to scripts/maintenance. Root retains console/OBS install/
+verify/update.7601temporary targets and2249empty directories removed; owner
+projects/media/core/model/dependencies and issued packs retained. Final pass
+0failures; Syncthing marker classification error recovered and protected.
+Native focused63pass/2warnings, frontend menu4pass, typecheck/build pass.
+Actual push of9a00345 to origin/feat/03-04-high-quality-training verified by SHA.
+See docs/SOURCE-SYNC.md, ADR0074 and docs/gates/source-sync-01-20261013.md.
+This configuration round does not advance Phase03 (60%) or issue a new portable.
+Next SOURCE-EXTERNAL-ASSETS-01 implements full-source packaging and one local
+core/model library path, verified Python/app/Studio origins and cross-drive
+artifact parity. Current launchers still require the existing local runtime
+layout; cloning alone is not runtime provisioning. Physical OBS/GPU and timing
+acceptance remain open.
 
 ## PORT-FEEDBACK-03 — immediate media and voice slots (2026-10-13)
 
