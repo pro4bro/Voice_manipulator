@@ -1,5 +1,17 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PORT-FEEDBACK-01 — portable feedback repairs (2026-10-13)
+
+Source and alpha0.5.7 repair single-track Script/Timeline identity after STT,
+Recycle Bin overlap/scrolling, native WinPS OBS installation and pairing launcher
+migration. Portable root has the four requested BATs; hashed legacy removal
+supports rollback. Frontend785/785, backend774/774, typecheck/build pass; actual
+migration and final root UPDATE33/0,151 payload hashes/ZIP verified, base unchanged.
+Real embedded portable UI and isolated native BAT installation pass. See
+docs/gates/portable-feedback-20261013.md. Next PORT-FEEDBACK-UAT-01 is the owner's
+D-drive apply and parent/track/bin/native OBS retry. Phase03 stays60%; independent
+timing review remains STT-TIMING-ACCURACY-01 after Conviction.
+
 ## PORT-STT-01 — portable Speech to text availability (2026-10-13)
 
 Resolved the API catalog against the portable's bundled STT sidecar rather

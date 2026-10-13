@@ -12,7 +12,27 @@ physical/human evidence requirements retain their meaning.
 
 ## Queue
 
-### 2026-10-13 — current: PORT-STT-01
+### 2026-10-13 — current: PORT-FEEDBACK-01
+
+Owner's second-machine feedback repaired in source and portable: single-track
+Script now observes the project track clock after STT; the Media Pool folder
+grid sizes from its contents so Recycle Bin does not overlap and its final row
+is reachable. Native WinPS installer preserves default/explicit arguments,
+UTF-8 output and errors; OBS pairing uses the main console launcher and migrates
+known old paths without changing pairing credentials. Portable root now has
+the four requested BATs; legacy removal is hashed, backed up and reversible.
+Frontend785/785, backend774/774, typecheck/build pass. Real portable embedded
+API/UI verifies both seek directions, playback and repeated bin operations.
+Actual pack migration33/0 and root UPDATE selecting alpha0.5.7 passes33/0;
+151 payload hashes and 1.16MiB ZIP verified, model inventory unchanged. Candidate
+0.5.6 was retained only for migration evidence after the pairing-path gap was
+found. Evidence: docs/gates/portable-feedback-20261013.md. Phase03 stays60%.
+Exact next round: PORT-FEEDBACK-UAT-01 on the owner's D-drive machine — apply
+0.5.7, retry parent/single-track playback and bin operations, close OBS, install
+the bridge and reopen OBS. Physical native/UAC/GPU loading remains acceptance
+evidence. Independent timing review still awaits Conviction.
+
+### 2026-10-13 — previous: PORT-STT-01
 
 Owner's grey Speech to text button reproduced even with a footage ticked STT.
 The API catalog checked services/stt_studio, absent in the portable that ships

@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-13 — PORT-STT-01 portable STT catalog.
-last_activity_desc: Resolved the bundled sidecar root so Whisper and Speech to text remain available after moving the portable. Related backend34 and Media Pool56, typecheck/build pass; full backend755pass/3fail and those3pass separately. Automatically issued alpha0.5.5 actual pack BAT31/0, ZIP153payload hashes verified, base unchanged. Real portable offline CPU Largev3/Medium return21words with preserved source and visible Script. Owner's second-machine STT/GPU retry remains. Phase03 stays60%.
+last_activity: 2026-10-13 — PORT-FEEDBACK-01 portable playback, bin, OBS and launchers.
+last_activity_desc: Fixed single-track Script playback identity after STT and Media Pool percentage-height overlap; repaired native WinPS OBS installer and pairing launcher migration; portable root has four BATs. Frontend785, backend774, typecheck/build pass. Actual alpha0.5.7 root UPDATE33/0, ZIP151payload hashes verified, base unchanged. Real embedded portable UI and isolated BAT installation pass. Next PORT-FEEDBACK-UAT-01 on the owner's D-drive machine includes native OBS loading/UAC/GPU. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,20 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## PORT-FEEDBACK-01 — portable feedback repairs (2026-10-13)
+
+Alpha0.5.7 includes Script/Timeline track identity after STT, Recycle Bin
+content sizing/scrolling, native WinPS installer arguments/UTF-8/errors, OBS
+pairing launcher migration and the four root BATs. Frontend785/785,
+backend774/774, typecheck/build pass. Actual migration and final root UPDATE33/0,
+151-file payload/ZIP verified, model inventory unchanged. Real embedded portable
+UI and isolated installed BAT checks pass. Candidate0.5.6 is diagnostic-only
+after integration found the OBS launcher gap. Evidence:
+docs/gates/portable-feedback-20261013.md. Exact next round:
+PORT-FEEDBACK-UAT-01 — owner applies0.5.7 on D-drive, retests parent/child
+playback and bin, installs with OBS closed and verifies loading after restart.
+Native target-machine/UAC/GPU behavior needs physical acceptance; Phase03 stays60%.
 
 ## PORT-STT-01 — portable STT catalog (2026-10-13)
 

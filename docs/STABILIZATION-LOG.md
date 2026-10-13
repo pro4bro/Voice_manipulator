@@ -1269,3 +1269,89 @@ scroll/pixel behavior. Exact next planned round: **STT-TIMING-ACCURACY-01
 independent anchor review** after the owner finishes the Conviction timing
 reference, required for independent acoustic boundary measurement. Phase03
 stays60%.
+
+## 2026-10-13 — PORT-FEEDBACK-01
+
+### Feedback — 2026-10-13
+
+**Nguyên văn (copy từ chat):**
+
+> đây là bản test chạy app ở máy khác.
+>
+> khi anh chạy thử STT ở máy khác thì nó không đồng bộ chạy subtitle với chữ trên script. Em hãy sửa lại.
+>
+> Khi bấm vào chữ trên script thì trên timeline có nhảy theo. Nhưng ngược lại thì không.
+>
+> khi thử delete file thì nó hiển thị chồng chéo như hình 1, có lúc nó cũng gom vào Recycle Bin nhưng lại không scroll được tới cuối để thao tác với recycle bin. Nó chỉ scroll được tới footage cuối cùng thôi. và anh đã thử xóa thêm footage để slot nó giảm đi và show được recycle bin, sau đó anh xổ ra để xem Rồi xóa. Sau đó thử lại lần nữa thì nó chồng chéo như thế này.
+>
+> khi anh bấm cài plugin thì nó báo lỗi.
+>
+> Em hãy xem các file bat trong thư mục gốc của portable này có chức năng gì quan trọng, nếu trùng lặp thì nên xóa. Anh nghĩ nên mở app bằng open-pro4bro-console.bat, cài plugin bằng INSTALL-OBS-PLUGIN.bat, còn update portable thì nên UPDATE-PORTABLE.bat, VERIFY-PORTABLE.bat
+>
+> Còn những file bat khác thì có cái nào trùng lặp thì em xóa đi, có chức năng đặc biệt thì em gom vào các file chính. Còn file nào có nhiệm vụ đặc biệt thì em báo anh biết để anh xem xét.
+
+Owner gửi thêm lỗi: `OBS plugin install failed.` tại
+`scripts/install-obs-plugin.ps1:22`, qua BAT trên máy D-drive.
+Ảnh đính kèm: `codex-clipboard-7a0bcf53-18e7-47e1-aece-d04fa8d321e5.png`.
+
+**Cách agent hiểu:**
+
+1. Timeline cần cập nhật cả highlight và vị trí đọc Script khi phát/seek sau STT,
+   kể cả lúc mở riêng track con của footage nhiều track.
+2. Ảnh cho thấy hàng Recycle Bin và nút Restore/Delete đè lên hàng footage đang
+   dùng. Bin phải nằm sau các hàng đang dùng và cuộn được tới hàng cuối sau nhiều
+   lần remove/restore/delete.
+3. Cài plugin mặc định phải chạy được qua Windows PowerShell/BAT trên máy khác;
+   cần giữ lỗi gốc để chẩn đoán nếu OBS/path/quyền cài thực tế vẫn khác.
+4. Portable chỉ giữ bốn BAT chính đã nêu. Lệnh restart/stop/status gom vào
+   launcher; tác vụ riêng của source và entrypoint của gói update cần báo rõ.
+
+**Phạm vi sửa:** source và gói portable app alpha 0.5.7; không đổi model,
+checkpoint, media gốc hay tiến độ tính năng Phase03. Candidate0.5.6 chỉ giữ
+trong debug vì tích hợp phát hiện pairing vẫn trỏ launcher cũ.
+
+### Agent tự kiểm
+
+- Repro registry trước sửa: bốn kiểm tra thất bại với sidecar STT ID khác project
+  track ID. Portable0.5.5 thực tế: subtitle `vậy` tại2.000296s nhưng Script không
+  có từ active. Sửa clock identity cho imported/archived child; ordinary file
+  tiếp tục dùng take clock.
+- Repro bin trên Chromium: grid root cấp98.828125px trong khi nội dung kéo dài
+  thêm hơn700px. Bỏ `min-height:100%` phá chu kỳ percentage sizing. Trên portable
+  mới, remove/restore/remove, delete qua API204 và reopen fixture vẫn có bốn
+  hàng bin; scrollTop1085 bằng scroll maximum, hàng cuối nằm trong viewport.
+- Sửa empty native argument của WinPS5 bằng auto-root sentinel, giữ CLI cũ,
+  chuyển tiếp BAT arguments, dùng UTF-8 có scope và giữ lỗi gốc. Cài/repair
+  pairing chuyển known old launcher sang console BAT, giữ token và config riêng.
+- Portable root đúng bốn BAT; obsolete start/restart chỉ gỡ khi hash khớp
+  inventory cũ, có backup/rollback. Source aliases giữ tương thích.
+- API/UI thật dùng embedded portable Python và bản sao project-owned artifacts
+  STT thật: seek hai chiều và playback cùng highlight; bin không chồng. Browser
+  console không có lỗi. Không sửa project/media của owner.
+- Actual INSTALL BAT dùng embedded Python: tìm local OBS, ghi DLL/config trong
+  ProgramData/AppData cô lập, hash DLL khớp package và pairing trỏ launcher tồn
+  tại. Target record của portable được khôi phục nguyên byte. Không ghi đè cài
+  đặt OBS thật và chưa thử elevation/native plugin load trên máy owner.
+
+### Kết quả so với ngưỡng
+
+Frontend **785 passed /84 files**; backend **774 passed /2 existing warnings**;
+typecheck/build pass. Playback regressions16pass; installer22pass; updater11pass.
+Actual migration pack33/0; final root UPDATE tự chọn **alpha0.5.7**,151appfiles,
+**33 pass /0 fail**, `modelLayerChanged:false`. ZIP155entries,151payload hashes
+khớp file cài;1,213,602bytes. Không hạ assertion hoặc ngưỡng để đạt.
+
+Evidence, hướng dẫn từng bước và BAT inventory:
+`docs/gates/portable-feedback-20261013.md`.
+
+### Review (Claude)
+
+Chưa có review độc lập trong round này.
+
+### Nghiệm thu owner / bước tiếp theo
+
+**PORT-FEEDBACK-UAT-01:** áp dụng0.5.7 trên máy D-drive, thử parent/track con khi
+play/seek, bin qua nhiều lần thao tác; đóng OBS, cài plugin rồi mở lại để kiểm
+tra native loading/quyền UAC nếu cần. Chưa khẳng định nghiệm thu máy đó.
+Phase03 giữ60%; planned **STT-TIMING-ACCURACY-01** chờ Conviction reference để
+đánh giá acoustic timing độc lập. Round kỹ thuật này kết thúc.

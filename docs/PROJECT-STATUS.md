@@ -1,5 +1,25 @@
 # Project Status — 2026-10-13
 
+## PORT-FEEDBACK-01 — portable playback, bin, OBS and launchers (2026-10-13)
+
+Repaired the owner's second-machine regressions in source and alpha0.5.7:
+single imported/OBS track Script follows the project track clock after STT;
+Recycle Bin follows live rows without percentage-height overlap and scrolls to
+its last row after repeated operations. Installer survives native WinPS empty
+arguments and code pages, reports underlying errors and migrates the OBS
+launcher path while preserving pairing. Portable root has exactly the four
+requested BATs; obsolete launchers are removed transactionally after hash checks.
+Frontend785/785, backend774/774, typecheck/build pass. Real embedded portable
+UI checks both seek directions/playback and bin operations; actual embedded BAT
+installer writes the correct DLL into isolated app/plugin configuration paths.
+Migration and alpha0.5.7 root UPDATE each pass33/0;151 payload hashes and 1.16MiB
+ZIP verified, model/base inventory unchanged. Candidate0.5.6 is retained only
+under debug after integration found a stale OBS launcher path. See
+docs/gates/portable-feedback-20261013.md. Exact next round is
+PORT-FEEDBACK-UAT-01 on the owner's D-drive machine, including actual OBS loading
+after restart and any UAC path. Phase03 stays60%; independent STT timing still
+awaits Conviction.
+
 ## PORT-STT-01 — portable STT eligibility (2026-10-13)
 
 The grey Speech to text button was reproduced with a ticked footage: the
