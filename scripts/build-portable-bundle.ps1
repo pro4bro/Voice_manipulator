@@ -146,7 +146,7 @@ Add-SingleFile "plugins\obs-pro4bro-bridge\config.example.json"
 foreach ($scriptName in @("pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1", "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1", "update-portable.ps1")) {
     Add-SingleFile "scripts\$scriptName"
 }
-foreach ($entrypoint in @("start-pro4bro.bat", "open-pro4bro-console.bat", "restart-pro4bro.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat", "UPDATE-PORTABLE.bat")) {
+foreach ($entrypoint in @("open-pro4bro-console.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat", "UPDATE-PORTABLE.bat")) {
     Add-SingleFile $entrypoint
 }
 if ($Profile -eq "NoVibeVoice") {
@@ -157,7 +157,6 @@ if ($Profile -eq "NoVibeVoice") {
 New-Item -ItemType Directory -Force -Path (Join-Path $destination "data") | Out-Null
 
 $criticalFiles = @(
-    "start-pro4bro.bat",
     "scripts/pro4bro-workloads.ps1",
     "scripts/pro4bro-readiness.ps1",
     "scripts/test-portable-runtime.ps1",
@@ -204,7 +203,7 @@ $manifest = [ordered]@{
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $destination ".portable-bundle.json") -Encoding utf8
 $appTrees = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts')
-$appFiles = @('build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
+$appFiles = @('build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'open-pro4bro-console.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
 $appEntries = foreach ($relative in $appTrees + $appFiles) {
     $path = Join-Path $destination ($relative.Replace('/', '\'))
     $paths = if (Test-Path -LiteralPath $path -PathType Container) { @(Get-ChildItem -LiteralPath $path -Recurse -File -Force) } else { @(Get-Item -LiteralPath $path) }

@@ -109,6 +109,7 @@ $selected = if ($effectiveProfile -in @("All", "NoVibeVoice")) { @("Core", "Capt
 
 if ($selected -contains "Core") {
     Test-LocalPath "core.readiness" "scripts\pro4bro-readiness.ps1" "Runtime readiness helper"
+    Test-LocalPath "core.launcher" "open-pro4bro-console.bat" "Portable console launcher"
     Test-LocalPath "core.web" "apps\web\dist\index.html" "Built web application"
     Test-LocalPath "core.ffmpeg" ".tools\ffmpeg\ffmpeg.exe" "FFmpeg"
     Test-LocalPath "core.ffprobe" ".tools\ffmpeg\ffprobe.exe" "FFprobe"
@@ -240,7 +241,7 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
                     Add-Result 'bundle.release' 'PASS' ("App release is {0} {1}." -f $bundleManifest.releaseChannel, $bundleManifest.releaseVersion) $appLayerPath
                 }
             }
-            $appComponentPaths = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts', 'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
+            $appComponentPaths = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/studio_app', 'obs-plugin-package', 'scripts', 'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll', 'plugins/obs-pro4bro-bridge/config.example.json', 'open-pro4bro-console.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md')
             $mixedComponents = @($modelLayer.components | Where-Object { $_.path -in $appComponentPaths -or $_.path -like 'scripts/*' })
             if ($appLayer.schemaVersion -ne 1 -or $appLayer.kind -ne 'app' -or
                 $modelLayer.schemaVersion -ne 1 -or $modelLayer.kind -ne 'base-runtime-and-models' -or
@@ -267,6 +268,15 @@ if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
                     Add-Result 'bundle.app-layer' 'PASS' "All $(@($appLayer.entries).Count) app-layer file hashes match." $appLayerPath
                 }
                 Add-Result 'bundle.model-layer' 'PASS' 'Base runtime/model layer inventory is separate from the app update.' $modelLayerPath
+            }
+        }
+        if (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf) {
+            $portableBatNames = @('open-pro4bro-console.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat')
+            $actualPortableBats = @(Get-ChildItem -LiteralPath $root -File -Filter '*.bat' | ForEach-Object Name | Sort-Object)
+            if ((@($actualPortableBats) -join '|') -cne (@($portableBatNames | Sort-Object) -join '|')) {
+                Add-Result 'bundle.launchers' 'FAIL' ("Portable root BAT inventory differs: {0}" -f ($actualPortableBats -join ', ')) $root
+            } else {
+                Add-Result 'bundle.launchers' 'PASS' 'Portable root contains exactly the four supported BAT launchers.' $root
             }
         }
     } catch {

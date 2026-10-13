@@ -75,7 +75,7 @@ $files = @(
 )
 $scriptNames = @('pro4bro-console.ps1', 'pro4bro-process-tree.ps1', 'pro4bro-readiness.ps1', 'pro4bro-workloads.ps1', 'test-portable-runtime.ps1', 'install-obs-plugin.ps1', 'update-portable.ps1')
 foreach ($name in $scriptNames) { $files += @{ source = "scripts\$name"; target = "scripts/$name" } }
-$launchers = @('start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat')
+$launchers = @('open-pro4bro-console.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat')
 foreach ($name in $launchers) { $files += @{ source = $name; target = $name } }
 $guide = if ($Profile -eq 'NoVibeVoice') { 'docs\PORTABLE-NO-VIBEVOICE.md' } else { 'docs\PORTABLE-QUICKSTART.md' }
 $files += @{ source = $guide; target = 'PORTABLE-README.md' }
@@ -131,7 +131,7 @@ Pro4Bro app update: $($release.channel) $($release.version)
 
 Copy this WHOLE numbered folder into the full portable's updates folder.
 Keep its original name; do not rename it to app-current.
-Click APPLY-UPDATE.bat here, or UPDATE-PORTABLE.bat beside start-pro4bro.bat.
+Click APPLY-UPDATE.bat here, or UPDATE-PORTABLE.bat beside open-pro4bro-console.bat.
 The updater selects the highest compatible version inside updates.
 Start/verify the app from the full portable folder after the update succeeds.
 The full portable (about 36 GiB) is required; this small pack contains app files.

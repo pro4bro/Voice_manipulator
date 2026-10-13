@@ -176,7 +176,7 @@ function Write-ServiceTable([string]$Reason) {
         Write-Host " pid $pidText"
     }
     if ($rows | Where-Object { $_.State -eq "FOREIGN" }) {
-        Write-Host "    Mot process khac dang giu port. Chay start-pro4bro.bat stop roi start lai." -ForegroundColor Red
+        Write-Host "    Mot process khac dang giu port. Chay open-pro4bro-console.bat stop roi start lai." -ForegroundColor Red
     }
     Set-WindowTitleFrom $rows
 }
@@ -275,7 +275,7 @@ if ($Command -eq "restart") {
     # independent of this one.
     Stop-FullStack
     Write-Host "Full stack stopped. Relaunching in a new window..." -ForegroundColor Cyan
-    Start-Process -FilePath (Join-Path $projectRoot "start-pro4bro.bat") | Out-Null
+    Start-Process -FilePath (Join-Path $projectRoot "open-pro4bro-console.bat") | Out-Null
     exit 0
 }
 
@@ -334,9 +334,9 @@ try {
     if ($ownsProcessTree) {
         Write-Host "  Closing this window stops every Pro4Bro process. Ctrl+C does the same." -ForegroundColor Cyan
     } else {
-        Write-Host "  Process-tree ownership unavailable; use Ctrl+C or start-pro4bro.bat stop." -ForegroundColor Yellow
+        Write-Host "  Process-tree ownership unavailable; use Ctrl+C or open-pro4bro-console.bat stop." -ForegroundColor Yellow
     }
-    Write-Host "  Run start-pro4bro.bat restart to reload controller code changes." -ForegroundColor Cyan
+    Write-Host "  Run open-pro4bro-console.bat restart to reload controller code changes." -ForegroundColor Cyan
 
     Write-ServiceTable "STARTED"
     $lastSignature = Get-ServiceSignature

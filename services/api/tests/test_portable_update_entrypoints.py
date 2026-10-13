@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -54,6 +55,124 @@ def make_pack(bundle: Path, name: str, version: str, profile: str = "NoVibeVoice
     shutil.copy2(ROOT / "scripts/update-portable.ps1", pack / "payload/scripts")
     shutil.copy2(ROOT / "UPDATE-PORTABLE.bat", pack / "payload")
     return pack
+
+
+def write_bytes(path: Path, value: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(value)
+
+
+def make_apply_fixture(tmp_path: Path, *, fail_gate: bool = False) -> tuple[Path, Path, dict[str, bytes]]:
+    bundle = tmp_path / "Installed Portable"
+    legacy = {
+        "start-pro4bro.bat": b"old app launcher start\r\n",
+        "restart-pro4bro.bat": b"old app launcher restart\r\n",
+    }
+    old_entries = []
+    for name, content in legacy.items():
+        write_bytes(bundle / name, content)
+        old_entries.append({"path": name, "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest().upper()})
+    (bundle / "scripts").mkdir(parents=True)
+    write_bytes(bundle / ".runtime/python/runtime-manifest.json", b"runtime-manifest\n")
+    write_bytes(bundle / "services/api/requirements.txt", b"requirements\n")
+    write_json(bundle / ".portable-bundle.json", {
+        "schemaVersion": 1, "profile": "NoVibeVoice", "releaseVersion": "0.5.0",
+        "releaseChannel": "alpha", "files": 20, "bytes": 2048,
+        "sourceRevision": "old", "sourceWorkingTreeDirty": False,
+        "components": [], "criticalFiles": [
+            {"path": "start-pro4bro.bat", "sha256": old_entries[0]["sha256"]},
+        ],
+    })
+    write_json(bundle / ".portable-app-layer.json", {
+        "schemaVersion": 1, "kind": "app", "releaseVersion": "0.5.0",
+        "releaseChannel": "alpha", "entries": old_entries,
+    })
+    write_json(bundle / ".portable-model-layer.json", {
+        "schemaVersion": 1, "kind": "base-runtime-and-models", "profile": "NoVibeVoice",
+        "components": [], "createdAt": "2026-01-01T00:00:00Z",
+    })
+    shutil.copy2(ROOT / "scripts/update-portable.ps1", bundle / "scripts/update-portable.ps1")
+    shutil.copy2(ROOT / "UPDATE-PORTABLE.bat", bundle / "UPDATE-PORTABLE.bat")
+    # A similarly named but unowned root BAT is user data and must survive.
+    write_bytes(bundle / "user-notes.txt", b"keep me\r\n")
+
+    package = bundle / "updates/App-alpha-0.5.1-NoVibeVoice"
+    payload = package / "payload"
+    entries: list[dict] = []
+    update_files: list[str] = []
+
+    def add(relative: str, content: bytes) -> None:
+        path = payload / Path(relative)
+        write_bytes(path, content)
+        entries.append({
+            "path": relative, "bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest().upper(),
+        })
+        update_files.append(relative)
+
+    tree_files = {
+        "services/api": ("requirements.txt", b"requirements\n"),
+        "apps/web/dist": ("index.html", b"<html>new</html>"),
+        ".runtime/omnivoice-studio/studio_app": ("main.py", b"# studio"),
+        "obs-plugin-package": ("manifest.json", b"{}"),
+        "scripts": ("pro4bro-console.ps1", b"# console"),
+    }
+    for tree, (name, content) in tree_files.items():
+        add(f"{tree}/{name}", content)
+    for name in [
+        "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1", "pro4bro-workloads.ps1",
+        "test-portable-runtime.ps1", "install-obs-plugin.ps1", "update-portable.ps1",
+    ]:
+        if name == "test-portable-runtime.ps1":
+            report = '{"portable":true,"passed":1,"failed":0}'
+            if fail_gate:
+                report = '{"portable":false,"passed":0,"failed":1}'
+            content = f"'{report}'\n".encode()
+        elif name == "pro4bro-workloads.ps1":
+            content = "param($Action, [switch]$SkipWebBuild)\n'{\"overall\":\"stopped\"}'\n".encode()
+        else:
+            content = f"# {name}\n".encode()
+        add(f"scripts/{name}", content)
+    app_files = [
+        "build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll",
+        "plugins/obs-pro4bro-bridge/config.example.json",
+        "start-pro4bro.bat", "restart-pro4bro.bat",
+        "open-pro4bro-console.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat",
+        "UPDATE-PORTABLE.bat", "PORTABLE-README.md",
+    ]
+    for name in app_files:
+        add(name, ("new " + name).encode())
+    manifest = {
+        "schemaVersion": 1, "kind": "Pro4BroAppUpdate", "profile": "NoVibeVoice",
+        "releaseVersion": "0.5.1", "releaseChannel": "alpha",
+        "runtimeManifestSha256": hashlib.sha256(b"runtime-manifest\n").hexdigest().upper(),
+        "apiRequirementsSha256": hashlib.sha256(b"requirements\n").hexdigest().upper(),
+        "trees": list(tree_files),
+        "files": [f"scripts/{name}" for name in [
+            "pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1",
+            "pro4bro-workloads.ps1", "test-portable-runtime.ps1", "install-obs-plugin.ps1",
+            "update-portable.ps1",
+        ]] + app_files,
+        "entries": entries,
+        "sourceRevision": "fixture", "sourceWorkingTreeDirty": False,
+    }
+    write_json(package / "app-update.json", manifest)
+    return bundle, package, legacy
+
+
+def apply_fixture(bundle: Path) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PSModulePath"] = ";".join([
+        str(Path(env["WINDIR"]) / "System32/WindowsPowerShell/v1.0/Modules"),
+        str(Path(env["PROGRAMFILES"]) / "WindowsPowerShell/Modules"),
+        str(Path(env["USERPROFILE"]) / "Documents/WindowsPowerShell/Modules"),
+    ])
+    return subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         str(bundle / "scripts/update-portable.ps1"), "-BundleRoot", str(bundle),
+         "-ApplyOnly", "-NoRestart"],
+        capture_output=True, encoding="utf-8", errors="replace", timeout=30, env=env,
+    )
 
 
 def test_payload_bat_resolves_bundle_and_selects_newest(tmp_path: Path) -> None:
@@ -195,14 +314,18 @@ def test_creation_increments_versions_and_names_folders_automatically(tmp_path: 
         pack = Path(created["path"])
         assert pack.name == f"App-alpha-{expected}-NoVibeVoice"
         assert (pack / "APPLY-UPDATE.bat").exists()
-        assert json.loads((pack / "app-update.json").read_text(encoding="utf-8-sig"))["releaseVersion"] == expected
+        update = json.loads((pack / "app-update.json").read_text(encoding="utf-8-sig"))
+        assert update["releaseVersion"] == expected
+        assert {Path(item).name for item in update["files"] if item.lower().endswith(".bat")} == {
+            "open-pro4bro-console.bat", "VERIFY-PORTABLE.bat", "INSTALL-OBS-PLUGIN.bat", "UPDATE-PORTABLE.bat",
+        }
     state = json.loads((source / "APP-VERSION.json").read_text(encoding="utf-8-sig"))
     assert state["version"] == state["lastIssuedVersion"] == "0.5.2"
 
 
 def test_failed_creation_keeps_counter_and_publishes_no_pack(tmp_path: Path) -> None:
     source = make_source(tmp_path)
-    (source / "start-pro4bro.bat").unlink()
+    (source / "open-pro4bro-console.bat").unlink()
     result = create_pack(source)
     assert result.returncode != 0
     state = json.loads((source / "APP-VERSION.json").read_text(encoding="utf-8-sig"))
@@ -210,6 +333,32 @@ def test_failed_creation_keeps_counter_and_publishes_no_pack(tmp_path: Path) -> 
     updates = source / ".scratch/portable-updates"
     assert not list(updates.glob("*/app-update.json"))
     assert not list(updates.glob(".creating-*"))
+
+
+def test_update_removes_only_verified_legacy_launchers(tmp_path: Path) -> None:
+    bundle, _package, legacy = make_apply_fixture(tmp_path)
+    result = apply_fixture(bundle)
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in legacy:
+        assert not (bundle / name).exists()
+    assert (bundle / "user-notes.txt").read_bytes() == b"keep me\r\n"
+    critical_files = json.loads((bundle / ".portable-bundle.json").read_text(encoding="utf-8-sig"))["criticalFiles"]
+    assert all(item["path"] != "start-pro4bro.bat" for item in critical_files)
+    app_layer = json.loads((bundle / ".portable-app-layer.json").read_text(encoding="utf-8-sig"))
+    assert all(item["path"] not in legacy for item in app_layer["entries"])
+
+
+def test_update_restores_legacy_launchers_and_manifests_when_gate_fails(tmp_path: Path) -> None:
+    bundle, _package, legacy = make_apply_fixture(tmp_path, fail_gate=True)
+    old_bundle_manifest = (bundle / ".portable-bundle.json").read_bytes()
+    old_app_layer = (bundle / ".portable-app-layer.json").read_bytes()
+    result = apply_fixture(bundle)
+    assert result.returncode != 0
+    assert "Portable verification failed" in result.stdout + result.stderr
+    for name, content in legacy.items():
+        assert (bundle / name).read_bytes() == content
+    assert (bundle / ".portable-bundle.json").read_bytes() == old_bundle_manifest
+    assert (bundle / ".portable-app-layer.json").read_bytes() == old_app_layer
 
 
 def test_new_phase_and_stable_baseline_are_issued_before_patch_increment(tmp_path: Path) -> None:

@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $bundleManifestPath -PathType Leaf)) {
         $bundleManifestPath = Join-Path $bundle '.portable-bundle.json'
         $ApplyOnly = $true
     } else {
-        throw "Copy the complete portable folder first, then put the whole numbered update folder inside its updates folder. Run UPDATE-PORTABLE.bat beside start-pro4bro.bat, or APPLY-UPDATE.bat in the update pack. No portable manifest was found for: $bundle"
+        throw "Copy the complete portable folder first, then put the whole numbered update folder inside its updates folder. Run UPDATE-PORTABLE.bat beside open-pro4bro-console.bat, or APPLY-UPDATE.bat in the update pack. No portable manifest was found for: $bundle"
     }
 }
 $oldManifestBytes = [IO.File]::ReadAllBytes($bundleManifestPath)
@@ -135,13 +135,15 @@ $allowedTrees = @('services/api', 'apps/web/dist', '.runtime/omnivoice-studio/st
 $allowedFiles = @(
     'build/obs-plugin/RelWithDebInfo/pro4bro-obs-bridge.dll',
     'plugins/obs-pro4bro-bridge/config.example.json',
-    'start-pro4bro.bat', 'open-pro4bro-console.bat', 'restart-pro4bro.bat',
-    'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat', 'UPDATE-PORTABLE.bat', 'PORTABLE-README.md'
+    'open-pro4bro-console.bat', 'VERIFY-PORTABLE.bat', 'INSTALL-OBS-PLUGIN.bat',
+    'UPDATE-PORTABLE.bat', 'PORTABLE-README.md'
 )
+$legacyLauncherFiles = @('start-pro4bro.bat', 'restart-pro4bro.bat')
 $allowedScripts = @('pro4bro-console.ps1', 'pro4bro-process-tree.ps1', 'pro4bro-readiness.ps1', 'pro4bro-workloads.ps1', 'test-portable-runtime.ps1', 'install-obs-plugin.ps1', 'update-portable.ps1')
 if ((@($update.trees) -join '|') -ne ($allowedTrees -join '|')) { throw 'App update has an unexpected tree list.' }
 $listedFiles = @($update.files | Where-Object { $_ -notlike 'scripts/*' })
-if ((@($listedFiles | Sort-Object) -join '|') -ne (@($allowedFiles | Sort-Object) -join '|')) {
+if ((@($listedFiles | Sort-Object) -join '|') -ne (@($allowedFiles | Sort-Object) -join '|') -and
+    (@($listedFiles | Sort-Object) -join '|') -ne (@(($allowedFiles + $legacyLauncherFiles) | Sort-Object) -join '|')) {
     throw 'App update has an unexpected file list.'
 }
 $listedScripts = @($update.files | Where-Object { $_ -like 'scripts/*' } | ForEach-Object { $_.Substring(8) })
@@ -159,7 +161,7 @@ foreach ($entry in $entries) {
     }
     if (-not $seen.Add($relative)) { throw "Duplicate update path: $relative" }
     $insideTree = @($allowedTrees | Where-Object { $relative.StartsWith("$_/", [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-    if (-not $insideTree -and $relative -notin $allowedFiles) { throw "Update path is outside the app layer: $relative" }
+    if (-not $insideTree -and $relative -notin ($allowedFiles + $legacyLauncherFiles)) { throw "Update path is outside the app layer: $relative" }
     if ($relative.StartsWith('scripts/', [StringComparison]::OrdinalIgnoreCase) -and $relative.Substring(8) -notin $allowedScripts) {
         throw "Unknown updater script: $relative"
     }
@@ -178,6 +180,24 @@ foreach ($tree in $allowedTrees) {
     }
 }
 foreach ($file in $allowedFiles) { if (-not $seen.Contains($file)) { throw "Update file is missing: $file" } }
+$removedLauncherFiles = [Collections.Generic.List[string]]::new()
+$installedAppLayerPath = Assert-BundleChild '.portable-app-layer.json'
+if (Test-Path -LiteralPath $installedAppLayerPath -PathType Leaf) {
+    $installedAppLayerForCleanup = Get-Content -Raw -LiteralPath $installedAppLayerPath | ConvertFrom-Json
+    foreach ($legacyFile in $legacyLauncherFiles) {
+        $legacyPath = Assert-BundleChild $legacyFile
+        if (-not (Test-Path -LiteralPath $legacyPath -PathType Leaf)) { continue }
+        $ownedEntry = @($installedAppLayerForCleanup.entries | Where-Object { $_.path -eq $legacyFile }) | Select-Object -First 1
+        if (-not $ownedEntry) { continue }
+        $legacyItem = Get-Item -LiteralPath $legacyPath
+        if (($legacyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            $legacyItem.Length -ne [long]$ownedEntry.bytes -or
+            (Get-FileHash -LiteralPath $legacyPath -Algorithm SHA256).Hash -cne [string]$ownedEntry.sha256) {
+            continue
+        }
+        $removedLauncherFiles.Add($legacyFile)
+    }
+}
 if ($bundleManifest.releaseVersion -and [version]$update.releaseVersion -eq [version]$bundleManifest.releaseVersion -and
     $update.releaseChannel -eq $bundleManifest.releaseChannel) {
     $installedAppLayerPath = Assert-BundleChild '.portable-app-layer.json'
@@ -235,7 +255,7 @@ try {
         $stopped = & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action stop -SkipWebBuild | Select-Object -Last 1 | ConvertFrom-Json
         if ($stopped.overall -ne 'stopped') { throw 'Could not stop the running portable services.' }
     }
-    $targets = @($allowedTrees) + @($allowedFiles)
+    $targets = @($allowedTrees) + @($allowedFiles) + @($removedLauncherFiles)
     $oldCount = 0L; $oldBytes = 0L
     foreach ($relative in $targets) {
         $destination = Assert-BundleChild $relative
@@ -251,7 +271,9 @@ try {
         $hadOld = Test-Path -LiteralPath $destination
         if ($hadOld) { Move-Item -LiteralPath $destination -Destination $backupPath }
         $moves.Add(@{ target = $destination; backup = $backupPath; hadOld = $hadOld })
-        Move-Item -LiteralPath $stagedPath -Destination $destination
+        if ($relative -notin $removedLauncherFiles) {
+            Move-Item -LiteralPath $stagedPath -Destination $destination
+        }
     }
     $newCount = 0L; $newBytes = 0L
     foreach ($relative in $targets) {
@@ -265,6 +287,9 @@ try {
         $component = @($bundleManifest.components | Where-Object { $_.path -eq $tree }) | Select-Object -First 1
         if ($component) { $component.files = $size.files; $component.bytes = $size.bytes }
         else { $bundleManifest.components += [pscustomobject]@{ path = $tree; files = $size.files; bytes = $size.bytes } }
+    }
+    if ($removedLauncherFiles.Count) {
+        $bundleManifest.criticalFiles = @($bundleManifest.criticalFiles | Where-Object { $_.path -notin $removedLauncherFiles })
     }
     foreach ($critical in @($bundleManifest.criticalFiles)) {
         $path = Assert-BundleChild ([string]$critical.path)
@@ -284,7 +309,8 @@ try {
     $bundleManifest | Add-Member -NotePropertyName appUpdateCount -NotePropertyValue ([int]$bundleManifest.appUpdateCount + 1) -Force
     $bundleManifest | Add-Member -NotePropertyName layers -NotePropertyValue ([ordered]@{ app = '.portable-app-layer.json'; baseRuntimeAndModels = '.portable-model-layer.json' }) -Force
     $bundleManifest | ConvertTo-Json -Depth 9 | Set-Content -LiteralPath $bundleManifestPath -Encoding utf8
-    [ordered]@{ schemaVersion = 1; kind = 'app'; releaseVersion = [string]$update.releaseVersion; releaseChannel = [string]$update.releaseChannel; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; updatedAt = $bundleManifest.updatedAt; entries = $entries } |
+    $installedEntries = @($entries | Where-Object { $_.path -notin $removedLauncherFiles })
+    [ordered]@{ schemaVersion = 1; kind = 'app'; releaseVersion = [string]$update.releaseVersion; releaseChannel = [string]$update.releaseChannel; sourceRevision = $update.sourceRevision; sourceWorkingTreeDirty = $update.sourceWorkingTreeDirty; updatedAt = $bundleManifest.updatedAt; entries = $installedEntries } |
         ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $appLayerPath -Encoding utf8
     $appOwnedComponents = @($targets) + @($allowedScripts | ForEach-Object { "scripts/$_" })
     $baseComponents = @($bundleManifest.components | Where-Object { $_.path -notin $appOwnedComponents })

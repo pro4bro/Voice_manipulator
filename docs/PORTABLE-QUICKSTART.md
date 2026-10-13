@@ -14,7 +14,7 @@ already stored inside this folder. Do not install Python or run `npm install`.
 
 1. Copy the whole bundle folder. Do not copy only the executable or `scripts`.
 2. Run `VERIFY-PORTABLE.bat`. Continue only after it reports zero failures.
-3. Run `start-pro4bro.bat`, open Preferences and use the OBS LiveLink plugin
+3. Run `open-pro4bro-console.bat`, open Preferences and use the OBS LiveLink plugin
    card to install or repair. The app asks for Windows elevation only if the
    normal write is denied. Restart OBS when Preferences says it is required.
 4. Open the Speech to Text page.

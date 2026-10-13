@@ -54,13 +54,13 @@ services are restarted after success.
 
 For the first transfer to another machine, copy the entire updated portable
 folder (about 36 GiB). Keep its internal folder structure intact. On the
-other machine run `VERIFY-PORTABLE.bat`, then `start-pro4bro.bat`.
+other machine run `VERIFY-PORTABLE.bat`, then `open-pro4bro-console.bat`.
 
 For later app-only changes, click `UPDATE-PORTABLE.bat` in the development
 machine's portable first. Copy its whole numbered folder (about 4 MiB), such as
 `updates/App-alpha-0.5.1-NoVibeVoice`, into the other portable's `updates`.
 Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
-`start-pro4bro.bat` on the other machine; it selects the newest version. Run
+`open-pro4bro-console.bat` on the other machine; it selects the newest version. Run
 `VERIFY-PORTABLE.bat` before starting the app.
 
 ## Different machine
@@ -71,7 +71,7 @@ Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
 2. Copy that whole numbered folder into the portable machine's `updates` folder.
    Keep its original name and its `payload`, `app-update.json`, `VERSION.txt`
    and `APPLY-UPDATE.bat` together.
-3. Double-click `UPDATE-PORTABLE.bat` beside `start-pro4bro.bat`. For an older
+3. Double-click `UPDATE-PORTABLE.bat` beside `open-pro4bro-console.bat`. For an older
    alpha 0.5.0 portable, click the new pack's `APPLY-UPDATE.bat` once: it uses
    the shipped updater to install support for automatic selection.
 
