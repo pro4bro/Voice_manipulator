@@ -28,6 +28,13 @@ is a fallback using the same installer. The current plugin still uses v2
 `config.json` for live capture; source UUID and project setup remain manual
 until LIVELINK-03. Tokens are absent from the portable bundle.
 
+## App updates
+
+For app updates from installed alpha 0.5.7 or earlier, copy the whole numbered
+pack into `updates` and click its `APPLY-UPDATE.bat` once. This installs the
+updater that stops the controller, API and Studio before replacing app files.
+Alpha 0.5.8 and newer can use root `UPDATE-PORTABLE.bat` for later packs.
+
 ## Acceptance recording
 
 In OBS, add one microphone source and one application-audio source. Start the

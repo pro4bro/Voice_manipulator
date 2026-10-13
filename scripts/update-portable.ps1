@@ -210,17 +210,30 @@ if ($bundleManifest.releaseVersion -and [version]$update.releaseVersion -eq [ver
     }
 }
 
-$ports = @(18081, 18120)
+$ports = @(18081, 18120, 18119)
 $listeners = @(Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue)
 $ownedListeners = 0
 $foreignListeners = 0
 foreach ($listener in $listeners) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)"
-    if ($process -and ([string]$process.ExecutablePath).StartsWith("$bundle\.runtime\python\", [StringComparison]::OrdinalIgnoreCase)) { $ownedListeners++ }
+    $expectedModule = switch ($listener.LocalPort) {
+        18081 { '(?i)-m\s+studio_app\.server(\s|$)' }
+        18120 { '(?i)-m\s+app(\s|$)' }
+        18119 { '(?i)-m\s+app\.runtime_controller(\s|$)' }
+    }
+    if ($process -and ([string]$process.ExecutablePath).StartsWith("$bundle\.runtime\python\", [StringComparison]::OrdinalIgnoreCase) -and
+        $process.Name -match '^python(w)?(\.exe)?$' -and $process.CommandLine -match $expectedModule) { $ownedListeners++ }
     else { $foreignListeners++ }
 }
 if ($ownedListeners -and $foreignListeners) { throw 'Portable services are sharing ports with another program; stop them before updating.' }
 $wasRunning = $ownedListeners -gt 0
+$stackStopped = $false
+
+function Start-PortableConsole {
+    # The controller serves the UI and also loads API code. Restart through the
+    # durable launcher so every process loads the installed (or restored) app.
+    Start-Process -FilePath (Assert-BundleChild 'open-pro4bro-console.bat') -WorkingDirectory $bundle -WindowStyle Hidden | Out-Null
+}
 
 $work = Assert-BundleChild ('.portable-update-work/{0}' -f [guid]::NewGuid().ToString('N'))
 $stage = Join-Path $work 'stage'
@@ -252,8 +265,14 @@ try {
         if ((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ne $entry.sha256) { throw "Staged file changed: $relative" }
     }
     if ($wasRunning) {
-        $stopped = & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action stop -SkipWebBuild | Select-Object -Last 1 | ConvertFrom-Json
-        if ($stopped.overall -ne 'stopped') { throw 'Could not stop the running portable services.' }
+        Write-Host 'Stopping the portable controller, API and Studio before replacing app files...'
+        # Stopping only workloads leaves the controller's current directory in
+        # services/api, which prevents Windows from moving that directory.
+        & (Assert-BundleChild 'scripts/pro4bro-console.ps1') -Command stop
+        if (@(Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue).Count) {
+            throw 'Portable ports are still in use after stop; app files have not been replaced.'
+        }
+        $stackStopped = $true
     }
     $targets = @($allowedTrees) + @($allowedFiles) + @($removedLauncherFiles)
     $oldCount = 0L; $oldBytes = 0L
@@ -335,14 +354,14 @@ try {
     elseif (Test-Path -LiteralPath $appLayerPath) { Remove-Item -LiteralPath $appLayerPath -Force }
     if ($null -ne $oldModelLayerBytes) { [IO.File]::WriteAllBytes($modelLayerPath, $oldModelLayerBytes) }
     elseif (Test-Path -LiteralPath $modelLayerPath) { Remove-Item -LiteralPath $modelLayerPath -Force }
-    if ($wasRunning -and -not $NoRestart) {
-        try { & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action start -SkipWebBuild | Out-Host } catch { }
+    if ($stackStopped -and -not $NoRestart) {
+        try { Start-PortableConsole } catch { Write-Warning "App rollback finished, but reopening the console failed: $_" }
     }
     throw $failure
 } finally {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }
-if ($wasRunning -and -not $NoRestart) {
-    & (Assert-BundleChild 'scripts/pro4bro-workloads.ps1') -Action start -SkipWebBuild | Out-Host
+if ($stackStopped -and -not $NoRestart) {
+    Start-PortableConsole
 }
 Write-Output ($result | ConvertTo-Json)

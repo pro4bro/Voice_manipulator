@@ -6,6 +6,8 @@ import os
 import shutil
 import subprocess
 import sys
+import socket
+import time
 from pathlib import Path
 
 import pytest
@@ -321,10 +323,12 @@ def test_creation_increments_versions_and_names_folders_automatically(tmp_path: 
         }
         pack_readme = (pack / "README-UPDATE.txt").read_text(encoding="utf-8-sig")
         assert "alpha 0.5.5 or earlier" in pack_readme
+        assert "alpha 0.5.7 or earlier" in pack_readme
+        assert "stops the controller" in pack_readme
         assert "APPLY-UPDATE.bat" in pack_readme
         assert "new four-BAT inventory" in pack_readme
         assert "later updates" in pack_readme
-        assert "Alpha 0.5.6 and newer" in pack_readme
+        assert "Alpha 0.5.8 and newer" in pack_readme
     state = json.loads((source / "APP-VERSION.json").read_text(encoding="utf-8-sig"))
     assert state["version"] == state["lastIssuedVersion"] == "0.5.2"
 
@@ -365,6 +369,174 @@ def test_update_restores_legacy_launchers_and_manifests_when_gate_fails(tmp_path
         assert (bundle / name).read_bytes() == content
     assert (bundle / ".portable-bundle.json").read_bytes() == old_bundle_manifest
     assert (bundle / ".portable-app-layer.json").read_bytes() == old_app_layer
+
+
+@pytest.mark.parametrize("full_stack,fail_gate,restart,foreign_controller", [
+    (False, False, False, False),
+    (True, False, False, False),
+    (True, False, True, False),
+    (True, True, True, False),
+    (True, False, False, True),
+])
+def test_update_stops_controller_holding_api_directory(
+    tmp_path: Path, full_stack: bool, fail_gate: bool, restart: bool, foreign_controller: bool,
+) -> None:
+    """A real Windows process CWD locks services/api even with workloads stopped."""
+    bundle, package, legacy = make_apply_fixture(tmp_path, fail_gate=fail_gate)
+    old_manifest = (bundle / ".portable-bundle.json").read_bytes()
+    for name in [
+        "pro4bro-console.ps1", "pro4bro-process-tree.ps1", "pro4bro-readiness.ps1",
+        "pro4bro-workloads.ps1",
+    ]:
+        shutil.copy2(ROOT / "scripts" / name, bundle / "scripts" / name)
+    modules = tmp_path / "controller-modules"
+    write_bytes(modules / "app/__init__.py", b"")
+    server = b"""
+import json, os, socket, time
+from pathlib import Path
+with socket.socket() as listener:
+    listener.bind(('127.0.0.1', 0))
+    listener.listen()
+    ready = Path(os.environ['UPDATE_TEST_READY'])
+    temporary = ready.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'port': listener.getsockname()[1], 'pid': os.getpid()}))
+    temporary.replace(ready)
+    while True:
+        time.sleep(0.1)
+"""
+    write_bytes(modules / "app/runtime_controller.py", server)
+    write_bytes(modules / "app/__main__.py", server)
+    write_bytes(modules / "studio_app/__init__.py", b"")
+    write_bytes(modules / "studio_app/server.py", server)
+    env = os.environ.copy()
+    env.update(PYTHONPATH=str(modules))
+    env["PSModulePath"] = ";".join([
+        str(Path(env["WINDIR"]) / "System32/WindowsPowerShell/v1.0/Modules"),
+        str(Path(env["PROGRAMFILES"]) / "WindowsPowerShell/Modules"),
+        str(Path(env["USERPROFILE"]) / "Documents/WindowsPowerShell/Modules"),
+    ])
+    processes: list[subprocess.Popen] = []
+    try:
+        roles = [(18119, "app.runtime_controller", bundle / "services/api")]
+        if full_stack:
+            roles += [(18120, "app", bundle / "services/api"),
+                      (18081, "studio_app.server", bundle / ".runtime/omnivoice-studio")]
+        listener_maps, identity_maps = [], []
+        for standard_port, module, cwd in roles:
+            cwd.mkdir(parents=True, exist_ok=True)
+            ready = tmp_path / f"ready-{standard_port}.json"
+            child_env = env | {"UPDATE_TEST_READY": str(ready)}
+            process = subprocess.Popen(
+                [sys.executable, "-m", module], cwd=cwd, env=child_env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            processes.append(process)
+            deadline = time.monotonic() + 10
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert ready.exists(), f"{module} fixture did not bind its isolated port"
+            ready_state = json.loads(ready.read_text())
+            with socket.create_connection(("127.0.0.1", ready_state["port"]), timeout=2):
+                pass
+            listener_maps.append({"standard": standard_port, "actual": ready_state["port"]})
+            if not (foreign_controller and standard_port == 18119):
+                identity_maps.extend({"pid": pid, "module": module} for pid in {process.pid, ready_state["pid"]})
+        # Remap only this isolated process/port to the portable controller's
+        # identity. Production stop functions and the actual CWD lock are real;
+        # the source stack on the standard ports is never touched.
+        def ps_quote(value: Path) -> str:
+            return "'" + str(value).replace("'", "''") + "'"
+
+        launch_marker = tmp_path / "reopened.txt"
+        write_bytes(bundle / "open-pro4bro-console.bat", f'@echo off\r\necho restored>"{launch_marker}"\r\n'.encode())
+        new_launcher = f'@echo off\r\necho updated>"{launch_marker}"\r\n'.encode()
+        write_bytes(package / "payload/open-pro4bro-console.bat", new_launcher)
+        manifest = json.loads((package / "app-update.json").read_text())
+        entry = next(item for item in manifest["entries"] if item["path"] == "open-pro4bro-console.bat")
+        entry.update(bytes=len(new_launcher), sha256=hashlib.sha256(new_launcher).hexdigest().upper())
+        write_json(package / "app-update.json", manifest)
+        write_json(bundle / "data/runtime/pro4bro-console.json", {"consolePid": -1})
+        wrapper = tmp_path / "apply-running.ps1"
+        wrapper.write_text(f"""
+$ErrorActionPreference = 'Stop'
+# NetTCPIP exports CDXML functions. Import before defining the isolated
+# lookups, otherwise lazy import can overwrite the test's function override.
+Import-Module NetTCPIP, CimCmdlets
+$protectedProcessIds = @(NetTCPIP\\Get-NetTCPConnection -LocalPort 18119,18120,18081 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+$listenerMaps = '{json.dumps(listener_maps)}' | ConvertFrom-Json
+$identityMaps = '{json.dumps(identity_maps)}' | ConvertFrom-Json
+function Get-NetTCPConnection {{
+    [CmdletBinding()] param([int[]]$LocalPort, [string]$State)
+    foreach ($mapping in $listenerMaps) {{
+        if ($LocalPort -notcontains $mapping.standard) {{ continue }}
+        foreach ($listener in @(NetTCPIP\\Get-NetTCPConnection -LocalPort $mapping.actual -State Listen -ErrorAction SilentlyContinue)) {{
+            [pscustomobject]@{{ LocalPort = $mapping.standard; OwningProcess = $listener.OwningProcess }}
+        }}
+    }}
+}}
+function Get-CimInstance {{
+    [CmdletBinding()] param([string]$ClassName, [string]$Filter)
+    $options = @{{ ClassName = $ClassName }}
+    if ($Filter) {{ $options.Filter = $Filter }}
+    foreach ($item in @(CimCmdlets\\Get-CimInstance @options)) {{
+        $identity = $identityMaps | Where-Object {{ $_.pid -eq $item.ProcessId }} | Select-Object -First 1
+        if ($ClassName -eq 'Win32_Process' -and $identity) {{
+            [pscustomobject]@{{
+                ProcessId = $item.ProcessId; ParentProcessId = $item.ParentProcessId
+                Name = 'python.exe'
+                ExecutablePath = {ps_quote(bundle / '.runtime/python/core/python.exe')}
+                CommandLine = '"' + {ps_quote(bundle / '.runtime/python/core/python.exe')} + '" -m ' + $identity.module
+            }}
+        }} else {{ $item }}
+    }}
+}}
+try {{
+    & {ps_quote(bundle / 'scripts/update-portable.ps1')} -BundleRoot {ps_quote(bundle)} -ApplyOnly {' ' if restart else '-NoRestart'}
+}} finally {{
+    foreach ($protectedId in $protectedProcessIds) {{
+        if (-not (Get-Process -Id $protectedId -ErrorAction SilentlyContinue)) {{
+            throw "Protected source process $protectedId was stopped by the isolated test."
+        }}
+    }}
+}}
+""", encoding="utf-8")
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(wrapper)],
+            capture_output=True, encoding="utf-8", errors="replace", timeout=90, env=env,
+        )
+        if foreign_controller:
+            assert result.returncode != 0
+            assert "sharing ports with another program" in result.stdout + result.stderr
+            assert all(process.poll() is None for process in processes)
+            assert (bundle / ".portable-bundle.json").read_bytes() == old_manifest
+            return
+        for process in processes:
+            process.wait(timeout=5)
+        assert not (bundle / "data/runtime/pro4bro-console.json").exists()
+        if restart:
+            deadline = time.monotonic() + 5
+            while not launch_marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert launch_marker.read_text().strip() == ("restored" if fail_gate else "updated")
+        else:
+            assert not launch_marker.exists()
+        if fail_gate:
+            assert result.returncode != 0
+            assert "Portable verification failed" in result.stdout + result.stderr
+            assert (bundle / ".portable-bundle.json").read_bytes() == old_manifest
+            for name, data in legacy.items():
+                assert (bundle / name).read_bytes() == data
+            return
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads((bundle / ".portable-bundle.json").read_text(encoding="utf-8-sig"))["releaseVersion"] == "0.5.1"
+        assert (bundle / "services/api/requirements.txt").read_bytes() == b"requirements\n"
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                # The venv launcher has an interpreter child: reclaim that whole
+                # owned test tree even when a preflight deliberately refused it.
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
+            process.wait(timeout=5)
 
 
 def test_new_phase_and_stable_baseline_are_issued_before_patch_increment(tmp_path: Path) -> None:

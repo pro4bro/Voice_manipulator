@@ -42,7 +42,7 @@ independent.
 
 ## Same machine
 
-For alpha 0.5.6 and newer, double-click `UPDATE-PORTABLE.bat` inside a portable
+For alpha 0.5.8 and newer, double-click `UPDATE-PORTABLE.bat` inside a portable
 folder located under this source checkout. It finds
 `scripts/new-portable-app-update.ps1`, builds the current web UI, allocates a
 version, checks the runtime manifest, applies the app-only update, verifies app
@@ -50,19 +50,22 @@ hashes and runs the portable gate. On success, `transferPack` reports its
 numbered folder inside `updates`. This source-build mode is enabled on the
 pack's recorded source machine. A newer received pack is applied first. A
 portable on another machine applies its copied packs. The BAT window stays open
-so the result can be read. Existing portable services are restarted after
-success.
+so the result can be read. A running portable's controller, API and Studio are
+stopped before replacing files; their ports must be free. The console launcher
+reopens the full stack after success or rollback, unless `-NoRestart` is passed.
 
-### One-time launcher migration
+### One-time updater migration
 
-An installed alpha 0.5.5 or earlier has a root updater that accepts only the
-legacy six-BAT inventory. It rejects the new four-BAT update pack. For the
-first update, create the numbered pack with `MAKE-PORTABLE-UPDATE.bat`, copy it
+An installed alpha 0.5.7 or earlier must receive the fixed updater through the
+pack entrypoint once: its root updater leaves the controller running and Windows
+can refuse to move `services/api`. Alpha 0.5.5 or earlier also accepts only the
+legacy six-BAT inventory and rejects a four-BAT update pack. For this update,
+create the numbered pack with `MAKE-PORTABLE-UPDATE.bat`, copy it
 into `updates`, and click that pack's `APPLY-UPDATE.bat` once. It runs the
 updater shipped in the pack, removes the two verified legacy launchers, and
 installs the compatible root updater. After it succeeds, use the portable
 root's `UPDATE-PORTABLE.bat` for later updates.
-Alpha 0.5.6 and newer can use either entrypoint.
+Alpha 0.5.8 and newer can use either entrypoint.
 
 For the first transfer to another machine, copy the entire updated portable
 folder (about 36 GiB). Keep its internal folder structure intact. On the
@@ -83,8 +86,8 @@ Keep the original folder name. Then click `UPDATE-PORTABLE.bat` beside
 2. Copy that whole numbered folder into the portable machine's `updates` folder.
    Keep its original name and its `payload`, `app-update.json`, `VERSION.txt`
    and `APPLY-UPDATE.bat` together.
-3. For alpha 0.5.5 and earlier, click the new pack's `APPLY-UPDATE.bat` once.
-   For alpha 0.5.6 and newer, double-click `UPDATE-PORTABLE.bat` beside
+3. For alpha 0.5.7 and earlier, click the new pack's `APPLY-UPDATE.bat` once.
+   For alpha 0.5.8 and newer, double-click `UPDATE-PORTABLE.bat` beside
    `open-pro4bro-console.bat`.
 
 `APPLY-UPDATE.bat` and the BAT inside `payload` resolve the enclosing full

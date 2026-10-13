@@ -131,10 +131,12 @@ Pro4Bro app update: $($release.channel) $($release.version)
 
 Copy this WHOLE numbered folder into the full portable's updates folder.
 Keep its original name; do not rename it to app-current.
-If the installed portable is alpha 0.5.5 or earlier, click APPLY-UPDATE.bat in
-this pack once. Its older root updater cannot accept the new four-BAT inventory.
+If the installed portable is alpha 0.5.7 or earlier, click APPLY-UPDATE.bat in
+this pack once. It runs the corrected updater, which stops the controller as
+well as API/Studio before replacing app files. An installed alpha 0.5.5 or earlier also
+requires this entrypoint to accept the new four-BAT inventory.
 After this update succeeds, use UPDATE-PORTABLE.bat in the portable root for
-later updates. Alpha 0.5.6 and newer can use either entrypoint.
+later updates. Alpha 0.5.8 and newer can use either entrypoint.
 The updater selects the highest compatible version inside updates.
 Start/verify the app from the full portable folder after the update succeeds.
 The full portable (about 36 GiB) is required; this small pack contains app files.

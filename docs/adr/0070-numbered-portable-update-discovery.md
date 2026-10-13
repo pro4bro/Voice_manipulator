@@ -35,6 +35,17 @@ portable manifests produce transfer instructions.
 
 ## Consequences
 
+2026-10-13 correction: an app update stops the portable's entire stack, including
+the controller on18119, before replacing trees. On Windows the controller's
+working directory holds `services/api` even after API/Studio have stopped.
+Port ownership checks include the bundled interpreter path and the expected
+module for all three roles. Mixed portable/foreign listeners abort before
+mutation. Successful stop must leave all three ports free; the existing process
+tree helper waits for actual process exit. After success or rollback, restart
+uses the durable console launcher so controller code is also reloaded.
+`-NoRestart` leaves the whole stack stopped. Installed alpha0.5.7 or earlier
+needs the received pack's entrypoint once to install this correction.
+
 The owner copies a whole numbered folder and clicks the BAT. Version ordering
 does not depend on names or modification times. Older portable installations
 need one use of the new pack's launcher to install this workflow. Source-machine
