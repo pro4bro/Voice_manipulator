@@ -13,8 +13,8 @@ function context(kind: InputKind, count = 20): StudioContext {
   const tracks = ["a", "b"].map((id) => ({ id, name: `Track ${id}`, ...(kind === "file" ? {} : { sourceArchiveAssetId: "parent" }),
     ...(kind.startsWith("obs") ? { obsRecordingId: "recording" } : {}), words, text: words.map((word) => word.text).join(" "),
     duration: count, transcriptionStatus: "complete", scriptRef: `${id}.json`, wordTimingQuality: "source" })) as unknown as ProjectMediaAsset[];
-  return { workflow: "speech-to-text", selectedAssetId: single(kind) ? "a" : "parent", selectedImportedTrackId: kind.endsWith("-track") ? "a" : null,
-    mediaAssets: kind === "file" ? [tracks[0]] : [{ id: "parent", name: "archive.mkv", words: [], text: "" }, ...tracks], take: single(kind) ? tracks[0] : null,
+  return { workflow: "speech-to-text", selectedAssetId: kind === "file" ? "a" : "parent", selectedImportedTrackId: kind.endsWith("-track") ? "a" : null,
+    mediaAssets: kind === "file" ? [tracks[0]] : [{ id: "parent", name: "archive.mkv", words: [], text: "" }, ...tracks], take: single(kind) ? { ...tracks[0], id: "stt-a" } : null,
     script: tracks[0].text, trainingCatalog: { speakers: [], environmentProfiles: [] }, readingSession: null, wordSelection: EMPTY_SELECTION,
     obsTimelineActive: kind.startsWith("obs"), onScriptChange: vi.fn(), onWordsChange: vi.fn(), onAssetWordsChange: vi.fn(),
     onAssignScriptWords: vi.fn(), onSelectImportedTrack: vi.fn(), onDeferredAction: vi.fn() } as unknown as StudioContext;
@@ -36,10 +36,27 @@ function viewport(container: HTMLElement) {
 
 afterEach(() => { cleanup(); publishPlaybackWords({}); vi.restoreAllMocks(); });
 
+it("shares the real imported track clock with Script after STT creates a different sidecar item ID", () => {
+  const ctx = context("import-track");
+  ctx.mediaAssets = ctx.mediaAssets.map((asset) => ({ ...asset, duration: 20, url: `/audio/${asset.id}.wav` }));
+  ctx.onObsTimelineCutsChange = vi.fn();
+  ctx.onWordSelectionChange = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => ({ duration: 20, points: [] }) } as Response);
+  const { container } = render(<><ModuleRegistry id="script" context={ctx} /><ModuleRegistry id="timeline" context={ctx} /></>);
+  const audio = container.querySelector("audio")!;
+  audio.currentTime = 3.2;
+  fireEvent.timeUpdate(audio);
+  expect(container.querySelector('.imported-timeline__word.is-active')).toHaveTextContent("word3");
+  expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("word3");
+  act(() => requestPlaybackSeek("a", 7.2));
+  expect(audio.currentTime).toBe(7.2);
+  expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("word7");
+});
+
 it("clears single-source highlighting when the playback owner is released", () => {
   const { container } = render(<ModuleRegistry id="script" context={context("file")} />);
   viewport(container);
-  act(() => publishPlaybackWord("a", 18));
+  act(() => publishPlaybackWord("stt-a", 18));
   expect(container.querySelector('.script-table__word.is-active')).not.toBeNull();
   act(() => publishPlaybackWords({}));
   expect(container.querySelector('.script-table__word.is-active')).toBeNull();
@@ -48,7 +65,7 @@ it("clears single-source highlighting when the playback owner is released", () =
 it.each(inputs)("follows a Timeline word while paused for %s input, pauses for manual reading, resumes on seek", (kind) => {
   const { container } = render(<ModuleRegistry id="script" context={context(kind)} />);
   const view = viewport(container);
-  const publish = (index: number) => act(() => single(kind) ? publishPlaybackWord("a", index) : publishPlaybackWords({ a: index, b: -1 }));
+  const publish = (index: number) => act(() => kind === "file" ? publishPlaybackWord("stt-a", index) : publishPlaybackWords({ a: index, b: -1 }));
   publish(18);
   expect(view.scrollTop).toBeGreaterThan(0);
   expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("word18");
@@ -56,7 +73,7 @@ it.each(inputs)("follows a Timeline word while paused for %s input, pauses for m
   view.scrollTop = 0;
   publish(19);
   expect(view.scrollTop).toBe(0);
-  act(() => requestPlaybackSeek("a", 19));
+  act(() => requestPlaybackSeek(kind === "file" ? "stt-a" : "a", 19));
   // Explicit seeking resumes even when the playhead remains in the same word.
   expect(view.scrollTop).toBeGreaterThan(0);
 });
@@ -98,7 +115,7 @@ it.each(inputs)("reveals a distant virtualized word for %s input", (kind) => {
   const { container } = render(<ModuleRegistry id="script" context={context(kind, 1400)} />);
   const view = viewport(container);
   expect(container.querySelector('[data-script-word-index="1300"]')).toBeNull();
-  act(() => single(kind) ? publishPlaybackWord("a", 1300) : publishPlaybackWords({ a: -1, b: 1300 }));
+  act(() => kind === "file" ? publishPlaybackWord("stt-a", 1300) : publishPlaybackWords(single(kind) ? { a: 1300, b: -1 } : { a: -1, b: 1300 }));
   expect(view.scrollTop).toBeGreaterThan(0);
   expect(container.querySelector('.script-table__word.is-active')).toHaveTextContent("word1300");
   if (!single(kind)) expect(container.querySelector('.script-table__word.is-active')?.closest('[data-channel-id]')).toHaveAttribute("data-channel-id", "b");
