@@ -48,6 +48,8 @@ Automated/component and live local-API PCM fixtures validate contracts,
 portability and failure paths. They do not replace real trained model inference,
 listening, native dialogs or browser geometry. CPU and sandbox GPU smokes timed
 out; native Windows GPU execution produced an actual full-model2.2s PCM WAV.
-The real Script/portability receipt and remaining listening/alignment gates are
-reported separately. Browser provider was unavailable in this session. No
+Actual full/clone/LoRA Script then passed edit/reuse, Stop/retry and move/reopen,
+including unchanged hashes and PCM/boundaries. Words were estimated, not STT
+measured; subjective identity/listening and browser/native gates remain separate.
+Browser provider was unavailable in this session. No
 Phase03 percentage or portable version advances from these fixtures.

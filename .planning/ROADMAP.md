@@ -6,8 +6,9 @@ Owner-directed batch delivered portable Script hierarchy/intent, reference asset
 roles/import, shared waveform/subtitle/Script ranges/readouts and persistent
 multi-source/property assignment. VM-GEN-01 cache/invalidation/recovery repaired;
 CPU/sandbox GPU attempts timed out, then native GPU execution created an actual
-full-model2.2s PCM WAV. Script/move receipt is in the combined gate. Browser provider
-unavailable; real model/listening and browser/native UAT remain open. Controls
+full/clone/LoRA Script WAVs. Edit-one/reuse2, Stop-at2, retry and moved-project
+reuse3/3 passed, including hashes/lineage/PCM. Frontend844/backend870/build pass.
+Browser unavailable; listening/identity, measured word timing and browser/native UAT remain open. Controls
 store requested duration/delivery/reference intent; later synthesis/resolve/Fix
 rounds remain pending. See ADR0076 and the combined first-five gate for final
 automated/API evidence. Next VM-REF-DETAIL-01 includes slot→Timeline+Script

@@ -20,7 +20,9 @@ Live API PCM import/assign/idempotency/stale-revision/move/reopen/hash checks pa
 Final automated evidence is in docs/gates/voice-manipulator-first-five-20261015.md.
 
 CPU and sandbox GPU attempts failed; native Windows GPU execution created an
-actual full-model2.2s PCM WAV. Script/move receipt is in the combined gate;
+actual full/clone/LoRA Script WAVs. Edit-one/reuse2, Stop-at2, retry3/3 and moved
+project reuse3/3 passed with preserved hashes/lineage and PCM/boundaries.
+Frontend844/backend870 and build pass. Script receipt is in the combined gate;
 no listening/model identity success is claimed. Browser provider unavailable, so
 actual browser/native UAT remains open. Timing/delivery/gain/reference controls
 store requested intent; resolution/rendering/random/Fix are subsequent rounds.

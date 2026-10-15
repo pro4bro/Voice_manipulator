@@ -16,7 +16,9 @@ chi tiết từng reference footage và các đặc tính được chọn.
 
 - VM-GEN-01 đã sửa fingerprint/cache và chạy model full thật trên CPU; lượt thử
   timeout sau 291.16s. Khi GPU trống, lượt native Windows đã tạo WAV full thật
-  2.2s trong70.48s; receipt Script/move và gate nghe/alignment ở báo cáo tổng.
+  2.2s trong70.48s. Sau đó full/clone/LoRA Script thật đã qua sửa1/reuse2,
+  Stop2, retry3/3 và move/reopen reuse3/3, hash/PCM/boundary đúng. Gate nghe,
+  word alignment thực và browser/native còn mở trong báo cáo tổng.
 - VM-SCRIPT-01, VM-REF-LIB-01, VM-SELECTION-01 và VM-REF-ASSIGN-01 đã triển khai
   main source, có kiểm tra tự động và nghiệm thu API với WAV PCM riêng. Script,
   role reference và binding đi theo project khi move/Open Existing.

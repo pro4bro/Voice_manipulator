@@ -5,7 +5,7 @@ VM-GEN-01 → VM-SCRIPT-01 → VM-REF-LIB-01 → VM-SELECTION-01 → VM-REF-ASSI
 
 | Round | Delivered | Acceptance remaining |
 | --- | --- | --- |
-| VM-GEN-01 | Content fingerprints, validated PCM cache, immutable recovery and reusable repaired clips; native full-model smoke created2.2s real PCM | Multi-row/portability receipt below; subjective identity/listening, actual word alignment and browser acceptance remain separate |
+| VM-GEN-01 | Real full/clone/LoRA Script, edit/reuse, Stop/retry and move/reopen passed; cache fingerprints/recovery verified | Subjective identity/listening, actual word alignment and browser acceptance remain separate |
 | VM-SCRIPT-01 | Portable hierarchy, migration, five-language split/join, inherited settings/locks and original-text lineage | Browser interaction; actual timing/delivery synthesis belongs to later rounds |
 | VM-REF-LIB-01 | Multi-file import/track flow, independent persistent reference role, batch menu/filter/lazy preview | Browser/native-dialog interaction |
 | VM-SELECTION-01 | Shared time/word/text/row selection, exact overlays, silence/disjoint ranges, cancel and no implicit multi-range scroll | Browser geometry and long-list gestures; scrollbar markers are VM-NAV-01 |
@@ -34,16 +34,27 @@ VM-GEN-01 → VM-SCRIPT-01 → VM-REF-LIB-01 → VM-SELECTION-01 → VM-REF-ASSI
   attempts timed out. Native Windows GPU retry created a real full-model WAV
   in70.48s at32steps,24kHz monoPCM16. A2s request produced2.2s; locked-duration
   rendering is still a later round, not claimed from this smoke.
+- Real GPU Script UAT **passed** in534.94s, including actual full/LoRA imports
+  through product Collection gates plus clone. Two imported profile IDs may
+  represent the same human.3rows generated; changing1row reused2; Stop retained
+  2completed rows; retry and moved-project read reused3/3. Five actual24kHz mono
+  PCM16 WAVs have0clipped samples and0measured join steps/gap peaks. Changed,
+  retry and moved outputs are byte identical. Reference hashes, Script, cast/model
+  and clip lineage survived the move. Worker stopped and GPU lease released.
+- Receipts `.scratch/vm-gen-01/script-uat/result.json` and `final-qc.json`;
+  private audition `.scratch/vm-gen-01/listen-full-clone-lora.wav` is the actual
+  10.03s changed output. Word timestamps remain estimated, not STT measured.
 
 ## Delivery and next round
 
 Main source only; no portable distribution, push or Phase03 completion is claimed.
-Phase03 remains60%. First four local commits:98a939c, ec0c05c,2cf3022,972a7fc.
-The fifth commit contains reference assignment and the final integration repairs.
+Phase03 remains60%. Implementation commits:98a939c,ec0c05c,2cf3022,972a7fc,7b6660d.
+The fifth contains reference assignment/integration repairs. A documentation
+follow-up records the completed real GPU UAT.
 
 Next implementation: **VM-REF-DETAIL-01** — right-column two-line slots,
 expandable source/property details, and content-click navigation to the same
 target in both Timeline and Script. Expanding a slot must not navigate.
-Separate acceptance: **VM-GEN-01** on sufficient model/runtime resources, then
-actual listening and browser/native UAT. SOURCE-EXTERNAL-ASSETS-01 and existing
+Separate acceptance: listening/identity, measured word alignment and browser/
+native UAT. SOURCE-EXTERNAL-ASSETS-01 and existing
 HUB-COLLECTION-UAT-01 remain queued; this batch does not mark them complete.

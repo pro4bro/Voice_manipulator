@@ -7,7 +7,7 @@ total_plans_in_phase: 4
 status: In progress
 progress: 60%
 last_activity: 2026-10-15 — Voice Manipulator first five checklist rounds.
-last_activity_desc: Script hierarchy and portable intent, Reference Library roles, synchronized exact ranges and multi-reference assignments implemented. Frontend844 and backend870 pass with live API PCM/move evidence. Native GPU execution created a real full-model2.2s WAV after sandbox timeouts. Script/move receipt and remaining listening/alignment/browser gates in combined report. Next VM-REF-DETAIL-01 with slot navigation in Timeline and Script. Prior queues retained. No portable or Phase03 advance, remains60%.
+last_activity_desc: First five VM rounds implemented. Frontend844, backend870 and build pass. Actual full/clone/LoRA Script UAT passed edit-one/reuse2, Stop-at2, retry3/3 and moved-project reuse3/3 with preserved hashes/lineage and PCM/boundaries. Live API references/move passed. Listening/identity, measured word timing and browser/native UAT remain open. Next VM-REF-DETAIL-01 with slot navigation in Timeline and Script. Prior queues retained. No portable or Phase03 advance, remains60%.
 ---
 
 # Project State
@@ -29,7 +29,9 @@ reference footage roles/import, shared time/word/text selection/readouts and
 frozen-scope multi-reference assignments. Live API actual PCM import, atomic
 assignment, revision/idempotency, move/Open Existing and source hashes passed.
 CPU/sandbox GPU attempts failed; native GPU execution created a real full-model
-2.2s WAV. Script/move receipt is in the combined gate; browser unavailable. Requests
+2.2s WAV, followed by actual full/clone/LoRA Script edit/reuse/Stop/retry/move UAT.
+Two imported profiles retain provenance; words remain estimated. Frontend844 /
+backend870/build and PCM/hash/boundary checks pass. Browser unavailable. Requests
 for timing/delivery/gain/reference remain intent until later named processors.
 Final automated results and commits are in the combined first-five gate; ADR0076
 records persistence/selection/binding decisions. Next VM-REF-DETAIL-01 includes

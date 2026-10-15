@@ -41,5 +41,6 @@ next round, followed by resolution, timing/delivery and random schedules.
 
 The browser inventory was empty; creating an IAB tab returned `Browser is not
 available: iab`. Actual browser layout/gestures/native-import dialogs therefore
-remain open. Full-model CPU smoke also timed out without a WAV. See the combined
-gate for final automated counts, exact commits and the next executable round.
+remain open. After CPU/sandbox timeouts, native full/clone/LoRA Script UAT passed
+edit/reuse/Stop/retry/move checks with actual WAVs. Listening and measured word
+alignment remain open. See the combined gate for counts/commits/next round.

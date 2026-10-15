@@ -10,8 +10,10 @@ validated recovery/reuse, original-text lineage and stale binding safeguards wer
 repaired. Live local-API PCM imports/assignment/move/reopen/source hashes passed.
 
 CPU and sandbox GPU smokes timed out; native Windows GPU execution subsequently
-created an actual full-model2.2s PCM WAV. Script/move receipt and remaining
-identity/listening/alignment gates are in the combined gate. Browser unavailable, so browser/native UAT
+created actual full/clone/LoRA Script WAVs with two imported profiles. Edit-one/
+reuse2, Stop-at2, retry3/3 and moved-project reuse3/3 passed. Reference/output
+hashes, PCM/boundaries and lineage passed; frontend844/backend870 and build pass.
+Identity/listening and measured word alignment remain separate. Browser unavailable, so browser/native UAT
 remains open. Requested duration/delivery/reference properties are persisted
 intent; later processors are not claimed. See ADR0076 and
 docs/gates/voice-manipulator-first-five-20261015.md for final checks/commits.
