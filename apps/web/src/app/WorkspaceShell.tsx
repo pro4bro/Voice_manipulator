@@ -12,6 +12,7 @@ import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
 import { useVoiceEdits } from "./useVoiceEdits";
+import { useVoiceRender } from "./useVoiceRender";
 import { effectiveScriptSettings } from "../domain/voice-script-document";
 import { captureReferenceTargets, referenceSelection, referenceInheritedSettings, type ReferenceBinding, type ReferenceBindingDocument, type ProductionNavigation, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
 import { ReferenceAssignmentEditor } from "../modules/library-panel/ReferenceAssignmentEditor";
@@ -296,7 +297,8 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [generating, setGenerating] = useState(false);
   const voiceScript = useVoiceScriptDocument(project.id);
   const voiceEdits = useVoiceEdits(project.id, outputTake?.id, voiceScript.document.revision);
-  const editedOutput = voiceEdits.packet && voiceEdits.packet.document.outputId === outputTake?.id ? voiceEdits.packet.output : null;
+  const voiceRender = useVoiceRender(project.id, outputTake?.id, voiceScript.document.revision, voiceEdits.packet?.document.revision ?? 0);
+  const editedOutput = voiceRender.packet && voiceRender.packet.output.id === outputTake?.id ? voiceRender.packet.output : voiceEdits.packet && voiceEdits.packet.document.outputId === outputTake?.id ? voiceEdits.packet.output : null;
   const pageTake = activePageTake();
   const voiceScriptRows = voiceScript.document.rows;
   const setVoiceScriptRows = voiceScript.setRows;
@@ -826,7 +828,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }
 
   function activePageTake(): ActiveTake | null {
-    if (activePage === "voice-manipulator") return editedOutput && outputTake ? { ...outputTake, duration: editedOutput.duration, words: editedOutput.words ?? [], url: voiceEdits.packet!.audioUrl, wordTimingQuality: editedOutput.wordTimingQuality ?? undefined, wordTimingNote: editedOutput.wordTimingNote } : outputTake;
+    if (activePage === "voice-manipulator") return editedOutput && outputTake ? { ...outputTake, duration: editedOutput.duration, words: editedOutput.words ?? [], url: voiceRender.packet?.audioUrl ?? voiceEdits.packet?.audioUrl ?? outputTake.url, wordTimingQuality: editedOutput.wordTimingQuality ?? undefined, wordTimingNote: editedOutput.wordTimingNote } : outputTake;
     if (activePage === "voice-changer") return recordingTake;
     return take;
   }
@@ -2214,7 +2216,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       return;
     }
     const pendingDirection = voiceScriptRows.find((row) => Object.entries(effectiveScriptSettings(voiceScript.document, row))
-      .some(([key, value]) => key !== "locked" && key !== "note" && key !== "duration" && value != null && !(key === "delivery" && value === "neutral") && !(key === "emotion" && value === "normal")));
+      .some(([key, value]) => key !== "locked" && key !== "note" && key !== "duration" && key !== "gainDb" && value != null && !(key === "delivery" && value === "neutral") && !(key === "emotion" && value === "normal")));
     if (pendingDirection) {
       setNotice("Sắc thái/âm lượng đã lưu nhưng chưa có processor đã kiểm chứng. Bỏ các giá trị này để tạo giọng; thời lượng đã được hỗ trợ.");
       return;
@@ -2389,6 +2391,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   async function exportVoiceOutput(output: VoiceOutput, mode: VoiceOutputExportMode) {
+    const isActive = output.id === outputTake?.id;
+    if (isActive && voiceEdits.packet?.document.cursor && mode !== "audio") {
+      setNotice("Bản preview đã giãn chưa được Fix/căn lại lời. Chưa xuất subtitle theo mốc nguồn cũ."); return;
+    }
     if (mode === "line" && !output.segments?.length) {
       setNotice("Voice Output này chưa có mốc thời gian từng dòng Script.");
       return;
@@ -2399,7 +2405,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
     try {
       const result = mode === "audio"
-        ? await api.downloadVoiceOutputAudio(project.id, output.id)
+        ? isActive && (voiceRender.packet || voiceEdits.packet?.document.cursor)
+          ? await api.downloadVoiceArtifact(voiceRender.packet?.audioUrl ?? voiceEdits.packet!.audioUrl, `${output.id}-render.wav`)
+          : await api.downloadVoiceOutputAudio(project.id, output.id)
         : await api.exportVoiceOutputSubtitles(project.id, output.id, mode);
       const skipped = result?.skippedCues ? ` Đã bỏ ${result.skippedCues} cue có timing không đáng tin.` : "";
       setNotice((mode === "audio" ? `Đã gửi WAV của ${output.name} tới trình duyệt.`
@@ -2516,6 +2524,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   const context = useMemo<StudioContext>(() => ({
+    voiceRender,
     voiceEdits,
     editedVoiceOutput: editedOutput,
     workflow: activePage,
@@ -2807,7 +2816,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

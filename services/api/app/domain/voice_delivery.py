@@ -12,7 +12,7 @@ DeliveryCapabilityState = Literal["not-requested", "supported", "unsupported", "
 def unsupported_synthesis_settings(settings: dict) -> dict:
     """Baseline selections do not add conditioning or change voice identity."""
     return {key: value for key, value in settings.items()
-            if key not in {"note", "locked", "duration"} and value is not None
+            if key not in {"note", "locked", "duration", "gainDb"} and value is not None
             and (key, value) not in [("delivery", "neutral"), ("emotion", "normal")]}
 
 
@@ -106,7 +106,7 @@ def _gain_decision(value: float | None) -> VoiceDeliveryDecision:
         return VoiceDeliveryDecision(state="not-requested", reason="Không có gain yêu cầu.")
     return VoiceDeliveryDecision(
         state="separate", requested=value,
-        reason="Gain là xử lý render riêng, không phải delivery conditioning; preflight này không áp dụng gain.",
+        reason="Gain áp dụng bằng nút Áp dụng âm lượng sau khi tạo voice; không phải delivery conditioning.",
     )
 
 
@@ -148,11 +148,6 @@ def inspect_voice_delivery(document: VoiceScriptDocument) -> VoiceDeliveryReport
             f"{name}: {decision.reason}"
             for name, decision in decisions.items()
             if decision.state == "blocked"
-        )
-        blockers.extend(
-            f"{name}: {decision.reason}"
-            for name, decision in decisions.items()
-            if decision.state == "separate"
         )
         rows.append(VoiceDeliveryRowReport(
             row_id=row.id,

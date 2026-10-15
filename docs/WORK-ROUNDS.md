@@ -2,6 +2,11 @@
 
 ## Voice Manipulator rounds11–15 — in progress (2026-10-15)
 
+VM-LOUDNESS-01 wired verified render to Script playback/WAV download with portable
+latest pointer and stale revision guards. Real5.15s123600frames clip/row gain,
+source hash, no clipping, identical preview/download, move/reopen pass. Human
+listening/native Save remain open; next VM-REF-RANDOM-01 schedule preview/persistence.
+
 VM-DELIVERY-01 capability/preflight slice integrated. Script shows supported
 baseline versus unsupported whisper/shout/mood/emotion/intensity requests;
 unsupported fails before inference. Backend38 and frontend13 affected pass,

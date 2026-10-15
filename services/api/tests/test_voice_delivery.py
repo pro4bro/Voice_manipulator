@@ -89,7 +89,18 @@ def test_note_only_and_neutral_only_are_ready_but_missing_voice_is_blocked():
     assert not rows[2].synthesis_ready and rows[2].state == "blocked"
     assert rows[2].settings["delivery"].state == "blocked"
     assert rows[3].settings["gainDb"].state == "separate"
-    assert not rows[3].synthesis_ready
+    assert rows[3].synthesis_ready
+
+
+def test_gain_only_edit_reuses_speech_and_keeps_render_separate(tmp_path):
+    engine = FakeEngine()
+    project, voice, _, _, _, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    row = VoiceScriptRow(id="r", voice_id=voice.id, text="Xin chào")
+    first = speaker.start(project.id, VoiceScriptRequest(rows=[row]), background=False)
+    second = speaker.start(project.id, VoiceScriptRequest(rows=[row.model_copy(update={"settings": {"gainDb": -6}})]), background=False)
+    assert first.status == second.status == "complete"
+    assert len(engine.spoken) == 1 and second.reused == 1
 
 
 def test_capability_route_accepts_script_document_without_running_a_processor():

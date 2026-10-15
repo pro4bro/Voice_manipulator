@@ -663,6 +663,7 @@ export const api = {
     request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),
   downloadVoiceOutputAudio: (projectId: string, outputId: string) =>
     downloadFile(`/api/projects/${projectId}/voice-outputs/${outputId}/audio`, `${outputId}.wav`),
+  downloadVoiceArtifact: (url: string, filename: string) => downloadFile(url, filename),
   exportVoiceOutputSubtitles: (projectId: string, outputId: string, mode: "sentence" | "word" | "table" | "line") =>
     downloadSrt(
       `/api/projects/${projectId}/voice-outputs/${outputId}/subtitles?mode=${mode}`,
