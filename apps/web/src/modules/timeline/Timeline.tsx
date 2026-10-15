@@ -15,6 +15,7 @@ import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-au
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import "./production-selection.css";
+import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
@@ -1227,6 +1228,7 @@ export function Timeline({
   }
 
   function followPlayhead() {
+    if (rangeSelectionEnabled && hasMultipleSelectionRanges(wordSelection)) return;
     const scroller = timelineScrollRef.current;
     if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
     const playheadX = (currentTime / Math.max(duration, 0.001)) * scroller.scrollWidth;
@@ -1593,6 +1595,12 @@ export function Timeline({
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
           </div>
+          {rangeSelectionEnabled ? <SelectionMarkers orientation="horizontal" className="timeline-selection-markers" markers={productionRanges(wordSelection, displayWords).map((range) => ({ id: range.id, position: (range.start + range.end) / 2 / Math.max(duration, .001), label: `Timeline ${range.start.toFixed(3)}–${range.end.toFixed(3)}s` }))} onReveal={(id) => {
+            const range = productionRanges(wordSelection, displayWords).find((item) => item.id === id), scroller = timelineScrollRef.current;
+            if (!range || !scroller) return;
+            scroller.scrollLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, (range.start + range.end) / 2 / Math.max(duration, .001) * scroller.scrollWidth - scroller.clientWidth / 2));
+            setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+          }} /> : null}
           <div aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
             <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
           </div>

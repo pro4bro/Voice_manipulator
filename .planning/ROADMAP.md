@@ -1127,3 +1127,8 @@ Conditioning A/B waits for delivery/loudness processors. Next VM-TIMING-REF-01.
 Third of five: portable timing source/template plans, reviewed same-text mapping,
 unknown different-text anchors, verified training snapshot checks. See round gate.
 Word-anchor execution remains pending; next VM-NAV-01.
+
+## VM-NAV-01 — 2026-10-15
+
+Fourth of five: content/time selection markers, collision menus and playback
+follow guards. Marker/selection/scrollbar9 pass; see round gate. Next VM-DURATION-01.

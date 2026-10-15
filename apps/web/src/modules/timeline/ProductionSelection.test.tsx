@@ -95,3 +95,31 @@ it("explicit slot navigation reveals both views without altering multi-selection
   expect(screen.getByTestId("selection").textContent).toBe(before);
   expect(script.scrollTop).toBe(800);
 });
+
+it("marker clicks reveal ranges in both scrollers without seeking or clearing multi-selection", () => {
+  const view = render(<Harness />);
+  const scroller = view.container.querySelector<HTMLElement>(".timeline-scroll")!;
+  const script = view.container.querySelector<HTMLElement>(".script-table-scroll")!;
+  Object.defineProperties(scroller, { clientWidth: { configurable: true, value: 100 }, scrollWidth: { configurable: true, value: 1000 } });
+  Object.defineProperties(script, { clientHeight: { configurable: true, value: 100 }, scrollHeight: { configurable: true, value: 1000 } });
+  vi.spyOn(script, "getBoundingClientRect").mockReturnValue({ top: 0 } as DOMRect);
+  vi.spyOn(view.container.querySelector<HTMLElement>('[data-script-word-index="1"]')!, "getBoundingClientRect").mockReturnValue({ top: 800, height: 20 } as DOMRect);
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 2" }), { ctrlKey: true });
+  const before = screen.getByTestId("selection").textContent;
+  scroller.scrollLeft = 0; script.scrollTop = 0;
+  const audio = view.container.querySelector<HTMLAudioElement>("audio")!;
+  const time = audio.currentTime;
+  fireEvent.click(view.container.querySelector<HTMLElement>(".timeline-selection-markers .selection-marker")!);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Timeline 7.000–8.000s" }));
+  expect(scroller.scrollLeft).toBe(700);
+  fireEvent.click(view.container.querySelector<HTMLElement>(".script-selection-markers .selection-marker")!);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Script 7.000–8.000s" }));
+  expect(script.scrollTop).toBe(775);
+  expect(audio.currentTime).toBe(time);
+  expect(screen.getByTestId("selection").textContent).toBe(before);
+  scroller.scrollLeft = 0;
+  audio.currentTime = 8;
+  fireEvent.timeUpdate(audio);
+  expect(scroller.scrollLeft).toBe(0);
+});

@@ -1,0 +1,10 @@
+.selection-markers { position: absolute; z-index: 9; pointer-events: none; }
+.timeline-scroll-shell { position: relative; }
+.timeline-selection-markers { bottom: 1px; left: 1px; right: 1px; height: 10px; }
+.script-selection-markers { inset-block: 4px; right: 3px; width: 13px; }
+.selection-marker { position: absolute; padding: 0; border: 1px solid var(--accent, #e78b43); border-radius: 2px; background: #ffd75b; box-shadow: 0 0 5px #ffd75b; pointer-events: auto; cursor: pointer; }
+.selection-markers--horizontal .selection-marker { width: 7px; height: 10px; top: 0; transform: translateX(-50%); }
+.selection-markers--vertical .selection-marker { width: 13px; height: 5px; left: 0; transform: translateY(-50%); }
+.selection-marker:focus-visible { outline: 2px solid var(--text, white); outline-offset: 2px; }
+.selection-marker-menu { position: fixed; z-index: 2000; width: 270px; max-height: 300px; overflow: auto; padding: 5px; background: var(--surface, #292725); color: var(--text, white); border: 1px solid var(--line, #777); box-shadow: 0 5px 24px #0006; }
+.selection-marker-menu button { display: block; width: 100%; padding: 8px; text-align: left; color: inherit; background: transparent; border: 0; cursor: pointer; }

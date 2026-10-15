@@ -9,12 +9,13 @@ import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBre
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptPlaybackVisibility } from "./script-playback-follow";
+import { ScriptSelectionMarkers } from "./ScriptSelectionMarkers";
 import { ScriptScrollbar } from "./ScriptScrollbar";
 import { TimingPlanEditor } from "./TimingPlanEditor";
 import { VoiceScriptSettings } from "./VoiceScriptSettings";
 import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
-import { selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -140,6 +141,15 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
     }).map((row) => row.id);
     setRowSelection((current) => current.ids.join("\0") === ids.join("\0") ? current : { ids, anchorId: ids.at(-1) ?? null });
   }, [wordSelection, rows, timings]);
+  const selectionMarkers = useMemo(() => {
+    const ranges = productionRanges(wordSelection, words);
+    if (ranges.length) return ranges.map((range) => {
+      const wordIndex = words.findIndex((word) => word.end > range.start && word.start < range.end);
+      const nearest = rows.find((row) => { const timing = timings.get(row.id); return timing?.fresh && timing.end > range.start; }) ?? rows.at(-1);
+      return { id: range.id, wordIndex: wordIndex >= 0 ? wordIndex : undefined, rowId: nearest?.id, label: `Script ${range.start.toFixed(3)}–${range.end.toFixed(3)}s` };
+    });
+    return (wordSelection.rowIds ?? []).flatMap((id) => { const row = rows.find((row) => row.id === id); return row ? [{ id, rowId: id, label: `Script ${row.text || "Câu chưa có lời thoại"}` }] : []; });
+  }, [wordSelection, words, rows, timings]);
   const speakerOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id) ?? null;
   const usedVoices = new Set(readiness.rows.map((row) => row.voiceId));
   const wordCount = rows.reduce((total, row) => total + (normalizedRowText(row.text) ? normalizedRowText(row.text).split(" ").length : 0), 0);
@@ -298,7 +308,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
   });
 
   useScriptPlaybackVisibility(followRoot, scrollRef, playbackId ? [playbackId] : [],
-    playbackId ? { [playbackId]: activeWordIndex } : {}, undefined, view === "table");
+    playbackId ? { [playbackId]: activeWordIndex } : {}, undefined, view === "table" && !hasMultipleSelectionRanges(wordSelection));
 
   useEffect(() => {
     if (!voiceMenu) return undefined;
@@ -594,6 +604,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
           <button className="voice-script__add" onClick={() => insertAfter(shownRows[shownRows.length - 1]?.id ?? null)} type="button"><Icon name="plus" />THÊM ĐOẠN</button>
         </div>
       </div>
+      <ScriptSelectionMarkers viewport={scrollRef} markers={selectionMarkers} />
       <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn Voice Script" className="script-table-scrollbar" />
       </div>
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
