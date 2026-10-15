@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.domain.voice_delivery import unsupported_synthesis_settings
 
 import audioop
 import hashlib
@@ -397,7 +398,7 @@ class VoiceScriptSpeaker:
         for number, row in enumerate(request.rows, start=1):
             original = selected_by_id[row.id]
             settings = effective_settings(document, original) if request.script_revision is not None else row.settings
-            synthesis = {key: value for key, value in settings.items() if key not in {"note", "locked", "duration"} and value is not None}
+            synthesis = unsupported_synthesis_settings(settings)
             if synthesis:
                 raise ValueError(f"Câu {number}: hướng dẫn {', '.join(synthesis)} đã lưu nhưng chưa có bộ generate hỗ trợ. Bỏ override để đọc bằng cấu hình hiện tại.")
             text = " ".join(row.text.split())

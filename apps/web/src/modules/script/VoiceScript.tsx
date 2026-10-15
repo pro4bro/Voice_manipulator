@@ -14,6 +14,7 @@ import { ScriptScrollbar } from "./ScriptScrollbar";
 import { DurationPlanPanel } from "./DurationPlanPanel";
 import { TimingPlanEditor } from "./TimingPlanEditor";
 import { VoiceScriptSettings } from "./VoiceScriptSettings";
+import { DeliveryCapabilities } from "./DeliveryCapabilities";
 import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
@@ -583,6 +584,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
     </div>
     {saveError ? <div role="alert" className="script-timing-warning">{saveError}<button onClick={() => { if (window.confirm("Tải Script đã lưu? Nội dung chưa lưu vẫn có bản dự phòng trong trình duyệt.")) onReload?.(); }} type="button">Tải lại bản đã lưu</button></div> : null}
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
+    <DeliveryCapabilities document={scriptDocument ?? migrateScript(rows)} />
     {timingContext && scriptDocument ? <DurationPlanPanel projectId={timingContext.projectId} document={scriptDocument} saved={timingContext.saved} output={output} refreshKey={durationRefresh} /> : null}
     {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} onChange={() => setDurationRefresh((current) => current + 1)} /> : null}
     {view === "table" ? <div className="script-table-shell voice-script" onContextMenu={referenceContext} onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) referenceContext(event); else handleRowSelectionKey(event); }} ref={followRoot}>

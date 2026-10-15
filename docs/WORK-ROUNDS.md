@@ -2,6 +2,12 @@
 
 ## Voice Manipulator rounds11–15 — in progress (2026-10-15)
 
+VM-DELIVERY-01 capability/preflight slice integrated. Script shows supported
+baseline versus unsupported whisper/shout/mood/emotion/intensity requests;
+unsupported fails before inference. Backend38 and frontend13 affected pass,
+typecheck passes. No verified expressive conditioning or identity A/B exists:
+this round's delivery quality remains open. Next VM-LOUDNESS-01 actual render.
+
 VM-STRETCH-01 source integration adds actual pitch-preserving preview, Ctrl
 handles, ready packet publication and undo/move/cache checks. Backend24 and
 frontend84 affected pass; real4.73→5.15s PCM passes. Cold API812ms fails250ms

@@ -41,6 +41,7 @@ from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_edits import FileVoiceEdits
 from app.adapters.voice_edit_routes import make_voice_edit_router
+from app.adapters.voice_delivery_routes import make_voice_delivery_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -823,6 +824,7 @@ def create_app(
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.include_router(make_voice_collection_transfer_router(voice_collections))
     app.include_router(make_voice_edit_router(voice_edits))
+    app.include_router(make_voice_delivery_router())
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,

@@ -2214,7 +2214,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       return;
     }
     const pendingDirection = voiceScriptRows.find((row) => Object.entries(effectiveScriptSettings(voiceScript.document, row))
-      .some(([key, value]) => key !== "locked" && key !== "note" && key !== "duration" && value != null));
+      .some(([key, value]) => key !== "locked" && key !== "note" && key !== "duration" && value != null && !(key === "delivery" && value === "neutral") && !(key === "emotion" && value === "normal")));
     if (pendingDirection) {
       setNotice("Sắc thái/âm lượng đã lưu nhưng chưa có processor đã kiểm chứng. Bỏ các giá trị này để tạo giọng; thời lượng đã được hỗ trợ.");
       return;
