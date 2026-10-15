@@ -1,6 +1,17 @@
 # Work Rounds
 
-## Voice Manipulator rounds11–15 — in progress (2026-10-15)
+## Voice Manipulator rounds11–15 — source slices delivered, gates open (2026-10-15)
+
+VM-REF-RANDOM-01 finishes this requested batch's source work: seeded/frozen
+value/time schedules, preview/apply, freshness/lock/event integrity and expanded
+Reference Detail. Schedule/API/production-route7 and affected UI7 pass. Delivery
+and randomized reference conditioning remain unverified processors; preview
+latency/browser/listening are open. See combined rounds11–15 gate. Next planned
+VM-FIX-01 retains these dependencies; Phase03 stays60%, no push/portable/model migration.
+Final frozen-source frontend866/866, typecheck/build and current affected API51/51
+pass. Earlier full API942 is explicitly bounded to its pre-final-change snapshot.
+
+### Earlier notes within this batch (superseded by the summary above)
 
 VM-LOUDNESS-01 wired verified render to Script playback/WAV download with portable
 latest pointer and stale revision guards. Real5.15s123600frames clip/row gain,

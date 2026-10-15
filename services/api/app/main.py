@@ -43,6 +43,7 @@ from app.adapters.file_voice_edits import FileVoiceEdits
 from app.adapters.voice_edit_routes import make_voice_edit_router
 from app.adapters.voice_delivery_routes import make_voice_delivery_router
 from app.adapters.voice_render_routes import make_voice_render_router
+from app.adapters.reference_schedule_routes import make_reference_schedule_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -827,6 +828,7 @@ def create_app(
     app.include_router(make_voice_edit_router(voice_edits))
     app.include_router(make_voice_delivery_router())
     app.include_router(make_voice_render_router(voice_edits, voice_script_documents))
+    app.include_router(make_reference_schedule_router(reference_bindings, voice_script_documents))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,

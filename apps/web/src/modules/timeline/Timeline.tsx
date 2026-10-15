@@ -17,7 +17,7 @@ import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selec
 import "./production-selection.css";
 import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { StretchHandles } from "./StretchHandles";
-import { mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
+import { inverseStretch, mapStretchSelection, mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
@@ -286,8 +286,8 @@ export function Timeline({
   wordEditorRef.current = wordEditor;
   const moduleRef = useRef<HTMLElement>(null);
   useScriptShortcuts(moduleRef, {
-    undo: onUndo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onUndo(); } : undefined,
-    redo: onRedo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onRedo(); } : undefined,
+    undo: voiceEdits?.packet?.document.cursor ? () => void navigateStretchHistory("undo") : onUndo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onUndo(); } : undefined,
+    redo: voiceEdits?.packet && voiceEdits.packet.document.cursor < voiceEdits.packet.document.operations.length ? () => void navigateStretchHistory("redo") : onRedo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onRedo(); } : undefined,
   }, ".timeline-module");
   useEffect(() => { hidePromotionNote(); }, [promotedIndex, take?.id]);
   useEffect(() => () => { if (promotionNoteTimer.current) clearTimeout(promotionNoteTimer.current); }, []);
@@ -1420,6 +1420,19 @@ export function Timeline({
     if (samePreview) stretchTransportRef.current = null;
   }
 
+  async function navigateStretchHistory(action: "undo" | "redo") {
+    const document = voiceEdits?.packet?.document;
+    const operation = document?.operations[document.cursor - (action === "undo" ? 1 : 0)];
+    if (!voiceEdits || !document || !operation || voiceEdits.busy) return;
+    const mapping = action === "undo" ? inverseStretch(operation) : operation;
+    suspendStretchPlayback(); prepareStretchPlayback(mapping);
+    const accepted = await voiceEdits.history(action);
+    if (accepted) {
+      onWordSelectionChange?.(mapStretchSelection(selectionRef.current, mapping, document.sampleRate));
+      completeStretchPlayback(false);
+    } else restoreStretchPlayback();
+  }
+
   return (
     <ModuleFrame
       elementRef={moduleRef}
@@ -1432,8 +1445,8 @@ export function Timeline({
         <div className="timeline-header-actions">
           {leadingActions}
           {voiceEdits?.packet ? <div className="timeline-edit-actions" aria-label="Giãn thời lượng">
-            <button type="button" disabled={voiceEdits.busy || !voiceEdits.packet.document.cursor} onClick={() => { stretchTransportRef.current = null; void voiceEdits.history("undo").then((ok) => { if (ok) onWordSelectionChange?.({ ...wordSelection, ranges: undefined }); }); }}>Undo giãn</button>
-            <button type="button" disabled={voiceEdits.busy || voiceEdits.packet.document.cursor >= voiceEdits.packet.document.operations.length} onClick={() => { stretchTransportRef.current = null; void voiceEdits.history("redo").then((ok) => { if (ok) onWordSelectionChange?.({ ...wordSelection, ranges: undefined }); }); }}>Redo giãn</button>
+            <button type="button" disabled={voiceEdits.busy || !voiceEdits.packet.document.cursor} onClick={() => void navigateStretchHistory("undo")}>Undo giãn</button>
+            <button type="button" disabled={voiceEdits.busy || voiceEdits.packet.document.cursor >= voiceEdits.packet.document.operations.length} onClick={() => void navigateStretchHistory("redo")}>Redo giãn</button>
             <span role="status">{voiceEdits.busy ? "Đang dựng audio…" : voiceEdits.error ?? (voiceEdits.packet.document.cursor ? "Preview giãn · chưa Fix voice" : "Ctrl + kéo handle để giãn")}</span>
           </div> : null}
           <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">

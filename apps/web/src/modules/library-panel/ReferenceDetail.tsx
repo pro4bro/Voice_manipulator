@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { REFERENCE_PROPERTIES, type ReferenceBinding, type ReferenceBindingDocument, type ReferenceResolution } from "../../domain/reference-bindings";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "./reference-detail.css";
+import { ReferenceScheduleEditor } from "./ReferenceScheduleEditor";
 
 const stateLabel: Record<string, string> = { requested: "Chờ phân tích", missing: "Thiếu nguồn", stale: "Cần cập nhật", measured: "Đã đo nguồn", unsupported: "Chưa hỗ trợ áp dụng", conflict: "Cần chọn ưu tiên", locked: "Theo cấu hình đã đặt", unavailable: "Nguồn không khả dụng" };
 
-export function ReferenceDetail({ document, error, onReload, onNavigate, onDelete, onResolve }: {
+export function ReferenceDetail({ projectId, document, error, onReload, onNavigate, onDelete, onResolve }: {
+  projectId?: string;
   onResolve?: (binding: ReferenceBinding) => Promise<ReferenceResolution>;
   document?: ReferenceBindingDocument | null; error?: string | null; onReload?: () => void;
   onNavigate?: (binding: ReferenceBinding) => void; onDelete?: (binding: ReferenceBinding) => Promise<void>;
@@ -39,7 +41,7 @@ export function ReferenceDetail({ document, error, onReload, onNavigate, onDelet
           </div>
           {open ? <div id={`reference-${binding.id}`} className="reference-detail__expanded">
             <p>{binding.target.start === null ? "Chưa có timing audio" : `${binding.target.start.toFixed(3)} → ${binding.target.end!.toFixed(3)}s · ${(binding.target.end! - binding.target.start).toFixed(3)}s`}</p>
-            <p>Trạng thái: {stateLabel[binding.status]} · Random giá trị/thời điểm: tắt · Kết quả áp dụng được ghi ở Voice Output</p>
+            <p>Trạng thái: {stateLabel[binding.status]} · Yêu cầu và kết quả thực áp dụng được hiển thị riêng.</p>
             {binding.warnings.map((warning, index) => <p role="status" key={index}>{warning}</p>)}
             {binding.sources.map((source, index) => <div key={`${source.assetId}-${index}`}>
               <b>{source.name || source.assetId}</b><p>{source.start.toFixed(3)} → {source.end.toFixed(3)}s</p>
@@ -48,6 +50,7 @@ export function ReferenceDetail({ document, error, onReload, onNavigate, onDelet
             </div>)}
             <button type="button" disabled={busy !== null || !onResolve} onClick={() => void analyze(binding)}>Phân tích reference</button>
             {resolutions[binding.id]?.units.map((unit, index) => <div key={unit.rowId ?? index} aria-label="Kết quả phân tích reference"><b>{unit.rowId ? `Câu ${index + 1}` : "Vùng audio"}</b>{Object.entries(unit.properties).map(([key, result]) => <p key={key}>{REFERENCE_PROPERTIES.find(([id]) => id === key)?.[1]}: {stateLabel[result.state]} · {result.reason}{result.source?.features ? ` · ${result.source.features.duration.toFixed(3)}s · RMS ${result.source.features.rmsDbfs?.toFixed(1) ?? "im lặng"} dBFS` : ""}</p>)}</div>)}
+            {projectId ? <ReferenceScheduleEditor projectId={projectId} binding={binding} /> : null}
             <button type="button" disabled={busy !== null || !onDelete} onClick={async () => { setBusy(binding.id); setFailure(null); try { await onDelete?.(binding); } catch (reason) { setFailure(String(reason)); } finally { setBusy(null); } }}>{busy === binding.id ? "Đang bỏ gán…" : "Bỏ gán reference"}</button>
           </div> : null}
         </li>;

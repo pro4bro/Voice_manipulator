@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator rounds11–15 — source slices (2026-10-15)
+
+Ripple/stretch preview, delivery capability report, gain render/export and frozen
+reference schedules integrated. Prior real speech5.15s123600frames/source-hash/
+undo/move/download pass. Combined rounds11–15 gate records exact tests/limits.
+Cold312–812ms misses250ms; browser/listening/identity, expressive conditioning
+and schedule execution remain open. Next planned VM-FIX-01/02 with dependencies.
+Phase03 stays60%; Phase05 incomplete; no model migration/push/portable.
+
 ## Voice Manipulator — next five rounds completed in source (2026-10-15)
 
 Owner-directed VM-REF-DETAIL-01, VM-REF-RESOLVE-01, VM-TIMING-REF-01,

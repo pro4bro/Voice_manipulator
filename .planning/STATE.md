@@ -6,11 +6,18 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-15 — Voice Manipulator checklist rounds6–10.
-last_activity_desc: Rounds6–10 implemented — reference slots/resolution/timing templates/selection markers/native duration budgets. Actual32-step GPU clone natural1.78/short1.42/long2.60 and multi-profile4.95 passed, including timing override/reuse2/2/move hashes and PCM boundaries. Full backend885 and affected53 pass; frontend853/typecheck/build pass; exact evidence in combined gate. Human listening/identity, word anchors and native browser UAT remain open. Next VM-RIPPLE-01. Phase03 stays60%, no portable/push; prior queues retained.
+last_activity: 2026-10-15 — Voice Manipulator rounds11–15 source slices.
+last_activity_desc: Ripple and real stretch preview, delivery preflight, gain render/export and frozen reference schedules integrated. Prior speech5.15s123600frames/source-hash/undo/move/preview-download pass. Backend full942 before final changes plus affected suites; final frontend/build in combined gate. Cold312–812ms misses250ms; browser/listening/identity and expressive/schedule conditioning remain open. Next planned VM-FIX-01; Phase03 stays60%, no model migration/push/portable.
 ---
 
 # Project State
+
+## Voice Manipulator rounds11–15 — 2026-10-15
+
+Scope and evidence: `docs/gates/voice-manipulator-rounds11-15-20261015.md`.
+Stretch is preview, not regenerated or reviewed speech timing. Delivery/random
+conditioning remain unverified processors. Next planned VM-FIX-01 retains these
+gates; STT acoustic review and original OBS/source-library queues remain.
 
 ## Project Reference
 

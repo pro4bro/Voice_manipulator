@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã triển khai code mười vòng đầu;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực hiện tới vòng15, có các slice/gate còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -13,6 +13,13 @@ Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đ
 chi tiết từng reference footage và các đặc tính được chọn.
 
 ## Tiến độ vòng6–10 — 2026-10-15
+
+**Cập nhật vòng11–15:** ripple/stretch preview, delivery capability preflight,
+gain render và schedule random đã tích hợp source. Cách diễn và random vẫn chưa
+có conditioning đã kiểm chứng; cold312–812ms chưa đạt250ms, browser/nghe/identity
+còn mở. Gate tổng rounds11–15 phân biệt processor thực với planner. Vòng tiếp
+theo theo kế hoạch VM-FIX-01 giữ các dependency trên và STT acoustic review.
+Lịch sử vòng6–10 bên dưới không thay thế trạng thái mới này.
 
 Reference Detail, resolver, timing source/template, markers và duration planner/
 native generation đã triển khai. Model clone GPU32step đã tạo mẫu1.78s tự nhiên,

@@ -1,6 +1,17 @@
 # Project Status — 2026-10-15
 
-## Voice Manipulator rounds11–15 — in progress
+## Voice Manipulator rounds11–15 — source slices delivered, acceptance open
+
+Ripple/stretch audio, delivery capability preflight, actual gain render/export
+and frozen random-reference schedules integrated. Prior real speech4.73→5.15s,
+123600frames,0clipping/source-hash/undo/move/identical preview-download pass.
+Backend full942 before final changes plus affected suites; frontend/build closure
+in `docs/gates/voice-manipulator-rounds11-15-20261015.md`. Cold312–812ms misses250ms;
+browser/listening/identity, expressive conditioning and schedule execution remain
+open. Next planned VM-FIX-01 with those dependencies. Phase03 remains60%.
+Final current affected API51/51 and frozen-source frontend866/866/typecheck/build pass.
+
+### Earlier ripple checkpoint (subsequent integration is summarized above)
 
 VM-RIPPLE-01 adds project-owned frame mapping/undo history, source hashes,
 Script/edit revision conflicts and duration lock/budget guards. Focused13 pass;
