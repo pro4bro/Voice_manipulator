@@ -1,5 +1,13 @@
 # Project Status — 2026-10-15
 
+## Voice Manipulator rounds11–15 — in progress
+
+VM-RIPPLE-01 adds project-owned frame mapping/undo history, source hashes,
+Script/edit revision conflicts and duration lock/budget guards. Focused13 pass;
+see docs/gates/vm-ripple-01-20261015.md and ADR0078. Public stretch awaits actual
+audio. Next VM-STRETCH-01, delivery capability, loudness and reference schedules.
+No Phase03 completion, model migration or portable release is claimed.
+
 ## Voice Manipulator — next five rounds completed in source (2026-10-15)
 
 Owner-directed VM-REF-DETAIL-01, VM-REF-RESOLVE-01, VM-TIMING-REF-01,

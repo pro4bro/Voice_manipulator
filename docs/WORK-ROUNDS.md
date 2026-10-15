@@ -1,5 +1,13 @@
 # Work Rounds
 
+## Voice Manipulator rounds11–15 — in progress (2026-10-15)
+
+Owner requested five more rounds. VM-RIPPLE-01 contract/journal implemented;
+focused13 backend checks pass; independent review in progress. Public handles
+await real audio integration. Next VM-STRETCH-01, VM-DELIVERY-01,
+VM-LOUDNESS-01, VM-REF-RANDOM-01. Delivery identity/listening and acoustic timing
+remain separate gates; no FastPitch migration is part of this request.
+
 This ledger applies the owner's progress-reminder rule. Each invocation performs
 one bounded round, verifies it, records what the round means, and stops. The
 closing report must always name: completed scope, evidence, remaining gap, why
