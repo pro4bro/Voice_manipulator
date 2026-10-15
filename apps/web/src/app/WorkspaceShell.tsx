@@ -11,6 +11,7 @@ import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
 import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
+import { useVoiceEdits } from "./useVoiceEdits";
 import { effectiveScriptSettings } from "../domain/voice-script-document";
 import { captureReferenceTargets, referenceSelection, referenceInheritedSettings, type ReferenceBinding, type ReferenceBindingDocument, type ProductionNavigation, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
 import { ReferenceAssignmentEditor } from "../modules/library-panel/ReferenceAssignmentEditor";
@@ -176,7 +177,6 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [take, setTake] = useState<ActiveTake | null>(null);
   const [outputTake, setOutputTake] = useState<ActiveTake | null>(null);
   const [recordingTake, setRecordingTake] = useState<ActiveTake | null>(null);
-  const pageTake = activePageTake();
   const [mediaAssets, setMediaAssets] = useState<ProjectMediaAsset[]>([]);
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
   const wordWriteQueues = useRef(new Map<string, Promise<void>>());
@@ -295,6 +295,9 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [generatorParameters, setGeneratorParameters] = useState<Record<string, Record<string, TrainingParameterValue>>>({});
   const [generating, setGenerating] = useState(false);
   const voiceScript = useVoiceScriptDocument(project.id);
+  const voiceEdits = useVoiceEdits(project.id, outputTake?.id, voiceScript.document.revision);
+  const editedOutput = voiceEdits.packet && voiceEdits.packet.document.outputId === outputTake?.id ? voiceEdits.packet.output : null;
+  const pageTake = activePageTake();
   const voiceScriptRows = voiceScript.document.rows;
   const setVoiceScriptRows = voiceScript.setRows;
   const [referenceDocument, setReferenceDocument] = useState<ReferenceBindingDocument | null>(null);
@@ -823,7 +826,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }
 
   function activePageTake(): ActiveTake | null {
-    if (activePage === "voice-manipulator") return outputTake;
+    if (activePage === "voice-manipulator") return editedOutput && outputTake ? { ...outputTake, duration: editedOutput.duration, words: editedOutput.words ?? [], url: voiceEdits.packet!.audioUrl, wordTimingQuality: editedOutput.wordTimingQuality ?? undefined, wordTimingNote: editedOutput.wordTimingNote } : outputTake;
     if (activePage === "voice-changer") return recordingTake;
     return take;
   }
@@ -2493,6 +2496,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   function openReferenceContext(request: ReferenceContextRequest) {
     try {
+      if (voiceEdits.packet?.document.cursor && request.selection.scope?.kind !== "script") throw new Error("Vùng đang dùng thời gian preview đã giãn. Gán reference theo câu trong Script hoặc Undo giãn trước khi chọn mốc nguồn.");
       const selection = scopeVoiceSelection(request.selection);
       const targets = captureReferenceTargets(selection, voiceOutputs.find((output) => output.id === outputTake?.id) ?? null, voiceScript.document);
       if (!targets.length || !selection.scope) throw new Error("Quét chọn một vùng waveform, subtitle hoặc Script trước khi gán reference.");
@@ -2512,6 +2516,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   const context = useMemo<StudioContext>(() => ({
+    voiceEdits,
+    editedVoiceOutput: editedOutput,
     workflow: activePage,
     script,
     selectedVoice,
@@ -2801,7 +2807,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

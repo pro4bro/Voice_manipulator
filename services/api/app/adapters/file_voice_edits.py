@@ -35,7 +35,7 @@ class FileVoiceEdits:
             return doc
         return VoiceEditDocument(output_id=output_id, source_sha256=digest, sample_rate=rate, source_frames=frames)
 
-    def change(self, project_id: str, output_id: str, command: VoiceEditCommand) -> VoiceEditDocument:
+    def change(self, project_id: str, output_id: str, command: VoiceEditCommand, *, persist: bool = True) -> VoiceEditDocument:
         with self._lock, self.scripts._lock:
             current = self.get(project_id, output_id)
             script = self.scripts.get(project_id)
@@ -59,7 +59,8 @@ class FileVoiceEdits:
                         raise ValueError("Vùng có duration khóa/budget đoạn; chỉnh cấu hình trước khi giãn.")
             saved = apply_command(current, command)
             path = self.outputs.audio_path(project_id, output_id).parent / "edits.json"
-            FileProjectRepository._atomic_write(path, saved.model_dump_json(by_alias=True, indent=2))
+            if persist:
+                FileProjectRepository._atomic_write(path, saved.model_dump_json(by_alias=True, indent=2))
             return saved
 
     def mapped_output(self, project_id: str, output_id: str, doc: VoiceEditDocument):

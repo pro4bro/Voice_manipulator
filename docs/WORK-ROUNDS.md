@@ -2,6 +2,12 @@
 
 ## Voice Manipulator rounds11–15 — in progress (2026-10-15)
 
+VM-STRETCH-01 source integration adds actual pitch-preserving preview, Ctrl
+handles, ready packet publication and undo/move/cache checks. Backend24 and
+frontend84 affected pass; real4.73→5.15s PCM passes. Cold API812ms fails250ms
+response budget; browser inventory empty and listening/continuous playback open.
+See docs/gates/vm-stretch-01-20261015.md. Next VM-DELIVERY-01 capability preflight.
+
 Owner requested five more rounds. VM-RIPPLE-01 contract/journal implemented;
 focused13 backend checks pass; independent review in progress. Public handles
 await real audio integration. Next VM-STRETCH-01, VM-DELIVERY-01,

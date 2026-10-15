@@ -16,6 +16,8 @@ import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../
 import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import "./production-selection.css";
 import { SelectionMarkers } from "../../ui/SelectionMarkers";
+import { StretchHandles } from "./StretchHandles";
+import { mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
@@ -58,6 +60,7 @@ interface DetailWaveformRequest {
 }
 
 interface TimelineProps {
+  voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   rangeSelectionEnabled?: boolean;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
@@ -231,6 +234,7 @@ function activeWordAt(words: StudioWord[], time: number) {
 }
 
 export function Timeline({
+  voiceEdits,
   navigation,
   take,
   gain,
@@ -306,6 +310,7 @@ export function Timeline({
     return () => window.removeEventListener("pointerdown", closeOutside, true);
   }, [speakerMenu]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const wordTrackRef = useRef<HTMLDivElement>(null);
@@ -571,7 +576,7 @@ export function Timeline({
     setStagedCut(null);
     setSelectedSections([]);
     promoteTimestampWord(null, null);
-  }, [take?.id, take?.url]);
+  }, [take?.id]);
 
   useEffect(() => {
     const receive = (event: Event) => {
@@ -804,8 +809,10 @@ export function Timeline({
     if (context.state === "suspended") await context.resume();
   }
   async function togglePlay() {
+    if (stretchTransportRef.current) stretchTransportRef.current.wasPlaying = false;
     const audio = audioRef.current;
     if (!audio || !take?.url || isRecording) return;
+    if (voiceEdits?.busy) { audio.pause(); return; }
     audioScrubber.end();
     if (audio.paused) {
       try {
@@ -1240,6 +1247,7 @@ export function Timeline({
   }
 
   function seekToClientX(clientX: number) {
+    stretchTransportRef.current = null;
     const canvas = timelineCanvasRef.current;
     if (isRecording || !take?.url || !canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -1257,6 +1265,7 @@ export function Timeline({
   }
 
   function seekTransportToClientX(clientX: number) {
+    stretchTransportRef.current = null;
     const transport = transportProgressRef.current;
     if (isRecording || !take?.url || !transport) return;
     const rect = transport.getBoundingClientRect();
@@ -1382,6 +1391,35 @@ export function Timeline({
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
 
+  function suspendStretchPlayback() {
+    const audio = audioRef.current;
+    stretchTransportRef.current = { sourceTime: audio?.currentTime ?? currentTime, time: audio?.currentTime ?? currentTime, wasPlaying: Boolean(audio && !audio.paused), url: take?.url ?? "", complete: false };
+    audio?.pause(); audioScrubber.end();
+  }
+
+  function prepareStretchPlayback(operation: StretchOperation) {
+    const transport = stretchTransportRef.current;
+    if (transport) transport.time = mapStretchTime(transport.sourceTime, operation, voiceEdits?.packet?.document.sampleRate ?? 24000);
+    audioRef.current?.pause();
+  }
+
+  function restoreStretchPlayback() {
+    const transport = stretchTransportRef.current, audio = audioRef.current;
+    if (!transport) return;
+    transport.time = transport.sourceTime; transport.complete = true;
+    if (audio && audio.readyState >= 1 && audio.currentSrc.endsWith(transport.url)) {
+      audio.currentTime = transport.sourceTime;
+      if (transport.wasPlaying) void audio.play().catch(() => undefined);
+      stretchTransportRef.current = null;
+    }
+  }
+
+  function completeStretchPlayback(samePreview: boolean) {
+    if (!stretchTransportRef.current) return;
+    stretchTransportRef.current.complete = true;
+    if (samePreview) stretchTransportRef.current = null;
+  }
+
   return (
     <ModuleFrame
       elementRef={moduleRef}
@@ -1393,6 +1431,11 @@ export function Timeline({
       action={
         <div className="timeline-header-actions">
           {leadingActions}
+          {voiceEdits?.packet ? <div className="timeline-edit-actions" aria-label="Giãn thời lượng">
+            <button type="button" disabled={voiceEdits.busy || !voiceEdits.packet.document.cursor} onClick={() => { stretchTransportRef.current = null; void voiceEdits.history("undo").then((ok) => { if (ok) onWordSelectionChange?.({ ...wordSelection, ranges: undefined }); }); }}>Undo giãn</button>
+            <button type="button" disabled={voiceEdits.busy || voiceEdits.packet.document.cursor >= voiceEdits.packet.document.operations.length} onClick={() => { stretchTransportRef.current = null; void voiceEdits.history("redo").then((ok) => { if (ok) onWordSelectionChange?.({ ...wordSelection, ranges: undefined }); }); }}>Redo giãn</button>
+            <span role="status">{voiceEdits.busy ? "Đang dựng audio…" : voiceEdits.error ?? (voiceEdits.packet.document.cursor ? "Preview giãn · chưa Fix voice" : "Ctrl + kéo handle để giãn")}</span>
+          </div> : null}
           <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>
@@ -1505,6 +1548,7 @@ export function Timeline({
                   {bounds.visible ? <div className="production-selection-readout" style={{ left: bounds.left, width: bounds.width }}><span>START <b>{range.start.toFixed(3)}s</b></span><span>DURATION <b>{(range.end - range.start).toFixed(3)}s</b></span><span>END <b>{range.end.toFixed(3)}s</b></span></div> : null}
                 </div>;
               }) : null}
+              {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(wordSelection, displayWords)} selection={wordSelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
               {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
@@ -1649,6 +1693,12 @@ export function Timeline({
           onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
           onLoadedMetadata={(event) => {
             syncPlaybackDuration(event.currentTarget);
+            const transport = stretchTransportRef.current;
+            if (transport) {
+              event.currentTarget.currentTime = Math.min(transport.time, event.currentTarget.duration || transport.time);
+              if (transport.wasPlaying) void event.currentTarget.play().catch(() => undefined);
+              if (transport.complete) stretchTransportRef.current = null;
+            }
           }}
           onDurationChange={(event) => syncPlaybackDuration(event.currentTarget)}
           onPause={() => { setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
