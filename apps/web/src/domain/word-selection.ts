@@ -15,6 +15,11 @@ export interface WordSelection {
    * the other module scrolls to when the selection is mirrored across.
    */
   anchor: number | null;
+  scope?: { kind: "voice-output" | "asset" | "script"; id: string; revision: string };
+  ranges?: Array<{ id: string; start: number; end: number }>;
+  rowIds?: string[];
+  textRanges?: Array<{ rowId: string; start: number; end: number }>;
+  wordIds?: string[];
 }
 
 export interface SelectionModifiers {
@@ -107,6 +112,8 @@ export function sameSelection(left: WordSelection, right: WordSelection): boolea
   return (
     left.anchor === right.anchor &&
     left.indexes.length === right.indexes.length &&
-    left.indexes.every((index, at) => index === right.indexes[at])
+    left.indexes.every((index, at) => index === right.indexes[at]) &&
+    JSON.stringify([left.scope, left.ranges, left.rowIds, left.textRanges, left.wordIds]) ===
+      JSON.stringify([right.scope, right.ranges, right.rowIds, right.textRanges, right.wordIds])
   );
 }

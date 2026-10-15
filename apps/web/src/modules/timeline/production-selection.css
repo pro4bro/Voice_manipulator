@@ -1,0 +1,6 @@
+.production-selection-range { position: absolute; inset-block: 0; z-index: 5; pointer-events: none; background: color-mix(in srgb, var(--accent) 17%, transparent); border-inline: 1px solid var(--accent); }
+.production-selection-readout { position: absolute; top: 5px; left: 0; min-width: 230px; width: 100%; display: flex; justify-content: space-between; gap: 8px; color: var(--text); background: var(--surface-panel); border: 1px solid var(--line); padding: 3px 5px; font-size: 9px; white-space: nowrap; }
+.production-selection-readout span { display: grid; gap: 2px; }
+.production-selection-readout span:nth-child(2) { text-align: center; }
+.production-selection-readout span:last-child { text-align: right; }
+.production-selection-readout b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; }

@@ -2632,7 +2632,14 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onEndReadingSession: () => void reading.end(),
     onSkipCard: () => void reading.skip(),
     wordSelection,
-    onWordSelectionChange: setWordSelection,
+    onWordSelectionChange: (selection) => {
+      if (activePage !== "voice-manipulator" || (!selection.indexes.length && !selection.ranges?.length && !selection.rowIds?.length)) { setWordSelection(selection); return; }
+      const output = voiceOutputs.find((item) => item.id === outputTake?.id);
+      const untimed = Boolean(selection.rowIds?.length && !selection.ranges?.length && !selection.indexes.length);
+      setWordSelection({ ...selection, wordIds: output && !untimed ? selection.indexes.map((index) => `${output.id}:word:${index}`) : [], scope: output && !untimed
+        ? { kind: "voice-output", id: output.id, revision: output.createdAt }
+        : { kind: "script", id: project.id, revision: String(voiceScript.document.revision) } });
+    },
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
     // Picking a person in Sound Library makes them who reads a new Script row.
     onVoiceChange: setSelectedVoice,

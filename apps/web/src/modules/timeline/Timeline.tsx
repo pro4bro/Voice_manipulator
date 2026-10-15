@@ -13,6 +13,8 @@ import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/scr
 import { useScriptWordDeletion } from "../script/use-script-word-deletion";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
+import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import "./production-selection.css";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
@@ -55,6 +57,7 @@ interface DetailWaveformRequest {
 }
 
 interface TimelineProps {
+  rangeSelectionEnabled?: boolean;
   take: ActiveTake | null;
   gain: number;
   recordingPreview?: RecordingWaveformPreview | null;
@@ -243,6 +246,7 @@ export function Timeline({
   onRedo,
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
+  rangeSelectionEnabled = false,
   leadingActions = null,
   liveCaption = null,
   emptyNote,
@@ -324,6 +328,7 @@ export function Timeline({
   const sweepOriginRef = useRef<number | null>(null);
   const sweepBaseRef = useRef<WordSelection>(EMPTY_SELECTION);
   const selectionRef = useRef(wordSelection);
+  const rangeDragRef = useRef<{ x: number; start: number; base: WordSelection; moved: boolean; modifiers: { ctrl: boolean; shift: boolean; alt: boolean } } | null>(null);
   selectionRef.current = wordSelection;
   // Pointer moves fire faster than React renders, so the in-progress edit lives
   // in a ref and only the preview is state.
@@ -431,7 +436,7 @@ export function Timeline({
   // were picked in. Only while paused - moving it mid-playback would fight the
   // person listening.
   useEffect(() => {
-    if (playing || wordDragRef.current || !wordSelection.indexes.length) return;
+    if (playing || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection) || !wordSelection.indexes.length) return;
     const first = displayWords[wordSelection.indexes[0]];
     if (!first) return;
     setCurrentTime(first.start);
@@ -446,7 +451,7 @@ export function Timeline({
   useEffect(() => {
     const scroller = timelineScrollRef.current;
     const anchor = wordSelection.anchor;
-    if (!scroller || anchor === null || wordDragRef.current) return;
+    if (!scroller || anchor === null || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection)) return;
     const word = displayWords[anchor];
     if (!word) return;
     const width = timelinePixelWidthRef.current || scroller.scrollWidth;
@@ -458,6 +463,7 @@ export function Timeline({
 
   useEffect(() => {
     sweepOriginRef.current = null;
+    rangeDragRef.current = null;
     sweepBaseRef.current = EMPTY_SELECTION;
     wordSelectionDraggingRef.current = false;
   }, [take?.id, take?.url]);
@@ -971,7 +977,7 @@ export function Timeline({
     event.stopPropagation();
     promoteTimestampWord(null, null);
     wordSelectionDraggingRef.current = true;
-    const next = selectWord(selectionRef.current, index, modifiersOf(event));
+    const next = rangeSelectionEnabled ? selectProductionWord(selectionRef.current, index, displayWords, modifiersOf(event)) : selectWord(selectionRef.current, index, modifiersOf(event));
     sweepOriginRef.current = index;
     sweepBaseRef.current = next;
     onWordSelectionChange?.(next);
@@ -980,7 +986,7 @@ export function Timeline({
   function extendWordSelection(index: number, modifiers: { ctrl: boolean; shift: boolean; alt: boolean }) {
     const origin = sweepOriginRef.current;
     if (!wordSelectionDraggingRef.current || origin === null) return;
-    onWordSelectionChange?.(sweepTo(sweepBaseRef.current, origin, index, modifiers));
+    onWordSelectionChange?.(rangeSelectionEnabled ? sweepProductionWords(sweepBaseRef.current, origin, index, displayWords, modifiers) : sweepTo(sweepBaseRef.current, origin, index, modifiers));
   }
 
   function wordIndexAtTimelinePoint(clientX: number, clientY: number) {
@@ -1320,6 +1326,33 @@ export function Timeline({
     seek(event);
   }
 
+  function beginRangeSelection(event: PointerEvent<HTMLDivElement>) {
+    if (!rangeSelectionEnabled || event.button !== 0 || isRecording || !take) return false;
+    event.preventDefault();
+    rangeDragRef.current = { x: event.clientX, start: sourceTimeAt(event.clientX), base: selectionRef.current, moved: false, modifiers: modifiersOf(event) };
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* pointer remains in the waveform */ }
+    return true;
+  }
+
+  function moveRangeSelection(event: PointerEvent<HTMLDivElement>) {
+    const drag = rangeDragRef.current;
+    if (!drag) return false;
+    if (Math.abs(event.clientX - drag.x) >= 2) drag.moved = true;
+    if (drag.moved) onWordSelectionChange?.(selectProductionTime(drag.base, drag.start, sourceTimeAt(event.clientX), displayWords, drag.modifiers));
+    return true;
+  }
+
+  function endRangeSelection(event: PointerEvent<HTMLDivElement>, cancelled = false) {
+    const drag = rangeDragRef.current;
+    if (!drag) return false;
+    if (cancelled) onWordSelectionChange?.(drag.base);
+    else if (drag.moved) moveRangeSelection(event);
+    else { beginScrub(event); endScrub(event); }
+    rangeDragRef.current = null;
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch { /* already released */ }
+    return true;
+  }
+
   function scrubTimeline(event: PointerEvent<HTMLDivElement>) {
     if (!scrubbingRef.current) return;
     event.preventDefault();
@@ -1434,11 +1467,14 @@ export function Timeline({
             <div
               className="waveform"
               aria-label="Waveform timeline"
-              onPointerCancel={(event) => { if (!endPromotionDrag(event, true)) endScrub(event); }}
-              onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
-              onPointerMove={(event) => { if (!movePromotionDrag(event)) scrubTimeline(event); }}
-              onPointerUp={(event) => { if (!endPromotionDrag(event)) endScrub(event); }}
+              onPointerCancel={(event) => { if (!endRangeSelection(event, true) && !endPromotionDrag(event, true)) endScrub(event); }}
+              onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event) || beginRangeSelection(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
+              onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
+              onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
             >
+              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => <div aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range" key={range.id} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
+                <div className="production-selection-readout"><span>START <b>{range.start.toFixed(3)}s</b></span><span>DURATION <b>{(range.end - range.start).toFixed(3)}s</b></span><span>END <b>{range.end.toFixed(3)}s</b></span></div>
+              </div>) : null}
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
               {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}

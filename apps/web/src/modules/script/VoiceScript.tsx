@@ -4,7 +4,7 @@ import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { usePlaybackWord } from "../../domain/playback-sync";
 import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceOutputExportMode, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
-import { EMPTY_SELECTION, selectWord, type WordSelection } from "../../domain/word-selection";
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -13,6 +13,7 @@ import { ScriptScrollbar } from "./ScriptScrollbar";
 import { VoiceScriptSettings } from "./VoiceScriptSettings";
 import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
+import { selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -121,6 +122,20 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [rows]);
   const held = useMemo(() => new Set(wordSelection.indexes), [wordSelection.indexes]);
+  const wordSweep = useRef<{ base: WordSelection; origin: number } | null>(null);
+  useEffect(() => {
+    const end = () => { wordSweep.current = null; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => { window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end); };
+  }, []);
+  useEffect(() => {
+    const ids = rows.filter((row) => {
+      const timing = timings.get(row.id);
+      return wordSelection.rowIds?.includes(row.id) || Boolean(timing?.fresh && wordSelection.indexes.some((index) => index >= timing.firstWord && index < timing.lastWord));
+    }).map((row) => row.id);
+    setRowSelection((current) => current.ids.join("\0") === ids.join("\0") ? current : { ids, anchorId: ids.at(-1) ?? null });
+  }, [wordSelection, rows, timings]);
   const speakerOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id) ?? null;
   const usedVoices = new Set(readiness.rows.map((row) => row.voiceId));
   const wordCount = rows.reduce((total, row) => total + (normalizedRowText(row.text) ? normalizedRowText(row.text).split(" ").length : 0), 0);
@@ -374,7 +389,12 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
   }
 
   function selectRow(event: ReactMouseEvent<HTMLButtonElement>, rowId: string) {
-    setRowSelection((current) => selectListItem(current, rowIds, rowId, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey }));
+    const next = selectListItem(rowSelection, rowIds, rowId, { shift: event.shiftKey, toggle: !event.shiftKey || event.ctrlKey || event.metaKey });
+    setRowSelection(next);
+    const selectedTimings = next.ids.flatMap((id) => { const timing = timings.get(id); return timing?.fresh ? [{ id, ...timing }] : []; });
+    const indexes = selectedTimings.flatMap((timing) => Array.from({ length: timing.lastWord - timing.firstWord }, (_, offset) => timing.firstWord + offset));
+    onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: next.ids,
+      ranges: selectedTimings.map((timing) => ({ id: `row-${timing.id}`, start: timing.start, end: timing.end })) });
   }
 
   function deleteSelectedRows() {
@@ -439,7 +459,10 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
             const index = timing.firstWord + offset;
             return <Fragment key={`${index}-${word.start}`}>
               <span className="script-table__word-wrap">
-                <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""}`} data-script-word-index={index} onClick={(event) => onWordSelectionChange?.(selectWord(wordSelection, index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }))} type="button">{word.text}</button>{" "}
+                <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""}`} data-script-word-index={index}
+                  onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); wordSweep.current = { base: wordSelection, origin: index }; onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
+                  onPointerEnter={(event) => { const sweep = wordSweep.current; if (sweep && event.buttons === 1) onWordSelectionChange?.(sweepProductionWords(sweep.base, sweep.origin, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
+                  onClick={(event) => { if (event.detail === 0) onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }} type="button">{word.text}</button>{" "}
               </span>
               {breaks.has(offset) ? <br /> : null}
             </Fragment>;
@@ -448,7 +471,16 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
       </div>;
     }
     return <div className="script-table__content voice-script__edit" role="gridcell" style={textStyle}>
-      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => updateRow(row.id, { text: event.target.value })} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} />
+      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => { onWordSelectionChange?.(EMPTY_SELECTION); updateRow(row.id, { text: event.target.value }); }} onSelect={(event) => {
+        const { selectionStart: start, selectionEnd: end } = event.currentTarget;
+        if (end <= start) return;
+        const tokens = [...row.text.matchAll(/\S+/gu)];
+        const selectedTokens = tokens.flatMap((token, index) => token.index! < end && token.index! + token[0].length > start ? [index] : []);
+        const indexes = timing?.fresh ? selectedTokens.map((offset) => timing.firstWord + offset).filter((index) => index < timing.lastWord) : [];
+        const first = words[indexes[0]], last = words[indexes.at(-1) ?? -1];
+        onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id], textRanges: [{ rowId: row.id, start, end }],
+          ranges: first && last ? [{ id: `text-${row.id}-${start}-${end}`, start: first.start, end: last.end }] : [] });
+      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} />
     </div>;
   }
 
