@@ -116,6 +116,7 @@ class MediaAssetCreate(DomainModel):
     media_kind: MediaKind
     source_path: str
     analysis_path: str | None = None
+    reference_selected: bool = False
     obs_recording_id: str | None = None
     source_archive_asset_id: str | None = None
     source_archive_stream_index: int | None = Field(default=None, ge=0)
@@ -245,6 +246,11 @@ class MediaTimelineCutsBatch(DomainModel):
 
 
 class MediaTrainingSelection(DomainModel):
+    selected: bool
+
+
+class MediaReferenceSelection(DomainModel):
+    asset_ids: list[str] = Field(min_length=1, max_length=400)
     selected: bool
 
 

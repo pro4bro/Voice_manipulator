@@ -6,6 +6,7 @@ import type { MediaBatchAction, PendingMediaImportRow } from "../media-pool/Medi
 import { VoiceOutputPanel } from "../voice-output/VoiceOutputPanel";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 import { Icon } from "../../ui/Icon";
+import { ReferenceLibrary, type ReferenceLibraryProps } from "./ReferenceLibrary";
 
 interface LibraryPanelProps {
   projectId?: string;
@@ -74,6 +75,8 @@ export function LibraryPanel(props: LibraryPanelProps) {
 }
 
 interface ManipulatorLibraryProps {
+  referenceLibrary?: Omit<ReferenceLibraryProps, "assets" | "projectId">;
+  referenceAssets?: ProjectMediaAsset[];
   projectId?: string;
   onCollectionImported?: (result: import("../../domain/types").VoiceCollectionImport) => void;
   onPrepareCollectionExport?: () => Promise<void>;
@@ -105,14 +108,15 @@ interface ManipulatorLibraryProps {
  * Media Pool is source footage for STT and training and has no place here.
  */
 export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
-  const [tab, setTab] = useState<"sound" | "output">("output");
+  const [tab, setTab] = useState<"sound" | "output" | "reference">("output");
   return (
     <section className="library-panel">
       <div className="library-panel-tabs" role="tablist" aria-label="Thư viện Voice Manipulator">
         <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
         <button aria-selected={tab === "output"} className={tab === "output" ? "is-active" : ""} onClick={() => setTab("output")} role="tab" type="button"><Icon name="file" />Voice Output <b>{props.outputs.length}</b></button>
+        <button aria-selected={tab === "reference"} className={tab === "reference" ? "is-active" : ""} onClick={() => setTab("reference")} role="tab" type="button">Reference <b>{(props.referenceAssets ?? props.assets).filter((asset) => asset.referenceSelected && !asset.deletedAt).length}</b></button>
       </div>
-      {tab === "sound"
+      {tab === "reference" ? <ReferenceLibrary {...props.referenceLibrary} projectId={props.projectId} assets={props.referenceAssets ?? props.assets} /> : tab === "sound"
         ? <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
         : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onExport={props.onExportOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>

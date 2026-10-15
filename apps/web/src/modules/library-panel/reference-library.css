@@ -1,0 +1,14 @@
+.reference-library { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; padding: 8px; font-size: 12px; }
+.reference-library p { margin: 0; color: var(--muted); }
+.reference-library__tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.reference-library__list { overflow: auto; min-height: 0; flex: 1; }
+.reference-library__row { display: flex; flex-wrap: wrap; border: 1px solid var(--line); margin-bottom: 4px; }
+.reference-library__row.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reference-library__row > button:first-child { flex: 1; min-width: 0; text-align: left; padding: 8px; display: grid; gap: 3px; background: transparent; color: var(--text); border: 0; }
+.reference-library__row span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reference-library__row small { color: var(--muted); }
+.reference-library__row audio { width: 100%; height: 34px; }
+.reference-library fieldset { display: grid; gap: 5px; }
+.reference-menu-dismiss { position: fixed; inset: 0; z-index: 1098; opacity: 0; cursor: default; }
+.reference-menu { position: fixed; z-index: 1099; background: var(--surface-raised); border: 1px solid var(--line); padding: 5px; box-shadow: 0 5px 24px #0005; display: grid; gap: 4px; }
+.reference-menu button { text-align: left; padding: 8px; }

@@ -186,6 +186,7 @@ export interface TimelineGainKeyframe {
 
 export interface ProjectMediaAsset {
   id: string;
+  referenceSelected?: boolean;
   /** Set while the footage sits in the project's recycle bin. */
   deletedAt?: string | null;
   /** Parked: still playable, but kept out of every batch. */

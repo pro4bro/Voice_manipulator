@@ -2561,6 +2561,15 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onVoiceCategoryChange: chooseGenerationCategory,
     voiceScriptRows,
     onVoiceScriptRowsChange: setVoiceScriptRows,
+    onReferenceChange: async (ids, selected) => {
+      const updated = await api.setMediaReferenceSelected(project.id, ids, selected);
+      if (activeMediaProjectId.current !== project.id) return;
+      const byId = new Map(updated.map((asset) => [asset.id, asset]));
+      setMediaAssets((current) => current.map((asset) => {
+        const changed = byId.get(asset.id);
+        return changed ? { ...asset, referenceSelected: changed.referenceSelected, updatedAt: changed.updatedAt } : asset;
+      }));
+    },
     voiceScriptDocument: voiceScript.document,
     onVoiceScriptDocumentChange: voiceScript.update,
     voiceScriptSaveError: voiceScript.error,

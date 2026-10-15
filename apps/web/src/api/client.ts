@@ -592,6 +592,9 @@ export const api = {
     });
     return normalizeMediaAsset(asset);
   },
+  setMediaReferenceSelected: (projectId: string, assetIds: string[], selected: boolean) => request<ProjectMediaAsset[]>(`/api/projects/${projectId}/media/reference-selection`, {
+    method: "PATCH", body: JSON.stringify({ assetIds, selected }),
+  }),
   listReadingPacks: () => request<ReadingPackSummary[]>("/api/reading-packs"),
   listReadingSessions: (projectId: string) =>
     request<{ items: ReadingSession[]; total: number }>(`/api/projects/${projectId}/reading-sessions?status=in_progress`),

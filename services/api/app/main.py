@@ -41,6 +41,7 @@ from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.domain.voice_script_document import VoiceScriptDocument
+from app.domain.models import MediaReferenceSelection
 from app.adapters.speaker_embedders import default_speaker_embedders
 from app.adapters.speaker_similarity_gate import SpeakerSimilarityGate
 from app.adapters.gpu_lease import GpuBusy, GpuLease
@@ -1446,6 +1447,15 @@ def create_app(
             return media.update_timeline_cuts_many(project_id, payload.asset_ids, payload.removed_ranges)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Media asset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/projects/{project_id}/media/reference-selection", response_model=list[ProjectMediaAsset])
+    def set_media_reference_selection(project_id: str, payload: MediaReferenceSelection) -> list[ProjectMediaAsset]:
+        try:
+            return media.set_reference_selected_many(project_id, payload.asset_ids, payload.selected)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -689,6 +689,27 @@ class FileMediaLibrary:
             "TRAINING_SELECTION_CHANGED", "Voice Training",
         )
 
+    def set_reference_selected_many(self, project_id: str, asset_ids: list[str], selected: bool) -> list[ProjectMediaAsset]:
+        """Role metadata only; validate the whole batch before one atomic write."""
+        if len(set(asset_ids)) != len(asset_ids):
+            raise ValueError("Reference selection contains duplicate assets.")
+        with self._lock(project_id):
+            root = self._project_root(project_id)
+            assets = self._load(project_id, include_words=False)
+            targets = {asset.id: asset for asset in assets if asset.id in asset_ids}
+            if len(targets) != len(asset_ids):
+                raise KeyError("Reference footage does not exist.")
+            if selected:
+                for asset in targets.values():
+                    if asset.deleted_at or asset.disabled:
+                        raise ValueError("Khôi phục và bật footage trước khi đánh dấu Reference.")
+                    if asset.available_audio_tracks:
+                        raise ValueError("Chọn một audio track cụ thể của footage nhiều kênh để làm Reference.")
+            now = datetime.now(timezone.utc)
+            updated = {key: asset.model_copy(update={"reference_selected": selected, "updated_at": now}) for key, asset in targets.items()}
+            self._store.write_index(root, project_id, [updated.get(asset.id, asset) for asset in assets])
+            return [updated[key] for key in asset_ids]
+
     def set_import_selected(
         self, project_id: str, asset_id: str, selected: bool
     ) -> ProjectMediaAsset:
