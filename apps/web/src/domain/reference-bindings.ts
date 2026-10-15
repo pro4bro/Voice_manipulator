@@ -78,3 +78,12 @@ export interface ReferenceResolution {
   identity: { rowId: string; voiceId: string | null; speakerProfileId: string | null }[];
   units: { rowId: string | null; properties: Partial<Record<ReferenceProperty, ReferencePropertyResolution>> }[];
 }
+
+export interface TimingPlan {
+  rowId: string; key: string; state: "ready" | "stale"; reason: string; requestedDuration: number;
+  source: { kind: "reference" | "training" | "dub" | "patch"; assetId: string; start: number; end: number; revision: string; trainingRunId?: string | null };
+  template: { duration: number; mapping: "reviewed" | "unreviewed" | "unknown"; pauses: {start: number; end: number}[]; anchors: {text: string; start: number; end: number; usable: boolean}[] };
+  anchorApplication: "pending";
+}
+export interface TimingPlanDocument { version: 1; revision: number; plans: TimingPlan[] }
+export interface TimingPlanRequest { rowId: string; source: TimingPlan["source"]; expectedRevision: number; expectedScriptRevision: number; reviewedMapping: boolean }

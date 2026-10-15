@@ -2685,7 +2685,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onWordSelectionChange: (selection) => {
       setWordSelection(scopeVoiceSelection(selection));
     },
-    referenceDocument, referenceError, productionNavigation,
+    referenceDocument, referenceError, productionNavigation, voiceScriptSaved: voiceScript.isSaved,
     onResolveReference: async (binding) => { if (!referenceDocument) throw new Error("Reference đang tải."); return api.resolveReferenceBinding(project.id, binding.id, referenceDocument.revision); },
     onReloadReferences: () => void reloadReferences(),
     onNavigateReference: (binding) => {

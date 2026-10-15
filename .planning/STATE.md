@@ -1059,3 +1059,9 @@ reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.
 Second of five: deterministic property resolution/identity/locks/conflicts,
 actual PCM feature cache and explicit unsupported outcomes. See the round gate.
 Conditioning A/B waits for delivery/loudness processors. Next VM-TIMING-REF-01.
+
+## VM-TIMING-REF-01 — 2026-10-15
+
+Third of five: portable timing source/template plans, reviewed same-text mapping,
+unknown different-text anchors, verified training snapshot checks. See round gate.
+Word-anchor execution remains pending; next VM-NAV-01.

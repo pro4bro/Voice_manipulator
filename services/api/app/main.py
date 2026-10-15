@@ -42,6 +42,8 @@ from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
+from app.adapters.file_timing_plans import FileTimingPlans
+from app.domain.timing_plan import TimingPlanRequest
 from app.domain.reference_bindings import ReferenceAssignment, ReferenceBindingDocument
 from app.domain.voice_script_document import VoiceScriptDocument
 from app.domain.models import MediaReferenceSelection
@@ -376,6 +378,7 @@ def create_app(
     voice_script_documents = FileVoiceScript(projects)
     reference_bindings = FileReferenceBindings(projects, media, voice_outputs, voice_script_documents)
     reference_resolver = ReferenceResolver(reference_bindings, settings.ffmpeg_path)
+    timing_plans = FileTimingPlans(reference_resolver)
     resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
     speaker_similarity_gate = SpeakerSimilarityGate(
         projects,
@@ -2228,6 +2231,33 @@ def create_app(
             return voice_script_documents.get(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.get("/api/projects/{project_id}/timing-plans")
+    def get_timing_plans(project_id: str) -> dict:
+        try:
+            return timing_plans.get(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.delete("/api/projects/{project_id}/timing-plans/{row_id}")
+    def delete_timing_plan(project_id: str, row_id: str, expected_revision: int) -> dict:
+        try:
+            return timing_plans.delete(project_id, row_id, expected_revision)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/timing-plans")
+    async def create_timing_plan(project_id: str, payload: TimingPlanRequest) -> dict:
+        try:
+            return await asyncio.to_thread(timing_plans.save, project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Câu/source không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}/reference-bindings", response_model=ReferenceBindingDocument)
     def get_reference_bindings(project_id: str) -> ReferenceBindingDocument:
