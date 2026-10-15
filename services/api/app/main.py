@@ -39,6 +39,8 @@ from app.adapters.voice_collection_transfer_routes import make_voice_collection_
 from app.adapters.collection_voice_preview import CollectionVoicePreviews, make_collection_preview_router
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
+from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
+from app.domain.voice_script_document import VoiceScriptDocument
 from app.adapters.speaker_embedders import default_speaker_embedders
 from app.adapters.speaker_similarity_gate import SpeakerSimilarityGate
 from app.adapters.gpu_lease import GpuBusy, GpuLease
@@ -367,6 +369,7 @@ def create_app(
             pass
 
     voice_outputs = FileVoiceOutputs(projects)
+    voice_script_documents = FileVoiceScript(projects)
     resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
     speaker_similarity_gate = SpeakerSimilarityGate(
         projects,
@@ -2203,6 +2206,22 @@ def create_app(
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/voice-script", response_model=VoiceScriptDocument)
+    def get_voice_script_document(project_id: str) -> VoiceScriptDocument:
+        try:
+            return voice_script_documents.get(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.put("/api/projects/{project_id}/voice-script", response_model=VoiceScriptDocument)
+    def save_voice_script_document(project_id: str, payload: VoiceScriptDocument) -> VoiceScriptDocument:
+        try:
+            return voice_script_documents.save(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post(
         "/api/projects/{project_id}/voice-script/read",

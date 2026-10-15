@@ -10,12 +10,19 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptPlaybackVisibility } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
+import { VoiceScriptSettings } from "./VoiceScriptSettings";
+import "./voice-script-settings.css";
+import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
+  document?: import("../../domain/types").VoiceScriptDocument;
+  onDocumentChange?: (document: import("../../domain/types").VoiceScriptDocument) => void;
+  saveError?: string | null;
+  onReload?: () => void;
   rows: VoiceScriptRow[];
   onRowsChange: (rows: VoiceScriptRow[]) => void;
   speakers: SpeakerProfile[];
@@ -82,7 +89,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -193,10 +200,12 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       if (index <= 0) return;
       event.preventDefault();
       const previous = rows[index - 1];
-      const joined = previous.text && row.text ? `${previous.text} ${row.text}` : previous.text + row.text;
+      let joined: VoiceScriptRow;
+      try { joined = joinScriptSentences(previous, row); }
+      catch { return; }
       focusRef.current = { rowId: previous.id, start: previous.text.length, end: previous.text.length };
       setEditingRowId(previous.id);
-      commit(rows.flatMap((item, itemIndex) => itemIndex === index ? [] : itemIndex === index - 1 ? [{ ...item, text: joined }] : [item]));
+      commit(rows.flatMap((item, itemIndex) => itemIndex === index ? [] : itemIndex === index - 1 ? [joined] : [item]));
     }
   }
 
@@ -486,6 +495,8 @@ export function VoiceScript({ rows, onRowsChange, speakers, voices, category, ou
       {timingNote ? <div className="script-timing-warning" role="status">{timingNote}</div> : null}
       {findOpen ? <div aria-label="Tìm và thay thế" className="script-find-replace"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}
     </div>
+    {saveError ? <div role="alert" className="script-timing-warning">{saveError}<button onClick={() => { if (window.confirm("Tải Script đã lưu? Nội dung chưa lưu vẫn có bản dự phòng trong trình duyệt.")) onReload?.(); }} type="button">Tải lại bản đã lưu</button></div> : null}
+    <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
     {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey} ref={followRoot}>
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {

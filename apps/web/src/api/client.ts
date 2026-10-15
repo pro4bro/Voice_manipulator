@@ -36,6 +36,7 @@ import type {
   VoiceModelSet,
   VoiceOutput,
   VoiceScriptJob,
+  VoiceScriptDocument,
   VoiceChangerPreflight,
   VoiceChangerRecording,
   VoiceChangerStatus,
@@ -663,7 +664,9 @@ export const api = {
       `/api/projects/${projectId}/voice-outputs/${outputId}/subtitles?mode=${mode}`,
       `voice-output--${mode}.${mode === "table" ? "csv" : "srt"}`,
     ),
-  readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
+  getVoiceScript: (projectId: string) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`),
+  saveVoiceScript: (projectId: string, document: VoiceScriptDocument) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`, { method: "PUT", body: JSON.stringify(document) }),
+  readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string; settings?: import("../domain/types").ScriptSettings }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/read`, {
       method: "POST",
       body: JSON.stringify(payload),

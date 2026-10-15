@@ -1497,6 +1497,7 @@ class VoiceOutputSegment(DomainModel):
     # The cached clip this row was cut from; a later read of the same row with
     # the same voice and settings reuses it instead of speaking it again.
     clip: str | None = None
+    script_row: dict[str, Any] | None = None
 
 
 class VoiceOutput(DomainModel):
@@ -1529,6 +1530,11 @@ class VoiceScriptRow(DomainModel):
     id: str = Field(min_length=1, max_length=80)
     voice_id: str = Field(min_length=1, max_length=120)
     text: str = Field(min_length=1, max_length=5000)
+    # Editable direction is persisted separately; unsupported synthesis must be explicit.
+    settings: dict[str, Any] = Field(default_factory=dict)
+    segment_id: str | None = None
+    origin_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class VoiceScriptRequest(DomainModel):

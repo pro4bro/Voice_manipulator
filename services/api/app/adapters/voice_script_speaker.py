@@ -352,6 +352,9 @@ class VoiceScriptSpeaker:
         plans: dict[str, SpeechPlan] = {}
         steps: list[_Step] = []
         for number, row in enumerate(request.rows, start=1):
+            synthesis = {key: value for key, value in row.settings.items() if key not in {"note", "locked"} and value is not None}
+            if synthesis:
+                raise ValueError(f"Câu {number}: hướng dẫn {', '.join(synthesis)} đã lưu nhưng chưa có bộ generate hỗ trợ. Bỏ override để đọc bằng cấu hình hiện tại.")
             text = " ".join(row.text.split())
             if not text:
                 raise ValueError(f"Đoạn {number} chưa có chữ.")
@@ -730,6 +733,7 @@ class VoiceScriptSpeaker:
                         speaker_profile_id=voice.speaker_profile_id, engine=step.plan.engine,
                         generator_id=step.plan.generator_id, text=step.text,
                         start=round(cursor, 3), end=round(cursor + length, 3), clip=clip.key,
+                        script_row={**step.row.model_dump(mode="json", by_alias=True), "speakerProfileId": voice.speaker_profile_id},
                     ))
                     if clip.note and clip.note not in notes:
                         notes.append(clip.note)

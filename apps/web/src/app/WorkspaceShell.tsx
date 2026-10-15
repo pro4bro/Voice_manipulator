@@ -10,6 +10,8 @@ import { EMOTION_OPTIONS } from "../domain/emotions";
 import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
 import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
+import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
+import { effectiveScriptSettings } from "../domain/voice-script-document";
 import type {
   AppPreferences,
   EmotionLabel,
@@ -290,15 +292,9 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
   const [generatorParameters, setGeneratorParameters] = useState<Record<string, Record<string, TrainingParameterValue>>>({});
   const [generating, setGenerating] = useState(false);
-  const voiceScriptStorageKey = `pro4bro:${project.id}:voice-script`;
-  const [voiceScriptRows, setVoiceScriptRows] = useState<VoiceScriptRow[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(voiceScriptStorageKey) ?? "[]");
-      return Array.isArray(saved) ? saved.filter((row) => row && typeof row.id === "string" && typeof row.text === "string") : [];
-    } catch {
-      return [];
-    }
-  });
+  const voiceScript = useVoiceScriptDocument(project.id);
+  const voiceScriptRows = voiceScript.document.rows;
+  const setVoiceScriptRows = voiceScript.setRows;
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
   const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
   const [pendingVoiceOutput, setPendingVoiceOutput] = useState<PendingVoiceOutput | null>(null);
@@ -411,10 +407,6 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   useEffect(() => {
     if (!selectedAssetId && script) localStorage.setItem(scratchStorageKey, script);
   }, [script, scratchStorageKey, selectedAssetId]);
-
-  useEffect(() => {
-    try { localStorage.setItem(voiceScriptStorageKey, JSON.stringify(voiceScriptRows)); } catch { /* the Script stays in memory */ }
-  }, [voiceScriptRows, voiceScriptStorageKey]);
 
   useEffect(() => {
     // Devices belong to the machine, so the choice is remembered across projects;
@@ -2191,10 +2183,17 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
   async function generateVoice() {
     if (generationStartInFlight.current || voiceScriptJobRef.current?.status === "running") return;
+    if (!voiceScript.ready || voiceScript.error) { setNotice(voiceScript.error ?? "Đang mở Script trong project…"); return; }
     const offered = voicesInCategory(projectVoices, voiceCategory);
     const readiness = scriptReadiness(voiceScriptRows, offered);
     if (readiness.problem) {
       setNotice(readiness.problem);
+      return;
+    }
+    const pendingDirection = voiceScriptRows.find((row) => Object.entries(effectiveScriptSettings(voiceScript.document, row))
+      .some(([key, value]) => key !== "locked" && key !== "note" && value != null));
+    if (pendingDirection) {
+      setNotice("Hướng dẫn thời lượng/sắc thái đã lưu. Bộ generate theo từng câu chưa được nối; xóa các giá trị này hoặc để kế thừa trống để đọc bằng cấu hình hiện tại.");
       return;
     }
     generationStartInFlight.current = true;
@@ -2230,7 +2229,11 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }
       const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
       setPendingVoiceOutput((current) => current ? { ...current, text: selectedRows.map((row) => row.text).join("\n"), totalRows: selectedRows.length } : current);
-      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: selectedRows, parameters, forceRegenerate: choice.rerunAll }));
+      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: selectedRows.map((row) => {
+        const settings = effectiveScriptSettings(voiceScript.document, voiceScriptRows.find((item) => item.id === row.id)!);
+        const hasSettings = Object.entries(settings).some(([key, value]) => key !== "locked" && value != null);
+        return { ...row, ...(hasSettings ? { settings } : {}) };
+      }), parameters, forceRegenerate: choice.rerunAll }));
     } catch (error) {
       setGenerating(false);
       const detail = error instanceof Error ? error.message : "Không bắt đầu đọc Script được";
@@ -2558,6 +2561,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onVoiceCategoryChange: chooseGenerationCategory,
     voiceScriptRows,
     onVoiceScriptRowsChange: setVoiceScriptRows,
+    voiceScriptDocument: voiceScript.document,
+    onVoiceScriptDocumentChange: voiceScript.update,
+    voiceScriptSaveError: voiceScript.error,
+    onReloadVoiceScript: voiceScript.reload,
     voiceCategory,
     voiceScriptJob,
     pendingVoiceOutput,
@@ -2697,7 +2704,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

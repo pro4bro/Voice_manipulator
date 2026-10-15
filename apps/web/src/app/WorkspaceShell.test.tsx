@@ -21,6 +21,8 @@ const apiMocks = vi.hoisted(() => ({
   setMediaTrainingSelected: vi.fn(),
   startTrainingRun: vi.fn(),
   readVoiceScript: vi.fn(),
+  getVoiceScript: vi.fn(),
+  saveVoiceScript: vi.fn(),
   listObsSessions: vi.fn(),
   getVoiceScriptJob: vi.fn(),
   stopGeneration: vi.fn(),
@@ -165,6 +167,8 @@ function deferred<T>() {
 describe("WorkspaceShell STT synchronization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getVoiceScript.mockResolvedValue({ version: 1, revision: 0, settings: {}, segments: [], rows: [] });
+    apiMocks.saveVoiceScript.mockImplementation(async (_id, doc) => ({ ...doc, revision: doc.revision + 1 }));
     apiMocks.saveTrainingCatalog.mockImplementation(async (_id, catalog) => catalog);
     localStorage.clear();
     apiMocks.listReadingPacks.mockResolvedValue([]);

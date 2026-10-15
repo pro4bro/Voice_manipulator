@@ -106,6 +106,10 @@ export interface StudioContext {
   /** The typed Script of Voice Manipulator, one row per turn. */
   voiceScriptRows: import("../../domain/types").VoiceScriptRow[];
   onVoiceScriptRowsChange: (rows: import("../../domain/types").VoiceScriptRow[]) => void;
+  voiceScriptDocument?: import("../../domain/types").VoiceScriptDocument;
+  onVoiceScriptDocumentChange?: (document: import("../../domain/types").VoiceScriptDocument) => void;
+  voiceScriptSaveError?: string | null;
+  onReloadVoiceScript?: () => void;
   /** Follows the kind chosen in Voice Training. */
   voiceCategory: VoiceCategory;
   voiceScriptJob: import("../../domain/types").VoiceScriptJob | null;
@@ -406,7 +410,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onCategoryChange={context.onVoiceCategoryChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {
       const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
-      return <VoiceScript activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+      return <VoiceScript document={context.voiceScriptDocument} onDocumentChange={context.onVoiceScriptDocumentChange} saveError={context.voiceScriptSaveError} onReload={context.onReloadVoiceScript} activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
     }
     case "sound-reactor-input":
     case "sound-reactor-output": {

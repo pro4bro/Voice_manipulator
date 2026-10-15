@@ -24,7 +24,8 @@ export function newRowId(): string {
 }
 
 export function emptyRow(after?: VoiceScriptRow | null, text = ""): VoiceScriptRow {
-  return { id: newRowId(), speakerProfileId: after?.speakerProfileId ?? null, voiceId: after?.voiceId ?? null, text };
+  return { id: newRowId(), speakerProfileId: after?.speakerProfileId ?? null, voiceId: after?.voiceId ?? null, text,
+    ...(after?.segmentId ? { segmentId: after.segmentId, settings: after.settings, tags: after.tags, originIds: after.originIds ?? [after.id] } : {}) };
 }
 
 /**
@@ -90,7 +91,7 @@ export function textToRows(text: string, speakers: SpeakerProfile[], offered: Pr
       voiceId = kept?.voiceId ?? newestVoiceOf(speaker.id, offered)?.id ?? null;
     }
     const body = speaker && match ? match[2] : line;
-    rows.push({ id: old?.id ?? newRowId(), speakerProfileId, voiceId, text: body.split(ROW_LINE_BREAK.trim()).map((part) => part.trim()).join("\n") });
+    rows.push({ ...old, id: old?.id ?? newRowId(), speakerProfileId, voiceId, text: body.split(ROW_LINE_BREAK.trim()).map((part) => part.trim()).join("\n") });
   });
   return rows;
 }
@@ -258,6 +259,7 @@ export function rowTimings(rows: VoiceScriptRow[], output: VoiceOutput | null, o
 
 export function rowsFromOutput(output: VoiceOutput): VoiceScriptRow[] {
   return (output.segments ?? []).map((segment) => ({
+    ...segment.scriptRow,
     id: segment.rowId,
     speakerProfileId: segment.speakerProfileId,
     voiceId: segment.voiceId,
@@ -266,7 +268,7 @@ export function rowsFromOutput(output: VoiceOutput): VoiceScriptRow[] {
 }
 
 export interface ScriptReadiness {
-  rows: Array<{ id: string; voiceId: string; text: string }>;
+  rows: Array<{ id: string; voiceId: string; text: string; segmentId?: string; originIds?: string[]; tags?: string[] }>;
   problem: string | null;
 }
 
@@ -281,7 +283,8 @@ export function scriptReadiness(rows: VoiceScriptRow[], offered: ProjectVoice[])
       const number = rows.indexOf(row) + 1;
       return { rows: [], problem: `Đoạn ${number} chưa chọn voice` };
     }
-    ready.push({ id: row.id, voiceId: voice.id, text: normalizedRowText(row.text) });
+    ready.push({ id: row.id, voiceId: voice.id, text: normalizedRowText(row.text),
+      ...(row.segmentId ? { segmentId: row.segmentId, originIds: row.originIds, tags: row.tags } : {}) });
   }
   return { rows: ready, problem: null };
 }

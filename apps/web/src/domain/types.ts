@@ -1123,6 +1123,7 @@ export interface VoiceOutputSegment {
   start: number;
   end: number;
   clip?: string | null;
+  scriptRow?: VoiceScriptRow | null;
 }
 
 export interface AudioDeviceInfo {
@@ -1211,6 +1212,29 @@ export interface VoiceScriptRow {
   speakerProfileId: string | null;
   voiceId: string | null;
   text: string;
+  segmentId?: string;
+  settings?: ScriptSettings;
+  originIds?: string[];
+  tags?: string[];
+}
+
+export interface ScriptSettings {
+  duration?: number | null;
+  mood?: string | null;
+  emotion?: string | null;
+  intensity?: number | null;
+  delivery?: "neutral" | "whisper" | "shout" | null;
+  gainDb?: number | null;
+  note?: string | null;
+  locked?: Array<Exclude<keyof ScriptSettings, "locked">>;
+}
+
+export interface VoiceScriptDocument {
+  version: 1;
+  revision: number;
+  settings: ScriptSettings;
+  segments: Array<{ id: string; name: string; settings: ScriptSettings }>;
+  rows: VoiceScriptRow[];
 }
 
 export interface VoiceScriptJob {

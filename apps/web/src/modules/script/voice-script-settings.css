@@ -1,0 +1,8 @@
+.voice-script-settings { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; max-height: 45vh; overflow: auto; }
+.voice-script-settings summary { cursor: pointer; font-weight: 600; }
+.voice-script-settings p, .voice-script-settings small { color: var(--muted); }
+.voice-script-settings__tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.voice-script-settings fieldset { border: 0; padding: 8px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.voice-script-settings label { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.voice-script-settings input:not([type=checkbox]), .voice-script-settings select { max-width: 100%; min-width: 0; background: var(--surface-panel); color: var(--text); border: 1px solid var(--line); padding: 4px; }
+.voice-script-settings__field { display: flex; flex-direction: column; gap: 4px; }
