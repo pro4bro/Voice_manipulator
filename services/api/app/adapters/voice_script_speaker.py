@@ -27,6 +27,11 @@ from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.ports import ProjectRepository
 from app.domain.script_word_alignment import align_script_words
+from app.domain.duration_plan import allocate_duration
+from app.domain.voice_script_document import VoiceScriptDocument, effective_settings
+from app.domain.timing_plan import compare_timing
+from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
+from app.adapters.duration_fitting import fit_duration
 
 logger = logging.getLogger("app.adapters.voice_script_speaker")
 
@@ -176,6 +181,7 @@ class Clip:
     quality: str
     note: str | None
     reused: bool
+    fit: dict | None = None
 
 
 @dataclass
@@ -183,6 +189,9 @@ class _Step:
     row: VoiceScriptRow
     text: str
     plan: SpeechPlan
+    duration: float | None = None
+    timing: dict | None = None
+    allocation: dict | None = None
 
 
 @dataclass
@@ -218,6 +227,8 @@ class VoiceScriptSpeaker:
         recognizer: WordRecognizer | None = None,
         ffmpeg_path: str | None = None,
         before_start: Callable[[], None] | None = None,
+        scripts=None,
+        timing_plans=None,
     ) -> None:
         self.projects = projects
         self.outputs = outputs
@@ -226,6 +237,8 @@ class VoiceScriptSpeaker:
         self.recognizer = recognizer
         self.ffmpeg_path = ffmpeg_path
         self.before_start = before_start
+        self.scripts = scripts or FileVoiceScript(projects)
+        self.timing_plans = timing_plans
         self._jobs: dict[str, _Job] = {}
         self._lock = threading.Lock()
 
@@ -348,11 +361,43 @@ class VoiceScriptSpeaker:
 
     # ---------- planning, before the GPU is taken ----------
 
+    def _duration_context(self, project_id: str, request: VoiceScriptRequest):
+        if request.script_revision is not None:
+            document = self.scripts.get(project_id)
+            if document.revision != request.script_revision: raise ScriptRevisionConflict("Script đã đổi. Chờ lưu và đọc lại.")
+            canonical = {row.id: row for row in document.rows}
+            selected = []
+            for row in request.rows:
+                original = canonical.get(row.id)
+                if original is None or " ".join(original.text.split()) != " ".join(row.text.split()) or (original.voice_id and original.voice_id != row.voice_id):
+                    raise ScriptRevisionConflict("Nội dung/voice không khớp Script đã lưu.")
+                selected.append(original)
+        else:
+            document = VoiceScriptDocument.model_validate({"segments": [{"id": key} for key in dict.fromkeys(row.segment_id or f"segment-{row.id}" for row in request.rows)],
+                "rows": [{"id": row.id, "text": row.text, "voiceId": row.voice_id, "segmentId": row.segment_id or f"segment-{row.id}", "settings": row.settings} for row in request.rows]})
+            selected = document.rows
+        timing = {}
+        if self.timing_plans is not None and request.script_revision is not None:
+            timing_document = self.timing_plans.effective(project_id, selected, request.reference_revision)
+            if request.timing_revision is not None and timing_document["revision"] != request.timing_revision:
+                raise ScriptRevisionConflict("Timing plan đã đổi. Làm mới trước khi generate.")
+            timing = {plan["rowId"]: plan for plan in timing_document["plans"] if plan["rowId"] in {row.id for row in selected}}
+        allocation = allocate_duration(document, selected, request.gap_seconds, timing)
+        allocation["scriptRevision"] = request.script_revision
+        return document, selected, timing, allocation
+
+    def duration_preview(self, project_id: str, request: VoiceScriptRequest) -> dict:
+        return self._duration_context(project_id, request)[3]
+
     def _plan(self, project_id: str, request: VoiceScriptRequest) -> list[_Step]:
+        document, selected, timing, allocation = self._duration_context(project_id, request)
         plans: dict[str, SpeechPlan] = {}
         steps: list[_Step] = []
+        selected_by_id = {row.id: row for row in selected}
         for number, row in enumerate(request.rows, start=1):
-            synthesis = {key: value for key, value in row.settings.items() if key not in {"note", "locked"} and value is not None}
+            original = selected_by_id[row.id]
+            settings = effective_settings(document, original) if request.script_revision is not None else row.settings
+            synthesis = {key: value for key, value in settings.items() if key not in {"note", "locked", "duration"} and value is not None}
             if synthesis:
                 raise ValueError(f"Câu {number}: hướng dẫn {', '.join(synthesis)} đã lưu nhưng chưa có bộ generate hỗ trợ. Bỏ override để đọc bằng cấu hình hiện tại.")
             text = " ".join(row.text.split())
@@ -365,11 +410,19 @@ class VoiceScriptSpeaker:
                     voice = self.generator.voices.get(project_id, row.voice_id)
                 except KeyError as exc:
                     raise ValueError(f"Voice của đoạn {number} không còn trong project.") from exc
+                if request.script_revision is not None and original.speaker_profile_id and original.speaker_profile_id != voice.speaker_profile_id:
+                    raise ValueError("Voice không thuộc Speaker Profile của câu đích.")
+                if any(allocation["rows"][item.id]["duration"] is not None for item in request.rows if item.voice_id == voice.id) and voice.engine != "omnivoice":
+                    raise ValueError("Engine này chưa hỗ trợ native duration; không dùng speed thay thế timing.")
                 generator_id = self.generator.generator_for(voice.engine)
                 if generator_id is None:
                     raise ValueError(f"Chưa có công cụ tạo giọng cho engine {voice.engine} (đoạn {number}).")
                 plans[row.voice_id] = self.generator.prepare(project_id, voice.id, generator_id, request.parameters.get(generator_id, {}))
-            steps.append(_Step(row, text, plans[row.voice_id]))
+            if request.script_revision is not None and original.speaker_profile_id and original.speaker_profile_id != plans[row.voice_id].voice.speaker_profile_id:
+                raise ValueError("Voice không thuộc Speaker Profile của câu đích.")
+            if request.script_revision is not None:
+                row = row.model_copy(update={"segment_id": original.segment_id, "settings": original.settings.model_dump(by_alias=True, exclude_none=True), "source_text": original.text, "origin_ids": original.origin_ids, "tags": original.tags})
+            steps.append(_Step(row, text, plans[row.voice_id], allocation["rows"][row.id]["duration"], timing.get(row.id), allocation))
         return steps
 
     # ---------- the work ----------
@@ -546,6 +599,8 @@ class VoiceScriptSpeaker:
             "speed": step.plan.speed,
             "text": step.text,
         }
+        if step.duration is not None:
+            identity["durationFit"] = {"target": step.duration, "version": 1, "timingKey": step.timing["key"] if step.timing else None}
         encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()[:32]
 
@@ -564,7 +619,8 @@ class VoiceScriptSpeaker:
                 and saved.get("artifactFingerprint") == step.plan.artifact_fingerprint
                 and abs(float(saved["seconds"]) - seconds) <= .0015
                 and isinstance(saved["words"], list) and isinstance(saved["quality"], str)
-                and saved.get("audioSha256") == file_digest(audio)):
+                and saved.get("audioSha256") == file_digest(audio)
+                and (step.duration is None or (abs(seconds - step.duration) <= 1 / SAMPLE_RATE and (saved.get("durationFit") or {}).get("requestedDuration") == step.duration))):
                 return saved
         except (OSError, KeyError, TypeError, ValueError, EOFError, wave.Error, ZeroDivisionError):
             pass
@@ -607,7 +663,7 @@ class VoiceScriptSpeaker:
                 record = folder / "clip.json"
         if saved is not None:
             if saved.get("measured") or self.recognizer is None:
-                return Clip(key, folder / "audio.wav", float(saved["seconds"]), saved["words"], saved["quality"], saved.get("note"), True)
+                return Clip(key, folder / "audio.wav", float(saved["seconds"]), saved["words"], saved["quality"], saved.get("note"), True, saved.get("durationFit"))
             # Timing was estimated because recognition was down; try again,
             # the audio itself is still good.
             words, quality, note, measured = self._time_words(
@@ -616,19 +672,21 @@ class VoiceScriptSpeaker:
             )
             if is_cancelled is not None and is_cancelled():
                 raise RuntimeError("Voice Script job was cancelled.")
-            write = lambda: self._write_record(record, key, step, float(saved["seconds"]), words, quality, note, measured)
+            if step.duration is not None and measured and any(word.get("timingTrusted") is not True for word in words):
+                raise ValueError("Không-fit: word timing của clip chưa đủ tin cậy để xác minh lời đọc.")
+            write = lambda: self._write_record(record, key, step, float(saved["seconds"]), words, quality, note, measured, saved.get("durationFit"))
             if commit is not None:
                 if not commit(write):
                     raise RuntimeError("Voice Script job was cancelled.")
             else:
                 write()
-            return Clip(key, folder / "audio.wav", float(saved["seconds"]), words, quality, note, True)
+            return Clip(key, folder / "audio.wav", float(saved["seconds"]), words, quality, note, True, saved.get("durationFit"))
 
         partial = folder.with_name(f"{key}.partial-{uuid4().hex[:6]}")
         partial.mkdir(parents=True)
         try:
             raw = partial / "raw.wav"
-            self.generator.speak(step.plan, step.text, raw, cancellation_id=cancellation_id)
+            self.generator.speak(step.plan, step.text, raw, duration=step.duration, cancellation_id=cancellation_id)
             frames = read_pcm(raw, self.ffmpeg_path)
             raw.unlink(missing_ok=True)
             write_pcm(partial / "audio.wav", frames)
@@ -637,11 +695,18 @@ class VoiceScriptSpeaker:
                 partial / "audio.wav", step, seconds,
                 job=job, cancellation_id=cancellation_id, is_cancelled=is_cancelled,
             )
-            frames, words, _cut_head, _cut_tail = trim_to_words(frames, words)
+            fit = None
+            if step.duration is not None:
+                frames, fit = fit_duration(frames, step.duration)
+                words = [{**word, "start": min(step.duration, float(word["start"])), "end": min(step.duration, float(word["end"]))} for word in words]
+                if measured and any(word.get("timingTrusted") is not True for word in words):
+                    raise ValueError("Không-fit: chưa xác minh đủ lời đọc tại thời lượng này. Tăng budget hoặc review audio.")
+            else:
+                frames, words, _cut_head, _cut_tail = trim_to_words(frames, words)
             if len(frames) != int(round(seconds * SAMPLE_RATE)) * SAMPLE_WIDTH:
                 write_pcm(partial / "audio.wav", frames)
                 seconds = seconds_of(frames)
-            self._write_record(partial / "clip.json", key, step, seconds, words, quality, note, measured)
+            self._write_record(partial / "clip.json", key, step, seconds, words, quality, note, measured, fit)
             if is_cancelled is not None and is_cancelled():
                 raise RuntimeError("Voice Script job was cancelled.")
             def publish() -> None:
@@ -657,7 +722,7 @@ class VoiceScriptSpeaker:
         except Exception:
             shutil.rmtree(partial, ignore_errors=True)
             raise
-        return Clip(key, folder / "audio.wav", seconds, words, quality, note, False)
+        return Clip(key, folder / "audio.wav", seconds, words, quality, note, False, fit)
 
     def _time_words(
         self, audio: Path, step: _Step, seconds: float, *, job: _Job | None = None,
@@ -704,12 +769,12 @@ class VoiceScriptSpeaker:
         return words, quality, None, True
 
     @staticmethod
-    def _write_record(record: Path, key: str, step: _Step, seconds: float, words: list, quality: str, note: str | None, measured: bool) -> None:
+    def _write_record(record: Path, key: str, step: _Step, seconds: float, words: list, quality: str, note: str | None, measured: bool, fit: dict | None = None) -> None:
         payload = {
             "key": key, "text": step.text, "voiceId": step.plan.voice.id, "generatorId": step.plan.generator_id,
-            "seconds": round(seconds, 3), "words": words, "quality": quality, "note": note, "measured": measured,
+            "seconds": seconds if step.duration is not None else round(seconds, 3), "words": words, "quality": quality, "note": note, "measured": measured,
             "audioSha256": file_digest(record.parent / "audio.wav"),
-            "artifactFingerprint": step.plan.artifact_fingerprint,
+            "artifactFingerprint": step.plan.artifact_fingerprint, "durationFit": fit,
         }
         temporary = record.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -724,6 +789,7 @@ class VoiceScriptSpeaker:
     ) -> VoiceOutput:
         project_root = Path(self.projects.get(project_id).project_path)
         gap = b"\x00" * (int(round(gap_seconds * SAMPLE_RATE)) * SAMPLE_WIDTH)
+        gap_seconds = seconds_of(gap)
         output_id, audio = self.outputs.reserve(project_id)
         words: list[dict[str, Any]] = []
         segments: list[VoiceOutputSegment] = []
@@ -746,8 +812,8 @@ class VoiceScriptSpeaker:
                     for word in clip.words:
                         words.append({
                             **word,
-                            "start": round(cursor + float(word["start"]), 3),
-                            "end": round(cursor + float(word["end"]), 3),
+                            "start": round(cursor + float(word["start"]), 6 if step.duration is not None else 3),
+                            "end": round(cursor + float(word["end"]), 6 if step.duration is not None else 3),
                             "speakerId": voice.speaker_profile_id,
                             "segmentIndex": index,
                         })
@@ -755,7 +821,9 @@ class VoiceScriptSpeaker:
                         row_id=step.row.id, voice_id=voice.id, voice_name=voice.name,
                         speaker_profile_id=voice.speaker_profile_id, engine=step.plan.engine,
                         generator_id=step.plan.generator_id, text=step.text,
-                        start=round(cursor, 3), end=round(cursor + length, 3), clip=clip.key,
+                        start=round(cursor, 6 if step.duration is not None else 3), end=round(cursor + length, 6 if step.duration is not None else 3), clip=clip.key,
+                        requested_duration=step.duration, duration_report=clip.fit,
+                        timing_report=compare_timing(step.timing, length, clip.words) if step.timing else None,
                         script_row={**step.row.model_dump(mode="json", by_alias=True), "text": step.row.source_text if step.row.source_text is not None else step.row.text, "speakerProfileId": voice.speaker_profile_id},
                     ))
                     if clip.note and clip.note not in notes:
@@ -765,6 +833,22 @@ class VoiceScriptSpeaker:
             self.outputs.discard(project_id, output_id)
             raise
 
+        allocation = clips[0][0].allocation or {}
+        complete_rows = len(clips) == len(allocation.get("rows", clips))
+        requested_clip = allocation.get("requestedClip")
+        duration_error = cursor - requested_clip if requested_clip is not None else None
+        if complete_rows and duration_error is not None and abs(duration_error) > 1 / SAMPLE_RATE:
+            self.outputs.discard(project_id, output_id)
+            raise ValueError("Không-fit: WAV assemble không khớp budget cả clip.")
+        segment_reports = {}
+        for segment_id, target in allocation.get("segments", {}).items():
+            matching = [(step, clip) for step, clip in clips if step.row.segment_id == segment_id]
+            if target is not None and matching:
+                actual = sum(clip.seconds for _, clip in matching) + gap_seconds * (len(matching) - 1)
+                segment_reports[segment_id] = {"requested": target, "actual": actual, "error": actual - target}
+                if complete_rows and abs(actual - target) > 1 / SAMPLE_RATE:
+                    self.outputs.discard(project_id, output_id)
+                    raise ValueError("Không-fit: WAV assemble không khớp budget đoạn.")
         trusted = sum(1 for word in words if word.get("timingTrusted"))
         quality = "source" if words and trusted == len(words) else "partial" if trusted else "needs-alignment"
         note = notes[0] if notes else (
@@ -789,8 +873,11 @@ class VoiceScriptSpeaker:
                 speaker_profile_id=first_step.plan.voice.speaker_profile_id,
                 engine=first_step.plan.engine,
                 generator_id=first_step.plan.generator_id,
-                parameters={"gapSeconds": gap_seconds, "generators": generators},
-                duration=round(cursor, 3),
+                parameters={"gapSeconds": gap_seconds, "generators": generators, "durationAllocation": clips[0][0].allocation,
+                            "durationFit": {"requestedClip": (clips[0][0].allocation or {}).get("requestedClip"), "actualClip": cursor,
+                                "completeRows": complete_rows, "durationError": duration_error, "segments": segment_reports,
+                                "speechQuality": "needs-listening"}},
+                duration=cursor if any(step.duration is not None for step, _ in clips) else round(cursor, 3),
                 sample_rate=SAMPLE_RATE,
                 audio_path=audio.relative_to(project_root).as_posix(),
                 words=words,

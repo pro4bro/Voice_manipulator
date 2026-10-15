@@ -20,7 +20,7 @@ export function useVoiceScriptDocument(projectId: string) {
   latest.current = document;
   const revision = useRef(0);
   const persisted = useRef("");
-  const saving = useRef(false);
+  const savingTask = useRef<Promise<VoiceScriptDocument> | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
@@ -45,12 +45,9 @@ export function useVoiceScriptDocument(projectId: string) {
     return () => { active = false; };
   }, [projectId, retry]);
 
-  useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(document.rows)); } catch { /* project file remains authoritative */ }
-    if (!ready || error) return;
-    void (async () => {
-      if (saving.current) return;
-      saving.current = true;
+  const flush = useCallback((): Promise<VoiceScriptDocument> => {
+    if (savingTask.current) return savingTask.current;
+    const task = (async () => {
       try {
         while (content(latest.current) !== persisted.current) {
           const snapshot = latest.current;
@@ -59,14 +56,25 @@ export function useVoiceScriptDocument(projectId: string) {
           persisted.current = content(snapshot);
           if (mounted.current) setDocument((current) => ({ ...current, revision: saved.revision }));
         }
+        return { ...latest.current, revision: revision.current };
       } catch (reason) {
-        // Do not retry a stale revision automatically or replace a newer edit with an old response.
         if (mounted.current) setError(`Script chưa lưu vào project: ${String(reason)}`);
-      } finally { saving.current = false; }
+        throw reason;
+      }
     })();
-  }, [document, key, projectId, ready, error]);
+    savingTask.current = task;
+    const release = () => { if (savingTask.current === task) savingTask.current = null; };
+    void task.then(release, release);
+    return task;
+  }, [projectId]);
+
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(document.rows)); } catch { /* project file remains authoritative */ }
+    if (!ready || error) return;
+    void flush().catch(() => { /* explicit conflict remains visible, no automatic retry */ });
+  }, [document, key, ready, error, flush]);
 
   const setRows = useCallback((rows: VoiceScriptRow[] | ((rows: VoiceScriptRow[]) => VoiceScriptRow[])) => setDocument((current) => migrateScript(typeof rows === "function" ? rows(current.rows) : rows, current)), []);
   const update = useCallback((next: VoiceScriptDocument) => setDocument(migrateScript(next.rows, next)), []);
-  return { document, setRows, update, ready, error, isSaved: ready && !error && content(document) === persisted.current, reload: () => setRetry((value) => value + 1) };
+  return { document, setRows, update, ready, error, flush, isSaved: ready && !error && content(document) === persisted.current, reload: () => setRetry((value) => value + 1) };
 }

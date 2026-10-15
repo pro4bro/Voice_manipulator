@@ -80,6 +80,10 @@ def main() -> None:
                 loaded = True
 
             generation = {k: v for k, v in (request.get("generation") or {}).items() if k in GENERATION_KEYS}
+            if request.get("duration") is not None:
+                # Preserve the requested envelope and internal pauses. Token-frame
+                # quantization is reconciled by the product with <=60ms silence.
+                generation.update(postprocess_output=False, pad_duration=0, fade_duration=.005)
             preprocess = bool(generation.get("preprocess_prompt", True))
             prompt_key = (request["ref_audio"], request["ref_text"], preprocess)
             prompt = prompts.get(prompt_key)

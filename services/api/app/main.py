@@ -408,6 +408,7 @@ def create_app(
         gpu_lease,
         recognizer=StudioWordRecognizer(settings.legacy_studio_url),
         ffmpeg_path=settings.ffmpeg_path,
+        scripts=voice_script_documents, timing_plans=timing_plans,
     )
     voice_changer_engines = FileTrainingModelCatalog(
         settings.voice_changers_root,
@@ -2319,8 +2320,21 @@ def create_app(
             return await asyncio.to_thread(voice_script_speaker.start, project_id, payload, reserved_job_id=reserved_job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (GpuBusy, TrainingModelUnavailable, VoiceScriptBusy) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-script/duration-plan")
+    async def preview_script_duration(project_id: str, payload: VoiceScriptRequest) -> dict:
+        try:
+            return await asyncio.to_thread(voice_script_speaker.duration_preview, project_id, payload)
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project/source không tồn tại") from exc
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

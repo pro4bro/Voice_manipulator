@@ -313,7 +313,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [referenceSession, setReferenceSession] = useState<ReferenceSession | null>(null);
   const referenceRequestId = useRef<string | null>(null);
   useEffect(() => {
-    if (activePage !== "voice-manipulator") { referenceRequestId.current = null; setReferenceSession(null); }
+    if (activePage !== "voice-manipulator") { referenceRequestId.current = null; setReferenceSession(null); setProductionNavigation(null); }
   }, [activePage]);
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
   const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
@@ -2211,9 +2211,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       return;
     }
     const pendingDirection = voiceScriptRows.find((row) => Object.entries(effectiveScriptSettings(voiceScript.document, row))
-      .some(([key, value]) => key !== "locked" && key !== "note" && value != null));
+      .some(([key, value]) => key !== "locked" && key !== "note" && key !== "duration" && value != null));
     if (pendingDirection) {
-      setNotice("Hướng dẫn thời lượng/sắc thái đã lưu. Bộ generate theo từng câu chưa được nối; xóa các giá trị này hoặc để kế thừa trống để đọc bằng cấu hình hiện tại.");
+      setNotice("Sắc thái/âm lượng đã lưu nhưng chưa có processor đã kiểm chứng. Bỏ các giá trị này để tạo giọng; thời lượng đã được hỗ trợ.");
       return;
     }
     generationStartInFlight.current = true;
@@ -2240,8 +2240,12 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       rowParameters[row.id] = { ...effective, language: effective.language || voice.language || null, speed: effective.speed ?? null };
     }
     try {
+      const savedScript = await voiceScript.flush();
+      if (JSON.stringify({ ...savedScript, revision: 0 }) !== JSON.stringify({ ...voiceScript.document, revision: 0 })) throw new Error("Script đã đổi trong lúc lưu. Bấm Tạo voice lại với nội dung hiện tại.");
+      const [timingSnapshot, bindingSnapshot] = await Promise.all([api.getTimingPlans(project.id), api.getReferenceBindings(project.id)]);
+      const hasDuration = voiceScript.document.settings.duration != null || voiceScript.document.segments.some((segment) => segment.settings.duration != null) || voiceScriptRows.some((row) => row.settings?.duration != null || row.settings?.locked?.includes("duration")) || timingSnapshot.plans.length > 0 || bindingSnapshot.bindings.some((binding) => binding.sources.some((source) => source.properties.includes("timing") && source.strength > 0));
       const choice = await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
-        completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
+        hasDuration ? new Set<string>() : completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
       if (!choice) {
         setPendingVoiceOutput(null);
         setGenerating(false);
@@ -2249,7 +2253,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }
       const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
       setPendingVoiceOutput((current) => current ? { ...current, text: selectedRows.map((row) => row.text).join("\n"), totalRows: selectedRows.length } : current);
-      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { rows: selectedRows.map((row) => {
+      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { scriptRevision: savedScript.revision, timingRevision: timingSnapshot.revision, referenceRevision: bindingSnapshot.revision, rows: selectedRows.map((row) => {
         const settings = effectiveScriptSettings(voiceScript.document, voiceScriptRows.find((item) => item.id === row.id)!);
         const hasSettings = Object.entries(settings).some(([key, value]) => key !== "locked" && value != null);
         return { ...row, ...(hasSettings ? { settings } : {}) };
@@ -2689,17 +2693,23 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onResolveReference: async (binding) => { if (!referenceDocument) throw new Error("Reference đang tải."); return api.resolveReferenceBinding(project.id, binding.id, referenceDocument.revision); },
     onReloadReferences: () => void reloadReferences(),
     onNavigateReference: (binding) => {
-      if (binding.status === "stale" || binding.status === "missing") { setNotice("Vùng gán không còn khớp. Làm mới và gán lại reference."); return; }
       if (binding.scope.kind === "voice-output") {
         const output = voiceOutputs.find((item) => item.id === binding.scope.id);
         if (!output || output.createdAt !== binding.scope.revision) { setNotice("Không tìm thấy Voice Output của vùng này."); return; }
         // Navigation never replaces the current Script draft with old output text.
         const rowIds = binding.target.rowIds.length ? binding.target.rowIds : output.segments?.filter((segment) => binding.target.start !== null && segment.end > binding.target.start && segment.start < binding.target.end!).map((segment) => segment.rowId) ?? [];
         if (rowIds.some((id) => !voiceScriptRows.some((row) => row.id === id))) { setNotice("Câu đích đã bị xóa hoặc tách/gộp. Gán lại reference vào câu hiện tại."); return; }
+        const changedText = rowIds.some((id) => {
+          const segment = output.segments?.find((part) => part.rowId === id), row = voiceScriptRows.find((part) => part.id === id);
+          return segment && row && segment.text.trim().replace(/\s+/gu, " ") !== row.text.trim().replace(/\s+/gu, " ");
+        });
+        if (changedText) { setNotice("Lời thoại đã khác vùng audio được gán. Gán lại reference vào Script hiện tại."); return; }
         openVoiceOutput(output, false);
         const selection = referenceSelection(binding); selection.rowIds = rowIds; setWordSelection(selection);
         setProductionNavigation({ serial: Date.now(), scope: binding.scope, start: binding.target.start, rowIds });
       } else if (binding.scope.kind === "script") {
+        try { if (captureReferenceTargets(referenceSelection(binding), null, voiceScript.document)[0]?.text !== binding.target.text) throw new Error("Nội dung vùng đích đã đổi. Chọn lại vùng để gán."); }
+        catch (reason) { setNotice(String(reason)); return; }
         setWordSelection(referenceSelection(binding));
         setProductionNavigation({ serial: Date.now(), scope: binding.scope, start: null, rowIds: binding.target.rowIds });
       }

@@ -35,7 +35,7 @@ class FileTimingPlans:
             result = []
             for plan in document["plans"]:
                 row = next((row for row in script.rows if row.id == plan["rowId"]), None)
-                state, reason = "ready", "Chưa áp dụng vào audio."
+                state, reason = "ready", "Timing plan sẵn sàng; xem kết quả thực tế trong Voice Output."
                 try:
                     asset = self.store.media.get(project_id, plan["source"]["assetId"])
                     if asset.deleted_at or asset.disabled or file_digest(self.store.media.resolve_audio_path(project_id, asset.id)) != plan["audioSha256"]:
@@ -61,6 +61,52 @@ class FileTimingPlans:
     @staticmethod
     def _alignment_key(asset) -> str:
         return digest([asset.text, asset.words, asset.word_timing_quality, asset.word_timing_trust_version])
+
+    def effective(self, project_id: str, rows, expected_reference_revision: int | None = None) -> dict:
+        """Explicit plans win; whole-sentence Script timing assignments may supply an envelope.
+
+        Output/subsentence timing remains a Fix/Patch target and is never expanded
+        to an entire sentence without the explicit Timing source editor.
+        """
+        document = self.get(project_id)
+        bindings = self.store.get(project_id)
+        if expected_reference_revision is not None and bindings.revision != expected_reference_revision:
+            raise ScriptRevisionConflict("Reference đã đổi trước khi generate. Thử lại với cấu hình hiện tại.")
+        script = self.store.scripts.get(project_id)
+        existing = {plan["rowId"]: plan for plan in document["plans"]}
+        measured, source_assets, hashes = {}, {}, {}
+        for row in rows:
+            if row.id in existing or row.settings.duration is not None: continue
+            candidates = [binding for binding in bindings.bindings if binding.scope.kind == "script" and row.id in binding.target.row_ids and any("timing" in source.properties and source.strength > 0 for source in binding.sources)]
+            if not candidates: continue
+            if any(binding.status != "requested" for binding in candidates): raise ValueError("Timing reference đã stale/missing. Gán lại hoặc bỏ gán.")
+            if any(binding.target.text_ranges or binding.target.row_ids != [row.id] or binding.target.text != row.text for binding in candidates):
+                raise ValueError("Timing reference chỉ phủ một phần câu. Dùng Timing từ footage để xác định envelope của cả câu.")
+            sources = [source for binding in candidates for source in binding.sources if "timing" in source.properties and source.strength > 0]
+            primary = [source for source in sources if source.priority == max(item.priority for item in sources)]
+            if len({(source.asset_id, source.start, source.end, source.strength) for source in primary}) != 1:
+                raise ValueError("Timing có nhiều source ngang ưu tiên. Chọn primary bằng priority.")
+            source = primary[0]
+            if source.strength != 1: raise ValueError("Timing blend chưa được kiểm chứng. Đặt mức ảnh hưởng timing100% hoặc lập target duration trực tiếp.")
+            if source.asset_id not in source_assets:
+                source_assets[source.asset_id] = self.store.media.get(project_id, source.asset_id)
+            asset = source_assets[source.asset_id]
+            path = self.store.media.resolve_audio_path(project_id, asset.id)
+            if asset.deleted_at or asset.disabled or not asset.reference_selected: raise ValueError("Timing footage không còn khả dụng/Reference.")
+            if asset.id not in hashes: hashes[asset.id] = file_digest(path)
+            if hashes[asset.id] != source.audio_sha256: raise ValueError("Timing source đã đổi audio trong lúc lập plan.")
+            identity = (source.audio_sha256, source.start, source.end)
+            if identity not in measured:
+                measured[identity] = self.resolver.features(self._path(project_id).parent.parent, path, source)
+            template = timing_template(asset.words, source.start, source.end, row.text, False)
+            plan = {"rowId": row.id, "source": {"kind": "reference", "assetId": asset.id, "revision": asset.updated_at.isoformat(), "start": source.start, "end": source.end},
+                    "bindingIds": [binding.id for binding in candidates], "audioSha256": source.audio_sha256, "alignmentRevision": self._alignment_key(asset),
+                    "template": template, "features": measured[identity], "requestedDuration": template["duration"], "anchorApplication": "pending",
+                    "identityVoiceId": row.voice_id, "identitySpeakerId": row.speaker_profile_id, "targetRevision": digest([row.model_dump(by_alias=True), effective_settings(script, row)]), "state": "ready"}
+            content = {**plan, "source": {key: value for key, value in plan["source"].items() if key != "revision"}}
+            plan["key"] = digest(content)
+            existing[row.id] = plan
+        return {**document, "plans": list(existing.values())}
 
     def save(self, project_id: str, request: TimingPlanRequest) -> dict:
         with self._lock:

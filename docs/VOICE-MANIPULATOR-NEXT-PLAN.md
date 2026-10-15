@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực thi nhóm năm vòng đầu;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã triển khai code mười vòng đầu;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,18 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Tiến độ vòng6–10 — 2026-10-15
+
+Reference Detail, resolver, timing source/template, markers và duration planner/
+native generation đã triển khai. Model clone GPU32step đã tạo mẫu1.78s tự nhiên,
+1.42s ngắn,2.60s dài và clip hai profile4.95s gồm.35s nghỉ; timing override,
+reuse2/2 và move/reopen/hash/PCM/boundary đã qua. Đây chưa phải nghiệm thu nghe,
+identity, exact word anchors hay browser/native UI. Emotion/intonation/shout/
+whisper, loudness/random/Fix, Ctrl-stretch/ripple còn ở các vòng đã định sau.
+Gate tổng: `docs/gates/voice-manipulator-rounds6-10-20261015.md`, ADR0077.
+Vòng tiếp theo: **VM-RIPPLE-01**. Phần nhóm đầu dưới đây là lịch sử tại thời điểm
+kết thúc năm vòng đầu; trạng thái hiện tại ưu tiên đoạn này và các ledgers.
 
 ## Tiến độ nhóm năm vòng đầu — 2026-10-15
 

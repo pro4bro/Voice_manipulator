@@ -87,3 +87,5 @@ export interface TimingPlan {
 }
 export interface TimingPlanDocument { version: 1; revision: number; plans: TimingPlan[] }
 export interface TimingPlanRequest { rowId: string; source: TimingPlan["source"]; expectedRevision: number; expectedScriptRevision: number; reviewedMapping: boolean }
+
+export interface DurationAllocation { requestedClip: number | null; gapSeconds: number; segments: Record<string, number | null>; rows: Record<string, {duration: number | null; origin: string}>; scriptRevision: number | null }

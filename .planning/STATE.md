@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-15 — Voice Manipulator first five checklist rounds.
-last_activity_desc: First five VM rounds implemented. Frontend844, backend870 and build pass. Actual full/clone/LoRA Script UAT passed edit-one/reuse2, Stop-at2, retry3/3 and moved-project reuse3/3 with preserved hashes/lineage and PCM/boundaries. Live API references/move passed. Listening/identity, measured word timing and browser/native UAT remain open. Next VM-REF-DETAIL-01 with slot navigation in Timeline and Script. Prior queues retained. No portable or Phase03 advance, remains60%.
+last_activity: 2026-10-15 — Voice Manipulator checklist rounds6–10.
+last_activity_desc: Rounds6–10 implemented — reference slots/resolution/timing templates/selection markers/native duration budgets. Actual32-step GPU clone natural1.78/short1.42/long2.60 and multi-profile4.95 passed, including timing override/reuse2/2/move hashes and PCM boundaries. Full backend885 and affected53 pass; frontend853/typecheck/build pass; exact evidence in combined gate. Human listening/identity, word anchors and native browser UAT remain open. Next VM-RIPPLE-01. Phase03 stays60%, no portable/push; prior queues retained.
 ---
 
 # Project State
@@ -21,6 +21,22 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## Voice Manipulator — next five rounds completed in source (2026-10-15)
+
+Owner-directed VM-REF-DETAIL-01, VM-REF-RESOLVE-01, VM-TIMING-REF-01,
+VM-NAV-01 and VM-DURATION-01 delivered slots/navigation, property resolution,
+portable timing templates, selection markers and native sample-budget synthesis.
+Actual32-step GPU clone audio passed natural1.78s/short1.42s/long2.60s,
+two-profile4.95s including.35s pause, timing-template override, replay2/2 and
+move/Open Existing reuse2/2 with preserved hashes. No clipping; gap/boundaries0.
+CPU attempt timed out; owned workers/lease closed. Live HTTP actual-speech
+measurements/plans/revision/move passed. Full backend885 and affected53 pass;
+frontend853/typecheck/build pass; exact history is in the combined gate. See ADR0077 and
+`docs/gates/voice-manipulator-rounds6-10-20261015.md` for exact results/limits.
+Human listening/identity, measured word anchors and native browser UAT remain
+open. Delivery/loudness/random/Fix and audible stretch are later rounds.
+Next **VM-RIPPLE-01**. Phase03 remains60%; no portable/push; prior queues retained.
 
 ## Voice Manipulator — first five rounds (2026-10-15)
 

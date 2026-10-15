@@ -21,7 +21,7 @@ export function VoiceScriptSettings({ document, onChange, selectedIds, onRowsCha
   const segment = document.segments.find((item) => item.id === row?.segmentId);
   const settings = (scope === "clip" ? document.settings : scope === "segment" ? segment?.settings : row?.settings) ?? {};
   const effective = row ? effectiveScriptSettings(document, row) : {};
-  const inheritedLocks = new Set(scope === "clip" ? [] : [...(document.settings.locked ?? []), ...(scope === "sentence" ? segment?.settings.locked ?? [] : [])]);
+  const inheritedLocks = new Set<SettingKey>(scope === "clip" ? [] : [...(document.settings.locked ?? []), ...(scope === "sentence" ? segment?.settings.locked ?? [] : [])].filter((key) => key !== "duration"));
   function change(key: keyof ScriptSettings, value: unknown) {
     if (!onChange) return;
     const next = { ...settings, [key]: value };
@@ -44,7 +44,7 @@ export function VoiceScriptSettings({ document, onChange, selectedIds, onRowsCha
   }
   return <details className="voice-script-settings">
     <summary>Cấu trúc và hướng dẫn đọc · clip / đoạn / câu</summary>
-    <p>Chọn câu bằng số dòng. Hướng dẫn được lưu cùng project; thời lượng, sắc thái và âm lượng sẽ được áp dụng ở các bước generate tiếp theo.</p>
+    <p>Chọn câu bằng số dòng. Thời lượng là budget ở đúng cấp clip/đoạn/câu, tính cả khoảng nghỉ. Khóa câu cần giá trị hoặc timing source. Sắc thái và âm lượng đang chờ processor.</p>
     <div className="voice-script-settings__tools">
       <button disabled={!row} onClick={split} type="button">Tách thành câu</button>
       <button disabled={!row} onClick={join} type="button">Ghép với câu sau</button>
@@ -63,7 +63,7 @@ export function VoiceScriptSettings({ document, onChange, selectedIds, onRowsCha
     <fieldset disabled={!onChange || (scope !== "clip" && !row)}>
       {fields.map((field) => <div className="voice-script-settings__field" key={field.key}>
         <label>{field.label}<input disabled={inheritedLocks.has(field.key)} title={inheritedLocks.has(field.key) ? "Đã khóa ở cấp trên" : undefined} aria-label={field.label} type={field.min === undefined ? "text" : "number"} min={field.min} max={field.max} step={field.step}
-          placeholder={`Kế thừa${effective[field.key] != null ? `: ${effective[field.key]}` : ""}`} value={settings[field.key] ?? ""}
+          placeholder={field.key === "duration" ? "Tự nhiên / phân bổ từ cấp trên" : `Kế thừa${effective[field.key] != null ? `: ${effective[field.key]}` : ""}`} value={settings[field.key] ?? ""}
           onChange={(event) => change(field.key, event.target.value === "" ? null : field.min === undefined ? event.target.value : Number(event.target.value))} /></label>
         <label><input type="checkbox" aria-label={`Khóa ${field.label}`} checked={settings.locked?.includes(field.key) ?? false} onChange={(event) => change("locked", event.target.checked ? [...(settings.locked ?? []), field.key] : settings.locked?.filter((key) => key !== field.key) ?? [])} />Khóa</label>
       </div>)}

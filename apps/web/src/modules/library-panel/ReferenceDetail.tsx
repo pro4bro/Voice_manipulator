@@ -3,6 +3,8 @@ import { REFERENCE_PROPERTIES, type ReferenceBinding, type ReferenceBindingDocum
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "./reference-detail.css";
 
+const stateLabel: Record<string, string> = { requested: "Chờ phân tích", missing: "Thiếu nguồn", stale: "Cần cập nhật", measured: "Đã đo nguồn", unsupported: "Chưa hỗ trợ áp dụng", conflict: "Cần chọn ưu tiên", locked: "Theo cấu hình đã đặt", unavailable: "Nguồn không khả dụng" };
+
 export function ReferenceDetail({ document, error, onReload, onNavigate, onDelete, onResolve }: {
   onResolve?: (binding: ReferenceBinding) => Promise<ReferenceResolution>;
   document?: ReferenceBindingDocument | null; error?: string | null; onReload?: () => void;
@@ -14,6 +16,12 @@ export function ReferenceDetail({ document, error, onReload, onNavigate, onDelet
   const analysisToken = useRef(0);
   useEffect(() => { analysisToken.current++; setResolutions({}); setBusy(null); return () => { analysisToken.current++; }; }, [document]);
   const [failure, setFailure] = useState<string | null>(null);
+  async function analyze(binding: ReferenceBinding) {
+    const token = ++analysisToken.current; setBusy(binding.id); setFailure(null);
+    try { const result = await onResolve?.(binding); if (result && token === analysisToken.current) setResolutions((current) => ({ ...current, [binding.id]: result })); }
+    catch (reason) { if (token === analysisToken.current) setFailure(String(reason)); }
+    finally { if (token === analysisToken.current) setBusy(null); }
+  }
   return <ModuleFrame title="Reference Detail" className="reference-detail" action={<button type="button" onClick={onReload}>Làm mới</button>}>
     {error || failure ? <p role="alert">{error || failure}</p> : null}
     {!document && !error ? <p role="status">Đang đọc reference…</p> : null}
@@ -31,15 +39,15 @@ export function ReferenceDetail({ document, error, onReload, onNavigate, onDelet
           </div>
           {open ? <div id={`reference-${binding.id}`} className="reference-detail__expanded">
             <p>{binding.target.start === null ? "Chưa có timing audio" : `${binding.target.start.toFixed(3)} → ${binding.target.end!.toFixed(3)}s · ${(binding.target.end! - binding.target.start).toFixed(3)}s`}</p>
-            <p>Trạng thái: {binding.status} · Random giá trị/thời điểm: tắt · Chưa áp dụng vào audio</p>
+            <p>Trạng thái: {stateLabel[binding.status]} · Random giá trị/thời điểm: tắt · Kết quả áp dụng được ghi ở Voice Output</p>
             {binding.warnings.map((warning, index) => <p role="status" key={index}>{warning}</p>)}
             {binding.sources.map((source, index) => <div key={`${source.assetId}-${index}`}>
               <b>{source.name || source.assetId}</b><p>{source.start.toFixed(3)} → {source.end.toFixed(3)}s</p>
               <p>{source.properties.map((property) => REFERENCE_PROPERTIES.find(([key]) => key === property)?.[1]).join(" · ")}</p>
               <p>Mức ảnh hưởng {Math.round(source.strength * 100)}% · Ưu tiên {source.priority}</p>
             </div>)}
-            <button type="button" disabled={busy !== null || !onResolve} onClick={async () => { setBusy(binding.id); setFailure(null); try { const token = ++analysisToken.current; const result = await onResolve?.(binding); if (result && token === analysisToken.current) setResolutions((current) => ({ ...current, [binding.id]: result })); } catch (reason) { setFailure(String(reason)); } finally { setBusy(null); } }}>Phân tích reference</button>
-            {resolutions[binding.id]?.units.map((unit, index) => <div key={unit.rowId ?? index} aria-label="Kết quả phân tích reference"><b>{unit.rowId || "Vùng audio"}</b>{Object.entries(unit.properties).map(([key, result]) => <p key={key}>{REFERENCE_PROPERTIES.find(([id]) => id === key)?.[1]}: {result.state} · {result.reason}{result.source?.features ? ` · ${result.source.features.duration.toFixed(3)}s · RMS ${result.source.features.rmsDbfs?.toFixed(1) ?? "im lặng"} dBFS` : ""}</p>)}</div>)}
+            <button type="button" disabled={busy !== null || !onResolve} onClick={() => void analyze(binding)}>Phân tích reference</button>
+            {resolutions[binding.id]?.units.map((unit, index) => <div key={unit.rowId ?? index} aria-label="Kết quả phân tích reference"><b>{unit.rowId ? `Câu ${index + 1}` : "Vùng audio"}</b>{Object.entries(unit.properties).map(([key, result]) => <p key={key}>{REFERENCE_PROPERTIES.find(([id]) => id === key)?.[1]}: {stateLabel[result.state]} · {result.reason}{result.source?.features ? ` · ${result.source.features.duration.toFixed(3)}s · RMS ${result.source.features.rmsDbfs?.toFixed(1) ?? "im lặng"} dBFS` : ""}</p>)}</div>)}
             <button type="button" disabled={busy !== null || !onDelete} onClick={async () => { setBusy(binding.id); setFailure(null); try { await onDelete?.(binding); } catch (reason) { setFailure(String(reason)); } finally { setBusy(null); } }}>{busy === binding.id ? "Đang bỏ gán…" : "Bỏ gán reference"}</button>
           </div> : null}
         </li>;

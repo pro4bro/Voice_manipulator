@@ -64,5 +64,8 @@ def compare_timing(plan: dict, actual_duration: float, actual_words: list[dict] 
         word = words[index]
         if normalized(str(word.get("text", ""))) != normalized(anchor["text"]): continue
         errors.append({"wordIndex": index, "startError": float(word["start"]) - anchor["start"], "endError": float(word["end"]) - anchor["end"]})
+    expected = sum(anchor["targetWordIndex"] is not None for anchor in plan["template"]["anchors"])
+    status = "measured" if errors and len(errors) == expected else "partial" if errors else "unknown"
     return {"requestedDuration": requested, "actualDuration": actual_duration, "durationError": actual_duration - requested,
-            "anchorErrors": errors, "anchorStatus": "measured" if errors else "unknown", "offsetError": None}
+            "anchorErrors": errors, "anchorStatus": status,
+            "offsetError": errors[0]["startError"] if errors and errors[0]["wordIndex"] == 0 else None}

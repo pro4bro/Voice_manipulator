@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { ReferenceDetail } from "./ReferenceDetail";
 import type { ReferenceBindingDocument } from "../../domain/reference-bindings";
@@ -24,4 +24,16 @@ it("shows one two-line slot for a multi-source target and separates expansion/de
   expect(navigate).toHaveBeenCalledWith(document.bindings[0]);
   view.rerender(<ReferenceDetail document={{ ...document, revision: 5, bindings: [] }} />);
   expect(view.container.querySelectorAll(".reference-detail__slot")).toHaveLength(0);
+});
+
+it("discards analysis completing after the displayed assignment revision changes", async () => {
+  let finish!: (value: never) => void;
+  const resolve = vi.fn(() => new Promise<never>((done) => { finish = done; }));
+  const view = render(<ReferenceDetail document={document} onResolve={resolve} />);
+  fireEvent.click(screen.getByRole("button", { name: "Chi tiết Câu được gán" }));
+  fireEvent.click(screen.getByRole("button", { name: "Phân tích reference" }));
+  expect(resolve).toHaveBeenCalledOnce();
+  view.rerender(<ReferenceDetail document={{ ...document, revision: 5, bindings: [] }} onResolve={resolve} />);
+  await act(async () => finish({ bindingId: "binding-a", units: [{ rowId: "r", properties: { timing: { state: "measured", reason: "obsolete analysis" } } }] } as never));
+  expect(screen.queryByText(/obsolete analysis/)).toBeNull();
 });

@@ -1125,6 +1125,9 @@ export interface VoiceOutputSegment {
   start: number;
   end: number;
   clip?: string | null;
+  requestedDuration?: number | null;
+  durationReport?: { requestedDuration: number; actualDuration: number; paddingSeconds: number; durationError: number; state: string } | null;
+  timingReport?: { requestedDuration: number; actualDuration: number; durationError: number; anchorStatus: string; anchorErrors: { wordIndex: number; startError: number; endError: number }[]; offsetError?: number | null } | null;
   scriptRow?: VoiceScriptRow | null;
 }
 

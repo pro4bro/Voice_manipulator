@@ -26,6 +26,8 @@ def test_template_mapping_preserves_pauses_and_never_claims_estimated_anchors():
     report = compare_timing({"requestedDuration": 2.5, "template": template}, 2.6, [{"text": "Xin", "start": .5, "end": .9}])
     assert report["durationError"] == pytest.approx(.1)
     assert report["anchorStatus"] == "unknown"
+    report = compare_timing({"requestedDuration": 2.5, "template": template}, 2.6, [{"text": "Xin", "start": .52, "end": .92, "timingTrusted": True}])
+    assert report["anchorStatus"] == "partial" and report["offsetError"] == pytest.approx(.02)
 
 
 @pytest.mark.parametrize("kind", ["reference", "dub", "patch"])

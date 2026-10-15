@@ -45,6 +45,8 @@ class ReferenceResolver:
                 decoded = Path(folder) / "analysis.wav"
                 subprocess.run([self.ffmpeg_path, "-v", "error", "-nostdin", "-i", str(path), "-ss", str(source.start), "-t", str(source.end - source.start), "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(decoded)], check=True, capture_output=True, timeout=60)
                 result = self._measure(decoded, 0, source.end - source.start)
+        if file_digest(path) != source.audio_sha256:
+            raise ValueError("Audio source đã đổi trong lúc đo; chưa lưu feature cache.")
         result["key"] = key
         FileProjectRepository._atomic_write(cache, json.dumps(result))
         return result

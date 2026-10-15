@@ -94,6 +94,9 @@ it("explicit slot navigation reveals both views without altering multi-selection
   expect(scroller.scrollLeft).toBeGreaterThan(0);
   expect(screen.getByTestId("selection").textContent).toBe(before);
   expect(script.scrollTop).toBe(800);
+  script.scrollTop = 0;
+  view.rerender(<Harness navigation={{ serial: 2, scope: {kind: "voice-output", id: "out", revision: "revision-1"}, start: 9.5, rowIds: [] }} />);
+  expect(script.scrollTop).toBe(800); // Trailing silence reveals the last cue, without inventing words.
 });
 
 it("marker clicks reveal ranges in both scrollers without seeking or clearing multi-selection", () => {

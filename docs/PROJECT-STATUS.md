@@ -1,5 +1,21 @@
 # Project Status — 2026-10-15
 
+## Voice Manipulator — next five rounds completed in source (2026-10-15)
+
+Owner-directed VM-REF-DETAIL-01, VM-REF-RESOLVE-01, VM-TIMING-REF-01,
+VM-NAV-01 and VM-DURATION-01 delivered slots/navigation, property resolution,
+portable timing templates, selection markers and native sample-budget synthesis.
+Actual32-step GPU clone audio passed natural1.78s/short1.42s/long2.60s,
+two-profile4.95s including.35s pause, timing-template override, replay2/2 and
+move/Open Existing reuse2/2 with preserved hashes. No clipping; gap/boundaries0.
+CPU attempt timed out; owned workers/lease closed. Live HTTP actual-speech
+measurements/plans/revision/move passed. Full backend885 and affected53 pass;
+frontend853/typecheck/build pass; exact history is in the combined gate. See ADR0077 and
+`docs/gates/voice-manipulator-rounds6-10-20261015.md` for exact results/limits.
+Human listening/identity, measured word anchors and native browser UAT remain
+open. Delivery/loudness/random/Fix and audible stretch are later rounds.
+Next **VM-RIPPLE-01**. Phase03 remains60%; no portable/push; prior queues retained.
+
 ## Voice Manipulator — first five checklist rounds
 
 Owner requested VM-GEN-01, VM-SCRIPT-01, VM-REF-LIB-01, VM-SELECTION-01 and

@@ -11,6 +11,7 @@ import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptPlaybackVisibility } from "./script-playback-follow";
 import { ScriptSelectionMarkers } from "./ScriptSelectionMarkers";
 import { ScriptScrollbar } from "./ScriptScrollbar";
+import { DurationPlanPanel } from "./DurationPlanPanel";
 import { TimingPlanEditor } from "./TimingPlanEditor";
 import { VoiceScriptSettings } from "./VoiceScriptSettings";
 import "./voice-script-settings.css";
@@ -100,6 +101,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
   const readiness = scriptReadiness(rows, voices);
+  const [durationRefresh, setDurationRefresh] = useState(0);
   const [view, setView] = useState<"table" | "text">("table");
   const [textDraft, setTextDraft] = useState("");
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
@@ -115,6 +117,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
   const [underline, setUnderline] = useState(false);
   const [rowSelection, setRowSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const consumedNavigation = useRef<typeof navigation>(undefined);
   const followRoot = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const focusRef = useRef<{ rowId: string; start: number; end: number } | null>(null);
@@ -157,9 +160,11 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
   const textStyle = { "--script-format-scale": fontScale / 100, "--script-font-adjust": fontScale / 100, fontWeight: bold ? 700 : undefined, fontStyle: italic ? "italic" : undefined, textDecoration: underline ? "underline" : undefined } as CSSProperties;
 
   useLayoutEffect(() => {
-    if (!navigation) return;
-    setView("table");
-    const timedRow = navigation.start === null ? null : output?.segments?.find((segment) => segment.end > navigation.start!);
+    if (!navigation || consumedNavigation.current === navigation) return;
+    if (navigation.scope.kind === "voice-output" && navigation.scope.id !== output?.id) return;
+    if (view !== "table") { setView("table"); return; }
+    consumedNavigation.current = navigation;
+    const timedRow = navigation.start === null ? null : (output?.segments?.find((segment) => segment.end > navigation.start!) ?? output?.segments?.at(-1));
     const rowId = navigation.rowIds[0] ?? timedRow?.rowId;
     const target = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-script-row-id]") ?? []).find((node) => node.dataset.scriptRowId === rowId);
     const viewport = scrollRef.current;
@@ -167,7 +172,7 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
       viewport.scrollTop = Math.max(0, target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - viewport.clientHeight * .25);
       viewport.dispatchEvent(new Event("scroll"));
     }
-  }, [navigation, view]);
+  }, [navigation, view, output?.id]);
 
   // Editing always goes through the full row list; an empty Script still shows
   // one row to type into, and typing into it makes it real.
@@ -578,7 +583,8 @@ export function VoiceScript({ timingContext, navigation, onReferenceContext, doc
     </div>
     {saveError ? <div role="alert" className="script-timing-warning">{saveError}<button onClick={() => { if (window.confirm("Tải Script đã lưu? Nội dung chưa lưu vẫn có bản dự phòng trong trình duyệt.")) onReload?.(); }} type="button">Tải lại bản đã lưu</button></div> : null}
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
-    {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} /> : null}
+    {timingContext && scriptDocument ? <DurationPlanPanel projectId={timingContext.projectId} document={scriptDocument} saved={timingContext.saved} output={output} refreshKey={durationRefresh} /> : null}
+    {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} onChange={() => setDurationRefresh((current) => current + 1)} /> : null}
     {view === "table" ? <div className="script-table-shell voice-script" onContextMenu={referenceContext} onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) referenceContext(event); else handleRowSelectionKey(event); }} ref={followRoot}>
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {

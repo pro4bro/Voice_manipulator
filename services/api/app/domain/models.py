@@ -1503,6 +1503,9 @@ class VoiceOutputSegment(DomainModel):
     # The cached clip this row was cut from; a later read of the same row with
     # the same voice and settings reuses it instead of speaking it again.
     clip: str | None = None
+    requested_duration: float | None = None
+    duration_report: dict[str, Any] | None = None
+    timing_report: dict[str, Any] | None = None
     script_row: dict[str, Any] | None = None
 
 
@@ -1545,6 +1548,9 @@ class VoiceScriptRow(DomainModel):
 
 
 class VoiceScriptRequest(DomainModel):
+    script_revision: int | None = Field(default=None, ge=0)
+    timing_revision: int | None = Field(default=None, ge=0)
+    reference_revision: int | None = Field(default=None, ge=0)
     """A typed Script, row by row, each row read by the voice picked for it."""
 
     rows: list[VoiceScriptRow] = Field(min_length=1, max_length=400)

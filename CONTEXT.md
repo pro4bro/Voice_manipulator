@@ -48,3 +48,8 @@
 - **Adapter**: Pro4Bro code satisfying an interface at the seam between the app and an Engine.
 - **Project Manifest**: Portable `project.json`; `projectPath` and `location` are `.` on disk and become resolved runtime paths only in memory/API responses.
 - **Recent Registry**: Disposable app-level index pointing to project manifests; it can be rebuilt with Open Existing.
+
+- **Reference Footage**: A project Asset chosen as an example of timing, delivery, volume, or emotion while the target character retains its own voice identity.
+- **Reference Binding**: An association between one production selection and specific regions and qualities of one or more Reference Footage.
+- **Timing Template**: The duration, pauses, rhythm and available word anchors of a source region, including how reliably those anchors map to the target text.
+- **Duration Budget**: The time allotted to a clip, segment or sentence, including pauses within that unit; it is distinct from speaking speed.
