@@ -4,6 +4,14 @@ import type { SelectionModifiers, WordSelection } from "./word-selection";
 export type SelectionRange = NonNullable<WordSelection["ranges"]>[number];
 type Timed = Pick<StudioWord, "start" | "end">;
 
+export function rangeReadoutBounds(range: SelectionRange, duration: number, canvasWidth: number, viewportLeft: number, viewportWidth: number) {
+  const scale = canvasWidth / Math.max(duration, .001);
+  const start = range.start * scale, end = range.end * scale;
+  const width = Math.min(Math.max(0, viewportWidth - 8), Math.max(230, end - start));
+  const left = Math.max(viewportLeft + 4, Math.min(start, viewportLeft + viewportWidth - width - 4));
+  return { left: left - start, width, visible: end >= viewportLeft && start <= viewportLeft + viewportWidth };
+}
+
 function normalize(ranges: SelectionRange[]): SelectionRange[] {
   const ordered = ranges.filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.start >= 0 && range.end > range.start)
     .map((range) => ({ ...range })).sort((a, b) => a.start - b.start || a.end - b.end);

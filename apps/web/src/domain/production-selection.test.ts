@@ -1,7 +1,16 @@
 import { expect, it } from "vitest";
-import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord, sweepProductionWords } from "./production-selection";
+import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selectProductionTime, selectProductionWord, sweepProductionWords } from "./production-selection";
 const empty = { indexes: [], anchor: null };
 const words = [{ start: 1, end: 2 }, { start: 2.5, end: 3 }, { start: 7, end: 8 }];
+
+it("keeps all three timing values in the viewport for narrow selections at either edge and after zooming", () => {
+  for (const [start, end, left, width] of [[9.8, 10, 0, 1000], [1.001, 1.005, 100, 240], [0, .01, 0, 300]]) {
+    const bounds = rangeReadoutBounds({ id: "range", start, end }, 10, 1000, left, width);
+    const absolute = start / 10 * 1000 + bounds.left;
+    expect(absolute).toBeGreaterThanOrEqual(left);
+    expect(absolute + bounds.width).toBeLessThanOrEqual(left + width);
+  }
+});
 
 it("keeps exact silence selections and separated ranges without filling the gap", () => {
   const first = selectProductionTime(empty, .2, .7, words);

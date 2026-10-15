@@ -23,6 +23,8 @@ const apiMocks = vi.hoisted(() => ({
   readVoiceScript: vi.fn(),
   getVoiceScript: vi.fn(),
   saveVoiceScript: vi.fn(),
+  getReferenceBindings: vi.fn(),
+  assignReferences: vi.fn(),
   listObsSessions: vi.fn(),
   getVoiceScriptJob: vi.fn(),
   stopGeneration: vi.fn(),
@@ -169,6 +171,8 @@ describe("WorkspaceShell STT synchronization", () => {
     vi.clearAllMocks();
     apiMocks.getVoiceScript.mockResolvedValue({ version: 1, revision: 0, settings: {}, segments: [], rows: [] });
     apiMocks.saveVoiceScript.mockImplementation(async (_id, doc) => ({ ...doc, revision: doc.revision + 1 }));
+    apiMocks.getReferenceBindings.mockResolvedValue({ version: 1, revision: 0, bindings: [] });
+    apiMocks.assignReferences.mockResolvedValue({ version: 1, revision: 1, bindings: [] });
     apiMocks.saveTrainingCatalog.mockImplementation(async (_id, catalog) => catalog);
     localStorage.clear();
     apiMocks.listReadingPacks.mockResolvedValue([]);
@@ -412,8 +416,8 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByTestId("media-ticks")).toHaveTextContent("asset-1:false,asset-2:false");
   });
 
-  function prepareGeneration(rows = [{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }]) {
-    apiMocks.listProjectMedia.mockResolvedValue([]);
+  function prepareGeneration(rows = [{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" }], assets: ProjectMediaAsset[] = []) {
+    apiMocks.listProjectMedia.mockResolvedValue(assets);
     apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
     apiMocks.listProjectVoices.mockResolvedValue([{ id: "voice-1", name: "Test voice", kind: "lora", engine: "omnivoice", speakerProfileId: "speaker-1", createdAt: "2026-10-07T00:00:00Z" }]);
     localStorage.setItem(`pro4bro:${project.id}:voice-script`, JSON.stringify(rows));
@@ -426,6 +430,34 @@ describe("WorkspaceShell STT synchronization", () => {
     return { id: "generation-1", projectId: project.id, status, total: 2, done: 1, reused: 0,
       currentRowId: null, message: null, output: null, error: null, startedAt: "2026-10-07T00:00:00Z", finishedAt: null };
   }
+
+  it("does not reopen a cancelled reference menu when its late read returns", async () => {
+    const pending = deferred<{ version: 1; revision: number; bindings: [] }>();
+    apiMocks.getReferenceBindings.mockReturnValue(pending.promise);
+    prepareGeneration();
+    await waitFor(() => expect(collectionContext.current?.voiceScriptDocument?.revision).toBe(1));
+    act(() => collectionContext.current?.onReferenceContext?.({ selection: { indexes: [], anchor: null, rowIds: ["row-1"], ranges: [] }, x: 30, y: 40, origin: "script" }));
+    await screen.findByRole("menuitem", { name: "Đang đọc reference…" });
+    fireEvent.click(screen.getByRole("button", { name: "Đóng gán reference" }));
+    await act(async () => pending.resolve({ version: 1, revision: 0, bindings: [] }));
+    expect(screen.queryByRole("menuitem", { name: "Gán reference footage…" })).not.toBeInTheDocument();
+    expect(apiMocks.assignReferences).not.toHaveBeenCalled();
+  });
+
+  it("rejects reference Apply after Script changes without retargeting the frozen selection", async () => {
+    const ref = { ...mediaAsset("skipped", "", "2026-10-15T00:00:00Z"), name: "Reference A", referenceSelected: true, duration: 3 };
+    prepareGeneration(undefined, [ref]);
+    await waitFor(() => expect(collectionContext.current?.voiceScriptDocument?.revision).toBe(1));
+    act(() => collectionContext.current?.onReferenceContext?.({ selection: { indexes: [], anchor: null, rowIds: ["row-1"], ranges: [] }, x: 30, y: 40, origin: "script" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Gán reference footage…" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reference A" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Timing · Reference A" }));
+    act(() => collectionContext.current!.onVoiceScriptRowsChange([{ id: "row-1", text: "Nội dung đã đổi", voiceId: "voice-1", speakerProfileId: "speaker-1" }]));
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng cho 1 vùng" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Script đã thay đổi hoặc đang lưu"));
+    expect(screen.getByLabelText("Vùng đích đã chụp")).toHaveTextContent("xin chào");
+    expect(apiMocks.assignReferences).not.toHaveBeenCalled();
+  });
 
   it("creates a Voice Output slot before the generation start response and retains a start error", async () => {
     const start = deferred<VoiceScriptJob>();

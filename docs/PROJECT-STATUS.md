@@ -1,4 +1,23 @@
-# Project Status — 2026-10-14
+# Project Status — 2026-10-15
+
+## Voice Manipulator — first five checklist rounds
+
+Owner requested VM-GEN-01, VM-SCRIPT-01, VM-REF-LIB-01, VM-SELECTION-01 and
+VM-REF-ASSIGN-01 in sequence. Main source now has project-owned Script hierarchy /
+settings, Reference Library roles/import, shared exact/disjoint selection and a
+three-origin multi-reference assignment editor/store. Cache content fingerprints,
+validated recovery/reuse, original-text lineage and stale binding safeguards were
+repaired. Live local-API PCM imports/assignment/move/reopen/source hashes passed.
+
+CPU and sandbox GPU smokes timed out; native Windows GPU execution subsequently
+created an actual full-model2.2s PCM WAV. Script/move receipt and remaining
+identity/listening/alignment gates are in the combined gate. Browser unavailable, so browser/native UAT
+remains open. Requested duration/delivery/reference properties are persisted
+intent; later processors are not claimed. See ADR0076 and
+docs/gates/voice-manipulator-first-five-20261015.md for final checks/commits.
+Next implementation VM-REF-DETAIL-01 includes slot content-click navigation to
+both Timeline and Script. Phase03 stays60%; no portable release. Existing
+SOURCE-EXTERNAL-ASSETS-01 and HUB-COLLECTION-UAT-01 remain queued.
 
 ## HUB-COLLECTION-01 — main-source Hub and Collection
 

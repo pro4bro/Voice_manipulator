@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-14 — HUB-COLLECTION-01 main-source Hub/Collection feedback.
-last_activity_desc: Hover/detail layout, profile count/model selection, native transfer and verified15s sample jobs implemented. Frontend818, backend focused88, three initial startup timeouts pass exact rerun; typecheck/build and real browser geometry pass. Actual CPU sample incomplete; GPU/native UAT remains open. Next implementation SOURCE-EXTERNAL-ASSETS-01; no new portable or phase advance, Phase03 remains60%.
+last_activity: 2026-10-15 — Voice Manipulator first five checklist rounds.
+last_activity_desc: Script hierarchy and portable intent, Reference Library roles, synchronized exact ranges and multi-reference assignments implemented. Frontend844 and backend870 pass with live API PCM/move evidence. Native GPU execution created a real full-model2.2s WAV after sandbox timeouts. Script/move receipt and remaining listening/alignment/browser gates in combined report. Next VM-REF-DETAIL-01 with slot navigation in Timeline and Script. Prior queues retained. No portable or Phase03 advance, remains60%.
 ---
 
 # Project State
@@ -21,6 +21,20 @@ training, generation, conversion, and later LipSync with honest lineage.
 **Current focus:** Phase 03 Voice Training — gated publication.
 
 Detailed plan-vs-code evidence: `docs/PROJECT-STATUS.md`.
+
+## Voice Manipulator — first five rounds (2026-10-15)
+
+Implemented main-source Script hierarchy/settings persistence, independent
+reference footage roles/import, shared time/word/text selection/readouts and
+frozen-scope multi-reference assignments. Live API actual PCM import, atomic
+assignment, revision/idempotency, move/Open Existing and source hashes passed.
+CPU/sandbox GPU attempts failed; native GPU execution created a real full-model
+2.2s WAV. Script/move receipt is in the combined gate; browser unavailable. Requests
+for timing/delivery/gain/reference remain intent until later named processors.
+Final automated results and commits are in the combined first-five gate; ADR0076
+records persistence/selection/binding decisions. Next VM-REF-DETAIL-01 includes
+clicking slot content to navigate both Timeline and Script. Phase03 remains60%,
+no new portable. Existing source-library/Collection native-GPU UAT not completed.
 
 ## HUB-COLLECTION-01 — Hub and Collection feedback (2026-10-14)
 

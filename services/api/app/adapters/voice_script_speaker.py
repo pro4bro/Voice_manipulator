@@ -356,6 +356,8 @@ class VoiceScriptSpeaker:
             if synthesis:
                 raise ValueError(f"Câu {number}: hướng dẫn {', '.join(synthesis)} đã lưu nhưng chưa có bộ generate hỗ trợ. Bỏ override để đọc bằng cấu hình hiện tại.")
             text = " ".join(row.text.split())
+            if row.source_text is not None and " ".join(row.source_text.split()) != text:
+                raise ValueError(f"Câu {number}: nội dung gốc không khớp lời đọc.")
             if not text:
                 raise ValueError(f"Đoạn {number} chưa có chữ.")
             if row.voice_id not in plans:
@@ -547,6 +549,27 @@ class VoiceScriptSpeaker:
         encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()[:32]
 
+    @staticmethod
+    def _cached_record(folder: Path, step: _Step) -> dict | None:
+        try:
+            saved = json.loads((folder / "clip.json").read_text(encoding="utf-8"))
+            audio = folder / "audio.wav"
+            with wave.open(str(audio), "rb") as handle:
+                seconds = handle.getnframes() / handle.getframerate()
+                valid = (handle.getframerate() == SAMPLE_RATE and handle.getnchannels() == 1
+                         and handle.getsampwidth() == SAMPLE_WIDTH and handle.getnframes() > 0
+                         and len(handle.readframes(handle.getnframes())) == handle.getnframes() * SAMPLE_WIDTH)
+            if (valid and saved["key"] == folder.name and saved["text"] == step.text
+                and saved["voiceId"] == step.plan.voice.id and saved["generatorId"] == step.plan.generator_id
+                and saved.get("artifactFingerprint") == step.plan.artifact_fingerprint
+                and abs(float(saved["seconds"]) - seconds) <= .0015
+                and isinstance(saved["words"], list) and isinstance(saved["quality"], str)
+                and saved.get("audioSha256") == file_digest(audio)):
+                return saved
+        except (OSError, KeyError, TypeError, ValueError, EOFError, wave.Error, ZeroDivisionError):
+            pass
+        return None
+
     def _clip(
         self,
         project_id: str,
@@ -566,17 +589,17 @@ class VoiceScriptSpeaker:
         record = folder / "clip.json"
         saved = None
         if folder.exists():
-            try:
-                candidate = json.loads(record.read_text(encoding="utf-8"))
-                audio = folder / "audio.wav"
-                with wave.open(str(audio), "rb") as handle:
-                    valid = (handle.getframerate() == SAMPLE_RATE and handle.getnchannels() == 1
-                             and handle.getsampwidth() == SAMPLE_WIDTH and handle.getnframes() > 0
-                             and len(handle.readframes(handle.getnframes())) == handle.getnframes() * SAMPLE_WIDTH)
-                if valid and candidate.get("audioSha256") == file_digest(audio):
-                    saved = candidate
-            except (OSError, ValueError, EOFError, wave.Error):
-                pass
+            saved = self._cached_record(folder, step)
+            if saved is None:
+                # A previous recovery may already have published a valid revision.
+                # Find it by the same complete fingerprint, never rewrite the bad one.
+                if not force_regenerate:
+                    for recovered in sorted(folder.parent.glob(f"{key}-*"), reverse=True):
+                        candidate = self._cached_record(recovered, step)
+                        if candidate is not None:
+                            key, folder, saved = recovered.name, recovered, candidate
+                            record = folder / "clip.json"
+                            break
             if saved is None:
                 # Never rewrite a clip referenced by a previously published output.
                 key = f"{key}-{uuid4().hex}"
@@ -733,7 +756,7 @@ class VoiceScriptSpeaker:
                         speaker_profile_id=voice.speaker_profile_id, engine=step.plan.engine,
                         generator_id=step.plan.generator_id, text=step.text,
                         start=round(cursor, 3), end=round(cursor + length, 3), clip=clip.key,
-                        script_row={**step.row.model_dump(mode="json", by_alias=True), "speakerProfileId": voice.speaker_profile_id},
+                        script_row={**step.row.model_dump(mode="json", by_alias=True), "text": step.row.source_text if step.row.source_text is not None else step.row.text, "speakerProfileId": voice.speaker_profile_id},
                     ))
                     if clip.note and clip.note not in notes:
                         notes.append(clip.note)

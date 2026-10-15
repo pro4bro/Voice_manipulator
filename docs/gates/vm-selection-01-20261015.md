@@ -18,6 +18,6 @@ Evidence: frontend full **835 passed / 89 files**, 114.61 seconds; typecheck/bui
 passed. Affected Timeline/Script **33 passed** before the final extra cancellation
 case (included in the full suite). New tests exercise silent and disconnected
 selections, exact readouts, cross-module highlights, row selection, reverse sweep,
-no-scroll multi-selection and cancel restoration. Browser geometry is recorded
-in the final five-round gate. Audio/source bytes are not stretched or edited by
+no-scroll multi-selection and cancel restoration. Browser geometry remains open
+because no browser provider was available. Audio/source bytes are not stretched or edited by
 selection; timing edits and reference-conditioned generation are later rounds.

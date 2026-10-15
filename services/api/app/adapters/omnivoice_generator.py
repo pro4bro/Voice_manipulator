@@ -92,6 +92,7 @@ class VibeVoiceSpeech:
         return {
             "model": str(model_dir),
             "processor": str(processor),
+            "artifact_revision": request.artifact_revision,
             "lora_adapter": str(request.adapter) if request.adapter else None,
             "ref_audio": str(request.reference),
             "text": request.text,

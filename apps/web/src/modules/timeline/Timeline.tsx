@@ -13,7 +13,7 @@ import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/scr
 import { useScriptWordDeletion } from "../script/use-script-word-deletion";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
-import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import "./production-selection.css";
 import { rulerMarks } from "./ruler";
 import { waveformY } from "./waveform-path";
@@ -58,6 +58,7 @@ interface DetailWaveformRequest {
 
 interface TimelineProps {
   rangeSelectionEnabled?: boolean;
+  onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   take: ActiveTake | null;
   gain: number;
   recordingPreview?: RecordingWaveformPreview | null;
@@ -247,6 +248,7 @@ export function Timeline({
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
   rangeSelectionEnabled = false,
+  onReferenceContext,
   leadingActions = null,
   liveCaption = null,
   emptyNote,
@@ -1467,14 +1469,29 @@ export function Timeline({
             <div
               className="waveform"
               aria-label="Waveform timeline"
+              tabIndex={rangeSelectionEnabled ? 0 : undefined}
+              onKeyDown={(event) => { if (onReferenceContext && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); onReferenceContext({ selection: wordSelection, x: rect.left + 10, y: rect.top + 10, origin: "waveform" }); } }}
+              onContextMenu={(event) => {
+                if (!onReferenceContext) return;
+                event.preventDefault();
+                const time = sourceTimeAt(event.clientX);
+                const inside = productionRanges(wordSelection, displayWords).some((range) => time >= range.start && time <= range.end);
+                const index = displayWords.findIndex((word) => word.start <= time && word.end > time);
+                const selection = inside ? wordSelection : index >= 0 ? selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
+                onWordSelectionChange?.(selection);
+                onReferenceContext({ selection, x: event.clientX, y: event.clientY, origin: "waveform" });
+              }}
               onPointerCancel={(event) => { if (!endRangeSelection(event, true) && !endPromotionDrag(event, true)) endScrub(event); }}
               onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event) || beginRangeSelection(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
               onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
               onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
             >
-              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => <div aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range" key={range.id} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
-                <div className="production-selection-readout"><span>START <b>{range.start.toFixed(3)}s</b></span><span>DURATION <b>{(range.end - range.start).toFixed(3)}s</b></span><span>END <b>{range.end.toFixed(3)}s</b></span></div>
-              </div>) : null}
+              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => {
+                const bounds = rangeReadoutBounds(range, duration, timelineCanvasWidth || 1000, timelineViewport.left, timelineViewport.width || 1000);
+                return <div aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range" key={range.id} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
+                  {bounds.visible ? <div className="production-selection-readout" style={{ left: bounds.left, width: bounds.width }}><span>START <b>{range.start.toFixed(3)}s</b></span><span>DURATION <b>{(range.end - range.start).toFixed(3)}s</b></span><span>END <b>{range.end.toFixed(3)}s</b></span></div> : null}
+                </div>;
+              }) : null}
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
               {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
@@ -1489,7 +1506,17 @@ export function Timeline({
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
-            <div className="word-track" onDoubleClick={(event) => {
+            <div className="word-track" onKeyDown={(event) => {
+              if (!onReferenceContext || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+              const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
+              if (!target) return;
+              event.preventDefault();
+              const index = Number(target.dataset.timelineWordIndex);
+              const selection = selectedWordIndexes.has(index) ? wordSelection : selectProductionWord(EMPTY_SELECTION, index, displayWords);
+              const rect = target.getBoundingClientRect();
+              onWordSelectionChange?.(selection);
+              onReferenceContext({ selection, x: rect.left, y: rect.bottom, origin: "subtitle" });
+            }} onDoubleClick={(event) => {
               if ((event.target as HTMLElement).closest("button, input")) return;
               event.preventDefault(); event.stopPropagation();
               const time = sourceTimeAt(event.clientX);
@@ -1501,6 +1528,13 @@ export function Timeline({
               if ((event.target as HTMLElement).closest("input")) return;
               event.preventDefault(); event.stopPropagation();
               const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
+              if (onReferenceContext) {
+                const index = target ? Number(target.dataset.timelineWordIndex) : -1;
+                const selection = index >= 0 ? selectedWordIndexes.has(index) ? wordSelection : selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
+                onWordSelectionChange?.(selection);
+                onReferenceContext({ selection, x: event.clientX, y: event.clientY, origin: "subtitle" });
+                return;
+              }
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
             }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];

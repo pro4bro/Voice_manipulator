@@ -158,6 +158,19 @@ class BlockingRecognizer:
 CLIP_TEXT: list[str] = []
 
 
+def test_script_preserves_original_whitespace_in_lineage_and_reuses_unchanged_speech(tmp_path):
+    engine = FakeEngine()
+    project, an, _, _, _, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    row = VoiceScriptRow(id="r1", voice_id=an.id, text="Xin chào", source_text="Xin  chào\n")
+    first = speaker.start(project.id, VoiceScriptRequest(rows=[row]), background=False)
+    assert first.output.segments[0].script_row["text"] == "Xin  chào\n"
+    second = speaker.start(project.id, VoiceScriptRequest(rows=[row.model_copy(update={"source_text": "Xin\nchào"})]), background=False)
+    assert second.reused == 1 and second.output.segments[0].script_row["text"] == "Xin\nchào"
+    with pytest.raises(ValueError, match="khớp"):
+        speaker.start(project.id, VoiceScriptRequest(rows=[row.model_copy(update={"source_text": "Different words"})]), background=False)
+
+
 def test_same_voice_id_with_changed_reference_does_not_reuse_old_audio(tmp_path):
     engine = FakeEngine()
     project, an, _, outputs, _, speaker, _ = speaker_fixture(tmp_path, engine)
@@ -186,6 +199,9 @@ def test_corrupt_cached_clip_is_regenerated_without_rewriting_old_revision(tmp_p
     assert old.read_bytes() == b"broken"
     with wave.open(str(outputs.audio_path(project.id, second.output.id))) as audio:
         assert audio.getframerate() == SAMPLE_RATE and audio.getnframes() > 0
+    third = speaker.start(project.id, request, background=False)
+    assert third.status == "complete" and third.reused == 1
+    assert third.output.segments[0].clip == second.output.segments[0].clip
 
 
 def segment(segment_id: str, speaker: str) -> DatasetSegment:

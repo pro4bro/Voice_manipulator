@@ -263,12 +263,12 @@ export function rowsFromOutput(output: VoiceOutput): VoiceScriptRow[] {
     id: segment.rowId,
     speakerProfileId: segment.speakerProfileId,
     voiceId: segment.voiceId,
-    text: segment.text,
+    text: segment.scriptRow?.text ?? segment.text,
   }));
 }
 
 export interface ScriptReadiness {
-  rows: Array<{ id: string; voiceId: string; text: string; segmentId?: string; originIds?: string[]; tags?: string[] }>;
+  rows: Array<{ id: string; voiceId: string; text: string; segmentId?: string; originIds?: string[]; tags?: string[]; sourceText?: string }>;
   problem: string | null;
 }
 
@@ -284,7 +284,7 @@ export function scriptReadiness(rows: VoiceScriptRow[], offered: ProjectVoice[])
       return { rows: [], problem: `Đoạn ${number} chưa chọn voice` };
     }
     ready.push({ id: row.id, voiceId: voice.id, text: normalizedRowText(row.text),
-      ...(row.segmentId ? { segmentId: row.segmentId, originIds: row.originIds, tags: row.tags } : {}) });
+      ...(row.segmentId ? { segmentId: row.segmentId, originIds: row.originIds, tags: row.tags, sourceText: row.text } : {}) });
   }
   return { rows: ready, problem: null };
 }

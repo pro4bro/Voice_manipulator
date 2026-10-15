@@ -20,6 +20,7 @@ const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoic
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
+  onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   document?: import("../../domain/types").VoiceScriptDocument;
   onDocumentChange?: (document: import("../../domain/types").VoiceScriptDocument) => void;
   saveError?: string | null;
@@ -90,7 +91,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -397,6 +398,28 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
       ranges: selectedTimings.map((timing) => ({ id: `row-${timing.id}`, start: timing.start, end: timing.end })) });
   }
 
+  function referenceContext(event: ReactMouseEvent<HTMLDivElement> | ReactKeyboardEvent<HTMLDivElement>) {
+    if (!onReferenceContext) return;
+    const target = event.target as HTMLElement;
+    const rowId = target.closest<HTMLElement>("[data-script-row-id]")?.dataset.scriptRowId;
+    const row = rows.find((item) => item.id === rowId);
+    if (!row) return;
+    event.preventDefault();
+    const wordElement = target.closest<HTMLElement>("[data-script-word-index]");
+    const index = wordElement ? Number(wordElement.dataset.scriptWordIndex) : -1;
+    let selection = wordSelection;
+    if (index >= 0 && !held.has(index)) selection = selectProductionWord(EMPTY_SELECTION, index, words);
+    else if (index < 0 && !selectedRowIds.includes(row.id)) {
+      const timing = timings.get(row.id);
+      const indexes = timing?.fresh ? Array.from({ length: timing.lastWord - timing.firstWord }, (_, offset) => timing.firstWord + offset) : [];
+      selection = { indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id],
+        ranges: timing?.fresh ? [{ id: `row-${row.id}`, start: timing.start, end: timing.end }] : [] };
+    }
+    onWordSelectionChange?.(selection);
+    const rect = target.getBoundingClientRect();
+    onReferenceContext({ selection, x: "clientX" in event && event.clientX ? event.clientX : rect.left, y: "clientY" in event && event.clientY ? event.clientY : rect.bottom, origin: "script" });
+  }
+
   function deleteSelectedRows() {
     if (!selectedRowIds.length || !window.confirm(`Xoá ${selectedRowIds.length} dòng Script đã chọn?`)) return;
     const deleting = new Set(selectedRowIds);
@@ -529,7 +552,7 @@ export function VoiceScript({ document: scriptDocument, onDocumentChange, saveEr
     </div>
     {saveError ? <div role="alert" className="script-timing-warning">{saveError}<button onClick={() => { if (window.confirm("Tải Script đã lưu? Nội dung chưa lưu vẫn có bản dự phòng trong trình duyệt.")) onReload?.(); }} type="button">Tải lại bản đã lưu</button></div> : null}
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
-    {view === "table" ? <div className="script-table-shell voice-script" onKeyDown={handleRowSelectionKey} ref={followRoot}>
+    {view === "table" ? <div className="script-table-shell voice-script" onContextMenu={referenceContext} onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) referenceContext(event); else handleRowSelectionKey(event); }} ref={followRoot}>
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;

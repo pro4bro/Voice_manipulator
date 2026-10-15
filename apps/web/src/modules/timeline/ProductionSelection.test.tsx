@@ -10,13 +10,29 @@ const output: VoiceOutput = { id: "out", name: "Dialogue", text: "one two", voic
   words: [{ text: "one", start: 1, end: 2, segmentIndex: 0 }, { text: "two", start: 7, end: 8, segmentIndex: 1 }],
   segments: [{ rowId: "r1", text: "one", voiceId: "v", voiceName: "V", speakerProfileId: "s", engine: "omnivoice", generatorId: "g", start: 1, end: 2 }, { rowId: "r2", text: "two", voiceId: "v", voiceName: "V", speakerProfileId: "s", engine: "omnivoice", generatorId: "g", start: 7, end: 8 }] };
 
-function Harness() {
+function Harness({ onReferenceContext }: { onReferenceContext?: Parameters<typeof Timeline>[0]["onReferenceContext"] } = {}) {
   const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
   const voice = { id: "v", kind: "clone", speakerProfileId: "s", createdAt: "" } as const;
-  return <><VoiceScript rows={[{ id: "r1", text: "one", voiceId: "v", speakerProfileId: "s" }, { id: "r2", text: "two", voiceId: "v", speakerProfileId: "s" }]} onRowsChange={vi.fn()} onRead={vi.fn()} category="clone" voices={[voice as never]} speakers={[]} output={output} playbackId="out" wordSelection={selection} onWordSelectionChange={setSelection} />
-    <Timeline rangeSelectionEnabled gain={0} onGainChange={vi.fn()} take={{ id: output.id, name: output.name, duration: 10, url: "/out.wav", words: output.words }} wordSelection={selection} onWordSelectionChange={setSelection} />
+  return <><VoiceScript onReferenceContext={onReferenceContext} rows={[{ id: "r1", text: "one", voiceId: "v", speakerProfileId: "s" }, { id: "r2", text: "two", voiceId: "v", speakerProfileId: "s" }]} onRowsChange={vi.fn()} onRead={vi.fn()} category="clone" voices={[voice as never]} speakers={[]} output={output} playbackId="out" wordSelection={selection} onWordSelectionChange={setSelection} />
+    <Timeline onReferenceContext={onReferenceContext} rangeSelectionEnabled gain={0} onGainChange={vi.fn()} take={{ id: output.id, name: output.name, duration: 10, url: "/out.wav", words: output.words }} wordSelection={selection} onWordSelectionChange={setSelection} />
     <output data-testid="selection">{JSON.stringify(selection)}</output></>;
 }
+
+it("uses one frozen multi-selection from Script, subtitles and waveform including keyboard context menus", () => {
+  const context = vi.fn();
+  const view = render(<Harness onReferenceContext={context} />);
+  vi.spyOn(view.container.querySelector<HTMLElement>(".timeline-canvas")!, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 2" }), { ctrlKey: true });
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ one" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Subtitle word two" }));
+  fireEvent.contextMenu(screen.getByLabelText("Waveform timeline"), { clientX: 150, clientY: 40 });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Subtitle word two" }), { key: "F10", shiftKey: true });
+  expect(context.mock.calls.map(([request]) => request.origin)).toEqual(["script", "subtitle", "waveform", "subtitle"]);
+  for (const [request] of context.mock.calls) expect(request.selection.ranges).toHaveLength(2);
+  fireEvent.contextMenu(screen.getByLabelText("Waveform timeline"), { clientX: 450 });
+  expect(context.mock.calls.at(-1)![0].selection.indexes).toEqual([]);
+});
 
 it("selects silence, adds a separated waveform range and synchronizes subtitle and Script highlights", () => {
   const view = render(<Harness />);

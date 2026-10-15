@@ -12,6 +12,8 @@ import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
 import { effectiveScriptSettings } from "../domain/voice-script-document";
+import { captureReferenceTargets, referenceInheritedSettings, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
+import { ReferenceAssignmentEditor } from "../modules/library-panel/ReferenceAssignmentEditor";
 import type {
   AppPreferences,
   EmotionLabel,
@@ -295,6 +297,11 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const voiceScript = useVoiceScriptDocument(project.id);
   const voiceScriptRows = voiceScript.document.rows;
   const setVoiceScriptRows = voiceScript.setRows;
+  const [referenceSession, setReferenceSession] = useState<ReferenceSession | null>(null);
+  const referenceRequestId = useRef<string | null>(null);
+  useEffect(() => {
+    if (activePage !== "voice-manipulator") { referenceRequestId.current = null; setReferenceSession(null); }
+  }, [activePage]);
   const [voiceScriptJob, setVoiceScriptJob] = useState<VoiceScriptJob | null>(null);
   const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
   const [pendingVoiceOutput, setPendingVoiceOutput] = useState<PendingVoiceOutput | null>(null);
@@ -2457,6 +2464,36 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   // Collection voice chooses a generation category of its own.
   const voiceCategory = generationCategoryOverride ?? categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
   const canRunAiReview = Boolean(scriptMediaAsset?.text.trim() && scriptMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
+  function scopeVoiceSelection(selection: WordSelection): WordSelection {
+    if (activePage !== "voice-manipulator" || (!selection.indexes.length && !selection.ranges?.length && !selection.rowIds?.length)) return selection;
+    const output = voiceOutputs.find((item) => item.id === outputTake?.id);
+    const untimed = Boolean(selection.rowIds?.length && !selection.ranges?.length && !selection.indexes.length);
+    if (selection.scope?.kind === "voice-output" && output && selection.scope.id !== output.id) return EMPTY_SELECTION;
+    return { ...selection, wordIds: output && !untimed ? selection.indexes.map((index) => `${output.id}:word:${index}`) : [], scope: output && !untimed
+      ? { kind: "voice-output", id: output.id, revision: output.createdAt }
+      : { kind: "script", id: project.id, revision: String(voiceScript.document.revision) } };
+  }
+
+  function openReferenceContext(request: ReferenceContextRequest) {
+    try {
+      const selection = scopeVoiceSelection(request.selection);
+      const targets = captureReferenceTargets(selection, voiceOutputs.find((output) => output.id === outputTake?.id) ?? null, voiceScript.document);
+      if (!targets.length || !selection.scope) throw new Error("Quét chọn một vùng waveform, subtitle hoặc Script trước khi gán reference.");
+      if (selection.scope.kind === "script" && !voiceScript.isSaved) throw new Error(voiceScript.error ?? "Script đang lưu vào project. Mở lại menu sau khi lưu xong.");
+      const id = crypto.randomUUID();
+      referenceRequestId.current = id;
+      setWordSelection(selection);
+      const frozen: ReferenceSession = structuredClone({ id, scope: selection.scope, targets, request: { ...request, selection }, expectedRevision: null, existing: [], inherited: referenceInheritedSettings(targets, voiceScript.document) });
+      setReferenceSession(frozen);
+      void api.getReferenceBindings(project.id).then((document) => {
+        if (referenceRequestId.current !== id) return;
+        setReferenceSession({ ...frozen, expectedRevision: document.revision, existing: document.bindings });
+      }).catch((reason) => {
+        if (referenceRequestId.current === id) { referenceRequestId.current = null; setReferenceSession(null); setNotice(String(reason)); }
+      });
+    } catch (reason) { setNotice(String(reason)); }
+  }
+
   const context = useMemo<StudioContext>(() => ({
     workflow: activePage,
     script,
@@ -2633,13 +2670,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onSkipCard: () => void reading.skip(),
     wordSelection,
     onWordSelectionChange: (selection) => {
-      if (activePage !== "voice-manipulator" || (!selection.indexes.length && !selection.ranges?.length && !selection.rowIds?.length)) { setWordSelection(selection); return; }
-      const output = voiceOutputs.find((item) => item.id === outputTake?.id);
-      const untimed = Boolean(selection.rowIds?.length && !selection.ranges?.length && !selection.indexes.length);
-      setWordSelection({ ...selection, wordIds: output && !untimed ? selection.indexes.map((index) => `${output.id}:word:${index}`) : [], scope: output && !untimed
-        ? { kind: "voice-output", id: output.id, revision: output.createdAt }
-        : { kind: "script", id: project.id, revision: String(voiceScript.document.revision) } });
+      setWordSelection(scopeVoiceSelection(selection));
     },
+    onReferenceContext: openReferenceContext,
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
     // Picking a person in Sound Library makes them who reads a new Script row.
     onVoiceChange: setSelectedVoice,
@@ -2720,7 +2753,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
@@ -2729,6 +2762,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   return (
     <main className="workspace-shell">
+      {referenceSession ? <ReferenceAssignmentEditor key={referenceSession.id} session={referenceSession} assets={mediaAssets} projectId={project.id} onClose={() => { referenceRequestId.current = null; setReferenceSession(null); }} onApply={async (assignment) => {
+        if (activePage !== "voice-manipulator" || referenceRequestId.current !== referenceSession.id) throw new Error("Vùng đích đang mở đã thay đổi. Chọn lại vùng để gán.");
+        if (assignment.scope.kind === "voice-output" && outputTake?.id !== assignment.scope.id) throw new Error("Voice Output đã thay đổi. Mở lại editor từ vùng mới.");
+        if (assignment.scope.kind === "script" && (!voiceScript.isSaved || String(voiceScript.document.revision) !== assignment.scope.revision)) throw new Error("Script đã thay đổi hoặc đang lưu. Mở lại menu để chụp vùng mới.");
+        const saved = await api.assignReferences(project.id, assignment);
+        if (referenceRequestId.current === referenceSession.id) setNotice(`Đã lưu reference cho ${assignment.targets.length} vùng · ${saved.bindings.length} vùng đã gán. Các đặc tính đang chờ phân tích và áp dụng vào audio.`);
+      }} /> : null}
       <header className="workspace-topbar">
 <div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><img alt="" className="workspace-brand__logo" src="/pro4bro-logo.png" /><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>

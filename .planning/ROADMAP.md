@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator first five rounds — 2026-10-15
+
+Owner-directed batch delivered portable Script hierarchy/intent, reference asset
+roles/import, shared waveform/subtitle/Script ranges/readouts and persistent
+multi-source/property assignment. VM-GEN-01 cache/invalidation/recovery repaired;
+CPU/sandbox GPU attempts timed out, then native GPU execution created an actual
+full-model2.2s PCM WAV. Script/move receipt is in the combined gate. Browser provider
+unavailable; real model/listening and browser/native UAT remain open. Controls
+store requested duration/delivery/reference intent; later synthesis/resolve/Fix
+rounds remain pending. See ADR0076 and the combined first-five gate for final
+automated/API evidence. Next VM-REF-DETAIL-01 includes slot→Timeline+Script
+navigation. Phase03 stays60%, no portable; prior source-library queue retained.
+
 ## HUB-COLLECTION-01 — owner Hub/Collection feedback (2026-10-14)
 
 Main-source card/detail layout, compact header, profile count, expandable model

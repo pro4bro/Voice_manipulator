@@ -10,6 +10,25 @@ work and repair waveform volume. Execute bounded rounds serially with separate
 evidence/commits; do not stop between executable rounds. Acceptance budgets and
 physical/human evidence requirements retain their meaning.
 
+## Voice Manipulator — first five rounds (2026-10-15)
+
+Owner explicitly requested five checklist rounds in this invocation. Separate
+commits deliver VM-GEN-01 cache repairs, VM-SCRIPT-01 portable hierarchy/intent,
+VM-REF-LIB-01 independent footage role/import, VM-SELECTION-01 synchronized exact
+ranges/readouts and VM-REF-ASSIGN-01 frozen-scope multi-reference assignment.
+Live API PCM import/assign/idempotency/stale-revision/move/reopen/hash checks pass.
+Final automated evidence is in docs/gates/voice-manipulator-first-five-20261015.md.
+
+CPU and sandbox GPU attempts failed; native Windows GPU execution created an
+actual full-model2.2s PCM WAV. Script/move receipt is in the combined gate;
+no listening/model identity success is claimed. Browser provider unavailable, so
+actual browser/native UAT remains open. Timing/delivery/gain/reference controls
+store requested intent; resolution/rendering/random/Fix are subsequent rounds.
+Next exact implementation **VM-REF-DETAIL-01**, including clicking a slot to
+navigate both Timeline and Script, with expansion independent of navigation.
+Phase03 remains60%; no new portable. Existing external-library and Collection
+GPU/native acceptance queues remain pending. See ADR0076 and each VM gate.
+
 ## HUB-COLLECTION-01 — main-source Hub and Collection (2026-10-14)
 
 Owner screenshots repaired in main source: card hover gutter, compact title /

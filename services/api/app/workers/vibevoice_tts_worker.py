@@ -30,7 +30,7 @@ def main() -> None:
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     model = None
     processor = None
-    loaded_key: tuple[str, str, str | None] | None = None
+    loaded_key: tuple[str, str, str | None, str | None] | None = None
 
     def reply(payload: dict) -> None:
         replies.write(REPLY_PREFIX + json.dumps(payload, ensure_ascii=False) + "\n")
@@ -50,7 +50,7 @@ def main() -> None:
                 reply({"id": request_id, "ok": True})
                 return
             started = time.perf_counter()
-            key = (request["model"], request["processor"], request.get("lora_adapter"))
+            key = (request["model"], request["processor"], request.get("lora_adapter"), request.get("artifact_revision"))
             loaded = False
             if model is None or key != loaded_key:
                 model = None

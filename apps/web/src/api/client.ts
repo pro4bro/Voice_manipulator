@@ -1,4 +1,5 @@
 import { editableWordTimings } from "../domain/editable-word-timing";
+import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
 import type {
   ActivitySnapshot,
   AppPreferences,
@@ -668,6 +669,8 @@ export const api = {
       `voice-output--${mode}.${mode === "table" ? "csv" : "srt"}`,
     ),
   getVoiceScript: (projectId: string) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`),
+  getReferenceBindings: (projectId: string) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`),
+  assignReferences: (projectId: string, assignment: ReferenceAssignment) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`, { method: "POST", body: JSON.stringify(assignment) }),
   saveVoiceScript: (projectId: string, document: VoiceScriptDocument) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`, { method: "PUT", body: JSON.stringify(document) }),
   readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string; settings?: import("../domain/types").ScriptSettings }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/read`, {

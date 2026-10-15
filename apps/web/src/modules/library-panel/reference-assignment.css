@@ -1,0 +1,19 @@
+.reference-assignment-layer { position: fixed; inset: 0; z-index: 1200; }
+.reference-assignment-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; cursor: default; }
+.reference-assignment-layer.is-editor .reference-assignment-backdrop { background: #0008; }
+.reference-assignment-dialog { position: relative; margin: 5vh auto; width: min(760px, 94vw); max-height: 90vh; overflow: auto; background: var(--surface-panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 16px 80px #0006; font-size: 13px; }
+.reference-assignment-dialog header, .reference-assignment-dialog footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.reference-assignment-dialog h2 { margin: 0; font-size: 18px; }
+.reference-assignment-dialog p { margin: 0; color: var(--muted); }
+.reference-assignment-dialog small { color: var(--muted); }
+.reference-target-preview { display: grid; gap: 8px; max-height: 160px; overflow: auto; border: 1px solid var(--line); padding: 8px; }
+.reference-target-preview > div { display: grid; gap: 4px; }
+.reference-source-list { border: 1px solid var(--line); padding: 10px; }
+.reference-source-editor { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.reference-source-editor label, .reference-source-properties { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.reference-source-settings { display: grid; gap: 8px; padding: 8px 0 0 20px; }
+.reference-source-settings audio { height: 34px; max-width: 100%; }
+.reference-source-properties { gap: 8px 18px; }
+.reference-source-numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.reference-source-numbers label { display: grid; gap: 4px; }
+.reference-source-numbers input { min-width: 0; width: 100%; padding: 5px; border: 1px solid var(--line); background: var(--surface-raised); color: var(--text); }

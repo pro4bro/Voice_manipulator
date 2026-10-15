@@ -1,6 +1,7 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: kế hoạch đề xuất, chưa thực thi.
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực thi nhóm năm vòng đầu;
+phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
 Bổ sung 2026-10-15: timing từ reference, chọn vùng ba chiều và overlay,
@@ -10,6 +11,21 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Tiến độ nhóm năm vòng đầu — 2026-10-15
+
+- VM-GEN-01 đã sửa fingerprint/cache và chạy model full thật trên CPU; lượt thử
+  timeout sau 291.16s. Khi GPU trống, lượt native Windows đã tạo WAV full thật
+  2.2s trong70.48s; receipt Script/move và gate nghe/alignment ở báo cáo tổng.
+- VM-SCRIPT-01, VM-REF-LIB-01, VM-SELECTION-01 và VM-REF-ASSIGN-01 đã triển khai
+  main source, có kiểm tra tự động và nghiệm thu API với WAV PCM riêng. Script,
+  role reference và binding đi theo project khi move/Open Existing.
+- Chưa có browser provider để nghiệm thu bố cục/thao tác thực. Cấu hình duration,
+  emotion/delivery/gain và reference vẫn là ý muốn được lưu, chưa phải processor
+  đã thực hiện; các vòng duration/delivery/resolve/random/Fix còn ở phía sau.
+- Vòng tiếp theo là **VM-REF-DETAIL-01**, gồm slot hai dòng, xổ chi tiết và bấm
+  nội dung slot để điều hướng đồng thời Timeline/Script. Chi tiết và số kiểm tra
+  cuối ở `docs/gates/voice-manipulator-first-five-20261015.md` và ADR0076.
 
 Mục tiêu là hoàn thiện một luồng có thể sử dụng và kiểm chứng: chọn model giọng,
 đọc Script, nghe và sửa đầu ra, xử lý tiếp, rồi xuất artifact của project. Ưu tiên

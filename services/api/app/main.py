@@ -40,6 +40,8 @@ from app.adapters.collection_voice_preview import CollectionVoicePreviews, make_
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
+from app.adapters.file_reference_bindings import FileReferenceBindings
+from app.domain.reference_bindings import ReferenceAssignment, ReferenceBindingDocument
 from app.domain.voice_script_document import VoiceScriptDocument
 from app.domain.models import MediaReferenceSelection
 from app.adapters.speaker_embedders import default_speaker_embedders
@@ -371,6 +373,7 @@ def create_app(
 
     voice_outputs = FileVoiceOutputs(projects)
     voice_script_documents = FileVoiceScript(projects)
+    reference_bindings = FileReferenceBindings(projects, media, voice_outputs, voice_script_documents)
     resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
     speaker_similarity_gate = SpeakerSimilarityGate(
         projects,
@@ -2223,6 +2226,24 @@ def create_app(
             return voice_script_documents.get(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.get("/api/projects/{project_id}/reference-bindings", response_model=ReferenceBindingDocument)
+    def get_reference_bindings(project_id: str) -> ReferenceBindingDocument:
+        try:
+            return reference_bindings.get(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.post("/api/projects/{project_id}/reference-bindings", response_model=ReferenceBindingDocument)
+    def assign_reference_bindings(project_id: str, payload: ReferenceAssignment) -> ReferenceBindingDocument:
+        try:
+            return reference_bindings.assign(project_id, payload)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Footage hoặc vùng đích không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.put("/api/projects/{project_id}/voice-script", response_model=VoiceScriptDocument)
     def save_voice_script_document(project_id: str, payload: VoiceScriptDocument) -> VoiceScriptDocument:

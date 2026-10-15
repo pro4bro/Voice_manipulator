@@ -1541,6 +1541,7 @@ class VoiceScriptRow(DomainModel):
     segment_id: str | None = None
     origin_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    source_text: str | None = Field(default=None, max_length=5000)
 
 
 class VoiceScriptRequest(DomainModel):
