@@ -118,3 +118,13 @@ def test_reassigning_same_sentence_after_a_script_save_updates_its_binding_in_pl
     assert len(second.bindings) == 1
     assert second.bindings[0].id == first.bindings[0].id
     assert second.bindings[0].scope.revision == str(saved.revision)
+
+def test_delete_is_revision_checked_and_preserves_other_targets_and_sources(tmp_path):
+    _, project, media, refs, _, _, store, payload = fixture(tmp_path)
+    first = store.assign(project.id, ReferenceAssignment.model_validate(payload))
+    with pytest.raises(ScriptRevisionConflict): store.delete(project.id, first.bindings[0].id, 0)
+    assert len(store.get(project.id).bindings) == 2
+    saved = store.delete(project.id, first.bindings[0].id, first.revision)
+    assert saved.revision == 2
+    assert [binding.id for binding in saved.bindings] == [first.bindings[1].id]
+    assert media.resolve_audio_path(project.id, refs[0].id).is_file()

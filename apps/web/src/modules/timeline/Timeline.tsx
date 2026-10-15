@@ -57,6 +57,7 @@ interface DetailWaveformRequest {
 }
 
 interface TimelineProps {
+  navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   rangeSelectionEnabled?: boolean;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   take: ActiveTake | null;
@@ -229,6 +230,7 @@ function activeWordAt(words: StudioWord[], time: number) {
 }
 
 export function Timeline({
+  navigation,
   take,
   gain,
   recordingPreview = null,
@@ -448,6 +450,15 @@ export function Timeline({
       syncPlaybackClock(audio);
     }
   }, [wordSelection.indexes]);
+
+  useEffect(() => {
+    if (!navigation || navigation.scope.kind !== "voice-output" || navigation.scope.id !== take?.id || navigation.start === null) return;
+    const scroller = timelineScrollRef.current;
+    if (!scroller) return;
+    const width = timelinePixelWidthRef.current || scroller.scrollWidth;
+    scroller.scrollLeft = Math.max(0, Math.min(width - scroller.clientWidth, navigation.start / Math.max(duration, .001) * width - scroller.clientWidth * .25));
+    setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+  }, [navigation, take?.id, duration]);
 
   // A selection made in Script has to be reachable here without hunting for it.
   useEffect(() => {

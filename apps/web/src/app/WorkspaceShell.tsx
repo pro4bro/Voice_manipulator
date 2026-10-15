@@ -12,7 +12,7 @@ import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
 import { effectiveScriptSettings } from "../domain/voice-script-document";
-import { captureReferenceTargets, referenceInheritedSettings, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
+import { captureReferenceTargets, referenceSelection, referenceInheritedSettings, type ReferenceBinding, type ReferenceBindingDocument, type ProductionNavigation, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
 import { ReferenceAssignmentEditor } from "../modules/library-panel/ReferenceAssignmentEditor";
 import type {
   AppPreferences,
@@ -297,6 +297,19 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const voiceScript = useVoiceScriptDocument(project.id);
   const voiceScriptRows = voiceScript.document.rows;
   const setVoiceScriptRows = voiceScript.setRows;
+  const [referenceDocument, setReferenceDocument] = useState<ReferenceBindingDocument | null>(null);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+  const [productionNavigation, setProductionNavigation] = useState<ProductionNavigation | null>(null);
+  const referenceRead = useRef(0);
+  async function reloadReferences() {
+    const serial = ++referenceRead.current;
+    try { const saved = await api.getReferenceBindings(project.id); if (serial === referenceRead.current) { setReferenceDocument(saved); setReferenceError(null); } }
+    catch (reason) { if (serial === referenceRead.current) setReferenceError(String(reason)); }
+  }
+  useEffect(() => {
+    if (activePage === "voice-manipulator" && typeof api.getReferenceBindings === "function") void reloadReferences();
+    return () => { referenceRead.current++; };
+  }, [project.id, activePage, voiceScript.document.revision, mediaAssets, voiceOutputs]);
   const [referenceSession, setReferenceSession] = useState<ReferenceSession | null>(null);
   const referenceRequestId = useRef<string | null>(null);
   useEffect(() => {
@@ -2672,6 +2685,30 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onWordSelectionChange: (selection) => {
       setWordSelection(scopeVoiceSelection(selection));
     },
+    referenceDocument, referenceError, productionNavigation,
+    onReloadReferences: () => void reloadReferences(),
+    onNavigateReference: (binding) => {
+      if (binding.status === "stale" || binding.status === "missing") { setNotice("Vùng gán không còn khớp. Làm mới và gán lại reference."); return; }
+      if (binding.scope.kind === "voice-output") {
+        const output = voiceOutputs.find((item) => item.id === binding.scope.id);
+        if (!output || output.createdAt !== binding.scope.revision) { setNotice("Không tìm thấy Voice Output của vùng này."); return; }
+        // Navigation never replaces the current Script draft with old output text.
+        const rowIds = binding.target.rowIds.length ? binding.target.rowIds : output.segments?.filter((segment) => binding.target.start !== null && segment.end > binding.target.start && segment.start < binding.target.end!).map((segment) => segment.rowId) ?? [];
+        if (rowIds.some((id) => !voiceScriptRows.some((row) => row.id === id))) { setNotice("Câu đích đã bị xóa hoặc tách/gộp. Gán lại reference vào câu hiện tại."); return; }
+        openVoiceOutput(output, false);
+        const selection = referenceSelection(binding); selection.rowIds = rowIds; setWordSelection(selection);
+        setProductionNavigation({ serial: Date.now(), scope: binding.scope, start: binding.target.start, rowIds });
+      } else if (binding.scope.kind === "script") {
+        setWordSelection(referenceSelection(binding));
+        setProductionNavigation({ serial: Date.now(), scope: binding.scope, start: null, rowIds: binding.target.rowIds });
+      }
+    },
+    onDeleteReference: async (binding) => {
+      if (!referenceDocument) return;
+      referenceRead.current++;
+      try { setReferenceDocument(await api.deleteReferenceBinding(project.id, binding.id, referenceDocument.revision)); }
+      catch (reason) { void reloadReferences(); throw reason; }
+    },
     onReferenceContext: openReferenceContext,
     onScriptChange: (value) => { if (!blockedByRecycleBin()) changeScript(value); },
     // Picking a person in Sound Library makes them who reads a new Script row.
@@ -2753,7 +2790,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
@@ -2767,6 +2804,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         if (assignment.scope.kind === "voice-output" && outputTake?.id !== assignment.scope.id) throw new Error("Voice Output đã thay đổi. Mở lại editor từ vùng mới.");
         if (assignment.scope.kind === "script" && (!voiceScript.isSaved || String(voiceScript.document.revision) !== assignment.scope.revision)) throw new Error("Script đã thay đổi hoặc đang lưu. Mở lại menu để chụp vùng mới.");
         const saved = await api.assignReferences(project.id, assignment);
+        referenceRead.current++; setReferenceDocument(saved); setReferenceError(null);
         if (referenceRequestId.current === referenceSession.id) setNotice(`Đã lưu reference cho ${assignment.targets.length} vùng · ${saved.bindings.length} vùng đã gán. Các đặc tính đang chờ phân tích và áp dụng vào audio.`);
       }} /> : null}
       <header className="workspace-topbar">

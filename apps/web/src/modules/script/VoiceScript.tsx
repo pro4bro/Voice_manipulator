@@ -20,6 +20,7 @@ const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoic
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
+  navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   document?: import("../../domain/types").VoiceScriptDocument;
   onDocumentChange?: (document: import("../../domain/types").VoiceScriptDocument) => void;
@@ -91,7 +92,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -142,6 +143,19 @@ export function VoiceScript({ onReferenceContext, document: scriptDocument, onDo
   const wordCount = rows.reduce((total, row) => total + (normalizedRowText(row.text) ? normalizedRowText(row.text).split(" ").length : 0), 0);
   const freshOutput = Boolean(output && rows.length && rows.every((row) => !normalizedRowText(row.text) || timings.get(row.id)?.fresh));
   const textStyle = { "--script-format-scale": fontScale / 100, "--script-font-adjust": fontScale / 100, fontWeight: bold ? 700 : undefined, fontStyle: italic ? "italic" : undefined, textDecoration: underline ? "underline" : undefined } as CSSProperties;
+
+  useLayoutEffect(() => {
+    if (!navigation) return;
+    setView("table");
+    const timedRow = navigation.start === null ? null : output?.segments?.find((segment) => segment.end > navigation.start!);
+    const rowId = navigation.rowIds[0] ?? timedRow?.rowId;
+    const target = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-script-row-id]") ?? []).find((node) => node.dataset.scriptRowId === rowId);
+    const viewport = scrollRef.current;
+    if (target && viewport) {
+      viewport.scrollTop = Math.max(0, target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop - viewport.clientHeight * .25);
+      viewport.dispatchEvent(new Event("scroll"));
+    }
+  }, [navigation, view]);
 
   // Editing always goes through the full row list; an empty Script still shows
   // one row to type into, and typing into it makes it real.

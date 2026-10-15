@@ -1,0 +1,11 @@
+.reference-detail__list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
+.reference-detail__list > li { border-bottom: 1px solid var(--line, #7775); }
+.reference-detail__slot { display: flex; align-items: stretch; min-width: 0; }
+.reference-detail__slot > button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 9px; }
+.reference-detail__target { flex: 1; min-width: 0; text-align: left; }
+.reference-detail__target > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.6; }
+.reference-detail__target > span + span { opacity: .65; font-size: 11px; }
+.reference-detail__slot > button:focus-visible { outline: 2px solid var(--accent, #e78b43); outline-offset: -2px; }
+.reference-detail__expanded { padding: 0 9px 12px; font-size: 11px; overflow-wrap: anywhere; }
+.reference-detail__expanded > div { padding: 7px; margin: 6px 0; border: 1px solid var(--line, #7775); }
+.reference-detail__expanded p { margin: 5px 0; }

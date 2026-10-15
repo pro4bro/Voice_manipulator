@@ -2509,3 +2509,9 @@ ADR 0011. This preserves all current APIs while keeping plans 03-03/03-04 honest
 3. Complete the Voice Changer measurement gate; do not broaden engine adoption while it fails.
 4. Build Phase 04 `WorkspaceSession` before expanding live processors.
 5. Continue remaining Manipulator processors, LipSync, then desktop/security delivery.
+
+## VM-REF-DETAIL-01 — 2026-10-15
+
+First of the explicitly requested next five rounds: Reference Detail slots,
+independent expansion, revision-checked removal and explicit Timeline+Script
+reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.

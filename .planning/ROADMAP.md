@@ -1109,3 +1109,9 @@ installer, updater, signing, and release verification are not started.
 The GSD plan counter is only an artifact counter. Phase status above is the
 product truth: a phase stays open when its user-visible success criteria remain
 unmet even if every currently written plan has a summary.
+
+## VM-REF-DETAIL-01 — 2026-10-15
+
+First of the explicitly requested next five rounds: Reference Detail slots,
+independent expansion, revision-checked removal and explicit Timeline+Script
+reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.

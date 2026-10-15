@@ -10,11 +10,11 @@ const output: VoiceOutput = { id: "out", name: "Dialogue", text: "one two", voic
   words: [{ text: "one", start: 1, end: 2, segmentIndex: 0 }, { text: "two", start: 7, end: 8, segmentIndex: 1 }],
   segments: [{ rowId: "r1", text: "one", voiceId: "v", voiceName: "V", speakerProfileId: "s", engine: "omnivoice", generatorId: "g", start: 1, end: 2 }, { rowId: "r2", text: "two", voiceId: "v", voiceName: "V", speakerProfileId: "s", engine: "omnivoice", generatorId: "g", start: 7, end: 8 }] };
 
-function Harness({ onReferenceContext }: { onReferenceContext?: Parameters<typeof Timeline>[0]["onReferenceContext"] } = {}) {
+function Harness({ onReferenceContext, navigation }: { onReferenceContext?: Parameters<typeof Timeline>[0]["onReferenceContext"]; navigation?: Parameters<typeof Timeline>[0]["navigation"] } = {}) {
   const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
   const voice = { id: "v", kind: "clone", speakerProfileId: "s", createdAt: "" } as const;
-  return <><VoiceScript onReferenceContext={onReferenceContext} rows={[{ id: "r1", text: "one", voiceId: "v", speakerProfileId: "s" }, { id: "r2", text: "two", voiceId: "v", speakerProfileId: "s" }]} onRowsChange={vi.fn()} onRead={vi.fn()} category="clone" voices={[voice as never]} speakers={[]} output={output} playbackId="out" wordSelection={selection} onWordSelectionChange={setSelection} />
-    <Timeline onReferenceContext={onReferenceContext} rangeSelectionEnabled gain={0} onGainChange={vi.fn()} take={{ id: output.id, name: output.name, duration: 10, url: "/out.wav", words: output.words }} wordSelection={selection} onWordSelectionChange={setSelection} />
+  return <><VoiceScript navigation={navigation} onReferenceContext={onReferenceContext} rows={[{ id: "r1", text: "one", voiceId: "v", speakerProfileId: "s" }, { id: "r2", text: "two", voiceId: "v", speakerProfileId: "s" }]} onRowsChange={vi.fn()} onRead={vi.fn()} category="clone" voices={[voice as never]} speakers={[]} output={output} playbackId="out" wordSelection={selection} onWordSelectionChange={setSelection} />
+    <Timeline navigation={navigation} onReferenceContext={onReferenceContext} rangeSelectionEnabled gain={0} onGainChange={vi.fn()} take={{ id: output.id, name: output.name, duration: 10, url: "/out.wav", words: output.words }} wordSelection={selection} onWordSelectionChange={setSelection} />
     <output data-testid="selection">{JSON.stringify(selection)}</output></>;
 }
 
@@ -77,4 +77,21 @@ it("does not scroll on separated multi-selection and cancels a waveform sweep ba
   fireEvent.pointerMove(waveform, { button: 0, pointerId: 4, clientX: 60 });
   fireEvent.pointerCancel(waveform, { button: 0, pointerId: 4, clientX: 60 });
   expect(screen.getByTestId("selection").textContent).toBe(before);
+});
+
+
+it("explicit slot navigation reveals both views without altering multi-selection", () => {
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 2" }), { ctrlKey: true });
+  const before = screen.getByTestId("selection").textContent;
+  const scroller = view.container.querySelector<HTMLElement>(".timeline-scroll")!;
+  const script = view.container.querySelector<HTMLElement>(".script-table-scroll")!;
+  vi.spyOn(script, "getBoundingClientRect").mockReturnValue({ top: 0 } as DOMRect);
+  vi.spyOn(view.container.querySelector<HTMLElement>("[data-script-row-id=r2]")!, "getBoundingClientRect").mockReturnValue({ top: 800 } as DOMRect);
+  Object.defineProperties(scroller, { clientWidth: { configurable: true, value: 100 }, scrollWidth: { configurable: true, value: 1000 } });
+  view.rerender(<Harness navigation={{ serial: 1, scope: {kind: "voice-output", id: "out", revision: "revision-1"}, start: 7, rowIds: ["r2"] }} />);
+  expect(scroller.scrollLeft).toBeGreaterThan(0);
+  expect(screen.getByTestId("selection").textContent).toBe(before);
+  expect(script.scrollTop).toBe(800);
 });

@@ -2234,6 +2234,15 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
 
+    @app.delete("/api/projects/{project_id}/reference-bindings/{binding_id}", response_model=ReferenceBindingDocument)
+    def delete_reference_binding(project_id: str, binding_id: str, expected_revision: int) -> ReferenceBindingDocument:
+        try:
+            return reference_bindings.delete(project_id, binding_id, expected_revision)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Vùng gán không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/projects/{project_id}/reference-bindings", response_model=ReferenceBindingDocument)
     def assign_reference_bindings(project_id: str, payload: ReferenceAssignment) -> ReferenceBindingDocument:
         try:

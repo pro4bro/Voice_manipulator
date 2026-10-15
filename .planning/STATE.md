@@ -1047,3 +1047,9 @@ No GSD todo files. Planned work remains in ROADMAP and PROJECT-STATUS.
 **Last Date:** 2026-09-22
 **Stopped At:** Round 03-03B complete; the gate works and fails closed while thresholds are uncalibrated. Round 03-03C is next.
 **Resume File:** None
+
+## VM-REF-DETAIL-01 — 2026-10-15
+
+First of the explicitly requested next five rounds: Reference Detail slots,
+independent expansion, revision-checked removal and explicit Timeline+Script
+reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.

@@ -116,6 +116,17 @@ class FileReferenceBindings:
             FileProjectRepository._atomic_write(self._path(project_id), saved.model_dump_json(by_alias=True, indent=2))
             return self.get(project_id)
 
+    def delete(self, project_id: str, binding_id: str, expected_revision: int) -> ReferenceBindingDocument:
+        with self._lock:
+            current = self.get(project_id)
+            if current.revision != expected_revision:
+                raise ScriptRevisionConflict("Reference đã thay đổi. Làm mới trước khi bỏ gán.")
+            if not any(binding.id == binding_id for binding in current.bindings):
+                raise KeyError(binding_id)
+            saved = current.model_copy(update={"revision": current.revision + 1, "bindings": [binding for binding in current.bindings if binding.id != binding_id]})
+            FileProjectRepository._atomic_write(self._path(project_id), saved.model_dump_json(by_alias=True, indent=2))
+            return self.get(project_id)
+
     def _scope_snapshot(self, project_id: str, scope: ReferenceScope, strict_revision: bool):
         row_texts: dict[str, str] = {}
         segments = []

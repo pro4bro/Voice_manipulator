@@ -5172,3 +5172,9 @@ policy and identity acceptance; per-take Media Pool receipts are intermediate.
 Nine near-term parents remain. Exact next acceptance requires reviewed19A
 word/video anchors and physical OBS clocks, or trusted03-03C speaker labels
 (owner question pending); no phase or budget advance is claimed.
+
+## VM-REF-DETAIL-01 — 2026-10-15
+
+First of the explicitly requested next five rounds: Reference Detail slots,
+independent expansion, revision-checked removal and explicit Timeline+Script
+reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.

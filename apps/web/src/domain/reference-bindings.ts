@@ -21,6 +21,12 @@ export interface ReferenceBinding {
   id: string; scope: ReferenceScope; target: ReferenceTarget; sources: ReferenceSource[];
   status: "requested" | "missing" | "stale"; warnings: string[]; createdAt: string; updatedAt: string;
 }
+export interface ProductionNavigation { serial: number; scope: ReferenceScope; start: number | null; rowIds: string[] }
+export function referenceSelection(binding: ReferenceBinding): WordSelection {
+  const { target, scope } = binding;
+  return { scope, indexes: target.wordIndexes, anchor: target.wordIndexes[0] ?? null,
+    ranges: target.start === null ? [] : [{ id: target.id, start: target.start, end: target.end! }], rowIds: target.rowIds, textRanges: target.textRanges };
+}
 export interface ReferenceBindingDocument { version: 1; revision: number; bindings: ReferenceBinding[] }
 export interface ReferenceAssignment { scope: ReferenceScope; targets: ReferenceTarget[]; sources: ReferenceSource[]; expectedRevision: number }
 export interface ReferenceContextRequest { selection: WordSelection; x: number; y: number; origin: "waveform" | "subtitle" | "script" }

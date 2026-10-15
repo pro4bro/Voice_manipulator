@@ -63,6 +63,7 @@ export type ModuleId =
   | "obs-capture"
   | "timeline"
   | "voice-patch"
+  | "reference-detail"
   | "recent-takes"
   | "voice-output"
   | "voice-script"

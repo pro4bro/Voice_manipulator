@@ -670,6 +670,7 @@ export const api = {
     ),
   getVoiceScript: (projectId: string) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`),
   getReferenceBindings: (projectId: string) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`),
+  deleteReferenceBinding: (projectId: string, id: string, revision: number) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings/${id}?expected_revision=${revision}`, { method: "DELETE" }),
   assignReferences: (projectId: string, assignment: ReferenceAssignment) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`, { method: "POST", body: JSON.stringify(assignment) }),
   saveVoiceScript: (projectId: string, document: VoiceScriptDocument) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`, { method: "PUT", body: JSON.stringify(document) }),
   readVoiceScript: (projectId: string, payload: { rows: Array<{ id: string; voiceId: string; text: string; settings?: import("../domain/types").ScriptSettings }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>

@@ -39,7 +39,14 @@ import { VoiceGenerator } from "../voice-generator/VoiceGenerator";
 import { VoicePatch } from "../voice-patch/VoicePatch";
 import { VoiceVault } from "../voice-vault/VoiceVault";
 
+import { ReferenceDetail } from "../library-panel/ReferenceDetail";
 export interface StudioContext {
+  referenceDocument?: import("../../domain/reference-bindings").ReferenceBindingDocument | null;
+  referenceError?: string | null;
+  onReloadReferences?: () => void;
+  onNavigateReference?: (binding: import("../../domain/reference-bindings").ReferenceBinding) => void;
+  onDeleteReference?: (binding: import("../../domain/reference-bindings").ReferenceBinding) => Promise<void>;
+  productionNavigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   workflow: WorkspacePage;
   script: string;
   selectedVoice: string;
@@ -386,8 +393,10 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const generatedOnly = context.workflow === "voice-manipulator";
       const selectedAsset = generatedOnly ? undefined : workingAssets.find((asset) => asset.id === context.selectedAssetId);
       const noop = () => undefined;
-      return <Timeline onReferenceContext={generatedOnly ? context.onReferenceContext : undefined} rangeSelectionEnabled={generatedOnly} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={generatedOnly || selectedAsset ? context.take : null} />;
+      return <Timeline navigation={generatedOnly ? context.productionNavigation : undefined} onReferenceContext={generatedOnly ? context.onReferenceContext : undefined} rangeSelectionEnabled={generatedOnly} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} take={generatedOnly || selectedAsset ? context.take : null} />;
     }
+    case "reference-detail":
+      return <ReferenceDetail document={context.referenceDocument} error={context.referenceError} onReload={context.onReloadReferences} onNavigate={context.onNavigateReference} onDelete={context.onDeleteReference} />;
     case "voice-patch":
       return <VoicePatch hasTake={Boolean(context.take)} />;
     case "training-job":
@@ -412,7 +421,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onCategoryChange={context.onVoiceCategoryChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "voice-script": {
       const output = context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
-      return <VoiceScript onReferenceContext={context.onReferenceContext} document={context.voiceScriptDocument} onDocumentChange={context.onVoiceScriptDocumentChange} saveError={context.voiceScriptSaveError} onReload={context.onReloadVoiceScript} activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+      return <VoiceScript navigation={context.productionNavigation} onReferenceContext={context.onReferenceContext} document={context.voiceScriptDocument} onDocumentChange={context.onVoiceScriptDocumentChange} saveError={context.voiceScriptSaveError} onReload={context.onReloadVoiceScript} activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
     }
     case "sound-reactor-input":
     case "sound-reactor-output": {
