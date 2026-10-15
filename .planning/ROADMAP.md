@@ -1030,11 +1030,14 @@ evidence that the dock contract or lifecycle migration is complete.
 ### Phase 5: Manipulator Pipeline
 **Goal**: Produce and transform project-owned voices and audio through real adapters, with complete lineage and no simulated processor success.
 **Depends on**: Phase 3 publication contracts and Phase 4 session ownership for live streams
-**Requirements**: MAN-01 through MAN-03, WF-01 through WF-04
+**Requirements**: MAN-01 through MAN-21, WF-01 through WF-05
 **Success Criteria**:
   1. Text/script generation creates project-owned playable outputs through selected project voices.
   2. File and live voice conversion preserve lineage and pass a frozen Vietnamese quality/latency gate.
   3. Isolation, dubbing, and patching expose real adapter-backed jobs before being presented as available.
+  4. Reference-derived timing, synchronized range selection, Ctrl-handle audio stretching with ripple, and incremental Fix Voice Generated preserve explicit edit intent and publish verified audio revisions. Detailed proposed rounds: `docs/VOICE-MANIPULATOR-NEXT-PLAN.md`; this requirement extension does not advance phase completion.
+  5. Multiple reference footage assets can be marked and assigned to selected spans per characteristic, with independent value/time randomization and a frozen, reviewable schedule that incremental Fix can reproduce.
+  6. Reference Detail in the right column exposes two-line target/reference slots and expandable per-source selected characteristics for every assigned span.
 **Plans**: 1 written plan; additional processor plans remain
 
 Plans:

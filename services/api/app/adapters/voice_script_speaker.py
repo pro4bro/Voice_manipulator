@@ -22,7 +22,7 @@ import httpx
 from app.adapters.activity_center import CENTER
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuLease
-from app.adapters.omnivoice_generator import SpeechPlan, VoiceGenerator
+from app.adapters.omnivoice_generator import SpeechPlan, VoiceGenerator, file_digest
 from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.ports import ProjectRepository
@@ -534,6 +534,7 @@ class VoiceScriptSpeaker:
     def clip_key(step: _Step) -> str:
         identity = {
             "voice": step.plan.voice.id,
+            "artifacts": step.plan.artifact_fingerprint,
             "generator": step.plan.generator_id,
             "generation": step.plan.generation,
             "language": step.plan.language,
@@ -560,8 +561,25 @@ class VoiceScriptSpeaker:
             key = f"{key}-{uuid4().hex}"
         folder = self.outputs.clips_root(project_id) / key
         record = folder / "clip.json"
-        if record.is_file() and (folder / "audio.wav").is_file():
-            saved = json.loads(record.read_text(encoding="utf-8"))
+        saved = None
+        if folder.exists():
+            try:
+                candidate = json.loads(record.read_text(encoding="utf-8"))
+                audio = folder / "audio.wav"
+                with wave.open(str(audio), "rb") as handle:
+                    valid = (handle.getframerate() == SAMPLE_RATE and handle.getnchannels() == 1
+                             and handle.getsampwidth() == SAMPLE_WIDTH and handle.getnframes() > 0
+                             and len(handle.readframes(handle.getnframes())) == handle.getnframes() * SAMPLE_WIDTH)
+                if valid and candidate.get("audioSha256") == file_digest(audio):
+                    saved = candidate
+            except (OSError, ValueError, EOFError, wave.Error):
+                pass
+            if saved is None:
+                # Never rewrite a clip referenced by a previously published output.
+                key = f"{key}-{uuid4().hex}"
+                folder = self.outputs.clips_root(project_id) / key
+                record = folder / "clip.json"
+        if saved is not None:
             if saved.get("measured") or self.recognizer is None:
                 return Clip(key, folder / "audio.wav", float(saved["seconds"]), saved["words"], saved["quality"], saved.get("note"), True)
             # Timing was estimated because recognition was down; try again,
@@ -664,6 +682,8 @@ class VoiceScriptSpeaker:
         payload = {
             "key": key, "text": step.text, "voiceId": step.plan.voice.id, "generatorId": step.plan.generator_id,
             "seconds": round(seconds, 3), "words": words, "quality": quality, "note": note, "measured": measured,
+            "audioSha256": file_digest(record.parent / "audio.wav"),
+            "artifactFingerprint": step.plan.artifact_fingerprint,
         }
         temporary = record.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

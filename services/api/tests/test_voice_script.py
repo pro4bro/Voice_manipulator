@@ -158,6 +158,36 @@ class BlockingRecognizer:
 CLIP_TEXT: list[str] = []
 
 
+def test_same_voice_id_with_changed_reference_does_not_reuse_old_audio(tmp_path):
+    engine = FakeEngine()
+    project, an, _, outputs, _, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    request = VoiceScriptRequest(rows=[VoiceScriptRow(id="r1", voice_id=an.id, text="Xin chào")])
+    first = speaker.start(project.id, request, background=False)
+    reference = speaker.generator.voices.absolute(project.id, an.reference_audio)
+    reference.write_bytes(b"different reference bytes")
+    second = speaker.start(project.id, request, background=False)
+    assert second.status == "complete" and second.reused == 0
+    assert first.output.segments[0].clip != second.output.segments[0].clip
+    assert len(engine.spoken) == 2
+
+
+def test_corrupt_cached_clip_is_regenerated_without_rewriting_old_revision(tmp_path):
+    engine = FakeEngine()
+    project, an, _, outputs, _, speaker, _ = speaker_fixture(tmp_path, engine)
+    speaker.recognizer = None
+    request = VoiceScriptRequest(rows=[VoiceScriptRow(id="r1", voice_id=an.id, text="Xin chào")])
+    first = speaker.start(project.id, request, background=False)
+    old = outputs.clips_root(project.id) / first.output.segments[0].clip / "audio.wav"
+    old.write_bytes(b"broken")
+    second = speaker.start(project.id, request, background=False)
+    assert second.status == "complete" and second.reused == 0
+    assert second.output.segments[0].clip != first.output.segments[0].clip
+    assert old.read_bytes() == b"broken"
+    with wave.open(str(outputs.audio_path(project.id, second.output.id))) as audio:
+        assert audio.getframerate() == SAMPLE_RATE and audio.getnframes() > 0
+
+
 def segment(segment_id: str, speaker: str) -> DatasetSegment:
     return DatasetSegment(id=segment_id, asset_id="asset-1", audio_path="assets/media/asset-1/analysis.wav",
                           start=0, end=8, text=f"mẫu {segment_id}", speaker_profile_id=speaker)

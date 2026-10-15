@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 import threading
 import time
 from collections.abc import Callable
@@ -52,6 +54,7 @@ class SpeechRequest:
     speed: float | None
     duration: float | None
     output: Path
+    artifact_revision: str = ""
 
 
 class OmniVoiceSpeech:
@@ -70,6 +73,7 @@ class OmniVoiceSpeech:
             "speed": request.speed,
             "generation": request.generation,
             "output": str(request.output),
+            "artifact_revision": request.artifact_revision,
         }
 
 
@@ -112,6 +116,29 @@ class SpeechPlan:
     adapter: Path | None
     model_dir: Path | None
     engine_speech: "OmniVoiceSpeech | VibeVoiceSpeech"
+    artifact_fingerprint: str = ""
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def speech_artifact_fingerprint(voice: ProjectVoice, reference: Path, adapter: Path | None, model: Path | None) -> str:
+    """Content identity independent of a project's absolute location. Hash once per plan."""
+    files = {"reference": file_digest(reference), "worker": file_digest(
+        VIBEVOICE_WORKER_SCRIPT if voice.engine == "vibevoice" else WORKER_SCRIPT,
+    )}
+    for label, folder in (("adapter", adapter), ("model", model)):
+        if folder is not None:
+            for path in sorted(folder.rglob("*")):
+                if path.is_file():
+                    files[f"{label}/{path.relative_to(folder).as_posix()}"] = file_digest(path)
+    identity = {"files": files, "baseModel": voice.base_model, "referenceText": voice.reference_text, "engine": voice.engine}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def vibevoice_worker(paths: VibeVoicePaths, idle_seconds: float = 300.0) -> EngineWorkerProcess:
@@ -187,7 +214,8 @@ class VoiceGenerator:
         engine = self.engines.get(voice.engine)
         if engine is None:
             raise ValueError(f"Chưa có bộ tạo giọng cho engine {voice.engine}.")
-        return SpeechPlan(voice, option.id, option.label, option.engine, generation, language, speed, reference, adapter, model_dir, engine)
+        fingerprint = speech_artifact_fingerprint(voice, reference, adapter, model_dir)
+        return SpeechPlan(voice, option.id, option.label, option.engine, generation, language, speed, reference, adapter, model_dir, engine, fingerprint)
 
     def generator_for(self, engine: str) -> str | None:
         """The generator that speaks a voice of this engine, preferring one that can run."""
@@ -210,6 +238,7 @@ class VoiceGenerator:
                 SpeechRequest(
                     voice=plan.voice, reference=plan.reference, adapter=plan.adapter, model_dir=plan.model_dir, text=text,
                     generation=plan.generation, language=plan.language, speed=plan.speed, duration=duration, output=output,
+                    artifact_revision=plan.artifact_fingerprint,
                 )
             ),
             cancellation_id=cancellation_id,

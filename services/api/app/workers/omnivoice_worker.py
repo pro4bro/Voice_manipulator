@@ -41,7 +41,7 @@ def main() -> None:
 
     device = get_best_device()
     model = None
-    model_key: tuple[str, str | None] | None = None
+    model_key: tuple[str, str | None, str | None] | None = None
     prompts: dict[tuple[str, str, bool], object] = {}
 
     def reply(payload: dict) -> None:
@@ -62,7 +62,7 @@ def main() -> None:
                 reply({"id": request_id, "ok": True})
                 return
             started = time.perf_counter()
-            key = (request["model"], request.get("lora_adapter"))
+            key = (request["model"], request.get("lora_adapter"), request.get("artifact_revision"))
             loaded = False
             if model is None or key != model_key:
                 # A LoRA adapter is merged into the weights in memory, so another
