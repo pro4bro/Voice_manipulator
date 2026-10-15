@@ -1,14 +1,18 @@
-import { useState } from "react";
-import { REFERENCE_PROPERTIES, type ReferenceBinding, type ReferenceBindingDocument } from "../../domain/reference-bindings";
+import { useEffect, useRef, useState } from "react";
+import { REFERENCE_PROPERTIES, type ReferenceBinding, type ReferenceBindingDocument, type ReferenceResolution } from "../../domain/reference-bindings";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "./reference-detail.css";
 
-export function ReferenceDetail({ document, error, onReload, onNavigate, onDelete }: {
+export function ReferenceDetail({ document, error, onReload, onNavigate, onDelete, onResolve }: {
+  onResolve?: (binding: ReferenceBinding) => Promise<ReferenceResolution>;
   document?: ReferenceBindingDocument | null; error?: string | null; onReload?: () => void;
   onNavigate?: (binding: ReferenceBinding) => void; onDelete?: (binding: ReferenceBinding) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  const [resolutions, setResolutions] = useState<Record<string, ReferenceResolution>>({});
+  const analysisToken = useRef(0);
+  useEffect(() => { analysisToken.current++; setResolutions({}); setBusy(null); return () => { analysisToken.current++; }; }, [document]);
   const [failure, setFailure] = useState<string | null>(null);
   return <ModuleFrame title="Reference Detail" className="reference-detail" action={<button type="button" onClick={onReload}>Làm mới</button>}>
     {error || failure ? <p role="alert">{error || failure}</p> : null}
@@ -34,6 +38,8 @@ export function ReferenceDetail({ document, error, onReload, onNavigate, onDelet
               <p>{source.properties.map((property) => REFERENCE_PROPERTIES.find(([key]) => key === property)?.[1]).join(" · ")}</p>
               <p>Mức ảnh hưởng {Math.round(source.strength * 100)}% · Ưu tiên {source.priority}</p>
             </div>)}
+            <button type="button" disabled={busy !== null || !onResolve} onClick={async () => { setBusy(binding.id); setFailure(null); try { const token = ++analysisToken.current; const result = await onResolve?.(binding); if (result && token === analysisToken.current) setResolutions((current) => ({ ...current, [binding.id]: result })); } catch (reason) { setFailure(String(reason)); } finally { setBusy(null); } }}>Phân tích reference</button>
+            {resolutions[binding.id]?.units.map((unit, index) => <div key={unit.rowId ?? index} aria-label="Kết quả phân tích reference"><b>{unit.rowId || "Vùng audio"}</b>{Object.entries(unit.properties).map(([key, result]) => <p key={key}>{REFERENCE_PROPERTIES.find(([id]) => id === key)?.[1]}: {result.state} · {result.reason}{result.source?.features ? ` · ${result.source.features.duration.toFixed(3)}s · RMS ${result.source.features.rmsDbfs?.toFixed(1) ?? "im lặng"} dBFS` : ""}</p>)}</div>)}
             <button type="button" disabled={busy !== null || !onDelete} onClick={async () => { setBusy(binding.id); setFailure(null); try { await onDelete?.(binding); } catch (reason) { setFailure(String(reason)); } finally { setBusy(null); } }}>{busy === binding.id ? "Đang bỏ gán…" : "Bỏ gán reference"}</button>
           </div> : null}
         </li>;

@@ -41,6 +41,7 @@ from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
+from app.adapters.reference_resolver import ReferenceResolver
 from app.domain.reference_bindings import ReferenceAssignment, ReferenceBindingDocument
 from app.domain.voice_script_document import VoiceScriptDocument
 from app.domain.models import MediaReferenceSelection
@@ -374,6 +375,7 @@ def create_app(
     voice_outputs = FileVoiceOutputs(projects)
     voice_script_documents = FileVoiceScript(projects)
     reference_bindings = FileReferenceBindings(projects, media, voice_outputs, voice_script_documents)
+    reference_resolver = ReferenceResolver(reference_bindings, settings.ffmpeg_path)
     resolved_speaker_embedders = speaker_embedders or default_speaker_embedders(settings.project_root)
     speaker_similarity_gate = SpeakerSimilarityGate(
         projects,
@@ -2233,6 +2235,17 @@ def create_app(
             return reference_bindings.get(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc
+
+    @app.post("/api/projects/{project_id}/reference-bindings/{binding_id}/resolve")
+    async def resolve_reference_binding(project_id: str, binding_id: str, expected_revision: int) -> dict:
+        try:
+            return await asyncio.to_thread(reference_resolver.resolve, project_id, binding_id, expected_revision)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Reference không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.delete("/api/projects/{project_id}/reference-bindings/{binding_id}", response_model=ReferenceBindingDocument)
     def delete_reference_binding(project_id: str, binding_id: str, expected_revision: int) -> ReferenceBindingDocument:

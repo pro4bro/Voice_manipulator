@@ -67,3 +67,14 @@ export function referenceInheritedSettings(targets: ReferenceTarget[], script: V
     return [id, row ? effectiveScriptSettings(script, row) : {}];
   })));
 }
+
+export interface ReferencePropertyResolution {
+  state: "measured" | "unsupported" | "conflict" | "locked" | "stale" | "unavailable";
+  reason: string; applied: false; value?: unknown;
+  source?: ReferenceSource & { features?: { duration: number; rmsDbfs: number | null; peakDbfs: number | null }; state: string };
+}
+export interface ReferenceResolution {
+  version: 1; bindingId: string; key: string; applied: false;
+  identity: { rowId: string; voiceId: string | null; speakerProfileId: string | null }[];
+  units: { rowId: string | null; properties: Partial<Record<ReferenceProperty, ReferencePropertyResolution>> }[];
+}

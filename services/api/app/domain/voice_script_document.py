@@ -49,3 +49,16 @@ class VoiceScriptDocument(DomainModel):
         if any(row.segment_id not in ids for row in self.rows):
             raise ValueError("Sentence must belong to an existing segment.")
         return self
+
+
+def effective_settings(document: VoiceScriptDocument, row: ScriptSentence) -> dict:
+    """Ancestor locks win; mirrors the editor's clip/segment/sentence cascade."""
+    result, locked = {}, set()
+    segment = next((item for item in document.segments if item.id == row.segment_id), None)
+    for settings in [document.settings, segment.settings if segment else ScriptSettings(), row.settings]:
+        for key, value in settings.model_dump(by_alias=True).items():
+            if key != "locked" and value is not None and key not in locked:
+                result[key] = value
+        locked.update(settings.locked)
+    result["locked"] = sorted(locked)
+    return result

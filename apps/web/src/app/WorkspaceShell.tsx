@@ -2686,6 +2686,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setWordSelection(scopeVoiceSelection(selection));
     },
     referenceDocument, referenceError, productionNavigation,
+    onResolveReference: async (binding) => { if (!referenceDocument) throw new Error("Reference đang tải."); return api.resolveReferenceBinding(project.id, binding.id, referenceDocument.revision); },
     onReloadReferences: () => void reloadReferences(),
     onNavigateReference: (binding) => {
       if (binding.status === "stale" || binding.status === "missing") { setNotice("Vùng gán không còn khớp. Làm mới và gán lại reference."); return; }

@@ -670,6 +670,7 @@ export const api = {
     ),
   getVoiceScript: (projectId: string) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`),
   getReferenceBindings: (projectId: string) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`),
+  resolveReferenceBinding: (projectId: string, id: string, revision: number) => request<import("../domain/reference-bindings").ReferenceResolution>(`/api/projects/${projectId}/reference-bindings/${id}/resolve?expected_revision=${revision}`, { method: "POST" }),
   deleteReferenceBinding: (projectId: string, id: string, revision: number) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings/${id}?expected_revision=${revision}`, { method: "DELETE" }),
   assignReferences: (projectId: string, assignment: ReferenceAssignment) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`, { method: "POST", body: JSON.stringify(assignment) }),
   saveVoiceScript: (projectId: string, document: VoiceScriptDocument) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`, { method: "PUT", body: JSON.stringify(document) }),

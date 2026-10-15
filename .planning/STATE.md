@@ -1053,3 +1053,9 @@ No GSD todo files. Planned work remains in ROADMAP and PROJECT-STATUS.
 First of the explicitly requested next five rounds: Reference Detail slots,
 independent expansion, revision-checked removal and explicit Timeline+Script
 reveal. See docs/gates/vm-ref-detail-01-20261015.md. Next VM-REF-RESOLVE-01.
+
+## VM-REF-RESOLVE-01 — 2026-10-15
+
+Second of five: deterministic property resolution/identity/locks/conflicts,
+actual PCM feature cache and explicit unsupported outcomes. See the round gate.
+Conditioning A/B waits for delivery/loudness processors. Next VM-TIMING-REF-01.
