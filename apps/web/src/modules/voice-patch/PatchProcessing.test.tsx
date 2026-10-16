@@ -21,12 +21,30 @@ it("keeps preview separate from Apply, guards changed text and only lists traine
   fireEvent.click(screen.getByText("Tạo bản vá nghe thử"));
   await screen.findByLabelText("Nghe bản ghép Patch");
   expect(onOutputReady).not.toHaveBeenCalled();
-  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ expectedDraftRevision: 3, expectedScriptRevision: 2, expectedEditRevision: 1, replacementText: "Mới", voiceId: "v" });
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ expectedDraftRevision: 3, expectedScriptRevision: 2, expectedEditRevision: 1, replacementText: "Mới", voiceId: "v", durationPolicy: "ripple" });
   fireEvent.change(screen.getByLabelText("Nội dung Patch"), { target: { value: "Khác" } });
   expect(screen.getByText("Áp dụng bản vá")).toBeDisabled();
   fireEvent.click(screen.getByText("Dùng thông số bản nghe thử đã lưu"));
   fireEvent.click(screen.getByText("Áp dụng bản vá"));
   await waitFor(() => expect(onOutputReady).toHaveBeenCalledWith(expect.objectContaining({ id: "new" })));
+});
+
+it("sends native source-duration policy and prevents applying a preview for another policy", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(reply({ processingAvailable: true, draftRevision: 3, blockers: [] }))
+    .mockResolvedValueOnce(reply({ ...job, durationPolicy: "source", targetFrames: 24000 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<PatchProcessing projectId="p" document={document} currentSource saved voices={voices} />);
+  fireEvent.change(screen.getByLabelText("Thời lượng bản vá"), { target: { value: "source" } });
+  fireEvent.click(screen.getByText("Kiểm tra khả năng Patch"));
+  await waitFor(() => expect(screen.getByText("Tạo bản vá nghe thử")).toBeEnabled());
+  fireEvent.click(screen.getByText("Tạo bản vá nghe thử"));
+  await screen.findByLabelText("Nghe bản ghép Patch");
+  expect(JSON.parse(fetcher.mock.calls[1][1].body).durationPolicy).toBe("source");
+  expect(screen.getByText("Áp dụng bản vá")).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("Thời lượng bản vá"), { target: { value: "ripple" } });
+  expect(screen.getByText("Áp dụng bản vá")).toBeDisabled();
+  fireEvent.click(screen.getByText("Dùng thông số bản nghe thử đã lưu"));
+  expect(screen.getByLabelText("Thời lượng bản vá")).toHaveValue("source");
 });
 it("restores a running job for Stop and never revives it from an older poll", async () => {
   const fetcher = vi.fn().mockResolvedValueOnce(reply({ processingAvailable: true, draftRevision: 3, blockers: [], latestJob: { ...job, status: "running" } }))

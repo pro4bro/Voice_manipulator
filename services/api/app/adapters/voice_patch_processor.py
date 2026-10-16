@@ -22,6 +22,7 @@ from app.adapters.voice_script_speaker import _Job as SpeakerJobContext
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.voice_delivery import unsupported_synthesis_settings
 from app.domain.voice_patch_jobs import VoicePatchApplyRequest, VoicePatchJob, VoicePatchJobRequest
+from app.domain.duration_plan import speech_units
 from app.domain.voice_script_document import effective_settings
 
 
@@ -252,7 +253,28 @@ class VoicePatchProcessor:
         text = " ".join(request.replacement_text.split())
         if not text:
             raise ValueError("Replacement text must contain speech.")
+        requested_frames = None
+        if request.duration_policy == "source":
+            requested_frames = capture["draft"].end_frame - capture["draft"].start_frame
+            minimum_frames = math.ceil(max(.12, speech_units(text) / 12) * _RATE)
+            if requested_frames < minimum_frames:
+                raise ValueError(
+                    f"Source duration is too short for this text: {requested_frames} frames; "
+                    f"at least {minimum_frames} frames are required by the speech feasibility budget.")
+            if requested_frames > _RATE * _MAX_SECONDS:
+                raise ValueError("Source duration exceeds the ten-minute OmniVoice limit.")
         step = self._make_step(project_id, capture, request.voice_id, text)
+        if request.duration_policy == "source" and step.plan.speed not in {None, 1, 1.0}:
+            raise ValueError("Source-duration Patch requires neutral speed; speed plus native duration is not a verified timing path.")
+        step.duration = requested_frames / _RATE if requested_frames is not None else None
+        if request.duration_policy == "source":
+            # Source-duration clips have both a distinct exact target and a
+            # policy fingerprint; preserve historical ripple clip identities.
+            step.plan.artifact_fingerprint = self._hash_json({
+                "baseFingerprint": step.plan.artifact_fingerprint,
+                "durationPolicy": request.duration_policy,
+                "requestedDurationFrames": requested_frames,
+            })
         clip_key = self.speaker.clip_key(step)
         material = {
             "version": 1,
@@ -270,9 +292,14 @@ class VoicePatchProcessor:
             **self._extra_key_material(capture),
             **self._review_lineage(capture),
         }
+        if request.duration_policy == "source":
+            material["durationPolicy"] = request.duration_policy
+            material["requestedDurationFrames"] = requested_frames
         key = self._hash_json(material)
         return {**capture, "step": step, "clipKey": clip_key, "key": key,
-            "generatorFingerprint": step.plan.artifact_fingerprint, "replacementText": text}
+            "generatorFingerprint": step.plan.artifact_fingerprint, "replacementText": text,
+            "durationPolicy": request.duration_policy, "requestedDurationFrames": requested_frames,
+            "requestedDuration": requested_frames / _RATE if requested_frames is not None else None}
 
     def plan(self, project_id: str) -> dict[str, Any]:
         document = self.store.get(project_id)
@@ -301,6 +328,8 @@ class VoicePatchProcessor:
                 "scriptRevision": draft.script_revision, "editRevision": draft.edit_revision,
                 "rowId": draft.row_id, "sourceOutputId": draft.output_id,
                 "replacementText": draft.replacement_text, "voiceChoices": voice_choices,
+                "supportedDurationPolicies": ["ripple", "source"],
+                "durationPolicyNote": "Source duration is preflighted against replacement text and may still fail the native-fit quality gate.",
                 "blockers": sorted(set(blockers)), "latestJob": latest}
         except (KeyError, OSError, ValueError, ScriptRevisionConflict) as exc:
             return {"processingAvailable": False, "draftRevision": document.revision,
@@ -393,7 +422,7 @@ class VoicePatchProcessor:
     def _request_from_job(self, job: VoicePatchJob) -> VoicePatchJobRequest:
         return VoicePatchJobRequest(expectedDraftRevision=job.draft_revision,
             expectedScriptRevision=job.script_revision, expectedEditRevision=job.edit_revision,
-            replacementText=job.replacement_text, voiceId=job.voice_id)
+            replacementText=job.replacement_text, voiceId=job.voice_id, durationPolicy=job.duration_policy)
 
     def start(self, project_id: str, request: VoicePatchJobRequest) -> VoicePatchJob:
         snapshot = self._build(project_id, request)
@@ -412,6 +441,8 @@ class VoicePatchProcessor:
                 source_metadata_sha256=snapshot["draft"].source_metadata_sha256,
                 generator_fingerprint=snapshot["generatorFingerprint"], clip_key=snapshot["clipKey"],
                 replacement_text=snapshot["replacementText"], voice_id=request.voice_id,
+                duration_policy=request.duration_policy,
+                target_frames=snapshot["requestedDurationFrames"],
                 speaker_profile_id=snapshot["draft"].speaker_profile_id)
             context_record = VoiceScriptJob(id=job.id, project_id=project_id, total=1)
             state = _Running(job, SpeakerJobContext(context_record))
@@ -442,7 +473,8 @@ class VoicePatchProcessor:
         draft = snapshot["draft"]
         return VoicePatchJobRequest(expectedDraftRevision=snapshot["draftRevision"],
             expectedScriptRevision=snapshot["script"].revision, expectedEditRevision=snapshot["edit"].revision,
-            replacementText=snapshot["replacementText"], voiceId=snapshot["step"].plan.voice.id)
+            replacementText=snapshot["replacementText"], voiceId=snapshot["step"].plan.voice.id,
+            durationPolicy=snapshot["durationPolicy"])
 
     @staticmethod
     def _sample(pcm: bytes, frame: int) -> int:
@@ -527,6 +559,14 @@ class VoicePatchProcessor:
             clip_pcm = self._read_pcm(clip_path)
             if self._sha(clip_path) != record.get("audioSha256"):
                 raise ValueError("Generated Voice Patch clip failed its audio checksum.")
+            replacement_frames = len(clip_pcm) // _WIDTH
+            duration_report = record.get("durationFit")
+            if job.duration_policy == "source":
+                requested_frames = snapshot["requestedDurationFrames"]
+                if (replacement_frames != requested_frames or not isinstance(duration_report, dict)
+                        or round(float(duration_report.get("actualDuration", -1)) * _RATE) != requested_frames
+                        or round(float(duration_report.get("requestedDuration", -1) or -1) * _RATE) != requested_frames):
+                    raise ValueError("Source-duration clip failed its exact requested frame budget.")
             source_path: Path = snapshot["audio_path"]
             source_pcm = self._read_pcm(source_path)
             start, end = snapshot["draft"].start_frame, snapshot["draft"].end_frame
@@ -543,10 +583,17 @@ class VoicePatchProcessor:
                 "editRevision": job.edit_revision, "startFrame": start, "endFrame": end,
                 "sourceFrames": len(source_pcm) // _WIDTH, "replacementFrames": len(clip_pcm) // _WIDTH,
                 "compositeFrames": len(composite) // _WIDTH, "deltaFrames": len(clip_pcm) // _WIDTH - (end - start),
+                "durationPolicy": job.duration_policy,
+                "targetFrames": job.target_frames,
+                "requestedDuration": snapshot["requestedDuration"],
+                "requestedDurationFrames": snapshot["requestedDurationFrames"],
+                "durationReport": duration_report,
                 "maxSpliceBoundaryStep": max_step, "replacementSha256": self._sha(replacement_path),
                 "compositeSha256": self._sha(composite_path), "clipRecordSha256": self._sha(clip_folder / "clip.json"),
                 "sourceSegmentStart": source_segment.start, "sourceSegmentEnd": source_segment.end,
-                "preservesPcmOutsideSelectedRow": True, "timingReview": "unverified-natural-duration-ripple",
+                "preservesPcmOutsideSelectedRow": True,
+                "timingReview": "unverified-source-duration" if job.duration_policy == "source"
+                    else "unverified-natural-duration-ripple",
                 "clipTimingQuality": record.get("quality"), "clipTimingNote": record.get("note"),
                 **self._review_lineage(snapshot),
                 **self._extra_report(snapshot)}
@@ -696,6 +743,10 @@ class VoicePatchProcessor:
         composite, max_step = self._compose_pcm(source_pcm, replacement_pcm, selected_start, selected_end)
         replacement_frames = len(replacement_pcm) // _WIDTH
         delta = replacement_frames - (selected_end - selected_start)
+        if job.duration_policy == "source" and delta != 0:
+            raise ValueError("Source-duration Patch must preserve the selected source frame budget exactly.")
+        requested_duration = job.report.get("requestedDuration") if job.duration_policy == "source" else None
+        duration_report = clip_record.get("durationFit")
         sorted_segments = sorted(output.segments, key=lambda item: (item.start, item.end, item.row_id))
         index_by_row = {segment.row_id: i for i, segment in enumerate(sorted_segments)}
         current_script_rows = {row.id: row for row in capture["script"].rows}
@@ -710,7 +761,7 @@ class VoicePatchProcessor:
                     "voice_id": voice.id, "voice_name": voice.name, "speaker_profile_id": voice.speaker_profile_id,
                     "engine": "omnivoice", "generator_id": job.clip_key and self.speaker.generator.generator_for(voice.engine),
                     "text": job.replacement_text, "start": new_start / _RATE, "end": new_end / _RATE,
-                    "clip": job.clip, "requested_duration": None, "duration_report": clip_record.get("durationFit"),
+                    "clip": job.clip, "requested_duration": requested_duration, "duration_report": duration_report,
                     "script_row": {**row.model_dump(mode="json", by_alias=True), "text": job.replacement_text,
                         "voiceId": voice.id, "speakerProfileId": voice.speaker_profile_id},
                 })
@@ -762,7 +813,12 @@ class VoicePatchProcessor:
             "draftRevision": job.draft_revision, "scriptRevision": job.script_revision, "editRevision": job.edit_revision,
             "jobId": job.id, "jobKey": job.key, "rowId": draft.row_id, "replacementText": job.replacement_text,
             "voiceId": voice.id, "speakerProfileId": voice.speaker_profile_id, "sampleRate": _RATE,
-            "durationDeltaFrames": delta, "timingReview": "unverified-natural-duration-ripple",
+            "durationPolicy": job.duration_policy, "requestedDuration": requested_duration,
+            "targetFrames": job.target_frames,
+            "requestedDurationFrames": job.report.get("requestedDurationFrames"),
+            "durationReport": duration_report, "durationDeltaFrames": delta,
+            "timingReview": "unverified-source-duration" if job.duration_policy == "source"
+                else "unverified-natural-duration-ripple",
             **self._review_lineage(capture),
             **self._extra_lineage(capture)}
         parameters["voicePatch"] = lineage
@@ -776,14 +832,22 @@ class VoicePatchProcessor:
             "parameters": parameters, "duration": len(composite) / (_WIDTH * _RATE), "sample_rate": _RATE,
             "audio_path": audio_path.relative_to(self._root(project_id)).as_posix(),
             "words": words, "word_timing_quality": quality,
-            "word_timing_note": "Voice Patch replaced one whole Script row; downstream speech rippled by natural replacement duration. Timing and voice identity require human review.",
+            "word_timing_note": ("Voice Patch matched the selected source duration with native OmniVoice timing and silence-only sample fitting. Word timing and voice identity require human review."
+                if job.duration_policy == "source" else
+                "Voice Patch replaced one whole Script row; downstream speech rippled by natural replacement duration. Timing and voice identity require human review."),
             "segments": segments, "created_at": datetime.now(timezone.utc),
         })
         report = {"version": 1, "sourceOutputId": output.id, "sourceAudioSha256": draft.source_sha256,
             "sourcePreviewSha256": self._sha(capture["audio_path"]), "rowId": draft.row_id,
             "startFrame": selected_start, "endFrame": selected_end, "replacementFrames": replacement_frames,
             "deltaFrames": delta, "frames": len(composite) // _WIDTH,
-            "maxSpliceBoundaryStep": max_step, "timingReview": "unverified-natural-duration-ripple",
+            "durationPolicy": job.duration_policy, "requestedDuration": requested_duration,
+            "targetFrames": job.target_frames,
+            "requestedDurationFrames": job.report.get("requestedDurationFrames"),
+            "durationReport": duration_report,
+            "maxSpliceBoundaryStep": max_step,
+            "timingReview": "unverified-source-duration" if job.duration_policy == "source"
+                else "unverified-natural-duration-ripple",
             "clipTimingQuality": clip_record.get("quality"), "audioGainPending": False,
             "preservedPcmRanges": [{"sourceStartFrame": 0, "sourceEndFrame": selected_start,
                 "outputStartFrame": 0, "outputEndFrame": selected_start},

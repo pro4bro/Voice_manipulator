@@ -78,3 +78,18 @@ No word times were invented; human review is false and the real fixture remains
 blocked awaiting review. No human timing/identity or browser acceptance is claimed.
 Next round23 VM-PATCH-02B native source-duration generation, then history and
 Checkpoint-A verification. Phase03 remains60%.
+
+### Round23 — VM-PATCH-02B
+
+Patch now chooses natural ripple or native source-duration generation. Exact
+sample budgets, conservative text feasibility, neutral-speed requirement and
+strict artifact fitting apply across all three media strategies and trained
+output Patch. Old ripple cache identity stays compatible. API44 focused,
+affected UI13/typecheck/build pass. ADR0084 records limits and no speech cutting.
+Actual context clone on natural Vietnamese words generated51840frames/2.16s
+natively with0padding/trim/clip. Composite192000frames/8s, delta0, splice0.04114FS,
+outside PCM/source/idempotence/lease pass; output-19c33d154a69, receipt
+`.scratch/vm-rounds21-25/context23-receipt.json`. Fixture confirmation was an
+automated test acknowledgement, not human listening. Replacement words remain
+needs-alignment; exact span length is not exact word timing. Next round24
+VM-PATCH-02C durable history/comparison, then Checkpoint-A verification.

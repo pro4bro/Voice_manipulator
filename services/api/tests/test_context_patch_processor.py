@@ -251,3 +251,15 @@ def test_retry_after_failed_audio_quality_generates_a_fresh_immutable_clip(tmp_p
     assert len(engine.payloads) == 2 and second.clip.startswith(first.clip_key + "-")
     assert source.read_bytes() == original and len(outputs.list(project.id)) == 1
     assert lease.holder() is None
+
+
+def test_context_source_duration_policy_is_applied_by_shared_processor_build(tmp_path):
+    project, _outputs, _lease, _speaker, scripts, source, document, service, _engine, _audio = setup_processor(tmp_path)
+    document = review_target(source, project, document)
+    req = start_request(project, document, scripts, "New target words")
+    source_req = req.model_copy(update={"duration_policy": "source"})
+    natural = service._build(project.id, req)
+    exact = service._build(project.id, source_req)
+    assert exact["step"].duration == (document.draft.end_frame - document.draft.start_frame) / RATE
+    assert exact["clipKey"] != natural["clipKey"]
+    assert service._request_from_snapshot(exact).duration_policy == "source"

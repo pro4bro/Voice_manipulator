@@ -1,5 +1,20 @@
 # Work Rounds
 
+## Voice Manipulator round23 — VM-PATCH-02B (2026-10-16)
+
+Patch now chooses natural ripple or native source-duration generation. Exact
+sample budgets, conservative text feasibility, neutral-speed requirement and
+strict artifact fitting apply across all three media strategies and trained
+output Patch. Old ripple cache identity stays compatible. API44 focused,
+affected UI13/typecheck/build pass. ADR0084 records limits and no speech cutting.
+Actual context clone on natural Vietnamese words generated51840frames/2.16s
+natively with0padding/trim/clip. Composite192000frames/8s, delta0, splice0.04114FS,
+outside PCM/source/idempotence/lease pass; output-19c33d154a69, receipt
+`.scratch/vm-rounds21-25/context23-receipt.json`. Fixture confirmation was an
+automated test acknowledgement, not human listening. Replacement words remain
+needs-alignment; exact span length is not exact word timing. Next round24
+VM-PATCH-02C durable history/comparison, then Checkpoint-A verification.
+
 ## Voice Manipulator round22 — VM-PATCH-02A (2026-10-16)
 
 Reviewed whole-word target receipts pin source/metadata hashes, indices, PCM bounds

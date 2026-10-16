@@ -15,6 +15,7 @@ class VoicePatchJobRequest(DomainModel):
     expected_edit_revision: int = Field(ge=0)
     replacement_text: str = Field(min_length=1, max_length=5000)
     voice_id: str = Field(min_length=1, max_length=120)
+    duration_policy: Literal["ripple", "source"] = "ripple"
 
 
 class VoicePatchApplyRequest(DomainModel):
@@ -36,6 +37,8 @@ class VoicePatchJob(DomainModel):
     source_metadata_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     generator_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     clip_key: str = Field(pattern=r"^[a-f0-9]{32}$")
+    duration_policy: Literal["ripple", "source"] = "ripple"
+    target_frames: int | None = Field(default=None, ge=1)
     replacement_text: str
     voice_id: str
     speaker_profile_id: str

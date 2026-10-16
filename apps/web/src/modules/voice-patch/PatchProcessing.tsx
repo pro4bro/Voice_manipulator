@@ -7,6 +7,7 @@ interface PatchJob {
   scriptRevision: number; editRevision: number; replacementText: string; voiceId: string;
   done: number; total: number; error?: string | null; audioUrl?: string | null;
   replacementAudioUrl?: string | null; createdAt?: string; updatedAt?: string;
+  durationPolicy?: "ripple" | "source"; targetFrames?: number | null;
 }
 interface PatchPlan { processingAvailable: boolean; draftRevision: number; blockers: string[]; latestJob?: PatchJob | null }
 interface AppliedPatch { output: VoiceOutput; audioUrl: string; sourceOutputId: string; key: string; report: Record<string, unknown> }
@@ -30,6 +31,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
   const contextMode = mode === "context", hybridMode = mode === "hybrid";
   const owner = `${endpoint}:${document.revision}`;
   const [text, setText] = useState(draft.replacementText);
+  const [durationPolicy, setDurationPolicy] = useState<"ripple" | "source">("ripple");
   const eligible = contextMode ? [{ id: "context-clone", name: "Giọng từ vùng tham chiếu", kind: "clone" }] : voices.filter((voice) => voice.speakerProfileId === draft.speakerProfileId && voice.engine === "omnivoice" && ["full", "lora"].includes(voice.kind));
   const [voiceId, setVoiceId] = useState(eligible.find((voice) => voice.id === draft.voiceId)?.id ?? eligible[0]?.id ?? "");
   const [plan, setPlan] = useState<PatchPlan | null>(null);
@@ -37,7 +39,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
   const [applied, setApplied] = useState<AppliedPatch | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const identity = `${owner}:${currentSource}:${saved}:${text}:${voiceId}`;
+  const identity = `${owner}:${currentSource}:${saved}:${text}:${voiceId}:${durationPolicy}`;
   const current = useRef(identity); current.current = identity;
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const serial = useRef(0);
@@ -46,7 +48,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
   const running = active(job);
   const matching = job?.draftRevision === document.revision && job.outputId === draft.outputId
     && job.scriptRevision === draft.scriptRevision && job.editRevision === draft.editRevision
-    && job.replacementText === text.trim().split(/\s+/u).join(" ") && job.voiceId === voiceId;
+    && job.replacementText === text.trim().split(/\s+/u).join(" ") && job.voiceId === voiceId && (job.durationPolicy ?? "ripple") === durationPolicy;
   function acceptJob(value: PatchJob, expectedOwner: string, allowNew = false) {
     if (!mounted.current || ownerRef.current !== expectedOwner) return;
     setJob((previous) => {
@@ -85,7 +87,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
         }
       } else if (action === "start") {
         const value = await request<PatchJob>(`${endpoint}/jobs`, { expectedDraftRevision: document.revision,
-          expectedScriptRevision: draft.scriptRevision, expectedEditRevision: draft.editRevision, replacementText: text.trim(), voiceId });
+          expectedScriptRevision: draft.scriptRevision, expectedEditRevision: draft.editRevision, replacementText: text.trim(), voiceId, durationPolicy });
         // Keep ownership so Stop still works if the editor changes during Start.
         acceptJob(value, expectedOwner, true);
       } else {
@@ -110,7 +112,11 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
     <label className="patch-copy"><span>{hybridMode ? "MODEL TRAIN + CONTEXT" : contextMode ? "GIỌNG THAM CHIẾU" : "MODEL ĐÃ TRAIN"}</span><select aria-label="Model Patch" value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
       <option value="">Chọn model cùng người nói…</option>{eligible.map((voice) => <option key={voice.id} value={voice.id}>{voice.name} · {voice.kind}</option>)}
     </select></label>
-    <p>{hybridMode ? "Giữ checkpoint đã train và dùng đoạn context cùng người nói làm tham chiếu. Không tự đổi sang clone nếu model không tương thích." : contextMode ? "Dùng model nền với đoạn tham chiếu đã chọn, không dùng checkpoint đã train. Nội dung tham chiếu không được thêm vào lời thay thế." : "Model đã train dùng kèm mẫu sạch đã lưu của model."} Bản vá giữ thời lượng đọc thực; phần sau tự dịch theo. Cần nghe thử trước khi áp dụng.</p>
+    <label className="patch-copy"><span>THỜI LƯỢNG</span><select aria-label="Thời lượng bản vá" value={durationPolicy} onChange={(event) => setDurationPolicy(event.target.value as typeof durationPolicy)}>
+      <option value="ripple">Đọc tự nhiên · dịch phần sau</option><option value="source">Giữ đúng thời lượng vùng nguồn</option>
+    </select></label>
+    <p>{hybridMode ? "Giữ checkpoint đã train và dùng đoạn context cùng người nói làm tham chiếu. Không tự đổi sang clone nếu model không tương thích." : contextMode ? "Dùng model nền với đoạn tham chiếu đã chọn, không dùng checkpoint đã train. Nội dung tham chiếu không được thêm vào lời thay thế." : "Model đã train dùng kèm mẫu sạch đã lưu của model."}</p>
+    <p>{durationPolicy === "source" ? `Yêu cầu model tạo lời trong ${((draft.endFrame - draft.startFrame) / draft.sampleRate).toFixed(3)} giây. Không cắt lời hoặc tự co giãn để ép vừa. Chưa bảo đảm timing từng từ; cần nghe thử.` : "Giữ thời lượng đọc tự nhiên; phần sau tự dịch theo. Cần nghe thử trước khi áp dụng."}</p>
     <button type="button" disabled={busy || running || !currentSource || !saved} onClick={() => void perform("inspect")}>Kiểm tra khả năng Patch</button>
     <button type="button" disabled={busy || running || !currentSource || !saved || !text.trim() || !eligible.some((voice) => voice.id === voiceId) || !plan?.processingAvailable || !!plan.blockers.length || plan.draftRevision !== document.revision} onClick={() => void perform("start")}>Tạo bản vá nghe thử</button>
     <button type="button" disabled={busy || running || !saved || !currentSource || !matching || job?.status !== "complete"} onClick={() => void perform("apply")}>Áp dụng bản vá</button>
@@ -122,7 +128,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
     {job ? <div><p role="status">{job.done}/{job.total} · {job.status}</p>
       {job.error ? <p role="alert">{job.error}</p> : null}
       {running ? <button type="button" onClick={() => void stop()}>Dừng tạo bản vá</button> : null}
-      {!matching && !running ? <button type="button" onClick={() => { setText(job.replacementText); setVoiceId(job.voiceId); }}>Dùng thông số bản nghe thử đã lưu</button> : null}
+      {!matching && !running ? <button type="button" onClick={() => { setText(job.replacementText); setVoiceId(job.voiceId); setDurationPolicy(job.durationPolicy ?? "ripple"); }}>Dùng thông số bản nghe thử đã lưu</button> : null}
       {matching && currentSource && job.status === "complete" ? <><p>Bản nghe thử chưa thay nguồn. Nghe cả đoạn ghép để kiểm tra ranh giới.</p>
         {job.replacementAudioUrl ? <audio controls aria-label="Nghe riêng lời thay thế" src={job.replacementAudioUrl} /> : null}
         {job.audioUrl ? <audio controls aria-label="Nghe bản ghép Patch" src={job.audioUrl} /> : null}</> : null}

@@ -153,3 +153,15 @@ def test_review_change_stales_trained_media_job_and_blocks_apply(tmp_path):
         service.apply(project.id, VoicePatchApplyRequest(expectedDraftRevision=document.revision,
             jobId=job.id, expectedKey=job.key))
     assert len(outputs.list(project.id)) == 1
+
+
+def test_trained_media_source_duration_policy_is_applied_by_shared_processor_build(tmp_path):
+    project, _outputs, _lease, _speaker, _scripts, source, document, service, _engine, _audio, trained = setup_trained(tmp_path)
+    document = review_target(source, project, document)
+    req = request(document, trained.id)
+    source_req = req.model_copy(update={"duration_policy": "source"})
+    natural = service._build(project.id, req)
+    exact = service._build(project.id, source_req)
+    assert exact["step"].duration == (document.draft.end_frame - document.draft.start_frame) / 24000
+    assert exact["clipKey"] != natural["clipKey"]
+    assert service._request_from_snapshot(exact).duration_policy == "source"

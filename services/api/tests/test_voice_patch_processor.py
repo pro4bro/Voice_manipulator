@@ -264,3 +264,70 @@ def test_patch_retains_stretch_preview_word_trust_warning(tmp_path, monkeypatch)
     preserved = [word for word in result.words if word.get("segmentIndex") == 1]
     assert preserved and all(word["timingTrusted"] is False for word in preserved)
 
+
+
+def test_source_duration_patch_uses_exact_frame_budget_and_has_distinct_cache_identity(tmp_path):
+    project, outputs, _lease, speaker, scripts, _edits, _source, _engine, trained, _store, draft, processor = setup_patch(tmp_path)
+    script = scripts.get(project.id)
+    natural = processor._build(project.id, request(draft.draft, draft.revision, script.revision, 0, trained.id, "Xin chào"))
+    natural_step = processor._make_step(project.id, processor._capture(project.id, draft.revision),
+        trained.id, "Xin chào")
+    legacy_clip_key = speaker.clip_key(natural_step)
+    source_request = request(draft.draft, draft.revision, script.revision, 0, trained.id, "Xin chào").model_copy(
+        update={"duration_policy": "source"})
+    source = processor._build(project.id, source_request)
+
+    source_frames = draft.draft.end_frame - draft.draft.start_frame
+    assert source["step"].duration == source_frames / 24000
+    assert natural["clipKey"] == legacy_clip_key
+    assert source["clipKey"] != natural["clipKey"]
+    assert source["key"] != natural["key"]
+
+    job = wait_job(processor, project.id, processor.start(project.id, source_request).id)
+    assert job.status == "complete", job.error
+    assert job.duration_policy == "source"
+    assert job.report["replacementFrames"] == source_frames
+    assert job.report["deltaFrames"] == 0
+    assert job.report["requestedDurationFrames"] == source_frames
+    assert job.report["durationReport"]["actualDuration"] == source_frames / 24000
+    assert len(outputs.list(project.id)) == 1
+
+    applied = processor.apply(project.id, VoicePatchApplyRequest(expectedDraftRevision=draft.revision,
+        jobId=job.id, expectedKey=job.key))["output"]
+    lineage = applied.parameters["voicePatch"]
+    assert applied.segments[0].requested_duration == source_frames / 24000
+    assert applied.segments[0].duration_report["requestedDuration"] == source_frames / 24000
+    assert lineage["durationPolicy"] == "source" and lineage["durationDeltaFrames"] == 0
+    assert lineage["requestedDurationFrames"] == source_frames
+    assert all(word.get("timingTrusted") is not True for word in applied.words if word.get("segmentIndex") == 0)
+    assert processor.apply(project.id, VoicePatchApplyRequest(expectedDraftRevision=draft.revision,
+        jobId=job.id, expectedKey=job.key))["output"].id == applied.id
+
+
+def test_source_duration_preflight_rejects_infeasible_text_before_engine_call(tmp_path):
+    project, _outputs, lease, _speaker, scripts, _edits, _source, engine, trained, _store, draft, processor = setup_patch(tmp_path)
+    script = scripts.get(project.id)
+    impossible = " ".join(["một"] * 20)
+    with pytest.raises(ValueError, match="too short|speech|budget|feasible|duration"):
+        processor.start(project.id, request(draft.draft, draft.revision, script.revision, 0, trained.id, impossible).model_copy(
+            update={"duration_policy": "source"}))
+    assert engine.spoken == ["Xin chào", "Tạm biệt"]
+    assert lease.holder() is None
+
+
+def test_duration_policy_legacy_defaults_and_invalid_values():
+    from app.domain.voice_patch_jobs import VoicePatchJob
+
+    payload = {"expectedDraftRevision": 0, "expectedScriptRevision": 0, "expectedEditRevision": 0,
+        "replacementText": "replacement", "voiceId": "voice"}
+    assert VoicePatchJobRequest.model_validate(payload).duration_policy == "ripple"
+    legacy_job = VoicePatchJob.model_validate({
+        "projectId": "project", "outputId": "output", "status": "queued", "key": "0" * 64,
+        "draftRevision": 0, "scriptRevision": 0, "editRevision": 0, "sourceSha256": "1" * 64,
+        "sourceMetadataSha256": "2" * 64, "generatorFingerprint": "3" * 64,
+        "clipKey": "4" * 32, "replacementText": "replacement", "voiceId": "voice",
+        "speakerProfileId": "speaker",
+    })
+    assert legacy_job.duration_policy == "ripple" and legacy_job.target_frames is None
+    with pytest.raises(ValueError):
+        VoicePatchJobRequest.model_validate({**payload, "durationPolicy": "stretch"})

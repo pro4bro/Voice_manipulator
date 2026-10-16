@@ -220,3 +220,15 @@ def test_hybrid_job_cancellation_allows_retry_and_source_edit_makes_job_stale(tm
     reference = Path(project.project_path) / document.draft.selected_context.artifact_path
     reference.write_bytes(reference.read_bytes()[:-2] + b"zz")
     assert service.get_job(project.id, retried.id).status == "stale"
+
+
+def test_hybrid_source_duration_policy_is_applied_by_shared_processor_build(tmp_path):
+    project, _outputs, _lease, _speaker, scripts, store, document, service, _engine, _audio, trained = setup_hybrid(tmp_path)
+    document = review_target(store, project, document)
+    req = request(document, scripts, trained.id)
+    source_req = req.model_copy(update={"duration_policy": "source"})
+    natural = service._build(project.id, req)
+    exact = service._build(project.id, source_req)
+    assert exact["step"].duration == (document.draft.end_frame - document.draft.start_frame) / RATE
+    assert exact["clipKey"] != natural["clipKey"]
+    assert service._request_from_snapshot(exact).duration_policy == "source"
