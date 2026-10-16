@@ -19,11 +19,14 @@ interface Props {
 export function StretchHandles({ controller, ranges, selection, onSelectionChange, duration, canvasWidth, onSuspend, onPrepare, onRevert, onComplete }: Props) {
   const cleanup = useRef<(() => void) | null>(null);
   const current = useRef(controller); current.current = controller;
-  useEffect(() => () => { cleanup.current?.(); current.current.cancel(); }, []);
+  const mounted = useRef(true), gestureId = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; gestureId.current += 1; cleanup.current?.(); current.current.cancel(); }; }, []);
   if (!controller.packet) return null;
   function begin(event: PointerEvent<HTMLButtonElement>, range: SelectionRange, edge: "left" | "right") {
     if (!event.ctrlKey || event.button !== 0 || current.current.busy) return;
     event.preventDefault(); event.stopPropagation(); onSuspend();
+    const id = ++gestureId.current, ownerOutputId = controller.packet!.document.outputId;
+    const ownsGesture = () => mounted.current && gestureId.current === id && current.current.packet?.document.outputId === ownerOutputId;
     const originX = event.clientX, baseline = selection, rate = controller.packet!.document.sampleRate;
     let operation: StretchOperation | null = null, timer = 0, inFlight = false, stopped = false;
     let lastPreview: StretchOperation | null = null;
@@ -35,9 +38,9 @@ export function StretchHandles({ controller, ranges, selection, onSelectionChang
       onPrepare?.(request);
       const accepted = await current.current.preview(request);
       inFlight = false;
-      if (!stopped && request === operation && accepted) { lastPreview = request; publishSelection(request); }
-      if (!stopped && !accepted) onRevert?.();
-      if (!stopped && request !== operation) timer = window.setTimeout(() => void preview(), 180);
+      if (!stopped && ownsGesture() && request === operation && accepted) { lastPreview = request; publishSelection(request); }
+      if (!stopped && ownsGesture() && request === operation && !accepted) onRevert?.();
+      if (!stopped && ownsGesture() && request !== operation) { window.clearTimeout(timer); timer = window.setTimeout(() => void preview(), 0); }
     }
     const move = (e: globalThis.PointerEvent) => {
       if (e.pointerId !== event.pointerId) return;
@@ -47,20 +50,22 @@ export function StretchHandles({ controller, ranges, selection, onSelectionChang
     const remove = () => {
       stopped = true; window.clearTimeout(timer);
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", cancel); window.removeEventListener("keydown", escape);
+      window.removeEventListener("pointercancel", pointerCancel); window.removeEventListener("keydown", escape);
       cleanup.current = null;
     };
-    const cancel = () => { remove(); onRevert?.(); current.current.cancel(); onSelectionChange?.(baseline); };
+    const cancel = (notify = true) => { remove(); if (gestureId.current === id) gestureId.current += 1; if (notify) { onRevert?.(); onSelectionChange?.(baseline); } current.current.cancel(); };
+    const pointerCancel = () => cancel();
     const escape = (e: KeyboardEvent) => { if (e.key === "Escape") cancel(); };
     const finish = (e: globalThis.PointerEvent) => {
       if (e.pointerId !== event.pointerId) return;
       const final = operation; remove();
-      if (final) { if (final !== lastPreview) onPrepare?.(final); void current.current.commit(final).then((accepted) => { if (accepted) { publishSelection(final); onComplete?.(final === lastPreview); } else { onRevert?.(); onSelectionChange?.(baseline); } }); }
+      if (!ownsGesture()) return;
+      if (final) { if (final !== lastPreview) onPrepare?.(final); void current.current.commit(final).then((accepted) => { if (!ownsGesture()) return; if (accepted) { publishSelection(final); onComplete?.(final === lastPreview); } else { onRevert?.(); onSelectionChange?.(baseline); } }); }
       else { onRevert?.(); current.current.cancel(); }
     };
-    cleanup.current = cancel;
+    cleanup.current = () => cancel(false);
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", cancel); window.addEventListener("keydown", escape);
+    window.addEventListener("pointercancel", pointerCancel); window.addEventListener("keydown", escape);
   }
   return <>
     {ranges.map((range) => <div className="stretch-handles" key={range.id} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>

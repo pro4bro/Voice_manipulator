@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Timeline, normalizeWordTimings } from "./Timeline";
@@ -7,6 +7,7 @@ import { ScriptEditor } from "../script/ScriptEditor";
 import { useState } from "react";
 
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
+import { mapStretchTime, type VoiceEditController, type VoiceEditPacket, type StretchOperation } from "../../domain/voice-edits";
 
 it("resumes the ordinary Script follow policy by dragging its Timeline", () => {
   const words = [{ text: "hello", start: 3, end: 4 }];
@@ -38,6 +39,41 @@ function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {
 }
 
 describe("Timeline", () => {
+  it("keeps mapped seek until preview metadata arrives after commit completion", async () => {
+    vi.useFakeTimers();
+    const sourcePacket = { document: { revision: 0, cursor: 0, sampleRate: 24000, sourceFrames: 240000, operations: [], outputId: "o" }, duration: 10, audioUrl: "/source.wav", output: {} as never } as VoiceEditPacket;
+    const previewPacket = { ...sourcePacket, audioUrl: "/preview.wav" };
+    let usedOperation: StretchOperation | null = null;
+    function Harness() {
+      const [packet, updatePacket] = useState(sourcePacket);
+      const controller: VoiceEditController = { packet, busy: false, error: null,
+        preview: async (operation) => { usedOperation = operation; updatePacket(previewPacket); return true; }, commit: async () => true, cancel: vi.fn(), history: async () => true };
+      return <Timeline gain={0} onGainChange={vi.fn()} voiceEdits={controller} rangeSelectionEnabled
+        wordSelection={{ indexes: [0], anchor: 0, ranges: [{ id: "r", start: 2, end: 4 }] }}
+        take={{ id: "o", name: "source.wav", url: packet.audioUrl, duration: 10 }} />;
+    }
+    let currentSrc = "/source.wav";
+    const { container } = render(<Harness />);
+    const audio = container.querySelector("audio")!;
+    Object.defineProperty(audio, "currentSrc", { configurable: true, get: () => currentSrc });
+    let currentTime = 3;
+    Object.defineProperty(audio, "currentTime", { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; } });
+    const canvas = container.querySelector(".timeline-canvas") as HTMLElement;
+    Object.defineProperty(canvas, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, width: 1000, top: 0, height: 100, right: 1000, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) });
+    const handle = screen.getByRole("button", { name: "Giãn vùng r từ cuối" });
+    fireEvent.pointerDown(handle, { button: 0, ctrlKey: true, pointerId: 1, clientX: 400 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 500 });
+    await act(async () => { vi.advanceTimersByTime(180); await Promise.resolve(); });
+    currentSrc = "/preview.wav";
+    await act(async () => { fireEvent.pointerUp(window, { pointerId: 1 }); await Promise.resolve(); });
+    expect(currentTime).toBe(3);
+    fireEvent.loadedMetadata(audio);
+    expect(usedOperation).not.toBeNull();
+    expect(currentTime).toBe(mapStretchTime(3, usedOperation!, 24000));
+    expect(currentTime).not.toBe(3);
+    vi.useRealTimers();
+  });
+
   it("keeps the previous readable subtitle rendered after the playhead enters its touching neighbour", () => {
     const onWordsChange = vi.fn();
     const take = { id: "touching", name: "touching.wav", url: "/audio.wav", duration: 1,

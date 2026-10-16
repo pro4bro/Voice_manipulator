@@ -310,7 +310,7 @@ export function Timeline({
     return () => window.removeEventListener("pointerdown", closeOutside, true);
   }, [speakerMenu]);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean } | null>(null);
+  const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean; metadataUrl: string | null } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const wordTrackRef = useRef<HTMLDivElement>(null);
@@ -1393,13 +1393,16 @@ export function Timeline({
 
   function suspendStretchPlayback() {
     const audio = audioRef.current;
-    stretchTransportRef.current = { sourceTime: audio?.currentTime ?? currentTime, time: audio?.currentTime ?? currentTime, wasPlaying: Boolean(audio && !audio.paused), url: take?.url ?? "", complete: false };
+    stretchTransportRef.current = { sourceTime: audio?.currentTime ?? currentTime, time: audio?.currentTime ?? currentTime, wasPlaying: Boolean(audio && !audio.paused), url: take?.url ?? "", complete: false, metadataUrl: null };
     audio?.pause(); audioScrubber.end();
   }
 
   function prepareStretchPlayback(operation: StretchOperation) {
     const transport = stretchTransportRef.current;
-    if (transport) transport.time = mapStretchTime(transport.sourceTime, operation, voiceEdits?.packet?.document.sampleRate ?? 24000);
+    if (transport) {
+      transport.time = mapStretchTime(transport.sourceTime, operation, voiceEdits?.packet?.document.sampleRate ?? 24000);
+      transport.metadataUrl = null;
+    }
     audioRef.current?.pause();
   }
 
@@ -1414,10 +1417,12 @@ export function Timeline({
     }
   }
 
-  function completeStretchPlayback(samePreview: boolean) {
+  function completeStretchPlayback(_samePreview: boolean) {
     if (!stretchTransportRef.current) return;
-    stretchTransportRef.current.complete = true;
-    if (samePreview) stretchTransportRef.current = null;
+    const transport = stretchTransportRef.current;
+    transport.complete = true;
+    const audio = audioRef.current;
+    if (transport.metadataUrl && audio?.currentSrc.endsWith(transport.metadataUrl)) stretchTransportRef.current = null;
   }
 
   async function navigateStretchHistory(action: "undo" | "redo") {
@@ -1708,7 +1713,17 @@ export function Timeline({
             syncPlaybackDuration(event.currentTarget);
             const transport = stretchTransportRef.current;
             if (transport) {
+              const loadedUrl = event.currentTarget.currentSrc;
+              if (loadedUrl.endsWith(transport.url)) {
+                if (transport.complete && transport.time === transport.sourceTime) {
+                  event.currentTarget.currentTime = Math.min(transport.sourceTime, event.currentTarget.duration || transport.sourceTime);
+                  if (transport.wasPlaying) void event.currentTarget.play().catch(() => undefined);
+                  stretchTransportRef.current = null;
+                }
+                return;
+              }
               event.currentTarget.currentTime = Math.min(transport.time, event.currentTarget.duration || transport.time);
+              transport.metadataUrl = loadedUrl;
               if (transport.wasPlaying) void event.currentTarget.play().catch(() => undefined);
               if (transport.complete) stretchTransportRef.current = null;
             }

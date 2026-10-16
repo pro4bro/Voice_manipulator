@@ -59,3 +59,17 @@ runs; all5 WAVs byte-identical and source/journal untouched. One reuse556ms outl
 spent389ms in artifact publication/verification, so250ms remains open. Measurements
 do not include browser/debounce/playback. ADR0096 and reuse38-receipt.json record
 the tradeoff. Next39 serializes drag preview/commit and retains playback metadata.
+
+### Round39 — VM-STRETCH-QUEUE-01
+
+Stretch requests now use one active lane with a replaceable pending task; newest
+preview/commit/history/load owns publication. Superseded/cancelled/output-switched
+tasks cannot publish or revive old work. Pointerup commit waits behind preview.
+Latest queued drag operation dispatches immediately after older preview finishes,
+without a second180ms wait; initial180ms debounce is retained and remains a budget
+constraint. Late gesture completion cannot restore selection after unmount.
+Mapped audio seek/resume state stays until the corresponding metadata is handled;
+matching preview operations alone no longer clear transport prematurely.
+Focused UI30/typecheck/build172 pass; ADR0097 records scope and lack of server
+cancellation. Browser tools still fail kernel-assets initialization, so no audible
+continuity or250ms end-to-end claim. Next40 finishes frozen regression/artifact gates.

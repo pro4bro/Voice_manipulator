@@ -8,41 +8,88 @@ async function readPacket(url: string, body?: object): Promise<VoiceEditPacket> 
   return result as VoiceEditPacket;
 }
 
-/** Publish audio, words and duration together; a late response cannot revive a cancelled drag. */
+interface RequestTask {
+  version: number;
+  url: string;
+  body?: object;
+  publish: (packet: VoiceEditPacket) => void;
+  resolve: (accepted: boolean) => void;
+}
+
+/** Publish audio, words and duration together; one request lane prevents stale renders from racing commits. */
 export function useVoiceEdits(projectId: string, outputId: string | undefined, scriptRevision: number): VoiceEditController {
   const [packet, setPacket] = useState<VoiceEditPacket | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const committed = useRef<VoiceEditPacket | null>(null);
   const serial = useRef(0);
+  const active = useRef(false);
+  const pending = useRef<RequestTask | null>(null);
+  const pump = useRef<() => void>(() => undefined);
   const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-outputs/${encodeURIComponent(outputId ?? "")}/edit`;
+
+  pump.current = () => {
+    if (active.current || !pending.current) return;
+    const task = pending.current;
+    pending.current = null;
+    if (task.version !== serial.current) { task.resolve(false); pump.current(); return; }
+    active.current = true;
+    void readPacket(task.url, task.body).then((result) => {
+      if (serial.current !== task.version) return false;
+      task.publish(result);
+      return true;
+    }).catch((reason: unknown) => {
+      if (serial.current === task.version) {
+        setPacket(committed.current);
+        setError(reason instanceof Error ? reason.message : "Không dựng được preview.");
+      }
+      return false;
+    }).then((accepted) => {
+      task.resolve(accepted);
+      active.current = false;
+      if (task.version === serial.current && !pending.current) setBusy(false);
+      pump.current();
+    });
+  };
+
+  function enqueue(task: RequestTask) {
+    if (pending.current) pending.current.resolve(false);
+    pending.current = task;
+    setBusy(true);
+    pump.current();
+  }
+
+  function dropPending() {
+    pending.current?.resolve(false);
+    pending.current = null;
+  }
+
   useEffect(() => {
     const version = ++serial.current;
+    dropPending();
     committed.current = null; setPacket(null); setBusy(false); setError(null);
-    if (!outputId) return;
-    void readPacket(endpoint).then((result) => {
-      if (serial.current === version) { committed.current = result; setPacket(result); }
-    }).catch(() => { /* Legacy/unavailable edit endpoint leaves normal playback available. */ });
-    return () => { serial.current += 1; };
+    if (outputId) enqueue({ version, url: endpoint, publish: (result) => { committed.current = result; setPacket(result); }, resolve: () => undefined });
+    return () => { serial.current += 1; dropPending(); };
   }, [endpoint, outputId]);
 
-  async function run(action: "stretch" | "undo" | "redo", operation?: StretchOperation, preview = false) {
+  function run(action: "stretch" | "undo" | "redo", operation?: StretchOperation, preview = false): Promise<boolean> {
     const base = committed.current;
-    if (!base || base.document.outputId !== outputId) return false;
+    if (!base || base.document.outputId !== outputId) return Promise.resolve(false);
     const version = ++serial.current;
-    setBusy(true); setError(null);
-    try {
-      const result = await readPacket(endpoint + (preview ? "/preview" : ""), {
-        revision: base.document.revision, scriptRevision, action, operation,
-      });
-      if (serial.current !== version) return false;
-      if (!preview) committed.current = result;
-      setPacket(result); return true;
-    } catch (reason) {
-      if (serial.current === version) { setPacket(committed.current); setError(reason instanceof Error ? reason.message : "Không dựng được preview."); }
-      return false;
-    } finally { if (serial.current === version) setBusy(false); }
+    setError(null);
+    return new Promise((resolve) => enqueue({
+      version,
+      url: endpoint + (preview ? "/preview" : ""),
+      body: { revision: base.document.revision, scriptRevision, action, operation },
+      publish: (result) => {
+        if (!preview) committed.current = result;
+        setPacket(result);
+      },
+      resolve,
+    }));
   }
+
   return { packet, busy, error, preview: (op) => run("stretch", op, true), commit: (op) => run("stretch", op),
-    cancel: () => { serial.current += 1; setPacket(committed.current); setBusy(false); setError(null); }, history: (action) => run(action) };
+    cancel: () => { serial.current += 1; dropPending(); setPacket(committed.current); setBusy(false); setError(null); },
+    history: (action) => run(action) };
 }

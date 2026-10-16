@@ -6,11 +6,25 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-17 — Voice Manipulator round38 VM-STRETCH-REUSE-01.
-last_activity_desc: Round38 delivered; see current ledger and rounds36–40 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-17 — Voice Manipulator round39 VM-STRETCH-QUEUE-01.
+last_activity_desc: Round39 delivered; see current ledger and rounds36–40 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round39 — VM-STRETCH-QUEUE-01 (2026-10-17)
+
+Stretch requests now use one active lane with a replaceable pending task; newest
+preview/commit/history/load owns publication. Superseded/cancelled/output-switched
+tasks cannot publish or revive old work. Pointerup commit waits behind preview.
+Latest queued drag operation dispatches immediately after older preview finishes,
+without a second180ms wait; initial180ms debounce is retained and remains a budget
+constraint. Late gesture completion cannot restore selection after unmount.
+Mapped audio seek/resume state stays until the corresponding metadata is handled;
+matching preview operations alone no longer clear transport prematurely.
+Focused UI30/typecheck/build172 pass; ADR0097 records scope and lack of server
+cancellation. Browser tools still fail kernel-assets initialization, so no audible
+continuity or250ms end-to-end claim. Next40 finishes frozen regression/artifact gates.
 
 ## Voice Manipulator round38 — VM-STRETCH-REUSE-01 (2026-10-17)
 
