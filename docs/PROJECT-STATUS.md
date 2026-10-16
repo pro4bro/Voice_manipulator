@@ -1,5 +1,17 @@
 # Project Status — 2026-10-17
 
+## Voice Manipulator round44 — VM-PREVIEW-RECOVERY-01 (2026-10-17)
+
+Malformed preview containers now become the shared PCM validation error instead
+of leaking wave.Error/EOFError as HTTP500. Audio reports unavailable404; waveform
+uses its existing400 validation contract. Draft regeneration safely repairs the
+cache without changing journal/source. Two RED cases reproduced500 before the
+fix, then passed error/rebuild/read checks. Focused API33 pass; actual private
+cache corruption confirms500/500→404/400 with original bytes restored afterward.
+ADR0101 records the compatible error contract. Hash, frame and quality gates
+remain intact. Next45 freezes source, checks production artifacts/move/reopen,
+real browser behavior where supported, and full regression plus remaining work.
+
 ## Voice Manipulator round43 — VM-STRETCH-LOCK-01 (2026-10-17)
 
 Preview publication now locks by canonical output folder, shared across service

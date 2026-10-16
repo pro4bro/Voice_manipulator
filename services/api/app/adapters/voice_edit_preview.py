@@ -52,10 +52,14 @@ class VoiceEditPreview:
             raise ValueError("Preview report is missing or invalid.")
         if report.get("sourceSha256") != source_hash or report.get("audioSha256") != hashlib.sha256(path.read_bytes()).hexdigest():
             raise ValueError("Preview hash không khớp.")
-        with wave.open(str(path), "rb") as pcm:
-            frames = pcm.getnframes()
-            if (pcm.getnchannels(), pcm.getsampwidth(), pcm.getframerate(), pcm.getcomptype()) != (1, 2, 24000, "NONE") or len(pcm.readframes(frames)) != frames * 2:
-                raise ValueError("Preview PCM không hợp lệ.")
+        try:
+            with wave.open(str(path), "rb") as pcm:
+                frames = pcm.getnframes()
+                if (pcm.getnchannels(), pcm.getsampwidth(), pcm.getframerate(), pcm.getcomptype()) != (1, 2, 24000, "NONE") or len(pcm.readframes(frames)) != frames * 2:
+                    raise ValueError("Preview PCM không hợp lệ.")
+        except (wave.Error, EOFError) as exc:
+            # Artifact readers and cache recovery share one validation contract.
+            raise ValueError("Preview PCM không hợp lệ.") from exc
         if (isinstance(report.get("actualFrames"), bool) or frames != report.get("actualFrames")
                 or (expected_frames is not None and frames != expected_frames)):
             raise ValueError("Preview duration không khớp.")

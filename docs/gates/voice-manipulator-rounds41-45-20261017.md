@@ -45,3 +45,15 @@ does not claim normal latency. Native rendered WAV remains byte-identical; sourc
 SHA and journal revision5 unchanged. ADR0100 and contention receipts record scope;
 cross-process editing/actively moved folders are not newly supported. Next44
 repairs malformed cached WAV reads that currently leak HTTP500 from both routes.
+
+### Round44 — VM-PREVIEW-RECOVERY-01
+
+Malformed preview containers now become the shared PCM validation error instead
+of leaking wave.Error/EOFError as HTTP500. Audio reports unavailable404; waveform
+uses its existing400 validation contract. Draft regeneration safely repairs the
+cache without changing journal/source. Two RED cases reproduced500 before the
+fix, then passed error/rebuild/read checks. Focused API33 pass; actual private
+cache corruption confirms500/500→404/400 with original bytes restored afterward.
+ADR0101 records the compatible error contract. Hash, frame and quality gates
+remain intact. Next45 freezes source, checks production artifacts/move/reopen,
+real browser behavior where supported, and full regression plus remaining work.
