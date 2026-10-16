@@ -63,6 +63,7 @@ from app.adapters.voice_patch_audition import VoicePatchAudition
 from app.adapters.voice_patch_audition_routes import make_voice_patch_audition_router
 from app.adapters.voice_patch_reviews import VoicePatchReviews
 from app.adapters.voice_patch_review_routes import make_voice_patch_review_router
+from app.adapters.voice_patch_comparison_report import make_voice_patch_comparison_report_router
 from app.adapters.output_timing_repair import OutputTimingRepair
 from app.adapters.output_timing_repair_routes import make_output_timing_repair_router
 from app.adapters.output_word_review import OutputWordReview
@@ -878,6 +879,7 @@ def create_app(
     app.include_router(make_voice_patch_history_router(voice_patch_processor.history))
     app.include_router(make_voice_patch_audition_router(VoicePatchAudition(voice_patch_processor.history, voice_outputs, media)))
     app.include_router(make_voice_patch_review_router(VoicePatchReviews(voice_patch_processor.history)))
+    app.include_router(make_voice_patch_comparison_report_router(voice_patch_processor.history, VoicePatchReviews(voice_patch_processor.history)))
     app.include_router(make_output_timing_repair_router(output_timing_repair))
     app.include_router(make_output_word_review_router(OutputWordReview(projects, voice_outputs)))
     app.include_router(make_collection_preview_router(collection_previews))

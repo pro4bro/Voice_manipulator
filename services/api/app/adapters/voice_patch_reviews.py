@@ -124,6 +124,7 @@ class VoicePatchReviews:
         prior = next((item for item in reversed(data["reviews"]) if item["outputId"] == output_id), None)
         status = "unreviewed" if prior is None else "current" if prior["key"] == identity["key"] else "stale"
         return {"revision": data["revision"], "expectedKey": identity["key"], "status": status,
+            "audioSha256": identity["outputAudioSha256"], "metadataSha256": identity["outputMetadataSha256"],
             "ratings": prior["ratings"] if status != "unreviewed" else VoicePatchReviewRatings().model_dump(by_alias=True),
             "notes": prior["notes"] if prior is not None else "",
             **({"review": prior} if prior is not None else {})}
@@ -156,5 +157,6 @@ class VoicePatchReviews:
             FileProjectRepository._atomic_write(self._path(project_id), json.dumps(data, ensure_ascii=False, indent=2))
             saved = data
         return {"revision": saved["revision"], "expectedKey": identity["key"], "status": "current",
+            "audioSha256": identity["outputAudioSha256"], "metadataSha256": identity["outputMetadataSha256"],
             "ratings": entry.ratings.model_dump(by_alias=True), "notes": entry.notes,
             "review": entry.model_dump(mode="json", by_alias=True)}

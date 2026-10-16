@@ -40,7 +40,10 @@ export function PatchHistory({ projectId, onOpen }: { projectId: string; onOpen?
       const first = entries[0], lineage = first.output.parameters?.voicePatch;
       const text = lineage && typeof lineage === "object" && "replacementText" in lineage ? String(lineage.replacementText) : "";
       return <fieldset key={key}><legend>{first.sourceOutputId} · {(first.report.startFrame / 24000).toFixed(3)}–{(first.report.endFrame / 24000).toFixed(3)}s · {first.report.durationPolicy === "source" ? "Giữ thời lượng" : "Đọc tự nhiên"}</legend>
-        <p>{text}</p>{entries.map((entry) => {
+        <p>{text}</p>
+        <a href={`/api/projects/${encodeURIComponent(projectId)}/voice-patch/history/${encodeURIComponent(first.output.id)}/comparison-report`} download>Tải báo cáo đối chiếu JSON</a>
+        <p>Báo cáo giữ trạng thái chưa đánh giá hoặc đánh giá cũ, không tự kết luận chất lượng.</p>
+        {entries.map((entry) => {
           const patch = entry.output.parameters?.voicePatch;
           const voice = patch && typeof patch === "object" && "voiceId" in patch ? String(patch.voiceId) : "";
           return <div key={entry.output.id}><p>{strategies[entry.strategy] ?? entry.strategy} · {voice} · {entry.output.duration.toFixed(3)} giây</p>

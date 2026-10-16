@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round33 — VM-REVIEW-EXPORT-01 (2026-10-16)
+
+Each accepted Patch comparison group can download a portable JSON report with
+target/text, variant identity/audio/metadata checksums and exact user assessments.
+Current/stale/unreviewed states remain explicit; no aggregate quality pass.
+Concurrent assessment revision changes and corrupt notes reject export; reads
+never fabricate a listening confirmation. ADR0092 documents the additive contract.
+API11 (report3 plus reviews7 and production integration1), UI5/typecheck/build172
+pass. Actual production HTTP exports all3 comparable Vietnamese variants with
+matching hashes/unreviewed ratings, no private notes or inference writes.
+Local comparison33-report.json/report33-receipt.json hold the result. Native
+Save/cancel remains unverified. Next round34 makes timing invalidation/retry clear.
+
 ## Voice Manipulator round32 — VM-WORD-REVIEW-01 (2026-10-16)
 
 Word inspection now accepts proposed boundaries and auditions them with context.
