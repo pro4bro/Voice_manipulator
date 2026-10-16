@@ -88,6 +88,9 @@ class VoicePatchProcessor:
     def _transaction_locks(self, project_id: str, snapshot: dict[str, Any]):
         return (self.store.edits._lock, self.store.scripts._lock)
 
+    def _source_snapshot(self, project_id: str, draft_revision: int) -> dict[str, Any]:
+        return self.store.validate(project_id, draft_revision)
+
     def _voice_for(self, project_id: str, capture: dict[str, Any], voice_id: str):
         return self.speaker.generator.voices.get(project_id, voice_id)
 
@@ -99,6 +102,15 @@ class VoicePatchProcessor:
 
     def _extra_report(self, capture: dict[str, Any]) -> dict[str, Any]:
         return {}
+
+    def _review_lineage(self, capture: dict[str, Any]) -> dict[str, Any]:
+        draft = capture.get("draft")
+        review = getattr(draft, "reviewed_target", None)
+        if capture.get("sourceKind") != "media" or not review or not capture.get("targetReviewed"):
+            return {}
+        return {"targetReviewKey": review.review_key,
+            "targetReviewStrategy": self.storage_namespace,
+            "reviewedTarget": review.model_dump(mode="json", by_alias=True)}
 
     @staticmethod
     def _hash_json(value: Any) -> str:
@@ -166,7 +178,7 @@ class VoicePatchProcessor:
         return bindings, schedules, blockers
 
     def _capture(self, project_id: str, draft_revision: int) -> dict[str, Any]:
-        snapshot = self.store.validate(project_id, draft_revision)
+        snapshot = self._source_snapshot(project_id, draft_revision)
         draft = snapshot["draft"]
         output, script, edit = snapshot["output"], snapshot["script"], snapshot["edit"]
         segment = next((item for item in output.segments if item.row_id == draft.row_id), None)
@@ -181,6 +193,8 @@ class VoicePatchProcessor:
             raise ValueError("Patch row frame range is invalid for the current preview.")
         settings = effective_settings(script, row)
         blockers = []
+        if snapshot.get("sourceKind") == "media" and not snapshot.get("targetReviewed", False):
+            blockers.append("Review and confirm the selected target span before generating a media Patch.")
         unsupported = unsupported_synthesis_settings(settings)
         if unsupported:
             blockers.append("Saved Script requests unsupported synthesis controls: " + ", ".join(sorted(unsupported)) + ".")
@@ -254,6 +268,7 @@ class VoicePatchProcessor:
             "bindings": capture["bindings"].model_dump(mode="json", by_alias=True) if capture["bindings"] else None,
             "schedules": capture["schedules"].model_dump(mode="json", by_alias=True) if capture["schedules"] else None,
             **self._extra_key_material(capture),
+            **self._review_lineage(capture),
         }
         key = self._hash_json(material)
         return {**capture, "step": step, "clipKey": clip_key, "key": key,
@@ -533,6 +548,7 @@ class VoicePatchProcessor:
                 "sourceSegmentStart": source_segment.start, "sourceSegmentEnd": source_segment.end,
                 "preservesPcmOutsideSelectedRow": True, "timingReview": "unverified-natural-duration-ripple",
                 "clipTimingQuality": record.get("quality"), "clipTimingNote": record.get("note"),
+                **self._review_lineage(snapshot),
                 **self._extra_report(snapshot)}
             if not self._fresh(job.project_id, snapshot):
                 raise ScriptRevisionConflict("Source, Script, Timeline or trained voice changed before Patch preview publication.")
@@ -747,6 +763,7 @@ class VoicePatchProcessor:
             "jobId": job.id, "jobKey": job.key, "rowId": draft.row_id, "replacementText": job.replacement_text,
             "voiceId": voice.id, "speakerProfileId": voice.speaker_profile_id, "sampleRate": _RATE,
             "durationDeltaFrames": delta, "timingReview": "unverified-natural-duration-ripple",
+            **self._review_lineage(capture),
             **self._extra_lineage(capture)}
         parameters["voicePatch"] = lineage
         first = segments[0]

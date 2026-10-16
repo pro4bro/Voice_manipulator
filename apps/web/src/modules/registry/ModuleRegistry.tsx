@@ -91,6 +91,7 @@ export interface StudioContext {
   profileSchema: EngineProfileSchema | null;
   /** Shared so a selection made in Script shows up in Timeline, and back. */
   wordSelection: WordSelection;
+  patchSourceSelection?: WordSelection | null;
   datasetReadiness: DatasetReadiness | null;
   datasetBusy: boolean;
   projectId: string;
@@ -406,7 +407,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "reference-detail":
       return <ReferenceDetail projectId={context.projectId} onResolve={context.onResolveReference} document={context.referenceDocument} error={context.referenceError} onReload={context.onReloadReferences} onNavigate={context.onNavigateReference} onDelete={context.onDeleteReference} />;
     case "voice-patch":
-      return <VoicePatch projectId={context.projectId} output={context.editedVoiceOutput ?? context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null} selection={context.wordSelection} scriptRevision={context.voiceScriptDocument?.revision ?? 0} editRevision={context.voiceEdits?.packet?.document.revision ?? 0} saved={context.voiceScriptSaved} onNavigateOutput={(id) => context.onNavigateVoiceOutput?.(id, true)} voices={context.projectVoices} onOutputReady={context.onPatchedVoiceOutput} assets={context.mediaAssets} selectedAssetId={context.selectedAssetId} onOpenSource={(id) => { context.onSelectAsset(id); context.onSelectPage("speech-to-text"); }} />;
+      return <VoicePatch projectId={context.projectId} output={context.editedVoiceOutput ?? context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null} selection={context.wordSelection} scriptRevision={context.voiceScriptDocument?.revision ?? 0} editRevision={context.voiceEdits?.packet?.document.revision ?? 0} saved={context.voiceScriptSaved} onNavigateOutput={(id) => context.onNavigateVoiceOutput?.(id, true)} voices={context.projectVoices} onOutputReady={context.onPatchedVoiceOutput} assets={context.mediaAssets} selectedAssetId={context.selectedAssetId} sourceSelection={context.patchSourceSelection} onOpenSource={(id) => { context.onSelectAsset(id); context.onSelectPage("speech-to-text"); }} />;
     case "training-job":
       return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onStop={context.onStopTraining} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":

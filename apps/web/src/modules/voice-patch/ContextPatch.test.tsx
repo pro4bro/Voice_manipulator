@@ -5,7 +5,7 @@ import { ContextPatch } from "./ContextPatch";
 afterEach(() => vi.unstubAllGlobals());
 const assets = [{ id: "a", name: "Nguồn", words: [{ text: "Một", start: 0, end: 1 }, { text: "Hai", start: 2, end: 3 }] }, { id: "b", name: "Khác", words: [{ text: "Ba", start: 0, end: 1 }] }] as ProjectMediaAsset[];
 const candidate = { id: "c", side: "after", startWord: 1, endWord: 1, startFrame: 48000, endFrame: 72000, text: "Hai" };
-const draft = { assetId: "a", outputId: "a", rowId: "target", scriptRevision: 2, editRevision: 0, startFrame: 0, endFrame: 24000, sampleRate: 24000, text: "Một", replacementText: "Một", voiceId: "context-clone", speakerProfileId: "s", status: "ready", audioUrl: "/media/a/audio", report: { targetWordIndices: [0] }, contextCandidates: [candidate], selectedContext: null };
+const draft = { assetId: "a", outputId: "a", rowId: "target", sourceSha256: "source-hash", scriptRevision: 2, editRevision: 0, startFrame: 0, endFrame: 24000, sampleRate: 24000, text: "Một", replacementText: "Một", voiceId: "context-clone", speakerProfileId: "s", status: "ready", audioUrl: "/media/a/audio", report: { targetWordIndices: [0] }, contextCandidates: [candidate], selectedContext: null };
 const reply = (body: object) => ({ ok: true, json: async () => body });
 it("shows context span/transcript and extracts only the explicitly selected reference", async () => {
   const fetcher = vi.fn().mockResolvedValueOnce(reply({ revision: 0, draft: null }))
@@ -33,4 +33,20 @@ it("ignores context replies after source selection changes", async () => {
   finish(reply({ revision: 1, draft }));
   await waitFor(() => expect(screen.queryByText("Dùng đoạn này làm giọng tham chiếu")).not.toBeInTheDocument());
   expect(screen.getByLabelText("Footage để vá theo context")).toHaveValue("b");
+});
+
+it("requires explicit listening confirmation of exact source frames before reviewed Patch", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(reply({ revision: 1, draft }))
+    .mockResolvedValueOnce(reply({ revision: 2, draft: { ...draft, reviewedTarget: { reviewKey: "review" } } }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<ContextPatch projectId="p" assets={assets} selectedAssetId="a" scriptRevision={2} saved />);
+  const review = await screen.findByText("Xác nhận biên vùng vá");
+  expect(review).toBeDisabled();
+  fireEvent.click(screen.getByLabelText("Đã nghe và xác nhận đúng biên vùng cần vá"));
+  fireEvent.click(review);
+  await screen.findByText("Đã xác nhận biên vùng vá");
+  expect(fetcher.mock.calls[1][0]).toBe("/api/projects/p/voice-patch/context/review");
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ expectedRevision: 1, expectedSourceSha256: "source-hash", startFrame: 0, endFrame: 24000 });
+  fireEvent.change(screen.getByLabelText("Từ cuối vùng Patch"), { target: { value: "1" } });
+  expect(screen.queryByText("Đã xác nhận biên vùng vá")).not.toBeInTheDocument();
 });

@@ -10,10 +10,11 @@ interface PatchJob {
 }
 interface PatchPlan { processingAvailable: boolean; draftRevision: number; blockers: string[]; latestJob?: PatchJob | null }
 interface AppliedPatch { output: VoiceOutput; audioUrl: string; sourceOutputId: string; key: string; report: Record<string, unknown> }
+export type PatchMode = "trained-output" | "trained-media" | "context" | "hybrid";
 interface Props {
   projectId: string; document: VoicePatchDocument; currentSource: boolean; saved: boolean;
   voices: ProjectVoice[]; onOutputReady?: (output: VoiceOutput) => void;
-  contextMode?: boolean; hybridMode?: boolean;
+  mode?: PatchMode;
 }
 async function request<T>(url: string, body?: object): Promise<T> {
   const response = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -23,12 +24,13 @@ async function request<T>(url: string, body?: object): Promise<T> {
 }
 const active = (job: PatchJob | null) => !!job && ["running", "queued"].includes(job.status);
 
-export function PatchProcessing({ projectId, document, currentSource, saved, voices, onOutputReady, contextMode = false, hybridMode = false }: Props) {
+export function PatchProcessing({ projectId, document, currentSource, saved, voices, onOutputReady, mode = "trained-output" }: Props) {
   const draft = document.draft!;
-  const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-patch${hybridMode ? "/hybrid" : contextMode ? "/context" : ""}`;
+  const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-patch${mode === "trained-output" ? "" : `/${mode}`}`;
+  const contextMode = mode === "context", hybridMode = mode === "hybrid";
   const owner = `${endpoint}:${document.revision}`;
   const [text, setText] = useState(draft.replacementText);
-  const eligible = contextMode && !hybridMode ? [{ id: "context-clone", name: "Giọng từ vùng tham chiếu", kind: "clone" }] : voices.filter((voice) => voice.speakerProfileId === draft.speakerProfileId && voice.engine === "omnivoice" && ["full", "lora"].includes(voice.kind));
+  const eligible = contextMode ? [{ id: "context-clone", name: "Giọng từ vùng tham chiếu", kind: "clone" }] : voices.filter((voice) => voice.speakerProfileId === draft.speakerProfileId && voice.engine === "omnivoice" && ["full", "lora"].includes(voice.kind));
   const [voiceId, setVoiceId] = useState(eligible.find((voice) => voice.id === draft.voiceId)?.id ?? eligible[0]?.id ?? "");
   const [plan, setPlan] = useState<PatchPlan | null>(null);
   const [job, setJob] = useState<PatchJob | null>(null);

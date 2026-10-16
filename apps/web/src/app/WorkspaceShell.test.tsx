@@ -215,6 +215,22 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
   });
 
+  it("transfers a qualified source span to Patch without reusing it as generated-output selection", async () => {
+    const source = { ...mediaAsset("complete", "xin chào", "2026-10-16T00:00:00Z"),
+      words: [{ text: "xin", start: 1, end: 1.4 }, { text: "chào", start: 1.5, end: 2 }] };
+    apiMocks.listProjectMedia.mockResolvedValue([source]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("asset-1"));
+    fireEvent.click(screen.getByRole("button", { name: "open first footage" }));
+    act(() => collectionContext.current!.onWordSelectionChange({ indexes: [0, 1], anchor: 1 }));
+    act(() => collectionContext.current!.onSelectPage("voice-manipulator"));
+    await waitFor(() => expect(collectionContext.current!.patchSourceSelection).toEqual({ indexes: [0, 1], anchor: 1,
+      scope: { kind: "asset", id: source.id, revision: source.updatedAt } }));
+    expect(collectionContext.current!.wordSelection.indexes).toEqual([]);
+  });
+
   it("persists an explicit unassigned row without changing neighboring inherited words", async () => {
     let saved = { ...mediaAsset("complete", "xin chào", "2026-10-09T00:00:00Z"), speakerProfileIds: ["speaker-1"],
       words: [{ text: "xin", start: 1, end: 1.4, speakerId: "speaker-1" }, { text: "chào", start: 1.5, end: 2 }] };

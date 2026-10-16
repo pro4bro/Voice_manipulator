@@ -78,6 +78,11 @@ def request(document, scripts, voice_id, text="Hybrid target replacement"):
         expectedEditRevision=document.draft.edit_revision, replacementText=text, voiceId=voice_id)
 
 
+def review_target(store, project, document):
+    return store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+
+
 def wait(service, project_id, job_id, timeout=5):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -89,7 +94,8 @@ def wait(service, project_id, job_id, timeout=5):
 
 
 def test_hybrid_patch_combines_context_payload_with_trained_model_and_applies_once(tmp_path):
-    project, outputs, lease, speaker, scripts, _store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    project, outputs, lease, speaker, scripts, store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    document = review_target(store, project, document)
     trained_before = speaker.generator.voices.get(project.id, trained.id).model_dump(mode="json", by_alias=True)
     reference = Path(project.project_path) / document.draft.selected_context.artifact_path
     reference_hash = hashlib.sha256(reference.read_bytes()).hexdigest()
@@ -119,8 +125,18 @@ def test_hybrid_patch_combines_context_payload_with_trained_model_and_applies_on
     assert lease.holder() is None
 
 
+def test_hybrid_patch_cannot_generate_before_explicit_target_review(tmp_path):
+    project, _outputs, _lease, _speaker, scripts, _store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    assert service.plan(project.id)["processingAvailable"] is False
+    assert any("Review and confirm" in item for item in service.plan(project.id)["blockers"])
+    with pytest.raises(ValueError, match="Review and confirm"):
+        service.start(project.id, request(document, scripts, trained.id))
+    assert engine.payloads == []
+
+
 def test_hybrid_processor_namespace_plan_and_http_routes_are_distinct(tmp_path):
-    project, _outputs, _lease, _speaker, scripts, _store, document, service, _engine, _audio, trained = setup_hybrid(tmp_path)
+    project, _outputs, _lease, _speaker, scripts, store, document, service, _engine, _audio, trained = setup_hybrid(tmp_path)
+    document = review_target(store, project, document)
     assert service.plan(project.id)["processingAvailable"] is True
     assert trained.id in {item["voiceId"] for item in service.plan(project.id)["voiceChoices"]}
     job = wait(service, project.id, service.start(project.id, request(document, scripts, trained.id)).id)
@@ -139,6 +155,7 @@ def test_hybrid_processor_namespace_plan_and_http_routes_are_distinct(tmp_path):
 def test_hybrid_patch_keeps_full_checkpoint_and_replaces_only_its_reference(tmp_path):
     project, _outputs, _lease, speaker, scripts, _store, document, service, engine, _audio, trained = setup_hybrid(
         tmp_path, kind="full")
+    document = review_target(_store, project, document)
     original = speaker.generator.voices.get(project.id, trained.id)
     job = wait(service, project.id, service.start(project.id, request(document, scripts, trained.id)).id)
     assert job.status == "complete", job.error
@@ -155,7 +172,8 @@ def test_hybrid_patch_keeps_full_checkpoint_and_replaces_only_its_reference(tmp_
     ({"kind": "clone"}, "LoRA or full"),
 ])
 def test_hybrid_patch_rejects_incompatible_voice_before_inference(tmp_path, change, message):
-    project, _outputs, _lease, speaker, scripts, _store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    project, _outputs, _lease, speaker, scripts, store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    document = review_target(store, project, document)
     changed = trained.model_copy(update=change)
     record = speaker.generator.voices.root(project.id) / trained.id / "voice.json"
     record.write_text(changed.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
@@ -166,6 +184,7 @@ def test_hybrid_patch_rejects_incompatible_voice_before_inference(tmp_path, chan
 
 def test_hybrid_patch_rejects_missing_weights_and_stale_reference(tmp_path):
     project, _outputs, _lease, speaker, scripts, store, document, service, engine, _audio, trained = setup_hybrid(tmp_path)
+    document = review_target(store, project, document)
     weights = speaker.generator.voices.absolute(project.id, trained.adapter_path) / "weights.bin"
     weights.unlink()
     assert service.plan(project.id)["processingAvailable"] is False
@@ -186,6 +205,7 @@ def test_hybrid_job_cancellation_allows_retry_and_source_edit_makes_job_stale(tm
 
     blocking = BlockingEngine(cancelable=True)
     project, outputs, lease, speaker, scripts, store, document, service, _engine, audio, trained = setup_hybrid(tmp_path, blocking)
+    document = review_target(store, project, document)
     started = service.start(project.id, request(document, scripts, trained.id))
     assert blocking.entered.wait(timeout=2)
     assert service.stop(project.id, started.id, include_active=True)

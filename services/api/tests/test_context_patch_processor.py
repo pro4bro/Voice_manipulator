@@ -102,8 +102,14 @@ def start_request(project, document, scripts, text="New target words"):
         replacementText=text, voiceId="context-clone")
 
 
+def review_target(store, project, document):
+    return store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+
+
 def test_context_patch_uses_selected_context_only_as_reference_and_applies_immutable_media_output(tmp_path):
     project, outputs, lease, speaker, scripts, source, document, service, engine, source_audio = setup_processor(tmp_path)
+    document = review_target(source, project, document)
     source_bytes = source_audio.read_bytes()
     source_hash = hashlib.sha256(source_bytes).hexdigest()
     before_outputs = outputs.list(project.id)
@@ -152,8 +158,18 @@ def test_context_patch_uses_selected_context_only_as_reference_and_applies_immut
     assert len(outputs.list(project.id)) == len(before_outputs) + 1
 
 
+def test_context_patch_cannot_generate_before_explicit_target_review(tmp_path):
+    project, _outputs, _lease, _speaker, scripts, _store, document, service, engine, _source_audio = setup_processor(tmp_path)
+    assert service.plan(project.id)["processingAvailable"] is False
+    assert any("Review and confirm" in item for item in service.plan(project.id)["blockers"])
+    with pytest.raises(ValueError, match="Review and confirm"):
+        service.start(project.id, start_request(project, document, scripts))
+    assert engine.payloads == []
+
+
 def test_context_patch_storage_and_reopen_are_separate_from_trained_patch_namespace(tmp_path):
     project, _outputs, _lease, _speaker, scripts, store, document, service, _engine, _source_audio = setup_processor(tmp_path)
+    document = review_target(store, project, document)
     request = start_request(project, document, scripts)
     job = wait(service, project.id, service.start(project.id, request).id)
     assert service.job_path(project.id, job.id).is_relative_to(Path(project.project_path) / "jobs" / "context-patch")
@@ -172,6 +188,7 @@ def test_context_patch_storage_and_reopen_are_separate_from_trained_patch_namesp
 
 def test_context_patch_reference_tampering_invalidates_job_and_never_applies(tmp_path):
     project, outputs, _lease, _speaker, scripts, store, document, service, _engine, _source_audio = setup_processor(tmp_path)
+    document = review_target(store, project, document)
     job = wait(service, project.id, service.start(project.id, start_request(project, document, scripts)).id)
     reference = Path(project.project_path) / document.draft.selected_context.artifact_path
     data = bytearray(reference.read_bytes())
@@ -188,6 +205,7 @@ def test_context_patch_reference_tampering_invalidates_job_and_never_applies(tmp
 
 def test_context_processor_rejects_published_voice_and_missing_selected_context(tmp_path):
     project, _outputs, _lease, _speaker, scripts, store, document, service, _engine, _source_audio = setup_processor(tmp_path)
+    document = review_target(store, project, document)
     with pytest.raises(ValueError, match="temporary context clone"):
         service.start(project.id, start_request(project, document, scripts).model_copy(update={"voice_id": "voice-an"}))
 
@@ -223,6 +241,7 @@ def test_retry_after_failed_audio_quality_generates_a_fresh_immutable_clip(tmp_p
             return result
     engine = ClippedOnce()
     project, outputs, lease, _speaker, scripts, _store, document, service, _engine, source = setup_processor(tmp_path, engine)
+    document = review_target(_store, project, document)
     original = source.read_bytes()
     body = start_request(project, document, scripts)
     first = wait(service, project.id, service.start(project.id, body).id)

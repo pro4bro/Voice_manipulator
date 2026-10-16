@@ -8,6 +8,7 @@ import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
 import { EMOTION_OPTIONS } from "../domain/emotions";
 import { EMPTY_SELECTION, type WordSelection } from "../domain/word-selection";
+import { mediaPatchSpan } from "../domain/patch-selection";
 import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
@@ -202,6 +203,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   // Owned here rather than in either module, so Script and Timeline agree on
   // what is selected instead of each keeping a private answer.
   const [wordSelection, setWordSelection] = useState<WordSelection>(EMPTY_SELECTION);
+  const [patchSourceSelection, setPatchSourceSelection] = useState<WordSelection | null>(null);
   const selectedAssetIdRef = useRef<string | null>(null);
   const scriptAssetIdRef = useRef<string | null>(null);
   const scriptDirtyRef = useRef(false);
@@ -808,6 +810,12 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }, [activePage, mediaAssets, selectedAssetId, selectedImportedTrackId]);
 
   async function selectPage(page: WorkspacePage) {
+    if (page === "voice-manipulator" && activePage === "speech-to-text") {
+      const source = mediaAssets.find((asset) => asset.id === scriptAssetId);
+      const scoped = source && (!selectedScriptAssetIds || selectedScriptAssetIds.length <= 1)
+        ? { ...wordSelection, scope: { kind: "asset" as const, id: source.id, revision: source.updatedAt } } : null;
+      setPatchSourceSelection(source && scoped && mediaPatchSpan(source, scoped) ? scoped : null);
+    }
     if (page === "voice-training") {
       const selected = mediaAssets.find((asset) => asset.id === (selectedImportedTrackId ?? selectedAssetId));
       const children = selected ? mediaAssets.filter((asset) => asset.sourceArchiveAssetId === selected.id) : [];
@@ -2718,6 +2726,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onEndReadingSession: () => void reading.end(),
     onSkipCard: () => void reading.skip(),
     wordSelection,
+    patchSourceSelection,
     onWordSelectionChange: (selection) => {
       setWordSelection(scopeVoiceSelection(selection));
     },
@@ -2833,7 +2842,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection]);
+  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>

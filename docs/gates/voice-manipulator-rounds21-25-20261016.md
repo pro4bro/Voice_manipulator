@@ -63,3 +63,18 @@ no interactive-latency pass is claimed. Assembly has known utterance boundaries,
 not measured natural per-word alignment. Human A/B/C identity/delivery comparison
 remains open and hybrid is not presumed best. Next VM-PATCH-02A reviewed spans.
 
+
+### Round22 — VM-PATCH-02A
+
+Reviewed whole-word target receipts pin source/metadata hashes, indices, PCM bounds
+and Script revision; stale or missing review blocks all three media strategies.
+Source playback remains available before review. STT transfers one qualified span
+without leaking source indexes into generated-output selection. Strategy1 uses the
+trained model's clean saved reference without context. API47 focused plus updated
+production routes/raw processor11, affected UI81/typecheck/build pass. ADR0083.
+Private natural Vietnamese fixture verifies exact source crop frames2524560–2716560
+and25 persisted DTW words, provenance-linked imported speaker, target98880–150720.
+No word times were invented; human review is false and the real fixture remains
+blocked awaiting review. No human timing/identity or browser acceptance is claimed.
+Next round23 VM-PATCH-02B native source-duration generation, then history and
+Checkpoint-A verification. Phase03 remains60%.

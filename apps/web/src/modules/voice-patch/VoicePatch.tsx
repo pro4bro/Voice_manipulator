@@ -13,6 +13,7 @@ interface VoicePatchProps {
   onNavigateOutput?: (id: string) => void;
   voices?: ProjectVoice[]; onOutputReady?: (output: VoiceOutput) => void;
   assets?: ProjectMediaAsset[]; selectedAssetId?: string | null; onOpenSource?: (id: string) => void;
+  sourceSelection?: WordSelection | null;
 }
 
 async function readSource(url: string, body?: object): Promise<VoicePatchDocument> {
@@ -24,7 +25,7 @@ async function readSource(url: string, body?: object): Promise<VoicePatchDocumen
 }
 const clock = (frame: number | undefined, rate: number | undefined) => frame === undefined || !rate ? "—" : `${(frame / rate).toFixed(3)} s`;
 
-export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTION, scriptRevision = 0, editRevision = 0, saved = false, onNavigateOutput, voices = [], onOutputReady, assets, selectedAssetId, onOpenSource }: VoicePatchProps) {
+export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTION, scriptRevision = 0, editRevision = 0, saved = false, onNavigateOutput, voices = [], onOutputReady, assets, selectedAssetId, sourceSelection, onOpenSource }: VoicePatchProps) {
   const endpoint = `/api/projects/${encodeURIComponent(projectId ?? "")}/voice-patch/source`;
   const [document, setDocument] = useState<VoicePatchDocument | null>(null);
   const [rowId, setRowId] = useState("");
@@ -89,7 +90,7 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
       {currentDraft ? <audio controls aria-label="Nghe nguồn Patch" src={`${draft.audioUrl}#t=${draft.startFrame / draft.sampleRate},${draft.endFrame / draft.sampleRate}`} /> : null}
     </> : null}
     {projectId && document && draft ? <PatchProcessing key={`${projectId}:${document.revision}`} projectId={projectId} document={document} currentSource={!!currentDraft} saved={saved} voices={voices} onOutputReady={onOutputReady} /> : <p>Chuyển một câu nguồn để kiểm tra khả năng Patch.</p>}
-    {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} voices={voices} selectedAssetId={selectedAssetId} selection={selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
+    {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} voices={voices} selectedAssetId={selectedAssetId} selection={sourceSelection ?? selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
   </ModuleFrame>;
 }
 

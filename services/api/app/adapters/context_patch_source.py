@@ -59,6 +59,18 @@ class ContextPatchCandidate(DomainModel):
     artifact_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
+class ReviewedContextPatchTarget(DomainModel):
+    """Explicit user review of the current whole-word media target bounds."""
+
+    review_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_metadata_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    target_word_indices: list[int] = Field(min_length=1)
+    start_frame: int = Field(ge=0)
+    end_frame: int = Field(gt=0)
+    script_revision: int = Field(ge=0)
+
+
 class ContextPatchDraft(DomainModel):
     source_kind: Literal["media"] = "media"
     source_origin: Literal["import", "record"]
@@ -82,6 +94,7 @@ class ContextPatchDraft(DomainModel):
     processing_available: Literal[False] = False
     context_candidates: list[ContextPatchCandidate] = Field(default_factory=list)
     selected_context: ContextPatchCandidate | None = None
+    reviewed_target: ReviewedContextPatchTarget | None = None
     report: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -438,6 +451,36 @@ class FileContextPatchSource:
                 return False
         return True
 
+    def _reviewed_target(self, capture: dict[str, Any], draft: ContextPatchDraft) -> ReviewedContextPatchTarget:
+        indices = [int(index) for index in draft.report.get("targetWordIndices", [])]
+        material = {
+            "sourceSha256": capture["source_hash"],
+            "sourceMetadataSha256": capture["asset_hash"],
+            "targetWordIndices": indices,
+            "startFrame": draft.start_frame,
+            "endFrame": draft.end_frame,
+            "scriptRevision": capture["script"].revision,
+        }
+        return ReviewedContextPatchTarget(**{
+            "reviewKey": self._hash_json(material),
+            "sourceSha256": capture["source_hash"],
+            "sourceMetadataSha256": capture["asset_hash"],
+            "targetWordIndices": indices,
+            "startFrame": draft.start_frame,
+            "endFrame": draft.end_frame,
+            "scriptRevision": capture["script"].revision,
+        })
+
+    def _target_review_is_current(self, capture: dict[str, Any], draft: ContextPatchDraft) -> bool:
+        if draft.reviewed_target is None:
+            return False
+        try:
+            current = self._reviewed_target(capture, draft)
+        except (KeyError, TypeError, ValueError):
+            return False
+        return draft.reviewed_target.model_dump(mode="json", by_alias=True) == current.model_dump(
+            mode="json", by_alias=True)
+
     def transfer(self, project_id: str, request: ContextPatchTransferRequest) -> ContextPatchDocument:
         if not _ID.fullmatch(request.asset_id):
             raise ValueError("Media asset ID is invalid.")
@@ -550,7 +593,48 @@ class FileContextPatchSource:
         if draft.selected_context and not self._selected_artifact_matches(project_id, capture, draft.selected_context):
             return document.model_copy(update={"draft": draft.model_copy(update={
                 "status": "missing", "reason": "Extracted context reference is missing, altered, or no longer matches its source frames."})})
+        if draft.reviewed_target is not None and not self._target_review_is_current(capture, draft):
+            return document.model_copy(update={"draft": draft.model_copy(update={"reviewed_target": None})})
         return document
+
+    def review_target(
+        self, project_id: str, expected_revision: int, expected_source_sha256: str,
+        start_frame: int, end_frame: int,
+    ) -> ContextPatchDocument:
+        """Record explicit review of the exact current media target word span."""
+        with self._lock:
+            document = self.get(project_id)
+            if document.revision != expected_revision:
+                raise ScriptRevisionConflict("Context Patch source revision changed; refresh before reviewing the target.")
+            draft = document.draft
+            if draft is None or draft.status != "ready":
+                detail = draft.reason if draft and draft.reason else "A current imported-media Patch source is required."
+                raise ScriptRevisionConflict(detail)
+            if (expected_source_sha256 != draft.source_sha256
+                    or start_frame != draft.start_frame or end_frame != draft.end_frame):
+                raise ScriptRevisionConflict("Reviewed target source hash or frame bounds differ from the current displayed selection.")
+            capture = self._capture(project_id, draft.asset_id)
+            if (capture["source_hash"] != draft.source_sha256
+                    or capture["asset_hash"] != draft.source_metadata_sha256
+                    or capture["script"].revision != draft.script_revision
+                    or capture["diarization_hash"] != draft.report.get("diarizationSha256")
+                    or not self._draft_source_is_current(project_id, capture, draft)):
+                raise ScriptRevisionConflict("Media source, target words or Script changed; recapture before reviewing.")
+            reviewed = self._reviewed_target(capture, draft)
+            if draft.reviewed_target == reviewed:
+                return document
+            fresh = self._capture(project_id, draft.asset_id)
+            latest = self._record(project_id)
+            if (latest.get("revision", 0) != expected_revision
+                    or fresh["source_hash"] != capture["source_hash"]
+                    or fresh["asset_hash"] != capture["asset_hash"]
+                    or fresh["script"].revision != capture["script"].revision
+                    or fresh["diarization_hash"] != capture["diarization_hash"]):
+                raise ScriptRevisionConflict("Media, annotations or Script changed while reviewing the target.")
+            updated = draft.model_copy(update={"reviewed_target": reviewed})
+            result = ContextPatchDocument(revision=expected_revision + 1, draft=updated)
+            self._save(project_id, result)
+            return result
 
     def select_context(self, project_id: str, expected_revision: int, candidate_id: str) -> ContextPatchDocument:
         if not _ID.fullmatch(candidate_id):
@@ -739,7 +823,10 @@ class FileContextPatchSource:
         )
         return output, script
 
-    def validate(self, project_id: str, expected_revision: int) -> dict[str, Any]:
+    def validate(
+        self, project_id: str, expected_revision: int, *, require_context: bool = True,
+        require_review: bool = False,
+    ) -> dict[str, Any]:
         document = self.get(project_id)
         if document.revision != expected_revision:
             raise ScriptRevisionConflict("Context Patch source revision changed; refresh before processing.")
@@ -748,7 +835,7 @@ class FileContextPatchSource:
             raise ScriptRevisionConflict("A current imported-media Patch source is required.")
         if draft.status != "ready":
             raise ScriptRevisionConflict(draft.reason or "A current imported-media Patch source is required.")
-        if draft.selected_context is None:
+        if require_context and draft.selected_context is None:
             raise ScriptRevisionConflict("Select one context utterance explicitly before processing.")
         capture = self._capture(project_id, draft.asset_id)
         if (capture["source_hash"] != draft.source_sha256
@@ -758,11 +845,25 @@ class FileContextPatchSource:
                 or not self._draft_source_is_current(project_id, capture, draft)):
             raise ScriptRevisionConflict("Media source changed; recapture the Patch source.")
         selected = draft.selected_context
-        if not self._selected_artifact_matches(project_id, capture, selected):
-            raise ScriptRevisionConflict("Extracted context audio is missing or stale.")
-        context_path = self._project_path(project_id, selected.artifact_path or "")
-        with wave.open(str(context_path), "rb") as audio:
-            context_frames = audio.getnframes()
+        context = None
+        if selected is not None:
+            if not self._selected_artifact_matches(project_id, capture, selected):
+                raise ScriptRevisionConflict("Extracted context audio is missing or stale.")
+            context_path = self._project_path(project_id, selected.artifact_path or "")
+            with wave.open(str(context_path), "rb") as audio:
+                context_frames = audio.getnframes()
+            context = {
+                **selected.model_dump(mode="json", by_alias=True),
+                "audio_path": context_path,
+                "frames": context_frames,
+                "audio_sha256": selected.artifact_sha256,
+                "applied": False,
+                "mode": "clone-only-context",
+                "sourceKind": "media", "sourceOrigin": draft.source_origin,
+            }
+        target_reviewed = self._target_review_is_current(capture, draft)
+        if require_review and not target_reviewed:
+            raise ScriptRevisionConflict("Review and confirm the selected target span before processing.")
         output, script = self._output_and_script(project_id, capture, draft)
         edit = VoiceEditDocument(
             revision=0, output_id=draft.output_id, source_sha256=draft.source_sha256,
@@ -777,15 +878,10 @@ class FileContextPatchSource:
             "audio_path": source_path,
             "script": script,
             "edit": edit,
-            "context": {
-                **selected.model_dump(mode="json", by_alias=True),
-                "audio_path": context_path,
-                "frames": context_frames,
-                "audio_sha256": selected.artifact_sha256,
-                "applied": False,
-                "mode": "clone-only-context",
-                "sourceKind": "media", "sourceOrigin": draft.source_origin,
-            },
+            "context": context,
+            "sourceKind": "media",
+            "targetReviewed": target_reviewed,
+            "reviewKey": draft.reviewed_target.review_key if target_reviewed else None,
         }
 
     def _save(self, project_id: str, document: ContextPatchDocument) -> None:

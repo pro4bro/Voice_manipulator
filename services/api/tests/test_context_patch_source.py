@@ -106,6 +106,84 @@ def test_context_candidate_is_extracted_only_after_explicit_selection_and_source
     assert reference.is_relative_to(root)
 
 
+def test_target_review_uses_exact_source_word_bounds_and_survives_context_selection(tmp_path):
+    project, _root, media, scripts, store, _source = setup_context(tmp_path)
+    document = transfer(store, project, scripts)
+    original_words = media.get(project.id, "asset-context").words
+    receipt_doc = store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+    receipt = receipt_doc.draft.reviewed_target
+    assert receipt_doc.revision == document.revision + 1
+    assert receipt.target_word_indices == [1, 2]
+    assert (receipt.start_frame, receipt.end_frame) == (72000, 93600)
+    assert receipt.script_revision == document.draft.script_revision
+    assert len(receipt.review_key) == 64
+    assert store.validate(project.id, receipt_doc.revision, require_context=False)["targetReviewed"] is True
+    assert media.get(project.id, "asset-context").words == original_words
+
+    candidate = next(item for item in receipt_doc.draft.context_candidates if item.side == "after")
+    selected = store.select_context(project.id, receipt_doc.revision, candidate.id)
+    assert selected.draft.reviewed_target == receipt
+    validated = store.validate(project.id, selected.revision)
+    assert validated["targetReviewed"] is True and validated["reviewKey"] == receipt.review_key
+
+
+@pytest.mark.parametrize("start,end,indices", [
+    (0, 0, [0]),
+    (3, 3, [3]),
+])
+def test_target_review_maps_first_and_last_word_to_exact_frames(tmp_path, start, end, indices):
+    project, _root, _media, scripts, store, _source = setup_context(tmp_path)
+    document = transfer(store, project, scripts, start=start, end=end)
+    receipt_doc = store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+    receipt = receipt_doc.draft.reviewed_target
+    expected = ((2400, 55200) if start == 0 else (110400, 165600))
+    assert receipt.target_word_indices == indices
+    assert (receipt.start_frame, receipt.end_frame) == expected
+
+
+def test_target_review_rejects_wrong_hash_or_bounds_and_invalidates_after_script_change(tmp_path):
+    project, _root, _media, scripts, store, _source = setup_context(tmp_path)
+    document = transfer(store, project, scripts)
+    with pytest.raises(ScriptRevisionConflict, match="source hash or frame bounds"):
+        store.review_target(project.id, document.revision, "0" * 64,
+            document.draft.start_frame, document.draft.end_frame)
+    with pytest.raises(ScriptRevisionConflict, match="source hash or frame bounds"):
+        store.review_target(project.id, document.revision, document.draft.source_sha256,
+            document.draft.start_frame + 1, document.draft.end_frame)
+    reviewed = store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+    scripts.save(project.id, scripts.get(project.id))
+    refreshed = store.get(project.id)
+    assert refreshed.draft.status == "stale"
+    with pytest.raises(ScriptRevisionConflict, match="Script changed"):
+        store.validate(project.id, reviewed.revision)
+
+
+def test_trained_media_source_view_does_not_require_context_or_target_review(tmp_path):
+    project, _root, _media, scripts, store, _source = setup_context(tmp_path)
+    document = transfer(store, project, scripts)
+    view = store.validate(project.id, document.revision, require_context=False)
+    assert view["context"] is None
+    assert view["targetReviewed"] is False
+    assert view["sourceKind"] == "media"
+    assert view["audio_path"].is_file()
+
+
+def test_tampered_review_receipt_is_not_current(tmp_path):
+    project, _root, _media, scripts, store, _source = setup_context(tmp_path)
+    document = transfer(store, project, scripts)
+    reviewed = store.review_target(project.id, document.revision, document.draft.source_sha256,
+        document.draft.start_frame, document.draft.end_frame)
+    path = store.path(project.id)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["draft"]["reviewedTarget"]["reviewKey"] = "f" * 64
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert store.get(project.id).draft.reviewed_target is None
+    assert store.validate(project.id, reviewed.revision, require_context=False)["targetReviewed"] is False
+
+
 def test_validate_returns_in_memory_output_like_view_and_empty_edit_without_persisting_output(tmp_path):
     project, _root, _media, scripts, store, _source = setup_context(tmp_path)
     draft = transfer(store, project, scripts).draft

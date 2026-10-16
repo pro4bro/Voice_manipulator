@@ -57,7 +57,7 @@ it("pins the trained model to a separate hybrid endpoint without clone fallback"
   const fetcher = vi.fn().mockResolvedValueOnce(reply({ processingAvailable: true, draftRevision: 3, blockers: [] }))
     .mockResolvedValueOnce(reply({ ...job, voiceId: "v" }));
   vi.stubGlobal("fetch", fetcher);
-  render(<PatchProcessing projectId="p" document={document} currentSource saved voices={voices} contextMode hybridMode />);
+  render(<PatchProcessing projectId="p" document={document} currentSource saved voices={voices} mode="hybrid" />);
   expect(screen.queryByText("Giọng từ vùng tham chiếu · clone")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Kiểm tra khả năng Patch"));
   await waitFor(() => expect(screen.getByText("Tạo bản vá nghe thử")).toBeEnabled());
