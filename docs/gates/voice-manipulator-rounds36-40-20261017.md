@@ -45,3 +45,17 @@ request improves by the profiled delta. Real HTTP miss215.84ms/hit36.82ms varies
 three-operation fresh renders still median347.69ms under cProfile. No250ms gate
 closure or human listening claim. ADR0095 and local native-scan receipts record
 method/results. Next reuse exact validated history prefixes to avoid repeated FFmpeg.
+
+### Round38 — VM-STRETCH-REUSE-01
+
+Preview cache now finds the longest exact operation prefix with valid source hash,
+WAV/checksum/frames and cumulative quality report, then renders only the suffix.
+Missing/corrupt/incomplete cache falls back safely; fork/Undo/Redo use exact keys.
+Signed silence adjustments and max boundary/whole targetframes remain consistent.
+Malformed/NaN cache diagnostics rebuild instead of leaking invalid HTTP reports.
+Focused API32 pass, including native FFmpeg byte parity. Actual natural8s speech
+with3operations: full median284.17ms vs prefix2+suffix1 median214.37ms over5paired
+runs; all5 WAVs byte-identical and source/journal untouched. One reuse556ms outlier
+spent389ms in artifact publication/verification, so250ms remains open. Measurements
+do not include browser/debounce/playback. ADR0096 and reuse38-receipt.json record
+the tradeoff. Next39 serializes drag preview/commit and retains playback metadata.
