@@ -6,11 +6,24 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-17 — Voice Manipulator round36 VM-STRETCH-PROFILE-01.
-last_activity_desc: Round36 delivered; see current ledger and rounds36–40 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-17 — Voice Manipulator round37 VM-STRETCH-CPU-01.
+last_activity_desc: Round37 delivered; see current ledger and rounds36–40 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round37 — VM-STRETCH-CPU-01 (2026-10-17)
+
+The measured per-frame Python clipping generator is replaced by exact signed-array
+endpoint counts. Clipping thresholds/rejection and audio processing stay identical.
+Two RED-first scan cases plus existing pitch/source/frame/boundary checks pass10/10.
+Paired100-run scan median13.94ms→7.54ms on the same PCM. All10 real rendered WAVs
+(one/three operations, five runs each) remain byte-identical to baseline. Profile
+generator calls fall from2.1m to native typed scans; this does not imply the whole
+request improves by the profiled delta. Real HTTP miss215.84ms/hit36.82ms varies;
+three-operation fresh renders still median347.69ms under cProfile. No250ms gate
+closure or human listening claim. ADR0095 and local native-scan receipts record
+method/results. Next reuse exact validated history prefixes to avoid repeated FFmpeg.
 
 ## Voice Manipulator round36 — VM-STRETCH-PROFILE-01 (2026-10-17)
 

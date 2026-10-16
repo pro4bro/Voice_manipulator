@@ -39,6 +39,12 @@ def _pcm_bytes(samples: array.array[int]) -> bytes:
     return result.tobytes()
 
 
+def _count_clipped_samples(samples: array.array[int]) -> int:
+    # Array's native typed scan avoids a Python callback for every PCM frame.
+    # Count signed samples, never raw byte patterns that could straddle frames.
+    return samples.count(-32768) + samples.count(32767)
+
+
 def _read_wav(path: Path) -> tuple[bytes, int]:
     try:
         with wave.open(str(path), "rb") as wav:
@@ -301,7 +307,7 @@ def render_stretch(source: Path, destination: Path, operations: list[dict[str, A
         if actual_frames > MAX_FRAMES:
             raise ValueError("Stretch output exceeds the 10 minute limit.")
         samples = _pcm_samples(pcm)
-        clipped_samples = sum(sample in (-32768, 32767) for sample in samples)
+        clipped_samples = _count_clipped_samples(samples)
         if clipped_samples:
             raise ValueError(f"Stretch output contains {clipped_samples} clipped PCM16 samples.")
         output_temp = temp_dir / "result.wav"

@@ -32,3 +32,16 @@ scan (over2.1m generator calls); timings under profiling include its overhead.
 All runs preserve source hash, exact target frames,0clipping/boundary checks and
 journal revision0. Receipts/profiles under .scratch/vm-rounds36-40.250ms browser/
 continuous-playback gate stays open. Next optimize the measured PCM scan.
+
+### Round37 — VM-STRETCH-CPU-01
+
+The measured per-frame Python clipping generator is replaced by exact signed-array
+endpoint counts. Clipping thresholds/rejection and audio processing stay identical.
+Two RED-first scan cases plus existing pitch/source/frame/boundary checks pass10/10.
+Paired100-run scan median13.94ms→7.54ms on the same PCM. All10 real rendered WAVs
+(one/three operations, five runs each) remain byte-identical to baseline. Profile
+generator calls fall from2.1m to native typed scans; this does not imply the whole
+request improves by the profiled delta. Real HTTP miss215.84ms/hit36.82ms varies;
+three-operation fresh renders still median347.69ms under cProfile. No250ms gate
+closure or human listening claim. ADR0095 and local native-scan receipts record
+method/results. Next reuse exact validated history prefixes to avoid repeated FFmpeg.
