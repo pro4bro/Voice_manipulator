@@ -61,3 +61,17 @@ ADR0088 records the behavior. Local audition28-receipt.json contains artifact ha
 The private ASR Studio was released and only its owned18085 server stopped.
 Human listening/browser acceptance remain open. Next round29 records explicit
 user assessments without automatically marking quality accepted.
+
+### Round29 — VM-PATCH-REVIEW-01
+
+Explicit listening assessments now accompany the selected accepted Patch variant:
+clarity, identity, delivery, transitions, notes and a listening confirmation.
+Every rating starts unassessed. Portable notes append immutable assessment snapshots
+with accepted WAV/metadata/comparison fingerprints and optimistic revision guards;
+stale notes remain visible, corrupt files are not overwritten. No automatic quality
+pass or Checkpoint A promotion. UI ignores late saves for another output.
+API8 (seven review cases plus production integration) and UI7/typecheck/build171
+pass. ADR0089 records the contract. Automated writes use synthetic temporary
+projects only; the three actual Vietnamese variants remain human-unreviewed.
+Next round30 freezes source, checks integrated exports/move/reopen and whole suites,
+and reports remaining perceptual/UI gates honestly.

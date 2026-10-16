@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { VoiceOutput } from "../../domain/types";
 import { PatchAudition } from "./PatchAudition";
+import { PatchReview } from "./PatchReview";
 
 interface Revision {
   output: VoiceOutput; sourceOutputId: string; strategy: string; comparisonKey: string;
@@ -48,6 +49,9 @@ export function PatchHistory({ projectId, onOpen }: { projectId: string; onOpen?
           </div>;
         })}</fieldset>;
     })}
-    {auditionOutputId ? <PatchAudition projectId={projectId} outputId={auditionOutputId} /> : null}
+    {auditionOutputId ? <div key={`${projectId}/${auditionOutputId}`}>
+      <PatchAudition projectId={projectId} outputId={auditionOutputId} />
+      <PatchReview projectId={projectId} outputId={auditionOutputId} />
+    </div> : null}
   </details>;
 }
