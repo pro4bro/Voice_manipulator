@@ -6,7 +6,7 @@ import threading
 from time import perf_counter
 import wave
 from app.adapters.file_project_repository import FileProjectRepository
-from app.adapters.voice_stretch_audio import render_stretch
+from app.adapters.voice_stretch_audio import MAX_ADJUSTMENT_FRAMES, render_stretch
 
 
 class VoiceEditPreview:
@@ -26,7 +26,7 @@ class VoiceEditPreview:
         payload = json.dumps({"source": source_sha256, "operations": operations, "policy": 1}, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
-    def validate(self, path, source_hash, expected_frames=None):
+    def validate(self, path, source_hash, expected_frames=None, expected_operations=None):
         try:
             report = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError) as exc:
@@ -53,6 +53,15 @@ class VoiceEditPreview:
         if "paddingFrames" in report and (isinstance(report["paddingFrames"], bool)
                 or not isinstance(report["paddingFrames"], int)):
             raise ValueError("Preview padding diagnostic is invalid.")
+        count = report.get("operationCount")
+        if count is not None and (isinstance(count, bool) or not isinstance(count, int)
+                or not 1 <= count <= 128 or (expected_operations is not None and count != expected_operations)):
+            raise ValueError("Preview operation count does not match the requested history.")
+        # Legacy reports omit the count. At request time the exact prefix length
+        # is known; standalone artifact reads use the journal's128-op ceiling.
+        adjustment_limit = (expected_operations or count or 128) * MAX_ADJUSTMENT_FRAMES
+        if "paddingFrames" in report and abs(report["paddingFrames"]) > adjustment_limit:
+            raise ValueError("Preview silence-fit adjustment exceeds its operation limits.")
         if "maxBoundaryStep" in report:
             boundary = report["maxBoundaryStep"]
             if (isinstance(boundary, bool) or not isinstance(boundary, (int, float))
@@ -65,8 +74,8 @@ class VoiceEditPreview:
             raise ValueError("Preview boundary status is invalid.")
         return report
 
-    def validate_prefix(self, path, source_hash, expected_frames):
-        report = self.validate(path, source_hash, expected_frames)
+    def validate_prefix(self, path, source_hash, expected_frames, expected_operations):
+        report = self.validate(path, source_hash, expected_frames, expected_operations)
         padding = report.get("paddingFrames")
         boundary = report.get("maxBoundaryStep")
         clipped = report.get("clippedSamples")
@@ -98,7 +107,7 @@ class VoiceEditPreview:
             prefix_path = None
             reused_operations = 0
             try:
-                report = self.validate(path, doc.source_sha256, doc.frames)
+                report = self.validate(path, doc.source_sha256, doc.frames, len(active))
                 metrics["cacheHit"] = True
                 metrics["reusedOperations"] = len(active)
             except (ValueError, OSError, wave.Error, EOFError):
@@ -114,7 +123,7 @@ class VoiceEditPreview:
                         for item in prefix_operations)
                     candidate = self.path(project_id, output_id, self._key(doc.source_sha256, prefix_operations))
                     try:
-                        prefix_report = self.validate_prefix(candidate, doc.source_sha256, prefix_frames)
+                        prefix_report = self.validate_prefix(candidate, doc.source_sha256, prefix_frames, count)
                     except (ValueError, OSError, wave.Error, EOFError, AttributeError):
                         continue
                     prefix_path, reused_operations = candidate, count
@@ -139,7 +148,7 @@ class VoiceEditPreview:
                 report["operationCount"] = len(active)
                 report.update(sourceSha256=doc.source_sha256, audioSha256=hashlib.sha256(path.read_bytes()).hexdigest())
                 FileProjectRepository._atomic_write(path.with_suffix(".json"), json.dumps(report))
-                self.validate(path, doc.source_sha256, doc.frames)
+                self.validate(path, doc.source_sha256, doc.frames, len(active))
                 metrics["artifactCheckMs"] = (perf_counter() - artifact_started) * 1000
             else:
                 metrics["cacheCheckMs"] = (perf_counter() - check_started) * 1000

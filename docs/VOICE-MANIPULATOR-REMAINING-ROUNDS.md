@@ -1,12 +1,26 @@
 # Các round còn lại của Voice Manipulator
 
-Cập nhật theo ledger/source tới round35 (2026-10-16); batch31–35 đã hoàn tất
+Cập nhật theo ledger/source tới round40 (2026-10-17); batch36–40 đã hoàn tất
 phần triển khai, kiểm tra tích hợp và báo cáo. Các gate độc lập bên dưới còn mở.
 Danh sách này thay mục “Vòng chính xác đề xuất tiếp theo” cũ của bản kế hoạch.
-Số31–35 là số thực hiện theo đợt; các mã VM/VC là phạm vi chức năng. Một mã có
+Số36–40 là số thực hiện theo đợt; các mã VM/VC là phạm vi chức năng. Một mã có
 thể cần nhiều vòng sửa/nghiệm thu, nên chưa thể chốt tổng số round đến hoàn tất.
 
-## Batch31–35 đã thực hiện
+## Batch36–40 đã thực hiện
+
+| Round | Mã | Kết quả |
+| --- | --- | --- |
+| 36 | VM-STRETCH-PROFILE-01 | Đo riêng cache/lock/render/artifact/request, không dùng thời gian render cũ làm latency cache |
+| 37 | VM-STRETCH-CPU-01 | Quét clipping bằng signed-array; cùng PCM cho kết quả trước/sau giống từng byte |
+| 38 | VM-STRETCH-REUSE-01 | Tái dùng đúng tiền tố lịch sử đã kiểm hash/PCM/biên, chỉ render các thao tác mới |
+| 39 | VM-STRETCH-QUEUE-01 | Xếp preview/commit có thứ tự, gộp thao tác chờ, giữ mapped seek tới khi audio có metadata |
+| 40 | VM-CHECKPOINT-A-04 | Chặn counter cache sai, kiểm Undo/Redo/move/reopen và regression; gate250ms/nghe/UI còn mở |
+
+Trên8s speech thật,5 cặp render3 thao tác cho cùng WAV: median full284ms,
+tái dùng2 thao tác + render1 là214ms; có outlier556ms. Đây không phải latency
+browser và chưa khép250ms. Báo cáo: `docs/gates/vm-checkpoint-a-preview-performance-20261017.md`.
+
+## Batch31–35 đã thực hiện trước đó
 
 | Round | Mã | Kết quả cần có |
 | --- | --- | --- |
@@ -22,8 +36,10 @@ Các bản speech thật vẫn chưa có xác nhận nghe do người dùng lưu
 
 ## Thứ tự tiếp tục đề xuất
 
-1. Profile và tối ưu VM-STRETCH-01 với budget250ms hiện hữu; đây là phần có số đo
-   thiếu cụ thể và có thể tiếp tục độc lập khi công cụ UI chưa hoạt động.
+1. Tiếp tục VM-STRETCH-01 với budget250ms: profile sâu write/fsync/verify của
+   artifact (đã có outlier389ms tại khâu này), đánh giá debounce đầu180ms còn
+   giữ, contention do lock dùng chung và tải waveform/audio browser. Chưa có
+   bằng chứng để bỏ kiểm hash/durability hoặc báo gate đạt chỉ từ median server.
 2. Chứng minh conditioning giữ identity cho VM-DELIVERY-01, rồi mới nối lịch
    VM-REF-RANDOM-01 vào âm thanh/Fix. Nếu engine không hỗ trợ thì giữ capability
    unavailable và mở feasibility cho một engine tương thích, không ép pass.
@@ -42,7 +58,7 @@ Các bản speech thật vẫn chưa có xác nhận nghe do người dùng lưu
 | VM-DELIVERY-01 | Lưu yêu cầu và capability preflight, chặn conditioning chưa hỗ trợ | Engine/model giữ cùng danh tính và sinh được emotion/whisper/shout; benchmark cùng text/speaker, ít nhất hai cảm xúc và nhiều mức phát giọng |
 | VM-REF-RANDOM-01 | Nguồn/đặc tính, seed và lịch random có lưu/replay | Áp lịch vào conditioning audio thật, edit/lock event trên Timeline, nối Fix; phụ thuộc delivery được kiểm chứng |
 | VM-TIMING-REF-01 / VM-DURATION-01 | Timing template, budget/lock, native duration và đo frame | Thực thi anchor từng từ/phrase khi model hỗ trợ, partial locks và trường hợp text không fit; không đồng nhất time-stretch với model obey word anchors |
-| VM-STRETCH-01 | Preview WAV giữ pitch, Ctrl handles, waveform/audio và cache | Cold end-to-end250ms chưa đạt (đã đo312–812ms); tối ưu có profile, continuous drag/playback/browser và nghe |
+| VM-STRETCH-01 | Preview WAV giữ pitch, Ctrl handles, waveform/audio, cache đúng prefix, native clipping scan và queue có thứ tự | Gate250ms chưa đạt: median server214ms cho prefix-reuse nhưng outlier556ms, chưa tính debounce đầu180ms/browser; cần profile IO/lock và continuous playback/nghe |
 | VM-RIPPLE-01 | Mapping nguồn bất biến, offsets, Undo/Redo | Piecewise locked acoustic anchors; nhóm video/background liên kết |
 | VM-FIX-01/02 / VM-LOUDNESS-01 | Dirty-unit generation, immutable Apply, clip/row gain, headroom và artifact | Nghe mix, repeated-edit workflow thật, identity/delivery; chạy lại sau khi có conditioning thực |
 | VOICE-EXPORT-13B4 | HTTP WAV/SRT/CSV/Range, moved project giữ hash | Save ra đường đích thật, Cancel không ghi file đích, đường có dấu, playback; cần công cụ browser/native hoạt động |

@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng35; các gate chất lượng còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-17. Trạng thái: đã thực hiện tới vòng40; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,19 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật vòng36–40 — 2026-10-17
+
+- Đã profile chi phí preview trên8s speech thật và tách số đo request/cache khỏi
+  thời gian render được lưu trong report. Giảm quét PCM Python, giữ cùng clipping gate.
+- Cache tái dùng đúng tiền tố lịch sử đã kiểm chứng, chỉ render phần thêm mới.
+  Năm cặp render3 thao tác giữ cùng WAV; median284→214ms, có outlier556ms. Chưa
+  khép250ms end-to-end; atomic IO và debounce đầu180ms vẫn là phần cần xử lý.
+- Preview/commit theo một request lane, thao tác chờ chỉ giữ bản mới nhất; bỏ
+  thêm180ms sau preview cũ. Mapped seek/resume không bị xóa trước loadedmetadata.
+- Undo/Redo/move/reopen, frame/hash và counter cache được kiểm tra. Nghe/UI thật,
+  conditioning và các gate độc lập còn mở. Xem register còn lại và báo cáo
+  `docs/gates/vm-checkpoint-a-preview-performance-20261017.md`.
 
 ## Cập nhật vòng31–35 — 2026-10-16
 
@@ -1197,10 +1210,10 @@ hiện hành và lập spec theo thiết bị/dịch vụ thực tế.
 
 ## Vòng chính xác đề xuất tiếp theo
 
-Danh sách đã đối chiếu tới round35 nằm trong
+Danh sách đã đối chiếu tới round40 nằm trong
 docs/VOICE-MANIPULATOR-REMAINING-ROUNDS.md. Các mã đã có source/artifact
-không tự động được làm lại từ VM-GEN-01. Ưu tiên tiếp tục profiling/latency
-VM-STRETCH-01, chứng minh conditioning VM-DELIVERY-01 rồi mới thi hành random
+không tự động được làm lại từ VM-GEN-01. Ưu tiên tiếp tục IO/debounce/lock/browser
+latency VM-STRETCH-01, chứng minh conditioning VM-DELIVERY-01 rồi mới thi hành random
 trong audio/Fix, đồng thời khép human word/identity/seam và native export gates.
 
 Sau Checkpoint A còn13 mã chức năng đã lên kế hoạch:3 Changer,3 Isolator,

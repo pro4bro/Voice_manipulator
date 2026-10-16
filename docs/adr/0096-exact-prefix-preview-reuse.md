@@ -20,3 +20,8 @@ Keep existing policy1 keys compatible and validate files freshly. Source media,
 output metadata and the edit journal are never changed by a preview. Class-wide
 render serialization remains; a cache optimization is not a cancellation API or
 a guarantee of browser pointer-to-playback latency.
+
+Round40 verification additionally bounds signed cumulative silence adjustments
+by1440frames per known operation and validates the cached operation count against
+the exact prefix. Legacy reports can omit that count; the request supplies it,
+or standalone reads use the existing128-operation journal ceiling.

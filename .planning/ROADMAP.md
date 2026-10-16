@@ -1,5 +1,31 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round40 — VM-CHECKPOINT-A-04 (2026-10-17)
+
+Current frozen source passes all1128 API tests (612.73s, three existing/fixture
+warnings), all913 frontend tests in112 files (128.81s), typecheck/build172 and
+diff check. All586 tracked API/web input hashes match the frozen manifest; no
+tests/assertions/thresholds/timeouts weakened or skipped. An earlier API run was
+stopped before a review-driven counter integrity repair and is not claimed green.
+Three RED regressions reproduce impossible signed padding/mismatched op counts;
+current guard bounds silence fit1440frames per operation and preserves valid
+negative adjustment/legacy reports. Repaired focused API32 and full suite pass.
+Actual natural8s production API commits3stretches to9.2s, Undo/Redo restores exact
+WAV SHA, fourth draft reuses3/render1 without journal commit, WAV/Range206/waveform/
+stale409/move/Open Existing pass. Source/metadata unchanged, one original output,
+revision5/cursor3 preserved after Unicode folder move, relative manifest and free
+GPU lease. No new inference/model/training/download/shared runtime operation.
+Performance:100 paired clipping scans13.94→7.54ms median;10before/after WAVs exact.
+Five full3-op vs prefix2+suffix1 pairs median284→214ms, every WAV exact;556ms outlier
+at artifact stage and initial180ms debounce keep250ms end-to-end gate open.
+CUA/Computer Use still fail kernel-assets os error3; no browser/listening/native
+export acceptance inferred. Expressive delivery/random/word-anchor and13downstream
+codes remain open. Remaining register/NEXT-PLAN updated through40; prioritize
+IO/debounce/lock/browser profiling without discarding integrity checks.
+Detailed gate: docs/gates/vm-checkpoint-a-preview-performance-20261017.md. Local
+receipts/profiles/logs: .scratch/vm-rounds36-40. Five requested rounds complete;
+Phase03 remains60%, no push/portable release.
+
 ## Voice Manipulator round39 — VM-STRETCH-QUEUE-01 (2026-10-17)
 
 Stretch requests now use one active lane with a replaceable pending task; newest

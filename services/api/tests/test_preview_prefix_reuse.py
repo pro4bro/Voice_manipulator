@@ -12,6 +12,25 @@ from app.domain.voice_edits import StretchOperation, VoiceEditCommand, apply_com
 from test_voice_edits import setup_store
 
 
+@pytest.mark.parametrize("field,value", [("paddingFrames", -999999), ("paddingFrames", 999999), ("operationCount", 1)])
+def test_prefix_rejects_impossible_adjustment_or_operation_counters(tmp_path, monkeypatch, field, value):
+    _, project, output_id, store = setup_store(tmp_path)
+    calls = []
+    monkeypatch.setattr("app.adapters.voice_edit_preview.render_stretch", fake_renderer(calls))
+    preview = VoiceEditPreview(store)
+    first, second, third = operations(store, project, output_id)
+    preview.render(project.id, output_id, first)
+    preview.render(project.id, output_id, second)
+    path = preview.path(project.id, output_id, preview._key(second.source_sha256,
+        [item.model_dump(by_alias=True) for item in second.active])).with_suffix(".json")
+    report = json.loads(path.read_text(encoding="utf-8")); report[field] = value
+    path.write_text(json.dumps(report), encoding="utf-8")
+    diagnostics = {}
+    _url, result = preview.render(project.id, output_id, third, diagnostics=diagnostics)
+    assert diagnostics["reusedOperations"] == 1 and diagnostics["renderedOperations"] == 2
+    assert result["paddingFrames"] == 21 and result["operationCount"] == 3
+
+
 def apply(store, project_id, output_id, doc, operation):
     return apply_command(doc, VoiceEditCommand(revision=doc.revision, scriptRevision=1, operation=operation))
 
