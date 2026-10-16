@@ -5,8 +5,8 @@ supplies the words. The two are matched token by token, so a subtitle shows
 what the user typed at the moment it is heard - not what recognition thought
 it heard.
 
-A Script word that recognition matched, or replaced one for one, takes that
-word's measured interval and stays trusted. Words recognition dropped or merged
+A Script word that recognition matched takes that
+word's valid measured interval and stays trusted. Words recognition substituted, dropped or merged
 are placed inside the span their neighbours leave, by length, and are marked
 untrusted - the same flag footage uses - so nothing estimated passes for measured.
 """
@@ -14,12 +14,13 @@ untrusted - the same flag footage uses - so nothing estimated passes for measure
 from __future__ import annotations
 
 import unicodedata
+import math
 from difflib import SequenceMatcher
 from typing import Any
 
 MEASURED_SOURCE = "faster-whisper-dtw"
 ESTIMATED_SOURCE = "script-proportional"
-MIN_WORD_SECONDS = 0.02
+WORD_TIMING_VERSION = 2
 
 
 def normalized(token: str) -> str:
@@ -39,22 +40,29 @@ def script_tokens(text: str) -> list[str]:
     return tokens
 
 
-def _recognized_tokens(words: list[dict[str, Any]]) -> list[tuple[str, float, float]]:
-    found: list[tuple[str, float, float]] = []
+def _recognized_tokens(words: list[dict[str, Any]], duration: float) -> list[tuple[str, float, float, bool, str]]:
+    found: list[tuple[str, float, float, bool, str]] = []
     for word in words:
         try:
             start, end = float(word["start"]), float(word["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        if end <= start:
+        if not math.isfinite(start) or not math.isfinite(end) or end <= start:
             continue
         pieces = [piece for piece in str(word.get("text", "")).split() if normalized(piece)]
         if not pieces:
             continue
-        # One recognized "word" holding two syllables shares its interval evenly.
+        source = str(word.get("timingSource") or MEASURED_SOURCE)
+        valid = (word.get("timingTrusted") is not False and 0 <= start < end <= duration
+            and not any(label in source.lower() for label in ("proportional", "estimated", "unverified")))
+        if found and start < found[-1][2] - 1e-9:
+            previous = found[-1]
+            found[-1] = (*previous[:3], False, previous[4])
+            valid = False
+        # Splitting one acoustic interval does not measure its internal boundaries.
         step = (end - start) / len(pieces)
         for index, piece in enumerate(pieces):
-            found.append((normalized(piece), start + step * index, start + step * (index + 1)))
+            found.append((normalized(piece), start + step * index, start + step * (index + 1), valid and len(pieces) == 1, source))
     return found
 
 
@@ -74,21 +82,25 @@ def _spread(tokens: list[str], start: float, end: float) -> list[tuple[float, fl
 
 def align_script_words(text: str, recognized: list[dict[str, Any]], duration: float) -> tuple[list[dict[str, Any]], str]:
     """Script words with timing, and the timing quality of the whole row."""
+    if not math.isfinite(duration) or duration < 0:
+        raise ValueError("Audio duration must be finite and nonnegative.")
     tokens = script_tokens(text)
     if not tokens:
         return [], "unverified"
-    heard = _recognized_tokens(recognized)
+    heard = _recognized_tokens(recognized, duration)
     timing: list[tuple[float, float] | None] = [None] * len(tokens)
     trusted = [False] * len(tokens)
+    provenance = [MEASURED_SOURCE] * len(tokens)
 
     if heard:
         matcher = SequenceMatcher(None, [normalized(token) for token in tokens], [item[0] for item in heard], autojunk=False)
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == "equal" or (tag == "replace" and i2 - i1 == j2 - j1):
                 for offset in range(i2 - i1):
-                    _, start, end = heard[j1 + offset]
+                    _, start, end, valid, source = heard[j1 + offset]
                     timing[i1 + offset] = (start, end)
-                    trusted[i1 + offset] = True
+                    trusted[i1 + offset] = valid and tag == "equal"
+                    provenance[i1 + offset] = source
             elif tag == "replace":
                 # Recognition split or merged these words differently; the span
                 # they occupy is measured, the boundaries inside it are not.
@@ -113,20 +125,23 @@ def align_script_words(text: str, recognized: list[dict[str, Any]], duration: fl
     words: list[dict[str, Any]] = []
     cursor = 0.0
     limit = max(duration, 0.0)
-    for token, interval, measured in zip(tokens, timing, trusted):
+    for token, interval, measured, source in zip(tokens, timing, trusted, provenance):
         start, end = interval or (cursor, cursor)
+        original = (start, end)
         start = min(max(start, cursor), limit)
-        end = min(max(end, start + MIN_WORD_SECONDS), max(limit, start + MIN_WORD_SECONDS))
+        end = min(max(end, start), limit)
+        measured = (measured and math.isclose(original[0], start, abs_tol=1e-9, rel_tol=0)
+            and math.isclose(original[1], end, abs_tol=1e-9, rel_tol=0) and round(end, 3) > round(start, 3))
         words.append(
             {
                 "text": token,
                 "start": round(start, 3),
                 "end": round(end, 3),
-                "timingSource": MEASURED_SOURCE if measured else ESTIMATED_SOURCE,
+                "timingSource": source if measured else ESTIMATED_SOURCE,
                 "timingTrusted": measured,
             }
         )
         cursor = end
-    measured_count = sum(trusted)
+    measured_count = sum(word["timingTrusted"] for word in words)
     quality = "source" if measured_count == len(tokens) else "partial" if measured_count else "needs-alignment"
     return words, quality

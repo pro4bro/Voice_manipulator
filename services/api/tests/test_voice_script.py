@@ -47,10 +47,11 @@ def test_a_word_recognition_missed_sits_between_its_neighbours_and_is_not_truste
     assert quality == "partial"
 
 
-def test_a_misheard_word_one_for_one_keeps_the_measured_interval():
+def test_a_substituted_word_keeps_interval_for_review_but_is_not_a_measured_script_anchor():
     words, _ = align_script_words("Pro4Bro rất nhanh", heard(("pro", 0.0, 0.4), ("rất", 0.4, 0.6), ("nhanh", 0.6, 0.9)), 1.0)
 
-    assert (words[0]["start"], words[0]["end"]) == (0.0, 0.4) and words[0]["timingTrusted"]
+    assert (words[0]["start"], words[0]["end"]) == (0.0, 0.4) and not words[0]["timingTrusted"]
+    assert words[1]["timingTrusted"] and words[2]["timingTrusted"]
 
 
 def test_without_recognition_the_row_is_spread_by_length_and_flagged():

@@ -6,11 +6,24 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round25 VM-CHECKPOINT-A-01.
-last_activity_desc: Round25 delivered; see current ledger and rounds21–25 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round26 VM-WORD-TRUST-01.
+last_activity_desc: Round26 delivered; see current ledger and rounds26–30 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round26 — VM-WORD-TRUST-01 (2026-10-16)
+
+Generated-word mapping no longer promotes recognizer splits, substituted text,
+explicitly untrusted/estimated observations, overlaps or invalid bounds to trusted
+Script anchors. Valid short intervals and processor provenance survive; estimates
+never exceed PCM length. New clip identity includes timing policy2 to avoid reusing
+legacy annotations. Published audio/history stay immutable. ADR0086 explains the
+tightened old substitution test and the one-time pending-job/cache invalidation.
+Eight new regressions failed before correction; affected API66 now pass. Existing
+natural Vietnamese25-word DTW data preserves every boundary/trust/provenance with
+unchanged source SHA in a private project copy; no new inference/human claim.
+Next round27 adds explicit timing repair without TTS. Checkpoint A stays open.
 
 ## Voice Manipulator round25 — VM-CHECKPOINT-A-01 (2026-10-16)
 

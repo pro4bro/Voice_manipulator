@@ -27,7 +27,7 @@ from app.adapters.omnivoice_generator import SpeechPlan, VoiceGenerator, file_di
 from app.adapters.processing_cancellation import ProcessingStopError
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.ports import ProjectRepository
-from app.domain.script_word_alignment import align_script_words
+from app.domain.script_word_alignment import WORD_TIMING_VERSION, align_script_words
 from app.domain.duration_plan import allocate_duration
 from app.domain.voice_script_document import VoiceScriptDocument, effective_settings
 from app.domain.timing_plan import compare_timing
@@ -594,6 +594,7 @@ class VoiceScriptSpeaker:
         identity = {
             "voice": step.plan.voice.id,
             "artifacts": step.plan.artifact_fingerprint,
+            "wordTimingVersion": WORD_TIMING_VERSION,
             "generator": step.plan.generator_id,
             "generation": step.plan.generation,
             "language": step.plan.language,
