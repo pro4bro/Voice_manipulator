@@ -90,7 +90,9 @@ class VoiceEditPreview:
     def render(self, project_id, output_id, doc, *, diagnostics=None):
         metrics = diagnostics if diagnostics is not None else {}
         metrics.update(cacheHit=False, lockWaitMs=0.0, cacheCheckMs=0.0, prefixSearchMs=0.0,
-            renderMs=0.0, artifactCheckMs=0.0)
+            renderMs=0.0, artifactCheckMs=0.0, artifactHashMs=0.0, artifactReportWriteMs=0.0,
+            finalVerificationMs=0.0, atomicCreateMs=0.0, atomicWriteFlushMs=0.0, atomicCloseMs=0.0,
+            atomicFsyncMs=0.0, atomicReplaceMs=0.0, atomicRetryCount=0, atomicRetryWaitMs=0.0)
         metrics.update(reusedOperations=0, renderedOperations=0)
         source = self.store.outputs.audio_path(project_id, output_id)
         if not doc.cursor:
@@ -146,9 +148,22 @@ class VoiceEditPreview:
                         report.get("processingSeconds", 0.0))
                 report["targetFrames"] = doc.frames
                 report["operationCount"] = len(active)
+                hash_started = perf_counter()
                 report.update(sourceSha256=doc.source_sha256, audioSha256=hashlib.sha256(path.read_bytes()).hexdigest())
-                FileProjectRepository._atomic_write(path.with_suffix(".json"), json.dumps(report))
+                metrics["artifactHashMs"] = (perf_counter() - hash_started) * 1000
+                atomic_metrics = {}
+                report_started = perf_counter()
+                FileProjectRepository._atomic_write(path.with_suffix(".json"), json.dumps(report),
+                    diagnostics=atomic_metrics)
+                metrics["artifactReportWriteMs"] = (perf_counter() - report_started) * 1000
+                metrics.update(atomicCreateMs=atomic_metrics["createMs"],
+                    atomicWriteFlushMs=atomic_metrics["writeFlushMs"], atomicFsyncMs=atomic_metrics["fsyncMs"],
+                    atomicCloseMs=atomic_metrics["closeMs"],
+                    atomicReplaceMs=atomic_metrics["replaceMs"], atomicRetryCount=atomic_metrics["retryCount"],
+                    atomicRetryWaitMs=atomic_metrics["retryWaitMs"])
+                verification_started = perf_counter()
                 self.validate(path, doc.source_sha256, doc.frames, len(active))
+                metrics["finalVerificationMs"] = (perf_counter() - verification_started) * 1000
                 metrics["artifactCheckMs"] = (perf_counter() - artifact_started) * 1000
             else:
                 metrics["cacheCheckMs"] = (perf_counter() - check_started) * 1000

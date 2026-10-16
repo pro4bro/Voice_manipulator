@@ -300,17 +300,31 @@ class FileProjectRepository:
             return False
 
     @staticmethod
-    def _atomic_write(path: Path, text: str) -> None:
+    def _atomic_write(path: Path, text: str, *, diagnostics: dict | None = None) -> None:
+        metrics = diagnostics if diagnostics is not None else {}
+        metrics.update(createMs=0.0, writeFlushMs=0.0, fsyncMs=0.0, closeMs=0.0, replaceMs=0.0,
+            retryCount=0, retryWaitMs=0.0)
+        started = time.perf_counter()
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        metrics["createMs"] = (time.perf_counter() - started) * 1000
         temporary_path = Path(name)
         try:
+            write_started = time.perf_counter()
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 stream.write(text)
                 stream.flush()
+                metrics["writeFlushMs"] = (time.perf_counter() - write_started) * 1000
+                fsync_started = time.perf_counter()
                 os.fsync(stream.fileno())
+                metrics["fsyncMs"] = (time.perf_counter() - fsync_started) * 1000
+                close_started = time.perf_counter()
+            # The context manager has closed the file descriptor. Keep close as
+            # its own stage so slow filesystem teardown is visible separately.
+            metrics["closeMs"] = (time.perf_counter() - close_started) * 1000
             # Windows readers outside this repository can briefly deny replace.
             # Retry only sharing/access errors, with a bounded 310ms total wait.
+            replace_started = time.perf_counter()
             for attempt in range(6):
                 try:
                     temporary_path.replace(path)
@@ -318,7 +332,12 @@ class FileProjectRepository:
                 except PermissionError as error:
                     if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32, 33) or attempt == 5:
                         raise
-                    time.sleep(.01 * 2 ** attempt)
+                    delay = .01 * 2 ** attempt
+                    wait_started = time.perf_counter()
+                    time.sleep(delay)
+                    metrics["retryCount"] += 1
+                    metrics["retryWaitMs"] += (time.perf_counter() - wait_started) * 1000
+            metrics["replaceMs"] = (time.perf_counter() - replace_started) * 1000 - metrics["retryWaitMs"]
         finally:
             temporary_path.unlink(missing_ok=True)
 
