@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng25; các gate chất lượng còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng30; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,24 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật vòng26–30 — 2026-10-16
+
+- Mốc từ suy đoán, sai text hoặc recognizer đánh dấu không tin cậy không được
+  nâng thành mốc đo thật. Policy timing2 được thêm vào nhận diện cache/job.
+- Căn lại timing trên audio đã lưu: job có Stop, proposal kiểm tra được và Apply
+  riêng thành output mới, WAV giữ nguyên từng byte. Mẫu Việt thật đo23/25 từ;
+  hai từ chưa tin cậy vẫn bị loại khỏi word subtitle. Chưa nghiệm thu âm học.
+- Lịch sử bản vá có một player đối chiếu nguồn/bản vá theo vùng, biên đầu,
+  biên cuối hoặc cả clip. Đã kiểm tra24 WAV crop thật trên ba phương án.
+- Có đánh giá sau khi nghe, bốn tiêu chí và ghi chú lưu cùng project, gắn đúng
+  checksum bản vá. Người dùng phải xác nhận đã nghe; không tự chấm chất lượng.
+- Export và di chuyển/Open Existing project riêng đã qua; model, nguồn và
+  metadata output không đổi. Chuyển model ASR làm proposal cũ hết hiệu lực;
+  output timing đã Apply vẫn giữ nguyên. Các gate nghe/UI dưới đây còn mở.
+
+Chi tiết: `docs/gates/vm-checkpoint-a-timing-audition-20261016.md` và
+`docs/gates/voice-manipulator-rounds26-30-20261016.md`.
 
 ## Cập nhật vòng21–25 — 2026-10-16
 

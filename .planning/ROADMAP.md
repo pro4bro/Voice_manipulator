@@ -1,5 +1,27 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round30 — VM-CHECKPOINT-A-02 (2026-10-16)
+
+Checkpoint A integration verified on the frozen48e737d source snapshot: all1085
+API tests pass (657.11s, three existing/fixture warnings); all898 frontend tests
+in111 files pass (144.13s, one Vitest fork shutdown warning), typecheck/build171
+and diff check pass. Assertions/thresholds/timeouts remain intact; no tests skipped.
+Actual production HTTP verifies four8s outputs, WAV/Range/line/word/table/sentence
+exports, three accepted comparison entries and source/variant crops before and
+after a guarded private project move to a Unicode folder plus Open Existing.
+Source, model/adapter/reference, output hashes and metadata stay unchanged. Repaired
+word SRT skips2 untrusted cues; repaired sentence SRT exports with1 skipped cue.
+Changing medium to productionlarge-v3 correctly invalidates the prepared proposal,
+while the already-applied same-WAV timing output stays valid. No inference on reopen.
+Real reviews remain unreviewed; no fabricated listening or newTTS. GPU lease free.
+CUA and Computer Use both fail initialization with kernel-assets os error3, so
+browser playback/native Save and independent human identity/seam/word-timing gates
+remain open, as do expressive conditioning/performance gates. Phase03 stays60%.
+Read-only integration review found no actionable defect. Detailed report and
+usage: docs/gates/vm-checkpoint-a-timing-audition-20261016.md; local receipts and
+logs under .scratch/vm-rounds26-30. Five-round request complete; next work closes
+remaining Checkpoint A gates before new Voice Changer/Isolator/Dubber processors.
+
 ## Voice Manipulator round29 — VM-PATCH-REVIEW-01 (2026-10-16)
 
 Explicit listening assessments now accompany the selected accepted Patch variant:
