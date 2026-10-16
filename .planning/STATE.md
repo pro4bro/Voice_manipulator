@@ -6,11 +6,30 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round23 VM-PATCH-02B.
-last_activity_desc: Round23 delivered; see current ledger and rounds21–25 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round24 VM-PATCH-02C.
+last_activity_desc: Round24 delivered; see current ledger and rounds21–25 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round24 — VM-PATCH-02C (2026-10-16)
+
+Immutable per-output history journals, cross-strategy comparison groups and
+audition/open UI now retain accepted revisions independently of the current draft.
+Legacy pointers remain readable; journal-first Apply recovers failed latest-pointer
+writes and repeated older Apply without duplicate outputs. Hash/PCM/lineage/target
+checks reject invalid history entries with a visible count. API48 focused plus
+updated production-route1, affected UI25/typecheck/build pass. ADR0085.
+Actual same-source/text/2.16s native comparison now contains context, trained LoRA
+with clean reference and hybrid; all three composite8s192000frames,0clip, delta0,
+no padding/trim and unchanged outside PCM/source. History returns3 valid entries
+with one comparison key. Trained118.61s, hybrid131.31s include integrity reads;
+no interactive latency or subjective identity ranking is claimed. Receipts under
+`.scratch/vm-rounds21-25/`. Broader UI run888/890 exposed OBS caption failure and
+one timeout; isolated68 rerun67 pass with the caption failure still reproducible.
+Round25 diagnoses that failure and closes frozen regression/artifact/export/move
+checks. Human listening, calibrated word timing and native/browser acceptance
+remain separate open gates. Phase03 remains60%.
 
 ## Voice Manipulator round23 — VM-PATCH-02B (2026-10-16)
 

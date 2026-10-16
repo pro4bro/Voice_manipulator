@@ -331,3 +331,36 @@ def test_duration_policy_legacy_defaults_and_invalid_values():
     assert legacy_job.duration_policy == "ripple" and legacy_job.target_frames is None
     with pytest.raises(ValueError):
         VoicePatchJobRequest.model_validate({**payload, "durationPolicy": "stretch"})
+
+
+def test_apply_retains_each_revision_and_recovers_idempotence_after_latest_pointer_changes(tmp_path):
+    from app.adapters.voice_patch_history import VoicePatchHistory
+    project, outputs, _lease, _speaker, scripts, _edits, source, _engine, trained, _store, draft, processor = setup_patch(tmp_path)
+    bodies, ids = [], []
+    for text in ("First replacement", "Second replacement"):
+        job = wait_job(processor, project.id, processor.start(project.id,
+            request(draft.draft, draft.revision, scripts.get(project.id).revision, 0, trained.id, text)).id)
+        assert job.status == "complete", job.error
+        body = VoicePatchApplyRequest(expectedDraftRevision=draft.revision, jobId=job.id, expectedKey=job.key)
+        bodies.append(body); ids.append(processor.apply(project.id, body)["output"].id)
+    assert processor.apply(project.id, bodies[0])["output"].id == ids[0]
+    history = VoicePatchHistory(outputs.projects, outputs).list(project.id, source.id)
+    assert history["invalidCount"] == 0 and {entry["output"].id for entry in history["revisions"]} == set(ids)
+    assert len(outputs.list(project.id)) == 3
+
+
+def test_durable_history_recovers_apply_when_latest_pointer_write_fails(tmp_path, monkeypatch):
+    from app.adapters.file_project_repository import FileProjectRepository
+    project, outputs, _lease, _speaker, scripts, _edits, _source, _engine, trained, _store, draft, processor = setup_patch(tmp_path)
+    job = wait_job(processor, project.id, processor.start(project.id,
+        request(draft.draft, draft.revision, scripts.get(project.id).revision, 0, trained.id)).id)
+    atomic = FileProjectRepository._atomic_write
+    def write(path, content):
+        if path.parent.name == "applied": raise OSError("simulated pointer failure")
+        return atomic(path, content)
+    monkeypatch.setattr(FileProjectRepository, "_atomic_write", staticmethod(write))
+    body = VoicePatchApplyRequest(expectedDraftRevision=draft.revision, jobId=job.id, expectedKey=job.key)
+    first = processor.apply(project.id, body)
+    assert processor.apply(project.id, body)["output"].id == first["output"].id
+    assert processor.latest(project.id)["output"].id == first["output"].id
+    assert len(outputs.list(project.id)) == 2

@@ -21,6 +21,8 @@ def test_production_context_source_reference_and_conflict_routes(tmp_path):
         assert hybrid.status_code == 200 and hybrid.json()["processingAvailable"] is False
         trained = client.get(f"/api/projects/{project.id}/voice-patch/trained-media/process")
         assert trained.status_code == 200 and trained.json()["processingAvailable"] is False
+        history = client.get(f"/api/projects/{project.id}/voice-patch/history")
+        assert history.status_code == 200 and history.json() == {"revisions": [], "invalidCount": 0}
         payload = dict(expectedRevision=0, expectedScriptRevision=scripts.get(project.id).revision,
             assetId="asset-context", startWord=1, endWord=2)
         response = client.post(base + "/source", json=payload)

@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
+from app.adapters.voice_patch_history import VoicePatchHistory
 from app.adapters.voice_script_speaker import _Job as SpeakerJobContext
 from app.domain.models import VoiceOutput, VoiceOutputSegment, VoiceScriptJob, VoiceScriptRequest, VoiceScriptRow
 from app.domain.voice_delivery import unsupported_synthesis_settings
@@ -55,6 +56,7 @@ class VoicePatchProcessor:
             raise ValueError("Voice Patch namespace or route prefix is invalid.")
         self.storage_namespace, self.route_prefix = storage_namespace, route_prefix.rstrip("/")
         self.outputs, self.scripts = speaker.outputs, speaker.scripts
+        self.history = VoicePatchHistory(speaker.projects, self.outputs)
         self._running: dict[str, _Running] = {}
         self._threads: dict[str, threading.Thread] = {}
         providers = getattr(self.outputs, "clip_reference_providers", None)
@@ -894,15 +896,22 @@ class VoicePatchProcessor:
             if receipt_path.is_file():
                 try:
                     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                    self.history.record(project_id, self.storage_namespace, receipt)
                     return self._valid_apply_receipt(project_id, receipt, capture, job)
                 except (OSError, ValueError, KeyError, TypeError, wave.Error):
                     pass
+            for entry in self.history.list(project_id, job.output_id)["revisions"]:
+                if entry["jobId"] == job.id and entry["key"] == job.key and entry["strategy"] == self.storage_namespace:
+                    return {"output": entry["output"], "audioUrl": entry["audioUrl"], "report": entry["report"],
+                        "sourceOutputId": job.output_id, "key": job.key,
+                        "sourceScriptRows": [row.model_dump(mode="json", by_alias=True) for row in capture["script"].rows]}
             replacement_path = self.preview_path(project_id, job.id, "replacement")
             self._verify_artifacts(job)
             replacement_pcm = self._read_pcm(replacement_path)
             if self._sha(replacement_path) != job.report.get("replacementSha256"):
                 raise ValueError("Voice Patch replacement preview checksum mismatch.")
             output_id, audio_path = self.outputs.reserve(project_id)
+            accepted = False
             try:
                 clip_record_path = self.outputs.clips_root(project_id) / str(job.clip) / "clip.json"
                 clip_record = json.loads(clip_record_path.read_text(encoding="utf-8"))
@@ -938,20 +947,28 @@ class VoicePatchProcessor:
                     "outputAudioSha256": self._sha(audio_path), "outputMetadataSha256": self._metadata_hash(candidate),
                     "frames": len(composite) // _WIDTH, "report": {**report, "key": job.key,
                         "outputAudioSha256": self._sha(audio_path)}, "createdAt": datetime.now(timezone.utc).isoformat()}
-                FileProjectRepository._atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2))
+                self.history.record(project_id, self.storage_namespace, receipt)
+                accepted = True
+                try:
+                    FileProjectRepository._atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2))
+                except OSError:
+                    # The immutable journal is the acceptance commit. The latest
+                    # pointer is reconstructible; never discard its durable output.
+                    pass
                 return {"output": candidate, "audioUrl": f"/api/projects/{project_id}/voice-outputs/{output_id}/audio",
                     "report": receipt["report"], "sourceOutputId": job.output_id, "key": job.key,
                     "sourceScriptRows": [row.model_dump(mode="json", by_alias=True) for row in capture["script"].rows]}
             except Exception:
-                self.outputs.discard(project_id, output_id)
+                if not accepted:
+                    self.outputs.discard(project_id, output_id)
                 raise
 
     def latest(self, project_id: str) -> dict[str, Any]:
-        root = self._root(project_id) / "jobs" / self.storage_namespace / "applied"
+        root = self._root(project_id) / "jobs" / self.storage_namespace
         if not root.is_dir():
             raise KeyError("applied")
         receipts = []
-        for path in root.glob("*.json"):
+        for path in [*root.glob("history/*.json"), *root.glob("applied/*.json")]:
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 receipts.append(payload)

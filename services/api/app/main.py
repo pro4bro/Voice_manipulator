@@ -58,6 +58,7 @@ from app.adapters.context_patch_source_routes import make_context_patch_source_r
 from app.adapters.context_patch_processor import ContextVoicePatchProcessor
 from app.adapters.hybrid_patch_processor import HybridVoicePatchProcessor
 from app.adapters.trained_media_patch_processor import TrainedMediaPatchProcessor
+from app.adapters.voice_patch_history_routes import make_voice_patch_history_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -864,6 +865,7 @@ def create_app(
     app.include_router(make_voice_patch_job_router(context_patch_processor))
     app.include_router(make_voice_patch_job_router(hybrid_patch_processor))
     app.include_router(make_voice_patch_job_router(trained_media_patch_processor))
+    app.include_router(make_voice_patch_history_router(voice_patch_processor.history))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,
