@@ -1,5 +1,19 @@
 # Project Status — 2026-10-17
 
+## Voice Manipulator round42 — VM-STRETCH-SCHEDULE-01 (2026-10-17)
+
+Initial preview scheduling now arms one40ms timer from the first changed frame
+operation; sustained pointer moves update its payload without postponing it.
+One active preview coalesces newer moves and immediately follows the latest on
+completion. Equivalent/clamped moves do not create redundant requests. Accepted
+audio ownership is tracked even when selection has moved onward; A→B→A and
+pointerup-before-followup cannot mistake B audio for an accepted A preview.
+RED-first sustained10ms stream and restoration regressions pass; focused UI34
+in3files, typecheck and build172 pass. ADR0099 records the contract. Previous
+trailing180ms timer could starve under continuous motion;40ms is the scheduler
+target, not a browser/audio latency claim.250ms and listening gates remain open.
+Next43 removes unrelated-output contention while serializing same-output writes.
+
 ## Voice Manipulator round41 — VM-STRETCH-IO-01 (2026-10-17)
 
 Preview request diagnostics now split artifact hashing, report publication and

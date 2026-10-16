@@ -16,6 +16,11 @@ interface Props {
   onComplete?: (samePreview: boolean) => void;
 }
 
+const PREVIEW_MAX_WAIT_MS = 40;
+function sameOperation(a: StretchOperation | null, b: StretchOperation | null): boolean {
+  return a === b || Boolean(a && b && a.startFrame === b.startFrame && a.endFrame === b.endFrame && a.targetFrames === b.targetFrames && a.edge === b.edge);
+}
+
 export function StretchHandles({ controller, ranges, selection, onSelectionChange, duration, canvasWidth, onSuspend, onPrepare, onRevert, onComplete }: Props) {
   const cleanup = useRef<(() => void) | null>(null);
   const current = useRef(controller); current.current = controller;
@@ -38,17 +43,25 @@ export function StretchHandles({ controller, ranges, selection, onSelectionChang
       onPrepare?.(request);
       const accepted = await current.current.preview(request);
       inFlight = false;
-      if (!stopped && ownsGesture() && request === operation && accepted) { lastPreview = request; publishSelection(request); }
-      if (!stopped && ownsGesture() && request === operation && !accepted) onRevert?.();
-      if (!stopped && ownsGesture() && request !== operation) { window.clearTimeout(timer); timer = window.setTimeout(() => void preview(), 0); }
+      if (!stopped && ownsGesture() && accepted) {
+        lastPreview = request;
+        if (sameOperation(request, operation)) publishSelection(request);
+      }
+      if (!stopped && ownsGesture() && sameOperation(request, operation) && !accepted) onRevert?.();
+      if (!stopped && ownsGesture() && !sameOperation(request, operation)) { window.clearTimeout(timer); timer = window.setTimeout(() => { timer = 0; void preview(); }, 0); }
     }
     const move = (e: globalThis.PointerEvent) => {
       if (e.pointerId !== event.pointerId) return;
-      operation = stretchFromDrag(range.start, range.end, (e.clientX - originX) * duration / Math.max(1, canvasWidth), edge, rate);
-      window.clearTimeout(timer); timer = window.setTimeout(() => void preview(), 180);
+      const next = stretchFromDrag(range.start, range.end, (e.clientX - originX) * duration / Math.max(1, canvasWidth), edge, rate);
+      if (sameOperation(operation, next)) return;
+      operation = next;
+      if (timer && sameOperation(lastPreview, next)) { window.clearTimeout(timer); timer = 0; }
+      if (!inFlight && !timer && !sameOperation(lastPreview, next)) {
+        timer = window.setTimeout(() => { timer = 0; void preview(); }, PREVIEW_MAX_WAIT_MS);
+      }
     };
     const remove = () => {
-      stopped = true; window.clearTimeout(timer);
+      stopped = true; window.clearTimeout(timer); timer = 0;
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", pointerCancel); window.removeEventListener("keydown", escape);
       cleanup.current = null;
@@ -60,7 +73,7 @@ export function StretchHandles({ controller, ranges, selection, onSelectionChang
       if (e.pointerId !== event.pointerId) return;
       const final = operation; remove();
       if (!ownsGesture()) return;
-      if (final) { if (final !== lastPreview) onPrepare?.(final); void current.current.commit(final).then((accepted) => { if (!ownsGesture()) return; if (accepted) { publishSelection(final); onComplete?.(final === lastPreview); } else { onRevert?.(); onSelectionChange?.(baseline); } }); }
+      if (final) { if (!sameOperation(final, lastPreview)) onPrepare?.(final); void current.current.commit(final).then((accepted) => { if (!ownsGesture()) return; if (accepted) { publishSelection(final); onComplete?.(sameOperation(final, lastPreview)); } else { onRevert?.(); onSelectionChange?.(baseline); } }); }
       else { onRevert?.(); current.current.cancel(); }
     };
     cleanup.current = () => cancel(false);

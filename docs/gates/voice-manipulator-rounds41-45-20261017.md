@@ -16,3 +16,17 @@ This measures current storage variance, not a speedup;250ms remains open.
 Focused API checks and ADR0098 document preservation of integrity and cleanup.
 Evidence: .scratch/vm-rounds41-45/artifact41-receipt.json. Next round42 removes
 starvation caused by resetting the initial180ms timer during sustained dragging.
+
+### Round42 — VM-STRETCH-SCHEDULE-01
+
+Initial preview scheduling now arms one40ms timer from the first changed frame
+operation; sustained pointer moves update its payload without postponing it.
+One active preview coalesces newer moves and immediately follows the latest on
+completion. Equivalent/clamped moves do not create redundant requests. Accepted
+audio ownership is tracked even when selection has moved onward; A→B→A and
+pointerup-before-followup cannot mistake B audio for an accepted A preview.
+RED-first sustained10ms stream and restoration regressions pass; focused UI34
+in3files, typecheck and build172 pass. ADR0099 records the contract. Previous
+trailing180ms timer could starve under continuous motion;40ms is the scheduler
+target, not a browser/audio latency claim.250ms and listening gates remain open.
+Next43 removes unrelated-output contention while serializing same-output writes.
