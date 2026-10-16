@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực hiện tới vòng17, có các slice/gate còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng25; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,31 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật vòng21–25 — 2026-10-16
+
+- Hybrid giữ model đã train và dùng context cùng người nói; không đổi âm thầm
+  sang clone. Ba phương án vá footage dùng chung vùng chọn và xác nhận biên.
+- Vùng chọn STT mang đúng asset/revision sang Patch; không dùng lại word index
+  đó để highlight nhầm output generate. Vùng rời nhau không tự gộp.
+- Generate có lựa chọn đọc tự nhiên/ripple hoặc native duration bằng đúng số
+  frame vùng nguồn. Model thật đã tạo đúng2.16s/51840frames, không pad/trim.
+  Điều này chưa bảo đảm timing từng từ.
+- Lịch sử giữ từng output đã Apply, phục hồi Apply lặp lại và chia nhóm so sánh
+  theo cùng nguồn/vùng/text/chế độ thời lượng. Có ba bản thật clone/context,
+  LoRA+mẫu sạch, LoRA+context; đều composite8s,0clip, outside PCM không đổi.
+- HTTP WAV/Range/SRT/CSV, di chuyển thư mục có dấu và Open Existing đã qua.
+  Vòng25 chốt frontend890/108files, API1056, typecheck/build168modules và diff.
+  Fixture thời gian OBS cũ được sửa, không hạ assertion/timeout. Kết quả chi tiết
+  và các gate nghe/UI còn mở nằm trong báo cáo tổng.
+
+Kế tiếp là đóng các gate còn mở của **Checkpoint A**: nghe A/B/C và biên nối,
+identity/cách diễn, căn từ theo âm thanh, browser playback và Save/cancel thật,
+conditioning cảm xúc/thì thầm/hét/random và performance theo các ledger trước.
+Không chuyển sang processor Voice Changer/Isolator/Dubber mới khi checkpoint
+còn mở. Chưa phát hành portable hoặc nâng tiến độ Phase03 khỏi60%.
+Xem `docs/gates/voice-manipulator-rounds21-25-20261016.md` và
+`docs/gates/vm-checkpoint-a-artifacts-20261016.md`.
 
 ## Cập nhật round17 — 2026-10-16
 
@@ -75,7 +100,10 @@ vẫn còn mở sau lần CPU chạy 583.06 giây không tạo WAV. Các slice �
 nghiệm thu artifact thực giữ trạng thái riêng. Checklist theo quy ước issue local tại
 `.scratch/voice-manipulator-next/`, giữ nguyên `tasks/plan.md` của OBS.
 
-## Hiện trạng đã đối chiếu
+## Ảnh chụp hiện trạng khi lập kế hoạch — lịch sử 2026-10-14
+
+Bảng này lưu bối cảnh lúc lập kế hoạch. Cập nhật vòng21–25 ở trên và các ledger
+hiện tại thay thế những mô tả cũ về phần đã triển khai và bước tiếp theo.
 
 | Khả năng | Bằng chứng hiện có | Khoảng trống cần xử lý |
 | --- | --- | --- |

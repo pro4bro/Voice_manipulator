@@ -419,11 +419,14 @@ it("names each OBS recording with its local start time and project name", async 
 });
 
 it("shows a draft caption per live lane, including a new listening row for B", async () => {
+  // Live captions age against wall time. Do not inherit a recording timestamp
+  // created at file import, potentially many seconds before this test runs.
+  const liveRecording = { ...recording, startedAtUtc: new Date(Date.now() - 2000).toISOString() };
   const a = captionRow(ids[0], 0.5, "A đang nói");
   const b = captionRow(ids[1], 1, "", "listening");
   const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} transcriptRows={[a, b]} />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
-  act(() => onStatus({ appRecording: recording, channels: ids.map((channelId, index) => ({
+  act(() => onStatus({ appRecording: liveRecording, channels: ids.map((channelId, index) => ({
     channelId, alias: `Channel ${index + 1}`, nativeName: `Mic ${index + 1}`,
     slot: index + 1, appliedForward: true, desiredForward: true,
     capture: { recordingId: "recording", projectId: "project", durableChunkCount: 1 },

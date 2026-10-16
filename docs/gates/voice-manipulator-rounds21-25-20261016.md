@@ -112,3 +112,24 @@ one timeout; isolated68 rerun67 pass with the caption failure still reproducible
 Round25 diagnoses that failure and closes frozen regression/artifact/export/move
 checks. Human listening, calibrated word timing and native/browser acceptance
 remain separate open gates. Phase03 remains60%.
+
+### Round25 — VM-CHECKPOINT-A-01
+
+Checkpoint-A artifact integration verifies all three real natural-Vietnamese
+variants in one comparison group: exact native2.16s replacement,8s composite,
+0clip, unchanged outside PCM/source/model reference/metadata. Production HTTP
+WAV/206 Range, line SRT, CSV, conservative word-cue omission and sentence rejection
+pass before and after Unicode-folder move plus HTTP Open Existing/fresh API.
+See `docs/gates/vm-checkpoint-a-artifacts-20261016.md` for hashes and manual steps.
+Full frontend890/108files passes with maxWorkers2 after correcting a pre-existing
+wall-clock-aged OBS caption fixture; no assertion, timeout or threshold relaxed.
+Typecheck/build168modules/diff pass. Full frozen API1056 passes in690.63s with
+3 warnings:2 existing deprecations and1 intentionally duplicate ZIP-entry warning.
+The API Python snapshot remained unchanged while the frontend-only fixture was
+corrected. Earlier UI888/890 failure remains in the gate evidence.
+Five-round21–25 batch is delivered as separate commits. Checkpoint A as a whole
+remains OPEN for human A/B/C identity/prosody/splice listening, acoustic word
+anchors, browser playback/native Save-cancel and earlier expressive/performance
+gates. Both UI tools failed kernel initialization os error3, so HTTP/component
+checks are not called native UI acceptance. Next close those gates; do not begin
+new VC/Isolator/Dubber processors. Phase03 stays60%; no portable or push included.
