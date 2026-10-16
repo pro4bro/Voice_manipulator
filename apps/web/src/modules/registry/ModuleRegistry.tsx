@@ -119,7 +119,8 @@ export interface StudioContext {
   voiceScriptDocument?: import("../../domain/types").VoiceScriptDocument;
   voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
   onDerivedVoiceOutput?: (output: import("../../domain/types").VoiceOutput) => void;
-  onNavigateVoiceOutput?: (id: string) => void;
+  onPatchedVoiceOutput?: (output: import("../../domain/types").VoiceOutput) => void;
+  onNavigateVoiceOutput?: (id: string, loadScript?: boolean) => void;
   voiceRender?: import("../../app/useVoiceRender").VoiceRenderController;
   editedVoiceOutput?: import("../../domain/types").VoiceOutput | null;
   onVoiceScriptDocumentChange?: (document: import("../../domain/types").VoiceScriptDocument) => void;
@@ -405,7 +406,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "reference-detail":
       return <ReferenceDetail projectId={context.projectId} onResolve={context.onResolveReference} document={context.referenceDocument} error={context.referenceError} onReload={context.onReloadReferences} onNavigate={context.onNavigateReference} onDelete={context.onDeleteReference} />;
     case "voice-patch":
-      return <VoicePatch projectId={context.projectId} output={context.editedVoiceOutput ?? context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null} selection={context.wordSelection} scriptRevision={context.voiceScriptDocument?.revision ?? 0} editRevision={context.voiceEdits?.packet?.document.revision ?? 0} saved={context.voiceScriptSaved} onNavigateOutput={context.onNavigateVoiceOutput} />;
+      return <VoicePatch projectId={context.projectId} output={context.editedVoiceOutput ?? context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null} selection={context.wordSelection} scriptRevision={context.voiceScriptDocument?.revision ?? 0} editRevision={context.voiceEdits?.packet?.document.revision ?? 0} saved={context.voiceScriptSaved} onNavigateOutput={(id) => context.onNavigateVoiceOutput?.(id, true)} voices={context.projectVoices} onOutputReady={context.onPatchedVoiceOutput} />;
     case "training-job":
       return <TrainingJob activityEvents={context.activityEvents} activityTasks={context.activityTasks} adapters={context.asrAdapters} batch={context.trainingBatch} busy={context.datasetBusy} onStop={context.onStopTraining} onRunsChanged={context.onTrainingOutputsChanged} projectId={context.projectId} runs={context.trainingRuns} progressByRun={context.trainingProgressByRun} selectedMode={selectedTrainingModel(context.trainingModels, context.trainingCatalog.settings)?.mode ?? null} speakers={context.trainingCatalog.speakers} targetSpeakerIds={context.trainingCatalog.settings.targetSpeakerIds} />;
     case "pipeline-dashboard":

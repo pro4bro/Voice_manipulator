@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import type { VoiceOutput } from "../../domain/types";
+import type { ProjectVoice, VoiceOutput } from "../../domain/types";
 import type { VoicePatchDocument } from "../../domain/voice-patch";
 import { patchRowForSelection } from "../../domain/patch-selection";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
-import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
+import { PatchProcessing } from "./PatchProcessing";
 
 interface VoicePatchProps {
   projectId?: string; output?: VoiceOutput | null; selection?: WordSelection;
   scriptRevision?: number; editRevision?: number; saved?: boolean;
   onNavigateOutput?: (id: string) => void;
+  voices?: ProjectVoice[]; onOutputReady?: (output: VoiceOutput) => void;
 }
 
 async function readSource(url: string, body?: object): Promise<VoicePatchDocument> {
@@ -21,7 +22,7 @@ async function readSource(url: string, body?: object): Promise<VoicePatchDocumen
 }
 const clock = (frame: number | undefined, rate: number | undefined) => frame === undefined || !rate ? "—" : `${(frame / rate).toFixed(3)} s`;
 
-export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTION, scriptRevision = 0, editRevision = 0, saved = false, onNavigateOutput }: VoicePatchProps) {
+export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTION, scriptRevision = 0, editRevision = 0, saved = false, onNavigateOutput, voices = [], onOutputReady }: VoicePatchProps) {
   const endpoint = `/api/projects/${encodeURIComponent(projectId ?? "")}/voice-patch/source`;
   const [document, setDocument] = useState<VoicePatchDocument | null>(null);
   const [rowId, setRowId] = useState("");
@@ -60,8 +61,11 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
   const draft = document?.draft;
   const sameSource = draft?.outputId === output?.id;
   const currentDraft = draft?.status === "ready" && sameSource && draft.scriptRevision === scriptRevision && draft.editRevision === editRevision;
+  const lineage = output?.parameters?.voicePatch;
+  const parentId = lineage && typeof lineage === "object" && "sourceOutputId" in lineage && typeof lineage.sourceOutputId === "string" ? lineage.sourceOutputId : null;
   return <ModuleFrame eyebrow="VOICE PATCH" title="Vá đoạn hỏng" index="02" className="voice-patch-module" tone="warm">
     <p>Chuyển cả câu chứa vùng chọn từ waveform, subtitle hoặc Script. Nguồn gốc được giữ nguyên.</p>
+    {parentId && onNavigateOutput ? <button type="button" onClick={() => onNavigateOutput(parentId)}>Quay lại nguồn trước Patch</button> : null}
     <label className="patch-copy"><span>CÂU NGUỒN</span><select aria-label="Câu nguồn để Patch" value={rowId} disabled={busy || !output} onChange={(event) => setRowId(event.target.value)}>
       <option value="">Chọn một câu…</option>
       {output?.segments?.map((row) => <option key={row.rowId} value={row.rowId}>{row.text.slice(0, 100)}</option>)}
@@ -78,11 +82,9 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
     {draft ? <><p>{draft.text}</p><p>Thời lượng: {clock(draft.endFrame - draft.startFrame, draft.sampleRate)}</p>
       {!currentDraft ? <p role="status">{draft.reason ?? "Nguồn hoặc Script/Timeline đang mở đã thay đổi. Đọc lại hoặc chuyển câu hiện tại."}</p> : null}
       {!sameSource && onNavigateOutput ? <button type="button" onClick={() => onNavigateOutput(draft.outputId)}>Mở nguồn đã lưu</button> : null}
-      {currentDraft ? <audio controls aria-label="Nghe nguồn Patch" src={draft.audioUrl} /> : null}
+      {currentDraft ? <audio controls aria-label="Nghe nguồn Patch" src={`${draft.audioUrl}#t=${draft.startFrame / draft.sampleRate},${draft.endFrame / draft.sampleRate}`} /> : null}
     </> : null}
-    <label className="patch-copy"><span>NỘI DUNG ĐỌC LẠI</span><input readOnly value={draft?.replacementText ?? ""} placeholder="Chuyển một câu nguồn trước…" /></label>
-    <p>Chưa có bộ xử lý Patch khả dụng cho nguồn này.</p>
-    <button className="button button--lime button--full" disabled type="button"><Icon name="wrench" />Tạo bản vá nghe thử</button>
+    {projectId && document && draft ? <PatchProcessing key={`${projectId}:${document.revision}`} projectId={projectId} document={document} currentSource={!!currentDraft} saved={saved} voices={voices} onOutputReady={onOutputReady} /> : <p>Chuyển một câu nguồn để kiểm tra khả năng Patch.</p>}
   </ModuleFrame>;
 }
 

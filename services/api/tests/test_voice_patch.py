@@ -215,6 +215,9 @@ def test_production_app_transfers_output_without_inference(tmp_path):
     endpoint = f"/api/projects/{project.id}/voice-patch/source"
     with TestClient(app) as client:
         assert client.get(endpoint).json() == {"revision": 0, "draft": None}
+        capability = client.get(f"/api/projects/{project.id}/voice-patch/process")
+        assert capability.status_code == 200
+        assert capability.json()["processingAvailable"] is False
         payload = dict(expectedRevision=0, outputId=output.id, rowId="r1",
             expectedScriptRevision=scripts.get(project.id).revision,
             expectedEditRevision=edits.get(project.id, output.id).revision)

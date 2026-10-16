@@ -559,6 +559,11 @@ tests, reopen, source ID/lineage. **Requirements:** MAN-03, WF-01–WF-04.
 
 ### 4. VM-PATCH-01 — Vá một dòng hoặc segment
 
+**2026-10-16 round19:** source implemented with trained full/LoRA plus saved clean
+reference, preview/Apply, natural ripple/Stop/reopen. API20/UI73/build and actual
+full voice5.07s0clip/PCM/hash pass. Human listening/identity/browser and exact
+word timing remain open; unsupported gain/timing/expressive requests block.
+
 **Kết quả:** chọn segment của Voice Output hoặc source audio có Script/timing,
 sửa lời đọc, dùng model train từ data sạch (phương án 1) để tạo replacement và
 xuất một revision mới. Clone-only và hybrid có các vòng bổ sung riêng bên dưới.

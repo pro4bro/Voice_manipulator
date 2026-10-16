@@ -51,6 +51,8 @@ from app.adapters.voice_fix_apply import VoiceFixApply
 from app.adapters.voice_fix_apply_routes import make_voice_fix_apply_router
 from app.adapters.file_voice_patch import FileVoicePatch
 from app.adapters.voice_patch_routes import make_voice_patch_router
+from app.adapters.voice_patch_processor import VoicePatchProcessor
+from app.adapters.voice_patch_job_routes import make_voice_patch_job_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -423,8 +425,10 @@ def create_app(
         ffmpeg_path=settings.ffmpeg_path,
         scripts=voice_script_documents, timing_plans=timing_plans,
     )
-    voice_fixes = VoiceFixService(voice_script_speaker, voice_edits, reference_bindings,
-        FileReferenceSchedules(reference_bindings, voice_script_documents))
+    reference_schedules = FileReferenceSchedules(reference_bindings, voice_script_documents)
+    voice_fixes = VoiceFixService(voice_script_speaker, voice_edits, reference_bindings, reference_schedules)
+    voice_patch_source = FileVoicePatch(voice_edits)
+    voice_patch_processor = VoicePatchProcessor(voice_patch_source, voice_script_speaker, reference_bindings, reference_schedules)
     voice_changer_engines = FileTrainingModelCatalog(
         settings.voice_changers_root,
         {"pro4bro": Path(__file__).resolve().parent.parent, "research": settings.research_engines_root},
@@ -832,6 +836,7 @@ def create_app(
             await obs_livelink_stt.close()
             await asyncio.to_thread(collection_previews.close)
             await asyncio.to_thread(voice_fixes.close)
+            await asyncio.to_thread(voice_patch_processor.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.include_router(make_voice_collection_transfer_router(voice_collections))
@@ -841,7 +846,8 @@ def create_app(
     app.include_router(make_reference_schedule_router(reference_bindings, voice_script_documents))
     app.include_router(make_voice_fix_router(voice_fixes))
     app.include_router(make_voice_fix_apply_router(VoiceFixApply(voice_fixes)))
-    app.include_router(make_voice_patch_router(FileVoicePatch(voice_edits)))
+    app.include_router(make_voice_patch_router(voice_patch_source))
+    app.include_router(make_voice_patch_job_router(voice_patch_processor))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,

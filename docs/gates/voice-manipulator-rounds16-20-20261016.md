@@ -107,3 +107,28 @@ truthfully disabled until next round. Actual prior full-model output transferred
 reopened and validated with unchanged SHA; receipt `.scratch/vm-rounds16-20/flow-receipt.json`.
 No browser, listening or native Save acceptance is inferred from API/UI tests.
 Next VM-PATCH-01 and VM-PATCH-REF-01 complete this five-round owner batch.
+
+### Round19 — VM-PATCH-01
+
+API20/20 (source11 + processor9) and affected UI73/73, typecheck/build pass
+(166 modules). Same-speaker trained full/LoRA jobs produce hash-verified
+replacement/composite previews and no accepted output before explicit Apply.
+Owned cancel releases shared runtime lease; retry/reopen restore durable jobs.
+Apply creates a separate immutable output, natural-duration ripple, original
+PCM/gaps and timing trust; receipt replay is idempotent. UI loads replacement
+Script rows with applied output; earlier audio/Script can be opened from history.
+Models still use their saved clean reference; no model-only capability is claimed.
+Explicit/locked timing, expressive/reference controls and nonzero gain fail before
+inference. Gain render remains a separate prior capability, not silently ignored.
+
+Root review repaired WAV-versus-raw-PCM hash comparison and ambiguous boundary
+cues (two red/green regressions): half-open ownership and crossing-cue rejection.
+Actual trained full inference: replacement48960frames, composite121680frames/5.07s,
+mono24kPCM16,0clipping, splice step0, delta-15360frames. All suffix PCM including
+second sentence and pause remains byte-identical; source hash unchanged.
+Preview-before-Apply, repeat Apply, saved latest and lease cleanup pass.
+Receipt `.scratch/vm-rounds16-20/patch-receipt.json`, audio `trained-voice-patched.wav`.
+Elapsed260.34s includes repeated whole-model integrity reads and inference;
+this is not an interactive latency pass. New word positions are estimates and
+remain needs-alignment. Human speech/identity/listening/browser/native Save
+acceptance remains open. Next VM-PATCH-REF-01 contextual clone from real media.

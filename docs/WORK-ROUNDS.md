@@ -1,5 +1,15 @@
 # Work Rounds
 
+## Voice Manipulator round19 — VM-PATCH-01 (2026-10-16)
+
+Trained same-speaker full/LoRA Patch now generates replacement/composite previews,
+owned Stop/retry/reopen and explicit immutable Apply with natural-duration ripple.
+UI opens replacement Script with the result and retains source/output history.
+API20/UI73/typecheck/build pass; real full model result5.07s121680frames0clip,
+source/outside PCM/idempotence/reopen/lease pass. Expressive/timing/gain requests
+fail explicitly. Next VM-PATCH-REF-01 completes the five-round owner batch.
+Human listening, identity and calibrated word timing remain open.
+
 ## Voice Manipulator round18 — VM-FLOW-01 (2026-10-16)
 
 Whole-sentence output/selection transfer to Patch now preserves immutable source

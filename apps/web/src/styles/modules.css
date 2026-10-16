@@ -289,6 +289,12 @@
 .patch-range input, .patch-copy input { width: 100%; min-width: 0; height: 33px; border: 1px solid var(--line); border-radius: 0; padding: 0 7px; background: rgba(255,255,255,.4); font-family: var(--mono); font-size: calc(10px * var(--font-scale)); }
 .patch-range > i { padding-bottom: 8px; text-align: center; font-style: normal; }
 .patch-copy { margin: 9px 0; }
+.patch-copy select, .patch-copy textarea { width: 100%; min-width: 0; border: 1px solid var(--line); padding: 7px; background: rgba(255,255,255,.4); color: var(--ink); font: inherit; }
+.patch-copy textarea { min-height: 85px; resize: vertical; }
+.patch-processing { display: grid; gap: 8px; }
+.voice-patch-module audio { width: 100%; min-width: 0; }
+.patch-processing button { min-height: 35px; border: 1px solid var(--line); padding: 6px 8px; background: transparent; color: var(--ink); }
+.patch-processing button:focus-visible, .patch-copy select:focus-visible, .patch-copy textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .voice-patch-module .button { min-height: 35px; font-size: calc(10px * var(--font-scale)); }
 
 .training-score { display: flex; align-items: center; gap: 10px; }

@@ -6,11 +6,22 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round18 VM-FLOW-01.
-last_activity_desc: Whole-sentence Patch source transfer verified. API11/UI59/typecheck/build and actual source/hash/reopen pass. Next Patch01/PatchRef01; quality/browser gates open.
+last_activity: 2026-10-16 — Voice Manipulator round19 VM-PATCH-01.
+last_activity_desc: Trained-model Patch preview/Apply verified. API20/UI73/build, actual5.07s121680frames0clip/PCM/source/idempotence/reopen pass. Next PatchRef01; quality/browser open.
 ---
 
 # Project State
+
+## Voice Manipulator round19 — VM-PATCH-01 (2026-10-16)
+
+Trained same-speaker full/LoRA Patch now generates replacement/composite previews,
+owned Stop/retry/reopen and explicit immutable Apply with natural-duration ripple.
+UI opens replacement Script with the result and retains source/output history.
+API20/UI73/typecheck/build pass; real full model result5.07s121680frames0clip,
+source/outside PCM/idempotence/reopen/lease pass. Expressive/timing/gain requests
+fail explicitly. Next VM-PATCH-REF-01 completes the five-round owner batch.
+Human listening, identity and calibrated word timing remain open.
+
 
 ## Voice Manipulator round18 — VM-FLOW-01 (2026-10-16)
 
