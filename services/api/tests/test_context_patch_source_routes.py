@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.settings import Settings
+from app.adapters.file_voice_outputs import FileVoiceOutputs
 from test_context_patch_source import setup_context
 
 
@@ -23,6 +24,9 @@ def test_production_context_source_reference_and_conflict_routes(tmp_path):
         assert trained.status_code == 200 and trained.json()["processingAvailable"] is False
         history = client.get(f"/api/projects/{project.id}/voice-patch/history")
         assert history.status_code == 200 and history.json() == {"revisions": [], "invalidCount": 0}
+        output = FileVoiceOutputs(media.projects).list(project.id)[0]
+        timing = client.get(f"/api/projects/{project.id}/voice-outputs/{output.id}/timing-repair/plan")
+        assert timing.status_code == 200 and timing.json()["expectedKey"]
         payload = dict(expectedRevision=0, expectedScriptRevision=scripts.get(project.id).revision,
             assetId="asset-context", startWord=1, endWord=2)
         response = client.post(base + "/source", json=payload)

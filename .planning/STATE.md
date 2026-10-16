@@ -6,11 +6,26 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round26 VM-WORD-TRUST-01.
-last_activity_desc: Round26 delivered; see current ledger and rounds26–30 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round27 VM-TIMING-REPAIR-01.
+last_activity_desc: Round27 delivered; see current ledger and rounds26–30 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round27 — VM-TIMING-REPAIR-01 (2026-10-16)
+
+Explicit persisted Timing Repair jobs now measure existing Voice Output segments
+through Studio ASR, with model/policy/source fingerprints, owned Stop, interruption
+recovery, checked proposal artifacts and separate immutable same-WAV Apply. No
+TTS or source mutation. UI separates plan/measure/Apply and ignores late results.
+API8 (seven service regressions plus production route), affected UI39 plus late
+Apply test3/typecheck/build169 pass. ADR0087 describes ASR matching limits.
+Actual cachedmedium Studio on a private port measured23/25 words in the natural
+Vietnamese patched8s file; target2/3 words trusted, two total remain untrusted.
+WAV SHA stays8df7b33eda41137d9a4e587d69cb225fb8a5687016867522eebd62ab6453e327;
+source metadata unchanged, preview-before-Apply/idempotence/lease pass,0TTS.
+New output output-9a94a020fc2a; local timing27-receipt.json records158.36s including
+cold ASR startup. This is not a human word-timing acceptance. Next round28 audition.
 
 ## Voice Manipulator round26 — VM-WORD-TRUST-01 (2026-10-16)
 

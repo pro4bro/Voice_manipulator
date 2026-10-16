@@ -7,6 +7,7 @@ import { ModuleFrame } from "../../ui/ModuleFrame";
 import { PatchProcessing } from "./PatchProcessing";
 import { ContextPatch } from "./ContextPatch";
 import { PatchHistory } from "./PatchHistory";
+import { TimingRepair } from "../voice-output/TimingRepair";
 
 interface VoicePatchProps {
   projectId?: string; output?: VoiceOutput | null; selection?: WordSelection;
@@ -93,6 +94,7 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
     {projectId && document && draft ? <PatchProcessing key={`${projectId}:${document.revision}`} projectId={projectId} document={document} currentSource={!!currentDraft} saved={saved} voices={voices} onOutputReady={onOutputReady} /> : <p>Chuyển một câu nguồn để kiểm tra khả năng Patch.</p>}
     {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} voices={voices} selectedAssetId={selectedAssetId} selection={sourceSelection ?? selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
     {projectId ? <PatchHistory key={`history:${projectId}`} projectId={projectId} onOpen={onOutputReady} /> : null}
+    {projectId && output ? <TimingRepair key={`timing:${projectId}:${output.id}`} projectId={projectId} outputId={output.id} onOutputReady={onOutputReady} /> : null}
   </ModuleFrame>;
 }
 

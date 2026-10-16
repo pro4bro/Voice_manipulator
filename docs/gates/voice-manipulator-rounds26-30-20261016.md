@@ -31,3 +31,18 @@ Eight new regressions failed before correction; affected API66 now pass. Existin
 natural Vietnamese25-word DTW data preserves every boundary/trust/provenance with
 unchanged source SHA in a private project copy; no new inference/human claim.
 Next round27 adds explicit timing repair without TTS. Checkpoint A stays open.
+
+### Round27 — VM-TIMING-REPAIR-01
+
+Explicit persisted Timing Repair jobs now measure existing Voice Output segments
+through Studio ASR, with model/policy/source fingerprints, owned Stop, interruption
+recovery, checked proposal artifacts and separate immutable same-WAV Apply. No
+TTS or source mutation. UI separates plan/measure/Apply and ignores late results.
+API8 (seven service regressions plus production route), affected UI39 plus late
+Apply test3/typecheck/build169 pass. ADR0087 describes ASR matching limits.
+Actual cachedmedium Studio on a private port measured23/25 words in the natural
+Vietnamese patched8s file; target2/3 words trusted, two total remain untrusted.
+WAV SHA stays8df7b33eda41137d9a4e587d69cb225fb8a5687016867522eebd62ab6453e327;
+source metadata unchanged, preview-before-Apply/idempotence/lease pass,0TTS.
+New output output-9a94a020fc2a; local timing27-receipt.json records158.36s including
+cold ASR startup. This is not a human word-timing acceptance. Next round28 audition.
