@@ -6,11 +6,17 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-15 — Voice Manipulator rounds11–15 source slices.
-last_activity_desc: Ripple and real stretch preview, delivery preflight, gain render/export and frozen reference schedules integrated. Prior speech5.15s123600frames/source-hash/undo/move/preview-download pass. Backend full942 before final changes plus affected suites; final frontend/build in combined gate. Cold312–812ms misses250ms; browser/listening/identity and expressive/schedule conditioning remain open. Next planned VM-FIX-01; Phase03 stays60%, no model migration/push/portable.
+last_activity: 2026-10-16 — Voice Manipulator round16 VM-FIX-01.
+last_activity_desc: VM-FIX-01 clip checkpoints/UI and real full voice2.68s verified. API12/UI18/typecheck/build pass. VM-FIX-02 next within five-round batch; conditioning/browser/listening remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Round16 — VM-FIX-01
+
+Incremental clips/job receipts and UI verified: API12/UI18/build, actual full voice
+2.68s64320frames,0clipping, no-op/source hash/lease pass. Apply/composition next
+VM-FIX-02, then Flow/Patch/PatchRef under owner five-round request. Phase03 60%.
 
 ## Voice Manipulator rounds11–15 — 2026-10-15
 

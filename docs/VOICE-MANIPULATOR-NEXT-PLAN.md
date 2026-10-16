@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực hiện tới vòng15, có các slice/gate còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-15. Trạng thái: đã thực hiện tới vòng16, có các slice/gate còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,14 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật round16 — 2026-10-16
+
+VM-FIX-01 clip queue/checkpoints/Stop/retry và UI đã tích hợp; model full thật
+tạo2.68s64320frames,0clipping/no-op/source hash/lease pass. API12/UI18/build pass.
+Chưa Apply output: tiếp theo VM-FIX-02 rồi VM-FLOW-01/VM-PATCH-01/VM-PATCH-REF-01
+trong nhóm năm round owner yêu cầu. Gate nghe/identity/word timing/browser và
+conditioning vẫn mở. Chi tiết ở gate rounds16–20 và ADR0079.
 
 ## Tiến độ vòng6–10 — 2026-10-15
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import time
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from app.domain.models import VoiceOutput
@@ -27,6 +28,7 @@ class FileVoiceOutputs:
 
     def __init__(self, projects: ProjectRepository) -> None:
         self.projects = projects
+        self.clip_reference_providers: list[Callable[[str], set[str]]] = []
 
     def root(self, project_id: str) -> Path:
         return Path(self.projects.get(project_id).project_path) / "assets" / "voice-output"
@@ -95,6 +97,8 @@ class FileVoiceOutputs:
         if not clips.is_dir():
             return 0
         used = {segment.clip for output in self.list(project_id) for segment in output.segments if segment.clip}
+        for provider in self.clip_reference_providers:
+            used.update(provider(project_id))
         now = time.time()
         removed = 0
         for folder in clips.iterdir():

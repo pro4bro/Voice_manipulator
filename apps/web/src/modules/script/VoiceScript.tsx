@@ -16,6 +16,7 @@ import { TimingPlanEditor } from "./TimingPlanEditor";
 import { VoiceScriptSettings } from "./VoiceScriptSettings";
 import { DeliveryCapabilities } from "./DeliveryCapabilities";
 import { VoiceRenderControls } from "./VoiceRenderControls";
+import { VoiceFixControls } from "./VoiceFixControls";
 import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
@@ -26,7 +27,7 @@ import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTra
 
 interface VoiceScriptProps {
   voiceRender?: import("../../app/useVoiceRender").VoiceRenderController;
-  timingContext?: { projectId: string; assets: import("../../domain/types").ProjectMediaAsset[]; runs: import("../../domain/types").TrainingRun[]; saved: boolean };
+  timingContext?: { projectId: string; assets: import("../../domain/types").ProjectMediaAsset[]; runs: import("../../domain/types").TrainingRun[]; saved: boolean; editRevision?: number };
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   document?: import("../../domain/types").VoiceScriptDocument;
@@ -588,6 +589,7 @@ export function VoiceScript({ voiceRender, timingContext, navigation, onReferenc
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
     <DeliveryCapabilities document={scriptDocument ?? migrateScript(rows)} />
     {output && voiceRender ? <VoiceRenderControls controller={voiceRender} saved={timingContext?.saved ?? false} /> : null}
+    {output && timingContext && scriptDocument ? <VoiceFixControls projectId={timingContext.projectId} outputId={output.id} scriptRevision={scriptDocument.revision} editRevision={timingContext.editRevision ?? 0} saved={timingContext.saved} /> : null}
     {timingContext && scriptDocument ? <DurationPlanPanel projectId={timingContext.projectId} document={scriptDocument} saved={timingContext.saved} output={output} refreshKey={durationRefresh} /> : null}
     {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} onChange={() => setDurationRefresh((current) => current + 1)} /> : null}
     {view === "table" ? <div className="script-table-shell voice-script" onContextMenu={referenceContext} onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) referenceContext(event); else handleRowSelectionKey(event); }} ref={followRoot}>

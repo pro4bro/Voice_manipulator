@@ -1,5 +1,15 @@
 # Work Rounds
 
+## Voice Manipulator round16 — VM-FIX-01 (2026-10-16)
+
+Incremental clip planning/jobs, whole-row duration, durable checkpoints, Stop/retry,
+stale revision/model/reference/timing guards and Fix UI integrated. API12 and
+UI18/typecheck/build pass. Real trained full voice produced2.68s64320frames,
+0clipping; no-op replay/source hash pass, lease released. No output applied yet.
+Five-round owner request continues with VM-FIX-02 → VM-FLOW-01 → VM-PATCH-01 →
+VM-PATCH-REF-01. Expressive/random, partial-word anchors and browser/listening
+gates remain. See combined rounds16–20 gate and ADR0079.
+
 ## Voice Manipulator rounds11–15 — source slices delivered, gates open (2026-10-15)
 
 VM-REF-RANDOM-01 finishes this requested batch's source work: seeded/frozen

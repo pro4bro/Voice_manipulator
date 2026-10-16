@@ -1,5 +1,13 @@
 # Project Status — 2026-10-15
 
+## Voice Manipulator round16 — incremental Fix clips
+
+VM-FIX-01 integrated: dirty fingerprint planning, immutable cache checkpoints,
+Stop/retry/reopen and stale dependency protection. Real full-model2.68s PCM and
+no-op/source invariance verified; apply/composition is VM-FIX-02 next. API12/UI18
+and typecheck/build pass. Human listening/word anchors/conditioning remain open.
+Owner requested rounds16–20 serially; Phase03 stays60%.
+
 ## Voice Manipulator rounds11–15 — source slices delivered, acceptance open
 
 Ripple/stretch audio, delivery capability preflight, actual gain render/export
