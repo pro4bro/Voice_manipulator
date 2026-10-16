@@ -6,11 +6,24 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round33 VM-REVIEW-EXPORT-01.
-last_activity_desc: Round33 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round34 VM-TIMING-RECOVERY-01.
+last_activity_desc: Round34 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round34 — VM-TIMING-RECOVERY-01 (2026-10-16)
+
+Timing jobs persist structured invalidation reasons for audio, metadata, recognizer,
+timing policy, proposal or legacy identity. Source changes take precedence, stale
+states/reasons survive reopen, and interruption remains failed. UI explains the
+reason/current ASR model and keeps Measure/Apply explicit. Start/Stop responses now
+check request generations, including select-away-and-back races; Stop disables busy.
+Two new UI regressions failed before correction. API14 (timing13 plus production
+integration1) and affected UI10/typecheck/build172 pass. ADR0093 documents codes
+and recovery. Tests use synthetic recognizers; no new ASR/TTS, model download or
+human acceptance. Next round35 freezes source, runs full checks and closes the
+owner's five-round batch with the reconciled remaining-work register.
 
 ## Voice Manipulator round33 — VM-REVIEW-EXPORT-01 (2026-10-16)
 

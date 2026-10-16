@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { TimingRepair } from "./TimingRepair";
 afterEach(() => vi.unstubAllGlobals());
@@ -44,4 +44,25 @@ it("ignores a late Apply response after the selected output changes", async () =
   finish(reply({ output: { id: "late" } }));
   await Promise.resolve(); await Promise.resolve();
   expect(open).not.toHaveBeenCalled();
+});
+
+it("explains recognizer invalidation without claiming the source WAV changed", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply({ expectedKey: "new", recognizer: { model: "large-v3" }, processingAvailable: true, blockers: [], latestJob: { ...job, status: "stale", staleReason: "recognizer", error: "recognizer" } })));
+  render(<TimingRepair projectId="p" outputId="o" />); fireEvent.click(screen.getByText("Kiểm tra timing"));
+  await screen.findByText("Model STT đã thay đổi. Kiểm tra timing rồi đo lại.");
+  expect(screen.getByText("Model STT: large-v3")).toBeInTheDocument();
+  expect(screen.getByText("Lưu bản timing mới")).toBeDisabled(); expect(screen.getByText("Đo lại timing từ audio")).toBeEnabled();
+});
+
+it("ignores an old Start response after selecting away and back to the same output", async () => {
+  let finish!: (value: unknown) => void;
+  const fetcher = vi.fn().mockResolvedValueOnce(reply({ expectedKey: "k", processingAvailable: true, blockers: [] }))
+    .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<TimingRepair projectId="p" outputId="o" />); fireEvent.click(screen.getByText("Kiểm tra timing"));
+  await waitFor(() => expect(screen.getByText("Đo lại timing từ audio")).toBeEnabled()); fireEvent.click(screen.getByText("Đo lại timing từ audio"));
+  view.rerender(<TimingRepair projectId="p" outputId="another" />); view.rerender(<TimingRepair projectId="p" outputId="o" />);
+  await act(async () => finish(reply(job)));
+  expect(screen.queryByText("1/1 · complete")).not.toBeInTheDocument();
+  expect(screen.getByText("Lưu bản timing mới")).toBeDisabled();
 });

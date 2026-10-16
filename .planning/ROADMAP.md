@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round34 — VM-TIMING-RECOVERY-01 (2026-10-16)
+
+Timing jobs persist structured invalidation reasons for audio, metadata, recognizer,
+timing policy, proposal or legacy identity. Source changes take precedence, stale
+states/reasons survive reopen, and interruption remains failed. UI explains the
+reason/current ASR model and keeps Measure/Apply explicit. Start/Stop responses now
+check request generations, including select-away-and-back races; Stop disables busy.
+Two new UI regressions failed before correction. API14 (timing13 plus production
+integration1) and affected UI10/typecheck/build172 pass. ADR0093 documents codes
+and recovery. Tests use synthetic recognizers; no new ASR/TTS, model download or
+human acceptance. Next round35 freezes source, runs full checks and closes the
+owner's five-round batch with the reconciled remaining-work register.
+
 ## Voice Manipulator round33 — VM-REVIEW-EXPORT-01 (2026-10-16)
 
 Each accepted Patch comparison group can download a portable JSON report with

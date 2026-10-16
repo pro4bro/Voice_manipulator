@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { VoiceOutput } from "../../domain/types";
 
-interface Job { id: string; key: string; outputId: string; status: string; done: number; total: number; report?: { trustedWords?: number; totalWords?: number }; error?: string | null }
-interface Plan { expectedKey: string; processingAvailable: boolean; blockers: string[]; latestJob?: Job | null }
+interface Job { id: string; key: string; outputId: string; status: string; done: number; total: number; report?: { trustedWords?: number; totalWords?: number }; error?: string | null; staleReason?: string | null }
+interface Plan { expectedKey: string; processingAvailable: boolean; blockers: string[]; latestJob?: Job | null; recognizer?: { model?: string | null } }
+const staleMessages: Record<string, string> = {
+  "source-audio": "Audio nguồn đã thay đổi. Đọc lại nguồn trước khi đo timing.",
+  "source-metadata": "Text hoặc thông tin output nguồn đã thay đổi. Kiểm tra timing rồi đo lại.",
+  recognizer: "Model STT đã thay đổi. Kiểm tra timing rồi đo lại.",
+  "timing-policy": "Quy tắc căn từ đã thay đổi. Kiểm tra timing rồi đo lại.",
+  proposal: "Bản mốc đo bị thiếu hoặc không còn nguyên vẹn. Kiểm tra timing rồi đo lại.",
+  identity: "Bản mốc đo không còn khớp cấu hình hiện tại. Kiểm tra timing rồi đo lại.",
+};
 const active = (job: Job | null) => !!job && ["queued", "running"].includes(job.status);
 async function request<T>(url: string, body?: object): Promise<T> {
   const response = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -40,8 +48,13 @@ export function TimingRepair({ projectId, outputId, onOutputReady }: { projectId
       if (action === "plan") {
         const value = await request<Plan>(`${endpoint}/plan`);
         if (owner.current === expected && serial.current === version) { setPlan(value); if (value.latestJob) accept(value.latestJob, expected, true); }
-      } else if (action === "jobs" && plan) accept(await request<Job>(`${endpoint}/jobs`, { expectedKey: plan.expectedKey }), expected, true);
-      else if (action === "stop" && job) accept(await request<Job>(`${endpoint}/jobs/${encodeURIComponent(job.id)}/stop`, {}), expected);
+      } else if (action === "jobs" && plan) {
+        const value = await request<Job>(`${endpoint}/jobs`, { expectedKey: plan.expectedKey });
+        if (serial.current === version) accept(value, expected, true);
+      } else if (action === "stop" && job) {
+        const value = await request<Job>(`${endpoint}/jobs/${encodeURIComponent(job.id)}/stop`, {});
+        if (serial.current === version) accept(value, expected);
+      }
       else if (action === "apply" && job) {
         const value = await request<{ output: VoiceOutput }>(`${endpoint}/apply`, { jobId: job.id, expectedKey: job.key });
         if (owner.current === expected && serial.current === version) onOutputReady?.(value.output);
@@ -54,10 +67,11 @@ export function TimingRepair({ projectId, outputId, onOutputReady }: { projectId
     <button type="button" disabled={busy || running} onClick={() => void act("plan")}>Kiểm tra timing</button>
     <button type="button" disabled={busy || running || !plan?.processingAvailable} onClick={() => void act("jobs")}>Đo lại timing từ audio</button>
     <button type="button" disabled={busy || !job || job.status !== "complete" || job.outputId !== outputId || plan?.expectedKey !== job.key} onClick={() => void act("apply")}>Lưu bản timing mới</button>
-    {running ? <button type="button" onClick={() => void act("stop")}>Dừng đo timing</button> : null}
+    {running ? <button type="button" disabled={busy} onClick={() => void act("stop")}>Dừng đo timing</button> : null}
     {busy ? <p role="status">Đang kiểm tra timing…</p> : null}{error ? <p role="alert">{error}</p> : null}
     {plan?.blockers?.map((blocker, index) => <p role="alert" key={index}>{blocker}</p>)}
-    {job ? <><p role="status">{job.done}/{job.total} · {job.status}</p>{job.error ? <p role="alert">{job.error}</p> : null}
+    {plan?.recognizer?.model ? <p>Model STT: {plan.recognizer.model}</p> : null}
+    {job ? <><p role="status">{job.done}/{job.total} · {job.status}</p>{job.status === "stale" ? <p role="alert">{staleMessages[job.staleReason ?? "identity"] ?? staleMessages.identity}</p> : job.error ? <p role="alert">{job.error}</p> : null}
       {job.report?.totalWords !== undefined ? <p>{job.report.trustedWords ?? 0}/{job.report.totalWords} từ có mốc đo khớp lời. Phần còn lại cần kiểm tra; chưa phải nghiệm thu nghe.</p> : null}</> : null}
   </details>;
 }

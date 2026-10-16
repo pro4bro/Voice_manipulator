@@ -42,6 +42,8 @@ class _Capture:
     audio_path: Path
     audio_sha256: str
     metadata_sha256: str
+    recognizer: dict[str, Any]
+    timing_policy_version: int
     frames: int
     segments: list[dict[str, Any]]
     blockers: list[str] = field(default_factory=list)
@@ -60,6 +62,7 @@ class OutputTimingRepair:
     """Measure existing Voice Output audio against its saved Script words."""
 
     _lock = threading.RLock()
+    _timing_policy_version = WORD_TIMING_VERSION
 
     def __init__(self, projects, outputs, recognizer, lease) -> None:
         self.projects, self.outputs = projects, outputs
@@ -187,7 +190,7 @@ class OutputTimingRepair:
         material = {
             "strategy": "studio-dtw-script-mapping-v1",
             "recognizer": self._recognizer_identity(),
-            "wordTimingVersion": WORD_TIMING_VERSION,
+            "wordTimingVersion": self._timing_policy_version,
             "sourceOutputId": output.id,
             "sourceAudioSha256": audio_sha,
             "sourceMetadataSha256": metadata_sha,
@@ -195,7 +198,8 @@ class OutputTimingRepair:
             "frames": frames,
             "segments": segments,
         }
-        return _Capture(output, audio_path, audio_sha, metadata_sha, frames, segments, blockers,
+        return _Capture(output, audio_path, audio_sha, metadata_sha, self._recognizer_identity(),
+            self._timing_policy_version, frames, segments, blockers,
             self._hash_json(material))
 
     def _availability_blockers(self, capture: _Capture) -> list[str]:
@@ -222,7 +226,7 @@ class OutputTimingRepair:
             "duration": capture.frames / _RATE,
             "strategy": "studio-dtw-script-mapping-v1",
             "recognizer": self._recognizer_identity(),
-            "wordTimingVersion": WORD_TIMING_VERSION,
+            "wordTimingVersion": self._timing_policy_version,
             "total": len(capture.segments),
             "segments": capture.segments,
             "processingAvailable": not blockers,
@@ -414,14 +418,14 @@ class OutputTimingRepair:
             word_total = len(all_words)
             quality = "source" if trusted_count == word_total else "partial"
             report = {"version": 1, "strategy": "studio-dtw-script-mapping-v1",
-                "recognizer": self._recognizer_identity(), "wordTimingVersion": WORD_TIMING_VERSION,
+                "recognizer": self._recognizer_identity(), "wordTimingVersion": self._timing_policy_version,
                 "sourceOutputId": job.output_id, "sourceAudioSha256": capture.audio_sha256,
                 "sourceMetadataSha256": capture.metadata_sha256, "sampleRate": _RATE,
                 "frames": capture.frames, "segments": segment_reports,
                 "trustedWords": trusted_count, "totalWords": word_total, "quality": quality,
                 "timingReview": "asr-measured-needs-human-review"}
             proposal = {"version": 1, "jobId": job.id, "key": job.key,
-                "recognizer": self._recognizer_identity(), "wordTimingVersion": WORD_TIMING_VERSION,
+                "recognizer": self._recognizer_identity(), "wordTimingVersion": self._timing_policy_version,
                 "sourceOutputId": job.output_id, "sourceAudioSha256": capture.audio_sha256,
                 "sourceMetadataSha256": capture.metadata_sha256, "words": all_words, "report": report}
             proposal_path = self.proposal_path(job.project_id, job.id)
@@ -435,7 +439,8 @@ class OutputTimingRepair:
             terminal = ("complete", {"done": len(capture.segments), "report": report,
                 "proposal_sha256": proposal_sha, "error": None})
         except OutputTimingRepairConflict as exc:
-            terminal = ("stale", {"error": str(exc)})
+            terminal = ("stale", {"error": "Timing Repair inputs changed before completion.",
+                "stale_reason": self._difference_reason(job.project_id, capture)})
         except Exception as exc:
             status = "cancelled" if self._is_cancelled(state) else "failed"
             terminal = (status, {"error": str(exc) or type(exc).__name__})
@@ -460,24 +465,67 @@ class OutputTimingRepair:
             job = job.model_copy(update={"status": "failed", "error": "Timing Repair worker was interrupted; start a fresh job.",
                 "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._write_job(job)
+        elif job.status == "stale":
+            if job.stale_reason is None:
+                job = job.model_copy(update={"stale_reason": "identity"}, deep=True)
+                self._write_job(job)
         elif job.status == "complete":
             try:
                 capture = self._capture(project_id, output_id)
-                if capture.key != job.key:
-                    raise OutputTimingRepairConflict("Source Voice Output changed after Timing Repair completed.")
+                reason = self._stale_reason(job, capture)
+                if reason is not None:
+                    raise OutputTimingRepairConflict(reason)
                 proposal = self._load_proposal(project_id, job)
                 report = proposal.get("report") if isinstance(proposal, dict) else None
                 words = proposal.get("words") if isinstance(proposal, dict) else None
                 if (not isinstance(report, dict) or not isinstance(words, list)
-                        or report.get("wordTimingVersion") != WORD_TIMING_VERSION
+                        or report.get("wordTimingVersion") != self._timing_policy_version
                         or report.get("recognizer") != self._recognizer_identity()
                         or not isinstance(report.get("trustedWords"), int) or report["trustedWords"] <= 0):
-                    raise OutputTimingRepairConflict("Completed Timing Repair proposal has no trusted measured timings.")
+                    raise OutputTimingRepairConflict("proposal")
             except (OSError, ValueError, KeyError) as exc:
-                job = job.model_copy(update={"status": "stale", "error": str(exc),
+                reason = str(exc) if str(exc) in {"source-audio", "source-metadata", "recognizer",
+                    "timing-policy", "proposal", "identity"} else "identity"
+                job = job.model_copy(update={"status": "stale", "stale_reason": reason, "error": str(exc),
                     "updated_at": datetime.now(timezone.utc)}, deep=True)
                 self._write_job(job)
         return job
+
+    def _stale_reason(self, job: OutputTimingRepairJob, capture: _Capture) -> str | None:
+        report = job.report
+        if not isinstance(report, dict) or not report:
+            return "identity"
+        # Preserve this order so a metadata change never hides a changed source WAV.
+        if report.get("sourceAudioSha256") != capture.audio_sha256:
+            return "source-audio"
+        if report.get("sourceMetadataSha256") != capture.metadata_sha256:
+            return "source-metadata"
+        if report.get("recognizer") != self._recognizer_identity():
+            return "recognizer"
+        if report.get("wordTimingVersion") != self._timing_policy_version:
+            return "timing-policy"
+        if capture.key != job.key:
+            return "identity"
+        try:
+            self._load_proposal(job.project_id, job)
+        except (OSError, ValueError, KeyError):
+            return "proposal"
+        return None
+
+    def _difference_reason(self, project_id: str, original: _Capture) -> str:
+        try:
+            current = self._capture(project_id, original.output.id)
+        except (KeyError, OSError, ValueError):
+            return "identity"
+        if original.audio_sha256 != current.audio_sha256:
+            return "source-audio"
+        if original.metadata_sha256 != current.metadata_sha256:
+            return "source-metadata"
+        if original.recognizer != self._recognizer_identity():
+            return "recognizer"
+        if original.timing_policy_version != self._timing_policy_version:
+            return "timing-policy"
+        return "identity"
 
     def stop(self, project_id: str, output_id: str, job_id: str) -> OutputTimingRepairJob:
         job = self._load_job(project_id, job_id)

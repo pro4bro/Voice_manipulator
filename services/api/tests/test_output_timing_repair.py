@@ -133,6 +133,63 @@ def test_timing_repair_rejects_stale_source_and_tampered_proposal(tmp_path):
     assert len(outputs.list(project.id)) == 1
 
 
+@pytest.mark.parametrize(("mutation", "reason"), [
+    ("audio", "source-audio"),
+    ("metadata", "source-metadata"),
+    ("recognizer", "recognizer"),
+    ("policy", "timing-policy"),
+    ("proposal", "proposal"),
+])
+def test_completed_job_reports_specific_stale_reason(tmp_path, mutation, reason):
+    project, outputs, _lease, source, recognizer, service = setup_repair(tmp_path)
+    started = service.start(project.id, source.id, request_for(service, project.id, source.id)["expectedKey"])
+    job = wait_job(service, project.id, source.id, started.id)
+    if mutation == "audio":
+        path = outputs.audio_path(project.id, source.id)
+        path.write_bytes(path.read_bytes() + b"x")
+    elif mutation == "metadata":
+        outputs.save(project.id, source.model_copy(update={"name": "Changed metadata"}))
+    elif mutation == "recognizer":
+        recognizer.model = "large-v3"
+    elif mutation == "policy":
+        service._timing_policy_version = 999
+    elif mutation == "proposal":
+        service.proposal_path(project.id, job.id).write_text("tampered", encoding="utf-8")
+    stale = service.get_job(project.id, source.id, job.id)
+    assert stale.status == "stale"
+    assert stale.stale_reason == reason
+    assert service.get_job(project.id, source.id, job.id).stale_reason == reason
+
+
+def test_stale_reason_preserves_terminal_state_and_legacy_jobs_use_identity(tmp_path):
+    project, outputs, _lease, source, _recognizer, service = setup_repair(tmp_path)
+    legacy = OutputTimingRepairJob(project_id=project.id, output_id=source.id,
+        key="0" * 64, status="stale", total=len(source.segments))
+    service._write_job(legacy)
+    stored = json.loads(service.job_path(project.id, legacy.id).read_text(encoding="utf-8"))
+    stored.pop("staleReason", None)
+    service.job_path(project.id, legacy.id).write_text(json.dumps(stored), encoding="utf-8")
+    stale = service.get_job(project.id, source.id, legacy.id)
+    assert stale.status == "stale" and stale.stale_reason == "identity"
+
+    started = service.start(project.id, source.id, request_for(service, project.id, source.id)["expectedKey"])
+    finished = wait_job(service, project.id, source.id, started.id)
+    path = outputs.audio_path(project.id, source.id)
+    path.write_bytes(path.read_bytes() + b"changed")
+    outputs.save(project.id, source.model_copy(update={"name": "also changed"}))
+    classified = service.get_job(project.id, source.id, finished.id)
+    assert classified.stale_reason == "source-audio"  # source audio takes precedence over metadata
+    path.write_bytes(path.read_bytes()[:-7])
+    assert service.get_job(project.id, source.id, finished.id).stale_reason == "source-audio"
+
+    interrupted = OutputTimingRepairJob(project_id=project.id, output_id=source.id,
+        key="0" * 64, status="running", total=len(source.segments))
+    service._write_job(interrupted)
+    recovered = OutputTimingRepair(service.projects, service.outputs, _recognizer, _lease).get_job(
+        project.id, source.id, interrupted.id)
+    assert recovered.status == "failed" and recovered.stale_reason is None
+
+
 def test_timing_repair_http_contract_and_reopen_marks_running_job_interrupted(tmp_path):
     project, _outputs, _lease, source, recognizer, service = setup_repair(tmp_path)
     app = FastAPI()

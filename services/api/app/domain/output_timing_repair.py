@@ -24,6 +24,10 @@ class OutputTimingRepairJob(DomainModel):
     output_id: str
     key: str = Field(pattern=r"^[a-f0-9]{64}$")
     status: Literal["queued", "running", "complete", "cancelled", "failed", "stale"]
+    stale_reason: Literal["source-audio", "source-metadata", "recognizer", "timing-policy", "proposal", "identity"] | None = Field(
+        default=None,
+        description="Why a completed proposal is stale: source-audio, source-metadata, recognizer, timing-policy, proposal, or identity.",
+    )
     done: int = Field(default=0, ge=0)
     total: int = Field(ge=1)
     report: dict[str, Any] = Field(default_factory=dict)
