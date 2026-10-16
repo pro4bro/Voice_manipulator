@@ -1,4 +1,16 @@
+.module-frame.voice-script-module > .module-frame__body { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.voice-script__settings-stack { flex: 0 1 auto; min-width: 0; min-height: 0; max-height: min(34%, 220px); overflow: auto; overscroll-behavior: contain; }
 .voice-script-settings { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; max-height: 45vh; overflow: auto; }
+.voice-script__settings-stack > .voice-script-settings { min-width: 0; max-height: none; overflow: visible; }
+.voice-script__settings-stack > .voice-script-settings summary { overflow-wrap: anywhere; }
+.voice-script-module .script-table-shell,
+.voice-script-module .voice-script__text { flex: 1 1 0; width: 100%; max-width: 100%; min-width: 0; min-height: 100px; height: auto; }
+.voice-script-module .script-table-shell { overflow: hidden; }
+.voice-script-module .voice-script__text { overflow: auto; }
+.voice-script-module .script-toolbars,
+.voice-script-module > .module-frame__body > [role="alert"],
+.voice-script-module .script-progress,
+.voice-script-module .script-module__footer { flex: 0 0 auto; min-width: 0; }
 .voice-script-settings summary { cursor: pointer; font-weight: 600; }
 .voice-script-settings p, .voice-script-settings small { color: var(--muted); }
 .voice-script-settings__tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

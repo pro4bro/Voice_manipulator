@@ -1,10 +1,26 @@
 # Các round còn lại của Voice Manipulator
 
-Cập nhật theo ledger/source tới round40 (2026-10-17); batch36–40 đã hoàn tất
-phần triển khai, kiểm tra tích hợp và báo cáo. Các gate độc lập bên dưới còn mở.
+Cập nhật theo ledger/source tới round45 (2026-10-17); batch41–45 đã hoàn tất
+triển khai, kiểm tra hồi quy và báo cáo. Các gate độc lập bên dưới còn mở.
 Danh sách này thay mục “Vòng chính xác đề xuất tiếp theo” cũ của bản kế hoạch.
-Số36–40 là số thực hiện theo đợt; các mã VM/VC là phạm vi chức năng. Một mã có
+Số41–45 là số thực hiện theo đợt; các mã VM/VC là phạm vi chức năng. Một mã có
 thể cần nhiều vòng sửa/nghiệm thu, nên chưa thể chốt tổng số round đến hoàn tất.
+
+## Batch41–45
+
+| Round | Mã | Kết quả |
+| --- | --- | --- |
+| 41 | VM-STRETCH-IO-01 | Đo riêng hash/write/flush/fsync/close/replace/verify; giữ nguyên độ bền và kiểm chứng artifact |
+| 42 | VM-STRETCH-SCHEDULE-01 | Timer đầu40ms không bị reset khi kéo liên tục; chỉ giữ thao tác mới nhất, sửa A→B→A |
+| 43 | VM-STRETCH-LOCK-01 | Khóa theo output chuẩn hóa đường dẫn; output khác không phải chờ render không liên quan |
+| 44 | VM-PREVIEW-RECOVERY-01 | WAV cache sai container trả lỗi kiểm chứng, có thể dựng lại; hết HTTP500 ở hai route đã tái hiện |
+| 45 | VM-CHECKPOINT-A-05 | Artifact/move/reopen và browser thật; sửa hàng hướng dẫn Script bị cắt và đọc checkpoint Windows; regression đã đạt |
+
+Browser đã mở project di chuyển có dấu, tải waveform/audio, chọn subtitle có
+overlay/handle, Undo/Redo9,2↔9,6s và phát/dừng. Các mục hướng dẫn Script đã có
+vùng cuộn riêng; màn hình thấp vẫn cần UAT về mức thuận tiện. Chưa đo Ctrl-drag
+đến audio-ready trên browser, chưa nghe chấm chất lượng hoặc Save/Cancel native.
+Chi tiết: `docs/gates/vm-checkpoint-a-preview-io-browser-20261017.md`.
 
 ## Batch36–40 đã thực hiện
 
@@ -36,10 +52,13 @@ Các bản speech thật vẫn chưa có xác nhận nghe do người dùng lưu
 
 ## Thứ tự tiếp tục đề xuất
 
-1. Tiếp tục VM-STRETCH-01 với budget250ms: profile sâu write/fsync/verify của
-   artifact (đã có outlier389ms tại khâu này), đánh giá debounce đầu180ms còn
-   giữ, contention do lock dùng chung và tải waveform/audio browser. Chưa có
-   bằng chứng để bỏ kiểm hash/durability hoặc báo gate đạt chỉ từ median server.
+1. Tiếp tục VM-STRETCH-01 với budget250ms: đã có timer40ms không starvation,
+   khóa theo output và số đo IO sâu. Fsync hiện dao động lớn (12 render thật:
+   median127ms cho riêng fsync, tổng render-call173–536ms). Cần đo cả Ctrl-drag,
+   waveform/audio-ready và continuous playback; đánh giá giải pháp storage/cache
+   theo contract rõ ràng. Chưa có bằng chứng để bỏ hash/durability hoặc báo gate
+   đạt từ median server. Browser đã chạy được; thao tác giữ Ctrl khi drag chưa
+   được kiểm chứng bằng công cụ hiện có.
 2. Chứng minh conditioning giữ identity cho VM-DELIVERY-01, rồi mới nối lịch
    VM-REF-RANDOM-01 vào âm thanh/Fix. Nếu engine không hỗ trợ thì giữ capability
    unavailable và mở feasibility cho một engine tương thích, không ép pass.
@@ -58,10 +77,10 @@ Các bản speech thật vẫn chưa có xác nhận nghe do người dùng lưu
 | VM-DELIVERY-01 | Lưu yêu cầu và capability preflight, chặn conditioning chưa hỗ trợ | Engine/model giữ cùng danh tính và sinh được emotion/whisper/shout; benchmark cùng text/speaker, ít nhất hai cảm xúc và nhiều mức phát giọng |
 | VM-REF-RANDOM-01 | Nguồn/đặc tính, seed và lịch random có lưu/replay | Áp lịch vào conditioning audio thật, edit/lock event trên Timeline, nối Fix; phụ thuộc delivery được kiểm chứng |
 | VM-TIMING-REF-01 / VM-DURATION-01 | Timing template, budget/lock, native duration và đo frame | Thực thi anchor từng từ/phrase khi model hỗ trợ, partial locks và trường hợp text không fit; không đồng nhất time-stretch với model obey word anchors |
-| VM-STRETCH-01 | Preview WAV giữ pitch, Ctrl handles, waveform/audio, cache đúng prefix, native clipping scan và queue có thứ tự | Gate250ms chưa đạt: median server214ms cho prefix-reuse nhưng outlier556ms, chưa tính debounce đầu180ms/browser; cần profile IO/lock và continuous playback/nghe |
+| VM-STRETCH-01 | Preview giữ pitch, prefix cache, queue, timer40ms không starvation, khóa theo output và IO diagnostics; browser Undo/Redo/playback đã kiểm | Gate250ms chưa khép: storage/fsync dao động, chưa đo Ctrl-drag→audio-ready hay nghe continuous playback; không lấy số40ms scheduler làm tổng latency |
 | VM-RIPPLE-01 | Mapping nguồn bất biến, offsets, Undo/Redo | Piecewise locked acoustic anchors; nhóm video/background liên kết |
 | VM-FIX-01/02 / VM-LOUDNESS-01 | Dirty-unit generation, immutable Apply, clip/row gain, headroom và artifact | Nghe mix, repeated-edit workflow thật, identity/delivery; chạy lại sau khi có conditioning thực |
-| VOICE-EXPORT-13B4 | HTTP WAV/SRT/CSV/Range, moved project giữ hash | Save ra đường đích thật, Cancel không ghi file đích, đường có dấu, playback; cần công cụ browser/native hoạt động |
+| VOICE-EXPORT-13B4 | HTTP WAV/SRT/CSV/Range, moved project giữ hash; browser tải/phát WAV preview | Save ra đường đích thật, Cancel không ghi file đích và đường có dấu; native dialog chưa được kiểm chứng |
 | VM-SCRIPT-01 / VM-SELECTION-01 / VM-NAV-01 / VM-REF-DETAIL-01 | Hierarchy/selection/overlay/markers/slot navigation đã có source và test | UAT với Script dài và năm ngôn ngữ; hoàn thiện vấn đề thực tế tìm thấy, không làm lại toàn bộ code đã có |
 
 Các hàng trên là phần còn thiếu hoặc gate nghiệm thu, không phải tất cả đều là

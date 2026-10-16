@@ -49,6 +49,17 @@ def _atomic_json(path: Path, value: dict) -> None:
             time.sleep(.02 * (attempt + 1))
 
 
+def _read_atomic_json(path: Path) -> dict:
+    """Read a replace-atomic checkpoint across brief Windows sharing locks."""
+    for attempt in range(5):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(.02 * (attempt + 1))
+
+
 def _hash_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -284,7 +295,7 @@ class FileGrowingMkvFollower:
 
     def _load(self, project: ProjectRecord, parent_id: str) -> tuple[Path, Path, dict, Path]:
         directory, state_path = self._paths(project, parent_id)
-        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state = _read_atomic_json(state_path)
         if state.get("parentId") != parent_id or state.get("version") != 1:
             raise ValueError("Checkpoint MKV không hợp lệ")
         if state["finished"]:
@@ -435,13 +446,13 @@ class FileGrowingMkvFollower:
         # The decoder can hold the writer lock across several Clusters. Capture
         # its atomically published checkpoint before waiting, to keep click-time bounds.
         directory, state_path = self._paths(project, parent_id)
-        requested = json.loads(state_path.read_text(encoding="utf-8"))
+        requested = _read_atomic_json(state_path)
         requested_frames = {track["assetId"]: int(track.get("finalFrames", track["frames"])
                             if requested["finished"] else track["frames"])
                             for track in requested["tracks"]}
         with self._lock(parent_id):
             directory, state_path = self._paths(project, parent_id)
-            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state = _read_atomic_json(state_path)
             if state.get("parentId") != parent_id:
                 raise ValueError("MKV follow checkpoint không hợp lệ")
             selected = []
@@ -476,7 +487,7 @@ class FileGrowingMkvFollower:
             if (first.st_size, first.st_mtime_ns) != (second.st_size, second.st_mtime_ns):
                 raise ValueError("MKV vẫn đang thay đổi; chỉ Finish sau khi recorder dừng")
             self.poll(project, parent_id, final=True)
-            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state = _read_atomic_json(state_path)
             assert_same_source(source, state["identity"], state["cursor"],
                                state["lastCluster"], allow_header_change=True)
             final_source = directory / "source-final.mkv"

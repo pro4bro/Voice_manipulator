@@ -1,5 +1,33 @@
 # Project Status — 2026-10-17
 
+## Voice Manipulator round45 — VM-CHECKPOINT-A-05 (2026-10-17)
+
+Current frozen source passes all1140 API tests (620.90s, 3 existing/fixture warnings); frontend917 tests/112files pass131.60s,
+typecheck/build172 and diff check pass. All589 API/web inputs match the final
+frozen SHA manifest; frontend hashes match its broad pass. No assertions,
+thresholds/timeouts relaxed or skipped. First API run1136pass/onefail600.75s is
+retained: PermissionError reading an MKV checkpoint during restart status polling,
+not a deadline failure. Read-only diagnosis led to bounded PermissionError retry
+(5attempts, four waits totaling200ms), preserving invalid JSON/persistent errors
+and configure click-time snapshots. Focused follower26 pass, including restart;
+no long processing lock added. ADR0103 records limits without blaming an unknown
+file-lock holder. Current full API rerun is the reported green snapshot.
+Actual API verifies fourth stretch, exact WAV/frame/hash, Undo/Redo, fifth draft,
+Range206/waveform/stale409 and Unicode move/Open Existing. Browser now works with
+private production controller/API and actual CPU Studio, no model loaded. Real
+UI shows9.2s waveform/audio ready4, subtitle overlay/two handles/markers, Redo9.6s
+and Undo9.2s, playback advancing then pausing. Source/output metadata remain exact;
+final journal13/cursor3. Private listeners stopped, ports free, viewport reset.
+Browser exposed clipped Script disclosures (100px first,13px others). VoiceScript
+settings now share a bounded scroll region; six closed rows29.8px, transcript
+126.6px at1280x720,100px at1024x600. Sidebar styles preserved. Focused UI26 and
+real layout checks pass; compact19px settings viewport still needs small-pane UAT.
+ADR0102, browser45/post-browser45 receipts and ui45.jpg preserve evidence.
+250ms Ctrl-drag→audio-ready/continuous listening, native Save/Cancel, human word/
+identity/seam review, expressive/random conditioning and13downstream codes remain
+open. No new model inference/training/download, shared runtime operation, push or
+portable release. Remaining register/NEXT-PLAN refreshed through45; Phase03 stays60%.
+
 ## Voice Manipulator round44 — VM-PREVIEW-RECOVERY-01 (2026-10-17)
 
 Malformed preview containers now become the shared PCM validation error instead

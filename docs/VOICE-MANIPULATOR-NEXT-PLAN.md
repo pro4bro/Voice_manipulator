@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-17. Trạng thái: đã thực hiện tới vòng40; các gate chất lượng còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-17. Trạng thái: đã thực hiện tới vòng45; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,22 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật vòng41–45 — 2026-10-17
+
+- Preview có đo riêng hash/write/flush/fsync/close/replace/verify; giữ các kiểm
+  chứng artifact. Fsync/storage vẫn dao động, chưa khép gate250ms.
+- Timer40ms không bị đặt lại khi kéo liên tục; chỉ giữ thao tác mới nhất và
+  sửa A→B→A. Khóa theo output giúp cache khác không bị chặn bởi render không liên quan.
+- WAV cache hỏng container trả lỗi kiểm chứng và dựng lại được, không còn500
+  ở hai trường hợp đã tái hiện. MKV checkpoint đọc lại lỗi quyền truy cập tạm
+  thời với giới hạn200ms, lỗi kéo dài vẫn được báo; không nới deadline test.
+- Browser thật đã mở project sau khi chuyển thư mục có dấu, hiển thị waveform,
+  overlay/handle, Undo/Redo9,2↔9,6s và phát/dừng. Sửa các hàng hướng dẫn Script
+  bị cắt bằng vùng settings cuộn riêng; màn hình thấp còn cần UAT.
+- Ctrl-drag→audio-ready/continuous playback, nghe chất lượng, emotion/whisper/
+  shout và Save/Cancel native còn mở. Xem báo cáo
+  `docs/gates/vm-checkpoint-a-preview-io-browser-20261017.md` và register còn lại.
 
 ## Cập nhật vòng36–40 — 2026-10-17
 
