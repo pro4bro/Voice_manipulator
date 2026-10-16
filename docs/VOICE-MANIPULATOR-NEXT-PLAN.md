@@ -1,6 +1,6 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
-Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng30; các gate chất lượng còn mở;
+Ngày lập: 2026-10-14. Cập nhật: 2026-10-16. Trạng thái: đã thực hiện tới vòng35; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và
 whisper/shout; ba chiến lược Patch; Isolator theo định nghĩa gốc; Dubber tự động.
@@ -11,6 +11,21 @@ Bổ sung cùng ngày: import/đánh dấu nhiều reference footage, gán đặ
 qua right-click và random riêng giá trị/thời điểm trên lịch áp dụng được lưu.
 Bổ sung Reference Detail ở cột phải: slot hai dòng theo từng vùng đã gán, xổ
 chi tiết từng reference footage và các đặc tính được chọn.
+
+## Cập nhật vòng31–35 — 2026-10-16
+
+- Nghe từng từ trên audio đã lưu, kể cả từ chưa tin cậy; có START/END/DURATION,
+  ngữ cảnh200ms và kiểm tra checksum/segment/biên theo frame.
+- Sửa và nghe mốc đề xuất rồi lưu output mới cùng WAV nguyên vẹn. Từ được chọn
+  cần người dùng xác nhận; provenance là user-reviewed, không giả nhận ASR hay
+  khiến model tự phát từ đúng thời điểm. Các từ khác giữ nguyên annotation.
+- Tải báo cáo JSON của nhóm bản vá so sánh được, có checksum và đúng trạng thái
+  current/stale/unreviewed của nhận xét. Không tự xếp hạng chất lượng.
+- Proposal timing phân biệt audio/metadata/model STT/policy/artifact hết hiệu lực;
+  Start/Stop/Apply chặn phản hồi muộn khi người dùng đổi output.
+- Danh sách còn lại và thứ tự tiếp tục:
+  `docs/VOICE-MANIPULATOR-REMAINING-ROUNDS.md`. Sau Checkpoint A còn13 mã
+  Changer/Isolator/Emotion/Dubber; mobile/Convai/Digital Human chưa ấn định round.
 
 ## Cập nhật vòng26–30 — 2026-10-16
 
@@ -501,7 +516,7 @@ thủ công có thể dùng trước khi recognizer emotion đạt benchmark, nh
 auto emotion phải phụ thuộc VM-EMOTION-01/02 và capability TTS đã qua delivery
 gate. Không coi recognition tốt là bằng chứng engine sinh được đúng cảm xúc.
 
-### Khả năng hiện có và các bước còn thiếu
+### Khả năng khi lập kế hoạch14/10 — xem cập nhật hiện hành ở đầu file
 
 - Local OmniVoice `docs/generation-parameters.md` có `duration` cho một item
   hoặc list item, ưu tiên hơn speed; postprocess trimming có thể làm đầu ra ngắn.
@@ -1182,18 +1197,16 @@ hiện hành và lập spec theo thiết bị/dịch vụ thực tế.
 
 ## Vòng chính xác đề xuất tiếp theo
 
-**VM-GEN-01**: dùng source HUB-COLLECTION-01 đã tích hợp và một project thử với
-voice Collection thực để khép generate/reuse/Stop/reopen.
-Thiếu trained model thì ghi dependency artifact Phase03, không báo pass bằng
-mock. Tiếp theo VM-SCRIPT-01/VM-REF-LIB-01 → VM-SELECTION-01 →
-VM-REF-ASSIGN-01 → VM-REF-DETAIL-01/VM-REF-RESOLVE-01 → VM-TIMING-REF-01 →
-VM-NAV-01/VM-DURATION-01 → VM-RIPPLE-01 → VM-STRETCH-01, cùng các dependency
-VM-DELIVERY-01/VM-LOUDNESS-01 → VM-REF-RANDOM-01 → VM-FIX-01 → VM-FIX-02;
-VOICE-EXPORT-13B4 kiểm tra artifact render thực. Các nhánh không cần GPU có thể
-được triển khai độc lập nhưng shared code/runtime phải phối hợp. Voice Patch triển
-khai lần lượt model-only/context-only/hybrid rồi khép timing/boundary.
-Dubber auto là mục tiêu chính thức MAN-10 và có ba vòng analyze/translate/job
-cha bổ sung; emotion analysis phải đạt trước khi khép auto emotion acceptance.
+Danh sách đã đối chiếu tới round35 nằm trong
+docs/VOICE-MANIPULATOR-REMAINING-ROUNDS.md. Các mã đã có source/artifact
+không tự động được làm lại từ VM-GEN-01. Ưu tiên tiếp tục profiling/latency
+VM-STRETCH-01, chứng minh conditioning VM-DELIVERY-01 rồi mới thi hành random
+trong audio/Fix, đồng thời khép human word/identity/seam và native export gates.
+
+Sau Checkpoint A còn13 mã chức năng đã lên kế hoạch:3 Changer,3 Isolator,
+2 Emotion và5 Dubber. Đây không phải13 round chắc chắn đủ để hoàn tất: mỗi
+mã còn phụ thuộc artifact/calibration, runtime, thiết bị và các vòng sửa/UAT.
+Mobile/Convai/Digital Human vẫn là feasibility chưa ấn định round.
 
 Các gate D-drive/OBS, SOURCE-EXTERNAL-ASSETS-01 và STT-TIMING-ACCURACY-01 trong
 queue chung vẫn giữ dependency của chúng; kế hoạch page này không tự đổi ưu tiên

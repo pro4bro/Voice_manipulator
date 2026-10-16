@@ -6,11 +6,34 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round34 VM-TIMING-RECOVERY-01.
-last_activity_desc: Round34 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round35 VM-CHECKPOINT-A-03.
+last_activity_desc: Round35 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round35 — VM-CHECKPOINT-A-03 (2026-10-16)
+
+Frozen f30b77d source passes all1107 API tests (554.78s, three existing/fixture
+warnings), all905 frontend tests in112 files (178.02s), typecheck/build172 and
+diff check. No assertions/thresholds/timeouts weakened or tests skipped.
+Actual production HTTP validates25 exact word crops plus proposed-boundary crop,
+Range206, explicit-review false rejected422 without new outputs, and3 comparable
+Patch variants with matching checksums/unreviewed ratings. All checks repeat after
+a guarded Unicode folder move and Open Existing. Four output WAV hashes/metadata,
+original media and LoRA adapter/reference/metadata remain intact; report snapshot
+key survives the move, manifest paths stay relative and GPU lease is free.
+No real human review, training/download, ASR/TTS or shared runtime operation occurs.
+CUA/Computer Use still fail initialization with kernel-assets os error3. Native
+playback/Save/Cancel, human word/identity/seam listening, expressive conditioning,
+random audio execution and preview250ms gates remain open. Phase03 stays60%.
+The owner-facing remaining-round register is docs/VOICE-MANIPULATOR-REMAINING-ROUNDS.md:
+prioritize preview profiling, delivery evidence then random execution, plus human/
+native gates. After Checkpoint A remain13 function codes:3 Changer,3 Isolator,
+2 Emotion,5 Dubber; not a promise that13 execution rounds suffice. Mobile/Convai/
+Digital Human still need feasibility. NEXT-PLAN's stale exact-next pointer is fixed.
+Detailed evidence/usage: docs/gates/vm-checkpoint-a-word-review-20261016.md; local
+receipts/logs under .scratch/vm-rounds31-35. Five requested rounds complete.
 
 ## Voice Manipulator round34 — VM-TIMING-RECOVERY-01 (2026-10-16)
 
