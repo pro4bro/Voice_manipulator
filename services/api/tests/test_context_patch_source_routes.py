@@ -16,6 +16,8 @@ def test_production_context_source_reference_and_conflict_routes(tmp_path):
     with TestClient(app) as client:
         assert client.get(base + "/source").json() == {"revision": 0, "draft": None}
         assert client.get(base + "/process").json()["processingAvailable"] is False
+        hybrid = client.get(f"/api/projects/{project.id}/voice-patch/hybrid/process")
+        assert hybrid.status_code == 200 and hybrid.json()["processingAvailable"] is False
         payload = dict(expectedRevision=0, expectedScriptRevision=scripts.get(project.id).revision,
             assetId="asset-context", startWord=1, endWord=2)
         response = client.post(base + "/source", json=payload)

@@ -6,11 +6,23 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round20 VM-PATCH-REF-01.
-last_activity_desc: Context clone Patch preview/Apply and real20.32s PCM/source/reference/retry/move/download verified. Batch16–20 source delivered; UI883/build, full API1018 pre-trust correction + current affected81. Next Hybrid01; quality/browser open.
+last_activity: 2026-10-16 — Voice Manipulator round21 VM-PATCH-HYBRID-01.
+last_activity_desc: Hybrid model/context source implemented; API15+route/UI76/build and real LoRA20.32s PCM/hash/reopen pass. Next reviewed spans/timing/history/Checkpoint-A verification in21–25 batch; quality gates open.
 ---
 
 # Project State
+
+## Voice Manipulator round21 — VM-PATCH-HYBRID-01 (2026-10-16)
+
+Hybrid uses compatible same-speaker full/LoRA plus selected source context without
+mutating trained Voice Model/reference or falling back to clone. Separate hybrid
+jobs/receipts/UI preserve cancel/retry/revision checks. API15 + production-route1,
+affected UI76/typecheck/build pass. Actual LoRA hybrid20.32s487680frames0clip,
+splice0, outside PCM/source/model/reference/idempotence/reopen/lease pass. Same
+known-utterance human assembly as round20; human A/B/C identity/delivery and word
+alignment remain open. Next VM-PATCH-02A reviewed spans, then02B timing,02C history
+and Checkpoint-A-01 verification in this requested21–25 batch. Phase03 stays60%.
+
 
 ## Voice Manipulator round20 — VM-PATCH-REF-01 (2026-10-16)
 

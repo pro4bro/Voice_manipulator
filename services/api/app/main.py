@@ -56,6 +56,7 @@ from app.adapters.voice_patch_job_routes import make_voice_patch_job_router
 from app.adapters.context_patch_source import FileContextPatchSource
 from app.adapters.context_patch_source_routes import make_context_patch_source_router
 from app.adapters.context_patch_processor import ContextVoicePatchProcessor
+from app.adapters.hybrid_patch_processor import HybridVoicePatchProcessor
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -434,6 +435,7 @@ def create_app(
     voice_patch_processor = VoicePatchProcessor(voice_patch_source, voice_script_speaker, reference_bindings, reference_schedules)
     context_patch_source = FileContextPatchSource(media, voice_script_documents, projects)
     context_patch_processor = ContextVoicePatchProcessor(context_patch_source, voice_script_speaker, reference_bindings, reference_schedules)
+    hybrid_patch_processor = HybridVoicePatchProcessor(context_patch_source, voice_script_speaker, reference_bindings, reference_schedules)
     voice_changer_engines = FileTrainingModelCatalog(
         settings.voice_changers_root,
         {"pro4bro": Path(__file__).resolve().parent.parent, "research": settings.research_engines_root},
@@ -843,6 +845,7 @@ def create_app(
             await asyncio.to_thread(voice_fixes.close)
             await asyncio.to_thread(voice_patch_processor.close)
             await asyncio.to_thread(context_patch_processor.close)
+            await asyncio.to_thread(hybrid_patch_processor.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
     app.include_router(make_voice_collection_transfer_router(voice_collections))
@@ -856,6 +859,7 @@ def create_app(
     app.include_router(make_voice_patch_job_router(voice_patch_processor))
     app.include_router(make_context_patch_source_router(context_patch_source))
     app.include_router(make_voice_patch_job_router(context_patch_processor))
+    app.include_router(make_voice_patch_job_router(hybrid_patch_processor))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,

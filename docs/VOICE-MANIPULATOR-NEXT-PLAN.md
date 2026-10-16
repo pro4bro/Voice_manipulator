@@ -848,6 +848,11 @@ overlap fixtures và A/B. **Requirements:** MAN-08, WF-01, WF-03.
 
 ### VM-PATCH-HYBRID-01 — Model train với context cùng speaker
 
+**2026-10-16 round21:** source implemented; API15+route/UI76/build and actual
+LoRA+context20.32s0clip/PCM/source/model/reference/idempotence/reopen pass.
+Human model-only/clone/hybrid identity/delivery A/B/C is still open. Next parent
+VM-PATCH-02 is split into reviewed spans02A, duration02B and history02C.
+
 **Kết quả:** phương án Patch 3 dùng model làm nền và reference làm điều kiện.
 **Nghiệm thu:**
 - Kiểm tra identity, engine/base/revision và modality compatibility; ghi

@@ -89,7 +89,7 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
       {currentDraft ? <audio controls aria-label="Nghe nguồn Patch" src={`${draft.audioUrl}#t=${draft.startFrame / draft.sampleRate},${draft.endFrame / draft.sampleRate}`} /> : null}
     </> : null}
     {projectId && document && draft ? <PatchProcessing key={`${projectId}:${document.revision}`} projectId={projectId} document={document} currentSource={!!currentDraft} saved={saved} voices={voices} onOutputReady={onOutputReady} /> : <p>Chuyển một câu nguồn để kiểm tra khả năng Patch.</p>}
-    {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} selectedAssetId={selectedAssetId} selection={selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
+    {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} voices={voices} selectedAssetId={selectedAssetId} selection={selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
   </ModuleFrame>;
 }
 

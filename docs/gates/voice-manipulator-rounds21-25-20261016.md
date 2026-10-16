@@ -1,0 +1,65 @@
+# Voice Manipulator rounds21–25
+
+Owner requested five further rounds on 2026-10-16. Starting point795a91e,
+clean checkout. Current ledgers supersede stale memory about rounds6–10.
+
+## Ordered scope
+
+1. Round21 **VM-PATCH-HYBRID-01**: trained same-speaker checkpoint plus explicit
+   surrounding context; separate jobs/lineage and visible strategy, no fallback.
+2. Round22 **VM-PATCH-02A**: reviewed word/span boundaries shared by Patch
+   strategies, explicit target/context preview and stale review protection.
+3. Round23 **VM-PATCH-02B**: natural ripple versus source-duration generation,
+   exact PCM budgets, capability/preflight and artifact quality checks.
+4. Round24 **VM-PATCH-02C**: durable revision history and A/B/C comparison for
+   the same source, including trained/reference/hybrid provenance and recovery.
+5. Round25 **VM-CHECKPOINT-A-01**: reproducible integrated artifact, export,
+   reopen/move and available UI verification; repair concrete defects and record
+   remaining acceptance gaps without claiming the whole checkpoint passed.
+
+Rounds22–24 are bounded implementation slices of the existing VM-PATCH-02 parent.
+No new processor is started before Checkpoint A's outstanding gates are resolved.
+
+## Checks held fixed
+
+Source media and trained models remain immutable; upstream engine read-only.
+Paths persist relative to project.json. Every preview/Apply needs current source,
+metadata, Script/edit/draft and model/reference identities. No hidden strategy
+fallback, transcript concat, spontaneous inference on reopen or success without
+its actual artifact. Shared runtime/GPU ownership stays serial.
+
+PCM16 mono24kHz, exact declared frames, no clipping and splice step<=0.05FS.
+Outside-target PCM is identical except an explicitly declared verified boundary
+operation. Estimates never become measured word anchors through frame mapping.
+Human identity/delivery/listening, native Save/cancel, browser playback and
+acoustic word alignment remain independent acceptance gates. A test fixture
+with exact assembly boundaries does not prove naturally spoken word timing.
+
+Each round is verified, documented and committed separately. Final broad tests
+run against frozen source. No push, new training/model download or portable
+publication is included.
+
+## Results
+
+### Round21 — VM-PATCH-HYBRID-01
+
+API15/15 (hybrid8 + context6 + production source route1), the updated production
+route1 separately, and affected UI76/76 pass. Typecheck/build pass167modules.
+Original trained metadata/reference and exact weights are fingerprinted alongside
+current contextual source/slice/transcript. Profile/base/type/weight/path failures
+reject before inference. LoRA/full payload, owned cancellation/retry, stale input,
+immutable output and idempotent Apply have fake-engine regressions. UI selects
+context clone or trained+context explicitly; no runtime fallback.
+
+Actual existing trained LoRA voice-ab44b6039111 used the same-profile contextual
+human assembly from round20, in a private copied project. Source models are
+read-only hardlinks; no training/model publication. Replacement65280frames;
+composite487680frames/20.32s,0clip, splice0, outside PCM byte-identical. Source,
+original model metadata and clean reference SHA unchanged; preview-before-Apply,
+idempotence/latest/reopen and lease cleanup pass. Receipt
+`.scratch/vm-rounds21-25/hybrid21-receipt.json`, `hybrid21-voice-patched.wav`.
+Elapsed352.41s includes repeated complete model integrity reads and cold inference;
+no interactive-latency pass is claimed. Assembly has known utterance boundaries,
+not measured natural per-word alignment. Human A/B/C identity/delivery comparison
+remains open and hybrid is not presumed best. Next VM-PATCH-02A reviewed spans.
+

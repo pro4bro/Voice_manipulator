@@ -52,3 +52,17 @@ it("does not open a late Apply response after source UI unmounts", async () => {
   await Promise.resolve(); await Promise.resolve();
   expect(callback).not.toHaveBeenCalled();
 });
+
+it("pins the trained model to a separate hybrid endpoint without clone fallback", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(reply({ processingAvailable: true, draftRevision: 3, blockers: [] }))
+    .mockResolvedValueOnce(reply({ ...job, voiceId: "v" }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<PatchProcessing projectId="p" document={document} currentSource saved voices={voices} contextMode hybridMode />);
+  expect(screen.queryByText("Giọng từ vùng tham chiếu · clone")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("Kiểm tra khả năng Patch"));
+  await waitFor(() => expect(screen.getByText("Tạo bản vá nghe thử")).toBeEnabled());
+  fireEvent.click(screen.getByText("Tạo bản vá nghe thử"));
+  await screen.findByLabelText("Nghe bản ghép Patch");
+  expect(fetcher.mock.calls[1][0]).toBe("/api/projects/p/voice-patch/hybrid/jobs");
+  expect(JSON.parse(fetcher.mock.calls[1][1].body).voiceId).toBe("v");
+});

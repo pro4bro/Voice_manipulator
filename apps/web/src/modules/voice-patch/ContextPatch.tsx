@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ProjectMediaAsset, VoiceOutput } from "../../domain/types";
+import type { ProjectMediaAsset, ProjectVoice, VoiceOutput } from "../../domain/types";
 import type { WordSelection } from "../../domain/word-selection";
 import type { VoicePatchSource } from "../../domain/voice-patch";
 import { PatchProcessing } from "./PatchProcessing";
@@ -7,7 +7,7 @@ import { PatchProcessing } from "./PatchProcessing";
 interface Candidate { id: string; side: string; startWord: number; endWord: number; startFrame: number; endFrame: number; text: string; artifactSha256?: string | null }
 interface ContextSource extends VoicePatchSource { assetId: string; contextCandidates: Candidate[]; selectedContext: Candidate | null; report: { targetWordIndices: number[] } }
 interface ContextDocument { revision: number; draft: ContextSource | null }
-interface Props { projectId: string; assets: ProjectMediaAsset[]; selectedAssetId?: string | null; selection?: WordSelection; scriptRevision: number; saved: boolean; onOutputReady?: (output: VoiceOutput) => void; onOpenSource?: (id: string) => void }
+interface Props { projectId: string; assets: ProjectMediaAsset[]; voices?: ProjectVoice[]; selectedAssetId?: string | null; selection?: WordSelection; scriptRevision: number; saved: boolean; onOutputReady?: (output: VoiceOutput) => void; onOpenSource?: (id: string) => void }
 async function request(url: string, body?: object): Promise<ContextDocument> {
   const response = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
   const result = await response.json();
@@ -16,13 +16,14 @@ async function request(url: string, body?: object): Promise<ContextDocument> {
   return result as ContextDocument;
 }
 
-export function ContextPatch({ projectId, assets, selectedAssetId, selection, scriptRevision, saved, onOutputReady, onOpenSource }: Props) {
+export function ContextPatch({ projectId, assets, voices = [], selectedAssetId, selection, scriptRevision, saved, onOutputReady, onOpenSource }: Props) {
   const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-patch/context`;
   const [document, setDocument] = useState<ContextDocument | null>(null);
   const [assetId, setAssetId] = useState(selectedAssetId ?? "");
   const [startWord, setStartWord] = useState(0), [endWord, setEndWord] = useState(0);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [strategy, setStrategy] = useState<"context" | "hybrid">("context");
   const identity = `${endpoint}:${assetId}:${startWord}:${endWord}:${scriptRevision}`;
   const current = useRef(identity); current.current = identity;
   const serial = useRef(0);
@@ -62,7 +63,7 @@ export function ContextPatch({ projectId, assets, selectedAssetId, selection, sc
   const matches = !!draft && draft.assetId === assetId && draft.scriptRevision === scriptRevision
     && draft.status === "ready" && target?.[0] === startWord && target[target.length - 1] === endWord;
   const sourceUrl = draft?.audioUrl;
-  return <details className="voice-script-settings"><summary>Phương án 2 · Giọng từ vùng xung quanh</summary>
+  return <details className="voice-script-settings"><summary>Phương án 2–3 · Context và Hybrid</summary>
     <p>Chọn vùng lời nói đã có timing đáng tin cậy và gán người nói. App tìm đoạn cùng người nói trước/sau vùng cần vá.</p>
     <label className="patch-copy"><span>FOOTAGE NGUỒN</span><select aria-label="Footage để vá theo context" value={assetId} onChange={(event) => { setAssetId(event.target.value); setStartWord(0); setEndWord(0); }}>
       <option value="">Chọn footage…</option>{assets.filter((item) => !item.disabled && !item.deletedAt).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -85,7 +86,11 @@ export function ContextPatch({ projectId, assets, selectedAssetId, selection, sc
           <audio controls aria-label={`Nghe context ${candidate.id}`} src={`${sourceUrl}#t=${candidate.startFrame / draft.sampleRate},${candidate.endFrame / draft.sampleRate}`} />
           <button type="button" disabled={busy || !saved || candidate.id === draft.selectedContext?.id} onClick={() => void act(candidate.id)}>{candidate.id === draft.selectedContext?.id ? "Đã chọn tham chiếu" : "Dùng đoạn này làm giọng tham chiếu"}</button>
         </div>)}
-        {draft.selectedContext ? <><p>Reference đã cắt riêng, có hash và transcript. Lời thay thế được nhập bên dưới.</p><PatchProcessing key={`${projectId}:context:${document!.revision}`} projectId={projectId} document={document!} currentSource={matches} saved={saved} voices={[]} contextMode onOutputReady={onOutputReady} /></> : null}
+        {draft.selectedContext ? <><p>Reference đã cắt riêng, có hash và transcript. Lời thay thế được nhập bên dưới.</p>
+          <label className="patch-copy"><span>PHƯƠNG ÁN VÁ</span><select aria-label="Phương án Patch context" value={strategy} onChange={(event) => setStrategy(event.target.value as "context" | "hybrid")}>
+            <option value="context">2 · Clone từ context</option><option value="hybrid">3 · Model đã train + context</option>
+          </select></label>
+          <PatchProcessing key={`${projectId}:${strategy}:${document!.revision}`} projectId={projectId} document={document!} currentSource={matches} saved={saved} voices={voices} contextMode hybridMode={strategy === "hybrid"} onOutputReady={onOutputReady} /></> : null}
       </> : null}
     </div> : null}
   </details>;

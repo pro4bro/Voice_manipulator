@@ -1,5 +1,16 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round21 — VM-PATCH-HYBRID-01 (2026-10-16)
+
+Hybrid uses compatible same-speaker full/LoRA plus selected source context without
+mutating trained Voice Model/reference or falling back to clone. Separate hybrid
+jobs/receipts/UI preserve cancel/retry/revision checks. API15 + production-route1,
+affected UI76/typecheck/build pass. Actual LoRA hybrid20.32s487680frames0clip,
+splice0, outside PCM/source/model/reference/idempotence/reopen/lease pass. Same
+known-utterance human assembly as round20; human A/B/C identity/delivery and word
+alignment remain open. Next VM-PATCH-02A reviewed spans, then02B timing,02C history
+and Checkpoint-A-01 verification in this requested21–25 batch. Phase03 stays60%.
+
 ## Voice Manipulator round20 — VM-PATCH-REF-01 (2026-10-16)
 
 Context clone Patch now selects trusted same-speaker source spans from imported
