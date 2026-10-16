@@ -6,11 +6,23 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round30 VM-CHECKPOINT-A-02.
-last_activity_desc: Round30 delivered; see current ledger and rounds26–30 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-16 — Voice Manipulator round31 VM-WORD-AUDITION-01.
+last_activity_desc: Round31 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round31 — VM-WORD-AUDITION-01 (2026-10-16)
+
+Saved Voice Outputs now have an explicit word inspector with source timing/trust,
+START/END/DURATION and one player for200ms-context word crops. Untrusted words
+remain listenable without trust promotion. Each request checks WAV/metadata key,
+PCM format/frame count, project containment and segment bounds; no inference.
+API7 (six new cases plus production integration), UI4/typecheck/build172 pass.
+Actual private Vietnamese timing output serves25 exact PCM crops including its
+two untrusted words; Range206/stale409 pass, original WAV/metadata unchanged.
+Local word31-receipt.json records evidence, not human acceptance. ADR0090 explains
+the contract. Next round32 adds explicit manual boundary review as a new output.
 
 ## Voice Manipulator round30 — VM-CHECKPOINT-A-02 (2026-10-16)
 

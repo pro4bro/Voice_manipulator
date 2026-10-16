@@ -8,6 +8,7 @@ import { PatchProcessing } from "./PatchProcessing";
 import { ContextPatch } from "./ContextPatch";
 import { PatchHistory } from "./PatchHistory";
 import { TimingRepair } from "../voice-output/TimingRepair";
+import { WordTimingReview } from "../voice-output/WordTimingReview";
 
 interface VoicePatchProps {
   projectId?: string; output?: VoiceOutput | null; selection?: WordSelection;
@@ -95,6 +96,7 @@ export function VoicePatch({ projectId, output = null, selection = EMPTY_SELECTI
     {projectId && assets ? <ContextPatch key={projectId} projectId={projectId} assets={assets} voices={voices} selectedAssetId={selectedAssetId} selection={sourceSelection ?? selection} scriptRevision={scriptRevision} saved={saved} onOutputReady={onOutputReady} onOpenSource={onOpenSource} /> : null}
     {projectId ? <PatchHistory key={`history:${projectId}`} projectId={projectId} onOpen={onOutputReady} /> : null}
     {projectId && output ? <TimingRepair key={`timing:${projectId}:${output.id}`} projectId={projectId} outputId={output.id} onOutputReady={onOutputReady} /> : null}
+    {projectId && output ? <WordTimingReview key={`word-review:${projectId}:${output.id}`} projectId={projectId} outputId={output.id} /> : null}
   </ModuleFrame>;
 }
 

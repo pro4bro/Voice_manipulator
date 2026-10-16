@@ -1,5 +1,17 @@
 # Project Status — 2026-10-16
 
+## Voice Manipulator round31 — VM-WORD-AUDITION-01 (2026-10-16)
+
+Saved Voice Outputs now have an explicit word inspector with source timing/trust,
+START/END/DURATION and one player for200ms-context word crops. Untrusted words
+remain listenable without trust promotion. Each request checks WAV/metadata key,
+PCM format/frame count, project containment and segment bounds; no inference.
+API7 (six new cases plus production integration), UI4/typecheck/build172 pass.
+Actual private Vietnamese timing output serves25 exact PCM crops including its
+two untrusted words; Range206/stale409 pass, original WAV/metadata unchanged.
+Local word31-receipt.json records evidence, not human acceptance. ADR0090 explains
+the contract. Next round32 adds explicit manual boundary review as a new output.
+
 ## Voice Manipulator round30 — VM-CHECKPOINT-A-02 (2026-10-16)
 
 Checkpoint A integration verified on the frozen48e737d source snapshot: all1085

@@ -65,6 +65,8 @@ from app.adapters.voice_patch_reviews import VoicePatchReviews
 from app.adapters.voice_patch_review_routes import make_voice_patch_review_router
 from app.adapters.output_timing_repair import OutputTimingRepair
 from app.adapters.output_timing_repair_routes import make_output_timing_repair_router
+from app.adapters.output_word_review import OutputWordReview
+from app.adapters.output_word_review_routes import make_output_word_review_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.reference_resolver import ReferenceResolver
@@ -877,6 +879,7 @@ def create_app(
     app.include_router(make_voice_patch_audition_router(VoicePatchAudition(voice_patch_processor.history, voice_outputs, media)))
     app.include_router(make_voice_patch_review_router(VoicePatchReviews(voice_patch_processor.history)))
     app.include_router(make_output_timing_repair_router(output_timing_repair))
+    app.include_router(make_output_word_review_router(OutputWordReview(projects, voice_outputs)))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
         projects, obs_livelink_runtime, media, obs_livelink_detailed_stt, obs_livelink_audio,
