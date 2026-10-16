@@ -6,11 +6,26 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-17 — Voice Manipulator round42 VM-STRETCH-SCHEDULE-01.
-last_activity_desc: Round42 delivered; see current ledger and rounds41–45 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-17 — Voice Manipulator round43 VM-STRETCH-LOCK-01.
+last_activity_desc: Round43 delivered; see current ledger and rounds41–45 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round43 — VM-STRETCH-LOCK-01 (2026-10-17)
+
+Preview publication now locks by canonical output folder, shared across service
+instances. All same-output variants/prefixes serialize; unrelated outputs proceed
+independently. A guarded weak registry releases unused entries and resolves path
+aliases/Windows casing. Hash/PCM/durability and journal semantics stay intact.
+RED-first concurrency/failure/alias/collection tests pass; focused API39 pass.
+Controlled actual-speech fixture: cached other output previously remained blocked
+through a200ms held renderer (404.07ms total lock wait); now completes8.90ms while
+that renderer is still held, lock wait0.175ms. This uses an artificial hold and
+does not claim normal latency. Native rendered WAV remains byte-identical; source
+SHA and journal revision5 unchanged. ADR0100 and contention receipts record scope;
+cross-process editing/actively moved folders are not newly supported. Next44
+repairs malformed cached WAV reads that currently leak HTTP500 from both routes.
 
 ## Voice Manipulator round42 — VM-STRETCH-SCHEDULE-01 (2026-10-17)
 

@@ -1,16 +1,19 @@
 import hashlib
 import json
 import math
+import os
 import re
 import threading
 from time import perf_counter
 import wave
+from weakref import WeakValueDictionary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.voice_stretch_audio import MAX_ADJUSTMENT_FRAMES, render_stretch
 
 
 class VoiceEditPreview:
-    _lock = threading.RLock()
+    _lock_registry = WeakValueDictionary()
+    _lock_registry_guard = threading.RLock()
 
     def __init__(self, store):
         self.store = store
@@ -20,6 +23,20 @@ class VoiceEditPreview:
             raise ValueError("Preview key không hợp lệ.")
         source = self.store.outputs.audio_path(project_id, output_id)
         return source.parent / "previews" / f"{key}.wav"
+
+    @staticmethod
+    def _lock_key(output_folder):
+        return os.path.normcase(os.path.realpath(os.fspath(output_folder)))
+
+    @classmethod
+    def _lock_for(cls, output_folder):
+        key = cls._lock_key(output_folder)
+        with cls._lock_registry_guard:
+            lock = cls._lock_registry.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                cls._lock_registry[key] = lock
+            return lock
 
     @staticmethod
     def _key(source_sha256, operations):
@@ -102,7 +119,8 @@ class VoiceEditPreview:
         key = self._key(doc.source_sha256, active)
         path = self.path(project_id, output_id, key)
         wait_started = perf_counter()
-        with self._lock:
+        output_lock = self._lock_for(source.parent)
+        with output_lock:
             metrics["lockWaitMs"] = (perf_counter() - wait_started) * 1000
             check_started = perf_counter()
             prefix_report = None
