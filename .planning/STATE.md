@@ -6,11 +6,26 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round35 VM-CHECKPOINT-A-03.
-last_activity_desc: Round35 delivered; see current ledger and rounds31–35 gate. Phase03 remains60%; independent quality acceptance gates remain open.
+last_activity: 2026-10-17 — Voice Manipulator round36 VM-STRETCH-PROFILE-01.
+last_activity_desc: Round36 delivered; see current ledger and rounds36–40 gate. Phase03 remains60%; independent quality acceptance gates remain open.
 ---
 
 # Project State
+
+## Voice Manipulator round36 — VM-STRETCH-PROFILE-01 (2026-10-17)
+
+Preview packets now expose ephemeral per-request cache/lock/check/render/artifact/
+packet timing, with candidate/handler Server-Timing on draft preview. The cached
+render report remains immutable and is not confused with current cache latency.
+API18 pass, including a RED-first cache diagnostics regression. ADR0094 records
+units and measurement limits. Real8s natural speech baseline: HTTP miss252.54ms,
+hit41.44ms; profiled fresh render median210ms one operation/375ms three operations.
+Repeated instrumented run miss221.96ms/hit25.64ms shows runtime variance, not an
+optimization claim. cProfile locates FFmpeg subprocess work and Python clipping
+scan (over2.1m generator calls); timings under profiling include its overhead.
+All runs preserve source hash, exact target frames,0clipping/boundary checks and
+journal revision0. Receipts/profiles under .scratch/vm-rounds36-40.250ms browser/
+continuous-playback gate stays open. Next optimize the measured PCM scan.
 
 ## Voice Manipulator round35 — VM-CHECKPOINT-A-03 (2026-10-16)
 
