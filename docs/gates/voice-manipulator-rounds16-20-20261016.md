@@ -92,3 +92,18 @@ inference in this composition gate. Configured gain integration uses API PCM
 fixtures; this actual speech gate has0dB gain. Human listening, identity,
 calibrated word anchors and browser/native playback/export remain open.
 Next: VM-FLOW-01, VM-PATCH-01, VM-PATCH-REF-01.
+
+### Round18 — VM-FLOW-01
+
+Current API11/11 and affected UI59/59, typecheck/build pass (165 modules).
+Production application routes transfer/read/play source PCM without inference.
+Whole-row source identity, hashes and mapped frame bounds persist portably;
+waveform/subtitle/Script selections resolve only one sentence, explicitly labeled
+as whole-sentence expansion. Multi-row/silence/other-source selection rejects.
+Independent review repaired Script reassignment relabeling audible source identity.
+Late transfer replies after switching output are ignored. GET only validates
+existing preview artifacts and never runs generation/stretch. Processor is
+truthfully disabled until next round. Actual prior full-model output transferred,
+reopened and validated with unchanged SHA; receipt `.scratch/vm-rounds16-20/flow-receipt.json`.
+No browser, listening or native Save acceptance is inferred from API/UI tests.
+Next VM-PATCH-01 and VM-PATCH-REF-01 complete this five-round owner batch.

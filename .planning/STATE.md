@@ -6,11 +6,21 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round17 VM-FIX-02.
-last_activity_desc: Immutable Fix Apply/gain/reopen verified. API48/UI75/typecheck/build and actual speech5.71s137040frames/hash/PCM/move pass. Next Flow01/Patch01/PatchRef01 in owner batch. Quality/conditioning/browser open; Phase03 stays60%.
+last_activity: 2026-10-16 — Voice Manipulator round18 VM-FLOW-01.
+last_activity_desc: Whole-sentence Patch source transfer verified. API11/UI59/typecheck/build and actual source/hash/reopen pass. Next Patch01/PatchRef01; quality/browser gates open.
 ---
 
 # Project State
+
+## Voice Manipulator round18 — VM-FLOW-01 (2026-10-16)
+
+Whole-sentence output/selection transfer to Patch now preserves immutable source
+voice/profile, frames, audio/metadata hashes and Script/edit revisions. Stale and
+late replies cannot attach to another source. API11/UI59/typecheck/build pass;
+actual trained-speech source transfer/reopen/hash invariance verified. Patch
+processor remains visibly unavailable in this round. Next VM-PATCH-01 then
+VM-PATCH-REF-01 to complete the owner batch. Browser/listening gates remain.
+
 
 ## Round17 — VM-FIX-02
 

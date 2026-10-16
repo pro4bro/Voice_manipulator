@@ -538,6 +538,10 @@ tool bị policy chặn thì ghi gate còn mở, không đổi đường thực 
 
 ### 3. VM-FLOW-01 — Nối output tới bước tiếp theo
 
+**2026-10-16 round18:** implemented whole-row transfer, revision/hash/identity and
+late-response guards; API11/UI59/build and real source/reopen pass. Processing
+remains unavailable until VM-PATCH-01; no partial-word or human quality claim.
+
 **Kết quả:** một đường cụ thể Voice Output → Voice Patch, dùng asset/output ID.
 
 **Nghiệm thu:**

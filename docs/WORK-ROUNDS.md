@@ -1,5 +1,14 @@
 # Work Rounds
 
+## Voice Manipulator round18 — VM-FLOW-01 (2026-10-16)
+
+Whole-sentence output/selection transfer to Patch now preserves immutable source
+voice/profile, frames, audio/metadata hashes and Script/edit revisions. Stale and
+late replies cannot attach to another source. API11/UI59/typecheck/build pass;
+actual trained-speech source transfer/reopen/hash invariance verified. Patch
+processor remains visibly unavailable in this round. Next VM-PATCH-01 then
+VM-PATCH-REF-01 to complete the owner batch. Browser/listening gates remain.
+
 ## Voice Manipulator round17 — VM-FIX-02 (2026-10-16)
 
 Explicit Apply creates immutable output with untouched PCM/gaps, ripple offsets,
