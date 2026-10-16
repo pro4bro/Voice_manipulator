@@ -1,0 +1,30 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { PatchAudition } from "./PatchAudition";
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+const plan = { sourceAvailable: true, sourceName: "Gốc.wav", voiceName: "Anh Vũ", audioUrls: { source: { region: "/source-region", head: "/source-head" }, variant: { region: "/variant-region", head: "/variant-head" } } };
+it("uses one player, switches between original/variant and stops when the region changes", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => plan }));
+  const view = render(<PatchAudition projectId="p" outputId="o" />);
+  fireEvent.click(await screen.findByText("Nghe nguồn"));
+  const audio = screen.getByLabelText("Nghe đối chiếu vùng vá");
+  expect(audio).toHaveAttribute("src", "/source-region"); fireEvent.loadedMetadata(audio);
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByText("Nghe bản vá"));
+  expect(audio).toHaveAttribute("src", "/variant-region");
+  expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText("Vùng nghe đối chiếu"), { target: { value: "head" } });
+  expect(audio).not.toHaveAttribute("src");
+  fireEvent.click(screen.getByText("Nghe bản vá"));
+  expect(audio).toHaveAttribute("src", "/variant-head");
+});
+it("keeps variant listening available when original integrity fails", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...plan, sourceAvailable: false, sourceReason: "Nguồn đã đổi" }) }));
+  render(<PatchAudition projectId="p" outputId="o" />);
+  expect(await screen.findByText("Nguồn đã đổi")).toBeInTheDocument();
+  expect(screen.getByText("Nghe nguồn")).toBeDisabled();
+  expect(screen.getByText("Nghe bản vá")).toBeEnabled();
+});

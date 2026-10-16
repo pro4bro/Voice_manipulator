@@ -46,3 +46,18 @@ WAV SHA stays8df7b33eda41137d9a4e587d69cb225fb8a5687016867522eebd62ab6453e327;
 source metadata unchanged, preview-before-Apply/idempotence/lease pass,0TTS.
 New output output-9a94a020fc2a; local timing27-receipt.json records158.36s including
 cold ASR startup. This is not a human word-timing acceptance. Next round28 audition.
+
+### Round28 — VM-PATCH-AUDITION-01
+
+Accepted Patch history now opens one shared source/variant player with region,
+head, tail and full-clip views. Explicit selection starts playback; changing region
+or output stops it. Saved source checksums and project containment guard original
+audio; unavailable originals never substitute a current Timeline render.
+Real three-strategy artifacts exposed a trained-media source-location difference;
+a RED regression and immutable-output fallback fixed it. Actual HTTP verification
+passes24 WAV crops across three accepted variants plus Range206, with source/output
+unchanged and0TTS. API audition7 and production route1 pass; UI4/typecheck pass.
+ADR0088 records the behavior. Local audition28-receipt.json contains artifact hashes.
+The private ASR Studio was released and only its owned18085 server stopped.
+Human listening/browser acceptance remain open. Next round29 records explicit
+user assessments without automatically marking quality accepted.

@@ -1,5 +1,20 @@
 # Project Status — 2026-10-16
 
+## Voice Manipulator round28 — VM-PATCH-AUDITION-01 (2026-10-16)
+
+Accepted Patch history now opens one shared source/variant player with region,
+head, tail and full-clip views. Explicit selection starts playback; changing region
+or output stops it. Saved source checksums and project containment guard original
+audio; unavailable originals never substitute a current Timeline render.
+Real three-strategy artifacts exposed a trained-media source-location difference;
+a RED regression and immutable-output fallback fixed it. Actual HTTP verification
+passes24 WAV crops across three accepted variants plus Range206, with source/output
+unchanged and0TTS. API audition7 and production route1 pass; UI4/typecheck pass.
+ADR0088 records the behavior. Local audition28-receipt.json contains artifact hashes.
+The private ASR Studio was released and only its owned18085 server stopped.
+Human listening/browser acceptance remain open. Next round29 records explicit
+user assessments without automatically marking quality accepted.
+
 ## Voice Manipulator round27 — VM-TIMING-REPAIR-01 (2026-10-16)
 
 Explicit persisted Timing Repair jobs now measure existing Voice Output segments

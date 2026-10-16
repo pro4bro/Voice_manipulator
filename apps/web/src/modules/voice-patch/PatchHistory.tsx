@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { VoiceOutput } from "../../domain/types";
+import { PatchAudition } from "./PatchAudition";
 
 interface Revision {
   output: VoiceOutput; sourceOutputId: string; strategy: string; comparisonKey: string;
@@ -10,10 +11,11 @@ const strategies: Record<string, string> = { "voice-patch": "Model đã train ·
 
 export function PatchHistory({ projectId, onOpen }: { projectId: string; onOpen?: (output: VoiceOutput) => void }) {
   const [packet, setPacket] = useState<History | null>(null);
+  const [auditionOutputId, setAuditionOutputId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const current = useRef(projectId); current.current = projectId;
   const serial = useRef(0);
-  useEffect(() => { setPacket(null); setBusy(false); setError(null); serial.current++; return () => { serial.current++; }; }, [projectId]);
+  useEffect(() => { setPacket(null); setAuditionOutputId(null); setBusy(false); setError(null); serial.current++; return () => { serial.current++; }; }, [projectId]);
   async function read() {
     const expected = projectId, version = ++serial.current;
     setBusy(true); setError(null);
@@ -41,10 +43,11 @@ export function PatchHistory({ projectId, onOpen }: { projectId: string; onOpen?
           const patch = entry.output.parameters?.voicePatch;
           const voice = patch && typeof patch === "object" && "voiceId" in patch ? String(patch.voiceId) : "";
           return <div key={entry.output.id}><p>{strategies[entry.strategy] ?? entry.strategy} · {voice} · {entry.output.duration.toFixed(3)} giây</p>
-            <audio controls preload="none" aria-label={`Nghe bản vá đã lưu ${entry.output.id}`} src={entry.audioUrl} />
+            <button type="button" aria-label={`Nghe đối chiếu ${entry.output.id}`} onClick={() => setAuditionOutputId(entry.output.id)}>Nghe đối chiếu</button>
             <button type="button" aria-label={`Mở bản vá ${entry.output.id}`} disabled={!onOpen} onClick={() => onOpen?.(entry.output)}>Mở trên Timeline và Script</button>
           </div>;
         })}</fieldset>;
     })}
+    {auditionOutputId ? <PatchAudition projectId={projectId} outputId={auditionOutputId} /> : null}
   </details>;
 }

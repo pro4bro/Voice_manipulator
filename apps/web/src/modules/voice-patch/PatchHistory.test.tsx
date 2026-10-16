@@ -12,7 +12,7 @@ it("groups only comparable accepted variants and opens history without generatin
   fireEvent.click(screen.getByText("Đọc lịch sử bản vá"));
   await screen.findByText("1 bản có artifact thiếu hoặc không khớp đã bị loại.");
   expect(screen.getAllByRole("group", { name: /source/ })).toHaveLength(2);
-  expect(screen.getAllByLabelText(/Nghe bản vá đã lưu/)).toHaveLength(4);
+  expect(screen.getAllByRole("button", { name: /Nghe đối chiếu/ })).toHaveLength(4);
   fireEvent.click(screen.getByRole("button", { name: "Mở bản vá a" }));
   expect(open).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
   expect(fetcher).toHaveBeenCalledTimes(1);

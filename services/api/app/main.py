@@ -59,6 +59,8 @@ from app.adapters.context_patch_processor import ContextVoicePatchProcessor
 from app.adapters.hybrid_patch_processor import HybridVoicePatchProcessor
 from app.adapters.trained_media_patch_processor import TrainedMediaPatchProcessor
 from app.adapters.voice_patch_history_routes import make_voice_patch_history_router
+from app.adapters.voice_patch_audition import VoicePatchAudition
+from app.adapters.voice_patch_audition_routes import make_voice_patch_audition_router
 from app.adapters.output_timing_repair import OutputTimingRepair
 from app.adapters.output_timing_repair_routes import make_output_timing_repair_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
@@ -870,6 +872,7 @@ def create_app(
     app.include_router(make_voice_patch_job_router(hybrid_patch_processor))
     app.include_router(make_voice_patch_job_router(trained_media_patch_processor))
     app.include_router(make_voice_patch_history_router(voice_patch_processor.history))
+    app.include_router(make_voice_patch_audition_router(VoicePatchAudition(voice_patch_processor.history, voice_outputs, media)))
     app.include_router(make_output_timing_repair_router(output_timing_repair))
     app.include_router(make_collection_preview_router(collection_previews))
     app.include_router(make_obs_recording_management_router(
