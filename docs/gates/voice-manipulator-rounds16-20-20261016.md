@@ -61,3 +61,34 @@ tests, not presented as a multi-human acoustic quality result.
 This round publishes verified clips only. No new output is applied yet. Human
 listening, identity, measured word anchors and browser/native UAT remain open;
 CUA returned apps[]/browsers[]. Next: VM-FIX-02 composition/application.
+
+### Round17 — VM-FIX-02
+
+Current affected API48/48, UI75/75, typecheck/build pass. Explicit Apply produces
+a separate output and portable receipt with source/preview/audio/metadata hashes.
+Only mismatching desired generation identities are replaced; pause-only changes
+compose without TTS. Reapplying returns the same artifact. Gain-only invokes the
+existing loudness renderer without a new raw output or inference; GET only reads
+its verified saved cache. Whole-row target budgets persist across opening Fix
+outputs and reject engines without native duration. Go-source and saved-result
+navigation preserve original audio. This is output navigation, not an accepted
+per-word acoustic undo editor or evidence of human A/B.
+
+Independent review fixes have red/green regressions for generation fingerprints,
+output metadata corruption, normalized Script whitespace, inherited duration
+capability and Windows transient receipt-read denial. Internal receipt IO is
+serialized; a bounded310ms read retry preserves errors if access stays denied.
+Only final natural segment endpoints within12frames (3-decimal precision) may
+snap to the actual WAV end; larger errors fail and any snap is reported. A
+zero-edit render now preserves existing timing trust without promoting estimates.
+
+Actual composition from prior trained full speech and the round16 replacement:
+137040frames/5.71s, mono24k PCM16,0clipped samples, splice step0. The unchanged
+second sentence and0.35s pause are byte-identical. Source hash unchanged,
+idempotence/new-output no-dirty/metadata integrity/move/Open Existing pass.
+Current receipt: `.scratch/vm-rounds16-20/apply-receipt.json`; WAV:
+`fixed-two-sentences.wav`; moved private project recorded in the receipt. No new
+inference in this composition gate. Configured gain integration uses API PCM
+fixtures; this actual speech gate has0dB gain. Human listening, identity,
+calibrated word anchors and browser/native playback/export remain open.
+Next: VM-FLOW-01, VM-PATCH-01, VM-PATCH-REF-01.

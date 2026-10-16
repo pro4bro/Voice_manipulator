@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { VoiceFixControls } from "./VoiceFixControls";
+import type { VoiceOutput } from "../../domain/types";
 
 afterEach(() => vi.unstubAllGlobals());
 const plan = { key: "snapshot", scriptRevision: 3, editRevision: 1, dirtyCount: 1, blockers: [], units: [{ rowId: "r", text: "Xin chào", desiredKey: "clip", status: "dirty" }] };
@@ -78,4 +79,32 @@ it("does not let an older Stop acknowledgement revive a cancelled job", async ()
   await screen.findByText(/0\/1 câu · cancelled/);
   finishOldStop(response({ ...job, updatedAt: "2026-10-16T01:00:01Z" }));
   await waitFor(() => expect(screen.queryByText("Dừng ngay")).not.toBeInTheDocument());
+});
+
+it("requires explicit Apply before opening the verified replacement output", async () => {
+  const output = { id: "derived" } as VoiceOutput;
+  const accept = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({ ...plan, dirtyCount: 0, units: [] }))
+    .mockResolvedValueOnce(response({ output, audioUrl: "/verified/audio", sourceOutputId: "o", key: "applied", report: {} })));
+  render(<VoiceFixControls {...props} onOutputReady={accept} />);
+  fireEvent.click(screen.getByText("Kiểm tra phần cần sửa"));
+  await screen.findByText(/Không có câu nào cần tạo lại/);
+  expect(accept).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("Áp dụng bản Fix"));
+  await waitFor(() => expect(accept).toHaveBeenCalledWith(output));
+});
+
+it("does not navigate to an Apply response after the user switches output", async () => {
+  let finish!: (value: ReturnType<typeof response>) => void;
+  const accept = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({ ...plan, dirtyCount: 0, units: [] }))
+    .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })));
+  const view = render(<VoiceFixControls {...props} onOutputReady={accept} />);
+  fireEvent.click(screen.getByText("Kiểm tra phần cần sửa"));
+  await screen.findByText(/Không có câu nào cần tạo lại/);
+  fireEvent.click(screen.getByText("Áp dụng bản Fix"));
+  view.rerender(<VoiceFixControls {...props} outputId="other" onOutputReady={accept} />);
+  finish(response({ output: { id: "derived" }, audioUrl: "/old/audio", report: {} }));
+  await waitFor(() => expect(screen.getByText("Đọc bản Fix đã lưu")).toBeEnabled());
+  expect(accept).not.toHaveBeenCalled();
 });

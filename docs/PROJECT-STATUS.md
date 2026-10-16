@@ -1,5 +1,13 @@
 # Project Status — 2026-10-15
 
+## Voice Manipulator round17 — explicit Fix Apply
+
+VM-FIX-02 integrated: immutable composition, same saved artifact on retry,
+raw speech plus verified gain render, portable source/metadata lineage and
+whole-row target carryover. Actual speech5.71s137040frames/0clipping, untouched
+PCM/gap/hash/move pass; API48/UI75/typecheck/build. Next VM-FLOW-01, Patch01,
+PatchRef01 under five-round owner request. Phase03 60%, quality/browser open.
+
 ## Voice Manipulator round16 — incremental Fix clips
 
 VM-FIX-01 integrated: dirty fingerprint planning, immutable cache checkpoints,

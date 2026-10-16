@@ -2524,6 +2524,17 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   const context = useMemo<StudioContext>(() => ({
+    onDerivedVoiceOutput: (output: VoiceOutput) => {
+      setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
+      setWordSelection(EMPTY_SELECTION);
+      openVoiceOutput(output, false);
+      setNotice("Đã mở bản Fix mới; nguồn vẫn nằm trong Voice Output.");
+    },
+    onNavigateVoiceOutput: (id: string) => {
+      const source = voiceOutputs.find((item) => item.id === id);
+      if (!source) { setNotice("Nguồn không còn trong Voice Output."); return; }
+      setWordSelection(EMPTY_SELECTION); openVoiceOutput(source, false);
+    },
     voiceRender,
     voiceEdits,
     editedVoiceOutput: editedOutput,

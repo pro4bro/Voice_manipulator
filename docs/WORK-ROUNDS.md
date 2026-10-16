@@ -1,5 +1,15 @@
 # Work Rounds
 
+## Voice Manipulator round17 — VM-FIX-02 (2026-10-16)
+
+Explicit Apply creates immutable output with untouched PCM/gaps, ripple offsets,
+word trust/lineage, adopted duration budgets and idempotent checksummed receipts.
+Gain-only applies existing render with0TTS and no duplicate raw output. API48,
+UI75/typecheck/build pass. Actual two-speech5.71s137040frames,0clipping, gap/row2
+byte-exact, metadata/source hashes/idempotence/move/Open Existing pass. Next
+VM-FLOW-01 → VM-PATCH-01 → VM-PATCH-REF-01 in owner batch. Listening/identity,
+partial-word anchors, expressive/random and browser gates remain.
+
 ## Voice Manipulator round16 — VM-FIX-01 (2026-10-16)
 
 Incremental clip planning/jobs, whole-row duration, durable checkpoints, Stop/retry,

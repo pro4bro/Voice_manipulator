@@ -79,6 +79,15 @@ def test_store_move_reopen_mapping_and_original_bytes(tmp_path):
     assert store.outputs.audio_path(project.id, oid).read_bytes() == original
 
 
+def test_no_active_edit_preserves_word_trust_for_rendered_or_fixed_output(tmp_path):
+    _, project, oid, store = setup_store(tmp_path)
+    output = store.outputs.get(project.id, oid)
+    output.words[0]["timingTrusted"] = True
+    store.outputs.save(project.id, output)
+    unchanged = store.mapped_output(project.id, oid, store.get(project.id, oid))
+    assert unchanged.words[0]["timingTrusted"] is True
+
+
 @pytest.mark.parametrize("scope", ["clip", "segment", "sentence"])
 def test_budgets_and_locked_sentence_conflict_before_any_edit(tmp_path, scope):
     _, project, oid, store = setup_store(tmp_path)

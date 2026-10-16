@@ -40,6 +40,7 @@ class _Snapshot:
     schedules: Any
     timing: Any
     timing_rows: list[ScriptSentence]
+    stretched_rows: set[str]
     request: VoiceScriptRequest
     steps: list[Any]
     plan: VoiceFixPlan
@@ -79,7 +80,22 @@ class VoiceFixService:
 
     @staticmethod
     def _write_job(path: Path, job: VoiceFixJob) -> None:
-        FileProjectRepository._atomic_write(path, job.model_dump_json(by_alias=True, indent=2))
+        with VoiceFixService._lock:
+            FileProjectRepository._atomic_write(path, job.model_dump_json(by_alias=True, indent=2))
+
+    @staticmethod
+    def _load_job(path: Path) -> VoiceFixJob:
+        # Serialize our own poll/write handles; external Windows scanners may
+        # still briefly deny a read during atomic replacement. Never invent state.
+        with VoiceFixService._lock:
+            for attempt in range(6):
+                try:
+                    payload = path.read_text(encoding="utf-8")
+                    return VoiceFixJob.model_validate_json(payload)
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(.01 * 2 ** attempt)
 
     def _read_job(self, project_id: str, output_id: str, job_id: str) -> VoiceFixJob:
         if not _ID.fullmatch(output_id):
@@ -87,7 +103,7 @@ class VoiceFixService:
         path = self.job_path(project_id, job_id)
         if not path.is_file():
             raise KeyError(job_id)
-        job = VoiceFixJob.model_validate_json(path.read_text(encoding="utf-8"))
+        job = self._load_job(path)
         if job.project_id != project_id or job.output_id != output_id:
             raise KeyError(job_id)
         return job
@@ -180,6 +196,22 @@ class VoiceFixService:
         generators = output.parameters.get("generators", {})
         return generators if isinstance(generators, dict) else {}
 
+    @staticmethod
+    def duration_targets(output: VoiceOutput) -> dict[str, int]:
+        fix = output.parameters.get("fix")
+        if not isinstance(fix, dict) or fix.get("durationTargets") is None:
+            return {}
+        targets = fix.get("durationTargets")
+        if fix.get("sampleRate") != 24000 or not isinstance(targets, dict):
+            raise ValueError("Applied Fix duration targets have an invalid frame clock.")
+        result = {}
+        for row_id, frames in targets.items():
+            if (not isinstance(row_id, str) or not row_id or isinstance(frames, bool)
+                    or not isinstance(frames, int) or not 1 <= frames <= 24000 * 600):
+                raise ValueError("Applied Fix duration target is invalid.")
+            result[row_id] = frames
+        return result
+
     def _build(self, project_id: str, output_id: str, parameters=None) -> _Snapshot:
         script, edit, output, bindings, schedules = self._capture(project_id, output_id)
         row_ids = {segment.row_id for segment in output.segments}
@@ -187,6 +219,8 @@ class VoiceFixService:
         timing_snapshot = None
         request = None
         steps = []
+        timing_rows = []
+        stretched_rows: set[str] = set()
         try:
             rows = self._script_rows(project_id, output, script, parameters)
             rows_by_id = {row.id: row for row in script.rows}
@@ -204,7 +238,9 @@ class VoiceFixService:
                 raise ValueError(" ".join(blockers))
             steps = self.speaker._plan(project_id, request)
             spans, stretched, stretch_blockers = self._map_segments(output, edit)
+            stretched_rows = stretched
             blockers.extend(stretch_blockers)
+            duration_targets = self.duration_targets(output)
             for step in steps:
                 if step.row.id not in spans:
                     blockers.append(f"No source segment exists for Script row {step.row.id}.")
@@ -222,8 +258,15 @@ class VoiceFixService:
                         if step.allocation is not None:
                             step.allocation.setdefault("rows", {}).setdefault(step.row.id, {})["duration"] = duration
                             step.allocation["rows"][step.row.id]["origin"] = "edit"
+                elif step.duration is None and step.row.id in duration_targets:
+                    if step.plan.engine != "omnivoice":
+                        blockers.append(f"Engine {step.plan.engine} cannot preserve the applied duration target for {step.row.id}.")
+                        continue
+                    step.duration = duration_targets[step.row.id] / edit.sample_rate
+                    if step.allocation is not None:
+                        step.allocation.setdefault("rows", {}).setdefault(step.row.id, {})["duration"] = step.duration
+                        step.allocation["rows"][step.row.id]["origin"] = "applied-fix"
         except (ValueError, KeyError, OSError) as exc:
-            timing_rows = []
             blockers.append(str(exc))
 
         unique_blockers = sorted(set(blockers))
@@ -259,7 +302,7 @@ class VoiceFixService:
         if current[0] != script or current[1] != edit or current[2] != output or current[3] != bindings or current[4] != schedules:
             raise ScriptRevisionConflict("Script/Timeline/reference changed while planning Fix; refresh the plan.")
         return _Snapshot(project_id, output_id, script, edit, output, bindings, schedules, timing_snapshot,
-            timing_rows, request, steps, plan)
+            timing_rows, stretched_rows, request, steps, plan)
 
     def _find_cached(self, project_id: str, step) -> str | None:
         key = self.speaker.clip_key(step)
@@ -277,6 +320,23 @@ class VoiceFixService:
             raise KeyError(output_id)
         plan = self._build(project_id, output_id, parameters).plan
         return plan.model_copy(update={"latest_job": self.latest_job(project_id, output_id)})
+
+    def validated_snapshot(self, project_id: str, output_id: str, expected_script_revision: int,
+        expected_edit_revision: int, expected_key: str, parameters=None) -> _Snapshot:
+        """Return a current snapshot only when every desired row clip is cache-validated and ready."""
+        snapshot = self._build(project_id, output_id, parameters)
+        plan = snapshot.plan
+        if plan.script_revision != expected_script_revision:
+            raise ScriptRevisionConflict("Script changed; refresh the Fix plan before applying.")
+        if plan.edit_revision != expected_edit_revision:
+            raise ScriptRevisionConflict("Timeline changed; refresh the Fix plan before applying.")
+        if plan.key != expected_key:
+            raise ScriptRevisionConflict("Fix plan changed; refresh before applying.")
+        if plan.blockers:
+            raise ScriptRevisionConflict("Fix is blocked: " + " ".join(plan.blockers))
+        if not plan.units or any(unit.status != "ready" or not unit.clip for unit in plan.units):
+            raise ScriptRevisionConflict("Fix clips are still dirty; generate and validate every current row before applying.")
+        return snapshot
 
     def _fresh(self, snapshot: _Snapshot) -> bool:
         current = self._capture(snapshot.project_id, snapshot.output_id)
@@ -309,7 +369,7 @@ class VoiceFixService:
         with self._lock:
             for path in (Path(self.speaker.projects.get(project_id).project_path) / "jobs" / "voice-fix").glob("*.json"):
                 try:
-                    existing = VoiceFixJob.model_validate_json(path.read_text(encoding="utf-8"))
+                    existing = self._load_job(path)
                 except (OSError, ValueError):
                     continue
                 if existing.output_id == output_id and existing.status in {"queued", "running"}:
@@ -512,7 +572,7 @@ class VoiceFixService:
         if folder.is_dir():
             for path in folder.glob("*.json"):
                 try:
-                    job = VoiceFixJob.model_validate_json(path.read_text(encoding="utf-8"))
+                    job = self._load_job(path)
                 except (OSError, ValueError):
                     continue
                 if job.project_id == project_id:
@@ -525,7 +585,7 @@ class VoiceFixService:
         if folder.is_dir():
             for path in folder.glob("*.json"):
                 try:
-                    job = VoiceFixJob.model_validate_json(path.read_text(encoding="utf-8"))
+                    job = self._load_job(path)
                 except (OSError, ValueError):
                     continue
                 if job.project_id == project_id and job.output_id == output_id:

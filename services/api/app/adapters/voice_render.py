@@ -51,7 +51,9 @@ class VoiceRenderService:
         prior_end = 0
         for segment in segments:
             row = rows.get(segment.row_id)
-            if row is None or row.text != segment.text or row.voice_id != segment.voice_id:
+            if (row is None or " ".join(row.text.split()) != " ".join(segment.text.split())
+                    or (row.voice_id is not None and row.voice_id != segment.voice_id)
+                    or (row.speaker_profile_id is not None and row.speaker_profile_id != segment.speaker_profile_id)):
                 raise ScriptRevisionConflict("Output không còn khớp text/voice của Script hiện tại.")
             segment_settings = segments_by_id.get(row.segment_id).settings if row.segment_id in segments_by_id else None
             if "gainDb" in script.settings.locked:
@@ -68,11 +70,17 @@ class VoiceRenderService:
                 raise ValueError("Chênh lệch gain của một row vượt khoảng render hỗ trợ (-60..12 dB).")
             start = round(edit.map_seconds(segment.start) * edit.sample_rate)
             end = round(edit.map_seconds(segment.end) * edit.sample_rate)
+            precision_clamp = 0
+            if segment is segments[-1] and 0 < end - edit.frames <= 12:
+                precision_clamp, end = end - edit.frames, edit.frames
             if start < 0 or end <= start or end > edit.frames:
                 raise ValueError("Segment output nằm ngoài audio đã chỉnh.")
             if regions and start < prior_end:
                 raise ValueError("Segment output bị chồng lấn; gain theo row không thể render an toàn.")
-            regions.append({"rowId": segment.row_id, "startFrame": start, "endFrame": end, "gainDb": region_gain})
+            region = {"rowId": segment.row_id, "startFrame": start, "endFrame": end, "gainDb": region_gain}
+            if precision_clamp:
+                region["durationPrecisionClampFrames"] = precision_clamp
+            regions.append(region)
             prior_end = end
         return clip_gain, regions
 
@@ -156,6 +164,8 @@ class VoiceRenderService:
                 temp = plan["folder"] / f".{plan['key']}.{uuid.uuid4().hex}.wav"
                 try:
                     render_report = render_loudness(plan["base"], temp, plan["regions"], plan["globalGainDb"])
+                    render_report["durationPrecisionClamps"] = [{"rowId": region["rowId"], "frames": region["durationPrecisionClampFrames"]}
+                        for region in plan["regions"] if region.get("durationPrecisionClampFrames")]
                     metadata = {"version": 1, "cacheKey": plan["key"], "keyMaterial": plan["keyMaterial"],
                                 "outputId": output_id, "sourceSha256": edit.source_sha256,
                                 "baseAudioSha256": plan["baseHash"], "outputSha256": _file_hash(temp),

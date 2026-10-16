@@ -6,11 +6,16 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-16 — Voice Manipulator round16 VM-FIX-01.
-last_activity_desc: VM-FIX-01 clip checkpoints/UI and real full voice2.68s verified. API12/UI18/typecheck/build pass. VM-FIX-02 next within five-round batch; conditioning/browser/listening remain open. Phase03 stays60%.
+last_activity: 2026-10-16 — Voice Manipulator round17 VM-FIX-02.
+last_activity_desc: Immutable Fix Apply/gain/reopen verified. API48/UI75/typecheck/build and actual speech5.71s137040frames/hash/PCM/move pass. Next Flow01/Patch01/PatchRef01 in owner batch. Quality/conditioning/browser open; Phase03 stays60%.
 ---
 
 # Project State
+
+## Round17 — VM-FIX-02
+
+Immutable Apply/gain/target carryover/reopen, API48/UI75/build and real speech
+5.71s137040frames0clip/gap/row/hash/move pass. Next Flow01, Patch01, PatchRef01.
 
 ## Round16 — VM-FIX-01
 

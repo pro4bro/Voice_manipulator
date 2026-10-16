@@ -26,6 +26,8 @@ const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoic
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
+  onFixedOutput?: (output: VoiceOutput) => void;
+  onNavigateOutput?: (id: string) => void;
   voiceRender?: import("../../app/useVoiceRender").VoiceRenderController;
   timingContext?: { projectId: string; assets: import("../../domain/types").ProjectMediaAsset[]; runs: import("../../domain/types").TrainingRun[]; saved: boolean; editRevision?: number };
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
@@ -100,7 +102,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? [];
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -589,7 +591,7 @@ export function VoiceScript({ voiceRender, timingContext, navigation, onReferenc
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
     <DeliveryCapabilities document={scriptDocument ?? migrateScript(rows)} />
     {output && voiceRender ? <VoiceRenderControls controller={voiceRender} saved={timingContext?.saved ?? false} /> : null}
-    {output && timingContext && scriptDocument ? <VoiceFixControls projectId={timingContext.projectId} outputId={output.id} scriptRevision={scriptDocument.revision} editRevision={timingContext.editRevision ?? 0} saved={timingContext.saved} /> : null}
+    {output && timingContext && scriptDocument ? <VoiceFixControls projectId={timingContext.projectId} outputId={output.id} output={output} onOutputReady={onFixedOutput} onNavigateOutput={onNavigateOutput} scriptRevision={scriptDocument.revision} editRevision={timingContext.editRevision ?? 0} saved={timingContext.saved} /> : null}
     {timingContext && scriptDocument ? <DurationPlanPanel projectId={timingContext.projectId} document={scriptDocument} saved={timingContext.saved} output={output} refreshKey={durationRefresh} /> : null}
     {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} onChange={() => setDurationRefresh((current) => current + 1)} /> : null}
     {view === "table" ? <div className="script-table-shell voice-script" onContextMenu={referenceContext} onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) referenceContext(event); else handleRowSelectionKey(event); }} ref={followRoot}>

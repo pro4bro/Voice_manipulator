@@ -1,5 +1,12 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Voice Manipulator round17 — 2026-10-16
+
+VM-FIX-02 composition/Apply/reopen and gain render implemented. Actual5.71s
+137040frames,0clip, untouched row/gap, source/metadata hashes and move pass;
+API48/UI75/typecheck/build. Next VM-FLOW-01 → VM-PATCH-01 → VM-PATCH-REF-01.
+Existing conditioning/browser/listening gates retain meaning; Phase03 60%.
+
 ## Voice Manipulator round16 — 2026-10-16
 
 VM-FIX-01 implemented and verified with a real trained full voice clip2.68s,

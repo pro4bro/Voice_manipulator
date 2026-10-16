@@ -66,7 +66,7 @@ class FileVoiceEdits:
     def mapped_output(self, project_id: str, output_id: str, doc: VoiceEditDocument):
         output = self.outputs.get(project_id, output_id)
         words = [{**word, "start": doc.map_seconds(float(word["start"])), "end": doc.map_seconds(float(word["end"])),
-                  "timingTrusted": False} for word in output.words]
+                  **({"timingTrusted": False} if doc.cursor else {})} for word in output.words]
         segments = [segment.model_copy(update={"start": doc.map_seconds(segment.start), "end": doc.map_seconds(segment.end)})
                     for segment in output.segments]
         return output.model_copy(update={"duration": doc.frames / doc.sample_rate, "words": words, "segments": segments,

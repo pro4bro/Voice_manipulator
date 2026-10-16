@@ -31,3 +31,15 @@ publishes no replacement Voice Output. VM-FIX-02 must validate PCM, frame budget
 boundaries, cue lineage and source hashes before publishing a new derivative.
 Source audio is never overwritten; the existing output remains available for A/B.
 Estimated word timing remains estimated after any sample-exact composition.
+
+VM-FIX-02 retains adopted row targets in `parameters.fix.durationTargets` as
+integer24k frame budgets when no explicit Script/timing target exists. New
+explicit targets or further whole-row stretches override them. Returning to the
+prior source/history restores the previous timing intent; opening a new output
+does not silently switch its Fixed speech back to natural duration.
+
+The applied artifact keeps raw speech for exact unaffected-PCM lineage. Requested
+gain uses the existing separate renderer, and the Apply receipt points at the
+verified rendered artifact for playback/download. Gain-only changes need no TTS
+or duplicate raw output. Output JSON receives a canonical metadata checksum in
+the receipt; audio bytes alone are insufficient to validate identity/provenance.

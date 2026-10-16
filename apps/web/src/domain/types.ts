@@ -1096,7 +1096,8 @@ export interface VoiceOutput {
   speakerProfileId: string;
   engine: string;
   generatorId: string;
-  parameters: Record<string, TrainingParameterValue>;
+  /** Output metadata also carries nested generator, duration and derivative lineage records. */
+  parameters: Record<string, unknown>;
   duration: number;
   sampleRate: number;
   audioPath: string;

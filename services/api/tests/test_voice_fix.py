@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import wave
+from pathlib import Path
 
 import pytest
 
@@ -282,3 +283,37 @@ def test_fix_receipt_is_project_owned_and_survives_service_reopen(tmp_path):
     assert reopened == completed
     path = service.job_path(project.id, job.id)
     assert path.is_relative_to(service.outputs.root(project.id).parents[1])
+
+
+def test_poll_retries_transient_sharing_denial_without_losing_job(tmp_path, monkeypatch):
+    project, _, _, speaker, _, edits, output, _ = setup_fix(tmp_path)
+    service = VoiceFixService(speaker, edits)
+    plan = service.plan(project.id, output.id)
+    job = service.start(project.id, output.id, plan.script_revision, plan.edit_revision, plan.key)
+    target = service.job_path(project.id, job.id)
+    original = Path.read_text
+    denied = []
+    def transient(path, *args, **kwargs):
+        if path == target and not denied:
+            denied.append(True)
+            raise PermissionError(13, "temporarily shared", str(path))
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", transient)
+    assert service.get_job(project.id, output.id, job.id).status == "complete"
+    assert denied == [True]
+
+
+def test_adopted_duration_target_blocks_engine_without_native_duration(tmp_path, monkeypatch):
+    from dataclasses import replace
+    project, outputs, _, speaker, _, edits, output, _ = setup_fix(tmp_path)
+    output.parameters["fix"] = {"sampleRate": 24000, "durationTargets": {"r1": 12000}}
+    outputs.save(project.id, output)
+    original = speaker._plan
+    def other_engine(*args, **kwargs):
+        steps = original(*args, **kwargs)
+        for step in steps:
+            step.plan = replace(step.plan, engine="vibevoice")
+        return steps
+    monkeypatch.setattr(speaker, "_plan", other_engine)
+    plan = VoiceFixService(speaker, edits).plan(project.id, output.id)
+    assert plan.blockers and all(unit.status == "blocked" for unit in plan.units)

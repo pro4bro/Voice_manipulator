@@ -75,6 +75,49 @@ def test_render_applies_inherited_clip_gain_once_and_returns_identical_audio(tmp
     assert edits.outputs.get(project.id, output_id).model_dump(mode="json") == before_output
 
 
+def test_render_accepts_resolved_output_voice_for_same_profile_but_rejects_other_profile(tmp_path):
+    project, output_id, edits, _, script, client = setup_render(tmp_path)
+    script.rows[0].voice_id = None
+    script.rows[0].speaker_profile_id = "s"
+    script.settings.gain_db = -3
+    saved = edits.scripts.save(project.id, script)
+    with client:
+        response = post(client, project.id, output_id, script_revision=saved.revision)
+        assert response.status_code == 200, response.text
+        saved.rows[0].speaker_profile_id = "other-profile"
+        saved = edits.scripts.save(project.id, saved)
+        assert post(client, project.id, output_id, script_revision=saved.revision).status_code == 409
+
+
+@pytest.mark.parametrize("excess,expected", [(2, 200), (13, 400)])
+def test_render_only_snaps_final_endpoint_within_three_decimal_precision(tmp_path, excess, expected):
+    project, output_id, edits, source, script, client = setup_render(tmp_path)
+    output = edits.outputs.get(project.id, output_id)
+    output.segments[0].end = 10
+    edits.outputs.save(project.id, output)
+    with wave.open(str(source), "wb") as pcm:
+        pcm.setparams((1, 2, 24000, 0, "NONE", "none"))
+        pcm.writeframes(struct.pack("<h", 4000) * (240000 - excess))
+    script.settings.gain_db = -3
+    saved = edits.scripts.save(project.id, script)
+    with client:
+        result = post(client, project.id, output_id, script_revision=saved.revision)
+        assert result.status_code == expected, result.text
+        if expected == 200:
+            assert result.json()["sourceFrameCount"] == 239998
+            assert result.json()["report"]["durationPrecisionClamps"] == [{"rowId": "r", "frames": 2}]
+
+
+def test_gain_compares_normalized_script_speech_text(tmp_path):
+    project, output_id, edits, _, script, client = setup_render(tmp_path)
+    script.rows[0].text = "  Hello  \n"
+    script.settings.gain_db = -3
+    saved = edits.scripts.save(project.id, script)
+    with client:
+        response = post(client, project.id, output_id, script_revision=saved.revision)
+        assert response.status_code == 200, response.text
+
+
 def test_row_gain_replaces_clip_inherited_value_and_locked_segment_blocks_row_override(tmp_path):
     project, output_id, edits, source, script, client = setup_render(tmp_path)
     script.settings.gain_db = 6
