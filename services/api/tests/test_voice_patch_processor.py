@@ -244,3 +244,23 @@ def test_boundary_cues_use_half_open_ownership_and_reject_crossing(tmp_path, cro
         applied = processor.apply(project.id, body)["output"]
         assert any(word["text"] == "boundary cue" for word in applied.words)
 
+
+def test_patch_retains_stretch_preview_word_trust_warning(tmp_path, monkeypatch):
+    from app.domain.voice_edits import StretchOperation, VoiceEditCommand
+    from test_voice_patch import fake_preview_stretch
+    project, outputs, _lease, _speaker, scripts, edits, source, _engine, trained, store, _draft, processor = setup_patch(tmp_path)
+    words = [{**word, "timingTrusted": True} for word in source.words]
+    outputs.save(project.id, source.model_copy(update={"words": words}))
+    monkeypatch.setattr("app.adapters.voice_edit_preview.render_stretch", fake_preview_stretch)
+    script = scripts.get(project.id)
+    edit = edits.change(project.id, source.id, VoiceEditCommand(revision=0, scriptRevision=script.revision,
+        operation=StretchOperation(startFrame=12000, endFrame=20400, targetFrames=12600)))
+    draft = store.transfer(project.id, VoicePatchTransferRequest(expectedRevision=1, outputId=source.id,
+        rowId="r1", expectedScriptRevision=script.revision, expectedEditRevision=edit.revision))
+    job = wait_job(processor, project.id, processor.start(project.id,
+        request(draft.draft, draft.revision, script.revision, edit.revision, trained.id)).id)
+    result = processor.apply(project.id, VoicePatchApplyRequest(expectedDraftRevision=draft.revision,
+        jobId=job.id, expectedKey=job.key))["output"]
+    preserved = [word for word in result.words if word.get("segmentIndex") == 1]
+    assert preserved and all(word["timingTrusted"] is False for word in preserved)
+

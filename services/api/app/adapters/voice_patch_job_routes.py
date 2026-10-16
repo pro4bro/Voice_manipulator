@@ -8,8 +8,8 @@ from app.adapters.voice_patch_processor import VoicePatchProcessor
 from app.domain.voice_patch_jobs import VoicePatchApplyRequest, VoicePatchJobRequest
 
 
-def make_voice_patch_job_router(service: VoicePatchProcessor) -> APIRouter:
-    router = APIRouter(prefix="/api/projects/{project_id}/voice-patch")
+def make_voice_patch_job_router(service: VoicePatchProcessor, *, prefix: str | None = None) -> APIRouter:
+    router = APIRouter(prefix=prefix or service.route_prefix)
 
     @router.get("/process")
     def plan(project_id: str):

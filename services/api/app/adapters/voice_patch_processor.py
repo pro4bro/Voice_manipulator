@@ -9,6 +9,7 @@ import struct
 import threading
 import time
 import wave
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,9 +46,13 @@ class VoicePatchProcessor:
 
     _lock = threading.RLock()
 
-    def __init__(self, store, speaker, bindings=None, schedules=None):
+    def __init__(self, store, speaker, bindings=None, schedules=None, *, storage_namespace: str = "voice-patch",
+        route_prefix: str = "/api/projects/{project_id}/voice-patch"):
         self.store, self.speaker = store, speaker
         self.bindings, self.schedules = bindings, schedules
+        if not _ID.fullmatch(storage_namespace) or not route_prefix.startswith("/api/projects/{project_id}/"):
+            raise ValueError("Voice Patch namespace or route prefix is invalid.")
+        self.storage_namespace, self.route_prefix = storage_namespace, route_prefix.rstrip("/")
         self.outputs, self.scripts = speaker.outputs, speaker.scripts
         self._running: dict[str, _Running] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -65,17 +70,35 @@ class VoicePatchProcessor:
     def job_path(self, project_id: str, job_id: str) -> Path:
         if not _ID.fullmatch(job_id):
             raise KeyError(job_id)
-        return self._root(project_id) / "jobs" / "voice-patch" / f"{job_id}.json"
+        return self._root(project_id) / "jobs" / self.storage_namespace / f"{job_id}.json"
 
     def artifact_dir(self, project_id: str, job_id: str) -> Path:
         if not _ID.fullmatch(job_id):
             raise KeyError(job_id)
-        return self._root(project_id) / "jobs" / "voice-patch" / job_id
+        return self._root(project_id) / "jobs" / self.storage_namespace / job_id
 
     def applied_path(self, project_id: str, output_id: str) -> Path:
         if not _ID.fullmatch(output_id):
             raise KeyError(output_id)
-        return self._root(project_id) / "jobs" / "voice-patch" / "applied" / f"{output_id}.json"
+        return self._root(project_id) / "jobs" / self.storage_namespace / "applied" / f"{output_id}.json"
+
+    def _preview_url(self, project_id: str, job_id: str, kind: str) -> str:
+        return f"{self.route_prefix.format(project_id=project_id)}/jobs/{job_id}/audio?kind={kind}"
+
+    def _transaction_locks(self, project_id: str, snapshot: dict[str, Any]):
+        return (self.store.edits._lock, self.store.scripts._lock)
+
+    def _voice_for(self, project_id: str, capture: dict[str, Any], voice_id: str):
+        return self.speaker.generator.voices.get(project_id, voice_id)
+
+    def _extra_key_material(self, capture: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    def _extra_lineage(self, capture: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    def _extra_report(self, capture: dict[str, Any]) -> dict[str, Any]:
+        return {}
 
     @staticmethod
     def _hash_json(value: Any) -> str:
@@ -174,7 +197,8 @@ class VoicePatchProcessor:
             if any(item.get("rowId") == row.id and item.get("status") not in {None, "none", "unavailable"}
                     for item in timing.get("plans", [])):
                 blockers.append("The selected Script row has a timing plan; Voice Patch does not rewrite reference timing.")
-        return {**snapshot, "draft": draft, "draftRevision": draft_revision, "output": output, "script": script, "edit": edit,
+        return {**snapshot, "projectId": project_id, "draft": draft, "draftRevision": draft_revision,
+            "output": output, "script": script, "edit": edit,
             "segment": segment, "row": row, "settings": settings, "bindings": bindings,
             "schedules": schedules, "blockers": sorted(set(blockers))}
 
@@ -229,6 +253,7 @@ class VoicePatchProcessor:
             "generatorFingerprint": step.plan.artifact_fingerprint,
             "bindings": capture["bindings"].model_dump(mode="json", by_alias=True) if capture["bindings"] else None,
             "schedules": capture["schedules"].model_dump(mode="json", by_alias=True) if capture["schedules"] else None,
+            **self._extra_key_material(capture),
         }
         key = self._hash_json(material)
         return {**capture, "step": step, "clipKey": clip_key, "key": key,
@@ -287,7 +312,7 @@ class VoicePatchProcessor:
                 time.sleep(.01 * (2 ** attempt))
 
     def latest_job(self, project_id: str) -> VoicePatchJob | None:
-        root = self._root(project_id) / "jobs" / "voice-patch"
+        root = self._root(project_id) / "jobs" / self.storage_namespace
         pointer = root / "latest.json"
         if not pointer.is_file():
             return None
@@ -361,6 +386,10 @@ class VoicePatchProcessor:
             existing = self.latest_job(project_id)
             if existing is not None and existing.key == snapshot["key"] and existing.status in {"queued", "running", "complete"}:
                 return existing
+            # A cached clip may be syntactically valid but have failed the PCM
+            # quality gate. An explicit retry must not replay that same failure.
+            snapshot["forceRegenerate"] = bool(existing is not None and existing.key == snapshot["key"]
+                and existing.status == "failed")
             job = VoicePatchJob(project_id=project_id, output_id=snapshot["draft"].output_id,
                 status="queued", key=snapshot["key"], draft_revision=request.expected_draft_revision,
                 script_revision=request.expected_script_revision, edit_revision=request.expected_edit_revision,
@@ -442,7 +471,8 @@ class VoicePatchProcessor:
             root = self.outputs.clips_root(job.project_id)
             cached_folder = root / snapshot["clipKey"]
             cached = self.speaker._cached_record(cached_folder, step)
-            if cached is None:
+            force_regenerate = bool(snapshot.get("forceRegenerate"))
+            if cached is None or force_regenerate:
                 lease = self.speaker.gpu_lease.acquire(f"voice-patch:{job.project_id}:{job.id}")
                 if self.speaker.before_start is not None:
                     self.speaker.before_start()
@@ -461,7 +491,7 @@ class VoicePatchProcessor:
             try:
                 clip = self.speaker._clip(job.project_id, step, cancellation_id, job=context,
                     is_cancelled=lambda: self._cancelled(state),
-                    commit=lambda action: self._commit(snapshot, state, action), force_regenerate=False)
+                    commit=lambda action: self._commit(snapshot, state, action), force_regenerate=force_regenerate)
             finally:
                 abandon = getattr(step.plan.engine_speech.worker, "abandon_request", None)
                 if callable(abandon):
@@ -491,7 +521,7 @@ class VoicePatchProcessor:
             self._write_pcm(replacement_path, clip_pcm)
             self._write_pcm(composite_path, composite)
             source_segment = snapshot["segment"]
-            report = {"version": 1, "rowId": snapshot["draft"].row_id,
+            report = {"version": 1, "freshRetry": force_regenerate, "rowId": snapshot["draft"].row_id,
                 "sourceOutputId": job.output_id, "sourceAudioSha256": snapshot["draft"].source_sha256,
                 "sourceMetadataSha256": snapshot["draft"].source_metadata_sha256,
                 "sourcePreviewSha256": self._sha(source_path), "scriptRevision": job.script_revision,
@@ -502,12 +532,13 @@ class VoicePatchProcessor:
                 "compositeSha256": self._sha(composite_path), "clipRecordSha256": self._sha(clip_folder / "clip.json"),
                 "sourceSegmentStart": source_segment.start, "sourceSegmentEnd": source_segment.end,
                 "preservesPcmOutsideSelectedRow": True, "timingReview": "unverified-natural-duration-ripple",
-                "clipTimingQuality": record.get("quality"), "clipTimingNote": record.get("note")}
+                "clipTimingQuality": record.get("quality"), "clipTimingNote": record.get("note"),
+                **self._extra_report(snapshot)}
             if not self._fresh(job.project_id, snapshot):
                 raise ScriptRevisionConflict("Source, Script, Timeline or trained voice changed before Patch preview publication.")
             complete = state.job.model_copy(update={"status": "complete", "done": 1, "clip": clip.key,
-                "replacement_audio_url": f"/api/projects/{job.project_id}/voice-patch/jobs/{job.id}/audio?kind=replacement",
-                "audio_url": f"/api/projects/{job.project_id}/voice-patch/jobs/{job.id}/audio?kind=composite",
+                "replacement_audio_url": self._preview_url(job.project_id, job.id, "replacement"),
+                "audio_url": self._preview_url(job.project_id, job.id, "composite"),
                 "report": report, "error": None, "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._save_job(complete)
             state.job = complete
@@ -528,7 +559,9 @@ class VoicePatchProcessor:
     def _commit(self, snapshot: dict[str, Any], state: _Running, action) -> bool:
         if self._cancelled(state) or not self._fresh(state.job.project_id, snapshot):
             return False
-        with self.store.edits._lock, self.store.scripts._lock:
+        with contextlib.ExitStack() as stack:
+            for lock in self._transaction_locks(state.job.project_id, snapshot):
+                stack.enter_context(lock)
             if self._cancelled(state) or not self._fresh(state.job.project_id, snapshot):
                 return False
             action()
@@ -588,7 +621,7 @@ class VoicePatchProcessor:
                 thread.join(timeout=max(0, deadline - time.monotonic()))
 
     def protected_clips(self, project_id: str) -> set[str]:
-        root = self._root(project_id) / "jobs" / "voice-patch"
+        root = self._root(project_id) / "jobs" / self.storage_namespace
         protected = set()
         if root.is_dir():
             for path in root.glob("patch-*.json"):
@@ -650,7 +683,7 @@ class VoicePatchProcessor:
         sorted_segments = sorted(output.segments, key=lambda item: (item.start, item.end, item.row_id))
         index_by_row = {segment.row_id: i for i, segment in enumerate(sorted_segments)}
         current_script_rows = {row.id: row for row in capture["script"].rows}
-        voice = self.speaker.generator.voices.get(project_id, job.voice_id)
+        voice = self._voice_for(project_id, capture, job.voice_id)
         segments = []
         for segment in sorted_segments:
             start, end = spans[segment.row_id]
@@ -691,6 +724,10 @@ class VoicePatchProcessor:
             if overlaps_patch:
                 raise ValueError("An existing word cue crosses the selected Patch row boundary; source timing is ambiguous.")
             copy = dict(word)
+            if edit.cursor:
+                # Keep the Timeline preview's conservative timing warning.
+                # Frame mapping is not a fresh acoustic alignment measurement.
+                copy["timingTrusted"] = False
             if start_word >= selected_end:
                 start_word += delta
                 end_word += delta
@@ -709,7 +746,8 @@ class VoicePatchProcessor:
             "draftRevision": job.draft_revision, "scriptRevision": job.script_revision, "editRevision": job.edit_revision,
             "jobId": job.id, "jobKey": job.key, "rowId": draft.row_id, "replacementText": job.replacement_text,
             "voiceId": voice.id, "speakerProfileId": voice.speaker_profile_id, "sampleRate": _RATE,
-            "durationDeltaFrames": delta, "timingReview": "unverified-natural-duration-ripple"}
+            "durationDeltaFrames": delta, "timingReview": "unverified-natural-duration-ripple",
+            **self._extra_lineage(capture)}
         parameters["voicePatch"] = lineage
         first = segments[0]
         distinct_voices = {segment.voice_id for segment in segments}
@@ -798,7 +836,9 @@ class VoicePatchProcessor:
                 if self._sha(capture["audio_path"]) != job.report.get("sourcePreviewSha256"):
                     raise ScriptRevisionConflict("Source preview changed after Patch generation; process again.")
                 self._write_pcm(audio_path, composite)
-                with self.store.edits._lock, self.store.scripts._lock:
+                with contextlib.ExitStack() as stack:
+                    for lock in self._transaction_locks(project_id, capture):
+                        stack.enter_context(lock)
                     fresh = self._capture(project_id, request.expected_draft_revision)
                     rebuilt = self._build(project_id, self._request_from_job(job))
                     rebuilt_hash = self._sha(fresh["audio_path"])
@@ -826,7 +866,7 @@ class VoicePatchProcessor:
                 raise
 
     def latest(self, project_id: str) -> dict[str, Any]:
-        root = self._root(project_id) / "jobs" / "voice-patch" / "applied"
+        root = self._root(project_id) / "jobs" / self.storage_namespace / "applied"
         if not root.is_dir():
             raise KeyError("applied")
         receipts = []

@@ -827,6 +827,13 @@ peak/loudness và nghe trong mix. **Requirements:** MAN-07, WF-01, WF-05.
 
 ### VM-PATCH-REF-01 — Clone từ vùng xung quanh của đúng speaker
 
+**2026-10-16 round20:** implemented media source capture, explicit same-speaker
+reference selection/extraction, temporary base clone jobs, preview/Apply/ripple,
+full usable source cues and portable hash lineage. Actual human-speech assembly
+20.32s0clip/source/outside PCM/retry/move/download pass. Source mono24kPCM only;
+noise, identity/listening/browser and acoustic word timing acceptance remain open.
+Next planned VM-PATCH-HYBRID-01; see combined rounds16–20 gate.
+
 **Kết quả:** phương án Patch 2, reference được chọn/cắt từ source trước/sau span.
 **Nghiệm thu:**
 - Diarization + QC loại wrong-speaker/overlap/noise/đoạn hỏng; người dùng thấy

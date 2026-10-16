@@ -1,5 +1,21 @@
 # Work Rounds
 
+## Voice Manipulator round20 — VM-PATCH-REF-01 (2026-10-16)
+
+Context clone Patch now selects trusted same-speaker source spans from imported
+or recorded Media Assets, previews reference transcript/audio, and uses a temporary
+base-model clone without training or Voice Model publication. Explicit Apply
+preserves source PCM outside the target and full usable transcript/speaker runs.
+Actual human-speech assembly fixture:20.32s487680frames0clip, splice0, original/
+reference/source invariance, idempotence, moved Open Existing and identical HTTP
+WAV download pass. First clipped inference was rejected; explicit retry now
+creates a fresh immutable clip. Frozen regression closure is recorded in the
+combined gate. Source24kPCM only; acoustic noise/identity/listening/browser and
+word anchors remain open. Five-round batch16–20 source work is delivered.
+Next planned round: VM-PATCH-HYBRID-01 (trained model plus same-speaker context).
+Closure: frontend883/typecheck/build; full API1018 before final timing-trust
+metadata correction, then current affected API81. Combined gate records limits.
+
 ## Voice Manipulator round19 — VM-PATCH-01 (2026-10-16)
 
 Trained same-speaker full/LoRA Patch now generates replacement/composite previews,

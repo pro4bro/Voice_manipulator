@@ -13,6 +13,7 @@ interface AppliedPatch { output: VoiceOutput; audioUrl: string; sourceOutputId: 
 interface Props {
   projectId: string; document: VoicePatchDocument; currentSource: boolean; saved: boolean;
   voices: ProjectVoice[]; onOutputReady?: (output: VoiceOutput) => void;
+  contextMode?: boolean;
 }
 async function request<T>(url: string, body?: object): Promise<T> {
   const response = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -22,12 +23,12 @@ async function request<T>(url: string, body?: object): Promise<T> {
 }
 const active = (job: PatchJob | null) => !!job && ["running", "queued"].includes(job.status);
 
-export function PatchProcessing({ projectId, document, currentSource, saved, voices, onOutputReady }: Props) {
+export function PatchProcessing({ projectId, document, currentSource, saved, voices, onOutputReady, contextMode = false }: Props) {
   const draft = document.draft!;
-  const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-patch`;
+  const endpoint = `/api/projects/${encodeURIComponent(projectId)}/voice-patch${contextMode ? "/context" : ""}`;
   const owner = `${endpoint}:${document.revision}`;
   const [text, setText] = useState(draft.replacementText);
-  const eligible = voices.filter((voice) => voice.speakerProfileId === draft.speakerProfileId && voice.engine === "omnivoice" && ["full", "lora"].includes(voice.kind));
+  const eligible = contextMode ? [{ id: "context-clone", name: "Giọng từ vùng tham chiếu", kind: "clone" }] : voices.filter((voice) => voice.speakerProfileId === draft.speakerProfileId && voice.engine === "omnivoice" && ["full", "lora"].includes(voice.kind));
   const [voiceId, setVoiceId] = useState(eligible.find((voice) => voice.id === draft.voiceId)?.id ?? eligible[0]?.id ?? "");
   const [plan, setPlan] = useState<PatchPlan | null>(null);
   const [job, setJob] = useState<PatchJob | null>(null);
@@ -104,10 +105,10 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
   }
   return <div className="patch-processing">
     <label className="patch-copy"><span>NỘI DUNG ĐỌC LẠI</span><textarea aria-label="Nội dung Patch" value={text} maxLength={5000} onChange={(event) => setText(event.target.value)} /></label>
-    <label className="patch-copy"><span>MODEL ĐÃ TRAIN</span><select aria-label="Model Patch" value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
+    <label className="patch-copy"><span>{contextMode ? "GIỌNG THAM CHIẾU" : "MODEL ĐÃ TRAIN"}</span><select aria-label="Model Patch" value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
       <option value="">Chọn model cùng người nói…</option>{eligible.map((voice) => <option key={voice.id} value={voice.id}>{voice.name} · {voice.kind}</option>)}
     </select></label>
-    <p>Model đã train dùng kèm mẫu sạch đã lưu của model. Bản vá giữ thời lượng đọc thực; phần sau tự dịch theo. Cần nghe thử trước khi áp dụng.</p>
+    <p>{contextMode ? "Dùng model nền với đoạn tham chiếu đã chọn, không dùng checkpoint đã train. Nội dung tham chiếu không được thêm vào lời thay thế." : "Model đã train dùng kèm mẫu sạch đã lưu của model."} Bản vá giữ thời lượng đọc thực; phần sau tự dịch theo. Cần nghe thử trước khi áp dụng.</p>
     <button type="button" disabled={busy || running || !currentSource || !saved} onClick={() => void perform("inspect")}>Kiểm tra khả năng Patch</button>
     <button type="button" disabled={busy || running || !currentSource || !saved || !text.trim() || !eligible.some((voice) => voice.id === voiceId) || !plan?.processingAvailable || !!plan.blockers.length || plan.draftRevision !== document.revision} onClick={() => void perform("start")}>Tạo bản vá nghe thử</button>
     <button type="button" disabled={busy || running || !saved || !currentSource || !matching || job?.status !== "complete"} onClick={() => void perform("apply")}>Áp dụng bản vá</button>
