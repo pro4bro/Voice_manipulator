@@ -28,3 +28,39 @@ it("does not display a late plan from another output", async () => {
   await act(async () => finish({ ok: true, json: async () => plan }));
   expect(screen.queryByLabelText("Từ cần kiểm tra")).not.toBeInTheDocument();
 });
+
+it("saves only the selected reviewed boundaries as a separate output", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  const ready = vi.fn();
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => plan }).mockResolvedValueOnce({ ok: true, json: async () => ({ output: { id: "new" } }) });
+  vi.stubGlobal("fetch", fetcher); render(<WordTimingReview projectId="p" outputId="o" onOutputReady={ready} />);
+  fireEvent.click(screen.getByText("Đọc mốc từ đã lưu")); await screen.findByLabelText("Từ cần kiểm tra");
+  fireEvent.click(screen.getByText("Từ sau")); const save = screen.getByText("Lưu mốc từ thành bản mới"); expect(save).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Mốc đầu của từ (giây)"), { target: { value: "0.6" } });
+  fireEvent.click(screen.getByLabelText("Đã nghe và kiểm tra biên từ này")); fireEvent.click(save);
+  await waitFor(() => expect(ready).toHaveBeenCalledWith({ id: "new" }));
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ expectedKey: plan.key, reviewed: true, changes: [{ index: 1, startFrame: 14400, endFrame: 24000 }] });
+});
+it("rejects overlapping boundaries and resets confirmation on a different word", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => plan }));
+  render(<WordTimingReview projectId="p" outputId="o" />); fireEvent.click(screen.getByText("Đọc mốc từ đã lưu")); await screen.findByLabelText("Từ cần kiểm tra");
+  fireEvent.click(screen.getByLabelText("Đã nghe và kiểm tra biên từ này"));
+  fireEvent.change(screen.getByLabelText("Mốc cuối của từ (giây)"), { target: { value: "0.9" } });
+  expect(screen.getByText("Lưu mốc từ thành bản mới")).toBeDisabled();
+  fireEvent.click(screen.getByText("Từ sau")); expect(screen.getByLabelText("Đã nghe và kiểm tra biên từ này")).not.toBeChecked();
+});
+
+it("does not open a late saved review after switching outputs", async () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  let finish!: (value: unknown) => void;
+  const ready = vi.fn();
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => plan }).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<WordTimingReview projectId="p" outputId="old" onOutputReady={ready} />);
+  fireEvent.click(screen.getByText("Đọc mốc từ đã lưu")); fireEvent.click(await screen.findByLabelText("Đã nghe và kiểm tra biên từ này"));
+  fireEvent.click(screen.getByText("Lưu mốc từ thành bản mới")); await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(<WordTimingReview projectId="p" outputId="new" onOutputReady={ready} />);
+  await act(async () => finish({ ok: true, json: async () => ({ output: { id: "old-review" } }) }));
+  expect(ready).not.toHaveBeenCalled(); expect(screen.queryByText(/Đã lưu bản mốc từ mới/)).not.toBeInTheDocument();
+});

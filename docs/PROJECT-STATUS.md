@@ -1,5 +1,19 @@
 # Project Status — 2026-10-16
 
+## Voice Manipulator round32 — VM-WORD-REVIEW-01 (2026-10-16)
+
+Word inspection now accepts proposed boundaries and auditions them with context.
+Save requires explicit listening/review confirmation and writes a new byte-identical
+WAV output with user-reviewed provenance only on selected words. Segment/neighbor
+bounds, unique indexes, optimistic source identity, checked idempotent receipts and
+source immutability are enforced. Unselected annotations remain unchanged.
+API13 and UI5 (plus VoicePatch2)/typecheck/build172 pass. Synthetic temporary
+projects verify actual WAV copy, source preservation, batch confirmation, stale/
+tamper/corrupt receipt/reopen and proposed crop behavior. No human review was
+fabricated on private Vietnamese speech;23/25 machine anchors remain the baseline.
+ADR0091 records the distinction between annotation review and acoustic timing control.
+Next round33 exports current listening assessments for comparable accepted variants.
+
 ## Voice Manipulator round31 — VM-WORD-AUDITION-01 (2026-10-16)
 
 Saved Voice Outputs now have an explicit word inspector with source timing/trust,

@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from app.adapters.output_word_review import OutputWordReview
+from app.adapters.output_word_review import (
+    OutputWordReview,
+    OutputWordReviewApplyRequest,
+    OutputWordReviewConflict,
+)
 
 
 def make_output_word_review_router(service: OutputWordReview) -> APIRouter:
@@ -19,9 +23,11 @@ def make_output_word_review_router(service: OutputWordReview) -> APIRouter:
             raise HTTPException(409, str(exc)) from exc
 
     @router.get("/audio")
-    def audio(project_id: str, output_id: str, index: int = Query(ge=0), key: str = Query(min_length=64, max_length=64)):
+    def audio(project_id: str, output_id: str, index: int = Query(ge=0), key: str = Query(min_length=64, max_length=64),
+        start_frame: int | None = Query(default=None, alias="startFrame", ge=0),
+        end_frame: int | None = Query(default=None, alias="endFrame", gt=0)):
         try:
-            path, provenance = service.audio(project_id, output_id, index, key)
+            path, provenance = service.audio(project_id, output_id, index, key, start_frame, end_frame)
             headers = {
                 "X-Word-Review-Output-ID": provenance["outputId"],
                 "X-Word-Review-Index": str(provenance["wordIndex"]),
@@ -30,11 +36,26 @@ def make_output_word_review_router(service: OutputWordReview) -> APIRouter:
                 "X-Word-Review-Sample-Rate": str(provenance["sampleRate"]),
                 "X-Word-Review-Start-Frame": str(provenance["startFrame"]),
                 "X-Word-Review-End-Frame": str(provenance["endFrame"]),
+                "X-Word-Review-Target-Start-Frame": str(provenance["targetStartFrame"]),
+                "X-Word-Review-Target-End-Frame": str(provenance["targetEndFrame"]),
             }
             return FileResponse(path, media_type="audio/wav", filename=f"word-{index}.wav", headers=headers)
         except KeyError as exc:
             raise HTTPException(404, "Voice Output or word does not exist") from exc
         except (OSError, ValueError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post("/apply")
+    def save(project_id: str, output_id: str, request: OutputWordReviewApplyRequest):
+        try:
+            return service.save(project_id, output_id, request)
+        except KeyError as exc:
+            raise HTTPException(404, "Project or Voice Output does not exist") from exc
+        except OutputWordReviewConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (OSError, RuntimeError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
     return router

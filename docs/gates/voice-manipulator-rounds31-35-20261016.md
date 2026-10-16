@@ -31,3 +31,17 @@ Actual private Vietnamese timing output serves25 exact PCM crops including its
 two untrusted words; Range206/stale409 pass, original WAV/metadata unchanged.
 Local word31-receipt.json records evidence, not human acceptance. ADR0090 explains
 the contract. Next round32 adds explicit manual boundary review as a new output.
+
+### Round32 — VM-WORD-REVIEW-01
+
+Word inspection now accepts proposed boundaries and auditions them with context.
+Save requires explicit listening/review confirmation and writes a new byte-identical
+WAV output with user-reviewed provenance only on selected words. Segment/neighbor
+bounds, unique indexes, optimistic source identity, checked idempotent receipts and
+source immutability are enforced. Unselected annotations remain unchanged.
+API13 and UI5 (plus VoicePatch2)/typecheck/build172 pass. Synthetic temporary
+projects verify actual WAV copy, source preservation, batch confirmation, stale/
+tamper/corrupt receipt/reopen and proposed crop behavior. No human review was
+fabricated on private Vietnamese speech;23/25 machine anchors remain the baseline.
+ADR0091 records the distinction between annotation review and acoustic timing control.
+Next round33 exports current listening assessments for comparable accepted variants.
