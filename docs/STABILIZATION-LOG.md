@@ -1971,3 +1971,31 @@ sweep/screenshot; không gộp ảnh trung gian thành nghiệm thu CSS cuối. 
 Final rendered sweep hai theme/native popups và các raster/gradient tổ hợp vẫn
 cần nghiệm thu khi công cụ browser hoạt động. Mốc nghe STT round48, Checkpoint A
 và13downstream processor gates còn mở. Phase03/60% giữ nguyên. Dừng round50.
+
+## Round51 — TIMELINE-SAFE-EDGE-01 (2026-10-17)
+
+### Feedback và xử lý
+
+Playhead trước đây theo chuột vượt vùng10%–90% khi kéo; thả xong playback follow
+căn lại viewport nên bị nhảy. Dùng chung safe-edge seek cho down/move/RAF/up ở
+Timeline thường, imported multitrack và OBS archive. Chuột vẫn quyết định hướng
+cuộn10% khung nhìn/giây, giữ fractional frame. Khi hết nguồn để cuộn thì cho tới
+đầu/cuối file. Playback follow chấp nhận sai số1pixel ở biên để tránh nhảy do
+rounding. OBS bỏ click sau release nếu đã pan/bị clamp, kể cả giữ chuột đứng yên.
+
+### Kiểm tra
+
+Hai test Timeline gesture RED trước sửa; focused100pass/4files/12.05s. Bổ sung
+assertion thả ở biên trái cho imported/OBS:86pass/2files/11.77s. Giữ kiểm tra tốc
+độ80px/s trên viewport800px và seek full transport. Đổi assertion cũ95% thành90%
+theo yêu cầu mới (main950→900px, imported46.5→45s, OBS63→60s); không skip/nới test.
+Final frontend1013pass/125files/147.12s; API1149pass/530.32s (3existing/fixture
+warnings). Typecheck/build182/diff pass; all603frozen inputs match.
+Browser trả local use disabled trong Work settings; chưa nghiệm thu chuột thật.
+ADR0108 và gate timeline-safe-edge51 ghi evidence/giới hạn; không restart runtime.
+
+### Còn lại / NEXT
+
+Real mouse UAT khi browser hoạt động; acoustic anchors STT round48, Checkpoint A
+và13downstream gates còn mở. Không sửa source media/word timing/model/backend.
+Phase03/60% giữ nguyên. Dừng sau round51.

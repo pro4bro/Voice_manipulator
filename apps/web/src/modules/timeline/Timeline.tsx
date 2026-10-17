@@ -19,7 +19,7 @@ import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { StretchHandles } from "./StretchHandles";
 import { inverseStretch, mapStretchSelection, mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
-import { useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
+import { DRAG_SAFE_START, DRAG_SAFE_END, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 import { SelectionReadout } from "./SelectionReadout";
 import { ClippingOverlay } from "./ClippingOverlay";
 import { clippingRanges } from "./clipping-overflow";
@@ -1251,7 +1251,8 @@ export function Timeline({
     if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
     const playheadX = (currentTime / Math.max(duration, 0.001)) * scroller.scrollWidth;
     const visibleRatio = (playheadX - scroller.scrollLeft) / Math.max(scroller.clientWidth, 1);
-    if (visibleRatio >= 0.1 && visibleRatio <= 0.9) return;
+    if (visibleRatio >= DRAG_SAFE_START - 1 / Math.max(scroller.clientWidth, 1)
+      && visibleRatio <= DRAG_SAFE_END + 1 / Math.max(scroller.clientWidth, 1)) return;
     const nextLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, playheadX - scroller.clientWidth * 0.1));
     scroller.scrollLeft = nextLeft;
     setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
@@ -1261,6 +1262,7 @@ export function Timeline({
     stretchTransportRef.current = null;
     const canvas = timelineCanvasRef.current;
     if (isRecording || !take?.url || !canvas) return;
+    if (dragScroll.seek(clientX)) return;
     const rect = canvas.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / rect.width) * duration));
     seekToTime(nextTime);

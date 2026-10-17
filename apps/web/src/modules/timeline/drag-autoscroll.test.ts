@@ -1,6 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { edgeScrollStart, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
+import { dragSeekTime, edgeScrollStart, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 
 it("moves exactly one tenth of the screen per second regardless of source duration or zoom", () => {
   for (const span of [1, 10, 200]) {
@@ -29,7 +29,7 @@ it("keeps scrolling with a stationary drag pointer and stops on release/unmount"
   const hook = renderHook(() => useDragAutoScroll({ sourceKey: "a", viewport: () => ({ left: 0, width: 1000, start, span: 10, duration: 100 }), pan, seek }));
   act(() => { hook.result.current.begin(950); callback(0); callback(1000); });
   expect(pan).toHaveBeenLastCalledWith(21);
-  expect(seek).toHaveBeenLastCalledWith(30.5);
+  expect(seek).toHaveBeenLastCalledWith(30);
   act(() => window.dispatchEvent(new Event("pointerup")));
   pan.mockClear(); act(() => callback(2000)); expect(pan).not.toHaveBeenCalled();
   hook.unmount(); expect(cancel).toHaveBeenCalled(); raf.mockRestore(); cancel.mockRestore();
@@ -48,4 +48,16 @@ it("preserves fractional movement across frames when the browser rounds scrollLe
     for (let frame = 1; frame <= 60; frame += 1) act(() => callback(frame * 1000 / 60));
     expect((start - 20) / 10 * 800).toBeCloseTo(80);
   } finally { hook.unmount(); raf.mockRestore(); cancel.mockRestore(); }
+});
+
+
+it("uses the same safe seek position before pan, on pan frames and on release", () => {
+  const view = { left: 100, width: 1000, start: 20, span: 10, duration: 100 };
+  expect(dragSeekTime(view, 50)).toBe(21);
+  expect(dragSeekTime(view, 1200)).toBe(29);
+  expect(dragSeekTime(view, 600)).toBe(25);
+  expect(dragSeekTime({ ...view, start: 21 }, 1200)).toBe(30);
+  expect(dragSeekTime({ ...view, start: 0 }, 50)).toBe(0);
+  expect(dragSeekTime({ ...view, start: 90 }, 1200)).toBe(100);
+  expect(dragSeekTime({ ...view, start: 0, span: 100 }, 1200)).toBe(100);
 });

@@ -1266,13 +1266,19 @@ it("auto-scrolls an archived waveform drag at screen-relative speed and skips fu
   const before = frames.shift();
   expect(before).toBeDefined();
   act(() => { before!(0); frames.shift()!(1000); });
-  expect(await screen.findByText("00:01:03.000")).toBeInTheDocument();
-  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "95%" });
+  expect(await screen.findByText("00:01:00.000")).toBeInTheDocument();
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });
   const queuedAfterEdgePan = frames.shift();
+  const rulerBeforeRelease = screen.getByLabelText("Ruler chung").textContent;
+  fireEvent.pointerUp(wave, { pointerId: 1, clientX: 950 });
+  fireEvent.click(wave, { clientX: 950 });
+  expect(screen.getByText("00:01:00.000")).toBeInTheDocument();
+  expect(screen.getByLabelText("Ruler chung").textContent).toBe(rulerBeforeRelease);
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });
   fireEvent.pointerCancel(wave, { pointerId: 1, clientX: 950 });
   act(() => queuedAfterEdgePan?.(2000));
-  expect(screen.getByText("00:01:03.000")).toBeInTheDocument();
-  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "95%" });
+  expect(screen.getByText("00:01:00.000")).toBeInTheDocument();
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });
 
   const fullTransport = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
   vi.spyOn(fullTransport, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
@@ -1280,6 +1286,16 @@ it("auto-scrolls an archived waveform drag at screen-relative speed and skips fu
   fireEvent.pointerDown(fullTransport, { button: 0, pointerId: 2, clientX: 950 });
   expect(frames).toHaveLength(scheduled);
   fireEvent.pointerUp(fullTransport, { pointerId: 2, clientX: 950 });
+  frames.length = 0;
+  fireEvent.pointerDown(wave, { button: 0, pointerId: 3, clientX: 500 });
+  fireEvent.pointerMove(wave, { pointerId: 3, clientX: 50 });
+  act(() => { frames.shift()!(0); }); act(() => { frames.shift()!(1000); });
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "10%" });
+  const leftRulerBeforeRelease = screen.getByLabelText("Ruler chung").textContent;
+  fireEvent.pointerUp(wave, { pointerId: 3, clientX: 50 });
+  fireEvent.click(wave, { clientX: 50 });
+  expect(screen.getByLabelText("Ruler chung").textContent).toBe(leftRulerBeforeRelease);
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "10%" });
 });
 
 it("shows source-scoped numeric readouts only on the matching archived track without moving a multi-selection viewport", async () => {

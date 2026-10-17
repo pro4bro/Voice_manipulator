@@ -348,6 +348,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   }
 
   function seekFrom(event: PointerEvent<HTMLElement>, full = false) {
+    if (!full && dragScroll.seek(event.clientX)) return;
     const box = event.currentTarget.getBoundingClientRect();
     if (box.width) seek((full ? 0 : windowStartRef.current) + Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * (full ? duration : span));
   }

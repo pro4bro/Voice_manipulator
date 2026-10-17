@@ -731,6 +731,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }
 
   function seek(clientX: number, element: HTMLElement) {
+    if (!element.classList.contains("obs-timeline__scrub") && dragAutoScroll.seek(clientX)) return;
     const next = positionSeconds(clientX, element);
     if (next !== null) seekTime(next);
   }
@@ -775,11 +776,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
 
   function endScrub(event: PointerEvent<HTMLElement>) {
     if (!scrubbingRef.current) return;
-    dragAutoScroll.stop();
     seek(event.clientX, event.currentTarget);
+    const heldAtEdge = dragAutoScroll.stop();
     scrubbingRef.current = false;
     audioScrubber.end();
-    suppressClickRef.current = Math.abs(event.clientX - scrubStartXRef.current) > 2;
+    suppressClickRef.current = heldAtEdge || Math.abs(event.clientX - scrubStartXRef.current) > 2;
     if (suppressClickRef.current) window.setTimeout(() => { suppressClickRef.current = false; }, 0);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }

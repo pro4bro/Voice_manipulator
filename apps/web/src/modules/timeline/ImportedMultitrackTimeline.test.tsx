@@ -584,13 +584,28 @@ it("centers imported zoom, clears blank selections and edge-pans a virtual viewp
     fireEvent.pointerDown(wave, { button: 0, clientX: 950, pointerId: 7 });
     expect(onSelection).toHaveBeenLastCalledWith({ indexes: [], anchor: null });
     act(() => { frames.splice(0).forEach((frame) => frame(0)); }); act(() => { frames.splice(0).forEach((frame) => frame(1000)); });
-    // 100px at this zoom = 3 source seconds. Playhead remains at pointer's 95%.
-    expect(screen.getByText("00:46")).toBeInTheDocument();
-    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("95%");
+    // 100px at this zoom = 3 source seconds. Playhead stays at the 90% safe edge.
+    expect(screen.getByText("00:45")).toBeInTheDocument();
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("90%");
+    const lockedPosition = view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left;
+    const rulerBeforeRelease = screen.getByLabelText("Ruler chung").textContent;
     fireEvent.pointerUp(wave, { button: 0, clientX: 950, pointerId: 7 });
-    expect(audio.currentTime).toBeCloseTo(46.5);
+    fireEvent.timeUpdate(audio);
+    expect(screen.getByLabelText("Ruler chung").textContent).toBe(rulerBeforeRelease);
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe(lockedPosition);
+    expect(audio.currentTime).toBeCloseTo(45);
     const stopped = audio.currentTime; act(() => { frames.splice(0).forEach((frame) => frame(2000)); });
     expect(audio.currentTime).toBe(stopped);
+    fireEvent.pointerDown(wave, { button: 0, clientX: 500, pointerId: 8 });
+    fireEvent.pointerMove(wave, { button: 0, clientX: 50, pointerId: 8 });
+    act(() => { frames.splice(0).forEach((frame) => frame(0)); }); act(() => { frames.splice(0).forEach((frame) => frame(1000)); });
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("10%");
+    const leftRulerBeforeRelease = screen.getByLabelText("Ruler chung").textContent;
+    fireEvent.pointerUp(wave, { button: 0, clientX: 50, pointerId: 8 });
+    fireEvent.timeUpdate(audio);
+    expect(audio.currentTime).toBeCloseTo(18);
+    expect(screen.getByLabelText("Ruler chung").textContent).toBe(leftRulerBeforeRelease);
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("10%");
     fireEvent.click(screen.getByLabelText("Subtitle Channel 1"));
     expect(onSelection).toHaveBeenLastCalledWith({ indexes: [], anchor: null });
     view.unmount();

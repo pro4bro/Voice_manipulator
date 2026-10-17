@@ -60,7 +60,7 @@ it("auto-pans a held edge drag by 100px per second in a 1000px viewport and stop
     const before = scroller.scrollLeft;
     act(() => { frames.at(-1)?.(0); }); act(() => { frames.at(-1)?.(1000); });
     expect(scroller.scrollLeft - before).toBeCloseTo(100);
-    expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + 950}px, 0, 0)`);
+    expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + 900}px, 0, 0)`);
     fireEvent.pointerUp(playhead, { button: 0, pointerId: 1, clientX: 950 });
     const stopped = scroller.scrollLeft; act(() => { frames.at(-1)?.(2000); });
     expect(scroller.scrollLeft).toBe(stopped);
@@ -98,4 +98,36 @@ it("resolves arbitrary speaker text against the word surface and responds to the
     await act(async () => { document.documentElement.dataset.theme = "dark"; });
     await waitFor(() => expect(word.style.color).toBe("rgb(202, 237, 112)"));
   } finally { delete document.documentElement.dataset.theme; }
+});
+
+
+it.each(["playhead", "waveform"]) ("locks the %s at 10/90 percent during edge panning and keeps the released viewport", (gesture) => {
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { frames.push(cb); return frames.length; });
+  const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  try {
+    const view = render(<Harness />); const { scroller } = geometry(view.container);
+    const audio = view.container.querySelector("audio")!;
+    audio.currentTime = 50; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Phóng to timeline" }));
+    const playhead = screen.getByLabelText("Playhead indicator");
+    const surface = gesture === "playhead" ? playhead : screen.getByLabelText("Waveform timeline");
+    for (const [pointer, safe, direction] of [[1250, 900, 1], [-250, 100, -1]]) {
+      scroller.scrollLeft = 500;
+      fireEvent.pointerDown(surface, { button: 0, pointerId: 9, clientX: 500 });
+      fireEvent.pointerMove(surface, { button: 0, pointerId: 9, clientX: pointer });
+      expect(playhead.style.transform).toBe(`translate3d(${500 + safe}px, 0, 0)`);
+      act(() => { frames.at(-1)?.(0); }); act(() => { frames.at(-1)?.(1000); });
+      expect(scroller.scrollLeft).toBe(500 + direction * 100);
+      expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + safe}px, 0, 0)`);
+      const releasedScroll = scroller.scrollLeft, releasedTransform = playhead.style.transform;
+      fireEvent.pointerUp(surface, { button: 0, pointerId: 9, clientX: pointer });
+      fireEvent.timeUpdate(audio); fireEvent.seeked(audio);
+      expect(scroller.scrollLeft).toBe(releasedScroll);
+      expect(playhead.style.transform).toBe(releasedTransform);
+      act(() => { frames.at(-1)?.(2000); });
+      expect(scroller.scrollLeft).toBe(releasedScroll);
+    }
+    view.unmount();
+  } finally { raf.mockRestore(); cancel.mockRestore(); }
 });

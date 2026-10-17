@@ -1,5 +1,21 @@
 # Project Status — 2026-10-17
 
+## Stabilization round51 — TIMELINE-SAFE-EDGE-01 (2026-10-17)
+
+Owner feedback: hold viewport scrub playheads at the existing10%/90% safe edges
+while raw pointer direction pans at10% viewport width/s. Use one target on
+pointerdown/move/frame/release across ordinary/imported/archived OBS timelines.
+Keep first/last sample accessible at physical source limits. One-pixel follow
+tolerance prevents rounding-driven release recenter; OBS suppresses the trailing
+click after an edge-constrained/panned drag, including a stationary held pointer.
+Two ordinary gesture tests RED before fix; both edge/release cases now pass in
+all three timelines. See ADR0108 and docs/gates/timeline-safe-edge51-20261017.md.
+Final frontend1013pass/125files/147.12s; API1149pass/530.32s (3existing/fixture
+warnings). Typecheck/build182/diff pass; all603frozen inputs match.
+Browser inventory reports local use disabled; final real mouse UAT remains open.
+No source media, saved word timing, model or backend source changes. Phase03
+stays60%; acoustic anchors, Checkpoint A and13processor gates remain open.
+
 ## Stabilization round50 — TIMELINE-LIVE-READABILITY-01 (2026-10-17)
 
 Owner round49 feedback: paint playhead immediately during all seek drags and
