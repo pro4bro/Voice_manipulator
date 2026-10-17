@@ -660,6 +660,13 @@ class ObsLiveLinkRuntime:
 
     def sync_current(self, snapshot: dict) -> dict:
         with self._lock:
+            # UI lease changes can arrive while OBS is offline. Keep the last
+            # valid connection-bound checkpoint and return the live snapshot;
+            # connection IDs are required by durable v3 state and target leases.
+            if snapshot.get("connectionState") != "connected" or not snapshot.get("connectionId"):
+                current = self.status(snapshot)
+                current["obsRecording"] = snapshot.get("obsRecording", "unknown")
+                return current
             if self._state is None:
                 return self.status(snapshot)
             return self.sync({"installId": self._state.install_id}, snapshot)

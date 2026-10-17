@@ -23,7 +23,9 @@ from app.adapters.obs_livelink_waveform import ObsLiveLinkWaveform
 from app.domain.models import ProjectCreate
 from app.domain.models import MediaAssetCreate
 from app.adapters.obs_livelink_deletions import deleted_recording_ids, mark_recording_deleted
-from app.domain.obs_livelink_state import ObsCaptureRecording, ObsTimeInterval, ObsTriggerPolicy
+from app.domain.obs_livelink_state import (
+    ObsCaptureRecording, ObsLiveLinkState, ObsTimeInterval, ObsTriggerPolicy,
+)
 
 
 def setup(tmp_path):
@@ -57,6 +59,62 @@ def advertise(runtime, link, token, hello, snapshot, channels, *, recording=Fals
                "connectionEpoch": snapshot["connectionEpoch"], "channels": channels,
                "recordingActive": recording, "recordingPaused": paused}
     return runtime.sync(payload, link.heartbeat(token, payload))
+
+
+def test_sync_current_keeps_last_connection_when_claim_refreshes_offline(tmp_path):
+    link, runtime, project, token, hello, _ = setup(tmp_path)
+    runtime._persist()
+    state_path = runtime._state_path(runtime._state.install_id)
+    saved_before = state_path.read_bytes()
+    connection_id = runtime._state.connection_id
+
+    link._connection["deadline"] = 0
+    snapshot = link.claim(project_id=project.id, project_name=project.name, owner_id="owner")
+
+    assert snapshot["connectionState"] == "disconnected"
+    assert snapshot["connectionId"] is None
+    assert snapshot["activeProject"]["id"] == project.id
+
+    current = runtime.sync_current(snapshot)
+
+    assert current["connectionState"] == "disconnected"
+    assert current["obsRecording"] == "unknown"
+    assert current["activeProject"]["id"] == project.id
+    assert runtime._state.connection_id == connection_id
+    assert state_path.read_bytes() == saved_before
+    assert ObsLiveLinkState.model_validate_json(state_path.read_bytes()).connection_id == connection_id
+
+    reconnected = link.hello(token, hello)
+    online = runtime.sync(hello, reconnected)
+
+    assert online["connectionState"] == "connected"
+    assert online["connectionId"] != connection_id
+    assert runtime._state.connection_id == online["connectionId"]
+    assert runtime._state.target_lease.connection_id == online["connectionId"]
+
+
+def test_sync_current_keeps_checkpoint_valid_when_releasing_offline(tmp_path):
+    link, runtime, _, _, _, _ = setup(tmp_path)
+    runtime._persist()
+    state_path = runtime._state_path(runtime._state.install_id)
+    saved_before = state_path.read_bytes()
+    connection_id = runtime._state.connection_id
+
+    link._connection["deadline"] = 0
+    snapshot = link.release("owner")
+
+    assert snapshot["connectionState"] == "disconnected"
+    assert snapshot["connectionId"] is None
+    assert snapshot["activeProject"] is None
+
+    current = runtime.sync_current(snapshot)
+
+    assert current["connectionState"] == "disconnected"
+    assert current["obsRecording"] == "unknown"
+    assert current["activeProject"] is None
+    assert runtime._state.connection_id == connection_id
+    assert state_path.read_bytes() == saved_before
+    assert ObsLiveLinkState.model_validate_json(state_path.read_bytes()).connection_id == connection_id
 
 
 def source(channel_id, source_id, *, slot=1, forward=True, missing=False):
