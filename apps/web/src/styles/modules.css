@@ -548,11 +548,9 @@
 /* The label clips to its timestamped box; grips extend outside and above it so
    neither the selected label nor an adjoining word's glyphs are covered.
    The canvas still clips viewport edges; no row or time is reserved by grips. */
-.timeline-word__grip { position: absolute; z-index: 2; top: -13px; height: 10px; width: 5px; cursor: ew-resize; pointer-events: auto; opacity: 0; background: var(--accent); }
+.timeline-word__grip { position: absolute; z-index: 2; top: -13px; height: 10px; width: 5px; cursor: ew-resize; pointer-events: auto; opacity: .85; background: var(--accent); }
 .timeline-word__grip--in { left: -6px; }
 .timeline-word__grip--out { right: -6px; }
-.timeline-word:hover .timeline-word__grip,
-.timeline-word.is-selected .timeline-word__grip { opacity: .85; }
 .timeline-word__grip:hover { opacity: 1; }
 .timeline-word--edited { border-bottom: 2px solid var(--accent); }
 .timeline-word.is-past { color: var(--text-subtle); border-color: rgba(143,180,59,.35); }

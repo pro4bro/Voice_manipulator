@@ -11,6 +11,25 @@ function SelectableTimeline(props) {
 }
 
 describe("subtitle trim styling", () => {
+  it("mounts grips only on selected words, never on a hovered neighbour, and removes them on deselect", () => {
+    const { container } = render(<SelectableTimeline gain={0} onGainChange={() => undefined}
+      take={{ id: "selected-grips", name: "grips.wav", duration: 10,
+        words: [{ text: "one", start: 1, end: 2 }, { text: "two", start: 3, end: 4 }] }} />);
+    const one = screen.getByRole("button", { name: "Subtitle word one" });
+    const two = screen.getByRole("button", { name: "Subtitle word two" });
+    expect(container.querySelectorAll(".timeline-word__grip")).toHaveLength(0);
+    fireEvent.pointerDown(one, { button: 0 }); fireEvent.pointerUp(one, { button: 0 });
+    expect(one.querySelectorAll(".timeline-word__grip")).toHaveLength(2);
+    fireEvent.pointerEnter(two); fireEvent.mouseOver(two);
+    expect(two.querySelectorAll(".timeline-word__grip")).toHaveLength(0);
+    expect(one.querySelectorAll(".timeline-word__grip")).toHaveLength(2);
+    fireEvent.pointerDown(two, { button: 0 }); fireEvent.pointerUp(two, { button: 0 });
+    expect(one.querySelectorAll(".timeline-word__grip")).toHaveLength(0);
+    expect(two.querySelectorAll(".timeline-word__grip")).toHaveLength(2);
+    fireEvent.pointerDown(container.querySelector(".word-track"), { button: 0, clientX: 900 });
+    expect(container.querySelectorAll(".timeline-word__grip")).toHaveLength(0);
+  });
+
   it("places trim grips outside the word label without changing source or neighbouring boxes", () => {
     const styles = document.createElement("style");
     styles.textContent = ["../../styles/modules.css", "./subtitle-density.css"]

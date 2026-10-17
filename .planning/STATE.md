@@ -6,11 +6,28 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-17 — Stabilization round51 stable safe-edge drag/release.
-last_activity_desc: Round51 edge/release regression tests pass; real mouse UAT disabled. Phase03 stays60%.
+last_activity: 2026-10-18 — Stabilization round52 precise word timing and insertion alignment.
+last_activity_desc: Round52 snap removal, selected grips and new-word middle-pick verified; real mouse UAT disabled. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round52 — SUBTITLE-PRECISE-TIMING-01 (2026-10-18)
+
+Owner feedback: remove60ms acoustic snap from word move/IN/OUT and accept fine
+trim movement without the3pixel activation zone. Grips mount only on selected
+words; hover cannot expose invisible neighbour hit targets. Repeated middle-pick
+sets the timestamp target instead of toggling insertion's already promoted word
+off. Menu/double-click/word-expansion insertion paths align directly; external
+Script/channel events share the same behavior. Existing source/order/neighbour
+bounds, compact overview zoom and explicit cancellation/advance remain.
+RED-first exact symptom tests and38focused GREEN cases. ADR0109 and
+docs/gates/word-timing52-20261018.md record retired snap tests and limits.
+Final frontend1017pass/125files/143.64s; API1149pass/538.13s (3existing/fixture
+warnings), typecheck/build182/diff pass. All605frozen input hashes match.
+Real mouse UAT blocked by browser use disabled in Work settings. No backend,
+media/model or project format edits. Phase03 stays60%; independent acoustic
+anchors, Checkpoint A and13downstream processor gates remain open.
 
 ## Stabilization round51 — TIMELINE-SAFE-EDGE-01 (2026-10-17)
 

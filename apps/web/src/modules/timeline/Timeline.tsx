@@ -26,7 +26,7 @@ import { clippingRanges } from "./clipping-overflow";
 import { readableColor } from "../../domain/accessible-color";
 import { useContrastPalette } from "../../ui/color-theme";
 import { waveformBucketX, waveformY } from "./waveform-path";
-import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
+import { applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
 import { visibleSubtitleWordLayout } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
 import { Icon } from "../../ui/Icon";
@@ -388,12 +388,6 @@ export function Timeline({
     () => isRecording ? [] : clippingRanges(visibleEnvelope, visualGain),
     [isRecording, visibleEnvelope, visualGain],
   );
-  // Snap targets read off the drawn waveform, so an edge lands where the wave is
-  // seen to start rather than where a model thinks it does.
-  const snapEdges = useMemo(
-    () => (isRecording || !detailEnvelope ? [] : acousticEdges(detailEnvelope)),
-    [detailEnvelope, isRecording],
-  );
   const dragScroll = useDragAutoScroll({ sourceKey: take?.id,
     viewport: () => {
       const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
@@ -587,8 +581,9 @@ export function Timeline({
   useEffect(() => {
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<TimestampPromotion>).detail;
-      const requested = detail.assetId === (take?.id ?? null) ? detail.index : null;
-      const index = requested !== null && requested === promotedRef.current ? null : requested;
+      // A repeated middle-pick keeps the target armed, including words that
+      // insertion already promoted. Left/right/Escape explicitly clear it.
+      const index = detail.assetId === (take?.id ?? null) ? detail.index : null;
       promotedRef.current = index;
       setPromotedIndex(index);
     };
@@ -1181,7 +1176,6 @@ export function Timeline({
         const following = drag.index + 1 < words.length ? drag.index + 1 : null;
         promotedRef.current = following;
         setPromotedIndex(following);
-        // Do not redispatch the same index: listeners toggle an existing promote.
       }
     }
     return true;
@@ -1216,9 +1210,10 @@ export function Timeline({
     const drag = wordDragRef.current;
     if (!drag) return;
     const delta = (event.clientX - drag.originX) / drag.pixelsPerSecond;
-    if (!drag.moved && Math.abs(event.clientX - drag.originX) < 3) return;
+    // Middle-click needs a click/drag distinction; explicit trim grips do not.
+    if (!drag.moved && (drag.mode === "move" ? Math.abs(event.clientX - drag.originX) < 3 : delta === 0)) return;
     drag.moved = true;
-    const next = applyWordDrag(words, drag.indexes, drag.mode, delta, { duration, edges: snapEdges });
+    const next = applyWordDrag(words, drag.indexes, drag.mode, delta, { duration });
     setCollisionIndexes(timingCollisionIndexes(words, next, drag.indexes));
     draftWordsRef.current = next;
     setDraftWords(next);
@@ -1653,23 +1648,23 @@ export function Timeline({
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
                   >
-                    <i
+                    {selectedWordIndexes.has(index) ? <i
                       aria-hidden="true"
                       className="timeline-word__grip timeline-word__grip--in"
                       onPointerCancel={endWordDrag}
                       onPointerDown={(handleEvent) => beginWordDrag(handleEvent, index, "trim-start")}
                       onPointerMove={dragWord}
                       onPointerUp={endWordDrag}
-                    />
+                    /> : null}
                     <span className="timeline-word__label">{word.text}</span>
-                    <i
+                    {selectedWordIndexes.has(index) ? <i
                       aria-hidden="true"
                       className="timeline-word__grip timeline-word__grip--out"
                       onPointerCancel={endWordDrag}
                       onPointerDown={(handleEvent) => beginWordDrag(handleEvent, index, "trim-end")}
                       onPointerMove={dragWord}
                       onPointerUp={endWordDrag}
-                    />
+                    /> : null}
                   </button>
                 );
               }) : <em className={timingUnavailable ? "is-warning" : ""}>{isRecording ? "REC LIVE · waveform đang cập nhật" : timingUnavailable ? take?.wordTimingNote ?? "WORD TIMING · chưa có nguồn căn chỉnh đáng tin; cần chạy lại STT" : "WORD SYNC · subtitle sẽ khớp theo timestamp"}</em>}

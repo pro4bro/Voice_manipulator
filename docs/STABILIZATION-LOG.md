@@ -1999,3 +1999,32 @@ ADR0108 và gate timeline-safe-edge51 ghi evidence/giới hạn; không restart 
 Real mouse UAT khi browser hoạt động; acoustic anchors STT round48, Checkpoint A
 và13downstream gates còn mở. Không sửa source media/word timing/model/backend.
 Phase03/60% giữ nguyên. Dừng sau round51.
+
+## Round52 — SUBTITLE-PRECISE-TIMING-01 (2026-10-18)
+
+### Feedback và xử lý
+
+Bỏ snap60ms vào acoustic edge khi move/trim từ. Trim handle nhận chuyển động nhỏ
+ngay, không đợi3pixel; middle move vẫn phân biệt click/drag. Chỉ mount handle ở
+từ selected, bỏ hover reveal nên từ khác không có hit target ẩn. Từ mới Add text
+đã auto-promote nhưng middle-pick lại toggle off: đổi event thành đặt target,
+chọn lại cùng từ không tắt. Left/right/Escape và tự sang từ kế tiếp vẫn giữ.
+Thực thi chung trong Timeline editor dùng cho ordinary/imported/OBS focus view.
+
+### Kiểm tra
+
+RED đầu5fail/33pass/33.04s:4lỗi thật (2insertion toggle, hidden grips, acoustic
+snap),1float fixture2.8000000000000003 so với2.8 đổi sang9decimal. RED bổ sung2
+handle1pixel không commit,2.37s. GREEN focused38pass/3files/4.40s. Full suite gồm
+thêm assertion repeat event từ Script/channel.3test acoustic helper cũ được bỏ
+cùng feature theo yêu cầu; thay contract drag bằng exact fractional delta cả3mode,
+giữ order/visibility/collision/cancel tests. Không thêm skip hay nới timeout.
+Final frontend1017pass/125files/143.64s; API1149pass/538.13s (3existing/fixture
+warnings), typecheck/build182/diff pass. All605frozen input hashes match.
+ADR0109/gate word-timing52 lưu evidence/giới hạn. CUA báo browser use disabled,
+chưa nghiệm thu chuột thật. Không restart runtime, không đổi backend/media/model.
+
+### Còn lại / NEXT
+
+Real mouse UAT khi browser hoạt động; acoustic anchors STT round48, Checkpoint A
+và13processor gates còn mở. Phase03/60% giữ nguyên. Dừng sau round52.

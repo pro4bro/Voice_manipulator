@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StudioWord } from "../../domain/types";
-import { MINIMUM_WORD_SECONDS, acousticEdges, applyWordDrag, assignWordInterval, snapToEdge } from "./word-timing";
+import { MINIMUM_WORD_SECONDS, applyWordDrag, assignWordInterval } from "./word-timing";
 
 function words(spec: Array<[string, number, number]>): StudioWord[] {
   return spec.map(([text, start, end]) => ({ text, start, end })) as StudioWord[];
@@ -50,25 +50,20 @@ describe("applyWordDrag", () => {
     expect(moved[0].timingSource).toBeUndefined();
   });
 
-  it("prefers a nearby acoustic edge over the exact pointer position", () => {
-    // Room to spare, so the snap is what decides the landing spot.
+  it.each(["move", "trim-start", "trim-end"] as const)("applies fractional %s deltas without snapping or rounding", (mode) => {
     const roomy = words([["a", 1, 1.4], ["b", 1.5, 1.9], ["c", 5, 5.4]]);
-    const snapped = applyWordDrag(roomy, [1], "move", 0.1, { duration: 10, edges: [1.62] });
-    expect(snapped[1].start).toBeCloseTo(1.62, 3);
+    for (const delta of [-.00001, .00001, .025, .1]) {
+      const edited = applyWordDrag(roomy, [1], mode, delta, { duration: 10 });
+      expect(edited[1].start).toBeCloseTo(1.5 + (mode === "trim-end" ? 0 : delta), 9);
+      expect(edited[1].end).toBeCloseTo(1.9 + (mode === "trim-start" ? 0 : delta), 9);
+      expect(edited[0]).toBe(roomy[0]); expect(edited[2]).toBe(roomy[2]);
+    }
   });
 
-  it("ignores an acoustic edge that is too far to be what was meant", () => {
-    const roomy = words([["a", 1, 1.4], ["b", 1.5, 1.9], ["c", 5, 5.4]]);
-    const snapped = applyWordDrag(roomy, [1], "move", 0.1, { duration: 10, edges: [1.95] });
-    expect(snapped[1].start).toBeCloseTo(1.6, 3);
-  });
-
-  it("order outranks a snap target: a word never passes its neighbour", () => {
-    // Yielding is not reordering. Whatever the snap asks for, "c" stays after
-    // "b" and keeps a width - the transcript is what puts them in this order.
-    const snapped = applyWordDrag(three, [1], "move", 1.0, { duration: 10, edges: [2.5] });
-    expect(snapped[2].start).toBeGreaterThanOrEqual(snapped[1].end - 1e-9);
-    expect(snapped[2].end - snapped[2].start).toBeGreaterThanOrEqual(MINIMUM_WORD_SECONDS - 1e-9);
+  it("keeps word order and a visible neighbour when movement meets its limit", () => {
+    const edited = applyWordDrag(three, [1], "move", 1.0, { duration: 10 });
+    expect(edited[2].start).toBeGreaterThanOrEqual(edited[1].end - 1e-9);
+    expect(edited[2].end - edited[2].start).toBeGreaterThanOrEqual(MINIMUM_WORD_SECONDS - 1e-9);
   });
 });
 
@@ -111,29 +106,5 @@ describe("atomic promoted timing", () => {
       expect(next[0].end).toBeLessThanOrEqual(next[1].start);
       expect(next[1].end).toBeLessThanOrEqual(next[2].start);
     }
-  });
-});
-
-describe("acousticEdges", () => {
-  it("finds where the drawn waveform starts", () => {
-    const quiet = { min: -0.001, max: 0.001 };
-    const loud = { min: -0.5, max: 0.5 };
-    const edges = acousticEdges({
-      start: 0,
-      end: 1,
-      points: [...Array(50).fill(quiet), ...Array(50).fill(loud)],
-    });
-    expect(edges.some((edge) => Math.abs(edge - 0.5) < 0.05)).toBe(true);
-  });
-
-  it("returns nothing for a window with no envelope", () => {
-    expect(acousticEdges(null)).toEqual([]);
-    expect(acousticEdges({ start: 0, end: 1, points: [] })).toEqual([]);
-  });
-});
-
-describe("snapToEdge", () => {
-  it("leaves a time alone when no edge is close", () => {
-    expect(snapToEdge(1.0, [5.0])).toBe(1.0);
   });
 });

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { act, useState } from "react";
-import { Timeline } from "./Timeline";
+import { Timeline, type ActiveTake } from "./Timeline";
 import type { TimelineEditState } from "../../domain/timeline-editing";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
 
@@ -16,6 +16,60 @@ function geometry(container: HTMLElement) {
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, right: 1000, width: 1000, top: 0, bottom: 100, height: 100, x: 0, y: 0, toJSON: () => ({}) });
 }
 describe("time-aware timeline editing", () => {
+  it.each(["menu", "doubleclick", "replace"])("can middle-pick and immediately align a new word from %s without editing another word", (gesture) => {
+    const change = vi.fn();
+    function InsertAndAlign() {
+      const [source, setSource] = useState<ActiveTake>(take);
+      return <Timeline gain={0} onGainChange={() => undefined} take={source} onWordsChange={(next, text) => {
+        change(next, text); setSource({ ...source, words: next, text: text ?? source.text });
+      }} />;
+    }
+    const { container } = render(<InsertAndAlign />); geometry(container);
+    Object.defineProperty(container.querySelector(".timeline-scroll"), "scrollWidth", { configurable: true, value: 1000 });
+    const lane = container.querySelector(".word-track")!;
+    if (gesture === "menu") {
+      fireEvent.contextMenu(lane, { clientX: 250, clientY: 80 });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    } else if (gesture === "replace") fireEvent.doubleClick(screen.getByRole("button", { name: "Subtitle word xin" }));
+    else fireEvent.doubleClick(lane, { clientX: 250, clientY: 80 });
+    const input = screen.getByLabelText("Sửa subtitle");
+    fireEvent.change(input, { target: { value: gesture === "replace" ? "xin mới" : "mới" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    change.mockClear();
+    const added = screen.getByRole("button", { name: "Subtitle word mới" });
+    fireEvent.pointerDown(added, { button: 1, pointerId: 2, clientX: 260 });
+    fireEvent.pointerUp(added, { button: 1, pointerId: 2, clientX: 260 });
+    expect(added).toHaveClass("is-promoted");
+    // Script and channel views send the same promotion event; picking the
+    // already armed word there must also leave it ready for waveform timing.
+    act(() => promoteTimestampWord(take.id, 1));
+    expect(added).toHaveClass("is-promoted");
+    const waveform = screen.getByLabelText("Waveform timeline");
+    fireEvent.pointerDown(waveform, { button: 1, pointerId: 3, clientX: 220 });
+    fireEvent.pointerMove(waveform, { buttons: 4, pointerId: 3, clientX: 280 });
+    fireEvent.pointerUp(waveform, { button: 1, pointerId: 3, clientX: 280 });
+    expect(change).toHaveBeenCalledTimes(1);
+    const aligned = change.mock.calls[0][0][1];
+    expect(aligned).toMatchObject({ text: "mới", timingSource: "manual", timingTrusted: true });
+    expect(aligned.start).toBeCloseTo(2.2, 9); expect(aligned.end).toBeCloseTo(2.8, 9);
+  });
+
+  it.each(["in", "out"])("allows a one-pixel %s handle adjustment without a drag dead zone", (edge) => {
+    const change = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change}
+      wordSelection={{ indexes: [0], anchor: 0 }} take={take} />);
+    geometry(container);
+    Object.defineProperty(container.querySelector(".timeline-scroll"), "scrollWidth", { configurable: true, value: 1000 });
+    const handle = screen.getByRole("button", { name: "Subtitle word xin" }).querySelector(`.timeline-word__grip--${edge}`)!;
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 4, clientX: 100 });
+    fireEvent.pointerMove(handle, { buttons: 1, pointerId: 4, clientX: 101 });
+    fireEvent.pointerUp(handle, { button: 0, pointerId: 4, clientX: 101 });
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(change.mock.calls[0][0][0].start).toBeCloseTo(edge === "in" ? 1.01 : 1, 9);
+    expect(change.mock.calls[0][0][0].end).toBeCloseTo(edge === "out" ? 2.01 : 2, 9);
+    expect(change.mock.calls[0][0][1]).toEqual(words[1]);
+  });
+
   it.each(["menu", "doubleclick"])("adds a phrase from blank subtitle space via %s with equal separate intervals", (gesture) => {
     const change = vi.fn();
     const { container, rerender } = render(<Timeline gain={0} onGainChange={() => undefined} onWordsChange={change} take={take} />);
