@@ -18,12 +18,12 @@ it("routes ordinary STT Script and subtitle selections to waveform timing overla
   const view = render(<Harness />);
   fireEvent.pointerDown(screen.getByRole("button", { name: "Subtitle word một" }), { button: 0 });
   fireEvent.pointerUp(view.container.querySelector(".word-track")!);
-  expect(screen.getByLabelText("Vùng chọn 2.000 đến 2.500 giây")).toHaveTextContent("DURATION 0.500s");
+  expect(screen.getByLabelText("Vùng chọn 2.000 đến 2.500 giây")).toContainElement(screen.getByLabelText("Duration 0.500 seconds"));
   expect(screen.getByRole("button", { name: "Chọn từ một" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
   const text = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
   text.focus(); text.setSelectionRange(4, 7); fireEvent.select(text);
-  expect(screen.getByLabelText("Vùng chọn 4.000 đến 4.500 giây")).toHaveTextContent("START 4.000s");
+  expect(screen.getByLabelText("Vùng chọn 4.000 đến 4.500 giây")).toContainElement(screen.getByLabelText("IN 4.000 seconds"));
   expect(screen.getByRole("button", { name: "Subtitle word hai" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Subtitle word một" })).toHaveAttribute("aria-pressed", "false");
   text.setSelectionRange(7, 7); fireEvent.select(text);
@@ -38,11 +38,12 @@ it("uses Ctrl-left drag on STT waveform and keeps plain drag as a seek", () => {
   fireEvent.pointerDown(wave, { button: 0, pointerId: 1, clientX: 200, ctrlKey: true });
   fireEvent.pointerMove(wave, { pointerId: 1, clientX: 250, ctrlKey: true });
   fireEvent.pointerUp(wave, { pointerId: 1, clientX: 250, ctrlKey: true });
-  expect(screen.getByLabelText("Vùng chọn 2.000 đến 2.500 giây")).toHaveTextContent("END 2.500s");
+  expect(screen.getByLabelText("Vùng chọn 2.000 đến 2.500 giây")).toContainElement(screen.getByLabelText("OUT 2.500 seconds"));
   fireEvent.pointerDown(wave, { button: 0, pointerId: 2, clientX: 400 });
   fireEvent.pointerMove(wave, { pointerId: 2, clientX: 450 });
   fireEvent.pointerUp(wave, { pointerId: 2, clientX: 450 });
   expect(view.container.querySelector("audio")!.currentTime).toBe(4.5);
+  expect(screen.queryByLabelText("Vùng chọn 2.000 đến 2.500 giây")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Vùng chọn 4.000 đến 4.500 giây")).not.toBeInTheDocument();
 });
 

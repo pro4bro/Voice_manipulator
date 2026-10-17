@@ -288,11 +288,11 @@ it("shows timed selection only on its source track with waveform timing readout"
   render(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track, text: "hello", words: [{ text: "hello", start: 15, end: 18 }] }))}
     selectedTrackId="a" wordSelection={selection} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
   const firstWave = screen.getByLabelText("Waveform Channel 1");
-  expect(firstWave).toHaveTextContent("START 15.000s");
-  expect(firstWave).toHaveTextContent("END 18.000s");
-  expect(firstWave).toHaveTextContent("DURATION 3.000s");
+  expect(firstWave).toContainElement(screen.getByLabelText("IN 15.000 seconds"));
+  expect(firstWave).toContainElement(screen.getByLabelText("OUT 18.000 seconds"));
+  expect(firstWave).toContainElement(screen.getByLabelText("Duration 3.000 seconds"));
   expect(screen.getAllByRole("button", { name: "hello · 00:15–00:18" })[0]).toHaveClass("is-selected");
-  expect(screen.getByLabelText("Waveform Channel 2")).not.toHaveTextContent("START");
+  expect(screen.getByLabelText("Waveform Channel 2").querySelector(".selection-readout")).toBeNull();
 });
 
 it("publishes scoped word selection from an imported subtitle and Ctrl-drag range from its focused waveform", async () => {
@@ -558,7 +558,41 @@ it("keeps the playhead and viewport on separated imported selections and clamps 
     ranges: [{ id: "first", start: 2, end: 3 }, { id: "last", start: 59, end: 60 }] }} />);
   expect(audio.currentTime).toBe(10);
   expect(view.container.querySelectorAll(".imported-selection-range")).toHaveLength(2);
-  const readout = view.container.querySelectorAll<HTMLElement>(".imported-selection-readout")[1];
-  expect(Number.parseFloat(readout.style.left)).toBeLessThan(0);
-  expect(readout).toHaveTextContent("END 60.000s");
+  const readout = screen.getByLabelText("OUT 60.000 seconds");
+  expect(Number.parseFloat(readout.style.getPropertyValue("--readout-x"))).toBeLessThan(16);
+  expect(view.container.querySelectorAll(".selection-readout")).toHaveLength(2);
+});
+
+
+it("centers imported zoom, clears blank selections and edge-pans a virtual viewport at 10% per second", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { frames.push(cb); return frames.length; });
+  const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  const onSelection = vi.fn();
+  try {
+    const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId="a"
+      wordSelection={{ indexes: [], anchor: null, ranges: [{ id: "selected", start: 10, end: 12 }] }}
+      onWordSelectionChange={onSelection} onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+    const audio = view.container.querySelector("audio")!;
+    audio.currentTime = 30; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline" }));
+    // 30 seconds is centered in the 30-second viewport (15–45).
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("50%");
+    const wave = screen.getByLabelText("Waveform Channel 1");
+    vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+    fireEvent.pointerDown(wave, { button: 0, clientX: 950, pointerId: 7 });
+    expect(onSelection).toHaveBeenLastCalledWith({ indexes: [], anchor: null });
+    act(() => { frames.splice(0).forEach((frame) => frame(0)); }); act(() => { frames.splice(0).forEach((frame) => frame(1000)); });
+    // 100px at this zoom = 3 source seconds. Playhead remains at pointer's 95%.
+    expect(screen.getByText("00:46")).toBeInTheDocument();
+    expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("95%");
+    fireEvent.pointerUp(wave, { button: 0, clientX: 950, pointerId: 7 });
+    expect(audio.currentTime).toBeCloseTo(46.5);
+    const stopped = audio.currentTime; act(() => { frames.splice(0).forEach((frame) => frame(2000)); });
+    expect(audio.currentTime).toBe(stopped);
+    fireEvent.click(screen.getByLabelText("Subtitle Channel 1"));
+    expect(onSelection).toHaveBeenLastCalledWith({ indexes: [], anchor: null });
+    view.unmount();
+  } finally { raf.mockRestore(); cancel.mockRestore(); }
 });

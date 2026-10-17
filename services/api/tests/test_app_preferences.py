@@ -56,3 +56,36 @@ def test_preferences_persist_the_selected_speaker_embedder(tmp_path):
     ))
 
     assert preferences.get().speaker_similarity.embedder_id == "wespeaker-resnet34-lm"
+
+
+def test_timeline_preferences_default_to_persistent_clipping_highlights_and_roundtrip(tmp_path):
+    from app.domain.models import TimelinePreferences
+
+    preferences = FileAppPreferences(tmp_path / "runtime")
+    assert preferences.get().timeline.clipping_highlight_auto_hide is False
+
+    saved = preferences.save(AppPreferences(
+        timeline=TimelinePreferences(clipping_highlight_auto_hide=True),
+    ))
+    assert saved.timeline.clipping_highlight_auto_hide is True
+    assert preferences.get().timeline.clipping_highlight_auto_hide is True
+
+
+def test_saving_preferences_preserves_unrecognized_existing_fields_and_secrets(tmp_path):
+    import json
+
+    preferences = FileAppPreferences(tmp_path / "runtime")
+    preferences.path.parent.mkdir(parents=True)
+    preferences.path.write_text(json.dumps({
+        "futurePreference": {"enabled": True},
+        "timeline": {"clippingHighlightAutoHide": False, "futureTimelineOption": "keep"},
+        "aiReview": {"apiKey": "stored-secret", "futureAiOption": 17},
+    }), encoding="utf-8")
+
+    preferences.save(AppPreferences())
+    saved = json.loads(preferences.path.read_text(encoding="utf-8"))
+
+    assert saved["futurePreference"] == {"enabled": True}
+    assert saved["timeline"]["futureTimelineOption"] == "keep"
+    assert saved["aiReview"]["futureAiOption"] == 17
+    assert saved["aiReview"]["apiKey"] == "stored-secret"

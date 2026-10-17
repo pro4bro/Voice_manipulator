@@ -474,11 +474,16 @@ export interface EmotionStylePreferences {
   backgroundOpacity: number;
 }
 
+export interface TimelinePreferences {
+  clippingHighlightAutoHide: boolean;
+}
+
 export interface AppPreferences {
   aiReview: AIReviewPreferences;
   diarization: DiarizationPreferences;
   speakerSimilarity: SpeakerSimilarityPreferences;
   emotionStyle: EmotionStylePreferences;
+  timeline?: TimelinePreferences;
 }
 
 export interface MediaImportChoice {

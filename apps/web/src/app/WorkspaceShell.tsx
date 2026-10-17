@@ -135,6 +135,7 @@ function defaultPreferences(): AppPreferences {
     diarization: { enabled: true, model: "pyannote/speaker-diarization-community-1", huggingfaceToken: null, huggingfaceTokenConfigured: false },
     speakerSimilarity: { embedderId: "pyannote-community-1" },
     emotionStyle: { ...DEFAULT_EMOTION_STYLE, emotionColors: { ...DEFAULT_EMOTION_STYLE.emotionColors } },
+    timeline: { clippingHighlightAutoHide: false },
   };
 }
 
@@ -2630,6 +2631,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     liveTranscriptActive,
     liveTranscriptText: latestLiveRevision?.text ?? null,
     emotionStyle: preferences.emotionStyle,
+    clippingHighlightAutoHide: preferences.timeline?.clippingHighlightAutoHide ?? false,
     aiReviewText: latestAiRevision?.text ?? null,
     aiReviewKey: latestAiRevision?.id ?? null,
     aiReviewBusy,
@@ -2842,7 +2844,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
@@ -2899,6 +2901,9 @@ function PreferencesDialog({ preferences, saving, onClose, onSave }: { preferenc
       <section aria-label="Preferences" aria-modal="true" className="preferences-dialog" role="dialog">
         <header><div><span>WINDOWS / PREFERENCES</span><h2>Preferences</h2></div><button aria-label="Đóng Preferences" onClick={onClose} type="button">×</button></header>
         <ObsPluginPreferences />
+        <section className="preferences-section"><h3>Timeline</h3>
+          <label className="preferences-switch"><input checked={draft.timeline?.clippingHighlightAutoHide ?? false} onChange={(event) => setDraft({ ...draft, timeline: { clippingHighlightAutoHide: event.target.checked } })} type="checkbox" /><span>Tự ẩn highlight quá âm lượng sau 5 giây</span></label>
+        </section>
         <section className="preferences-section"><h3>AI Transcript Review</h3><p>STT kỹ chạy local ở background. AI fix chỉ gửi transcript tới API tương thích OpenAI khi bạn bấm nút AI fix trong Script.</p>
           <label className="preferences-switch"><input checked={draft.aiReview.enabled} onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, enabled: event.target.checked } })} type="checkbox" /><span>Bật AI check transcript</span></label>
           <label><span>Base URL</span><input onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, baseUrl: event.target.value } })} placeholder="https://api.openai.com/v1" value={draft.aiReview.baseUrl} /></label>

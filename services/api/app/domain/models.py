@@ -695,11 +695,16 @@ class EmotionStylePreferences(DomainModel):
     background_opacity: float = Field(default=0.34, ge=0, le=1)
 
 
+class TimelinePreferences(DomainModel):
+    clipping_highlight_auto_hide: bool = False
+
+
 class AppPreferences(DomainModel):
     ai_review: AIReviewPreferences = Field(default_factory=AIReviewPreferences)
     diarization: DiarizationPreferences = Field(default_factory=DiarizationPreferences)
     speaker_similarity: SpeakerSimilarityPreferences = Field(default_factory=SpeakerSimilarityPreferences)
     emotion_style: EmotionStylePreferences = Field(default_factory=EmotionStylePreferences)
+    timeline: TimelinePreferences = Field(default_factory=TimelinePreferences)
 
 
 class SystemPaths(DomainModel):

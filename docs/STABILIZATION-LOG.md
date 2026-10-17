@@ -1903,3 +1903,36 @@ Bảng nghe12từ nằm tại .scratch/stt-timing-accuracy-01/round48-review-1/r
 IN/OUT trống,0từ được nghe xác nhận. Cần mốc nghe độc lập để đo sai số và kiểm chứng
 cách sửa; không nhận p95 giữa hai model là acoustic ground truth. Dừng round48;
 Phase03/60%, Checkpoint A và các gate chất lượng vẫn mở.
+
+
+## Round49 — TIMELINE-VIEWPORT-UX-01 (2026-10-17)
+
+### Feedback và xử lý
+
+Cuộn khi kéo playhead ở biên dùng10% chiều rộng viewport mỗi giây, tính theo
+elapsed RAF và giữ phần lẻ khi browser làm tròn pixel. Zoom giữ playhead ở giữa,
+clamp tại đầu/cuối nguồn. Bấm trái vùng trống waveform/subtitle bỏ selection.
+Overlay timing dùng alpha0.30 (trong suốt70%), chữ accent100%, bỏ tên/khung xám;
+IN/OUT nằm ngoài vùng hẹp và có hàng tránh chồng ở mép viewport. Áp dụng chung
+Timeline thường/import/OBS archive, giữ scope nguồn/revision và multi-selection.
+
+Clipping chỉ tô bucket peak vượt ngưỡng liên tiếp, không nối qua bucket yên,
+không coalesce/ép độ rộng. Một SVG path nonzero tránh cộng opacity. Preferences
+có tùy chọn tự ẩn5s, mặc địnhoff; sửa lifecycle OBS để pan/zoom không restart timer.
+Archived waveform và clipping dùng cùng i/N. ADR0106/gate timeline-ux49 ghi bằng
+chứng và giới hạn. Không sửa source audio, saved word timing hay chạy model.
+
+### Kiểm tra
+
+Frontend cuối968pass/120files/143.39s; full API1149pass/559.26s,3warning cũ/fixture.
+Typecheck/build179 pass.594input hash khớp khi full test kết thúc; sau đó chỉ bỏ
+một dòng trắng EOF trong test và chạy lại9test đó pass. Lượt broad đầu964pass/
+4fail là4contract cũ, giữ log và thay assertion theo yêu cầu UX mới; không nới
+ngưỡng/timeout, không skip test. Browser PCM synthetic xác nhận màu/alpha,
+zoom/selection/clipping/tự ẩn; tab/server riêng đã dừng. Chi tiết ở gate round49.
+
+### Còn lại / NEXT
+
+Độ chính xác clipping giới hạn theo min/max bucket được tải; zoom để xem chi tiết.
+Native hand-timed drag/live OBS UAT và mốc nghe STT round48 vẫn chưa nghiệm thu.
+Phase03/60%, Checkpoint A và13processor gates giữ nguyên. Dừng sau round49.

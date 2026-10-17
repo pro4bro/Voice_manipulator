@@ -251,6 +251,7 @@ it("selects words in the focused editor opened from the OBS multitrack view", as
   fireEvent.pointerDown(word, { button: 0 });
   fireEvent.pointerUp(word, { button: 0 });
   expect(word).toHaveAttribute("aria-pressed", "true");
+  expect(container.querySelectorAll(".selection-readout")).toHaveLength(1);
   expect(container.querySelector("audio")!.currentTime).toBe(3);
   expect(within(screen.getByLabelText("Script theo channel")).getByRole("button", { name: "chào · 00:03.000–00:04.000" })).toHaveClass("is-active");
 });
@@ -1223,6 +1224,98 @@ it("plays both archived tracks and mutes one without changing its gain", async (
   await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
   expect(audios[0].volume).toBe(1);
   expect(audios[1].volume).toBe(0);
+});
+
+it("centres archived zoom on the playhead and clears word selection on blank waveform or subtitle clicks", async () => {
+  archivedWorkspace(true);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const ruler = screen.getByLabelText("Ruler chung");
+  vi.spyOn(ruler, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.click(ruler, { clientX: 700 });
+  const playhead = screen.getByLabelText("Playhead chung");
+  expect(playhead).toHaveStyle({ left: "70%" });
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
+  expect(playhead).toHaveStyle({ left: "50%" });
+
+  const selectedWord = screen.getByRole("button", { name: "Chọn từ Xin" });
+  const waveform = screen.getByRole("img", { name: "Sóng âm Channel 1" });
+  fireEvent.click(selectedWord);
+  expect(selectedWord).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(waveform, { clientX: 200 });
+  expect(selectedWord).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(selectedWord);
+  const subtitle = screen.getByLabelText("Subtitle Channel 1");
+  fireEvent.click(subtitle, { clientX: 300 });
+  expect(selectedWord).toHaveAttribute("aria-pressed", "false");
+});
+
+it("auto-scrolls an archived waveform drag at screen-relative speed and skips full transport", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 241_000_000_000 },
+    channels: [{ channelId: ids[0], nativeName: "Mic 1", relayLabel: "Channel 1", slot: 1, forwardApplied: true }],
+    sourceStems: [{ channelId: ids[0], sourceUuid: "source-0", alias: "Channel 1",
+      assetId: "asset-0", sourcePath: "", analysisPath: "", gaps: [] }],
+  }]);
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frames.push(callback); return frames.length; });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const wave = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.pointerDown(wave, { button: 0, pointerId: 1, clientX: 950 });
+  const before = frames.shift();
+  expect(before).toBeDefined();
+  act(() => { before!(0); frames.shift()!(1000); });
+  expect(await screen.findByText("00:01:03.000")).toBeInTheDocument();
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "95%" });
+  const queuedAfterEdgePan = frames.shift();
+  fireEvent.pointerCancel(wave, { pointerId: 1, clientX: 950 });
+  act(() => queuedAfterEdgePan?.(2000));
+  expect(screen.getByText("00:01:03.000")).toBeInTheDocument();
+  expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "95%" });
+
+  const fullTransport = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(fullTransport, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  const scheduled = frames.length;
+  fireEvent.pointerDown(fullTransport, { button: 0, pointerId: 2, clientX: 950 });
+  expect(frames).toHaveLength(scheduled);
+  fireEvent.pointerUp(fullTransport, { pointerId: 2, clientX: 950 });
+});
+
+it("shows source-scoped numeric readouts only on the matching archived track without moving a multi-selection viewport", async () => {
+  const assets = ids.map((channelId, index) => ({ id: `asset-${index}`, name: `Track ${index + 1}`,
+    duration: 10, updatedAt: `revision-${index}`, obsRecordingId: "recording", sourceArchiveAssetId: "parent",
+    words: [{ text: `word${index}`, start: 1, end: 2 }], importSelected: true })) as unknown as ProjectMediaAsset[];
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ protocolVersion: 3,
+    recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 },
+    channels: ids.map((channelId, index) => ({ channelId, nativeName: `Mic ${index + 1}`,
+      relayLabel: `Channel ${index + 1}`, slot: index + 1, forwardApplied: true })),
+    sourceStems: ids.map((channelId, index) => ({ channelId, sourceUuid: `source-${index}`,
+      alias: `Channel ${index + 1}`, assetId: `asset-${index}`, sourcePath: "", analysisPath: "", gaps: [] })),
+  }]);
+  const view = render(<ObsLiveLinkTimeline assets={assets} projectId="project" requestedRecordingId="recording" />);
+  const laneA = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  const laneB = screen.getByRole("img", { name: "Sóng âm Channel 2" });
+  const ruler = screen.getByLabelText("Ruler chung");
+  const rulerBefore = ruler.textContent;
+  const onWordSelectionChange = vi.fn();
+  const scopedSelection: WordSelection = { indexes: [], anchor: null, scope: { kind: "asset", id: "asset-0", revision: "revision-0" },
+    ranges: [{ id: "early", start: 1, end: 2 }, { id: "late", start: 8, end: 9 }] };
+  view.rerender(<ObsLiveLinkTimeline assets={assets} projectId="project" requestedRecordingId="recording"
+    wordSelection={scopedSelection} onWordSelectionChange={onWordSelectionChange} />);
+
+  await waitFor(() => expect(laneA.querySelectorAll(".selection-readout")).toHaveLength(2));
+  expect(laneA).toHaveTextContent("1.000s");
+  expect(laneA).toHaveTextContent("2.000s");
+  expect(laneA).toHaveTextContent("8.000s");
+  expect(laneA).toHaveTextContent("9.000s");
+  expect(laneB.querySelectorAll(".selection-readout")).toHaveLength(0);
+  expect(ruler.textContent).toBe(rulerBefore);
+
+  fireEvent.click(laneA, { ctrlKey: true, clientX: 200 });
+  expect(onWordSelectionChange).not.toHaveBeenCalled();
+  fireEvent.click(laneA, { clientX: 200 });
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(EMPTY_SELECTION);
 });
 
 it("uses Space to toggle playback only while the pointer is over Timeline", async () => {

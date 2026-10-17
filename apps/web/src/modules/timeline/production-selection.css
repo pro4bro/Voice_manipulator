@@ -1,9 +1,4 @@
-.production-selection-range { position: absolute; inset-block: 0; z-index: 5; pointer-events: none; background: color-mix(in srgb, var(--accent) 17%, transparent); border-inline: 1px solid var(--accent); }
-.production-selection-readout { position: absolute; top: 5px; min-width: 0; box-sizing: border-box; display: flex; justify-content: space-between; gap: 8px; color: var(--text); background: var(--surface-panel); border: 1px solid var(--line); padding: 3px 5px; font-size: 9px; white-space: nowrap; }
-.production-selection-readout span { display: grid; gap: 2px; }
-.production-selection-readout span:nth-child(2) { text-align: center; }
-.production-selection-readout span:last-child { text-align: right; }
-.production-selection-readout b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; }
+.production-selection-range { position: absolute; inset-block: 0; z-index: 5; pointer-events: none; background: color-mix(in srgb, var(--accent) 30%, transparent); border-inline: 1px solid var(--accent); }
 .stretch-handles { position: absolute; inset-block: 0; z-index: 8; pointer-events: none; }
 .stretch-handle { position: absolute; top: 45%; width: 22px; height: 32px; padding: 0; pointer-events: auto; touch-action: none; cursor: ew-resize; background: var(--surface-panel); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; }
 .stretch-handle.is-left { left: -11px; }

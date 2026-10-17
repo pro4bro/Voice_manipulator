@@ -1,0 +1,51 @@
+import { renderHook, act } from "@testing-library/react";
+import { expect, it, vi } from "vitest";
+import { edgeScrollStart, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
+
+it("moves exactly one tenth of the screen per second regardless of source duration or zoom", () => {
+  for (const span of [1, 10, 200]) {
+    const view = { left: 100, width: 800, start: 300, span, duration: 1000 };
+    expect((edgeScrollStart(view, 890, 1000) - view.start) / span * view.width).toBeCloseTo(80);
+    expect((edgeScrollStart(view, 110, 500) - view.start) / span * view.width).toBeCloseTo(-40);
+    expect(edgeScrollStart(view, 500, 1000)).toBe(300);
+  }
+  expect(edgeScrollStart({ left: 0, width: 100, start: 0, span: 1000, duration: 1000 }, 99, 1000)).toBe(0);
+});
+
+it("centres zoom on the playhead and clamps at either source edge", () => {
+  expect(zoomWindowStart(75, 20, 100)).toBe(65);
+  expect(zoomWindowStart(2, 20, 100)).toBe(0);
+  expect(zoomWindowStart(98, 20, 100)).toBe(80);
+  expect(zoomWindowStart(75, 100, 100)).toBe(0);
+});
+
+it("keeps scrolling with a stationary drag pointer and stops on release/unmount", () => {
+  let callback: FrameRequestCallback = () => undefined;
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { callback = cb; return 1; });
+  const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  let start = 20;
+  const pan = vi.fn((next: number) => { start = next; });
+  const seek = vi.fn();
+  const hook = renderHook(() => useDragAutoScroll({ sourceKey: "a", viewport: () => ({ left: 0, width: 1000, start, span: 10, duration: 100 }), pan, seek }));
+  act(() => { hook.result.current.begin(950); callback(0); callback(1000); });
+  expect(pan).toHaveBeenLastCalledWith(21);
+  expect(seek).toHaveBeenLastCalledWith(30.5);
+  act(() => window.dispatchEvent(new Event("pointerup")));
+  pan.mockClear(); act(() => callback(2000)); expect(pan).not.toHaveBeenCalled();
+  hook.unmount(); expect(cancel).toHaveBeenCalled(); raf.mockRestore(); cancel.mockRestore();
+});
+
+it("preserves fractional movement across frames when the browser rounds scrollLeft to pixels", () => {
+  let callback: FrameRequestCallback = () => undefined;
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { callback = cb; return 1; });
+  const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  let start = 20;
+  const hook = renderHook(() => useDragAutoScroll({ sourceKey: "a",
+    viewport: () => ({ left: 0, width: 800, start, span: 10, duration: 100 }),
+    pan: (next) => { start = Math.round(next / 10 * 800) / 800 * 10; }, seek: vi.fn() }));
+  try {
+    act(() => { hook.result.current.begin(790); callback(0); });
+    for (let frame = 1; frame <= 60; frame += 1) act(() => callback(frame * 1000 / 60));
+    expect((start - 20) / 10 * 800).toBeCloseTo(80);
+  } finally { hook.unmount(); raf.mockRestore(); cancel.mockRestore(); }
+});

@@ -31,6 +31,8 @@ const apiMocks = vi.hoisted(() => ({
   stopGeneration: vi.fn(),
   getOmniVoiceProfileSchema: vi.fn(),
   getPreferences: vi.fn(),
+  savePreferences: vi.fn(),
+  getObsPluginInstallation: vi.fn(),
   getSystemStatus: vi.fn(),
   getTrainingCatalog: vi.fn(),
   saveTrainingCatalog: vi.fn(),
@@ -200,11 +202,13 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.getPreferences.mockResolvedValue({
       aiReview: { enabled: false, baseUrl: "", model: "", apiKey: null, apiKeyConfigured: false },
       diarization: { enabled: true, model: "pyannote", huggingfaceToken: null, huggingfaceTokenConfigured: false },
+      speakerSimilarity: { embedderId: "pyannote-community-1" },
       emotionStyle: {
         colorMode: "gradient", gradientStart: "#18d9ff", gradientEnd: "#ff4b52",
         emotionColors: {}, backgroundEnabled: false, backgroundColor: "#24384b", backgroundOpacity: 0.34,
       },
     });
+    apiMocks.getObsPluginInstallation.mockRejectedValue(new Error("Unavailable in test"));
     apiMocks.getSystemStatus.mockResolvedValue(null);
     apiMocks.listProjectVoices.mockResolvedValue([]);
     apiMocks.listVoiceOutputs.mockResolvedValue([]);
@@ -213,6 +217,24 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
+  });
+
+  it("saves the optional clipping auto-hide preference and forwards it to timeline context", async () => {
+    apiMocks.savePreferences.mockImplementation(async (value) => value);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(apiMocks.getPreferences).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "WINDOWS" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
+    const toggle = screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Preferences" }));
+    await waitFor(() => expect(apiMocks.savePreferences).toHaveBeenCalledWith(expect.objectContaining({ timeline: { clippingHighlightAutoHide: true } })));
+    await waitFor(() => expect(collectionContext.current?.clippingHighlightAutoHide).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "WINDOWS" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
+    expect(screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" })).toBeChecked();
   });
 
   it("transfers a qualified source span to Patch without reusing it as generated-output selection", async () => {

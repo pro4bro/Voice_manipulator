@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WaveformPoint } from "../../domain/types";
 import { waveformEnvelopePath } from "./waveform-path";
+import { ClippingOverlay } from "./ClippingOverlay";
 
 type Snapshot = { url: string; start: number; end: number; points: WaveformPoint[] };
 
 /** Completed OBS tracks read the same PCM peaks as the ordinary Timeline. */
-export function ArchivedObsWaveform({ url, windowStart, windowSpan, duration, width, gain, fallbackPath }: {
+export function ArchivedObsWaveform({ url, windowStart, windowSpan, duration, width, gain, fallbackPath, clippingHighlightAutoHide = false }: {
   url: string; windowStart: number; windowSpan: number; duration: number;
   width: number; gain: number; fallbackPath: string;
+  clippingHighlightAutoHide?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -42,7 +44,7 @@ export function ArchivedObsWaveform({ url, windowStart, windowSpan, duration, wi
   }, [url, windowStart, windowSpan, duration, pointCount, retry]);
   const path = useMemo(() => {
     if (!snapshot || snapshot.url !== url || snapshot.end <= windowStart || snapshot.start >= windowStart + windowSpan) return "";
-    const step = (snapshot.end - snapshot.start) / Math.max(1, snapshot.points.length - 1);
+    const step = (snapshot.end - snapshot.start) / Math.max(1, snapshot.points.length);
     return waveformEnvelopePath(snapshot.points.flatMap((point, index) => {
       const time = snapshot.start + step * index;
       return time + step < windowStart || time - step > windowStart + windowSpan ? [] : [{
@@ -50,9 +52,14 @@ export function ArchivedObsWaveform({ url, windowStart, windowSpan, duration, wi
       }];
     }), 60, gain);
   }, [snapshot, url, windowStart, windowSpan, gain]);
+  const envelopeMatchesWindow = snapshot?.url === url && Math.abs(snapshot.start - windowStart) < 0.01 &&
+    Math.abs(snapshot.end - Math.min(duration, windowStart + windowSpan)) < 0.01;
   return <>
     <svg aria-hidden="true" className="timeline-waveform__svg" data-waveform-source={path ? "pcm-detail" : "live-preview"}
       preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path || fallbackPath} /></svg>
+    {snapshot?.url === url ? <ClippingOverlay points={snapshot.points} gain={gain}
+      windowStart={0} windowDuration={windowSpan} duration={windowSpan} autoCalibrate={false}
+      autoHide={clippingHighlightAutoHide} sourceKey={snapshot.url} visibleWindow={state === "ready" && envelopeMatchesWindow} /> : null}
     {state !== "ready" ? <span className={`obs-timeline__pcm-status${state === "error" ? " is-error" : ""}`}>
       {state === "error" ? "Không tải được waveform PCM · đang thử lại" : "Đang tải waveform PCM…"}
     </span> : null}

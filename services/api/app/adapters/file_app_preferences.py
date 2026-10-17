@@ -9,6 +9,7 @@ from app.domain.models import (
     DiarizationPreferences,
     EmotionStylePreferences,
     SpeakerSimilarityPreferences,
+    TimelinePreferences,
 )
 
 
@@ -32,6 +33,7 @@ class FileAppPreferences:
             diarization=public_diarization,
             speaker_similarity=self.speaker_similarity(),
             emotion_style=self.emotion_style(),
+            timeline=self.timeline(),
         )
 
     def save(self, incoming: AppPreferences) -> AppPreferences:
@@ -51,16 +53,20 @@ class FileAppPreferences:
                 "huggingface_token_configured": False,
             }
         )
+        existing = self._read()
+        stored = {
+            **existing,
+            "aiReview": {**self._section(existing, "aiReview"), **private.model_dump(by_alias=True)},
+            "diarization": {**self._section(existing, "diarization"), **private_diarization.model_dump(by_alias=True)},
+            "speakerSimilarity": {**self._section(existing, "speakerSimilarity"), **incoming.speaker_similarity.model_dump(by_alias=True)},
+            "emotionStyle": {**self._section(existing, "emotionStyle"), **incoming.emotion_style.model_dump(by_alias=True)},
+            "timeline": {**self._section(existing, "timeline"), **incoming.timeline.model_dump(by_alias=True)},
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".json.tmp")
         temporary.write_text(
             json.dumps(
-                {
-                    "aiReview": private.model_dump(by_alias=True),
-                    "diarization": private_diarization.model_dump(by_alias=True),
-                    "speakerSimilarity": incoming.speaker_similarity.model_dump(by_alias=True),
-                    "emotionStyle": incoming.emotion_style.model_dump(by_alias=True),
-                },
+                stored,
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -96,6 +102,18 @@ class FileAppPreferences:
             return SpeakerSimilarityPreferences.model_validate(raw.get("speakerSimilarity", {}))
         except (TypeError, ValueError):
             return SpeakerSimilarityPreferences()
+
+    def timeline(self) -> TimelinePreferences:
+        raw = self._read()
+        try:
+            return TimelinePreferences.model_validate(raw.get("timeline", {}))
+        except (TypeError, ValueError):
+            return TimelinePreferences()
+
+    @staticmethod
+    def _section(raw: dict[str, object], key: str) -> dict[str, object]:
+        value = raw.get(key)
+        return value if isinstance(value, dict) else {}
 
     def _read(self) -> dict[str, object]:
         if not self.path.is_file():

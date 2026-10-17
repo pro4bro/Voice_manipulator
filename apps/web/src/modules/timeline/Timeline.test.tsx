@@ -88,7 +88,7 @@ describe("Timeline", () => {
     expect(onWordsChange).not.toHaveBeenCalled();
   });
 
-  it("keeps paused browsing at the end when zoom changes instead of following the idle playhead", () => {
+  it("centers paused zoom on the idle playhead even after browsing to the end", () => {
     const { container } = render(<Timeline gain={0} onGainChange={() => undefined}
       take={{ id: "archive", name: "archive.wav", url: "/audio.wav", duration: 300 }} />);
     const scroller = container.querySelector(".timeline-scroll") as HTMLDivElement;
@@ -99,7 +99,7 @@ describe("Timeline", () => {
     scroller.scrollLeft = 2000;
     fireEvent.scroll(scroller);
     fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
-    expect(scroller.scrollLeft).toBe(2000);
+    expect(scroller.scrollLeft).toBe(0);
   });
   it("previews source gain while dragging and commits it only when released", () => {
     const onGainChange = vi.fn();
@@ -342,7 +342,7 @@ describe("Timeline", () => {
     const rect = () => ({ left: 0, top: 0, width: 400, height: 40, right: 400, bottom: 40, x: 0, y: 0, toJSON: () => ({}) });
     Object.defineProperty(track, "getBoundingClientRect", { configurable: true, value: rect });
     Object.defineProperty(canvas, "getBoundingClientRect", { configurable: true, value: rect });
-    fireEvent.pointerDown(track, { clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Subtitle word xin" }), { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
     fireEvent.pointerMove(track, { clientX: 60, clientY: 10, pointerId: 1 });
     fireEvent.pointerUp(track, { clientX: 60, clientY: 10, pointerId: 1 });
     await waitFor(() => expect(second).toHaveAttribute("aria-pressed", "true"));

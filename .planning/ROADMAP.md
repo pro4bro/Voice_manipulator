@@ -1,5 +1,24 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Stabilization round49 — TIMELINE-VIEWPORT-UX-01 (2026-10-17)
+
+Owner-requested Timeline UX: elapsed scrub edge scrolling at10% viewport width/s
+with fractional accumulation, playhead-centered zoom and plain blank deselect.
+Shared numeric selection overlay uses accent alpha0.30/opaque text, outside
+IN/OUT for narrow spans and collision rows at viewport edges. Clipping paints
+only contiguous exceeded buckets in one nonzero SVG fill, without quiet-gap
+bridging/coalescing/minimum-width expansion. Machine-local Preferences offers
+5s auto-hide, defaultoff; archived PCM refresh retains timer ownership and
+shares waveform/clipping bucket-start geometry. Applies ordinary/imported/
+archived OBS timelines; live capture follow keeps its existing contract.
+Final frontend: 968 pass / 120 files / 143.39s; full API: 1149 pass / 559.26s
+(3 existing/fixture warnings). Typecheck/build179 and browser PCM proof pass.
+All594inputs match the full-run snapshot; subsequent test-only EOF whitespace
+cleanup passes its9tests.
+See ADR0106 and docs/gates/timeline-ux49-20261017.md for evidence and limits.
+No source-media or word timestamp changes. Phase03 stays60%; independent acoustic
+anchors, Checkpoint A and13 downstream processor gates remain open.
+
 ## Stabilization round48 — STT-WORD-CLOCK-AUDIT-01 (2026-10-17)
 
 Owner clarifies widespread same-word early timing; round47 waveform fix is not

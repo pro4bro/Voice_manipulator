@@ -13,12 +13,16 @@ import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/scr
 import { useScriptWordDeletion } from "../script/use-script-word-deletion";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
-import { hasMultipleSelectionRanges, productionRanges, rangeReadoutBounds, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import "./production-selection.css";
 import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { StretchHandles } from "./StretchHandles";
 import { inverseStretch, mapStretchSelection, mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
+import { useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
+import { SelectionReadout } from "./SelectionReadout";
+import { ClippingOverlay } from "./ClippingOverlay";
+import { clippingRanges } from "./clipping-overflow";
 import { waveformBucketX, waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
 import { visibleSubtitleWordLayout } from "./subtitle-density";
@@ -63,6 +67,7 @@ interface TimelineProps {
   voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   rangeSelectionEnabled?: boolean;
+  clippingHighlightAutoHide?: boolean;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   take: ActiveTake | null;
   gain: number;
@@ -96,7 +101,6 @@ const PATH_HEIGHT = 100;
 const GAIN_PREVIEW_DIVISIONS = 12;
 const GAIN_PREVIEW_PARTS = [1, 5, 9];
 const AUTO_CALIBRATE_CEILING = 10 ** (-1 / 20);
-const MAX_GAIN_RANGES = 96;
 const CLOCK_STATE_INTERVAL_MS = 80;
 const DETAIL_WAVEFORM_DEBOUNCE_MS = 160;
 const DETAIL_WAVEFORM_MAX_POINTS = 12_000;
@@ -183,33 +187,6 @@ function gainPreviewRanges(pointCount: number): WaveformRange[] {
   }));
 }
 
-function overflowRanges(points: EnvelopePoint[], gain: number): WaveformRange[] {
-  if (!points.length || gain <= 0) return [];
-  const threshold = 1 / gain;
-  const ranges: WaveformRange[] = [];
-  const permittedGap = Math.max(1, Math.floor(points.length / 1600));
-  let start = -1;
-  let lastOver = -1;
-  for (let index = 0; index < points.length; index += 1) {
-    const point = points[index];
-    const over = Math.max(Math.abs(point.min), Math.abs(point.max)) > threshold;
-    if (over) {
-      if (start < 0) start = index;
-      lastOver = index;
-    } else if (start >= 0 && index - lastOver > permittedGap) {
-      ranges.push({ start, end: lastOver + 1 });
-      start = -1;
-    }
-  }
-  if (start >= 0) ranges.push({ start, end: lastOver + 1 });
-  if (ranges.length <= MAX_GAIN_RANGES) return ranges;
-  const stride = Math.ceil(ranges.length / MAX_GAIN_RANGES);
-  return Array.from({ length: Math.ceil(ranges.length / stride) }, (_, index) => {
-    const group = ranges.slice(index * stride, (index + 1) * stride);
-    return { start: group[0].start, end: group[group.length - 1].end };
-  });
-}
-
 function liveEnvelope(samples: EnvelopePoint[]): EnvelopePoint[] {
   return samples;
 }
@@ -255,6 +232,7 @@ export function Timeline({
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
   rangeSelectionEnabled = false,
+  clippingHighlightAutoHide = false,
   onReferenceContext,
   leadingActions = null,
   liveCaption = null,
@@ -320,6 +298,7 @@ export function Timeline({
   const detailWaveformCanvasRef = useRef<HTMLCanvasElement>(null);
   const timelinePixelWidthRef = useRef(0);
   const playheadDragRef = useRef(false);
+  const zoomAnchorRef = useRef<number | null>(null);
   const transportScrubRef = useRef(false);
   const timelineNavigatorDraggingRef = useRef(false);
   const playbackContextRef = useRef<AudioContext | null>(null);
@@ -402,7 +381,7 @@ export function Timeline({
   const gainWindowStart = isRecording ? 0 : detailEnvelope?.start ?? 0;
   const gainWindowDuration = isRecording ? duration : Math.max(0.001, (detailEnvelope?.end ?? duration) - gainWindowStart);
   const gainOverflows = useMemo(
-    () => isRecording ? [] : overflowRanges(visibleEnvelope, visualGain),
+    () => isRecording ? [] : clippingRanges(visibleEnvelope, visualGain),
     [isRecording, visibleEnvelope, visualGain],
   );
   // Snap targets read off the drawn waveform, so an edge lands where the wave is
@@ -411,6 +390,24 @@ export function Timeline({
     () => (isRecording || !detailEnvelope ? [] : acousticEdges(detailEnvelope)),
     [detailEnvelope, isRecording],
   );
+  const dragScroll = useDragAutoScroll({ sourceKey: take?.id,
+    viewport: () => {
+      const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
+      if (!scroller || !canvas) return null;
+      const width = scroller.clientWidth || scroller.getBoundingClientRect().width;
+      const fullWidth = canvas.getBoundingClientRect().width;
+      if (!width || !fullWidth) return null;
+      return { left: scroller.getBoundingClientRect().left, width, start: scroller.scrollLeft / fullWidth * duration,
+        span: Math.min(duration, width / fullWidth * duration), duration };
+    },
+    pan: (start) => {
+      const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
+      if (!scroller || !canvas) return;
+      scroller.scrollLeft = start / duration * canvas.getBoundingClientRect().width;
+      setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+    },
+    seek: (time) => seekToTime(time),
+  });
   const latestPreview = visibleEnvelope[visibleEnvelope.length - 1];
   const latestPreviewPeak = latestPreview ? Math.max(Math.abs(latestPreview.min), Math.abs(latestPreview.max)) : 0;
   const previewDb = latestPreviewPeak > 0.0001 ? Math.min(96, Math.max(-96, 20 * Math.log10(latestPreviewPeak) + gain)) : -96;
@@ -535,7 +532,12 @@ export function Timeline({
       timelinePixelWidthRef.current = width;
       setTimelineCanvasWidth((current) => Math.abs(current - width) > 0.5 ? width : current);
       const scroller = timelineScrollRef.current;
-      if (scroller) setTimelineViewport((current) => current.width !== scroller.clientWidth ? { left: scroller.scrollLeft, width: scroller.clientWidth } : current);
+      if (scroller && zoomAnchorRef.current !== null) {
+        const span = Math.min(duration, duration * scroller.clientWidth / Math.max(width, 1));
+        scroller.scrollLeft = zoomWindowStart(zoomAnchorRef.current, span, duration) / Math.max(duration, .001) * width;
+        zoomAnchorRef.current = null;
+        setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+      } else if (scroller) setTimelineViewport((current) => current.width !== scroller.clientWidth ? { left: scroller.scrollLeft, width: scroller.clientWidth } : current);
       paintPlayhead(currentTime);
     };
     update();
@@ -546,10 +548,10 @@ export function Timeline({
   }, [duration, zoom]);
 
   useLayoutEffect(() => {
-    if (isRecording || playheadDragRef.current) return;
+    if (isRecording || playheadDragRef.current || scrubbingRef.current || transportScrubRef.current) return;
     followPlayhead();
-    // Zoom, duration metadata and data refreshes are browsing operations. Only
-    // a changed playback/seek position may move the viewport to the playhead.
+    // Active drag scrolling has its own elapsed-time rate; playback following
+    // must not recenter the view underneath a held pointer.
   }, [currentTime]);
 
   useEffect(() => {
@@ -976,16 +978,21 @@ export function Timeline({
     const minimumSpan = minimumTimelineSpan(duration, baseWidth);
     return timelineZoomPosition(duration, duration / Math.max(zoom, 0.001), minimumSpan);
   }
+  function changeZoom(next: number) {
+    if (next === zoom) return;
+    zoomAnchorRef.current = currentTime;
+    setZoom(next);
+  }
   function setZoomFromSlider(value: number) {
     const baseWidth = timelinePixelWidthRef.current > 0
       ? timelinePixelWidthRef.current / Math.max(zoom, 0.001)
       : 1000;
     const minimumSpan = minimumTimelineSpan(duration, baseWidth);
     if (duration <= minimumSpan) {
-      setZoom(1);
+      changeZoom(1);
       return;
     }
-    setZoom(duration / timelineSpanAtZoomPosition(value, duration, minimumSpan));
+    changeZoom(duration / timelineSpanAtZoomPosition(value, duration, minimumSpan));
   }
 
   function modifiersOf(event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }) {
@@ -1252,6 +1259,11 @@ export function Timeline({
     if (isRecording || !take?.url || !canvas) return;
     const rect = canvas.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / rect.width) * duration));
+    seekToTime(nextTime);
+  }
+
+  function seekToTime(nextTime: number) {
+    stretchTransportRef.current = null;
     setCurrentTime(nextTime);
     if (audioScrubber.active) audioScrubber.move(nextTime);
     else if (audioRef.current) {
@@ -1307,6 +1319,7 @@ export function Timeline({
     event.preventDefault();
     event.stopPropagation();
     playheadDragRef.current = true;
+    dragScroll.begin(event.clientX);
     beginAudioScrub();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seekToClientX(event.clientX);
@@ -1315,6 +1328,7 @@ export function Timeline({
   function dragPlayhead(event: PointerEvent<HTMLDivElement>) {
     if (!playheadDragRef.current) return;
     event.preventDefault();
+    dragScroll.move(event.clientX);
     seekToClientX(event.clientX);
   }
 
@@ -1323,6 +1337,7 @@ export function Timeline({
     event.preventDefault();
     seekToClientX(event.clientX);
     playheadDragRef.current = false;
+    dragScroll.stop();
     audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     // The position set by seekToClientX is committed on the next render.
@@ -1342,9 +1357,11 @@ export function Timeline({
   }
 
   function beginScrub(event: PointerEvent<HTMLDivElement>) {
+    if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) onWordSelectionChange?.(EMPTY_SELECTION);
     if (event.button !== 0 || isRecording || !take?.url) return;
     event.preventDefault();
     scrubbingRef.current = true;
+    dragScroll.begin(event.clientX);
     beginAudioScrub();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     seek(event);
@@ -1381,6 +1398,7 @@ export function Timeline({
   function scrubTimeline(event: PointerEvent<HTMLDivElement>) {
     if (!scrubbingRef.current) return;
     event.preventDefault();
+    dragScroll.move(event.clientX);
     seek(event);
   }
 
@@ -1388,6 +1406,7 @@ export function Timeline({
     if (!scrubbingRef.current) return;
     seek(event);
     scrubbingRef.current = false;
+    dragScroll.stop();
     audioScrubber.end();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }
@@ -1465,7 +1484,7 @@ export function Timeline({
           </div>
           <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
           <div className="timeline-zoom">
-            <button aria-label="Thu nhỏ timeline" onClick={() => setZoom((current) => Math.max(1, current / 2))} type="button">−</button>
+            <button aria-label="Thu nhỏ timeline" onClick={() => changeZoom(Math.max(1, zoom / 2))} type="button">−</button>
             <input
               aria-label="Zoom timeline"
               aria-valuetext={zoomResolutionLabel()}
@@ -1478,7 +1497,7 @@ export function Timeline({
               value={zoomSliderValue()}
             />
             <span title="Mật độ hiển thị timeline">{zoomResolutionLabel()}</span>
-            <button aria-label="Phóng to timeline" onClick={() => setZoom((current) => Math.min(maxTimelineZoom(), current * 2))} type="button">+</button>
+            <button aria-label="Phóng to timeline" onClick={() => changeZoom(Math.min(maxTimelineZoom(), zoom * 2))} type="button">+</button>
           </div>
         </div>
       }
@@ -1561,19 +1580,19 @@ export function Timeline({
               onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
               onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
             >
-              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => {
-                const bounds = rangeReadoutBounds(range, duration, timelineCanvasWidth || 1000, timelineViewport.left, timelineViewport.width || 1000);
-                return <div aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range" key={range.id} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
-                  {bounds.visible ? <div className="production-selection-readout" style={{ left: bounds.left, width: bounds.width }}><span>START <b>{range.start.toFixed(3)}s</b></span><span>DURATION <b>{(range.end - range.start).toFixed(3)}s</b></span><span>END <b>{range.end.toFixed(3)}s</b></span></div> : null}
-                </div>;
-              }) : null}
+              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => <div key={range.id}
+                aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range"
+                style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
+                <SelectionReadout range={range} duration={duration} canvasWidth={timelineCanvasWidth || 1000} viewportLeft={timelineViewport.left} viewportWidth={timelineViewport.width || 1000} />
+              </div>) : null}
               {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(wordSelection, displayWords)} selection={wordSelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
               {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
               {detailWaveformState === "loading" && detailEnvelope?.points.length ? <span className="timeline-waveform-detail-status">PCM PEAK · đang cập nhật vùng nhìn</span> : null}
               {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
-              {gainOverflows.map((range, index) => { const start = gainWindowStart + (range.start / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; const end = gainWindowStart + (range.end / Math.max(visibleEnvelope.length, 1)) * gainWindowDuration; return <i aria-label={autoCalibrate ? "Vùng đã auto calibrate" : "Vùng gain bị clipping"} className={`timeline-gain-range ${autoCalibrate ? "is-calibrated" : ""}`} key={`${range.start}-${range.end}-${index}`} style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.08, ((end - start) / Math.max(duration, 0.001)) * 100)}%` }} />; })}
+              {!isRecording ? <ClippingOverlay points={visibleEnvelope} gain={visualGain} windowStart={gainWindowStart} windowDuration={gainWindowDuration} duration={duration}
+                autoCalibrate={autoCalibrate} autoHide={clippingHighlightAutoHide} sourceKey={take?.id ?? "none"} /> : null}
               {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
               {excludedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
               {cutPoints.map((point) => <i className="timeline-cut-point" key={point} style={{ left: `${point / duration * 100}%` }} />)}
@@ -1612,7 +1631,7 @@ export function Timeline({
                 return;
               }
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
-            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); if (event.button === 0 && !target) { onWordSelectionChange?.(EMPTY_SELECTION); return; } const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));

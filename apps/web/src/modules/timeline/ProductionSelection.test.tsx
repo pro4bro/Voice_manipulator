@@ -42,7 +42,7 @@ it("selects silence, adds a separated waveform range and synchronizes subtitle a
   fireEvent.pointerDown(waveform, { button: 0, pointerId: 1, clientX: 20, ctrlKey: true });
   fireEvent.pointerMove(waveform, { button: 0, pointerId: 1, clientX: 70, ctrlKey: true });
   fireEvent.pointerUp(waveform, { button: 0, pointerId: 1, clientX: 70, ctrlKey: true });
-  expect(screen.getByLabelText("Vùng chọn 0.200 đến 0.700 giây")).toHaveTextContent("DURATION 0.500s");
+  expect(screen.getByLabelText("Vùng chọn 0.200 đến 0.700 giây")).toContainElement(screen.getByLabelText("Duration 0.500 seconds"));
   fireEvent.pointerDown(waveform, { button: 0, pointerId: 2, clientX: 720, ctrlKey: true });
   fireEvent.pointerMove(waveform, { button: 0, pointerId: 2, clientX: 760, ctrlKey: true });
   fireEvent.pointerUp(waveform, { button: 0, pointerId: 2, clientX: 760, ctrlKey: true });
@@ -55,7 +55,7 @@ it("selects silence, adds a separated waveform range and synchronizes subtitle a
 it("mirrors Script row selection onto the waveform and preserves the source take", () => {
   render(<Harness />);
   fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 2" }));
-  expect(screen.getByLabelText("Vùng chọn 7.000 đến 8.000 giây")).toHaveTextContent("START 7.000s");
+  expect(screen.getByLabelText("Vùng chọn 7.000 đến 8.000 giây")).toContainElement(screen.getByLabelText("IN 7.000 seconds"));
   expect(screen.getByRole("button", { name: "Subtitle word two" })).toHaveAttribute("aria-pressed", "true");
   expect(output.audioPath).toBe("audio.wav");
 });
