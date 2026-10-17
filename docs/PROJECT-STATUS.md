@@ -1,5 +1,20 @@
 # Project Status — 2026-10-17
 
+## Stabilization round47 — TIMELINE-CLOCK-SELECTION-01 (2026-10-17)
+
+Reproduced waveform display drift from unequal peak groups and endpoint painting;
+now use proportional source partitions and bucket-start coordinates. Rebuild old
+overview geometry caches; preserve original media and saved STT words. Timeline
+input/draw rectangles now share origin/width. Ordinary STT/import selections show
+waveform START/DURATION/END and subtitle highlights; native/channel Script emits
+source-scoped selection. Ctrl-left drag selects time; ordinary waveform drag seeks;
+subtitle Ctrl-click insertion waits for release. Caret/disjoint/source guards retained.
+Final frontend937/113files/132.61s, typecheck/build172 pass; full API1147pass/537.75s (3existing/fixture warnings). Real synthetic PCM
+registry/browser evidence validates500ms intervals; user-footage linguistic anchors,
+native Ctrl-drag and live OBS acceptance remain open. ADR0105 and
+`docs/gates/timing-selection47-20261017.md` record evidence/limits. Phase03 stays60%;
+Checkpoint A and13downstream processor codes remain open.
+
 ## Stabilization round46 — HUB-BROWSE-RECOVERY-01 / OBS-OFFLINE-LEASE-01 (2026-10-17)
 
 Owner-reported Browse wait investigated without attributing it to recent timing

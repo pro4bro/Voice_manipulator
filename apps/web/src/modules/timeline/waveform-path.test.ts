@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { waveformEnvelopePath, waveformY } from "./waveform-path";
+import { waveformBucketX, waveformEnvelopePath, waveformY } from "./waveform-path";
 
 describe("waveformEnvelopePath", () => {
   it("shares the Timeline canvas centerline and peak scale", () => {
@@ -54,4 +54,11 @@ describe("waveformEnvelopePath", () => {
       { x: 400, min: -0.25, max: 0.25 },
     ], 60, 2)).toBe("M0.00 2.40L100.00 16.20L100.00 43.80L0.00 57.60ZM300.00 2.40L400.00 16.20L400.00 43.80L300.00 57.60Z");
   });
+});
+
+
+it("places PCM bins on their start clock, including a long recording midpoint", () => {
+  expect(waveformBucketX(512, 1024, 600)).toBe(300);
+  expect(waveformBucketX(1023, 1024, 600)).toBe(599.4140625);
+  expect(waveformBucketX(0, 1, 600)).toBe(0);
 });

@@ -384,3 +384,23 @@ describe("Timeline", () => {
     expect(pause).toHaveBeenCalled();
   });
 });
+
+
+it("draws a midpoint PCM bucket at the same clock as its subtitle instead of stretching it to the end", async () => {
+  const lineTo = vi.fn();
+  const context = { lineTo, moveTo: vi.fn(), beginPath: vi.fn(), closePath: vi.fn(), fill: vi.fn(), fillRect: vi.fn() };
+  const canvasSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ start: 0, end: 600,
+    resolution: .001, points: [{ min: 0, max: 0 }, { min: 0, max: 0 }, { min: -.5, max: .5 }, { min: 0, max: 0 }] }) }));
+  try {
+    const { container } = render(<Timeline gain={0} onGainChange={vi.fn()} take={{ id: "pulse", name: "pulse.wav", duration: 600,
+      url: "/api/pulse/audio", words: [{ text: "pulse", start: 300, end: 300.5 }] }} />);
+    const scroller = container.querySelector(".timeline-scroll")!;
+    const canvas = container.querySelector(".timeline-canvas")!;
+    Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1000 });
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+    fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "2" } });
+    await waitFor(() => expect(lineTo).toHaveBeenCalledWith(6000, 27));
+    expect(screen.getByRole("button", { name: "Subtitle word pulse" })).toHaveStyle({ left: "50%" });
+  } finally { canvasSpy.mockRestore(); vi.unstubAllGlobals(); }
+});

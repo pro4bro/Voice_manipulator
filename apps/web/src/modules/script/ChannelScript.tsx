@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
+import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
+import { selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import { channelScriptRows, type ChannelScriptRow } from "./channel-script";
 import { requestPlaybackSeek, usePlaybackWord, usePlaybackWords } from "../../domain/playback-sync";
@@ -23,8 +25,16 @@ function timecode(seconds: number | null, precision = 2) {
   return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}.${String(rounded % units).padStart(precision, "0")}`;
 }
 
-function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; row: ChannelScriptRow; onEditWord?: (index: number, text: string) => void }) {
+function ChannelWords({ track, row, onEditWord, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
+  track: ProjectMediaAsset;
+  row: ChannelScriptRow;
+  onEditWord?: (index: number, text: string) => void;
+  wordSelection?: WordSelection;
+  onWordSelectionChange?: (selection: WordSelection) => void;
+}) {
   const active = usePlaybackWord(row.trackId);
+  const sweep = useRef<{ base: WordSelection; origin: number } | null>(null);
+  const sourceWords = track.words ?? [];
   const tooltipId = useId();
   const [tooltip, setTooltip] = useState<{ index: number; text: string; left: number; top: number; above: boolean } | null>(null);
   const [editing, setEditing] = useState<{ index: number; text: string } | null>(null);
@@ -43,26 +53,61 @@ function ChannelWords({ track, row, onEditWord }: { track: ProjectMediaAsset; ro
     window.addEventListener("resize", hide);
     return () => { window.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
   }, [tooltip]);
+  useEffect(() => {
+    const endSweep = () => { sweep.current = null; };
+    window.addEventListener("pointerup", endSweep);
+    window.addEventListener("pointercancel", endSweep);
+    return () => {
+      window.removeEventListener("pointerup", endSweep);
+      window.removeEventListener("pointercancel", endSweep);
+    };
+  }, []);
+  function select(index: number, modifiers: { ctrl: boolean; shift: boolean; alt: boolean }) {
+    if (!onWordSelectionChange) return;
+    const base = wordSelection.scope?.kind === "asset" && wordSelection.scope.id === track.id && wordSelection.scope.revision === track.updatedAt
+      ? wordSelection : EMPTY_SELECTION;
+    const next = selectProductionWord(base, index, sourceWords, modifiers);
+    onWordSelectionChange({ ...next, scope: { kind: "asset", id: track.id, revision: track.updatedAt } });
+  }
+  function extend(index: number, modifiers: { ctrl: boolean; shift: boolean; alt: boolean }) {
+    const current = sweep.current;
+    if (!current || !onWordSelectionChange) return;
+    const next = sweepProductionWords(current.base, current.origin, index, sourceWords, modifiers);
+    onWordSelectionChange({ ...next, scope: { kind: "asset", id: track.id, revision: track.updatedAt } });
+  }
+  const selected = wordSelection.scope?.kind === "asset" && wordSelection.scope.id === track.id && wordSelection.scope.revision === track.updatedAt
+    ? wordSelection : EMPTY_SELECTION;
   return <span className="script-transcript-words">{row.words.length ? row.words.map(({ word, index }) =>
-    <span className="script-table__word-wrap" key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
+    <span className="script-table__word-wrap" key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${selected.indexes.includes(index) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
-      data-script-word-index={index} data-script-source-id={row.trackId}
+      aria-pressed={onWordSelectionChange ? selected.indexes.includes(index) : undefined}
+      data-script-word-index={index} data-script-source-id={row.trackId} data-script-revision={track.updatedAt}
       aria-describedby={tooltip?.index === index ? tooltipId : undefined}
       onMouseEnter={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
       onFocus={(event) => showTiming(event.currentTarget, index, `${timecode(word.start, 3)}–${timecode(word.end, 3)}${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`)}
       onMouseLeave={() => setTooltip(null)} onBlur={() => setTooltip(null)}
       onDoubleClick={(event) => { if (!onEditWord) return; event.preventDefault(); event.stopPropagation(); editCommittedRef.current = false; setWordMenu(null); setEditing({ index, text: word.text }); }}
       onContextMenu={(event) => { if (!onEditWord) return; event.preventDefault(); event.stopPropagation(); setWordMenu({ index, left: event.clientX, top: event.clientY }); }}
-      onPointerDown={(event) => { if (event.button === 1) { event.preventDefault(); event.stopPropagation(); promoteTimestampWord(track.id, index); } else if (event.button === 0 || event.button === 2) promoteTimestampWord(track.id, null); }}
+      onPointerDown={(event) => {
+        if (event.button === 1) { event.preventDefault(); event.stopPropagation(); promoteTimestampWord(track.id, index); }
+        else if (event.button === 0 || event.button === 2) promoteTimestampWord(track.id, null);
+        if (event.button === 0 && onWordSelectionChange) {
+          const base = selected;
+          sweep.current = { base, origin: index };
+          select(index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey });
+        }
+      }}
+      onPointerEnter={(event) => { const current = sweep.current; if (current && event.buttons === 1) extend(index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }); }}
+      onPointerUp={() => { sweep.current = null; }}
       onKeyDown={(event) => { if (event.key === "Escape") setTooltip(null); }}
-      onClick={() => requestPlaybackSeek(row.trackId, word.start)}>{word.text}</button>{editing?.index === index ? <form aria-label={`Sửa text ${word.text}`} className="channel-script-word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !editCommittedRef.current) { editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); } }} onSubmit={(event) => { event.preventDefault(); if (editCommittedRef.current) return; editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); }}><input aria-label={`Sửa text ${word.text}`} autoFocus onChange={(event) => setEditing({ index, text: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); editCommittedRef.current = true; setEditing(null); } }} value={editing.text} /></form> : null}{" "}</span>) : row.text}
+      onClick={(event) => { requestPlaybackSeek(row.trackId, word.start); if (event.detail === 0) select(index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }); }}>{word.text}</button>{editing?.index === index ? <form aria-label={`Sửa text ${word.text}`} className="channel-script-word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !editCommittedRef.current) { editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); } }} onSubmit={(event) => { event.preventDefault(); if (editCommittedRef.current) return; editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); }}><input aria-label={`Sửa text ${word.text}`} autoFocus onChange={(event) => setEditing({ index, text: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); editCommittedRef.current = true; setEditing(null); } }} value={editing.text} /></form> : null}{" "}</span>) : row.text}
     {tooltip ? createPortal(<span id={tooltipId} role="tooltip" className="channel-script-time-popup"
       style={{ left: tooltip.left, top: tooltip.top, transform: tooltip.above ? "translateY(-100%)" : undefined }}>{tooltip.text}</span>, document.body) : null}
     {wordMenu ? createPortal(<div className="channel-script-word-menu" role="menu" style={{ left: wordMenu.left, top: wordMenu.top }}><button onClick={() => { editCommittedRef.current = false; setEditing({ index: wordMenu.index, text: track.words?.[wordMenu.index]?.text ?? "" }); setWordMenu(null); }} role="menuitem" type="button">Sửa text</button></div>, document.body) : null}
   </span>;
 }
 
-export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords, onWordsChange, viewMode = "table" }: {
+export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selectedOverlap = null, onSelectOverlap, speakers = [], onAssignWords, onWordsChange, viewMode = "table", wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
   viewMode?: "table" | "edit";
   tracks: ProjectMediaAsset[];
   onSelectTrack: (id: string) => void;
@@ -72,6 +117,8 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
   speakers?: SpeakerProfile[];
   onAssignWords?: (trackId: string, indexes: number[], profileId: string | null) => void;
   onWordsChange?: (assetId: string, words: StudioWord[], text?: string) => void;
+  wordSelection?: WordSelection;
+  onWordSelectionChange?: (selection: WordSelection) => void;
 }) {
   // Timings from separate footage do not share a clock. Detect interruptions
   // and overlaps only between channels of the same recording/archive.
@@ -126,7 +173,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn"><b>{selected.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button></div> : null}
     <div className="script-table-scroll-region">
       <div aria-label="Lượt nói theo thời gian" role="grid" className="script-table-scroll" ref={viewRef}>
-        {viewMode === "edit" ? tracks.map((track) => <ScriptSourceText key={track.id} source={track} onChange={onWordsChange} />) : <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
+        {viewMode === "edit" ? tracks.map((track) => <ScriptSourceText key={track.id} source={track} onChange={onWordsChange} wordSelection={wordSelection} onWordSelectionChange={onWordSelectionChange} />) : <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
         <ScriptTranscriptHeader layout={layout} headerRef={headerRef} />
         {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
         {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => {
@@ -142,7 +189,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
               onProfileChange={onAssignWords ? (id) => { if (selected.length) assignSelected(id); } : undefined}
               track={<button aria-label={`Mở ${row.trackName} tại ${timecode(row.start)}`} onClick={() => onSelectTrack(row.trackId)} type="button">{row.trackName}</button>} />,
             content: <div className="script-table__content" role="gridcell">
-              {fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} /></div>)}
+              {fragments.map((fragment) => <div data-transcript-fragment={fragment.key} key={fragment.key}><ChannelWords onEditWord={onWordsChange ? (wordIndex, text) => updateTrackWord(row.trackId, wordIndex, text) : undefined} row={{ ...row, words: fragment.words }} track={tracks.find((track) => track.id === row.trackId)!} wordSelection={wordSelection} onWordSelectionChange={onWordSelectionChange} /></div>)}
               {row.overlaps.length ? <div aria-label={`Đoạn chồng tiếng ${row.trackName}`} className="obs-script__overlaps">
           {row.overlaps.map((overlap) => <button key={`${overlap.startSeconds}-${overlap.endSeconds}`}
             aria-pressed={recordingId ? obsOverlapSelectionMatches(selectedOverlap, recordingId, row.trackId, overlap) : undefined}

@@ -4,6 +4,11 @@ export interface WaveformPathPoint {
   max: number;
 }
 
+/** A PCM summary describes a time bucket, not a sample at the span's endpoint. */
+export function waveformBucketX(index: number, count: number, width: number): number {
+  return count > 0 ? index / count * width : 0;
+}
+
 export function waveformY(value: number, height: number): number {
   return height / 2 - clamp(value) * (height * 0.46);
 }

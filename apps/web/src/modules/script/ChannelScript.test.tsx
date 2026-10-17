@@ -5,7 +5,56 @@ import { useState } from "react";
 import { expect, it, vi } from "vitest";
 
 import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
+import type { WordSelection } from "../../domain/word-selection";
 import { ChannelScript } from "./ChannelScript";
+
+it("publishes a same-track word selection with asset revision scope and mirrors only that asset", () => {
+  const tracks = ["a", "b"].map((id) => ({ id, name: id, updatedAt: `${id}-revision`, text: `${id} one`, words: [
+    { text: id, start: 0, end: 0.4 }, { text: "one", start: 0.5, end: 1 },
+  ] })) as ProjectMediaAsset[];
+  const onWordSelectionChange = vi.fn();
+  const view = render(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} onWordSelectionChange={onWordSelectionChange} />);
+  fireEvent.click(view.container.querySelector('[data-script-source-id="a"][data-script-word-index="1"]')!);
+  const selected: WordSelection = { indexes: [1], anchor: 1,
+    ranges: [{ id: "time-0.5-1", start: 0.5, end: 1 }],
+    scope: { kind: "asset", id: "a", revision: "a-revision" } };
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(selected);
+  view.rerender(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} wordSelection={selected} onWordSelectionChange={onWordSelectionChange} />);
+  expect(view.container.querySelector('[data-script-source-id="a"][data-script-word-index="1"]')).toHaveAttribute("aria-pressed", "true");
+  expect(view.container.querySelector('[data-script-source-id="b"][data-script-word-index="1"]')).toHaveAttribute("aria-pressed", "false");
+});
+
+it("sweeps channel words using only the origin track's clock", () => {
+  const tracks = ["a", "b"].map((id) => ({ id, name: id, updatedAt: `${id}-revision`, text: `${id} one`, words: [
+    { text: id, start: id === "a" ? 1 : 101, end: id === "a" ? 1.4 : 101.4 },
+    { text: "one", start: id === "a" ? 1.5 : 101.5, end: id === "a" ? 2 : 102 },
+  ] })) as ProjectMediaAsset[];
+  const onWordSelectionChange = vi.fn();
+  const view = render(<ChannelScript tracks={tracks} onSelectTrack={vi.fn()} onWordSelectionChange={onWordSelectionChange} />);
+  const first = view.container.querySelector('[data-script-source-id="a"][data-script-word-index="0"]')!;
+  const second = view.container.querySelector('[data-script-source-id="a"][data-script-word-index="1"]')!;
+  fireEvent.pointerDown(first, { button: 0 });
+  fireEvent.pointerEnter(second, { buttons: 1 });
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    indexes: [0, 1], anchor: 1, scope: { kind: "asset", id: "a", revision: "a-revision" },
+    ranges: [{ id: "time-1-2", start: 1, end: 2 }],
+  }));
+});
+
+it("ends a channel word sweep when the pointer is released outside the word", () => {
+  const track = { id: "a", name: "a", updatedAt: "rev-a", text: "one two", words: [
+    { text: "one", start: 1, end: 1.4 }, { text: "two", start: 1.5, end: 2 },
+  ] } as ProjectMediaAsset;
+  const onWordSelectionChange = vi.fn();
+  const view = render(<ChannelScript tracks={[track]} onSelectTrack={vi.fn()} onWordSelectionChange={onWordSelectionChange} />);
+  const first = view.container.querySelector('[data-script-word-index="0"]')!;
+  const second = view.container.querySelector('[data-script-word-index="1"]')!;
+  fireEvent.pointerDown(first, { button: 0 });
+  fireEvent.pointerUp(window);
+  onWordSelectionChange.mockClear();
+  fireEvent.pointerEnter(second, { buttons: 1 });
+  expect(onWordSelectionChange).not.toHaveBeenCalled();
+});
 
 it("shows word timing outside the transcript flow and dismisses it on scroll", () => {
   const tracks = [{ id: "a", name: "Mic", text: "Một", words: [{ text: "Một", start: 1, end: 2 }] }] as ProjectMediaAsset[];

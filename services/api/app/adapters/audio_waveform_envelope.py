@@ -21,6 +21,7 @@ class AudioWaveformEnvelope:
     """
 
     PEAK_CACHE_VERSION = 1
+    ENVELOPE_CACHE_VERSION = 2
     PEAKS_PER_SECOND = 1_000
     MIN_DETAIL_POINTS = 64
     MAX_DETAIL_POINTS = 16_000
@@ -100,7 +101,8 @@ class AudioWaveformEnvelope:
         try:
             payload = json.loads(cache_path.read_text(encoding="utf-8"))
             if (
-                payload.get("sourceSize") == source_size
+                payload.get("envelopeVersion") == self.ENVELOPE_CACHE_VERSION
+                and payload.get("sourceSize") == source_size
                 and payload.get("sourceMtimeNs") == source_mtime_ns
                 and isinstance(payload.get("points"), list)
             ):
@@ -198,10 +200,13 @@ class AudioWaveformEnvelope:
     def _group_peaks(peaks: list[tuple[int, int]], target_points: int) -> list[dict[str, float]]:
         if len(peaks) <= target_points:
             return [{"min": minimum / 32768.0, "max": maximum / 32768.0} for minimum, maximum in peaks]
-        frames_per_point = math.ceil(len(peaks) / target_points)
         grouped: list[dict[str, float]] = []
-        for start in range(0, len(peaks), frames_per_point):
-            group = peaks[start:start + frames_per_point]
+        # Clients place point i at i/N of the source span. Fixed ceil-sized
+        # chunks leave a short tail and move earlier bins off that clock.
+        for index in range(target_points):
+            start = index * len(peaks) // target_points
+            end = (index + 1) * len(peaks) // target_points
+            group = peaks[start:end]
             grouped.append(
                 {
                     "min": min(item[0] for item in group) / 32768.0,
@@ -227,10 +232,12 @@ class AudioWaveformEnvelope:
                 self.max_points,
                 max(self.min_points, math.ceil(max(0.1, duration) * self.density_per_second)),
             )
-            frames_per_point = max(1, math.ceil(frame_count / point_count))
+            point_count = min(point_count, frame_count)
             points: list[dict[str, float]] = []
-            for _ in range(point_count):
-                raw = reader.readframes(frames_per_point)
+            for index in range(point_count):
+                start = index * frame_count // point_count
+                end = (index + 1) * frame_count // point_count
+                raw = reader.readframes(end - start)
                 if not raw:
                     points.append({"min": 0.0, "max": 0.0})
                     continue
@@ -242,6 +249,7 @@ class AudioWaveformEnvelope:
                     }
                 )
             return {
+                "envelopeVersion": self.ENVELOPE_CACHE_VERSION,
                 "duration": duration,
                 "sampleRate": rate,
                 "channels": channels,

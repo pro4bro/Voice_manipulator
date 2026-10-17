@@ -19,7 +19,7 @@ import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { StretchHandles } from "./StretchHandles";
 import { inverseStretch, mapStretchSelection, mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
-import { waveformY } from "./waveform-path";
+import { waveformBucketX, waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
 import { visibleSubtitleWordLayout } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
@@ -125,7 +125,7 @@ function paintEnvelopeRange(
   const end = Math.min(points.length, Math.ceil(range.end));
   if (end <= start) return;
   const coordinate = (point: EnvelopePoint, index: number, edge: "min" | "max") => {
-    const x = points.length === 1 ? 0 : (index / (points.length - 1)) * PATH_WIDTH;
+    const x = waveformBucketX(index, points.length, PATH_WIDTH);
     const peak = Math.max(Math.abs(point.min * gain), Math.abs(point.max * gain));
     const calibration = autoCalibrate && peak > AUTO_CALIBRATE_CEILING
       ? AUTO_CALIBRATE_CEILING / peak
@@ -338,7 +338,7 @@ export function Timeline({
   const sweepOriginRef = useRef<number | null>(null);
   const sweepBaseRef = useRef<WordSelection>(EMPTY_SELECTION);
   const selectionRef = useRef(wordSelection);
-  const rangeDragRef = useRef<{ x: number; start: number; base: WordSelection; moved: boolean; modifiers: { ctrl: boolean; shift: boolean; alt: boolean } } | null>(null);
+  const rangeDragRef = useRef<{ x: number; start: number; base: WordSelection; moved: boolean; insertOnClick: boolean; modifiers: { ctrl: boolean; shift: boolean; alt: boolean } } | null>(null);
   selectionRef.current = wordSelection;
   // Pointer moves fire faster than React renders, so the in-progress edit lives
   // in a ref and only the preview is state.
@@ -1350,10 +1350,10 @@ export function Timeline({
     seek(event);
   }
 
-  function beginRangeSelection(event: PointerEvent<HTMLDivElement>) {
-    if (!rangeSelectionEnabled || event.button !== 0 || isRecording || !take) return false;
+  function beginRangeSelection(event: PointerEvent<HTMLDivElement>, insertOnClick = false) {
+    if (!rangeSelectionEnabled || event.button !== 0 || !(event.ctrlKey || event.metaKey) || isRecording || !take) return false;
     event.preventDefault();
-    rangeDragRef.current = { x: event.clientX, start: sourceTimeAt(event.clientX), base: selectionRef.current, moved: false, modifiers: modifiersOf(event) };
+    rangeDragRef.current = { x: event.clientX, start: sourceTimeAt(event.clientX), base: selectionRef.current, moved: false, insertOnClick, modifiers: modifiersOf(event) };
     try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* pointer remains in the waveform */ }
     return true;
   }
@@ -1371,6 +1371,7 @@ export function Timeline({
     if (!drag) return false;
     if (cancelled) onWordSelectionChange?.(drag.base);
     else if (drag.moved) moveRangeSelection(event);
+    else if (drag.insertOnClick) beginTextInsertion(drag.start);
     else { beginScrub(event); endScrub(event); }
     rangeDragRef.current = null;
     try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch { /* already released */ }
@@ -1611,7 +1612,7 @@ export function Timeline({
                 return;
               }
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
-            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={endWordDrag} onPointerUp={(event) => { wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));

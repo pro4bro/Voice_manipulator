@@ -523,7 +523,7 @@
 .obs-script--embedded .obs-script__rows { min-height: 0; }
 @media (max-width: 700px) { .obs-timeline__track-scroll { --label-width: 104px; } .obs-timeline__header-actions > span { display: none; } .obs-timeline__header-actions select { max-width: 240px; } }
 .timeline-scroll { min-width: 0; min-height: 0; overflow-x: auto; overflow-y: hidden; scrollbar-color: var(--accent) var(--surface-audio); scrollbar-width: thin; }
-.timeline-canvas { width: calc(100% * var(--zoom)); min-width: 100%; height: 100%; display: grid; grid-template-rows: 20px minmax(70px,1fr) 28px; position: relative; overflow: hidden; background: var(--surface-audio); border: 1px solid var(--audio-line); }
+.timeline-canvas { width: calc(100% * var(--zoom)); min-width: 100%; height: 100%; display: grid; grid-template-rows: 20px minmax(70px,1fr) 28px; position: relative; overflow: hidden; background: var(--surface-audio); border: 0; box-shadow: inset 0 0 0 1px var(--audio-line); }
 .timeline-canvas::before { content: "+0 dB\A−12\A−24\A−48"; white-space: pre; position: absolute; z-index: 2; left: 4px; top: 27px; color: var(--audio-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); line-height: 18px; pointer-events: none; }
 .timeline-gain { min-height: 0; display: grid; grid-template-rows: auto auto minmax(60px,1fr) auto; justify-items: center; gap: 4px; overflow: hidden; padding: 5px 4px; border: 1px solid var(--audio-line); background: var(--surface-audio); }
 .timeline-gain span,.timeline-gain output,.timeline-gain small { color: var(--audio-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }

@@ -281,6 +281,59 @@ it("keeps each Script word and both subtitle lanes synchronized without opening 
   expect(within(screen.getByLabelText("Subtitle Channel 2")).getByRole("button", { name: "world · 00:30–00:33" })).toHaveClass("is-active");
 });
 
+it("shows timed selection only on its source track with waveform timing readout", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const selection = { indexes: [0], anchor: 0, ranges: [{ id: "picked", start: 15, end: 18 }],
+    scope: { kind: "asset" as const, id: "a", revision: tracks[0].updatedAt } };
+  render(<ImportedMultitrackTimeline parent={parent} tracks={tracks.map((track) => ({ ...track, text: "hello", words: [{ text: "hello", start: 15, end: 18 }] }))}
+    selectedTrackId="a" wordSelection={selection} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
+  const firstWave = screen.getByLabelText("Waveform Channel 1");
+  expect(firstWave).toHaveTextContent("START 15.000s");
+  expect(firstWave).toHaveTextContent("END 18.000s");
+  expect(firstWave).toHaveTextContent("DURATION 3.000s");
+  expect(screen.getAllByRole("button", { name: "hello · 00:15–00:18" })[0]).toHaveClass("is-selected");
+  expect(screen.getByLabelText("Waveform Channel 2")).not.toHaveTextContent("START");
+});
+
+it("publishes scoped word selection from an imported subtitle and Ctrl-drag range from its focused waveform", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const onWordSelectionChange = vi.fn();
+  const source = { ...tracks[0], text: "hello world", words: [{ text: "hello", start: 15, end: 18 }, { text: "world", start: 30, end: 33 }] };
+  render(<ImportedMultitrackTimeline parent={parent} tracks={[source]} selectedTrackId="a" singleTrackView
+    onWordSelectionChange={onWordSelectionChange} onSelectTrack={() => undefined} onCutsChange={async () => true}
+    onAssetWordsChange={vi.fn()} onAssetTimelineStateChange={vi.fn().mockResolvedValue(undefined)} />);
+  fireEvent.click(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({ indexes: [0], anchor: 0,
+    ranges: [{ id: "time-15-18", start: 15, end: 18 }], scope: { kind: "asset", id: "a", revision: source.updatedAt } }));
+
+  fireEvent.doubleClick(screen.getByRole("button", { name: "hello · 00:15–00:18" }));
+  const waveform = await screen.findByLabelText("Waveform timeline");
+  const canvas = document.querySelector<HTMLElement>(".timeline-canvas")!;
+  vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, width: 600 } as DOMRect);
+  fireEvent.pointerDown(waveform, { button: 0, ctrlKey: true, pointerId: 9, clientX: 100 });
+  fireEvent.pointerMove(waveform, { button: 0, ctrlKey: true, pointerId: 9, clientX: 200 });
+  fireEvent.pointerUp(waveform, { button: 0, ctrlKey: true, pointerId: 9, clientX: 200 });
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    ranges: [{ id: "time-10-20", start: 10, end: 20 }], scope: { kind: "asset", id: "a", revision: source.updatedAt },
+  }));
+});
+
+it("marquees a Ctrl-drag range on the imported waveform without converting it to a scrub", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const onWordSelectionChange = vi.fn();
+  const source = { ...tracks[0], text: "hello", words: [{ text: "hello", start: 15, end: 18 }] };
+  render(<ImportedMultitrackTimeline parent={parent} tracks={[source]} selectedTrackId="a"
+    onWordSelectionChange={onWordSelectionChange} onSelectTrack={() => undefined} onCutsChange={async () => true} />);
+  const waveform = screen.getByLabelText("Waveform Channel 1");
+  vi.spyOn(waveform, "getBoundingClientRect").mockReturnValue({ left: 0, width: 600 } as DOMRect);
+  fireEvent.pointerDown(waveform, { button: 0, ctrlKey: true, pointerId: 12, clientX: 100 });
+  fireEvent.pointerMove(waveform, { button: 0, ctrlKey: true, pointerId: 12, clientX: 200 });
+  fireEvent.pointerUp(waveform, { button: 0, ctrlKey: true, pointerId: 12, clientX: 200 });
+  expect(onWordSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    ranges: [{ id: "time-10-20", start: 10, end: 20 }], scope: { kind: "asset", id: "a", revision: source.updatedAt },
+  }));
+});
+
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("opens a long multitrack footage at its full duration", () => {
@@ -490,4 +543,22 @@ it("plays both channel audio elements together and resets every saved cut", asyn
   fireEvent.click(screen.getByRole("button", { name: "RESET" }));
   await waitFor(() => expect(onCutsChange).toHaveBeenCalledWith(["a", "b"], []));
   play.mockRestore(); pause.mockRestore();
+});
+
+
+it("keeps the playhead and viewport on separated imported selections and clamps readouts inside the lane", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const sources = [{ ...tracks[0], words: [{ text: "first", start: 2, end: 3 }, { text: "last", start: 59, end: 60 }] }];
+  const props = { parent, tracks: sources, singleTrackView: true, selectedTrackId: "a", onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} wordSelection={{ indexes: [], anchor: null }} />);
+  const audio = view.container.querySelector("audio")!;
+  audio.currentTime = 10;
+  fireEvent.timeUpdate(audio);
+  view.rerender(<ImportedMultitrackTimeline {...props} wordSelection={{ indexes: [0, 1], anchor: 1,
+    ranges: [{ id: "first", start: 2, end: 3 }, { id: "last", start: 59, end: 60 }] }} />);
+  expect(audio.currentTime).toBe(10);
+  expect(view.container.querySelectorAll(".imported-selection-range")).toHaveLength(2);
+  const readout = view.container.querySelectorAll<HTMLElement>(".imported-selection-readout")[1];
+  expect(Number.parseFloat(readout.style.left)).toBeLessThan(0);
+  expect(readout).toHaveTextContent("END 60.000s");
 });

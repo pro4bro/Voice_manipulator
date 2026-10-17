@@ -1853,3 +1853,28 @@ chắn, không nhận nghiệm thu chỉ từ mock hoặc owner activation.
 Chủ dự án thử Browse native sau khi nạp bản sửa; chưa đóng Checkpoint A hay các
 gate mic/OBS/model/identity/timing. Giữ dữ liệu chưa xác nhận. Roadmap chức năng
 Voice Manipulator và SOURCE-EXTERNAL-ASSETS-01 không được đánh dấu hoàn tất.
+
+
+## Round47 — TIMELINE-CLOCK-SELECTION-01 (2026-10-17)
+
+### Feedback và xử lý
+
+Chủ dự án thấy từ trên subtitle kết thúc gần lúc waveform bắt đầu, thiếu highlight
+và START/END/DURATION khi chọn Script/subtitle, yêu cầu Ctrl+left drag để quét.
+Tái hiện được lỗi chia peak/vẽ điểm làm waveform lệch theo độ dài cửa sổ; sửa
+hệ tọa độ và cache overview, không dời timestamp STT. Mở overlay cho STT/import,
+nối native/channel Script selection; phân biệt Ctrl-click nhập chữ và Ctrl-drag.
+Giữ Ctrl-drag handle co giãn, caret text, scope asset/revision và vùng rời nhau.
+
+### Bằng chứng
+
+Final frontend937/113files/132.61s, typecheck/build172 pass. Full API1147pass/537.75s (3existing/fixture warnings). Browser với PCM
+synthetic500ms khớp waveform/subtitle/overlay, Script native chọn đúng vùng.
+Xem docs/gates/timing-selection47-20261017.md và ADR0105. Không hạ ngưỡng.
+
+### Còn lại / NEXT
+
+Cần project/footage và từ/mốc cụ thể để kết luận sai số STT ngôn ngữ của chủ dự án.
+Không coi sửa hiển thị là forced alignment đã đạt. Native Ctrl-drag/live OBS,
+Browse foreground và Checkpoint A vẫn chờ nghiệm thu; không tăng Phase03/60% hay
+đánh dấu13processor còn lại đã xong. Dừng sau round47.

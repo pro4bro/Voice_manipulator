@@ -39,9 +39,9 @@ it("selects silence, adds a separated waveform range and synchronizes subtitle a
   const canvas = view.container.querySelector<HTMLElement>(".timeline-canvas")!;
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
   const waveform = screen.getByLabelText("Waveform timeline");
-  fireEvent.pointerDown(waveform, { button: 0, pointerId: 1, clientX: 20 });
-  fireEvent.pointerMove(waveform, { button: 0, pointerId: 1, clientX: 70 });
-  fireEvent.pointerUp(waveform, { button: 0, pointerId: 1, clientX: 70 });
+  fireEvent.pointerDown(waveform, { button: 0, pointerId: 1, clientX: 20, ctrlKey: true });
+  fireEvent.pointerMove(waveform, { button: 0, pointerId: 1, clientX: 70, ctrlKey: true });
+  fireEvent.pointerUp(waveform, { button: 0, pointerId: 1, clientX: 70, ctrlKey: true });
   expect(screen.getByLabelText("Vùng chọn 0.200 đến 0.700 giây")).toHaveTextContent("DURATION 0.500s");
   fireEvent.pointerDown(waveform, { button: 0, pointerId: 2, clientX: 720, ctrlKey: true });
   fireEvent.pointerMove(waveform, { button: 0, pointerId: 2, clientX: 760, ctrlKey: true });
@@ -73,9 +73,9 @@ it("does not scroll on separated multi-selection and cancels a waveform sweep ba
   expect(view.container.querySelectorAll(".production-selection-range")).toHaveLength(2);
   const before = screen.getByTestId("selection").textContent;
   const waveform = screen.getByLabelText("Waveform timeline");
-  fireEvent.pointerDown(waveform, { button: 0, pointerId: 4, clientX: 30 });
-  fireEvent.pointerMove(waveform, { button: 0, pointerId: 4, clientX: 60 });
-  fireEvent.pointerCancel(waveform, { button: 0, pointerId: 4, clientX: 60 });
+  fireEvent.pointerDown(waveform, { button: 0, pointerId: 4, clientX: 30, ctrlKey: true });
+  fireEvent.pointerMove(waveform, { button: 0, pointerId: 4, clientX: 60, ctrlKey: true });
+  fireEvent.pointerCancel(waveform, { button: 0, pointerId: 4, clientX: 60, ctrlKey: true });
   expect(screen.getByTestId("selection").textContent).toBe(before);
 });
 

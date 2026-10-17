@@ -57,3 +57,34 @@ def test_waveform_detail_reads_source_peak_cache_for_requested_window(tmp_path):
     assert len(reduced["points"]) == 2
     assert reduced["points"][0]["max"] == 0.5
     assert reduced["points"][1]["min"] == -0.75
+
+
+def test_detail_bins_follow_uniform_clock_instead_of_a_short_tail_bucket():
+    # 10 peaks over ten seconds, requested as four display bins. A peak at
+    # second5 belongs at the midpoint, not the preceding ceil-sized bucket.
+    peaks = [(0, 0)] * 10
+    peaks[5] = (-16000, 16000)
+    grouped = AudioWaveformEnvelope._group_peaks(peaks, 4)
+    assert len(grouped) == 4
+    assert [index for index, point in enumerate(grouped) if point["max"]] == [2]
+    assert max(point["max"] for point in grouped) == 16000 / 32768
+
+
+def test_overview_bins_use_actual_source_frames_and_invalidate_old_geometry(tmp_path):
+    import json
+    audio = tmp_path / "pulse.wav"
+    cache = tmp_path / "overview.json"
+    samples = [0] * 10
+    samples[5] = 16000
+    with wave.open(str(audio), "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(1)
+        writer.writeframes(struct.pack("<10h", *samples))
+    stat = audio.stat()
+    cache.write_text(json.dumps({"sourceSize": stat.st_size, "sourceMtimeNs": stat.st_mtime_ns,
+        "duration": 10, "points": [{"min": 0, "max": 1}]}), encoding="utf-8")
+    overview = AudioWaveformEnvelope(min_points=4, max_points=4).read(audio, cache)
+    assert len(overview["points"]) == 4
+    assert [index for index, point in enumerate(overview["points"]) if point["max"]] == [2]
+    assert AudioWaveformEnvelope(min_points=4, max_points=4).read(audio, cache) == overview
