@@ -31,7 +31,7 @@
 
 /* State colors belong to one foreground/background pair. !important applies
    to both sides because user emotion colors can be inline on either property. */
-.timeline-module .timeline-word.timeline-word--untrusted:not(.is-compact) {
+.timeline-module .timeline-word.timeline-word--untrusted:not(.timeline-word--manual):not(.is-compact) {
   color: var(--contrast-untrusted-foreground) !important;
   background-color: var(--contrast-untrusted-background) !important;
 }
@@ -54,6 +54,10 @@
 }
 /* Child glyphs inherit the resolved state, rather than retaining a profile tint. */
 .timeline-word__label { color: inherit; }
+/* Manual text keeps its blue classification on each resolved state background. */
+.timeline-module .timeline-word.timeline-word--manual:not(.is-compact) {
+  color: var(--subtitle-manual-foreground) !important;
+}
 
 .script-speaker-text header { background-color: var(--contrast-word-background); }
 .script-tag-editor > button[data-emotion] { background-color: var(--surface-field); }

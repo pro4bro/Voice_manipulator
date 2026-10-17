@@ -318,6 +318,18 @@ export function deleteScriptWords(text: string, indexes: readonly number[], word
   return { text: nextText, words: removed.size ? words.filter((_, index) => !removed.has(index)) : words, changedWordIndexes: [] };
 }
 
+function inheritInsertionSpeaker(result: ReconciledScriptEdit, words: StudioWord[], boundary: number, time?: number) {
+  const before = words[boundary - 1], after = words[boundary];
+  const context = !before ? after : !after || time === undefined || !Number.isFinite(time) ||
+    Math.max(0, time - before.end) <= Math.max(0, after.start - time) ? before : after;
+  if (!context) return;
+  const row: Partial<StudioWord> = {};
+  for (const key of ["speakerId", "diarizationSpeakerId", "manualDiarizationSpeakerId", "segmentIndex"] as const) {
+    if (context[key] !== undefined) Object.assign(row, { [key]: context[key] });
+  }
+  for (const index of result.changedWordIndexes) result.words[index] = { ...row, ...result.words[index] };
+}
+
 export function insertScriptTextAtWordBoundary(previousText: string, wordBoundaryIndex: number, insertedText: string, words: StudioWord[], sourceTime?: number, sourceEnd?: number) {
   const ranges = mapScriptWordsToText(previousText, words);
   const boundary = Math.max(0, Math.min(words.length, Math.trunc(wordBoundaryIndex)));
@@ -341,6 +353,7 @@ export function insertScriptTextAtWordBoundary(previousText: string, wordBoundar
     if (pinInsertedWords(result, Math.max(0, sourceTime), words, sourceEnd) === false) {
       return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
     }
+    inheritInsertionSpeaker(result, words, boundary, sourceTime);
     return result;
   }
   // Preserve exact surrounding word identities, including repeated phrases.
@@ -350,6 +363,7 @@ export function insertScriptTextAtWordBoundary(previousText: string, wordBoundar
       return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
     }
   }
+  inheritInsertionSpeaker(result, words, boundary, sourceTime);
   return result;
 }
 

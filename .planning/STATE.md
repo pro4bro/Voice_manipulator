@@ -6,11 +6,29 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-18 — Stabilization round52 precise word timing and insertion alignment.
-last_activity_desc: Round52 snap removal, selected grips and new-word middle-pick verified; real mouse UAT disabled. Phase03 stays60%.
+last_activity: 2026-10-18 — Stabilization round53 subtitle draft feedback and middle timing scroll.
+last_activity_desc: Round53 highlight/identity/color/edge-scroll regression verified; real mouse UAT disabled. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round53 — SUBTITLE-DRAFT-FEEDBACK-01 (2026-10-18)
+
+Owner feedback: explicit selection highlights/readouts/markers follow subtitle
+word drafts and commit together; cancellation restores source intervals. Preserve
+scope, disjoint ranges, silence padding, partial-word proportions and source bounds.
+Insertion inherits nearest row identity; unnamed words use footage default profile,
+respecting explicit null. Manual subtitles use speaker fill and readable blue text
+with exact cached state pairs in both themes. Middle waveform IN/OUT assignment
+shares10%/90% safe targets and10% viewport width/s elapsed scrolling; no release
+jump. Ordinary/imported/archived OBS editors share these contracts. Existing OBS
+reset regression caught a duplicate event; remove it without altering assertions.
+See ADR0110, UI-COLOR-RULES.md and docs/gates/subtitle-feedback53-20261018.md.
+Final frontend1034pass/126files/145.65s; API1149pass/526.89s (3existing/fixture
+warnings). Typecheck/build182/diff pass; all606frozen input hashes match.
+Browser inventory reports local use disabled; real mouse/paint UAT stays open.
+No backend/media/model/project-format edits. Phase03 remains60%; independent
+acoustic anchors, Checkpoint A and13downstream processor gates remain open.
 
 ## Stabilization round52 — SUBTITLE-PRECISE-TIMING-01 (2026-10-18)
 

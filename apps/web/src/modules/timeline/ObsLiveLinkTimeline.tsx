@@ -855,6 +855,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     onEditStateChange={(state) => { void saveTimelineState(state); }}
     onWordsChange={(words, text) => onAssetWordsChange?.(focusedAsset.id, words, text)}
     speakers={speakers}
+    defaultSpeakerId={focusedAsset.speakerProfileIds?.[0] ?? null}
     take={{ id: focusedAsset.id, name: focusedAsset.name, url: `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(focusedAsset.id)}/audio`, duration: focusedAsset.duration, text: focusedAsset.text, words: focusedAsset.words }}
     workingRange={focusedAsset.workingRange ?? null} removedRanges={focusedAsset.removedRanges ?? []} cutPoints={focusedAsset.cutPoints ?? []}
     leadingActions={<>{statusError ? <span role="alert">{statusError}</span> : null}<button onClick={() => { setStatusError(null); setEditFocus(null); }} type="button">← TẤT CẢ TRACK OBS</button></>}

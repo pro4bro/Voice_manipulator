@@ -126,6 +126,16 @@ describe("script text timing reconciliation", () => {
     expect(result).toEqual({ text: "xin chào", words: before, changedWordIndexes: [] });
   });
 
+  it.each([2.2, 3.8])("inherits the nearest speaker row at %s without changing existing anchors", (time) => {
+    const before: StudioWord[] = [{ text: "one", start: 1, end: 2, speakerId: null, manualDiarizationSpeakerId: "speaker-2" },
+      { text: "two", start: 4, end: 5, speakerId: "s", diarizationSpeakerId: "speaker-3", segmentIndex: 2 }];
+    const result = insertScriptTextAtWordBoundary("one two", 1, "new", before, time, 10);
+    expect(result.words[0]).toBe(before[0]); expect(result.words[2]).toBe(before[1]);
+    expect(result.words[1]).toMatchObject(time < 3 ? { speakerId: null, manualDiarizationSpeakerId: "speaker-2" }
+      : { speakerId: "s", diarizationSpeakerId: "speaker-3", segmentIndex: 2 });
+    expect(result.words[1].timingTrusted).toBe(false);
+  });
+
   it("replaces a known word with a positive provisional interval at the selected time", () => {
     const result = replaceScriptWordAtTime("rồi rồi đi", 1, "về", [
       { text: "rồi", start: 0.1, end: 0.3 },

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { readFileSync } from "node:fs";
 import { Timeline } from "./Timeline";
 import { EMPTY_SELECTION } from "../../domain/word-selection";
+import { contrastRatio } from "../../domain/accessible-color";
 
 function SelectableTimeline(props) {
   const [selection, setSelection] = useState(EMPTY_SELECTION);
@@ -11,6 +12,38 @@ function SelectableTimeline(props) {
 }
 
 describe("subtitle trim styling", () => {
+  it.each(["light", "dark"])("keeps speaker fills and readable blue manual text through actual CSS states in %s", (theme) => {
+    document.documentElement.dataset.theme = theme;
+    const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+    const [base, dark] = read("../../styles/tokens.css").split(':root[data-theme="dark"]');
+    const parse = (source) => Object.fromEntries([...source.matchAll(/(--[\w-]+):\s*([^;]+);/gu)].map((match) => [match[1], match[2].trim()]));
+    const tokens = { ...parse(base), ...(theme === "dark" ? parse(dark) : {}) };
+    const css = ["../../styles/modules.css", "./timeline-editing.css", "./waveform.css", "./subtitle-density.css", "../../styles/contrast.css"].map(read).join("\n");
+    try {
+      for (const color of ["#caed70", "#1a5fa7", "#ff880066"]) {
+        const take = { id: "manual-colors", name: "colors", duration: 10, url: "/audio", words: [
+          { text: "new", start: 1, end: 2, speakerId: "s", timingSource: "user-interpolated", timingTrusted: false, reviewState: "manual" }] };
+        const props = { gain: 0, onGainChange: vi.fn(), take, speakers: [{ id: "s", name: "Speaker", color }] };
+        const view = render(<Timeline {...props} />);
+        const word = screen.getByRole("button", { name: "Subtitle word new" });
+        for (const state of ["plain", "selected", "active"]) {
+          view.rerender(<Timeline {...props} wordSelection={state === "selected" ? { indexes: [0], anchor: 0 } : EMPTY_SELECTION} />);
+          if (state === "active") { const audio = view.container.querySelector("audio"); audio.currentTime = 1.2; fireEvent.timeUpdate(audio); }
+          const values = { ...tokens, "--subtitle-manual-foreground": word.style.getPropertyValue("--subtitle-manual-foreground") };
+          let expanded = css;
+          for (let pass = 0; pass < 4; pass++) expanded = expanded.replace(/var\((--[\w-]+)\)/gu, (whole, name) => values[name] ?? whole);
+          const sheet = document.createElement("style"); sheet.textContent = expanded; document.head.append(sheet);
+          try {
+            const style = getComputedStyle(word);
+            expect(contrastRatio(style.color, style.backgroundColor), `${theme}/${color}/${state}`).toBeGreaterThanOrEqual(4.5);
+            if (state === "plain") expect(style.backgroundColor).toBe(word.style.backgroundColor);
+          } finally { sheet.remove(); }
+        }
+        view.unmount();
+      }
+    } finally { delete document.documentElement.dataset.theme; }
+  });
+
   it("mounts grips only on selected words, never on a hovered neighbour, and removes them on deselect", () => {
     const { container } = render(<SelectableTimeline gain={0} onGainChange={() => undefined}
       take={{ id: "selected-grips", name: "grips.wav", duration: 10,

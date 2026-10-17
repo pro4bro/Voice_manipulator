@@ -38,6 +38,30 @@ export function productionRanges(selection: WordSelection, words: Timed[]): Sele
   return normalize(result);
 }
 
+/** Preserve selected word identities and silence padding while their timing is edited. */
+export function retimeProductionSelection(selection: WordSelection, before: Timed[], after: Timed[], duration = Infinity): WordSelection {
+  if (!selection.ranges || before === after) return selection;
+  let changed = false;
+  const ranges = selection.ranges.map((range) => {
+    const indexes = selection.indexes.filter((index) => before[index] && after[index] &&
+      before[index].end > range.start && before[index].start < range.end).sort((a, b) => a - b);
+    if (!indexes.length) return range;
+    const first = indexes[0], last = indexes[indexes.length - 1];
+    const mapEdge = (time: number, index: number) => {
+      const source = before[index], target = after[index];
+      if (time <= source.start) return target.start + time - source.start;
+      if (time >= source.end) return target.end + time - source.end;
+      return target.start + (time - source.start) / Math.max(Number.EPSILON, source.end - source.start) * (target.end - target.start);
+    };
+    const start = Math.max(0, Math.min(duration, mapEdge(range.start, first)));
+    const end = Math.min(duration, mapEdge(range.end, last));
+    if (end <= start || (start === range.start && end === range.end)) return range;
+    changed = true;
+    return { ...range, start, end };
+  });
+  return changed ? { ...selection, ranges } : selection;
+}
+
 export function hasMultipleSelectionRanges(selection: WordSelection): boolean {
   if (selection.ranges) return selection.ranges.length > 1 || (!selection.ranges.length && (selection.rowIds?.length ?? 0) > 1);
   if ((selection.rowIds?.length ?? 0) > 1) return true;

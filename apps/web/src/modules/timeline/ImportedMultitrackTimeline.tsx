@@ -523,6 +523,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       onEditStateChange={(state) => { void (async () => { for (const item of orderedTracks) await onAssetTimelineStateChange?.(item.id, state); })().catch((reason) => setError(reason instanceof Error ? reason.message : "Không lưu được chỉnh sửa Timeline cho các channel.")); }}
       onWordsChange={(words, text) => onAssetWordsChange?.(track.id, words, text)}
       speakers={speakers}
+      defaultSpeakerId={track.speakerProfileIds?.[0] ?? null}
       take={{ id: track.id, name: track.name, url: track.url ?? undefined, duration: track.duration, text: track.text, words: track.words }}
       workingRange={track.workingRange ?? null} removedRanges={track.removedRanges ?? []} cutPoints={track.cutPoints ?? []}
       wordSelection={selectionForTrack(track)}

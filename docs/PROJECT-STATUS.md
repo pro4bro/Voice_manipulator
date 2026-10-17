@@ -1,5 +1,23 @@
 # Project Status — 2026-10-18
 
+## Stabilization round53 — SUBTITLE-DRAFT-FEEDBACK-01 (2026-10-18)
+
+Owner feedback: explicit selection highlights/readouts/markers follow subtitle
+word drafts and commit together; cancellation restores source intervals. Preserve
+scope, disjoint ranges, silence padding, partial-word proportions and source bounds.
+Insertion inherits nearest row identity; unnamed words use footage default profile,
+respecting explicit null. Manual subtitles use speaker fill and readable blue text
+with exact cached state pairs in both themes. Middle waveform IN/OUT assignment
+shares10%/90% safe targets and10% viewport width/s elapsed scrolling; no release
+jump. Ordinary/imported/archived OBS editors share these contracts. Existing OBS
+reset regression caught a duplicate event; remove it without altering assertions.
+See ADR0110, UI-COLOR-RULES.md and docs/gates/subtitle-feedback53-20261018.md.
+Final frontend1034pass/126files/145.65s; API1149pass/526.89s (3existing/fixture
+warnings). Typecheck/build182/diff pass; all606frozen input hashes match.
+Browser inventory reports local use disabled; real mouse/paint UAT stays open.
+No backend/media/model/project-format edits. Phase03 remains60%; independent
+acoustic anchors, Checkpoint A and13downstream processor gates remain open.
+
 ## Stabilization round52 — SUBTITLE-PRECISE-TIMING-01 (2026-10-18)
 
 Owner feedback: remove60ms acoustic snap from word move/IN/OUT and accept fine

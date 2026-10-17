@@ -13,17 +13,17 @@ import { replaceScriptWord, insertScriptTextAtWordBoundary } from "../script/scr
 import { useScriptWordDeletion } from "../script/use-script-word-deletion";
 import { buildAutoCalibrationKeyframes, dbToLinear, gainAtTime } from "./gain-automation";
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
-import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import { hasMultipleSelectionRanges, productionRanges, retimeProductionSelection, selectProductionTime, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import "./production-selection.css";
 import { SelectionMarkers } from "../../ui/SelectionMarkers";
 import { StretchHandles } from "./StretchHandles";
 import { inverseStretch, mapStretchSelection, mapStretchTime, type StretchOperation } from "../../domain/voice-edits";
 import { rulerMarks } from "./ruler";
-import { DRAG_SAFE_START, DRAG_SAFE_END, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
+import { DRAG_SAFE_START, DRAG_SAFE_END, dragSeekTime, useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 import { SelectionReadout } from "./SelectionReadout";
 import { ClippingOverlay } from "./ClippingOverlay";
 import { clippingRanges } from "./clipping-overflow";
-import { readableColor } from "../../domain/accessible-color";
+import { compositeColor, readableColor } from "../../domain/accessible-color";
 import { useContrastPalette } from "../../ui/color-theme";
 import { waveformBucketX, waveformY } from "./waveform-path";
 import { applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
@@ -84,6 +84,7 @@ interface TimelineProps {
   onRemovedRangesChange?: (ranges: TimelineEditRange[]) => void;
   onGainKeyframesChange?: (keyframes: TimelineGainKeyframe[]) => void;
   speakers?: SpeakerProfile[];
+  defaultSpeakerId?: string | null;
   onWordsChange?: (words: StudioWord[], text?: string) => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -228,6 +229,7 @@ export function Timeline({
   onRemovedRangesChange,
   onGainKeyframesChange,
   speakers = [],
+  defaultSpeakerId = null,
   onWordsChange,
   onUndo,
   onRedo,
@@ -256,7 +258,7 @@ export function Timeline({
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [promotedIndex, setPromotedIndex] = useState<number | null>(null);
   const promotedRef = useRef<number | null>(null);
-  const promotionDragRef = useRef<{ start: number; index: number } | null>(null);
+  const promotionDragRef = useRef<{ start: number; end: number; index: number } | null>(null);
   const pendingPromotionRef = useRef<number | null>(null);
   const [collisionIndexes, setCollisionIndexes] = useState<number[]>([]);
   const [promotionNote, setPromotionNote] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -356,9 +358,18 @@ export function Timeline({
   // unsafe >=5% case; individual bad words carry their own warning class.
   const editableWords = draftWords ?? words;
   const displayWords = useMemo(() => normalizeWordTimings(editableWords, duration), [duration, editableWords]);
+  const displaySelection = useMemo(() => retimeProductionSelection(wordSelection, words, editableWords, duration), [wordSelection, words, editableWords, duration]);
   const contrast = useContrastPalette();
   const speakerTextColors = useMemo(() => new Map(speakers.map((speaker) =>
     [speaker.id, readableColor(speaker.color, contrast.word)])), [speakers, contrast.word]);
+  const manualColors = useMemo(() => {
+    const on = (background: string) => ({ background, foreground: readableColor("#1a5fa7", background) });
+    return { plain: on(contrast.word), selection: on(contrast.selection.background), active: on(contrast.active.background),
+      collision: on(contrast.timingCollision.background), bySpeaker: new Map(speakers.map((speaker) => {
+        const background = compositeColor(speaker.color, contrast.word, 1);
+        return [speaker.id, on(background)];
+      })) };
+  }, [speakers, contrast]);
   const ticks = useMemo(() => rulerMarks(duration, timelineCanvasWidth, timelineViewport), [duration, timelineCanvasWidth, timelineViewport]);
   const detailRequest = useMemo(() => {
     if (isRecording || !timelineCanvasWidth || !timelineViewport.width) return null;
@@ -388,23 +399,24 @@ export function Timeline({
     () => isRecording ? [] : clippingRanges(visibleEnvelope, visualGain),
     [isRecording, visibleEnvelope, visualGain],
   );
+  function dragViewport() {
+    const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
+    if (!scroller || !canvas) return null;
+    const width = scroller.clientWidth || scroller.getBoundingClientRect().width;
+    const fullWidth = canvas.getBoundingClientRect().width;
+    if (!width || !fullWidth) return null;
+    return { left: scroller.getBoundingClientRect().left, width, start: scroller.scrollLeft / fullWidth * duration,
+      span: Math.min(duration, width / fullWidth * duration), duration };
+  }
   const dragScroll = useDragAutoScroll({ sourceKey: take?.id,
-    viewport: () => {
-      const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
-      if (!scroller || !canvas) return null;
-      const width = scroller.clientWidth || scroller.getBoundingClientRect().width;
-      const fullWidth = canvas.getBoundingClientRect().width;
-      if (!width || !fullWidth) return null;
-      return { left: scroller.getBoundingClientRect().left, width, start: scroller.scrollLeft / fullWidth * duration,
-        span: Math.min(duration, width / fullWidth * duration), duration };
-    },
+    viewport: dragViewport,
     pan: (start) => {
       const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
       if (!scroller || !canvas) return;
       scroller.scrollLeft = start / duration * canvas.getBoundingClientRect().width;
       setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
     },
-    seek: (time) => seekToTime(time),
+    seek: (time) => promotionDragRef.current ? previewPromotionDrag(time) : seekToTime(time),
   });
   const latestPreview = visibleEnvelope[visibleEnvelope.length - 1];
   const latestPreviewPeak = latestPreview ? Math.max(Math.abs(latestPreview.min), Math.abs(latestPreview.max)) : 0;
@@ -546,7 +558,7 @@ export function Timeline({
   }, [duration, zoom]);
 
   useLayoutEffect(() => {
-    if (isRecording || playheadDragRef.current || scrubbingRef.current || transportScrubRef.current) return;
+    if (isRecording || playheadDragRef.current || scrubbingRef.current || transportScrubRef.current || promotionDragRef.current) return;
     followPlayhead();
     // Active drag scrolling has its own elapsed-time rate; playback following
     // must not recenter the view underneath a held pointer.
@@ -561,6 +573,7 @@ export function Timeline({
       audio.pause();
       audio.currentTime = 0;
     }
+    cancelWordGesture();
     wordEditorRef.current = null;
     setWordEditor(null);
     setSpeakerMenu(null);
@@ -575,7 +588,6 @@ export function Timeline({
     setMarkOut(workingRange?.end ?? null);
     setStagedCut(null);
     setSelectedSections([]);
-    promoteTimestampWord(null, null);
   }, [take?.id]);
 
   useEffect(() => {
@@ -608,12 +620,14 @@ export function Timeline({
     const cancel = (event: globalThis.PointerEvent) => {
       if (event.button !== 0 && event.button !== 2) return;
       if (promotedRef.current !== null) promoteTimestampWord(null, null);
-      if (promotionDragRef.current) { promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); }
+      if (promotionDragRef.current) { dragScroll.stop(); promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); }
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); } };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { promoteTimestampWord(null, null); dragScroll.stop(); promotionDragRef.current = null; draftWordsRef.current = null; setDraftWords(null); setCollisionIndexes([]); audioScrubber.end(); audioRef.current?.pause(); } };
+    const blur = () => cancelWordGesture();
+    window.addEventListener("blur", blur);
     window.addEventListener("pointerdown", cancel, true);
     window.addEventListener("keydown", escape);
-    return () => { window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", escape); };
+    return () => { window.removeEventListener("blur", blur); window.removeEventListener("pointerdown", cancel, true); window.removeEventListener("keydown", escape); };
   }, []);
 
   useEffect(() => {
@@ -1106,6 +1120,7 @@ export function Timeline({
   }
 
   function cancelWordGesture() {
+    if (promotionDragRef.current) dragScroll.stop();
     promotionDragRef.current = null;
     wordDragRef.current = null;
     pendingPromotionRef.current = null;
@@ -1131,20 +1146,22 @@ export function Timeline({
     if (event.button !== 1 || promotedRef.current === null || isRecording) return false;
     event.preventDefault();
     event.stopPropagation();
-    const start = sourceTimeAt(event.clientX);
-    promotionDragRef.current = { start, index: promotedRef.current };
+    const viewport = dragViewport();
+    const start = viewport ? dragSeekTime(viewport, event.clientX) : sourceTimeAt(event.clientX);
+    promotionDragRef.current = { start, end: start, index: promotedRef.current };
+    dragScroll.begin(event.clientX);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     beginAudioScrub();
     audioScrubber.move(start);
+    paintPlayhead(start);
     setCurrentTime(start);
     return true;
   }
 
-  function movePromotionDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!promotionDragRef.current) return false;
-    event.preventDefault();
-    const time = sourceTimeAt(event.clientX);
+  function previewPromotionDrag(time: number) {
     const drag = promotionDragRef.current;
+    if (!drag) return;
+    drag.end = time;
     const preview = assignWordInterval(words, drag.index, drag.start, time, duration);
     draftWordsRef.current = preview.words;
     setDraftWords(preview.words);
@@ -1152,6 +1169,12 @@ export function Timeline({
     audioScrubber.move(time);
     paintPlayhead(time);
     setCurrentTime(time);
+  }
+
+  function movePromotionDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!promotionDragRef.current) return false;
+    event.preventDefault();
+    if (!dragScroll.seek(event.clientX)) previewPromotionDrag(sourceTimeAt(event.clientX));
     return true;
   }
 
@@ -1159,6 +1182,8 @@ export function Timeline({
     const drag = promotionDragRef.current;
     if (!drag) return false;
     event.preventDefault();
+    if (!cancel && !dragScroll.seek(event.clientX)) previewPromotionDrag(sourceTimeAt(event.clientX));
+    dragScroll.stop();
     promotionDragRef.current = null;
     draftWordsRef.current = null;
     setDraftWords(null);
@@ -1167,12 +1192,13 @@ export function Timeline({
     audioRef.current?.pause();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     if (!cancel) {
-      const end = sourceTimeAt(event.clientX);
+      const end = drag.end;
       const start = Math.min(drag.start, end);
       const out = Math.max(drag.start, end);
       if (out - start >= .001) {
         const next = assignWordInterval(words, drag.index, start, out, duration).words;
         onWordsChange?.(next);
+        onWordSelectionChange?.(retimeProductionSelection(selectionRef.current, words, next, duration));
         const following = drag.index + 1 < words.length ? drag.index + 1 : null;
         promotedRef.current = following;
         setPromotedIndex(following);
@@ -1219,7 +1245,7 @@ export function Timeline({
     setDraftWords(next);
   }
 
-  function endWordDrag(event: PointerEvent<HTMLElement>) {
+  function endWordDrag(event: PointerEvent<HTMLElement>, cancel = false) {
     const drag = wordDragRef.current;
     wordDragRef.current = null;
     try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch { /* already released */ }
@@ -1228,8 +1254,11 @@ export function Timeline({
     setDraftWords(null);
     setCollisionIndexes([]);
     // Releasing is what commits: the draft was preview only until now.
-    if (drag?.moved && draft) onWordsChange?.(draft);
-    else if (pendingPromotionRef.current !== null) promoteWord(pendingPromotionRef.current);
+    if (!cancel && drag?.moved && draft) {
+      onWordsChange?.(draft);
+      onWordSelectionChange?.(retimeProductionSelection(selectionRef.current, words, draft, duration));
+    }
+    else if (!cancel && pendingPromotionRef.current !== null) promoteWord(pendingPromotionRef.current);
     pendingPromotionRef.current = null;
   }
 
@@ -1566,7 +1595,7 @@ export function Timeline({
                 if (!onReferenceContext) return;
                 event.preventDefault();
                 const time = sourceTimeAt(event.clientX);
-                const inside = productionRanges(wordSelection, displayWords).some((range) => time >= range.start && time <= range.end);
+                const inside = productionRanges(displaySelection, displayWords).some((range) => time >= range.start && time <= range.end);
                 const index = displayWords.findIndex((word) => word.start <= time && word.end > time);
                 const selection = inside ? wordSelection : index >= 0 ? selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
                 onWordSelectionChange?.(selection);
@@ -1577,12 +1606,12 @@ export function Timeline({
               onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
               onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
             >
-              {rangeSelectionEnabled ? productionRanges(wordSelection, displayWords).map((range) => <div key={range.id}
+              {rangeSelectionEnabled ? productionRanges(displaySelection, displayWords).map((range) => <div key={range.id}
                 aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range"
                 style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
                 <SelectionReadout range={range} duration={duration} canvasWidth={timelineCanvasWidth || 1000} viewportLeft={timelineViewport.left} viewportWidth={timelineViewport.width || 1000} />
               </div>) : null}
-              {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(wordSelection, displayWords)} selection={wordSelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
+              {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(displaySelection, displayWords)} selection={displaySelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
               {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
               {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
               {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
@@ -1628,22 +1657,29 @@ export function Timeline({
                 return;
               }
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
-            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); if (event.button === 0 && !target) { onWordSelectionChange?.(EMPTY_SELECTION); return; } const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+            }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); if (event.button === 0 && !target) { onWordSelectionChange?.(EMPTY_SELECTION); return; } const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event, true); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
+                const manual = word.reviewState === "manual" || word.selectedVariant === "manual";
+                const speakerId = word.speakerId === undefined && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId
+                  ? defaultSpeakerId : word.speakerId;
+                const manualPaint = !manual ? undefined : collisionIndexes.includes(index) ? manualColors.collision
+                  : selectedWordIndexes.has(index) ? manualColors.selection
+                  : index === activeWordIndex ? manualColors.active : manualColors.bySpeaker.get(speakerId ?? "") ?? manualColors.plain;
                 return (
                   <button
                     aria-label={`Subtitle word ${word.text}`}
                     aria-pressed={selectedWordIndexes.has(index)}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setWordEditor({ index, time: word.start, text: word.text }); }}
-                    className={`timeline-word ${layout.isCompact ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${collisionIndexes.includes(index) ? "is-timing-collision" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    className={`timeline-word ${manual ? "timeline-word--manual" : ""} ${layout.isCompact ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${collisionIndexes.includes(index) ? "is-timing-collision" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
                     onPointerEnter={showPromotionNote}
                     onPointerLeave={hidePromotionNote}
                     data-collision-note={collisionIndexes.includes(index) ? "Đang lấn timing · giữ lại ít nhất 10% từ này" : undefined}
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
-                    style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, color: speakerTextColors.get(word.speakerId ?? "") }}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, backgroundColor: manualPaint?.background,
+                      color: manualPaint?.foreground ?? speakerTextColors.get(word.speakerId ?? ""), "--subtitle-manual-foreground": manualPaint?.foreground } as CSSProperties}
                     data-timing-note={word.timingTrusted === false ? "Từ vừa sửa · timestamp nội suy, cần căn chỉnh" : undefined}
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
@@ -1651,7 +1687,7 @@ export function Timeline({
                     {selectedWordIndexes.has(index) ? <i
                       aria-hidden="true"
                       className="timeline-word__grip timeline-word__grip--in"
-                      onPointerCancel={endWordDrag}
+                      onPointerCancel={(event) => endWordDrag(event, true)}
                       onPointerDown={(handleEvent) => beginWordDrag(handleEvent, index, "trim-start")}
                       onPointerMove={dragWord}
                       onPointerUp={endWordDrag}
@@ -1660,7 +1696,7 @@ export function Timeline({
                     {selectedWordIndexes.has(index) ? <i
                       aria-hidden="true"
                       className="timeline-word__grip timeline-word__grip--out"
-                      onPointerCancel={endWordDrag}
+                      onPointerCancel={(event) => endWordDrag(event, true)}
                       onPointerDown={(handleEvent) => beginWordDrag(handleEvent, index, "trim-end")}
                       onPointerMove={dragWord}
                       onPointerUp={endWordDrag}
@@ -1674,8 +1710,8 @@ export function Timeline({
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
           </div>
-          {rangeSelectionEnabled ? <SelectionMarkers orientation="horizontal" className="timeline-selection-markers" markers={productionRanges(wordSelection, displayWords).map((range) => ({ id: range.id, position: (range.start + range.end) / 2 / Math.max(duration, .001), label: `Timeline ${range.start.toFixed(3)}–${range.end.toFixed(3)}s` }))} onReveal={(id) => {
-            const range = productionRanges(wordSelection, displayWords).find((item) => item.id === id), scroller = timelineScrollRef.current;
+          {rangeSelectionEnabled ? <SelectionMarkers orientation="horizontal" className="timeline-selection-markers" markers={productionRanges(displaySelection, displayWords).map((range) => ({ id: range.id, position: (range.start + range.end) / 2 / Math.max(duration, .001), label: `Timeline ${range.start.toFixed(3)}–${range.end.toFixed(3)}s` }))} onReveal={(id) => {
+            const range = productionRanges(displaySelection, displayWords).find((item) => item.id === id), scroller = timelineScrollRef.current;
             if (!range || !scroller) return;
             scroller.scrollLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, (range.start + range.end) / 2 / Math.max(duration, .001) * scroller.scrollWidth - scroller.clientWidth / 2));
             setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });

@@ -2028,3 +2028,39 @@ chưa nghiệm thu chuột thật. Không restart runtime, không đổi backend
 
 Real mouse UAT khi browser hoạt động; acoustic anchors STT round48, Checkpoint A
 và13processor gates còn mở. Phase03/60% giữ nguyên. Dừng sau round52.
+
+## Round53 — SUBTITLE-DRAFT-FEEDBACK-01 (2026-10-18)
+
+### Feedback và xử lý
+
+Highlight có ranges nguồn nên không theo draft từ. Thêm retime selection cho
+waveform/readout/markers/stretch handles, commit cùng word timing, hủy thì hoàn
+lại. Giữ scope, disjoint ranges, silence padding, partial-word và source bounds.
+Từ mới kế thừa row gần thời điểm chèn; giữ null chủ động và các từ cũ. Bổ sung
+mapping profile mặc định của footage/track vào Timeline như Script. Manual word
+có nền speaker và chữ xanh#1a5fa7 đã resolve theo exact state background>=4.5:1;
+giữ border cảnh báo timing. Cache profile/state pairs, không tính lại mỗi từ/frame.
+Middle IN/OUT dùng chung drag hook10%/90%,10% viewport/s; suspend playback follow,
+commit last constrained target và dừng RAF khi release/cancel/Escape/blur/source.
+
+### Kiểm tra
+
+RED4test/2.65s cho highlight, insertion identity và2hướng middle jump. GREEN
+focused38test/5files/7.05s; imported/OBS integration96pass/3files/12.02s. Thêm
+RED default speaker fill1fail/2.28s rồi wire mapping cả3editor. Matrix actual CSS
+2theme/3profile màu (có alpha)/3state bắt2lỗi backdrop mismatch; render exact pair
+rồi pass. Float fixture dùng9decimal; không thêm rounding sản phẩm. Typecheck
+đầu bắt typing test callback TS2348, sửa type và dừng broad run đầu; broad tiếp
+bắt duplicate source reset (OBS đòi3event, nhận4), REDfocused4.07s xác nhận, bỏ
+call thừa và giữ assertion cũ. Full run cuối dùng frozen inputs mới, giữ log cũ.
+Không thêm skip/nới timeout hay hạ ngưỡng nghiệm thu.
+Final frontend1034pass/126files/145.65s; API1149pass/526.89s (3existing/fixture
+warnings). Typecheck/build182/diff pass; all606frozen input hashes match.
+ADR0110/gate subtitle-feedback53 ghi evidence và giới hạn. Không restart runtime.
+CUA báo browser use disabled nên chưa nghiệm thu chuột/paint thật.
+
+### Còn lại / NEXT
+
+Real mouse UAT khi browser hoạt động; mốc nghe STT round48, Checkpoint A và13
+processor gates còn mở. Không sửa backend/source media/model/persistent format.
+Phase03/60% giữ nguyên. Dừng sau round53.
