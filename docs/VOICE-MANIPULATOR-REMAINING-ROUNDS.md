@@ -1,10 +1,14 @@
 # Các round còn lại của Voice Manipulator
 
-Cập nhật theo ledger/source tới round45 (2026-10-17); batch41–45 đã hoàn tất
+Cập nhật theo ledger/source tới round46 (2026-10-17); batch41–45 đã hoàn tất
 triển khai, kiểm tra hồi quy và báo cáo. Các gate độc lập bên dưới còn mở.
 Danh sách này thay mục “Vòng chính xác đề xuất tiếp theo” cũ của bản kế hoạch.
 Số41–45 là số thực hiện theo đợt; các mã VM/VC là phạm vi chức năng. Một mã có
 thể cần nhiều vòng sửa/nghiệm thu, nên chưa thể chốt tổng số round đến hoàn tất.
+
+Round46 bổ sung sửa ổn định Browse/OBS và dọn pytest cũ; không đóng thêm gate
+Checkpoint A hay triển khai13mã processor bên dưới. Báo cáo:
+`docs/gates/hub-browse-cleanup46-20261017.md`.
 
 ## Batch41–45
 

@@ -1,5 +1,10 @@
 # Kế hoạch các vòng tiếp theo của Voice Manipulator
 
+Cập nhật sau round46 (2026-10-17): đã sửa hợp đồng lỗi/retry Browse và lease OBS
+offline, dọn pytest cũ và chạy hồi quy. Đây là round ổn định; native foreground
+Browse và các gate Checkpoint A vẫn mở. Thứ tự ưu tiên chức năng bên dưới giữ
+nguyên. Xem `docs/gates/hub-browse-cleanup46-20261017.md`.
+
 Ngày lập: 2026-10-14. Cập nhật: 2026-10-17. Trạng thái: đã thực hiện tới vòng45; các gate chất lượng còn mở;
 phân biệt phần code đã triển khai và các gate nghiệm thu còn mở bên dưới.
 Đã cập nhật theo yêu cầu owner: duration theo clip/đoạn/câu, mood/emotion và

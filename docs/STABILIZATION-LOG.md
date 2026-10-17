@@ -1810,3 +1810,46 @@ HUB-COLLECTION-UAT-01: Pull/restart source, thử native dialogs và mẫu train
 bằng GPU đủ VRAM, nghe đối chiếu Script. SOURCE-EXTERNAL-ASSETS-01 vẫn là vòng
 implementation tiếp theo. Phase03 giữ60%; native OBS/identity/timing còn mở.
 Evidence: docs/gates/hub-collection-01-20261014.md, ADR0075.
+
+
+## Round46 — Browse recovery / offline OBS leases (2026-10-17)
+
+### Agent tự kiểm
+
+Owner-reported Browse wait investigated without attributing it to recent timing
+work: native adapter last changed2026-10-04. Reproduced timeout error contract,
+unreported picker rejection and late reply overwriting a typed folder; added
+RED-first recovery tests. Windows uses an isolated STA child with activated
+owner, detached stdin and recoverable timeout503; UI preserves draft and allows
+retry. Actual intermittent native foreground/selection/cancel acceptance remains
+open. Independently reproduced offline OBS claim500 and invalid release checkpoint;
+now retain exact valid durable state and report disconnected/unknown truthfully,
+then rebind on connected hello. ADR0104 records the evidence and limits.
+Final full API1145pass/532.74s (3existing/fixture warnings), frontend920pass/
+112files/127.02s using ordinary npm test; typecheck/build172/diff pass.
+Default jsdom worker count is bounded to2 after two unconstrained runs timed out
+the existing5s Script case; all cases/assertions/deadlines remain intact. First
+API1144pass/one unconfirmed training-tree stop601.72s retained; exact unchanged
+case rerun passes and current full rerun is green. No cancellation safety check
+was relaxed. All590API/web input hashes match the final frozen snapshot; the only
+change after API rerun began was the frontend test-worker configuration.
+Real private controller/API/CPU Studio verifies forced dialog-child error recovery,
+project create/reopen, cached real-speech import, waveform/Play/Pause, Unicode
+move/Open Existing, source hashes/relative paths and Range206. Source24kHz mono
+16bit230400frames/9.6s unchanged; no new inference/model load. Private listeners
+stopped, shared runtime untouched. Deleted only two audited old pytest trees
+(8482files/120235285logical bytes); recent/unconfirmed evidence and media retained.
+See docs/gates/hub-browse-cleanup46-20261017.md for cache cleanup, failures and
+remaining native/quality limits. Checkpoint A remains open; Phase03 stays60%.
+
+### Kết quả so với ngưỡng
+
+Không đổi timeout/assertion hoặc bỏ test. Source/UI hồi quy đầy đủ đạt ở snapshot
+cuối; lỗi đầu giữ trong gate. Native dialog ẩn chưa có bằng chứng tái hiện chắc
+chắn, không nhận nghiệm thu chỉ từ mock hoặc owner activation.
+
+### Còn lại / NEXT
+
+Chủ dự án thử Browse native sau khi nạp bản sửa; chưa đóng Checkpoint A hay các
+gate mic/OBS/model/identity/timing. Giữ dữ liệu chưa xác nhận. Roadmap chức năng
+Voice Manipulator và SOURCE-EXTERNAL-ASSETS-01 không được đánh dấu hoàn tất.

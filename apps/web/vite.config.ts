@@ -38,5 +38,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    // Unbounded jsdom forks compete with real-media/backend checks on this
+    // workstation. Keep every case and the default 5s timeout, limit overlap.
+    maxWorkers: 2,
   },
 });
