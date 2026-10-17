@@ -1878,3 +1878,28 @@ Cần project/footage và từ/mốc cụ thể để kết luận sai số STT 
 Không coi sửa hiển thị là forced alignment đã đạt. Native Ctrl-drag/live OBS,
 Browse foreground và Checkpoint A vẫn chờ nghiệm thu; không tăng Phase03/60% hay
 đánh dấu13processor còn lại đã xong. Dừng sau round47.
+
+
+## Round48 — STT-WORD-CLOCK-AUDIT-01 (2026-10-17)
+
+### Feedback và đo kiểm
+
+Chủ dự án xác nhận lệch ở hầu hết từ trên nhiều project, trừ từ timing dài bất
+thường/cuối câu. Không coi round47 đã giải quyết sai số ngữ âm. Đã đối chiếu41869từ:
+START artifact→saved giống nhau100%; END lệch tối đa0.4ms. UI thực tế chỉ đổi5START/
+54END ở nhóm bất thường. CPU raw→converted155interval hợp lệ giữ nguyên; refiner
+chỉ sửa6START/9END. Một từ0–0 ở mép crop bị bỏ nhưng quality vẫn source: ghi riêng.
+
+CTC aligner độc lập đối chiếu98từ: trung vị IN muộn hơn STT124/168/149.5ms;
+84/98IN gần END cũ hơn START cũ. Kết quả ủng hộ nghi vấn DTW đặt đầu từ sớm,
+nhưng aligner có outlier lớn nên chưa được gọi là mốc chuẩn hoặc tự dịch hàng loạt.
+Xem docs/gates/stt-word-clock48-20261017.md/.json.23test profiler/scorer/packet pass,
+12input hash giữ nguyên. Không thay code/timestamp production, không tải model,
+không dùng GPU/runtime đang chạy. Browser kiểm tra worksheet/audio16s được.
+
+### Còn lại / NEXT
+
+Bảng nghe12từ nằm tại .scratch/stt-timing-accuracy-01/round48-review-1/review-anchors.html;
+IN/OUT trống,0từ được nghe xác nhận. Cần mốc nghe độc lập để đo sai số và kiểm chứng
+cách sửa; không nhận p95 giữa hai model là acoustic ground truth. Dừng round48;
+Phase03/60%, Checkpoint A và các gate chất lượng vẫn mở.

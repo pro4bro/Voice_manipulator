@@ -1,0 +1,92 @@
+{
+  "round": 48,
+  "date": "2026-10-17",
+  "status": "diagnosis complete; acoustic timing acceptance open",
+  "artifactWordsAudited": 41869,
+  "artifactToSavedStartChanges": 0,
+  "artifactToSavedEndChangedWords": 3,
+  "artifactToSavedMaxEndDeltaSeconds": 0.0004,
+  "renderStartChanges": 5,
+  "renderEndChanges": 54,
+  "freshModelWords": 156,
+  "freshValidWords": 155,
+  "validNativeToConvertedMaxEndpointDeltaSeconds": 0,
+  "candidateTargetWords": 98,
+  "candidateEndCloserThanStartWords": 84,
+  "cases": [
+    {
+      "id": "voiceover",
+      "targets": 43,
+      "candidateTimedMatches": 43,
+      "candidateMinusStoredStart": {
+        "n": 43,
+        "median": 0.12399999999999878,
+        "mean": 0.1497674418604648,
+        "p95Abs": 0.36599999999999966
+      },
+      "candidateMinusStoredEnd": {
+        "n": 43,
+        "median": 0.07200000000000273,
+        "mean": 0.08090697674418602,
+        "p95Abs": 0.19499999999999318
+      },
+      "endCloserThanStartCount": 33,
+      "freshNativeMatched": 39,
+      "candidateMinusFreshStartMedianSeconds": 0.12300000000000111
+    },
+    {
+      "id": "conversation",
+      "targets": 17,
+      "candidateTimedMatches": 17,
+      "candidateMinusStoredStart": {
+        "n": 17,
+        "median": 0.16799999999999926,
+        "mean": 0.3962941176470589,
+        "p95Abs": 1.3730000000000047
+      },
+      "candidateMinusStoredEnd": {
+        "n": 17,
+        "median": 0.11699999999999733,
+        "mean": 0.3711176470588242,
+        "p95Abs": 1.4720000000000013
+      },
+      "endCloserThanStartCount": 13,
+      "freshNativeMatched": 16,
+      "candidateMinusFreshStartMedianSeconds": 0.2170000000000023
+    },
+    {
+      "id": "lecture",
+      "targets": 38,
+      "candidateTimedMatches": 38,
+      "candidateMinusStoredStart": {
+        "n": 38,
+        "median": 0.1495000000000033,
+        "mean": 0.20797368421052664,
+        "p95Abs": 0.9869999999999948
+      },
+      "candidateMinusStoredEnd": {
+        "n": 38,
+        "median": 0.08399999999999963,
+        "mean": 0.1034473684210521,
+        "p95Abs": 0.1700000000000017
+      },
+      "endCloserThanStartCount": 38,
+      "freshNativeMatched": 38,
+      "candidateMinusFreshStartMedianSeconds": 0.13899999999999935
+    }
+  ],
+  "reviewTargets": 12,
+  "independentlyReviewedTargets": 0,
+  "independentAcousticInError": null,
+  "independentAcousticOutError": null,
+  "productionTimingChanged": false,
+  "shiftAccepted": false,
+  "modelDownloaded": false,
+  "ownerServicesOrGpuUsed": false,
+  "probeProtocolSha256": "23cdb49fe8509d7334539fdb941216a72980e34b364014502dc335dbabfa4ad6",
+  "validation": {
+    "profilerScorerPacketTestsPassed": 23,
+    "seconds": 0.5,
+    "unchangedInputHashCount": 12
+  }
+}

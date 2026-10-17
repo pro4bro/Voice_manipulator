@@ -1,5 +1,20 @@
 # Work Rounds
 
+## Stabilization round48 — STT-WORD-CLOCK-AUDIT-01 (2026-10-17)
+
+Owner clarifies widespread same-word early timing; round47 waveform fix is not
+linguistic acceptance. Audit41869words/3projects: all artifact→saved STARTs match,
+END differences at most0.4ms; actual UI normalizer changes only5STARTs/54ENDs.
+Fresh CPU same-pass native/converted capture preserves all155valid intervals;
+one zero-length crop-edge word is omitted and still labelled source (coverage
+concern). Exact-text cached aligner comparison of98interior words gives median
+IN lags124/168/149.5ms;84candidate INs are closer to saved END than saved START.
+Supports early-DTW hypothesis; aligner outliers prevent acoustic accuracy claims.
+No production timing shift/default change. Twelve-word blank listening packet,
+23profiling tests pass,12input hashes unchanged; docs/gates/stt-word-clock48-20261017.md
+records limits. Independent IN/OUT anchors remain unmeasured. Phase03 stays60%;
+Checkpoint A and downstream processor gates remain open.
+
 ## Stabilization round47 — TIMELINE-CLOCK-SELECTION-01 (2026-10-17)
 
 Reproduced waveform display drift from unequal peak groups and endpoint painting;
