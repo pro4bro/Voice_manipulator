@@ -7,16 +7,26 @@ import subprocess
 
 
 _WINDOWS_PICK_SCRIPT = r"""
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
 $owner = New-Object System.Windows.Forms.Form
 $owner.TopMost = $true
 $owner.ShowInTaskbar = $false
+$owner.StartPosition = 'CenterScreen'
+$owner.Size = New-Object System.Drawing.Size(1, 1)
+$owner.Opacity = 0
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = 'Chọn thư mục project Pro4Bro (chứa project.json)'
+$dialog.Description = 'Chọn thư mục lưu hoặc mở project Pro4Bro'
 $dialog.ShowNewFolderButton = $false
 if ($env:PRO4BRO_FOLDER_PICK_INITIAL) { $dialog.SelectedPath = $env:PRO4BRO_FOLDER_PICK_INITIAL }
 try {
+  # Give the modal a real, activated owner handle. An unshown Form cannot
+  # reliably raise its dialog above the browser after a background launch.
+  $owner.Show()
+  $owner.Activate()
   if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
     [Console]::Out.Write($dialog.SelectedPath)
   }
@@ -29,6 +39,10 @@ try {
 
 class NativeFolderPicker:
     def pick(self, initial_path: str | None = None) -> str | None:
+        # API calls run on arbitrary worker threads; keep Windows UI on its
+        # own STA process even when the development Python includes Tk.
+        if os.name == "nt":
+            return self._pick_windows(initial_path)
         try:
             import tkinter as tk
             from tkinter import filedialog
@@ -56,16 +70,21 @@ class NativeFolderPicker:
             raise RuntimeError("Trình chọn thư mục cần tkinter hoặc Windows Forms.")
         initial_directory = initial_path if initial_path and Path(initial_path).is_dir() else ""
         command = base64.b64encode(_WINDOWS_PICK_SCRIPT.encode("utf-16-le")).decode("ascii")
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-STA", "-EncodedCommand", command],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            timeout=300,
-            env={**os.environ, "PRO4BRO_FOLDER_PICK_INITIAL": initial_directory},
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-STA", "-EncodedCommand", command],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=300,
+                env={**os.environ, "PRO4BRO_FOLDER_PICK_INITIAL": initial_directory},
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # run() kills and waits for this owned child before raising.
+            raise RuntimeError("Trình chọn thư mục đã hết thời gian chờ. Hãy bấm Browse để thử lại hoặc nhập đường dẫn trực tiếp.") from exc
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or "Windows không mở được trình chọn thư mục.")
         selected = result.stdout.strip()

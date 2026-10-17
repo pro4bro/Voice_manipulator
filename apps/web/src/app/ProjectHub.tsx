@@ -62,6 +62,8 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const [pickingFolder, setPickingFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const folderPickActive = useRef(false);
 
   useEffect(() => {
     if (defaultLocation) setDraft((current) => current.location ? current : { ...current, location: defaultLocation });
@@ -113,21 +115,34 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
   }
 
   async function browseLocation() {
+    if (folderPickActive.current) return;
+    folderPickActive.current = true;
+    setFolderError(null);
     setPickingFolder(true);
+    const originalLocation = draft.location;
     try {
       const selected = await onPickLocation(draft.location || defaultLocation);
-      if (selected) setDraft((current) => ({ ...current, location: selected }));
+      if (selected) setDraft((current) => current.location === originalLocation ? { ...current, location: selected } : current);
+    } catch (cause) {
+      setFolderError(cause instanceof Error ? cause.message : "Không mở được trình chọn thư mục. Hãy thử lại hoặc nhập đường dẫn trực tiếp.");
     } finally {
+      folderPickActive.current = false;
       setPickingFolder(false);
     }
   }
 
   async function browseExistingProject() {
+    if (folderPickActive.current) return;
+    folderPickActive.current = true;
+    setFolderError(null);
     setPickingFolder(true);
     try {
       const selected = await onPickLocation(defaultLocation);
       if (selected) await onOpenExisting(selected);
+    } catch (cause) {
+      setFolderError(cause instanceof Error ? cause.message : "Không mở được trình chọn thư mục. Hãy thử lại.");
     } finally {
+      folderPickActive.current = false;
       setPickingFolder(false);
     }
   }
@@ -177,6 +192,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
           {selectedProjects.length > 1 ? <div className="project-selection-actions"><span>Đã chọn {selectedProjects.length} project</span><button disabled={!onRemoveProjects} onClick={removeSelectedProjects} type="button">Remove khỏi danh sách ({selectedProjects.length})</button></div> : null}
 
           {error ? <div className="hub-error"><b>Local API chưa sẵn sàng</b><span>{error}</span><button onClick={onRetry} type="button">Thử lại</button></div> : null}
+          {folderError && !showCreate ? <p className="hub-error" role="alert">{folderError}</p> : null}
 
           <div className={`project-grid project-grid--${view}`} onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !event.altKey) {
@@ -227,6 +243,7 @@ export function ProjectHub({ projects, engine, defaultLocation, busy, error, onC
             <div className="create-project__intro"><span>01</span><div><h2 id="create-project-title">Project setup</h2><p>Chọn tên và nơi lưu. Mỗi project có thư mục asset, cache, job và export riêng.</p></div></div>
             <label><span>PROJECT NAME <b>REQUIRED</b></span><input autoFocus maxLength={120} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Tên project" value={draft.name} /></label>
             <label><span>Thư mục lưu project <b>REQUIRED</b></span><div className="location-input"><input aria-label="Thư mục lưu project" onChange={(event) => setDraft({ ...draft, location: event.target.value })} spellCheck={false} value={draft.location} /><button disabled={pickingFolder} onClick={() => void browseLocation()} type="button"><Icon name="folder" />{pickingFolder ? "Đang mở..." : "Browse"}</button></div><small>App sẽ tạo một thư mục mang tên project bên trong location này.</small></label>
+            {folderError ? <p className="hub-error" role="alert">{folderError}</p> : null}
             <button aria-expanded={showDetails} className="project-details-toggle" onClick={() => setShowDetails((value) => !value)} type="button"><span><Icon name="settings" /><b>Thông tin project</b><small>Tùy chọn · dùng để mô tả và chuẩn bị pipeline</small></span><Icon name="chevron" /></button>
             {showDetails ? (
               <div className="project-details">

@@ -4,6 +4,50 @@ import { describe, expect, it, vi } from "vitest";
 import { ProjectHub } from "./ProjectHub";
 import { api } from "../api/client";
 
+function renderFolderBrowse(onPickLocation: (initialPath: string) => Promise<string | null>) {
+  vi.spyOn(api, "listVoiceCollections").mockResolvedValue([]);
+  return render(<ProjectHub projects={[]} busy={false} defaultLocation="projects" engine={null}
+    error={null} onCreate={vi.fn()} onOpen={vi.fn()} onOpenExisting={vi.fn()}
+    onPickLocation={onPickLocation} onRetry={vi.fn()} onRevealProject={vi.fn()}
+    onRemoveProject={vi.fn()} theme="dark" onToggleTheme={vi.fn()} />);
+}
+
+describe("ProjectHub folder dialog recovery", () => {
+  it("shows a picker error and allows retry without restarting or losing the project name", async () => {
+    const pick = vi.fn().mockRejectedValueOnce(new Error("Không mở được trình chọn thư mục"))
+      .mockResolvedValueOnce("projects/đã chọn");
+    renderFolderBrowse(pick);
+    fireEvent.change(screen.getByRole("textbox", { name: /PROJECT NAME/ }), { target: { value: "Test 11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không mở được trình chọn thư mục");
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Thư mục lưu project" })).toHaveValue("projects/đã chọn"));
+    expect(screen.getByRole("textbox", { name: /PROJECT NAME/ })).toHaveValue("Test 11");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a manually edited folder when an older dialog returns", async () => {
+    let finish!: (path: string | null) => void;
+    renderFolderBrowse(() => new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(screen.getByRole("button", { name: "Đang mở..." })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Thư mục lưu project" }), { target: { value: "projects/manual" } });
+    finish("projects/old-dialog");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Browse" })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "Thư mục lưu project" })).toHaveValue("projects/manual");
+  });
+
+  it("can cancel and reopen the native picker without clearing the draft", async () => {
+    const pick = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce("projects/new");
+    renderFolderBrowse(pick);
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Browse" })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "Thư mục lưu project" })).toHaveValue("projects");
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Thư mục lưu project" })).toHaveValue("projects/new"));
+  });
+});
+
 describe("ProjectHub", () => {
   it("shows a count of unique archived profiles rather than models and removes the old project eyebrow", async () => {
     const entry = { sourceProjectId: "source", speaker: { id: "speaker-1", name: "An" } };
