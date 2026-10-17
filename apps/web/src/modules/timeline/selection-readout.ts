@@ -5,42 +5,70 @@ export type ReadoutLayoutInput = {
   canvasWidth: number;
   viewportLeft: number;
   viewportWidth: number;
+  displayStart?: number;
+  displayEnd?: number;
 };
 
-export type ReadoutMarker = { x: number; width: number; row: 0 | 1 | 2 };
-export type ReadoutLayout = { in: ReadoutMarker; duration: ReadoutMarker; out: ReadoutMarker; visible: boolean };
+export type ReadoutMarker = { x: number; width: number };
+export type ReadoutLayout = { in: ReadoutMarker; duration: ReadoutMarker; out: ReadoutMarker; fontSize: number; visible: boolean };
 
-const TIMESTAMP_WIDTH = 76;
-const DURATION_WIDTH = 76;
+const BASE_FONT_SIZE = 11;
+const MONO_CHARACTER_WIDTH = 6.6;
+const MIN_LABEL_WIDTH = 76;
 const EDGE_GAP = 2;
+const LABEL_GAP = 3;
 
-function clampCenter(x: number, width: number, left: number, right: number): number {
-  const half = Math.min(width / 2, Math.max(0, (right - left) / 2));
-  return Math.max(left + half, Math.min(x, right - half));
+function timestampWidth(value: number): number {
+  return Math.max(MIN_LABEL_WIDTH, (`${value.toFixed(3)}s`.length * MONO_CHARACTER_WIDTH) + 4);
+}
+
+function distribute(centers: number[], widths: number[], left: number, right: number): number[] {
+  const result = centers.map((center, index) => Math.max(left + widths[index] / 2,
+    Math.min(center, right - widths[index] / 2)));
+  for (let index = 1; index < result.length; index += 1) {
+    const minimum = result[index - 1] + widths[index - 1] / 2 + LABEL_GAP + widths[index] / 2;
+    result[index] = Math.max(result[index], minimum);
+  }
+
+  const overflow = result.at(-1)! + widths.at(-1)! / 2 - right;
+  if (overflow > 0) for (let index = 0; index < result.length; index += 1) result[index] -= overflow;
+  for (let index = result.length - 2; index >= 0; index -= 1) {
+    const maximum = result[index + 1] - widths[index + 1] / 2 - LABEL_GAP - widths[index] / 2;
+    result[index] = Math.min(result[index], maximum);
+  }
+
+  const underflow = left - (result[0] - widths[0] / 2);
+  if (underflow > 0) for (let index = 0; index < result.length; index += 1) result[index] += underflow;
+  return result;
 }
 
 export function selectionReadoutLayout(input: ReadoutLayoutInput): ReadoutLayout {
   const scale = input.canvasWidth / Math.max(input.duration, 0.001);
   const start = input.start * scale;
   const end = input.end * scale;
+  const midpoint = (start + end) / 2;
   const left = input.viewportLeft + EDGE_GAP;
   const right = input.viewportLeft + Math.max(0, input.viewportWidth) - EDGE_GAP;
   const span = Math.max(0, right - left);
-  const inWidth = Math.min(TIMESTAMP_WIDTH, span);
-  const outWidth = Math.min(TIMESTAMP_WIDTH, span);
-  const durationWidth = Math.min(DURATION_WIDTH, span);
-  const narrow = end - start < TIMESTAMP_WIDTH * 2 + DURATION_WIDTH + 12;
-
-  // For short ranges, move edge stamps outward so each value stays legible.
-  const inX = narrow ? start - inWidth / 2 - 4 : start;
-  const outX = narrow ? end + outWidth / 2 + 4 : end;
-  const durationX = (start + end) / 2;
-  const inMarker = { x: clampCenter(inX, inWidth, left, right), width: inWidth, row: 0 as const };
-  const outMarker: ReadoutMarker = { x: clampCenter(outX, outWidth, left, right), width: outWidth, row: 0 };
-  const edgesCollide = inMarker.x + inMarker.width / 2 + 4 > outMarker.x - outMarker.width / 2;
-  if (edgesCollide) outMarker.row = 1;
-  const collides = inMarker.x + inMarker.width / 2 + 4 > durationX - durationWidth / 2
-    || durationX + durationWidth / 2 + 4 > outMarker.x - outMarker.width / 2;
-  const duration: ReadoutMarker = { x: clampCenter(durationX, durationWidth, left, right), width: durationWidth, row: edgesCollide ? 2 : narrow || collides ? 1 : 0 };
-  return { in: inMarker, duration, out: outMarker, visible: end >= input.viewportLeft && start <= input.viewportLeft + input.viewportWidth };
+  const displayStart = input.displayStart ?? input.start;
+  const displayEnd = input.displayEnd ?? input.end;
+  const desiredWidths = [
+    timestampWidth(displayStart),
+    timestampWidth(displayEnd - displayStart),
+    timestampWidth(displayEnd),
+  ];
+  const widthScale = Math.min(1, Math.max(0, span - 2 * LABEL_GAP) / desiredWidths.reduce((sum, width) => sum + width, 0));
+  const widths = desiredWidths.map((width) => width * widthScale);
+  const narrow = end - start < (widths[0] + widths[2]) / 2 + widths[1] + 2 * LABEL_GAP;
+  const desiredCenters = narrow
+    ? [midpoint - widths[0] / 2 - LABEL_GAP - widths[1] / 2, midpoint, midpoint + widths[1] / 2 + LABEL_GAP + widths[2] / 2]
+    : [start, midpoint, end];
+  const centers = distribute(desiredCenters, widths, left, right);
+  return {
+    in: { x: centers[0], width: widths[0] },
+    duration: { x: centers[1], width: widths[1] },
+    out: { x: centers[2], width: widths[2] },
+    fontSize: BASE_FONT_SIZE * widthScale,
+    visible: span > 0 && end >= input.viewportLeft && start <= input.viewportLeft + input.viewportWidth,
+  };
 }

@@ -4,7 +4,9 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import { EMPTY_SELECTION, selectWord, sweepTo, type WordSelection } from "../../domain/word-selection";
 import { legalRowMoves, rowMoveTo, type RowMoveDirection } from "./row-moves";
 import { promoteTimestampWord } from "../../domain/timestamp-promotion";
+import { readableColor } from "../../domain/accessible-color";
 import type { EmotionLabel, EmotionStylePreferences, SpeakerProfile, StudioWord } from "../../domain/types";
+import { useContrastPalette } from "../../ui/color-theme";
 import { useTranscriptWindow } from "./transcript-window";
 import { useScriptShortcuts } from "./script-shortcuts";
 import { keepWordInView, useScriptPlaybackVisibility } from "./script-playback-follow";
@@ -156,6 +158,7 @@ interface SpeakerTextProps {
 
 /* The non-table view keeps each diarized turn intact while giving the user a compact reading layout. */
 export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection, onSelectionChange, defaultSpeakerId = null }: SpeakerTextProps) {
+  const contrastPalette = useContrastPalette();
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const activeWordRef = useRef<HTMLSpanElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
@@ -228,7 +231,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection,
   const held = new Set(selection.indexes);
   return <div aria-label="Transcript theo người nói" className="script-speaker-text" onPointerDown={beginSweep} ref={viewRef} title="Quét để chọn nhiều từ · Ctrl/Shift/Alt để cộng trừ">
     {rows.map((row) => {
-      const color = row.profile?.color ?? "var(--text-muted)";
+      const color = row.profile?.color ? readableColor(row.profile.color, contrastPalette.word) : "var(--text-muted)";
       return <article className={row.words.some(({ index }) => index === activeWordIndex) ? "is-active" : ""} key={row.id}>
         <header style={{ borderLeftColor: color }}><i style={{ background: color }} /><b style={{ color }}>{row.diarizationLabel}</b></header>
         <p>{row.words.map(({ index, word }) => <span aria-selected={held.has(index)} className={`${index === activeWordIndex ? "is-active" : ""} ${held.has(index) ? "is-selected" : ""}`} data-script-word-index={index} key={`${word.start}-${word.end}-${index}`} ref={index === activeWordIndex ? activeWordRef : undefined} role="option">{word.text}{" "}</span>)}</p>

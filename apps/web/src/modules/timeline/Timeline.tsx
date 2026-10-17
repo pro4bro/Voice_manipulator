@@ -23,6 +23,8 @@ import { useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 import { SelectionReadout } from "./SelectionReadout";
 import { ClippingOverlay } from "./ClippingOverlay";
 import { clippingRanges } from "./clipping-overflow";
+import { readableColor } from "../../domain/accessible-color";
+import { useContrastPalette } from "../../ui/color-theme";
 import { waveformBucketX, waveformY } from "./waveform-path";
 import { acousticEdges, applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
 import { visibleSubtitleWordLayout } from "./subtitle-density";
@@ -354,7 +356,9 @@ export function Timeline({
   // unsafe >=5% case; individual bad words carry their own warning class.
   const editableWords = draftWords ?? words;
   const displayWords = useMemo(() => normalizeWordTimings(editableWords, duration), [duration, editableWords]);
-  const speakerById = useMemo(() => new Map(speakers.map((speaker) => [speaker.id, speaker])), [speakers]);
+  const contrast = useContrastPalette();
+  const speakerTextColors = useMemo(() => new Map(speakers.map((speaker) =>
+    [speaker.id, readableColor(speaker.color, contrast.word)])), [speakers, contrast.word]);
   const ticks = useMemo(() => rulerMarks(duration, timelineCanvasWidth, timelineViewport), [duration, timelineCanvasWidth, timelineViewport]);
   const detailRequest = useMemo(() => {
     if (isRecording || !timelineCanvasWidth || !timelineViewport.width) return null;
@@ -668,7 +672,7 @@ export function Timeline({
 
   function syncPlaybackDuration(audio: HTMLAudioElement) {
     if (Number.isFinite(audio.duration) && audio.duration > 0) setMediaDuration(audio.duration);
-    syncPlaybackClock(audio);
+    if (!audioScrubber.active) syncPlaybackClock(audio);
   }
 
   function stopPlaybackClock() {
@@ -1264,6 +1268,7 @@ export function Timeline({
 
   function seekToTime(nextTime: number) {
     stretchTransportRef.current = null;
+    paintPlayhead(nextTime);
     setCurrentTime(nextTime);
     if (audioScrubber.active) audioScrubber.move(nextTime);
     else if (audioRef.current) {
@@ -1282,12 +1287,7 @@ export function Timeline({
     if (isRecording || !take?.url || !transport) return;
     const rect = transport.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / Math.max(rect.width, 1)) * duration));
-    setCurrentTime(nextTime);
-    if (audioScrubber.active) audioScrubber.move(nextTime);
-    else if (audioRef.current) {
-      audioRef.current.currentTime = nextTime;
-      syncPlaybackClock(audioRef.current);
-    }
+    seekToTime(nextTime);
   }
 
   function beginTransportScrub(event: PointerEvent<HTMLDivElement>) {
@@ -1646,7 +1646,7 @@ export function Timeline({
                     data-collision-note={collisionIndexes.includes(index) ? "Đang lấn timing · giữ lại ít nhất 10% từ này" : undefined}
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
-                    style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, color: speakerById.get(word.speakerId ?? "")?.color }}
+                    style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, color: speakerTextColors.get(word.speakerId ?? "") }}
                     data-timing-note={word.timingTrusted === false ? "Từ vừa sửa · timestamp nội suy, cần căn chỉnh" : undefined}
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"

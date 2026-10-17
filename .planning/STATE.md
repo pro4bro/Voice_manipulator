@@ -6,11 +6,31 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-17 — Stabilization round49 Timeline viewport UX.
-last_activity_desc: Round49 viewport navigation and peak overlays; acoustic anchors unmeasured. Phase03 stays60%.
+last_activity: 2026-10-17 — Stabilization round50 live playhead and shared color rules.
+last_activity_desc: Round50 live drag/readout/contrast tests pass; final browser sweep disabled. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round50 — TIMELINE-LIVE-READABILITY-01 (2026-10-17)
+
+Owner round49 feedback: paint playhead immediately during all seek drags and
+ignore stale media clock repaint during scrubbing. IN/duration/OUT now stay on
+one collision-free row with exact source values. Shared color resolver and
+semantic foreground/background pairs govern custom speaker/emotion text and
+selected/active/untrusted/collision states in both themes; opaque declared
+surfaces match the contrast calculation. Normal text gate is4.5:1; preserve
+passing user colors and stored preferences. Token parity, actual stylesheet
+cascade, custom-color matrix and product TSX dynamic-foreground guard prevent
+returning to isolated color guesses. See ADR0107 and docs/UI-COLOR-RULES.md.
+Final frontend1010pass/125files/148.56s; API1149pass/551.59s (3existing/fixture
+warnings), typecheck/build182 and diff pass. All602frozen inputs match.
+Intermediate actual browser drag records8updates before release; three numeric
+labels share one top coordinate. Final cross-page browser sweep is blocked by
+local browser use disabled in Work settings; subsequent CSS tested separately.
+See docs/gates/timeline-readability50-20261017.md for limits. No media, model,
+saved word timing or backend changes. Phase03 stays60%; acoustic anchors,
+Checkpoint A and downstream processor gates remain open.
 
 ## Stabilization round49 — TIMELINE-VIEWPORT-UX-01 (2026-10-17)
 

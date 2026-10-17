@@ -8,25 +8,24 @@
   inset: 0;
   z-index: 6;
   pointer-events: none;
-  color: var(--accent);
-  font: 11px var(--mono);
+  color: var(--readout-foreground, var(--accent));
+  font: var(--readout-font-size, 11px) var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
 .selection-readout__value {
   position: absolute;
   left: var(--readout-x);
-  top: calc(4px + var(--readout-row) * 15px);
+  top: 4px;
   width: var(--readout-width, 76px);
   transform: translateX(-50%);
-  color: var(--accent);
+  color: var(--readout-foreground, var(--accent));
   background: transparent;
   border: 0;
   padding: 0;
   text-align: center;
   line-height: 12px;
   white-space: nowrap;
-  text-shadow: 0 1px 2px var(--surface-audio), 0 0 2px var(--surface-audio);
 }
 
 .selection-readout__screen-reader {

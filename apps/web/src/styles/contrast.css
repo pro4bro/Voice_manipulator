@@ -1,0 +1,60 @@
+/* Shared foreground/background pairs win over dynamic emotion paint in selected states. */
+.script-table__word[aria-pressed="true"],
+.script-speaker-text p span.is-selected {
+  color: var(--contrast-selection-foreground) !important;
+  background: var(--contrast-selection-background) !important;
+}
+
+.script-playback-layer span.is-active,
+.script-tag-editor > button.is-active,
+.script-speaker-text p span.is-active {
+  color: var(--contrast-active-foreground) !important;
+  background: var(--contrast-active-background) !important;
+}
+
+.script-playback-layer span.is-time-estimated,
+.script-table__word.is-time-estimated {
+  color: var(--contrast-untrusted-foreground) !important;
+  background-color: var(--contrast-untrusted-background) !important;
+}
+
+.is-timing-collision {
+  color: var(--contrast-timing-collision-foreground) !important;
+  background-color: var(--contrast-timing-collision-background) !important;
+}
+
+/* Dynamic text resolves against these opaque surfaces, so nested translucent
+   lane fills cannot silently change the contrast calculation. */
+.timeline-module .timeline-word:not(.is-compact) { background-color: var(--contrast-word-background); }
+.script-playback-layer, .script-tag-editor, .script-speaker-text,
+.script-table__content { background-color: var(--surface-field); }
+
+/* State colors belong to one foreground/background pair. !important applies
+   to both sides because user emotion colors can be inline on either property. */
+.timeline-module .timeline-word.timeline-word--untrusted:not(.is-compact) {
+  color: var(--contrast-untrusted-foreground) !important;
+  background-color: var(--contrast-untrusted-background) !important;
+}
+.timeline-module .timeline-word.is-active:not(.is-compact),
+.timeline-module .imported-timeline__word.is-active:not(.is-compact),
+.script-table__word.is-active {
+  color: var(--contrast-active-foreground) !important;
+  background-color: var(--contrast-active-background) !important;
+}
+.timeline-module .timeline-word.is-selected:not(.is-compact),
+.timeline-module .imported-timeline__word.is-selected:not(.is-compact),
+.script-table__word[aria-pressed="true"],
+.script-speaker-text p span.is-selected {
+  color: var(--contrast-selection-foreground) !important;
+  background-color: var(--contrast-selection-background) !important;
+}
+.timeline-module .timeline-word.is-timing-collision:not(.is-compact) {
+  color: var(--contrast-timing-collision-foreground) !important;
+  background-color: var(--contrast-timing-collision-background) !important;
+}
+/* Child glyphs inherit the resolved state, rather than retaining a profile tint. */
+.timeline-word__label { color: inherit; }
+
+.script-speaker-text header { background-color: var(--contrast-word-background); }
+.script-tag-editor > button[data-emotion] { background-color: var(--surface-field); }
+.script-tag-editor > button small { color: inherit; }

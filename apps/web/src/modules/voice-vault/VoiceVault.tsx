@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { EngineProfileSchema, EnvironmentNoiseProfile, ProjectMediaAsset, ProjectVoice, SpeakerProfile, TrainingCatalog, VoiceCollectionImport } from "../../domain/types";
+import { compositeColor, readableColor } from "../../domain/accessible-color";
+import { useContrastPalette } from "../../ui/color-theme";
 import { api } from "../../api/client";
 import { CollectionDialog } from "../voice-collection/CollectionDialog";
 import { Icon } from "../../ui/Icon";
@@ -67,6 +69,7 @@ function speakerSummary(speaker: SpeakerProfile) {
 }
 
 export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectionExport, catalog, assets, profileSchema, selectedVoice, onCatalogChange, onSelectVoice, voices = EMPTY_PROJECT_VOICES, onDeleteVoice, onDeleteSpeaker, onDeleteEnvironment, onDeleteVoices, onDeleteSpeakers, onDeleteEnvironments }: VoiceVaultProps) {
+  const contrastPalette = useContrastPalette();
   const [addMenu, setAddMenu] = useState(false);
   const [collectionMode, setCollectionMode] = useState<{ voice?: ProjectVoice } | null>(null);
   const [evidenceBusy, setEvidenceBusy] = useState(false);
@@ -336,7 +339,7 @@ export function VoiceVault({ projectId, onCollectionImported, onPrepareCollectio
             <div className="voice-card-group__header">
             <button aria-label={`Chọn profile ${speaker.name}`} aria-pressed={selectedProfileIds.includes(speaker.id)} className="sound-library-select" onClick={(event) => selectProfile(event, speaker.id)} type="button">{selectedProfileIds.includes(speaker.id) ? "✓" : ""}</button>
             <button className={`voice-card ${selectedVoice === speaker.id ? "is-active" : ""}`} onClick={() => onSelectVoice(speaker.id)} onDoubleClick={() => editSpeaker(speaker)} title="Double click hoặc right click để mở Properties" type="button">
-              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" /></span><span className="voice-card__copy"><strong title={speaker.name}>{speaker.name}</strong><small className="sound-library-object-kind">Hồ sơ người nói · {own.length} model giọng</small><span title={speakerSummary(speaker)}>{speakerSummary(speaker)}</span><small title={speaker.voiceConsent ? "Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"}</small></span><i aria-hidden="true" />
+              <span className="voice-card__avatar" style={{ backgroundColor: speaker.color }}><Icon name="person" style={{ color: readableColor("#ffffff", compositeColor(speaker.color, contrastPalette.field, 1)) }} /></span><span className="voice-card__copy"><strong title={speaker.name}>{speaker.name}</strong><small className="sound-library-object-kind">Hồ sơ người nói · {own.length} model giọng</small><span title={speakerSummary(speaker)}>{speakerSummary(speaker)}</span><small title={speaker.voiceConsent ? "Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"} className={speaker.voiceConsent ? "is-consented" : ""}>{speaker.voiceConsent ? "✓ Đã đồng ý dùng giọng" : "Chưa xác nhận đồng ý dùng giọng"}</small></span><i aria-hidden="true" />
             </button>
             {own.length ? <button aria-controls={`speaker-models-${speaker.id}`} aria-expanded={expanded} aria-label={`${expanded ? "Thu gọn" : "Mở"} model giọng của ${speaker.name} (${own.length})`} className="voice-card-group__expand" onClick={() => setExpandedSpeakerIds((current) => { const next = new Set(current); if (expanded) next.delete(speaker.id); else next.add(speaker.id); return next; })} type="button">{expanded ? "▾" : "▸"}</button> : null}
             <button className="sound-library-properties" aria-label={`Properties profile ${speaker.name}`} title="Properties" onClick={() => editSpeaker(speaker)} type="button"><Icon name="settings" /></button>

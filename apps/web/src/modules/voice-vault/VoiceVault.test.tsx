@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { VoiceVault } from "./VoiceVault";
 import { api } from "../../api/client";
+import { contrastRatio } from "../../domain/accessible-color";
 import type { ProjectVoice, SpeakerProfile, TrainingCatalog } from "../../domain/types";
 
 function speaker(id: string, name: string): SpeakerProfile {
@@ -43,6 +44,16 @@ function expandSpeaker(name: string, count: number) {
 }
 
 describe("Sound Library", () => {
+  it("uses a readable icon foreground on a custom speaker avatar fill", () => {
+    const lightSpeaker = { ...speaker("speaker-light", "Ánh sáng"), color: "#eeeeee" };
+    const { container } = show({ catalog: { ...CATALOG, speakers: [lightSpeaker] } });
+    const avatar = container.querySelector<HTMLElement>(".voice-card__avatar");
+    const icon = avatar?.querySelector<SVGElement>("svg");
+    expect(avatar?.style.backgroundColor).toBe("rgb(238, 238, 238)");
+    expect(icon?.style.color).toBeTruthy();
+    expect(contrastRatio(icon!.style.color, avatar!.style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("nests voice models under independently expandable Speaker Profiles, collapsed by default", () => {
     const catalog = { ...CATALOG, speakers: [...CATALOG.speakers, speaker("speaker-binh", "Bình")] };
     const voices = [voice("an-1", "An LoRA", "speaker-an"), voice("an-2", "An Full", "speaker-an"), voice("binh-1", "Bình LoRA", "speaker-binh")];

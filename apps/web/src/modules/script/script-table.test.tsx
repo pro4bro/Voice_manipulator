@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 
-import { assignProfileToTurn, buildSpeakerScriptRows, moveWordsToRow } from "./script-table";
+import { assignProfileToTurn, buildSpeakerScriptRows, moveWordsToRow, ScriptSpeakerText } from "./script-table";
+import { EMPTY_SELECTION } from "../../domain/word-selection";
+import { contrastRatio } from "../../domain/accessible-color";
 import type { SpeakerProfile, StudioWord } from "../../domain/types";
 
 const AN: SpeakerProfile = { id: "speaker-an", name: "Anh Vũ", language: "vi", languageId: "vi", region: null, age: null, gender: "male", attributes: {}, color: "#f00", createdAt: "" };
@@ -11,6 +14,14 @@ function word(overrides: Partial<StudioWord> = {}): StudioWord {
 }
 
 describe("Script rows", () => {
+  it("resolves custom diarization heading text against the current word surface", () => {
+    document.documentElement.dataset.theme = "light";
+    render(<ScriptSpeakerText words={[word({ speakerId: AN.id })]} speakers={[{ ...AN, color: "#eeeeee" }]} activeWordIndex={-1} selection={EMPTY_SELECTION} onSelectionChange={() => undefined} />);
+    const label = screen.getByText("Anh Vũ");
+    expect(contrastRatio(label.style.color, "#fffdf8")).toBeGreaterThanOrEqual(4.5);
+    document.documentElement.removeAttribute("data-theme");
+  });
+
   it("keeps explicit and inherited identities of the same speaker in one row", () => {
     const rows = buildSpeakerScriptRows([word(), word({ speakerId: "speaker-an" }), word()], [AN], "speaker-an");
     expect(rows).toHaveLength(1);

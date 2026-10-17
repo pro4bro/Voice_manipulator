@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
@@ -60,9 +60,42 @@ it("auto-pans a held edge drag by 100px per second in a 1000px viewport and stop
     const before = scroller.scrollLeft;
     act(() => { frames.at(-1)?.(0); }); act(() => { frames.at(-1)?.(1000); });
     expect(scroller.scrollLeft - before).toBeCloseTo(100);
+    expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + 950}px, 0, 0)`);
     fireEvent.pointerUp(playhead, { button: 0, pointerId: 1, clientX: 950 });
     const stopped = scroller.scrollLeft; act(() => { frames.at(-1)?.(2000); });
     expect(scroller.scrollLeft).toBe(stopped);
     view.unmount();
   } finally { raf.mockRestore(); cancel.mockRestore(); }
+});
+
+it.each(["playhead", "waveform", "transport"])("paints the %s drag position before release, without waiting for media seek events", (gesture) => {
+  const view = render(<Harness />); geometry(view.container);
+  const playhead = screen.getByLabelText("Playhead indicator");
+  const surface = gesture === "playhead" ? playhead : gesture === "waveform"
+    ? screen.getByLabelText("Waveform timeline") : screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.pointerDown(surface, { button: 0, pointerId: 4, clientX: 200 });
+  expect(playhead.style.transform).toBe("translate3d(200px, 0, 0)");
+  fireEvent.pointerMove(surface, { button: 0, pointerId: 4, clientX: 450 });
+  expect(playhead.style.transform).toBe("translate3d(450px, 0, 0)");
+  const audio = view.container.querySelector("audio")!;
+  audio.currentTime = 0;
+  fireEvent.timeUpdate(audio);
+  fireEvent.durationChange(audio);
+  expect(playhead.style.transform).toBe("translate3d(450px, 0, 0)");
+  expect(screen.getByText("00:00:45.000")).toBeInTheDocument();
+  fireEvent.pointerUp(surface, { button: 0, pointerId: 4, clientX: 450 });
+});
+
+
+it("resolves arbitrary speaker text against the word surface and responds to theme changes", async () => {
+  document.documentElement.dataset.theme = "light";
+  const speaker = { id: "s", name: "Pale speaker", color: "#caed70", language: "Tiếng Việt", languageId: "vi", region: "", age: null, gender: "female" as const, attributes: {}, createdAt: "" };
+  try {
+    render(<Timeline gain={0} onGainChange={vi.fn()} speakers={[speaker]} take={{ id: "color", name: "color", duration: 10, url: "/audio", words: [{ text: "readable", start: 1, end: 2, speakerId: "s" }] }} />);
+    const word = screen.getByRole("button", { name: "Subtitle word readable" });
+    expect(word.style.color).not.toBe("rgb(202, 237, 112)");
+    await act(async () => { document.documentElement.dataset.theme = "dark"; });
+    await waitFor(() => expect(word.style.color).toBe("rgb(202, 237, 112)"));
+  } finally { delete document.documentElement.dataset.theme; }
 });

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { EmotionLabel, EmotionStylePreferences } from "./types";
+import { compositeColor, readableColor } from "./accessible-color";
 
 export const EMOTION_COLOR_IDS: EmotionLabel[] = ["exciting", "funny", "good", "low-energy", "sad", "cry", "angry", "critical"];
 
@@ -38,11 +39,14 @@ export function emotionTextColor(emotion: EmotionLabel | null | undefined, style
   return interpolatedColor(style.gradientStart, style.gradientEnd, index / Math.max(1, EMOTION_COLOR_IDS.length - 1));
 }
 
-export function emotionVisualStyle(emotion: EmotionLabel | null | undefined, style: EmotionStylePreferences): CSSProperties | undefined {
-  const color = emotionTextColor(emotion, style);
-  if (!color) return undefined;
+export function emotionVisualStyle(emotion: EmotionLabel | null | undefined, style: EmotionStylePreferences, backgroundSurface = "#faf7ef"): CSSProperties | undefined {
+  const preferredColor = emotionTextColor(emotion, style);
+  if (!preferredColor) return undefined;
+  const opacity = style.backgroundEnabled ? Math.max(0, Math.min(1, style.backgroundOpacity)) : 0;
+  const effectiveBackground = opacity ? compositeColor(style.backgroundColor, backgroundSurface, opacity) : backgroundSurface;
+  const color = readableColor(preferredColor, effectiveBackground);
   return {
     color,
-    backgroundColor: style.backgroundEnabled ? `color-mix(in srgb, ${style.backgroundColor} ${Math.round(style.backgroundOpacity * 100)}%, transparent)` : undefined,
+    backgroundColor: opacity ? effectiveBackground : undefined,
   };
 }

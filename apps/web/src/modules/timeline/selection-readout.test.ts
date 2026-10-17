@@ -6,17 +6,16 @@ it("keeps a wide selection's IN, duration, and OUT markers aligned to the interv
   expect(layout.in.x).toBe(300);
   expect(layout.out.x).toBe(700);
   expect(layout.duration.x).toBe(500);
-  expect(layout.duration.row).toBe(0);
   expect(layout.in.x + layout.in.width / 2).toBeLessThan(layout.duration.x - layout.duration.width / 2);
   expect(layout.duration.x + layout.duration.width / 2).toBeLessThan(layout.out.x - layout.out.width / 2);
 });
 
-it("moves duration to one compact second row when a narrow interval cannot fit all three values", () => {
+it("keeps duration centered and moves narrow-range edge labels outward on one row", () => {
   const layout = selectionReadoutLayout({ start: 400, end: 420, duration: 1000, canvasWidth: 1000, viewportLeft: 0, viewportWidth: 1000 });
   expect(layout.duration.x).toBe(410);
-  expect(layout.duration.row).toBe(1);
-  expect(layout.in.x + layout.in.width / 2).toBeLessThanOrEqual(layout.out.x - layout.out.width / 2);
-  expect(Math.max(layout.in.row, layout.out.row, layout.duration.row)).toBe(1);
+  expect(layout.in.x).toBeLessThan(400);
+  expect(layout.out.x).toBeGreaterThan(420);
+  expectNoOverlap(layout);
 });
 
 it.each([
@@ -39,11 +38,26 @@ it("marks fully offscreen ranges as hidden while retaining viewport-safe edge po
   expect(layout.out.x).toBeLessThanOrEqual(500);
 });
 
-it.each([{ start: 0, end: 1 }, { start: 999, end: 1000 }])("keeps edge-clamped narrow readouts from covering one another ($start)", ({ start, end }) => {
+it.each([{ start: 0, end: 1 }, { start: 999, end: 1000 }])("distributes edge-clamped narrow readouts without overlap ($start)", ({ start, end }) => {
   const layout = selectionReadoutLayout({ start, end, duration: 1000, canvasWidth: 1000, viewportLeft: 0, viewportWidth: 1000 });
-  const markers = [layout.in, layout.out, layout.duration];
+  expectNoOverlap(layout);
+});
+
+it("compacts large timestamps to fit a narrow viewport on one row", () => {
+  const layout = selectionReadoutLayout({ start: 400, end: 401, duration: 1000, canvasWidth: 1000,
+    viewportLeft: 400, viewportWidth: 120, displayStart: 123456789.123, displayEnd: 123456789.456 });
+  expect(layout.fontSize).toBeLessThan(11);
+  for (const marker of [layout.in, layout.duration, layout.out]) {
+    expect(marker.x - marker.width / 2).toBeGreaterThanOrEqual(400);
+    expect(marker.x + marker.width / 2).toBeLessThanOrEqual(520);
+  }
+  expectNoOverlap(layout);
+});
+
+function expectNoOverlap(layout: ReturnType<typeof selectionReadoutLayout>) {
+  const markers = [layout.in, layout.duration, layout.out];
   for (let i = 0; i < markers.length; i += 1) for (let j = i + 1; j < markers.length; j += 1) {
     const a = markers[i], b = markers[j];
-    expect(a.row !== b.row || Math.abs(a.x - b.x) >= (a.width + b.width) / 2).toBe(true);
+    expect(Math.abs(a.x - b.x)).toBeGreaterThanOrEqual((a.width + b.width) / 2);
   }
-});
+}

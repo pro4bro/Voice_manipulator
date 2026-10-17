@@ -1936,3 +1936,38 @@ zoom/selection/clipping/tự ẩn; tab/server riêng đã dừng. Chi tiết ở
 Độ chính xác clipping giới hạn theo min/max bucket được tải; zoom để xem chi tiết.
 Native hand-timed drag/live OBS UAT và mốc nghe STT round48 vẫn chưa nghiệm thu.
 Phase03/60%, Checkpoint A và13processor gates giữ nguyên. Dừng sau round49.
+
+
+## Round50 — TIMELINE-LIVE-READABILITY-01 (2026-10-17)
+
+### Feedback và xử lý
+
+Sửa playhead bằng cách paint trực tiếp vị trí đang kéo, không chờ audio seek/
+timeupdate bị chặn lúc scrub; durationchange không được paint lại vị trí audio
+cũ.3gesture test RED trước, GREEN sau, giữ audio preview. IN/duration/OUT luôn
+cùng một hàng; dàn label ra ngoài khi hẹp, giữ số gốc và clamp theo viewport.
+
+Màu có quy tắc dùng chung: normal text>=4.5:1, semantic foreground/background
+đi thành cặp cho selection/active/untrusted/collision, chặn inline tint phá cặp.
+Custom speaker/emotion qua resolver theo surface/theme; alpha được composite
+trước và render đúng nền đã tính, giữ nguyên màu/preference đã lưu. Một observer
+root dùng chung cho mọi consumer. Sửa token chữ phụ light trên sunken/app từ
+3.91/4.43/4.30 lên ngưỡng; không vá riêng từng widget. ADR0107/UI-COLOR-RULES.md
+và gate round50 ghi rule, AST guard và phạm vi kiểm tra.
+
+### Kiểm tra
+
+Frontend1010pass/125files/148.56s; API1149pass/551.59s,3warning cũ/fixture.
+Typecheck/build182/diff pass;602input frozen hash khớp. Test màu gồm1000cặp
+custom, matrix emotion/background/opacity hai theme, CSS token parity và cascade
+thực tế với inline pale text/amber fill. Không skip/nới assertion/timeout.
+Browser trung gian ghi8vị trí playhead trước pointerup,3label cùng top. Sau đó
+CUA báo local browser disabled trong Work settings nên chưa có final cross-page
+sweep/screenshot; không gộp ảnh trung gian thành nghiệm thu CSS cuối. Server riêng
+18421–18424 đã dừng; không restart runtime đang dùng.
+
+### Còn lại / NEXT
+
+Final rendered sweep hai theme/native popups và các raster/gradient tổ hợp vẫn
+cần nghiệm thu khi công cụ browser hoạt động. Mốc nghe STT round48, Checkpoint A
+và13downstream processor gates còn mở. Phase03/60% giữ nguyên. Dừng round50.
