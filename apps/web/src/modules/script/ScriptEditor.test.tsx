@@ -254,6 +254,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Sửa text đã chọn" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Add text" }), { target: { value: "mới" } });
     fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
@@ -261,6 +262,31 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
       expect.objectContaining({ text: "mới", start: expect.any(Number), end: expect.any(Number), timingTrusted: false }),
     ]), "Xin mới chào");
     expect(words[0]).toEqual({ text: "Xin", start: 0, end: 0.3 });
+  });
+
+  it("keeps the native Script word menu open while an uncommitted text edit is right-clicked", () => {
+    const initialWords = [{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.5, end: 0.8 }];
+    const commitWords = vi.fn();
+    function ControlledEditor({ pulse }: { pulse: number }) {
+      const [value, setValue] = useState("Xin chào");
+      const [words, setWords] = useState(initialWords);
+      return <div data-render-pulse={pulse}><ScriptEditor onChange={setValue} onWordsChange={(next, text) => { commitWords(next, text); setWords(next); if (text !== undefined) setValue(text); }} value={value} words={words} workflow="speech-to-text" /></div>;
+    }
+    const view = render(<ControlledEditor pulse={0} />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    editor.focus();
+    fireEvent.change(editor, { target: { value: "Xin bạn" } });
+    editor.setSelectionRange(1, 1);
+    fireEvent.contextMenu(editor, { clientX: 900, clientY: 700 });
+    expect(screen.getByRole("menu", { name: "Thao tác đoạn Script" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
+    view.rerender(<ControlledEditor pulse={1} />);
+    expect(screen.getByRole("menu", { name: "Thao tác đoạn Script" })).toBeInTheDocument();
+    fireEvent.pointerEnter(screen.getByRole("menuitem", { name: "Note" }));
+    expect(screen.getByRole("menu", { name: "Note — Script" })).toBeInTheDocument();
+    expect(commitWords).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("Xin bạn");
   });
 
   it("deletes the exact caret-targeted native word atomically and leaves native Delete alone", () => {
@@ -506,6 +532,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     const words = [{ text: "Xin", start: 0, end: 0.3, diarizationSpeakerId: "speaker-1" }, { text: "chào", start: 0.3, end: 0.7, diarizationSpeakerId: "speaker-1" }, { text: "bạn", start: 0.8, end: 1.1, diarizationSpeakerId: "speaker-2" }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào bạn" words={words} workflow="speech-to-text" />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ chào" }), { clientX: 20, clientY: 20 });
+    expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "↓ Speaker 2 · 00:00.800" }));
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: null, manualDiarizationSpeakerId: "speaker-2" }, words[2]]);
   });

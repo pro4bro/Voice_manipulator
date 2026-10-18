@@ -2101,3 +2101,30 @@ UAT chỉnh/xóa thật và imported/live drag, acoustic anchors STT round48,
 Checkpoint A và13processor gates còn mở. Generated output transcript persistence
 vẫn theo Voice Edits; live OBS giữ follow. Không đổi backend/source media/model/
 project.json. Resume lưu cục bộ trên thiết bị. Phase03/60% giữ nguyên. Dừng sau round54.
+
+
+## Round55 — WORD-MENU-NOTE-01 (2026-10-18)
+
+### Feedback và xử lý
+
+Menu từ dùng body portal chung, đo kích thước thật, mở lên/xuống/trái/phải theo
+viewport; không bị cắt bởi module transform/overflow. Note xổ ngang, tự đổi phía,
+bám lại khi resize/scroll, hỗ trợ bàn phím và không tự lưu bản nháp text. Subtitle
+mới/sửa dùng chữ xanh theo phân loại, vạch dưới Speaker, nền theo trạng thái.
+Script và Subtitle có chú thích màu/format riêng. Xem ADR0112 và gate menu-note55.
+
+### Kiểm tra và còn lại
+
+Gate report ghi RED/GREEN, full tests, browser bounds/paint và portable parity.
+Browser fixture dùng component thật, commit counter0; không sửa media/project.
+Phase03/60% giữ nguyên. Acoustic anchors round48, Checkpoint A,13processor gates
+và UAT rộng imported/live editing vẫn mở. Dừng sau round55.
+
+Final round55: frontend1096pass/133files/376.02s (`--maxWorkers=1`, giữ5s);
+API1150pass/596.27s,3existing/fixture warnings. Typecheck/build187/diff pass;
+599frozen inputs khớp. Hai broad web trước trượt deadline fixture833words khi
+chạy2workers; baseline và source chạy đối chiếu riêng đều đạt. Full API bắt lỗi
+chẩn đoán listener chiếm hết deadline trước health probe: thêm deterministic RED,
+đảm bảo ít nhất1probe có giới hạn; giữ điều kiện health/deadline và exited-process.
+15focused cases đạt, full API cuối đạt. Build UI thực mở Test11/6744words, Note
+cả2module mở trái vừa viewport, không thấy console errors; không sửa transcript.

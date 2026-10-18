@@ -199,6 +199,7 @@ it("offers add, edit and delete actions from a channel word context menu", () =>
   expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
   const add = screen.getByRole("textbox", { name: "Add text" });
   fireEvent.change(add, { target: { value: "thêm" } });

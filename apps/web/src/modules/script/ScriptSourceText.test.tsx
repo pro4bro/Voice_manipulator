@@ -80,8 +80,32 @@ it("opens native-source word actions without hijacking ordinary textarea typing"
   expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
   fireEvent.keyDown(editor, { key: "Delete" });
   expect(change).not.toHaveBeenCalled();
+});
+it("keeps the source word menu and Note open during an uncommitted edit and same-revision rerender", () => {
+  const commit = vi.fn();
+  function ControlledSourceText({ pulse }: { pulse: number }) {
+    const [asset, setAsset] = useState({ ...source, updatedAt: "rev-a" });
+    return <div data-render-pulse={pulse}><ScriptSourceText source={{ ...asset }} onChange={(id, words, text) => {
+      commit(id, words, text);
+      setAsset((current) => ({ ...current, words, text, updatedAt: "rev-b" }));
+    }} /></div>;
+  }
+  const view = render(<ControlledSourceText pulse={0} />);
+  const editor = screen.getByRole("textbox", { name: "Script transcript · Track a" }) as HTMLTextAreaElement;
+  editor.focus();
+  fireEvent.change(editor, { target: { value: "Xin bạn" } });
+  editor.setSelectionRange(1, 1);
+  fireEvent.contextMenu(editor, { clientX: 900, clientY: 700 });
+  expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
+  view.rerender(<ControlledSourceText pulse={1} />);
+  expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
+  fireEvent.pointerEnter(screen.getByRole("menuitem", { name: "Note" }));
+  expect(screen.getByRole("menu", { name: "Note — Script" })).toBeInTheDocument();
+  expect(commit).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "Script transcript · Track a" })).toHaveValue("Xin bạn");
 });
 it("deletes the native source's selected word through Xóa text", () => {
   const change = vi.fn();

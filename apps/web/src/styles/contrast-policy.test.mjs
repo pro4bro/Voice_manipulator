@@ -52,3 +52,27 @@ it.each(["light", "dark"])("applies paired states despite bright inline profile/
     expect(contrastRatio(style.color, style.backgroundColor), className).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+it.each(["light", "dark"])("keeps a manual subtitle speaker underline independent from text state paint in %s", (theme) => {
+  const palette = tokens(theme);
+  const css = ["styles/modules.css", "modules/timeline/waveform.css", "modules/timeline/subtitle-density.css", "styles/contrast.css"].map(read).join("\n");
+  const sheet = document.createElement("style"); sheet.dataset.contrastTest = "true"; sheet.textContent = expand(css, palette); document.head.append(sheet);
+  const root = document.createElement("div"); root.className = "timeline-module"; document.body.append(root);
+  const states = ["", "is-selected", "is-active", "is-timing-collision"];
+  try {
+    for (const state of states) {
+      root.innerHTML = `<button class="timeline-word timeline-word--manual ${state}" style="--subtitle-manual-foreground:#004987;--subtitle-speaker-underline:#caed70;background-color:#ffd98a;color:#fff">Manual word</button>`;
+      const word = root.firstChild;
+      const style = getComputedStyle(word);
+      expect(style.borderBottomStyle, state).toBe("solid");
+      expect(word.style.getPropertyValue("--subtitle-speaker-underline"), state).toBe("#caed70");
+      expect(style.borderBottomWidth, state).toBe("2px");
+      expect(style.backgroundColor, state).not.toBe("rgb(202, 237, 112)");
+      expect(contrastRatio(style.color, style.backgroundColor), state).toBeGreaterThanOrEqual(4.5);
+    }
+    root.innerHTML = '<button class="timeline-word timeline-word--manual timeline-word--untrusted" style="--subtitle-manual-foreground:#004987;--subtitle-speaker-underline:#caed70">Manual word</button>';
+    expect(getComputedStyle(root.firstChild).boxShadow).toBe("none");
+    expect(root.firstChild.style.getPropertyValue("--subtitle-speaker-underline")).toBe("#caed70");
+    expect(getComputedStyle(root.firstChild).borderTopColor).toBe("rgb(226, 154, 36)");
+  } finally { sheet.remove(); }
+});

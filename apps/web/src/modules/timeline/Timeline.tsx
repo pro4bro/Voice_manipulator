@@ -6,6 +6,8 @@ import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, time
 import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
 import { useAudioScrubber } from "./audio-scrubbing";
 import { createPortal } from "react-dom";
+import { manualSubtitleColors } from "./subtitle-paint";
+import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { useScriptShortcuts } from "../script/script-shortcuts";
 import "./timeline-editing.css";
 import "./subtitle-density.css";
@@ -23,7 +25,7 @@ import { DRAG_SAFE_START, DRAG_SAFE_END, dragSeekTime, useDragAutoScroll, zoomWi
 import { SelectionReadout } from "./SelectionReadout";
 import { ClippingOverlay } from "./ClippingOverlay";
 import { clippingRanges } from "./clipping-overflow";
-import { compositeColor, readableColor } from "../../domain/accessible-color";
+import { readableColor } from "../../domain/accessible-color";
 import { useContrastPalette } from "../../ui/color-theme";
 import { waveformBucketX, waveformY } from "./waveform-path";
 import { loadResumePosition, saveResumePosition, type ResumeSource } from "../../domain/workspace-resume";
@@ -295,16 +297,7 @@ export function Timeline({
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; time: number; x: number; y: number } | null>(null);
   const [insertionError, setInsertionError] = useState<string | null>(null);
   const selectedWordIndexes = useMemo(() => new Set(wordSelection.indexes), [wordSelection.indexes]);
-  useEffect(() => {
-    if (!speakerMenu) return undefined;
-    const closeOutside = (event: globalThis.PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest(".timeline-speaker-menu")) return;
-      setSpeakerMenu(null);
-    };
-    window.addEventListener("pointerdown", closeOutside, true);
-    return () => window.removeEventListener("pointerdown", closeOutside, true);
-  }, [speakerMenu]);
+
   const audioRef = useRef<HTMLAudioElement>(null);
   const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean; metadataUrl: string | null } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -377,14 +370,8 @@ export function Timeline({
   const contrast = useContrastPalette();
   const speakerTextColors = useMemo(() => new Map(speakers.map((speaker) =>
     [speaker.id, readableColor(speaker.color, contrast.word)])), [speakers, contrast.word]);
-  const manualColors = useMemo(() => {
-    const on = (background: string) => ({ background, foreground: readableColor("#1a5fa7", background) });
-    return { plain: on(contrast.word), selection: on(contrast.selection.background), active: on(contrast.active.background),
-      collision: on(contrast.timingCollision.background), bySpeaker: new Map(speakers.map((speaker) => {
-        const background = compositeColor(speaker.color, contrast.word, 1);
-        return [speaker.id, on(background)];
-      })) };
-  }, [speakers, contrast]);
+  const manualColors = useMemo(() => manualSubtitleColors(contrast), [contrast]);
+  const speakerUnderlines = useMemo(() => new Map(speakers.map((speaker) => [speaker.id, speaker.color])), [speakers]);
   const ticks = useMemo(() => rulerMarks(duration, timelineCanvasWidth, timelineViewport), [duration, timelineCanvasWidth, timelineViewport]);
   const detailRequest = useMemo(() => {
     if (isRecording || !timelineCanvasWidth || !timelineViewport.width) return null;
@@ -1708,7 +1695,7 @@ export function Timeline({
                   ? defaultSpeakerId : word.speakerId;
                 const manualPaint = !manual ? undefined : collisionIndexes.includes(index) ? manualColors.collision
                   : selectedWordIndexes.has(index) ? manualColors.selection
-                  : index === activeWordIndex ? manualColors.active : manualColors.bySpeaker.get(speakerId ?? "") ?? manualColors.plain;
+                  : index === activeWordIndex ? manualColors.active : manualColors.plain;
                 return (
                   <button
                     aria-label={`Subtitle word ${word.text}`}
@@ -1721,8 +1708,9 @@ export function Timeline({
                     data-timeline-word-index={index}
                     key={`${word.text}-${index}`}
                     style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, backgroundColor: manualPaint?.background,
-                      color: manualPaint?.foreground ?? speakerTextColors.get(word.speakerId ?? ""), "--subtitle-manual-foreground": manualPaint?.foreground } as CSSProperties}
-                    data-timing-note={word.timingTrusted === false ? "Từ vừa sửa · timestamp nội suy, cần căn chỉnh" : undefined}
+                      color: manualPaint?.foreground ?? speakerTextColors.get(word.speakerId ?? ""), "--subtitle-manual-foreground": manualPaint?.foreground,
+                      "--subtitle-speaker-underline": manual ? speakerUnderlines.get(speakerId ?? "") : undefined } as CSSProperties}
+                    data-timing-note={word.timingTrusted === false ? "Timing chưa được xác nhận · cần đối chiếu waveform" : undefined}
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
                   >
@@ -1763,7 +1751,7 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
+      {speakerMenu ? <WordContextMenu className="timeline-speaker-menu" x={speakerMenu.x} y={speakerMenu.y} onClose={() => setSpeakerMenu(null)}>
         <strong>TEXT · {speakerMenu.indexes.length} TỪ</strong>
         {onReferenceContext ? <button role="menuitem" type="button" onClick={() => {
           const selection = speakerMenu.indexes.length ? selectProductionWord(selectionRef.current, speakerMenu.indexes[0], displayWords) : EMPTY_SELECTION;
@@ -1777,7 +1765,8 @@ export function Timeline({
           <button disabled={!onWordsChange || isRecording} onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
           {speakers.map((speaker) => <button disabled={!onWordsChange || isRecording} key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
         </> : null}
-      </div> : null}
+        <WordNoteItem module="subtitle" />
+      </WordContextMenu> : null}
       {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
       <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">

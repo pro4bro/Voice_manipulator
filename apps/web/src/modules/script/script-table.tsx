@@ -12,6 +12,7 @@ import { useScriptShortcuts } from "./script-shortcuts";
 import { keepWordInView, useScriptPlaybackVisibility } from "./script-playback-follow";
 export { keepWordInView } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
+import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import "./script-selection.css";
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout, type ScriptTableColumn } from "./script-transcript-layout";
 export type { ScriptTableColumn } from "./script-transcript-layout";
@@ -310,16 +311,6 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     if (target && keepWordInView(view, target) !== null) updateScroll(view);
   }, [selection.anchor]);
   useEffect(() => {
-    if (!speakerMenu) return undefined;
-    const closeMenu = (event: globalThis.PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest(".script-table__word-menu")) return;
-      setSpeakerMenu(null);
-    };
-    window.addEventListener("pointerdown", closeMenu, true);
-    return () => window.removeEventListener("pointerdown", closeMenu, true);
-  }, [speakerMenu]);
-  useEffect(() => {
     const moveSelection = (event: globalThis.PointerEvent) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event));
     const endSelection = () => { wordSelectionDraggingRef.current = false; };
     window.addEventListener("pointermove", moveSelection, true);
@@ -568,7 +559,7 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     </div>
     <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn bảng Script" className="script-table-scrollbar" />
     </div>
-    {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
+    {speakerMenu ? <WordContextMenu x={speakerMenu.x} y={speakerMenu.y} className="script-table__word-menu" onClose={() => setSpeakerMenu(null)}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
       {onAddText ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes.at(-1)!, value: "", add: true }); setSpeakerMenu(null); }} role="menuitem" type="button">Add text</button> : null}
       {speakerMenu.indexes.length === 1 ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes[0], value: words[speakerMenu.indexes[0]].text }); setSpeakerMenu(null); }} role="menuitem" type="button">Sửa text</button> : null}
@@ -592,7 +583,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
           {moves.map((move) => <button key={move.target.id} onClick={() => moveSelectedWordsToRow(move.target)} role="menuitem" type="button">{move.direction === "up" ? "↑" : "↓"} {move.target.diarizationLabel} · {timecode(move.target.words[0]?.word.start ?? 0)}</button>)}
         </>;
       })()}
-    </div> : null}
+      <WordNoteItem module="script" />
+    </WordContextMenu> : null}
     {hoveredEstimate ? <div className="script-table__timing-status" role="status" style={{ left: hoveredEstimate.x + 12, top: hoveredEstimate.y + 16 }}>Timestamp ước lượng · cần kiểm tra trên waveform</div> : null}
   </div>;
 }

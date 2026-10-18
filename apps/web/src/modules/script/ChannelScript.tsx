@@ -15,6 +15,7 @@ import { useScriptShortcuts } from "./script-shortcuts";
 import "./script-selection.css";
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 import { ScriptSourceText } from "./ScriptSourceText";
+import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { useScriptPlaybackVisibility } from "./script-playback-follow";
 
 function timecode(seconds: number | null, precision = 2) {
@@ -84,14 +85,6 @@ function ChannelWords({ track, row, speakers = [], onEditWord, onDeleteWords, on
   const selected = wordSelection.scope?.kind === "asset" && wordSelection.scope.id === track.id && wordSelection.scope.revision === track.updatedAt
     ? wordSelection : EMPTY_SELECTION;
   useEffect(() => { setWordMenu(null); setAdding(null); setEditing(null); setAddError(null); }, [track.id, track.updatedAt]);
-  useEffect(() => {
-    if (!wordMenu) return;
-    const dismiss = (event: PointerEvent) => { if (!(event.target instanceof Element && event.target.closest(".channel-script-word-menu"))) setWordMenu(null); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") setWordMenu(null); };
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", key); };
-  }, [wordMenu]);
   return <span className="script-transcript-words">{row.words.length ? row.words.map(({ word, index }) =>
     <span className="script-table__word-wrap" key={index}><button type="button" className={`script-table__word ${active === index ? "is-active" : ""} ${selected.indexes.includes(index) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""} ${word.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`}
       aria-label={`${word.text} · ${timecode(word.start, 3)}–${timecode(word.end, 3)}`} data-time={`${timecode(word.start, 3)}–${timecode(word.end, 3)}`}
@@ -118,7 +111,7 @@ function ChannelWords({ track, row, speakers = [], onEditWord, onDeleteWords, on
       onClick={(event) => { requestPlaybackSeek(row.trackId, word.start); if (event.detail === 0) select(index, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey }); }}>{word.text}</button>{editing?.index === index ? <form aria-label={`Sửa text ${word.text}`} className="channel-script-word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !editCommittedRef.current) { editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); } }} onSubmit={(event) => { event.preventDefault(); if (editCommittedRef.current) return; editCommittedRef.current = true; onEditWord?.(index, editing.text); setEditing(null); }}><input aria-label={`Sửa text ${word.text}`} autoFocus onChange={(event) => setEditing({ index, text: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); editCommittedRef.current = true; setEditing(null); } }} value={editing.text} /></form> : null}{" "}</span>) : row.text}
     {tooltip ? createPortal(<span id={tooltipId} role="tooltip" className="channel-script-time-popup"
       style={{ left: tooltip.left, top: tooltip.top, transform: tooltip.above ? "translateY(-100%)" : undefined }}>{tooltip.text}</span>, document.body) : null}
-    {wordMenu ? createPortal(<div className="channel-script-word-menu" role="menu" style={{ left: wordMenu.left, top: wordMenu.top }}>
+    {wordMenu ? <WordContextMenu x={wordMenu.left} y={wordMenu.top} className="channel-script-word-menu" onClose={() => setWordMenu(null)}>
       <button onClick={() => { if (wordMenu.revision === track.updatedAt) setAdding({ boundary: wordMenu.index, text: "", revision: track.updatedAt }); setWordMenu(null); }} role="menuitem" type="button">Add text</button>
       <button onClick={() => { if (wordMenu.revision === track.updatedAt) { editCommittedRef.current = false; setEditing({ index: wordMenu.index, text: track.words?.[wordMenu.index]?.text ?? "" }); } setWordMenu(null); }} role="menuitem" type="button">Sửa text</button>
       <button onClick={() => { if (wordMenu.revision === track.updatedAt) onDeleteWords?.(wordMenu.indexes); setWordMenu(null); }} role="menuitem" type="button">Xóa text</button>
@@ -127,7 +120,8 @@ function ChannelWords({ track, row, speakers = [], onEditWord, onDeleteWords, on
         <button onClick={() => { if (wordMenu.revision === track.updatedAt) onAssignProfile(wordMenu.indexes, null); setWordMenu(null); }} role="menuitem" type="button">Bỏ gán Speaker Profile</button>
         {speakers.map((speaker) => <button key={speaker.id} onClick={() => { if (wordMenu.revision === track.updatedAt) onAssignProfile(wordMenu.indexes, speaker.id); setWordMenu(null); }} role="menuitem" type="button">Speaker Profile: {speaker.name}</button>)}
       </> : null}
-    </div>, document.body) : null}
+      <WordNoteItem module="script" />
+    </WordContextMenu> : null}
     {adding ? createPortal(<form aria-label="Add text" className="channel-script-word-editor" onSubmit={(event) => {
       event.preventDefault();
       if (adding.revision !== track.updatedAt) { setAdding(null); return; }

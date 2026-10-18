@@ -18,13 +18,38 @@ function voice(id: string, speakerProfileId: string, kind: ProjectVoice["kind"] 
 
 const VOICES = [voice("an-clone", "speaker-an"), voice("khoa-clone", "speaker-khoa")];
 
-function Harness({ initial, output = null, onRead = vi.fn(), onRows }: { initial: VoiceScriptRow[]; output?: VoiceOutput | null; onRead?: () => void; onRows?: (rows: VoiceScriptRow[]) => void }) {
+function Harness({ initial, output = null, onRead = vi.fn(), onRows, onReferenceContext }: { initial: VoiceScriptRow[]; output?: VoiceOutput | null; onRead?: () => void; onRows?: (rows: VoiceScriptRow[]) => void; onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void }) {
   const [rows, setRows] = useState(initial);
   const [selection, setSelection] = useState<WordSelection>({ indexes: [], anchor: null });
-  return <VoiceScript category="clone" onRead={onRead} onRowsChange={(next) => { setRows(next); onRows?.(next); }} onWordSelectionChange={setSelection} output={output} playbackId={output?.id ?? null} rows={rows} speakers={[AN, KHOA]} voices={VOICES} wordSelection={selection} />;
+  return <VoiceScript category="clone" onRead={onRead} onReferenceContext={onReferenceContext} onRowsChange={(next) => { setRows(next); onRows?.(next); }} onWordSelectionChange={setSelection} output={output} playbackId={output?.id ?? null} rows={rows} speakers={[AN, KHOA]} voices={VOICES} wordSelection={selection} />;
 }
 
 describe("VoiceScript", () => {
+  it("shows Note beside the explicit Script reference action without applying a reference early", () => {
+    const onReferenceContext = vi.fn();
+    const output = { id: "output-1", name: "Script", duration: 1, words: [{ text: "Xin", start: 0, end: 0.4, segmentIndex: 0 }], segments: [{ rowId: "r1", text: "Xin", voiceId: "an-clone", speakerProfileId: "speaker-an", start: 0, end: 0.4 }] } as unknown as VoiceOutput;
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin" }]} onReferenceContext={onReferenceContext} output={output} />);
+    const word = screen.getByRole("button", { name: "Chọn từ Xin" });
+    fireEvent.click(word, { detail: 0 });
+    fireEvent.contextMenu(word, { clientX: 18, clientY: 22 });
+    expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Gán reference…" })).toBeInTheDocument();
+    expect(word).toHaveAttribute("aria-pressed", "true");
+    expect(onReferenceContext).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gán reference…" }));
+    expect(onReferenceContext).toHaveBeenCalledWith(expect.objectContaining({ origin: "script", selection: expect.objectContaining({ indexes: [0] }) }));
+  });
+
+  it("keeps the row reference action available before a Voice Output exists", () => {
+    const onReferenceContext = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin" }]} onReferenceContext={onReferenceContext} />);
+    fireEvent.contextMenu(screen.getByRole("gridcell", { name: "Xin" }), { clientX: 18, clientY: 22 });
+    expect(screen.getByRole("menuitem", { name: "Gán reference…" })).toBeInTheDocument();
+    expect(onReferenceContext).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gán reference…" }));
+    expect(onReferenceContext).toHaveBeenCalledWith(expect.objectContaining({ origin: "script" }));
+  });
+
   it("offers WAV and Script-line SRT for an output even without word timing", () => {
     const onExport = vi.fn();
     const output: VoiceOutput = {

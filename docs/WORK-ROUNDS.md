@@ -1,5 +1,24 @@
 # Work Rounds
 
+## Stabilization round55 — WORD-MENU-NOTE-01 (2026-10-18)
+
+Owner feedback: word menus must remain inside the visible viewport, manual
+subtitle words use Speaker underline with blue text, and both Script/Subtitle
+menus offer a horizontal Note legend. Shared measured body portals escape module
+clipping, flip/clamp at edges and follow resize. Note chooses left/right, shares
+outside dismissal and preserves native editing drafts. Existing edit/profile and
+reference actions retain their boundaries. Palette/cascade tests cover exact state
+surfaces in both themes; no Speaker body fill for manual subtitles. ADR0112 and
+docs/gates/menu-note55-20261018.md record regression, browser and release evidence.
+Rendered synthetic Script/Timeline checks pass in both themes without project or
+media writes. Validation also fixed a pre-existing launcher first-probe starvation
+when diagnostics consumed its deadline; deterministic RED and15focused cases pass.
+Final frontend1096pass/133files/376.02s with one worker; API1150pass/596.27s
+(3existing/fixture warnings). Typecheck/build187/diff pass;599frozen inputs match.
+Intermediate two-worker fixture timeouts and API RED remain in the gate report. No API implementation/model/media/
+project-format changes. Phase03 stays60%; acoustic anchors, Checkpoint A and13
+processor gates remain open. Stop after round55.
+
 ## Stabilization round54 — WORD-EDIT-RESUME-01 (2026-10-18)
 
 Owner feedback: subtitle word context exposes Speaker Profiles; Script table,

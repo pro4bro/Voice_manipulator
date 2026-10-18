@@ -23,12 +23,13 @@ Applies to new/changed product UI in both themes. Established round50 / ADR0107.
    apps/web. The default test run includes color math, theme/pair/cascade tests
    and the product TSX dynamic-foreground guard. Do not add exceptions to hide a
    failed contrast assertion. Run rendered checks for actual affected states.
-8. Manual subtitle text keeps its blue classification hue (ADR0110). Pair it
-   with the composited speaker fill normally and semantic state backgrounds when
-   selected/active/colliding; resolve at>=4.5:1 and render the exact pair. Estimated
-   timing retains its warning border. Profile/default mapping and explicit null
-   follow the same row ownership as Script. Do not restore the amber fill over
-   the owner-requested manual speaker fill or substitute raw blue on unknown fill.
+8. Manual subtitle text keeps its blue classification hue (ADR0112 supersedes
+   ADR0110's speaker body fill). Speaker identity is a bottom underline only;
+   the normal word surface stays neutral. Selected/active/colliding backgrounds
+   retain their semantic meaning. Resolve blue at>=4.5:1 against each exact
+   background. Unconfirmed timing retains warning edges without replacing the
+   Speaker underline. Profile/default mapping and explicit null follow the same
+   row ownership as Script. Note in both word menus explains each module's paint.
 
 The guard detects direct dynamic JSX foregrounds and follows local aliases /
 resolvers; it is not a complete data-flow or arbitrary CSS-state verifier. Test

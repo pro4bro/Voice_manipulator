@@ -7,6 +7,7 @@ import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceOutp
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
+import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptPlaybackVisibility } from "./script-playback-follow";
 import { ScriptSelectionMarkers } from "./ScriptSelectionMarkers";
@@ -23,6 +24,7 @@ import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, swe
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
+const EMPTY_OUTPUT_WORDS: NonNullable<VoiceOutput["words"]> = [];
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
@@ -104,7 +106,7 @@ function clock(seconds: number) {
  */
 export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
-  const words = output?.words ?? [];
+  const words = output?.words ?? EMPTY_OUTPUT_WORDS;
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
   const readiness = scriptReadiness(rows, voices);
   const [durationRefresh, setDurationRefresh] = useState(0);
@@ -112,6 +114,7 @@ export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timi
   const [textDraft, setTextDraft] = useState("");
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [voiceMenu, setVoiceMenu] = useState<{ rowId: string; x: number; y: number } | null>(null);
+  const [referenceMenu, setReferenceMenu] = useState<{ selection: WordSelection; word: boolean; revision: VoiceOutput["words"] | undefined; x: number; y: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -136,6 +139,7 @@ export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timi
   const selectedRowIds = reconcileListSelection(rowSelection, rowIds).ids;
   useEffect(() => setRowSelection((current) => reconcileListSelection(current, rowIds)), [rows]);
   const held = useMemo(() => new Set(wordSelection.indexes), [wordSelection.indexes]);
+  useEffect(() => { if (referenceMenu && referenceMenu.revision !== words) setReferenceMenu(null); }, [referenceMenu, words]);
   const wordSweep = useRef<{ base: WordSelection; origin: number } | null>(null);
   useEffect(() => {
     const end = () => { wordSweep.current = null; };
@@ -454,7 +458,15 @@ export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timi
     }
     onWordSelectionChange?.(selection);
     const rect = target.getBoundingClientRect();
-    onReferenceContext({ selection, x: "clientX" in event && event.clientX ? event.clientX : rect.left, y: "clientY" in event && event.clientY ? event.clientY : rect.bottom, origin: "script" });
+    setReferenceMenu({ selection, word: index >= 0, revision: words,
+      x: "clientX" in event && event.clientX ? event.clientX : rect.left,
+      y: "clientY" in event && event.clientY ? event.clientY : rect.bottom });
+  }
+
+  function applyReferenceMenu() {
+    if (!referenceMenu || referenceMenu.revision !== words) { setReferenceMenu(null); return; }
+    onReferenceContext?.({ selection: referenceMenu.selection, x: referenceMenu.x, y: referenceMenu.y, origin: "script" });
+    setReferenceMenu(null);
   }
 
   function deleteSelectedRows() {
@@ -627,6 +639,11 @@ export function VoiceScript({ onFixedOutput, onNavigateOutput, voiceRender, timi
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
       <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} onPaste={handleTextPaste} placeholder={"Anh Vũ: Xin chào mọi người\nKhoa Trịnh: Chào anh"} ref={textRef} spellCheck value={textDraft} />
     </div>}
+
+    {referenceMenu ? <WordContextMenu x={referenceMenu.x} y={referenceMenu.y} className="script-table__word-menu" onClose={() => setReferenceMenu(null)}>
+      <button onClick={applyReferenceMenu} role="menuitem" type="button">Gán reference…</button>
+      {referenceMenu.word ? <WordNoteItem module="script" /> : null}
+    </WordContextMenu> : null}
 
     {voiceMenu ? <div className="script-table__word-menu voice-script__menu" onPointerDown={(event) => event.stopPropagation()} role="menu" style={{ left: voiceMenu.x, top: voiceMenu.y }}>
       <strong>VOICE ĐỌC ĐOẠN {shownRows.findIndex((row) => row.id === voiceMenu.rowId) + 1} · {CATEGORY_LABELS[category].toUpperCase()}</strong>

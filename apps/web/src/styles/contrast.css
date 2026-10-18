@@ -57,6 +57,13 @@
 /* Manual text keeps its blue classification on each resolved state background. */
 .timeline-module .timeline-word.timeline-word--manual:not(.is-compact) {
   color: var(--subtitle-manual-foreground) !important;
+  border-bottom-color: var(--subtitle-speaker-underline, transparent) !important;
+  border-bottom-style: solid !important;
+  border-bottom-width: 2px !important;
+}
+.timeline-module .timeline-word.timeline-word--manual.timeline-word--untrusted:not(.is-compact) {
+  /* Keep the orange timing outline while reserving the bottom edge for the speaker cue. */
+  box-shadow: none !important;
 }
 
 .script-speaker-text header { background-color: var(--contrast-word-background); }

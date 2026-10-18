@@ -44,24 +44,29 @@ it.each(["commit", "cancel"])("moves the explicit selection highlight/readout wi
   }
 });
 
-it("inherits the insertion row's speaker identity and speaker box fill for new manual subtitle text", () => {
+it("inherits the insertion row's speaker identity as an underline on new manual subtitle text", () => {
   const changed = vi.fn(); const view = render(<Harness changed={changed} />); geometry(view.container);
   fireEvent.doubleClick(view.container.querySelector(".word-track")!, { clientX: 230 });
   const input = screen.getByLabelText("Sửa subtitle");
   fireEvent.change(input, { target: { value: "new" } }); fireEvent.keyDown(input, { key: "Enter" });
   expect(changed.mock.calls[0][0][1]).toMatchObject({ speakerId: "s", diarizationSpeakerId: "speaker-2", reviewState: "manual", timingTrusted: false });
   const added = screen.getByRole("button", { name: "Subtitle word new" });
-  expect(added.style.backgroundColor).toBe("rgb(202, 237, 112)");
+  expect(added.style.backgroundColor).not.toBe("rgb(202, 237, 112)");
+  expect(added.style.getPropertyValue("--subtitle-speaker-underline")).toBe("#caed70");
   expect(added).toHaveClass("timeline-word--manual");
 });
 
-it("uses the footage's default speaker fill when a new word inherits its row, respecting explicit unassignment", () => {
+it("uses the footage's default speaker underline when a new word inherits its row, respecting explicit unassignment", () => {
   const props = { gain: 0, onGainChange: vi.fn(), defaultSpeakerId: "s", speakers: [speaker] };
   const take: ActiveTake = { ...initial, words: [{ text: "new", start: 1, end: 2, reviewState: "manual", timingTrusted: false }] };
   const view = render(<Timeline {...props} take={take} />);
-  expect(screen.getByRole("button", { name: "Subtitle word new" }).style.backgroundColor).toBe("rgb(202, 237, 112)");
+  const added = screen.getByRole("button", { name: "Subtitle word new" });
+  expect(added.style.backgroundColor).not.toBe("rgb(202, 237, 112)");
+  expect(added.style.getPropertyValue("--subtitle-speaker-underline")).toBe("#caed70");
   view.rerender(<Timeline {...props} take={{ ...take, words: [{ ...take.words![0], speakerId: null }] }} />);
-  expect(screen.getByRole("button", { name: "Subtitle word new" }).style.backgroundColor).not.toBe("rgb(202, 237, 112)");
+  const unassigned = screen.getByRole("button", { name: "Subtitle word new" });
+  expect(unassigned.style.getPropertyValue("--subtitle-speaker-underline")).toBe("");
+  expect(unassigned.style.backgroundColor).not.toBe("rgb(202, 237, 112)");
 });
 
 it.each([{ direction: 0, zoom: 1 }, { direction: 1, zoom: 1 }, { direction: 0, zoom: 2 }, { direction: 1, zoom: 2 }])("edge-pans promoted timing at 10 percent viewport/s: %j", ({ direction, zoom }) => {

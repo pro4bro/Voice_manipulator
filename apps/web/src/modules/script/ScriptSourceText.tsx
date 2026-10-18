@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { ProjectMediaAsset, StudioWord } from "../../domain/types";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
+import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { deleteScriptWords, insertScriptTextAtWordBoundary, mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptWord } from "./script-text-reconciliation";
 import { buildReviewPieces } from "./review-diff";
 
@@ -31,14 +32,6 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
   const [wordEditor, setWordEditor] = useState<{ kind: "add" | "edit"; index: number; boundary: number; revision: string; text: string } | null>(null);
   const [wordEditError, setWordEditError] = useState<string | null>(null);
   useEffect(() => { setWordMenu(null); setWordEditor(null); setWordEditError(null); }, [source.id, source.updatedAt]);
-  useEffect(() => {
-    if (!wordMenu) return;
-    const dismiss = (event: PointerEvent) => { if (!(event.target instanceof Element && event.target.closest(".script-source-word-menu"))) setWordMenu(null); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") setWordMenu(null); };
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", key); };
-  }, [wordMenu]);
   useEffect(() => { setReviewBase(source.text); setChoices({}); setManual(null); }, [candidate?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const review = useMemo(() => candidate?.text && candidate.text !== reviewBase ? buildReviewPieces(reviewBase, candidate.text) : [], [candidate?.text, reviewBase]);
   useEffect(() => { if (!editing.current) setDraft(source.text); }, [source.text]);
@@ -148,7 +141,7 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
         <button type="submit">Lưu</button>
       </form> : null}
     </div>
-    {wordMenu ? <div className="script-source-word-menu" role="menu" style={{ position: "fixed", left: wordMenu.left, top: wordMenu.top, zIndex: 1000 }}>
+    {wordMenu ? <WordContextMenu x={wordMenu.left} y={wordMenu.top} className="script-source-word-menu" onClose={() => setWordMenu(null)}>
       <button role="menuitem" type="button" onClick={() => { setWordEditor({ kind: "add", index: -1, boundary: wordMenu.boundary, revision: wordMenu.revision, text: "" }); setWordMenu(null); }}>Add text</button>
       <button role="menuitem" type="button" disabled={!wordMenu.indexes.length} onClick={() => { setWordEditor({ kind: "edit", index: wordMenu.target, boundary: wordMenu.boundary, revision: wordMenu.revision, text: source.words?.[wordMenu.target]?.text ?? "" }); setWordMenu(null); }}>Sửa text</button>
       <button role="menuitem" type="button" disabled={!wordMenu.indexes.length} onClick={() => {
@@ -158,6 +151,7 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
         }
         setWordMenu(null);
       }}>Xóa text</button>
-    </div> : null}
+      <WordNoteItem module="script" />
+    </WordContextMenu> : null}
   </section>;
 }
