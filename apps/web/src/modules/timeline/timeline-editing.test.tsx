@@ -215,7 +215,10 @@ describe("time-aware timeline editing", () => {
     fireEvent.change(screen.getByLabelText("Sửa subtitle"), { target: { value: "xin mới" } });
     fireEvent.keyDown(screen.getByLabelText("Sửa subtitle"), { key: "Enter" });
     expect(change.mock.calls[0][1]).toBe("xin mới chào");
-    expect(change.mock.calls[0][0].some((word: { timingSource?: string }) => word.timingSource === "user-interpolated")).toBe(true);
+    expect(change.mock.calls[0][0].slice(0, 2)).toMatchObject([
+      { text: "xin", start: 1, end: 1.5, timingSource: "user-text-preserved", timingTrusted: false },
+      { text: "mới", start: 1.5, end: 2, timingSource: "user-text-preserved", timingTrusted: false },
+    ]);
   });
   it("audibly previews a promoted word IN/OUT on middle drag and advances to the next word", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);

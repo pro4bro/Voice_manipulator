@@ -9,6 +9,7 @@ import { voicesInCategory } from "../domain/voiceScript";
 import { VoiceScript } from "../modules/script/VoiceScript";
 import type { StudioContext } from "../modules/registry/ModuleRegistry";
 import { WorkspaceShell } from "./WorkspaceShell";
+import { loadResumeSource, saveResumeSource } from "../domain/workspace-resume";
 const collectionContext = vi.hoisted(() => ({ current: null as StudioContext | null }));
 const voiceScriptHarness = vi.hoisted(() => ({ enabled: false }));
 
@@ -170,6 +171,42 @@ function deferred<T>() {
 }
 
 describe("WorkspaceShell STT synchronization", () => {
+  it("restores the selected source after media loads and saves explicit source changes", async () => {
+    const loading = deferred<ProjectMediaAsset[]>();
+    apiMocks.listProjectMedia.mockReturnValue(loading.promise);
+    saveResumeSource(project.id, { kind: "asset", id: "asset-1" });
+    const view = render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    expect(loadResumeSource(project.id)).toEqual({ kind: "asset", id: "asset-1" });
+    await act(async () => loading.resolve([mediaAsset("complete", "restored text", "now")]));
+    await waitFor(() => expect(collectionContext.current?.selectedAssetId).toBe("asset-1"));
+    expect(collectionContext.current?.take?.text).toBe("restored text");
+    act(() => collectionContext.current?.onOpenObsRecording("archive-resume"));
+    expect(loadResumeSource(project.id)).toEqual({ kind: "obs", id: "archive-resume" });
+    view.unmount();
+  });
+
+  it("restores an imported child with its parent and ignores withdrawn sources", async () => {
+    const parent = { ...mediaAsset("complete", "parent", "now"), id: "archive" };
+    const child = { ...mediaAsset("complete", "child", "now"), id: "channel-b", sourceArchiveAssetId: "archive", importSelected: true };
+    apiMocks.listProjectMedia.mockResolvedValue([parent, child]);
+    saveResumeSource(project.id, { kind: "asset", id: child.id, parentId: parent.id });
+    const props = { engine: null, onBack: vi.fn(), onPageChange: async () => project, onRuntimeAction: vi.fn(),
+      onToggleTheme: vi.fn(), project, runtime: null, theme: "dark" as const };
+    const view = render(<WorkspaceShell {...props} />);
+    await waitFor(() => expect(collectionContext.current?.selectedImportedTrackId).toBe(child.id));
+    expect(collectionContext.current?.selectedAssetId).toBe(parent.id);
+    expect(collectionContext.current?.take?.text).toBe("child");
+    act(() => collectionContext.current?.onObsTimelineRecordingChange("resolved-journal"));
+    expect(loadResumeSource(project.id)).toEqual({ kind: "asset", id: child.id, parentId: parent.id });
+    view.unmount();
+    apiMocks.listProjectMedia.mockResolvedValue([parent, { ...child, importSelected: false }]);
+    render(<WorkspaceShell {...props} />);
+    await waitFor(() => expect(collectionContext.current?.mediaAssets).toHaveLength(2));
+    expect(collectionContext.current?.selectedImportedTrackId).toBeNull();
+    expect(collectionContext.current?.take).toBeNull();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.getVoiceScript.mockResolvedValue({ version: 1, revision: 0, settings: {}, segments: [], rows: [] });

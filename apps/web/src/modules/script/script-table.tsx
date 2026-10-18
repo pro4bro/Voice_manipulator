@@ -142,6 +142,7 @@ interface ScriptTableProps {
   /** The profile the whole take belongs to, for words nobody named. */
   defaultSpeakerId?: string | null;
   onUpdateWordText: (index: number, text: string) => void;
+  onAddText?: (index: number, text: string) => boolean;
   storageKey: string;
   selection: WordSelection;
   onSelectionChange: (selection: WordSelection) => void;
@@ -239,7 +240,7 @@ export function ScriptSpeakerText({ words, speakers, activeWordIndex, selection,
     })}
   </div>;
 }
-export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, storageKey, selection, onSelectionChange, defaultSpeakerId = null, onSelectedRowWordsChange, leadingContent, deleteBusy = false, trackName }: ScriptTableProps) {
+export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, emotionStyle, getEmotionStyle, onAssignWords, onDeleteWords, onMoveWords, onUpdateWordText, onAddText, storageKey, selection, onSelectionChange, defaultSpeakerId = null, onSelectedRowWordsChange, leadingContent, deleteBusy = false, trackName }: ScriptTableProps) {
   const rows = useMemo(() => buildSpeakerScriptRows(words, speakers, defaultSpeakerId), [defaultSpeakerId, speakers, words]);
   const layout = useScriptTableLayout();
   const { columns, gridTemplateColumns } = layout;
@@ -256,9 +257,10 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
   useScriptShortcuts(commandRef, { selectAll: () => setRowSelection((current) => selectAllListItems(current, rowIds)) });
   const selectedRowWords = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.id)).flatMap((row) => row.words.map((item) => item.index)), [rows, selectedRowIds.join("\0")]);
   useEffect(() => { onSelectedRowWordsChange?.(selectedRowWords); }, [selectedRowWords.join(","), onSelectedRowWordsChange]);
-  const [wordEdit, setWordEdit] = useState<{ index: number; value: string } | null>(null);
+  const [wordEdit, setWordEdit] = useState<{ index: number; value: string; add?: boolean } | null>(null);
   const wordEditCommittedRef = useRef(false);
   const [speakerMenu, setSpeakerMenu] = useState<{ indexes: number[]; x: number; y: number } | null>(null);
+  useEffect(() => { setSpeakerMenu(null); setWordEdit(null); wordEditCommittedRef.current = true; }, [words]);
   const [hoveredEstimate, setHoveredEstimate] = useState<{ index: number; x: number; y: number } | null>(null);
   const estimateHoverTimerRef = useRef<number | null>(null);
   // A sweep is measured from where it began, against the selection as it stood
@@ -469,8 +471,11 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
 
   function confirmWordEdit() {
     if (!wordEdit || wordEditCommittedRef.current) return;
+    if (wordEdit.add && !onAddText?.(wordEdit.index, wordEdit.value)) {
+      setDeleteMessage("Không còn khoảng trống timing để thêm text ở đây."); return;
+    }
     wordEditCommittedRef.current = true;
-    onUpdateWordText(wordEdit.index, wordEdit.value);
+    if (!wordEdit.add) onUpdateWordText(wordEdit.index, wordEdit.value);
     setWordEdit(null);
   }
 
@@ -510,8 +515,8 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
         wordEditCommittedRef.current = false;
         setWordEdit({ index, value: word.text });
       }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openSpeakerMenu(index, event.clientX, event.clientY); }} onPointerDown={(event) => beginWordSelection(event, index)} onPointerMove={(event) => extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event))} onPointerUp={() => { wordSelectionDraggingRef.current = false; }} ref={index === activeWordIndex ? activeWordRef : undefined} style={getEmotionStyle(word.emotion, emotionStyle)} title="Quét hoặc Ctrl/Shift để chọn nhiều từ · kéo phần đầu hoặc cuối row sang row kề · double-click để sửa chữ · chuột phải để gán Speaker" type="button">{word.text}</button>{" "}
-      {editing ? <form aria-label={`Trình sửa từ ${word.text}`} className="script-table__word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) confirmWordEdit(); }} onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
-        <input aria-label={`Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ index, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); wordEditCommittedRef.current = true; setWordEdit(null); } }} value={wordEdit.value} />
+      {editing ? <form aria-label={wordEdit.add ? `Thêm text sau ${word.text}` : `Trình sửa từ ${word.text}`} className="script-table__word-editor" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) confirmWordEdit(); }} onPointerDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); confirmWordEdit(); }}>
+        <input aria-label={wordEdit.add ? "Thêm text" : `Sửa từ ${word.text}`} autoFocus onChange={(event) => setWordEdit({ ...wordEdit, value: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); wordEditCommittedRef.current = true; setWordEdit(null); } }} value={wordEdit.value} />
       </form> : null}
     </span>;
   }
@@ -565,7 +570,9 @@ export function ScriptTable({ assetId = null, words, speakers, activeWordIndex, 
     </div>
     {speakerMenu ? <div className="script-table__word-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
       <strong>SPEAKER PROFILE · {speakerMenu.indexes.length} TỪ</strong>
+      {onAddText ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes.at(-1)!, value: "", add: true }); setSpeakerMenu(null); }} role="menuitem" type="button">Add text</button> : null}
       {speakerMenu.indexes.length === 1 ? <button onClick={() => { wordEditCommittedRef.current = false; setWordEdit({ index: speakerMenu.indexes[0], value: words[speakerMenu.indexes[0]].text }); setSpeakerMenu(null); }} role="menuitem" type="button">Sửa text</button> : null}
+      {onDeleteWords ? <button disabled={deleteBusy} onClick={() => { if (onDeleteWords(speakerMenu.indexes)) setSpeakerMenu(null); }} role="menuitem" type="button">Xóa text đã chọn</button> : null}
       <button onClick={() => assignProfileToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
       {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignProfileToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
       {(() => {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ProjectMediaAsset } from "../../domain/types";
+import { loadResumePosition, saveResumePosition } from "../../domain/workspace-resume";
 import { ObsLiveLinkTimeline } from "./ObsLiveLinkTimeline";
 import { PreviewMixerProvider } from "./preview-mixer";
 import { ModuleRegistry, type StudioContext } from "../registry/ModuleRegistry";
@@ -129,6 +130,7 @@ const recording = {
 } as const;
 
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
   mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
   mocks.getObsLiveLinkWaveform.mockImplementation(async (_project: string, _record: string, channel: string) =>
@@ -812,6 +814,75 @@ it("keeps the chosen layout while reporting the playhead to the parent Script", 
   expect(screen.getByRole("button", { name: "CỘT" })).toHaveAttribute("aria-pressed", "true");
 });
 
+it("restores and persists an archived OBS position across remounts after its journal resolves", async () => {
+  const source = { kind: "obs", id: "recording" } as const;
+  const archivedTracks = ids.map((channelId, index) => ({ id: `asset-${index}`, name: `Channel ${index + 1}`,
+    sourceArchiveAssetId: "parent", obsRecordingId: "recording", importSelected: true, duration: 10,
+    url: `/api/projects/project/media/asset-${index}/audio`, words: [], text: "" })) as unknown as ProjectMediaAsset[];
+  const assets = [{ id: "parent", name: "OBS footage", obsRecordingId: "recording", words: [], text: "" }, ...archivedTracks] as ProjectMediaAsset[];
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  saveResumePosition("project", source, 8.25);
+  const playhead = vi.fn();
+  const props = { projectId: "project", resumeProjectId: "project", requestedRecordingId: "recording", assets, onPlayheadChange: playhead };
+  const view = render(<ObsLiveLinkTimeline {...props} />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  await waitFor(() => expect(screen.getByText("00:00:08.250")).toBeInTheDocument());
+  expect(loadResumePosition("project", source)).toBe(8.25);
+  const audio = view.container.querySelector("audio")!;
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBe(8.25);
+  audio.currentTime = 9.25;
+  fireEvent.timeUpdate(audio);
+  await waitFor(() => expect(loadResumePosition("project", source)).toBe(9.25));
+  await waitFor(() => expect(playhead).toHaveBeenLastCalledWith(9.25));
+  view.unmount();
+
+  const reopened = render(<ObsLiveLinkTimeline {...props} />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  await waitFor(() => expect(screen.getByText("00:00:09.250")).toBeInTheDocument());
+  expect(reopened.container.querySelector("audio")).toBeInTheDocument();
+});
+
+it("does not restore or persist archived positions while OBS follows a live recording", async () => {
+  const source = { kind: "obs", id: "recording" } as const;
+  saveResumePosition("project", source, 4.5);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
+  render(<ObsLiveLinkTimeline projectId="project" resumeProjectId="project" requestedRecordingId={null} />);
+  const liveFeed = mocks.subscribe.mock.calls[mocks.subscribe.mock.calls.length - 1];
+  await act(async () => liveFeed[4]({ appRecording: { ...recording, endedMonotonicNs: null,
+    startedAtUtc: new Date(Date.now() - 2_000).toISOString() }, channels: [{ channelId: ids[0],
+    alias: "Channel 1", nativeName: "Mic 1", slot: 1, appliedForward: true,
+    capture: { recordingId: "recording", durableChunkCount: 1 } }] }));
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  expect(loadResumePosition("project", source)).toBe(4.5);
+});
+
+it("uses the requested OBS recording identity immediately when switching archives", async () => {
+  const sourceA = { kind: "obs", id: "recording" } as const;
+  const sourceB = { kind: "obs", id: "recording-b" } as const;
+  saveResumePosition("project", sourceA, 8.25);
+  saveResumePosition("project", sourceB, 3.5);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([
+    { recording: { ...recording, status: "stopped", archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+      sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) },
+    { recording: { ...recording, recordingId: "recording-b", status: "stopped", archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+      sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-b-${index}` })) },
+  ]);
+  const props = { projectId: "project", resumeProjectId: "project", assets: [] as ProjectMediaAsset[] };
+  const onPlayheadChange = vi.fn();
+  const view = render(<ObsLiveLinkTimeline {...props} onPlayheadChange={onPlayheadChange} requestedRecordingId="recording" />);
+  await waitFor(() => expect(screen.getByText("00:00:08.250")).toBeInTheDocument());
+  expect(onPlayheadChange).not.toHaveBeenCalledWith(0);
+  onPlayheadChange.mockClear();
+  view.rerender(<ObsLiveLinkTimeline {...props} onPlayheadChange={onPlayheadChange} requestedRecordingId="recording-b" />);
+  await waitFor(() => expect(screen.getByText("00:00:03.500")).toBeInTheDocument());
+  expect(onPlayheadChange).not.toHaveBeenCalledWith(8.25);
+  expect(loadResumePosition("project", sourceA)).toBe(8.25);
+  expect(loadResumePosition("project", sourceB)).toBe(3.5);
+});
+
 it("draws separate live source paths under one ruler and playhead", async () => {
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const onStatus = mocks.subscribe.mock.calls[0]?.[4] as (next: ObsLiveLinkStatus) => void;
@@ -1075,10 +1146,7 @@ it("edits timestamped words from an archived OBS track in the shared Timeline ed
   await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledTimes(1));
   const [editedAssetId, editedWords, editedText] = onAssetWordsChange.mock.calls.at(-1)!;
   expect(editedAssetId).toBe("asset-0");
-  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-interpolated", timingTrusted: false }));
-  expect(editedWords[0].start).toBeGreaterThanOrEqual(asset.words![0].start);
-  expect(editedWords[0].end).toBeGreaterThan(editedWords[0].start);
-  expect(editedWords[0].end).toBeLessThan(asset.words![1].start);
+  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-text-preserved", timingTrusted: false, start: asset.words![0].start, end: asset.words![0].end }));
   expect(editedWords[1]).toEqual(asset.words![1]);
   expect(editedText).toBe("Hi world");
   const gain = screen.getByRole("slider", { name: "Source gain" });

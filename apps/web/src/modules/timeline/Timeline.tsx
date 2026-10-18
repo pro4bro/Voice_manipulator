@@ -26,6 +26,7 @@ import { clippingRanges } from "./clipping-overflow";
 import { compositeColor, readableColor } from "../../domain/accessible-color";
 import { useContrastPalette } from "../../ui/color-theme";
 import { waveformBucketX, waveformY } from "./waveform-path";
+import { loadResumePosition, saveResumePosition, type ResumeSource } from "../../domain/workspace-resume";
 import { applyWordDrag, assignWordInterval, timingCollisionIndexes, type WordDragMode } from "./word-timing";
 import { visibleSubtitleWordLayout } from "./subtitle-density";
 import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEditRange, TimelineGainKeyframe, WordTimingQuality } from "../../domain/types";
@@ -66,6 +67,9 @@ interface DetailWaveformRequest {
 }
 
 interface TimelineProps {
+  resumeProjectId?: string;
+  resumeSource?: ResumeSource;
+  onPlayheadChange?: (seconds: number) => void;
   voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   rangeSelectionEnabled?: boolean;
@@ -214,6 +218,7 @@ function activeWordAt(words: StudioWord[], time: number) {
 }
 
 export function Timeline({
+  resumeProjectId, resumeSource, onPlayheadChange,
   voiceEdits,
   navigation,
   take,
@@ -244,6 +249,11 @@ export function Timeline({
 }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const resumeIdentity = JSON.stringify([resumeProjectId, resumeSource]);
+  const resumeHydration = useRef<{ key: string; time: number } | null>(null);
+  const pendingResume = useRef<number | null>(null);
+  const lastResumeCursor = useRef<{ projectId: string; source: ResumeSource; seconds: number } | null>(null);
+  const playheadChange = useRef(onPlayheadChange); playheadChange.current = onPlayheadChange;
   const [zoom, setZoom] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [detailEnvelope, setDetailEnvelope] = useState<WaveformDetail | null>(null);
@@ -268,6 +278,10 @@ export function Timeline({
   wordEditorRef.current = wordEditor;
   const moduleRef = useRef<HTMLElement>(null);
   useScriptShortcuts(moduleRef, {
+    deleteSelection: onWordsChange ? () => {
+      if (isRecording || !selectionRef.current.indexes.length || wordEditorRef.current || wordDragRef.current || promotionDragRef.current) return false;
+      return wordDeletion.remove(selectionRef.current.indexes);
+    } : undefined,
     undo: voiceEdits?.packet?.document.cursor ? () => void navigateStretchHistory("undo") : onUndo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onUndo(); } : undefined,
     redo: voiceEdits?.packet && voiceEdits.packet.document.cursor < voiceEdits.packet.document.operations.length ? () => void navigateStretchHistory("redo") : onRedo ? () => { commitWordEditor(); cancelWordGesture(); (document.activeElement as HTMLElement | null)?.blur?.(); onRedo(); } : undefined,
   }, ".timeline-module");
@@ -344,6 +358,7 @@ export function Timeline({
     : mediaDuration || decodedDuration || take?.duration || lastWordEnd;
   const duration = sourceDuration || 10;
   const words = useMemo(() => editableWordTimings(rawWords, duration), [rawWords, duration]);
+  useEffect(() => { setSpeakerMenu(null); setWordEditor(null); }, [take?.words, take?.id, isRecording]);
   const subtitleText = useMemo(() => take?.text ?? words.map((word) => word.text).join(" "), [take?.text, words]);
   const wordDeletion = useScriptWordDeletion(take?.id ?? null, subtitleText, words, (edit) => {
     onWordsChange?.(edit.words, edit.text);
@@ -568,17 +583,21 @@ export function Timeline({
     stopPlaybackClock();
     setZoom(1);
     if (timelineScrollRef.current) timelineScrollRef.current.scrollLeft = 0;
+    const restored = resumeProjectId && resumeSource ? loadResumePosition(resumeProjectId, resumeSource, take?.duration) : null;
+    const initial = restored ?? 0;
+    resumeHydration.current = { key: resumeIdentity, time: initial };
+    pendingResume.current = restored;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
-      audio.currentTime = 0;
+      try { audio.currentTime = initial; } catch { /* Retry after media metadata. */ }
     }
     cancelWordGesture();
     wordEditorRef.current = null;
     setWordEditor(null);
     setSpeakerMenu(null);
     setInsertionError(null);
-    setCurrentTime(0);
+    setCurrentTime(initial);
     setPlaying(false);
     setDecodedDuration(0);
     setMediaDuration(0);
@@ -588,7 +607,28 @@ export function Timeline({
     setMarkOut(workingRange?.end ?? null);
     setStagedCut(null);
     setSelectedSections([]);
-  }, [take?.id]);
+  }, [take?.id, resumeIdentity]);
+
+  useEffect(() => {
+    if (isRecording) return;
+    const guard = resumeHydration.current;
+    if (guard && (guard.key !== resumeIdentity || Math.abs(currentTime - guard.time) > 1e-9)) return;
+    resumeHydration.current = null;
+    playheadChange.current?.(currentTime);
+    if (!resumeProjectId || !resumeSource) return;
+    const cursor = { projectId: resumeProjectId, source: resumeSource, seconds: currentTime };
+    lastResumeCursor.current = cursor;
+    if (!playing) saveResumePosition(cursor.projectId, cursor.source, cursor.seconds);
+  }, [currentTime, playing, isRecording, resumeIdentity]);
+
+  useEffect(() => {
+    const flush = () => {
+      const cursor = lastResumeCursor.current;
+      if (cursor) saveResumePosition(cursor.projectId, cursor.source, cursor.seconds);
+    };
+    window.addEventListener("pagehide", flush);
+    return () => { flush(); window.removeEventListener("pagehide", flush); };
+  }, []);
 
   useEffect(() => {
     const receive = (event: Event) => {
@@ -680,8 +720,18 @@ export function Timeline({
   }
 
   function syncPlaybackDuration(audio: HTMLAudioElement) {
+    // A reused media node can still deliver metadata from the previous URL.
+    if (audio.currentSrc && audio.src && new URL(audio.currentSrc, document.baseURI).href !== audio.src) return false;
     if (Number.isFinite(audio.duration) && audio.duration > 0) setMediaDuration(audio.duration);
+    if (pendingResume.current !== null) {
+      const target = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : duration, pendingResume.current));
+      try { audio.currentTime = target; } catch { return false; }
+      pendingResume.current = null;
+      resumeHydration.current = null;
+      paintPlayhead(target); setCurrentTime(target);
+    }
     if (!audioScrubber.active) syncPlaybackClock(audio);
+    return true;
   }
 
   function stopPlaybackClock() {
@@ -1076,7 +1126,7 @@ export function Timeline({
   }
 
   function deleteSelectedSubtitleWords() {
-    if (speakerMenu && onWordsChange && wordDeletion.remove(speakerMenu.indexes)) setSpeakerMenu(null);
+    if (!isRecording && speakerMenu && onWordsChange && wordDeletion.remove(speakerMenu.indexes)) setSpeakerMenu(null);
   }
 
   function beginWordDrag(event: PointerEvent<HTMLElement>, index: number, mode: WordDragMode) {
@@ -1293,6 +1343,7 @@ export function Timeline({
   }
 
   function seekToTime(nextTime: number) {
+    pendingResume.current = null;
     stretchTransportRef.current = null;
     paintPlayhead(nextTime);
     setCurrentTime(nextTime);
@@ -1371,6 +1422,7 @@ export function Timeline({
   }
 
   function beginAudioScrub() {
+    pendingResume.current = null;
     if (take?.id) notifyPlaybackInteraction([take.id]);
     const audio = audioRef.current;
     if (!audio) return;
@@ -1628,15 +1680,12 @@ export function Timeline({
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
             </div>
             <div className="word-track" onKeyDown={(event) => {
-              if (!onReferenceContext || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+              if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
               const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
               if (!target) return;
               event.preventDefault();
-              const index = Number(target.dataset.timelineWordIndex);
-              const selection = selectedWordIndexes.has(index) ? wordSelection : selectProductionWord(EMPTY_SELECTION, index, displayWords);
-              const rect = target.getBoundingClientRect();
-              onWordSelectionChange?.(selection);
-              onReferenceContext({ selection, x: rect.left, y: rect.bottom, origin: "subtitle" });
+              const index = Number(target.dataset.timelineWordIndex), rect = target.getBoundingClientRect();
+              openSpeakerMenu(index, rect.left, rect.bottom, words[index]?.start);
             }} onDoubleClick={(event) => {
               if ((event.target as HTMLElement).closest("button, input")) return;
               event.preventDefault(); event.stopPropagation();
@@ -1649,13 +1698,6 @@ export function Timeline({
               if ((event.target as HTMLElement).closest("input")) return;
               event.preventDefault(); event.stopPropagation();
               const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
-              if (onReferenceContext) {
-                const index = target ? Number(target.dataset.timelineWordIndex) : -1;
-                const selection = index >= 0 ? selectedWordIndexes.has(index) ? wordSelection : selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
-                onWordSelectionChange?.(selection);
-                onReferenceContext({ selection, x: event.clientX, y: event.clientY, origin: "subtitle" });
-                return;
-              }
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
             }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); if (event.button === 0 && !target) { onWordSelectionChange?.(EMPTY_SELECTION); return; } const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (!endRangeSelection(event, true)) endWordDrag(event, true); }} onPointerUp={(event) => { if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
@@ -1723,12 +1765,17 @@ export function Timeline({
       </div>
       {speakerMenu ? <div className="timeline-speaker-menu" role="menu" style={{ left: speakerMenu.x, top: speakerMenu.y }}>
         <strong>TEXT · {speakerMenu.indexes.length} TỪ</strong>
+        {onReferenceContext ? <button role="menuitem" type="button" onClick={() => {
+          const selection = speakerMenu.indexes.length ? selectProductionWord(selectionRef.current, speakerMenu.indexes[0], displayWords) : EMPTY_SELECTION;
+          const { x, y } = speakerMenu; setSpeakerMenu(null);
+          onReferenceContext({ selection, x, y, origin: "subtitle" });
+        }}>Gán reference…</button> : null}
         <button disabled={!take || isRecording || !onWordsChange} role="menuitem" type="button" onClick={() => beginTextInsertion(speakerMenu.time)}>Add text</button>
         {speakerMenu.indexes.length ? <>
-          <button role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button>
-          <button disabled={wordDeletion.busy || !onWordsChange} role="menuitem" type="button" onClick={deleteSelectedSubtitleWords}>Xóa text đã chọn</button>
-          <button onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
-          {speakers.map((speaker) => <button key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
+          <button disabled={!onWordsChange || isRecording} role="menuitem" type="button" onClick={() => { const index = speakerMenu.indexes[0]; setWordEditor({ index, time: words[index].start, text: words[index].text }); setSpeakerMenu(null); }}>Sửa text</button>
+          <button disabled={wordDeletion.busy || !onWordsChange || isRecording} role="menuitem" type="button" onClick={deleteSelectedSubtitleWords}>Xóa text đã chọn</button>
+          <button disabled={!onWordsChange || isRecording} onClick={() => assignSpeakerToSelectedWords(null)} role="menuitem" type="button">Chưa gán Profile</button>
+          {speakers.map((speaker) => <button disabled={!onWordsChange || isRecording} key={speaker.id} onClick={() => assignSpeakerToSelectedWords(speaker.id)} role="menuitem" style={{ borderLeftColor: speaker.color }} type="button"><i style={{ background: speaker.color }} />{speaker.name}</button>)}
         </> : null}
       </div> : null}
       {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
@@ -1763,7 +1810,7 @@ export function Timeline({
         <audio
           onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}
           onLoadedMetadata={(event) => {
-            syncPlaybackDuration(event.currentTarget);
+            if (!syncPlaybackDuration(event.currentTarget)) return;
             const transport = stretchTransportRef.current;
             if (transport) {
               const loadedUrl = event.currentTarget.currentSrc;

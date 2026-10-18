@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { api } from "../api/client";
 import { ScriptEditHistory, type ScriptEditSnapshot } from "../modules/script/script-edit-history";
 import { assignProfileToWords } from "../modules/script/script-table";
+import { loadResumeSource, saveResumeSource } from "../domain/workspace-resume";
 import { editableWordTimings } from "../domain/editable-word-timing";
 import { ObsPluginPreferences } from "./ObsPluginPreferences";
 import { DEFAULT_EMOTION_STYLE } from "../domain/emotion-style";
@@ -210,6 +211,10 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const scriptDirtyRef = useRef(false);
   const liveTranscriptActiveRef = useRef(false);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaLoaded, setMediaLoaded] = useState(false);
+  const [outputsLoaded, setOutputsLoaded] = useState(false);
+  const resumeRestored = useRef(false);
+  const resumeOpenRevision = useRef(0);
   const [pendingLocalMedia, setPendingLocalMedia] = useState<PendingLocalMedia | null>(null);
   const [pendingNativeMediaPaths, setPendingNativeMediaPaths] = useState<string[]>([]);
   const [pendingMediaImports, setPendingMediaImports] = useState<PendingMediaImportRow[]>([]);
@@ -406,7 +411,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     mediaLifecycleRevision.current = 0;
     mediaLifecycleWrites.current.clear();
     mediaSelectionWrites.current.clear();
-    ++mediaOpenRevision.current;
+    resumeOpenRevision.current = ++mediaOpenRevision.current;
     scriptEditHistory.current = new ScriptEditHistory();
   }, [project.id]);
 
@@ -513,7 +518,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
       if (!cancelled) setMediaAssets(assets);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Media Pool");
-    }).finally(() => { if (!cancelled) setMediaBusy(false); });
+    }).finally(() => { if (!cancelled) { setMediaBusy(false); setMediaLoaded(true); } });
     void Promise.all([
       api.getTrainingCatalog(project.id),
       api.getOmniVoiceProfileSchema(),
@@ -561,12 +566,45 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     if (typeof api.listVoiceOutputs === "function") {
       api.listVoiceOutputs(project.id)
         .then((outputs) => { if (!cancelled) setVoiceOutputs(outputs); })
-        .catch(() => { if (!cancelled) setVoiceOutputs([]); });
+        .catch(() => { if (!cancelled) setVoiceOutputs([]); })
+        .finally(() => { if (!cancelled) setOutputsLoaded(true); });
     }
 
+    if (typeof api.listVoiceOutputs !== "function") setOutputsLoaded(true);
     void refreshTrainingRun();
     return () => { cancelled = true; };
   }, [project.id]);
+
+  useEffect(() => {
+    if (resumeRestored.current || !mediaLoaded || !outputsLoaded) return;
+    resumeRestored.current = true;
+    // An explicit user open always wins over the asynchronous initial load.
+    if (mediaOpenRevision.current !== resumeOpenRevision.current) return;
+    const source = loadResumeSource(project.id);
+    if (!source) return;
+    if (source.kind === "asset") {
+      const available = withoutPermanentlyRemoved(mediaAssets).filter((asset) => !asset.deletedAt);
+      const asset = available.find((item) => item.id === source.id);
+      if (!asset || !isImportedForWork(asset, available)) return;
+      if (source.parentId) {
+        if (asset.sourceArchiveAssetId !== source.parentId || !available.some((item) => item.id === source.parentId)) return;
+        selectImportedTrack(asset.id);
+      } else applyMediaAsset(asset, available);
+    } else if (source.kind === "output") {
+      const output = voiceOutputs.find((item) => item.id === source.id);
+      if (output) openVoiceOutput(output, false);
+    } else {
+      // Only restore a recording that still belongs to this project's archive.
+      const revision = mediaOpenRevision.current;
+      let cancelled = false;
+      if (typeof api.listObsLiveLinkRecordings === "function") {
+        void api.listObsLiveLinkRecordings(project.id).then((entries) => {
+          if (!cancelled && mediaOpenRevision.current === revision && entries.some((entry) => !entry.deletedAt && entry.recording.recordingId === source.id)) openObsRecording(source.id);
+        }).catch(() => { /* A missing archive leaves the workspace empty. */ });
+      }
+      return () => { cancelled = true; };
+    }
+  }, [project.id, mediaLoaded, outputsLoaded]);
 
   const trainingBatch = useMemo(() => newestBatch(trainingRuns), [trainingRuns]);
   const trainingLive = trainingBatch.some(isLive);
@@ -876,6 +914,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }
 
   function applyMediaAsset(asset: ProjectMediaAsset, available = mediaAssetsRef.current) {
+    saveResumeSource(project.id, { kind: "asset", id: asset.id });
     ++mediaOpenRevision.current;
     setSelectedAssetId(asset.id);
     setSelectedImportedTrackId(null);
@@ -895,6 +934,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     const parent = mediaAssets.find((item) => item.id === asset.sourceArchiveAssetId);
     if (!parent || !isImportedForWork(parent, mediaAssets)) return;
     flushCurrentMediaDraft();
+    saveResumeSource(project.id, { kind: "asset", id: asset.id, parentId: parent.id });
     setSelectedAssetId(parent.id);
     setSelectedImportedTrackId(asset.id);
     setObsTimelineRecordingId(parent.obsRecordingId ?? null);
@@ -932,6 +972,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }
 
   function closeMediaDetails() {
+    saveResumeSource(project.id, null);
     ++mediaOpenRevision.current;
     flushCurrentMediaDraft();
     selectedAssetIdRef.current = null;
@@ -970,6 +1011,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }
 
   function openObsRecording(recordingId: string, channelId?: string) {
+    saveResumeSource(project.id, { kind: "obs", id: recordingId });
     ++mediaOpenRevision.current;
     flushCurrentMediaDraft();
     setSelectedScriptAssetIds(null);
@@ -2283,6 +2325,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   function openVoiceOutput(output: VoiceOutput, loadScript = true) {
+    ++mediaOpenRevision.current;
+    saveResumeSource(project.id, { kind: "output", id: output.id });
     // Opened for listening on the Manipulator's own timeline. The footage open
     // in Speech to Text stays open there. An output read from a Script brings
     // that Script back with it, so rows, timestamps and subtitles all describe
@@ -2582,7 +2626,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     obsPlayheadSeconds,
     obsSeekRequest,
     obsOverlapSelection,
-    onObsTimelineRecordingChange: (recordingId) => setObsTimelineRecordingId(recordingId),
+    onObsTimelineRecordingChange: (recordingId) => {
+      setObsTimelineRecordingId(recordingId);
+      if (!selectedAssetId && recordingId) saveResumeSource(project.id, { kind: "obs", id: recordingId });
+    },
     onObsTranscriptSeek: (row, seconds) => {
       if (seconds === undefined) setObsOverlapSelection(null);
       setObsSeekRequest((current) => ({

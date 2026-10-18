@@ -238,9 +238,60 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     await waitFor(() => expect(readText).toHaveBeenCalledOnce());
     expect(onWordsChange).toHaveBeenLastCalledWith([
       words[0],
-      expect.objectContaining({ text: "rất", timingSource: "user-interpolated", timingTrusted: false }),
-      expect.objectContaining({ text: "tốt", timingSource: "user-interpolated", timingTrusted: false }),
+      expect.objectContaining({ text: "rất", timingSource: "user-text-preserved", timingTrusted: false, start: 0.5, end: 0.65 }),
+      expect.objectContaining({ text: "tốt", timingSource: "user-text-preserved", timingTrusted: false, start: 0.65, end: 0.8 }),
     ], "Xin rất tốt");
+  });
+
+  it("offers word actions from a collapsed native-text caret and inserts from the target boundary", () => {
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0, end: 0.3 }, { text: "chào", start: 0.5, end: 0.8 }];
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} sourceDuration={1} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    editor.setSelectionRange(1, 1);
+    fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
+    expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Sửa text đã chọn" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Add text" }), { target: { value: "mới" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
+    expect(onWordsChange).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ text: "mới", start: expect.any(Number), end: expect.any(Number), timingTrusted: false }),
+    ]), "Xin mới chào");
+    expect(words[0]).toEqual({ text: "Xin", start: 0, end: 0.3 });
+  });
+
+  it("deletes the exact caret-targeted native word atomically and leaves native Delete alone", () => {
+    const onWordsChange = vi.fn();
+    const words = [{ text: "Xin", start: 0.1, end: 0.4 }, { text: "chào", start: 0.6, end: 0.9 }];
+    const view = render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    editor.setSelectionRange(5, 5);
+    fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
+    fireEvent.keyDown(editor, { key: "Delete" });
+    expect(onWordsChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Xóa text" }));
+    expect(onWordsChange).toHaveBeenCalledWith([words[0]], "Xin");
+    expect(view.container.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("retains Add text input and reports when the source duration leaves no timing room", () => {
+    const onWordsChange = vi.fn();
+    render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} sourceDuration={0.8} value="Xin" words={[{ text: "Xin", start: 0.1, end: 0.8 }]} workflow="speech-to-text" />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
+    editor.setSelectionRange(1, 1);
+    fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+    const input = screen.getByRole("textbox", { name: "Add text" });
+    fireEvent.change(input, { target: { value: "thêm" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Không còn khoảng thời gian an toàn");
+    expect(screen.getByRole("textbox", { name: "Add text" })).toHaveValue("thêm");
+    expect(onWordsChange).not.toHaveBeenCalled();
   });
 
   it("clears transcript text and timed words together after confirmation", () => {
@@ -370,7 +421,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     expect(onWordsChange).toHaveBeenCalledWith([words[0], { ...words[1], speakerId: "speaker-profile-2" }]);
   });
 
-  it("edits one selected word and keeps its profile and emotion while dropping replaced timing", () => {
+  it("edits one selected word and keeps its profile, emotion and source interval", () => {
     const onWordsChange = vi.fn();
     const words = [{ text: "Xin", start: 0.12, end: 0.34, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good" as const }];
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin" words={words} workflow="speech-to-text" />);
@@ -381,12 +432,11 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.change(editor, { target: { value: "Chào" } });
     fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
     expect(onWordsChange).toHaveBeenCalledWith([
-      expect.objectContaining({ text: "Chào", timingSource: "user-interpolated", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual" }),
+      expect.objectContaining({ text: "Chào", timingSource: "user-text-preserved", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual", start: 0.12, end: 0.34 }),
     ], "Chào");
     const edited = onWordsChange.mock.calls[0][0][0];
-    expect(edited.start).toBeGreaterThanOrEqual(words[0].start);
-    expect(edited.end).toBeGreaterThan(edited.start);
-    expect(edited.end).toBeLessThanOrEqual(words[0].end);
+    expect(edited.start).toBe(words[0].start);
+    expect(edited.end).toBe(words[0].end);
   });
   it("commits an inline table word edit when the user clicks outside the editor", () => {
     const onWordsChange = vi.fn();
@@ -397,7 +447,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.change(editor, { target: { value: "Thưa" } });
     fireEvent.blur(editor);
     expect(onWordsChange).toHaveBeenCalledWith([
-      expect.objectContaining({ text: "Thưa", timingSource: "user-interpolated", timingTrusted: false }),
+      expect.objectContaining({ text: "Thưa", timingSource: "user-text-preserved", timingTrusted: false, start: 0, end: 0.3 }),
       words[1],
     ], "Thưa chào");
   });
@@ -517,8 +567,8 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.click(screen.getByRole("button", { name: "ALL" }));
     expect(onWordsChange).toHaveBeenCalledWith([
       words[0],
-      expect.objectContaining({ text: "rất", timingSource: "user-interpolated", timingTrusted: false }),
-      expect.objectContaining({ text: "tốt", timingSource: "user-interpolated", timingTrusted: false }),
+      expect.objectContaining({ text: "rất", timingSource: "user-text-preserved", timingTrusted: false, start: 0.5, end: 0.65 }),
+      expect.objectContaining({ text: "tốt", timingSource: "user-text-preserved", timingTrusted: false, start: 0.65, end: 0.8 }),
       words[2],
     ], "Xin rất tốt chào");
   });

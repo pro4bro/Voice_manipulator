@@ -3,6 +3,7 @@ import { useEffect, useRef, type RefObject } from "react";
 /** Route commands to the Script under the pointer, or its keyboard focus. */
 export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands: {
   selectAll?: () => void; undo?: () => void; redo?: () => void;
+  deleteSelection?: () => boolean | void;
 }, moduleSelector = ".script-module", enabled = true) {
   const latest = useRef(commands);
   latest.current = commands;
@@ -15,9 +16,14 @@ export function useScriptShortcuts(view: RefObject<HTMLElement | null>, commands
     const leave = () => { hovered = false; pointerLeft = true; };
     const focus = () => { pointerLeft = false; };
     const key = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      if (event.defaultPrevented || event.isComposing || event.altKey) return;
       if (!hovered && (pointerLeft || !root.contains(event.target as Node))) return;
       const input = event.target instanceof Element && event.target.closest("input, textarea, [contenteditable='true']");
+      if (event.key === "Delete" && !event.ctrlKey && !event.metaKey && !event.shiftKey && !input) {
+        if (latest.current.deleteSelection && latest.current.deleteSelection() !== false) event.preventDefault();
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey)) return;
       if (event.key.toLowerCase() === "a" && !input && latest.current.selectAll) {
         event.preventDefault(); latest.current.selectAll();
       } else if (event.key.toLowerCase() === "z") {

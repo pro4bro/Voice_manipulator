@@ -72,6 +72,26 @@ it("edits the native text without changing neighboring timestamp identities", ()
   fireEvent.blur(editor);
   expect(change).toHaveBeenCalledWith("a", [expect.objectContaining({ text: "Chúc", timingTrusted: false }), source.words[1]], "Chúc chào");
 });
+it("opens native-source word actions without hijacking ordinary textarea typing", () => {
+  const change = vi.fn();
+  render(<ScriptSourceText source={source} onChange={change} />);
+  const editor = screen.getByRole("textbox", { name: "Script transcript · Track a" });
+  fireEvent.contextMenu(editor, { clientX: 12, clientY: 16 });
+  expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+  fireEvent.keyDown(editor, { key: "Delete" });
+  expect(change).not.toHaveBeenCalled();
+});
+it("deletes the native source's selected word through Xóa text", () => {
+  const change = vi.fn();
+  render(<ScriptSourceText source={source} onChange={change} />);
+  const editor = screen.getByRole("textbox", { name: "Script transcript · Track a" }) as HTMLTextAreaElement;
+  editor.setSelectionRange(4, 8);
+  fireEvent.contextMenu(editor, { clientX: 12, clientY: 16 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Xóa text" }));
+  expect(change).toHaveBeenCalledWith("a", [source.words[0]], "Xin");
+});
 it("exposes AI candidates without applying them until the owner chooses a correction", () => {
   const change = vi.fn();
   render(<ScriptSourceText source={{ ...source, revisions: [{ id: "review", source: "ai", text: "Xin bạn", createdAt: "now" }] }} onChange={change} />);

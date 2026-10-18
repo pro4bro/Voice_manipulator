@@ -181,13 +181,49 @@ it("edits an archived channel word on double-click and retains the track's timed
   fireEvent.change(editor, { target: { value: "Thưa" } });
   fireEvent.submit(screen.getByRole("form", { name: "Sửa text Xin" }));
   expect(onWordsChange).toHaveBeenCalledWith("a", [
-    expect.objectContaining({ text: "Thưa", timingSource: "user-interpolated", timingTrusted: false, speakerId: "s1" }),
+    expect.objectContaining({ text: "Thưa", timingSource: "user-text-preserved", timingTrusted: false, speakerId: "s1", start: 0.1, end: 0.4 }),
     track.words[1],
   ], "Thưa chào");
   const edited = onWordsChange.mock.calls[0][1][0];
-  expect(edited.start).toBeGreaterThanOrEqual(track.words[0].start);
-  expect(edited.end).toBeGreaterThan(edited.start);
-  expect(edited.end).toBeLessThan(track.words[1].start);
+  expect(edited.start).toBe(track.words[0].start);
+  expect(edited.end).toBe(track.words[0].end);
+});
+
+it("offers add, edit and delete actions from a channel word context menu", () => {
+  const track = { id: "a", name: "Mic", updatedAt: "rev-a", text: "Xin chào", words: [
+    { text: "Xin", start: 0.1, end: 0.4 }, { text: "chào", start: 0.6, end: 0.9 },
+  ] } as ProjectMediaAsset;
+  const onWordsChange = vi.fn();
+  render(<ChannelScript tracks={[track]} onWordsChange={onWordsChange} onSelectTrack={vi.fn()} />);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Xin · 00:00.100–00:00.400" }));
+  expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Sửa text" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Xóa text" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+  const add = screen.getByRole("textbox", { name: "Add text" });
+  fireEvent.change(add, { target: { value: "thêm" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
+  expect(onWordsChange).toHaveBeenCalledWith("a", expect.arrayContaining([
+    expect.objectContaining({ text: "thêm", start: expect.any(Number), end: expect.any(Number), timingTrusted: false }),
+  ]), "thêm Xin chào");
+  expect(track.words[0].start).toBe(0.1);
+  expect(track.words[0].end).toBe(0.4);
+});
+
+it("keeps the Add text draft and shows an error when no source timing room exists", () => {
+  const track = { id: "a", name: "Mic", updatedAt: "rev-a", duration: 0.5, text: "Xin", words: [
+    { text: "Xin", start: 0, end: 0.8 },
+  ] } as ProjectMediaAsset;
+  const onWordsChange = vi.fn();
+  render(<ChannelScript tracks={[track]} onWordsChange={onWordsChange} onSelectTrack={vi.fn()} />);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Xin · 00:00.000–00:00.800" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
+  const input = screen.getByRole("textbox", { name: "Add text" });
+  fireEvent.change(input, { target: { value: "thêm" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("Không còn khoảng thời gian an toàn");
+  expect(screen.getByRole("textbox", { name: "Add text" })).toHaveValue("thêm");
+  expect(onWordsChange).not.toHaveBeenCalled();
 });
 
 it("shows compact OBS labels, timed rows and word-level overlap after detailed STT", () => {

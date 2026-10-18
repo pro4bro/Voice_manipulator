@@ -26,8 +26,10 @@ it("uses one frozen multi-selection from Script, subtitles and waveform includin
   fireEvent.click(screen.getByRole("button", { name: "Chọn đoạn 2" }), { ctrlKey: true });
   fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn từ one" }));
   fireEvent.contextMenu(screen.getByRole("button", { name: "Subtitle word two" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Gán reference…" }));
   fireEvent.contextMenu(screen.getByLabelText("Waveform timeline"), { clientX: 150, clientY: 40 });
   fireEvent.keyDown(screen.getByRole("button", { name: "Subtitle word two" }), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Gán reference…" }));
   expect(context.mock.calls.map(([request]) => request.origin)).toEqual(["script", "subtitle", "waveform", "subtitle"]);
   for (const [request] of context.mock.calls) expect(request.selection.ranges).toHaveLength(2);
   fireEvent.contextMenu(screen.getByLabelText("Waveform timeline"), { clientX: 450 });

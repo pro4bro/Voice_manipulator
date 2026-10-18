@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { ProjectMediaAsset, StudioWord } from "../../domain/types";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
-import { mapScriptWordsToText, reconcileScriptTextEdit } from "./script-text-reconciliation";
+import { deleteScriptWords, insertScriptTextAtWordBoundary, mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptWord } from "./script-text-reconciliation";
 import { buildReviewPieces } from "./review-diff";
 
 /** Each source retains its own editable text and clock in the shared Script. */
@@ -27,6 +27,18 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
   const [reviewBase, setReviewBase] = useState(source.text);
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [manual, setManual] = useState<{ id: string; text: string } | null>(null);
+  const [wordMenu, setWordMenu] = useState<{ indexes: number[]; target: number; boundary: number; revision: string; left: number; top: number } | null>(null);
+  const [wordEditor, setWordEditor] = useState<{ kind: "add" | "edit"; index: number; boundary: number; revision: string; text: string } | null>(null);
+  const [wordEditError, setWordEditError] = useState<string | null>(null);
+  useEffect(() => { setWordMenu(null); setWordEditor(null); setWordEditError(null); }, [source.id, source.updatedAt]);
+  useEffect(() => {
+    if (!wordMenu) return;
+    const dismiss = (event: PointerEvent) => { if (!(event.target instanceof Element && event.target.closest(".script-source-word-menu"))) setWordMenu(null); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") setWordMenu(null); };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", key); };
+  }, [wordMenu]);
   useEffect(() => { setReviewBase(source.text); setChoices({}); setManual(null); }, [candidate?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const review = useMemo(() => candidate?.text && candidate.text !== reviewBase ? buildReviewPieces(reviewBase, candidate.text) : [], [candidate?.text, reviewBase]);
   useEffect(() => { if (!editing.current) setDraft(source.text); }, [source.text]);
@@ -80,6 +92,34 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
       scope: { kind: "asset", id: source.id, revision: source.updatedAt },
       textRanges: indexes.length ? [{ rowId: source.id, start, end }] : [] });
   }
+  function showWordMenu(event: MouseEvent<HTMLTextAreaElement>) {
+    if (!onChange) return;
+    event.preventDefault();
+    const start = Math.min(event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
+    const end = Math.max(event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
+    const hit = ranges.find((range) => (end > start ? range.end > start && range.start < end : range.start <= start && range.end >= start));
+    const target = hit?.index ?? Math.max(0, ranges.find((range) => range.start >= start)?.index ?? source.words.length - 1);
+    const indexes = end > start ? ranges.filter((range) => range.end > start && range.start < end).map((range) => range.index) : hit ? [hit.index] : [];
+    const boundary = hit?.index ?? ranges.find((range) => range.start >= start)?.index ?? source.words.length;
+    setWordMenu({ indexes, target, boundary, revision: source.updatedAt ?? "", left: event.clientX, top: event.clientY });
+  }
+  function commitWordMenu() {
+    if (!wordEditor || wordEditor.revision !== (source.updatedAt ?? "")) { setWordEditor(null); return; }
+    const words = source.words ?? [];
+    if (wordEditor.kind === "edit") {
+      const result = replaceScriptWord(draft, wordEditor.index, wordEditor.text, words);
+      onChange?.(source.id, result.words, result.text);
+      setWordEditor(null);
+      return;
+    }
+    const before = words[wordEditor.boundary - 1], after = words[wordEditor.boundary];
+    const time = before?.end ?? Math.max(0, (after?.start ?? 0) - 0.05);
+    const sourceEnd = after?.start ?? source.duration;
+    const result = insertScriptTextAtWordBoundary(draft, wordEditor.boundary, wordEditor.text, words, time, sourceEnd);
+    if (wordEditor.text.trim() && !result.changedWordIndexes.length) { setWordEditError("Không còn khoảng thời gian an toàn để thêm text tại đây."); return; }
+    onChange?.(source.id, result.words, result.text);
+    setWordEditor(null); setWordEditError(null);
+  }
   return <section className="script-source-text" aria-label={`Tài liệu ${source.name}`}>
     <strong>{source.name}</strong>
     {review.some((piece) => piece.kind === "change") ? <div className="script-source-review" aria-label={`So sánh STT và AI · ${source.name}`}>
@@ -96,11 +136,28 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
       onFocus={() => { editing.current = true; setIsEditing(true); baseline.current = source; }}
       onChange={(event) => setDraft(event.currentTarget.value)}
       onSelect={(event) => publishTextSelection(event.currentTarget)}
+      onContextMenu={showWordMenu}
       onBlur={() => { editing.current = false; setIsEditing(false); if (draft !== baseline.current.text) commit(draft); }}
       onClick={(event) => {
         const range = ranges.find((word) => word.start <= event.currentTarget.selectionStart && word.end >= event.currentTarget.selectionStart);
         if (range) requestPlaybackSeek(source.id, source.words[range.index].start);
       }} />
+      {wordEditor ? <form aria-label={wordEditor.kind === "add" ? "Add text" : "Sửa text"} className="script-source-word-editor" style={{ position: "fixed", left: 12, top: 12, zIndex: 1000 }} onSubmit={(event) => { event.preventDefault(); commitWordMenu(); }}>
+        {wordEditError ? <span role="alert">{wordEditError}</span> : null}
+        <input autoFocus aria-label={wordEditor.kind === "add" ? "Add text" : "Sửa text"} value={wordEditor.text} onChange={(event) => { setWordEditor({ ...wordEditor, text: event.currentTarget.value }); setWordEditError(null); }} onKeyDown={(event) => { if (event.key === "Escape") { setWordEditor(null); setWordEditError(null); } }} />
+        <button type="submit">Lưu</button>
+      </form> : null}
     </div>
+    {wordMenu ? <div className="script-source-word-menu" role="menu" style={{ position: "fixed", left: wordMenu.left, top: wordMenu.top, zIndex: 1000 }}>
+      <button role="menuitem" type="button" onClick={() => { setWordEditor({ kind: "add", index: -1, boundary: wordMenu.boundary, revision: wordMenu.revision, text: "" }); setWordMenu(null); }}>Add text</button>
+      <button role="menuitem" type="button" disabled={!wordMenu.indexes.length} onClick={() => { setWordEditor({ kind: "edit", index: wordMenu.target, boundary: wordMenu.boundary, revision: wordMenu.revision, text: source.words?.[wordMenu.target]?.text ?? "" }); setWordMenu(null); }}>Sửa text</button>
+      <button role="menuitem" type="button" disabled={!wordMenu.indexes.length} onClick={() => {
+        if (wordMenu.revision === (source.updatedAt ?? "")) {
+          const result = deleteScriptWords(draft, wordMenu.indexes, source.words ?? []);
+          if (result) onChange?.(source.id, result.words, result.text);
+        }
+        setWordMenu(null);
+      }}>Xóa text</button>
+    </div> : null}
   </section>;
 }

@@ -12,6 +12,7 @@ import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
 import { EMPTY_SELECTION } from "../../domain/word-selection";
+import { loadResumePosition, saveResumePosition, type ResumeSource } from "../../domain/workspace-resume";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionTime, selectProductionWord } from "../../domain/production-selection";
 import { waveformEnvelopePath } from "./waveform-path";
 import { visibleRulerMarks } from "./ruler";
@@ -66,6 +67,7 @@ interface Props {
   parent: ProjectMediaAsset;
   tracks: ProjectMediaAsset[];
   selectedTrackId: string | null;
+  resumeProjectId?: string;
   singleTrackView?: boolean;
   clippingHighlightAutoHide?: boolean;
   visibleTrackIds?: string[] | null;
@@ -81,11 +83,19 @@ interface Props {
   onRedo?: () => void;
 }
 
-export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, singleTrackView = false, clippingHighlightAutoHide = false, visibleTrackIds = null, onSelectTrack, onCutsChange, readOnly = false, wordSelection, onWordSelectionChange, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
+export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, resumeProjectId, singleTrackView = false, clippingHighlightAutoHide = false, visibleTrackIds = null, onSelectTrack, onCutsChange, readOnly = false, wordSelection, onWordSelectionChange, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
   const [layout, setLayout] = useState<Layout>("layers");
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const resumeTrack = selectedTrackId ? tracks.find((track) => track.id === selectedTrackId && track.sourceArchiveAssetId === parent.id) : undefined;
+  const resumeSource: ResumeSource = resumeTrack
+    ? { kind: "asset", id: resumeTrack.id, parentId: parent.id }
+    : { kind: "asset", id: parent.id };
+  const resumeIdentity = resumeProjectId ? JSON.stringify([resumeProjectId, resumeSource]) : null;
+  const [hydratedResumeIdentity, setHydratedResumeIdentity] = useState<string | null>(null);
+  const activeResumeIdentityRef = useRef(resumeIdentity);
+  activeResumeIdentityRef.current = resumeIdentity;
   const [markIn, setMarkIn] = useState<number | null>(tracks[0]?.workingRange?.start ?? null);
   const [markOut, setMarkOut] = useState<number | null>(tracks[0]?.workingRange?.end ?? null);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
@@ -156,6 +166,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const orderedTracks = useMemo(() => [...tracks].sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0)), [tracks]);
   const selectionIds = visibleTrackIds ?? (singleTrackView && selectedTrackId ? [selectedTrackId] : null);
   const visibleTracks = selectionIds !== null ? orderedTracks.filter((track) => selectionIds.includes(track.id)) : orderedTracks;
+  const primaryClockTrackRef = useRef<string | undefined>(visibleTracks[0]?.id);
+  primaryClockTrackRef.current = visibleTracks[0]?.id;
   const hasSolo = orderedTracks.some((track) => solo[track.id]);
   const previewGain = (id: string) => muted[id] || hasSolo && !solo[id] ? 0 : (gains[id] ?? 100) / 100;
   const trackSources = visibleTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
@@ -197,6 +209,24 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
     setPlaying(false); setEnvelopes({}); setDetailEnvelopes({}); setError(null);
     audioRefs.current.forEach((audio) => audio.pause());
   }, [parent.id]);
+
+  useEffect(() => {
+    if (!resumeProjectId || !resumeIdentity) {
+      setHydratedResumeIdentity(null);
+      return;
+    }
+    const restored = loadResumePosition(resumeProjectId, resumeSource, duration) ?? 0;
+    setCurrentTime(restored);
+    audioRefs.current.forEach((audio) => {
+      if (audio.readyState >= 1) audio.currentTime = Math.min(restored, Number.isFinite(audio.duration) ? audio.duration : restored);
+    });
+    setHydratedResumeIdentity(resumeIdentity);
+  }, [resumeIdentity]);
+
+  useEffect(() => {
+    if (!resumeProjectId || !resumeIdentity || hydratedResumeIdentity !== resumeIdentity) return;
+    saveResumePosition(resumeProjectId, resumeSource, currentTime);
+  }, [currentTime, hydratedResumeIdentity, resumeIdentity, resumeProjectId]);
 
   useEffect(() => {
     setMarkIn(sharedWorkingRange?.start ?? null);
@@ -509,10 +539,17 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
   const zoomValue = timelineZoomPosition(duration, span, minSpan);
   const zoomResolution = timelineZoomResolution(span, waveWidth);
 
+  function reportFocusedPlayhead(seconds: number) {
+    if (!Number.isFinite(seconds) || !resumeProjectId || activeResumeIdentityRef.current !== resumeIdentity) return;
+    const next = Math.max(0, Math.min(duration, seconds));
+    setCurrentTime(next);
+    audioRefs.current.forEach((audio) => { if (audio.readyState >= 1) audio.currentTime = Math.min(next, Number.isFinite(audio.duration) ? audio.duration : next); });
+  }
+
   const playhead = (currentTime - windowStart) / span * 100;
   if (editFocus) {
     const track = orderedTracks.find((item) => item.id === editFocus.assetId);
-    if (track) return <Timeline clippingHighlightAutoHide={clippingHighlightAutoHide} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
+    if (track) return <Timeline clippingHighlightAutoHide={clippingHighlightAutoHide} resumeProjectId={resumeProjectId} resumeSource={resumeSource} onPlayheadChange={reportFocusedPlayhead} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
       onWordSelectionChange={(selection) => onWordSelectionChange?.(scopedSelection(track, selection))}
       editRequest={editFocus.request}
       gain={previewPercentToDb(previewGain(track.id) * 100)}
@@ -688,7 +725,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, si
       if (audioScrubber.active) return;
       if (track.id === visibleTracks[0]?.id) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
     }} onTimeUpdate={(event) => {
-      if (audioScrubber.active || track.id !== visibleTracks[0]?.id) return;
+      if (audioScrubber.active || track.id !== visibleTracks[0]?.id || track.id !== primaryClockTrackRef.current) return;
       const time = event.currentTarget.currentTime;
       const playable = nextPlayableTime(time, duration, excludedRanges);
       const next = playable > time + .001 ? playable : time;

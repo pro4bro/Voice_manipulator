@@ -2064,3 +2064,40 @@ CUA báo browser use disabled nên chưa nghiệm thu chuột/paint thật.
 Real mouse UAT khi browser hoạt động; mốc nghe STT round48, Checkpoint A và13
 processor gates còn mở. Không sửa backend/source media/model/persistent format.
 Phase03/60% giữ nguyên. Dừng sau round53.
+
+## Round54 — WORD-EDIT-RESUME-01 (2026-10-18)
+
+### Feedback và xử lý
+
+Menu chuột phải subtitle có Speaker Profiles và reference riêng; Script table,
+text và channel có Add/Sửa/Xóa. Delete xóa atomic text+word intervals, không chặn
+Delete trong input/textarea. Sửa một từ giữ nguyên IN/OUT, nhiều từ chia đúng khoảng
+cũ; giữ sourceTiming/row metadata, đánh dấu manual/untrusted. Add không mượn timing
+từ hàng xóm; thiếu chỗ thì giữ draft và báo status. Source và cursor lưu tách nhau
+theo project/source ID, không ghi đường dẫn tuyệt đối. Khôi phục sau initial load,
+ưu tiên thao tác mở của người dùng, kiểm tra deleted/importSelected. Imported child,
+output và OBS archive có khóa riêng; focused editor chia sẻ clock. Guard initial0,
+stale source/metadata và callback OBS không được ghi đè identity asset/child.
+Menu cũ đóng khi words đổi; Delete bị chặn khi thu âm. Xem ADR0111/gate round54.
+
+### Kiểm tra
+
+RED parity7fail/2.85s, resume2fail/2.16s, source restore2fail/5.49s và metadata cũ5s
+làm cursor70s bị cắt còn5s. Review bổ sung RED2menu stale,1recording Delete,
+1OBS source ownership. Sửa đúng path, giữ assertion preview cũ sau normalize URL.
+Test mới query đúng message thay vì query nhiều status; không nới timeout/skip.
+Focused cuối97pass/4files/18.09s. Broad đầu dừng khi phát hiện lỗi, broad kế tiếp
+mất process cùng terminal trước khi có kết quả; không báo pass cho lượt đó.
+Final frontend1075pass/129files/194.01s; API1149pass/590.08s (3existing/fixture
+warnings). Typecheck/build183/diff pass; all615frozen input hashes match.
+Cả615frozen inputs khớp; log giữ trong .scratch/edit54/. Browser bị tắt lúc đầu,
+hoạt động sau khi resume: xác nhận menu Script/subtitle trên footage thật6744words,
+reload app rồi mở lại Test11 giữ đúng nguồn tại00:00:05.200. Không thấy console error.
+Không sửa transcript/media thật để UAT lệnh xóa. Không restart app/runtime chung.
+
+### Còn lại / NEXT
+
+UAT chỉnh/xóa thật và imported/live drag, acoustic anchors STT round48,
+Checkpoint A và13processor gates còn mở. Generated output transcript persistence
+vẫn theo Voice Edits; live OBS giữ follow. Không đổi backend/source media/model/
+project.json. Resume lưu cục bộ trên thiết bị. Phase03/60% giữ nguyên. Dừng sau round54.

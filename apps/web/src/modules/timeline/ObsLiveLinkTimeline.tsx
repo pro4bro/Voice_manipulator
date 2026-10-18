@@ -25,6 +25,7 @@ import { SelectionReadout } from "./SelectionReadout";
 import { useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 import { archiveTranscriptGaps } from "./archive-transcript-gaps";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
+import { loadResumePosition, saveResumePosition, type ResumeSource } from "../../domain/workspace-resume";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { waveformEnvelopePath } from "./waveform-path";
@@ -199,12 +200,12 @@ function selectionForArchivedAsset(selection: WordSelection, asset: ProjectMedia
   return visibleAssetId === asset.id ? selection : EMPTY_SELECTION;
 }
 
-export function ObsLiveLinkTimeline({ projectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
+export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = projectId, requestedRecordingId, onRecordingIdChange, onPlayheadChange,
                                       transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
                                       assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, visibleAssetIds = null, speakers = [], onAssetWordsChange,
                                       onAssetTimelineStateChange, onUndo, onRedo, wordSelection = EMPTY_SELECTION, onWordSelectionChange,
                                       clippingHighlightAutoHide = false }: {
-  projectId: string; projectName?: string; requestedRecordingId: string | null;
+  projectId: string; resumeProjectId?: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
   transcriptRows?: ObsLiveLinkTranscriptRow[];
@@ -331,6 +332,11 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   // A workspace selection must win before the local state sync effect runs;
   // otherwise the previous footage is echoed back and both selections oscillate.
   const recordingId = active?.recordingId ?? requestedRecordingId ?? selectedRecordingId ?? journals[0]?.recording.recordingId ?? null;
+  const resumeSource: ResumeSource = { kind: "obs", id: recordingId ?? "" };
+  const resumeIdentity = resumeProjectId && recordingId ? JSON.stringify([resumeProjectId, resumeSource]) : null;
+  const [hydratedResumeIdentity, setHydratedResumeIdentity] = useState<string | null>(null);
+  const activeResumeIdentityRef = useRef(resumeIdentity);
+  activeResumeIdentityRef.current = resumeIdentity;
   const journal = journals.find((item) => item.recording.recordingId === recordingId);
   // Stop status can precede the journal-list reply. Retain only this take's
   // received lanes/clock until its durable journal replaces the live snapshot.
@@ -342,6 +348,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }, [recordingId, requestedRecordingId, onRecordingIdChange]);
   const isLive = Boolean(active);
   const duration = recording ? recordingSeconds(recording, now) : 0;
+  const resumeReady = Boolean(resumeProjectId && resumeIdentity && recording && journal && !isLive);
   recordingIdRef.current = recordingId;
   const lanes = useMemo(() => sourceLanes(!journal && !isLive ? retainedLive : status, journal,
     recordingId, isLive || Boolean(!journal && retainedLive)).filter((lane) => {
@@ -442,8 +449,9 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
   }, [primaryAsset?.id, sharedWorkingRange?.start, sharedWorkingRange?.end]);
 
   useEffect(() => {
+    if (resumeProjectId && !isLive && (!resumeReady || hydratedResumeIdentity !== resumeIdentity)) return;
     onPlayheadChange?.(currentTime);
-  }, [currentTime, onPlayheadChange]);
+  }, [currentTime, onPlayheadChange, resumeProjectId, isLive, resumeReady, hydratedResumeIdentity, resumeIdentity]);
   useEffect(() => {
     // The focused standard Timeline owns the clock while editing a track.
     if (editFocus) return;
@@ -466,7 +474,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     const word = assets.find((asset) => asset.id === visibleAssetId)?.words?.[wordSelection.anchor];
     if (word) seekTime(word.start);
   // Only a new selection may seek; refreshed words and playback must not rewind it.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wordSelection, visibleAssetId]);
 
   useEffect(() => {
@@ -480,6 +487,20 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     setFollowLive(true);
     setWindowSeconds(DEFAULT_WINDOW_SECONDS);
   }, [recordingId]);
+  useEffect(() => {
+    if (!resumeReady || !resumeProjectId || !resumeIdentity) return;
+    const restored = loadResumePosition(resumeProjectId, resumeSource, duration) ?? 0;
+    setCurrentTime(restored);
+    forEachPlaybackAudio((audio) => {
+      if (audio.readyState >= 1) audio.currentTime = Math.min(restored, Number.isFinite(audio.duration) ? audio.duration : restored);
+    });
+    setHydratedResumeIdentity(resumeIdentity);
+  // Read once for each archived recording identity, after its journal is ready.
+  }, [resumeIdentity, resumeReady]);
+  useEffect(() => {
+    if (!resumeReady || !resumeProjectId || !resumeIdentity || hydratedResumeIdentity !== resumeIdentity) return;
+    saveResumePosition(resumeProjectId, resumeSource, currentTime);
+  }, [currentTime, hydratedResumeIdentity, resumeIdentity, resumeProjectId, resumeReady]);
   useEffect(() => setColumnWidths({}), [projectId]);
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -654,7 +675,6 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       pausePlayback(); setError("Không phát được tất cả track OBS.");
     });
   // Reconnect the selected player when the user changes the focused lane.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackUrl, visibleLaneIds]);
 
   useEffect(() => () => {
@@ -840,7 +860,15 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
     });
   }
 
-  if (focusedAsset && editFocus && !isLive) return <Timeline onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
+  function reportFocusedPlayhead(seconds: number) {
+    if (!Number.isFinite(seconds) || !resumeProjectId || !resumeIdentity || activeResumeIdentityRef.current !== resumeIdentity || isLive) return;
+    const next = Math.max(0, Math.min(duration, seconds));
+    setCurrentTime(next);
+    forEachPlaybackAudio((audio) => { audio.currentTime = Math.min(next, Number.isFinite(audio.duration) ? audio.duration : next); });
+  }
+
+  if (focusedAsset && editFocus && !isLive) return <Timeline resumeProjectId={resumeProjectId} resumeSource={resumeSource}
+    onPlayheadChange={reportFocusedPlayhead} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
     clippingHighlightAutoHide={clippingHighlightAutoHide}
     wordSelection={visibleAssetId === focusedAsset.id ? wordSelection : focusedWordSelection}
     onWordSelectionChange={visibleAssetId === focusedAsset.id ? onWordSelectionChange : setFocusedWordSelection}
@@ -1208,6 +1236,7 @@ export function ObsLiveLinkTimeline({ projectId, projectName = projectId, reques
       onPause={(event) => { if (event.currentTarget === audioRef.current && !audioScrubber.active) setPlaying(false); }}
       onPlay={() => { if (!audioScrubber.active) setPlaying(true); }} onTimeUpdate={(event) => {
         if (audioScrubber.active) return;
+        if (resumeProjectId && activeResumeIdentityRef.current !== resumeIdentity) return;
         const time = event.currentTarget.currentTime;
         const next = nextPlayableTime(time, duration, excludedRanges);
         if (next >= duration) pausePlayback();

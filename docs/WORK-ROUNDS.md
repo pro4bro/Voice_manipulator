@@ -1,5 +1,26 @@
 # Work Rounds
 
+## Stabilization round54 — WORD-EDIT-RESUME-01 (2026-10-18)
+
+Owner feedback: subtitle word context exposes Speaker Profiles; Script table,
+native text and channel menus offer Add/Edit/Delete. Selected-word Delete stays
+scoped and preserves native text-input behavior. Known word replacements retain
+exact original IN/OUT; multiple tokens partition that interval, keep provenance
+and remain untrusted. Genuine insertion cannot move old anchors to make space.
+Project-scoped local storage restores selected asset/child/output/OBS archive and
+its paused cursor; hydrate before writes, yield to explicit opens, guard stale
+metadata/clocks and preserve asset identity through OBS callbacks. Live follow
+stays live. Stale menus dismiss on word revisions; deletion is blocked in recording.
+ADR0111 and docs/gates/word-edit-resume54-20261018.md record RED/GREEN and limits.
+Final frontend1075pass/129files/194.01s; API1149pass/590.08s (3existing/fixture
+warnings). Typecheck/build183/diff pass; all615frozen input hashes match.
+Browser was disabled initially; on resume, real Script/subtitle menus and project
+reload restoring the correct footage at00:00:05.200 passed. Destructive editing UAT
+and live/imported focused drag acceptance remain open; no console errors observed.
+Generated output transcript writes remain under the existing Voice Edits boundary.
+No backend/media/model/project.json changes. Resume is local to this device.
+Phase03 stays60%; acoustic anchors, Checkpoint A and13processor gates remain open.
+
 ## Stabilization round53 — SUBTITLE-DRAFT-FEEDBACK-01 (2026-10-18)
 
 Owner feedback: explicit selection highlights/readouts/markers follow subtitle

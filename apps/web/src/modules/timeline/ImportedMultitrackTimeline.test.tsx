@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { ProjectMediaAsset } from "../../domain/types";
+import { loadResumePosition, saveResumePosition } from "../../domain/workspace-resume";
 import { ImportedMultitrackTimeline } from "./ImportedMultitrackTimeline";
 import { ChannelScript } from "../script/ChannelScript";
 
@@ -158,10 +159,7 @@ it("opens the shared timeline editor for an archived multitrack word and writes 
   await waitFor(() => expect(onAssetWordsChange).toHaveBeenCalledTimes(1));
   const [editedAssetId, editedWords, editedText] = onAssetWordsChange.mock.calls.at(-1)!;
   expect(editedAssetId).toBe("a");
-  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-interpolated", timingTrusted: false }));
-  expect(editedWords[0].start).toBeGreaterThanOrEqual(words[0].start);
-  expect(editedWords[0].end).toBeGreaterThan(editedWords[0].start);
-  expect(editedWords[0].end).toBeLessThan(words[1].start);
+  expect(editedWords[0]).toEqual(expect.objectContaining({ text: "Hi", timingSource: "user-text-preserved", timingTrusted: false, start: words[0].start, end: words[0].end }));
   expect(editedWords[1]).toEqual(words[1]);
   expect(editedText).toBe("Hi world");
   const gain = screen.getByRole("slider", { name: "Source gain" });
@@ -561,6 +559,34 @@ it("keeps the playhead and viewport on separated imported selections and clamps 
   const readout = screen.getByLabelText("OUT 60.000 seconds");
   expect(Number.parseFloat(readout.style.getPropertyValue("--readout-x"))).toBeLessThan(16);
   expect(view.container.querySelectorAll(".selection-readout")).toHaveLength(2);
+});
+
+it("restores and persists imported child positions across remounts without overwriting another source", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const sourceA = { kind: "asset", id: "a", parentId: "parent" } as const;
+  const sourceB = { kind: "asset", id: "b", parentId: "parent" } as const;
+  saveResumePosition("project", sourceA, 12.5);
+  saveResumePosition("project", sourceB, 38);
+  const props = { parent, tracks, singleTrackView: true, resumeProjectId: "project",
+    onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} selectedTrackId="a" />);
+  await waitFor(() => expect(screen.getByText("00:12")).toBeInTheDocument());
+  const audioA = view.container.querySelector("audio")!;
+  fireEvent.loadedMetadata(audioA);
+  expect(audioA.currentTime).toBe(12.5);
+  audioA.currentTime = 16;
+  fireEvent.timeUpdate(audioA);
+  await waitFor(() => expect(loadResumePosition("project", sourceA)).toBe(16));
+
+  view.rerender(<ImportedMultitrackTimeline {...props} selectedTrackId="b" />);
+  await waitFor(() => expect(screen.getByText("00:38")).toBeInTheDocument());
+  expect(loadResumePosition("project", sourceA)).toBe(16);
+  expect(loadResumePosition("project", sourceB)).toBe(38);
+  view.unmount();
+
+  const reopened = render(<ImportedMultitrackTimeline {...props} selectedTrackId="a" />);
+  await waitFor(() => expect(screen.getByText("00:16")).toBeInTheDocument());
+  expect(reopened.container.querySelector("audio")).toBeInTheDocument();
 });
 
 

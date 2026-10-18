@@ -128,6 +128,32 @@ function estimatedWords(words: StudioWord[], insertedIndexes: number[], left: St
   });
 }
 
+function preserveReplacementTiming(source: StudioWord, text: string, start = source.start, end = source.end): StudioWord {
+  return {
+    ...source,
+    text,
+    start,
+    end,
+    timingSource: "user-text-preserved",
+    timingTrusted: false,
+    sourceTiming: source.sourceTiming ?? {
+      start: source.start,
+      end: source.end,
+      ...(source.timingSource !== undefined ? { source: source.timingSource } : {}),
+    },
+    reviewState: "manual",
+    selectedVariant: "manual",
+  };
+}
+
+function partitionReplacement(source: StudioWord, tokens: Token[]): StudioWord[] {
+  if (!tokens.length) return [];
+  const span = source.end - source.start;
+  return tokens.map((token, index) => preserveReplacementTiming(source, token.text,
+    source.start + span * index / tokens.length,
+    index === tokens.length - 1 ? source.end : source.start + span * (index + 1) / tokens.length));
+}
+
 /**
  * Keep the timing and annotations of words that still occur in the edited
  * transcript. Deleted words disappear; inserted words are evenly estimated
@@ -167,7 +193,7 @@ function reconcileScriptTextEditWithAnchors(previousText: string, nextText: stri
     const updatedText = changed && localToken
       ? sourceWord.text.slice(0, localToken.start) + token.text + sourceWord.text.slice(localToken.end)
       : changed ? token.text : sourceWord.text;
-    const updated = changed ? { ...sourceWord, text: updatedText, reviewState: "manual" as const, selectedVariant: "manual" as const } : sourceWord;
+    const updated = changed ? preserveReplacementTiming(sourceWord, updatedText) : sourceWord;
     newWordByToken.set(nextIndex, { word: updated, changed });
     preservedOldWordIndexes.add(oldWordIndex);
   }
@@ -203,9 +229,11 @@ function reconcileScriptTextEditWithAnchors(previousText: string, nextText: stri
       const replaced = oldWordByToken.get(oldIndex);
       if (replaced !== undefined && !preservedOldWordIndexes.has(replaced)) replacedWordIndexes.add(replaced);
     }
+    let replacementSource: StudioWord | undefined;
     if (replacedWordIndexes.size === 1) {
       const [replacedIndex] = replacedWordIndexes;
       const replaced = previousWords[replacedIndex];
+      replacementSource = replaced;
       for (const resultIndex of inserted) {
         resultWords[resultIndex] = {
           ...resultWords[resultIndex],
@@ -217,8 +245,16 @@ function reconcileScriptTextEditWithAnchors(previousText: string, nextText: stri
         };
       }
     }
-    // At an endpoint, the removed word's span remains a useful provisional
-    // boundary. Do not spread a one-word replacement across the whole file.
+    if (replacementSource) {
+      const replacementTokens = inserted.map((resultIndex) => nextTokens[resultTokenIndexes[resultIndex]]);
+      const replacements = partitionReplacement(replacementSource, replacementTokens);
+      inserted.forEach((resultIndex, offset) => {
+        resultWords[resultIndex] = replacements[offset];
+      });
+      continue;
+    }
+    // At an endpoint, removed words may provide a provisional boundary for a
+    // genuine addition. Do not treat an ambiguous insertion as a replacement.
     const removed = [...replacedWordIndexes].map((wordIndex) => previousWords[wordIndex]);
     const fallbackLeft = removed.length ? { ...removed[0], end: removed.reduce((start, word) => Math.min(start, word.start), Infinity) } : undefined;
     const fallbackRight = removed.length ? { ...removed[removed.length - 1], start: removed.reduce((end, word) => Math.max(end, word.end), 0) } : undefined;
@@ -262,7 +298,24 @@ export function replaceScriptWord(previousText: string, wordIndex: number, repla
   const { tokensByWord } = sourceWordTokens(previousText, words);
   const rangeTokens = tokensByWord.get(wordIndex);
   if (!rangeTokens?.length) return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
-  return replaceScriptTextRange(previousText, { start: rangeTokens[0].start, end: rangeTokens[rangeTokens.length - 1].end }, replacement, words);
+  const range = { start: rangeTokens[0].start, end: rangeTokens[rangeTokens.length - 1].end };
+  if (replacement === previousText.slice(range.start, range.end)) return { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
+  if (!replacement.trim()) return deleteScriptWords(previousText, [wordIndex], words) ??
+    { text: previousText, words, changedWordIndexes: [] } satisfies ReconciledScriptEdit;
+
+  const result = replaceScriptTextRange(previousText, range, replacement, words);
+  const replacementTokens = tokenize(replacement);
+  if (!replacementTokens.length) return result;
+  const replacementStart = range.start;
+  const replacementEnd = replacementStart + replacement.length;
+  const replacedIndexes = mapScriptWordsToText(result.text, result.words)
+    .filter(({ start, end }) => start >= replacementStart && end <= replacementEnd)
+    .map(({ index }) => index);
+  const source = words[wordIndex];
+  if (!source || replacedIndexes.length !== replacementTokens.length) return result;
+  const replacements = partitionReplacement(source, replacementTokens);
+  replacedIndexes.forEach((index, offset) => { result.words[index] = replacements[offset]; });
+  return { ...result, changedWordIndexes: [...new Set([...result.changedWordIndexes, ...replacedIndexes])].sort((a, b) => a - b) };
 }
 
 /** Insert subtitle text before a known word boundary; a clicked timeline time is provisional, not source alignment. */
