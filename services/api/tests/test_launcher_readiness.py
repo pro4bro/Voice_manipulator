@@ -103,6 +103,17 @@ def test_readiness_deadline_retains_live_process_and_listener_evidence(tmp_path)
     assert elapsed < 8, f"A two-second budget took {elapsed:.3f}s"
 
 
+def test_readiness_probes_health_when_listener_diagnostics_use_the_initial_budget(tmp_path):
+    setup = ("$process = Get-Process -Id $PID\n"
+             "function Get-Pro4BroListener([int]$Port) { "
+             "Start-Sleep -Milliseconds 1100; [pscustomobject]@{ OwningProcess = $PID } }")
+    with health_server([{"status": "starting"}]) as (uri, handler):
+        result, evidence, _elapsed = run_probe(tmp_path, uri, setup, timeout=1)
+    assert result.returncode == 1
+    assert handler.calls >= 1
+    assert "state=timeout" in evidence and "probe=invalid-health" in evidence
+
+
 def test_startup_log_archive_preserves_existing_output_across_retries(tmp_path):
     log_root = tmp_path / "logs with spaces 日本語"
     log_root.mkdir()

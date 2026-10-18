@@ -45,7 +45,9 @@ function Wait-Pro4BroReady(
         try { Add-Content -LiteralPath $LogPath -Encoding utf8 -Value $line } catch { }
     }
     Write-ReadinessEvidence 'waiting'
-    while ($clock.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+    # Cold listener diagnostics can consume the initial budget. Still perform
+    # one bounded health probe before declaring a living service timed out.
+    while ($lastProbe -eq 'not-probed' -or $clock.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
         $Process.Refresh()
         if ($Process.HasExited) {
             Write-ReadinessEvidence 'exited'
