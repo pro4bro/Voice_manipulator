@@ -1306,11 +1306,11 @@ export function Timeline({
     setSpeakerMenu(null);
   }
 
-  function followPlayhead() {
-    if (rangeSelectionEnabled && hasMultipleSelectionRanges(wordSelection)) return;
+  function followPlayhead(time = currentTime, explicitSeek = false) {
+    if (!explicitSeek && rangeSelectionEnabled && hasMultipleSelectionRanges(wordSelection)) return;
     const scroller = timelineScrollRef.current;
     if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
-    const playheadX = (currentTime / Math.max(duration, 0.001)) * scroller.scrollWidth;
+    const playheadX = (time / Math.max(duration, 0.001)) * scroller.scrollWidth;
     const visibleRatio = (playheadX - scroller.scrollLeft) / Math.max(scroller.clientWidth, 1);
     if (visibleRatio >= DRAG_SAFE_START - 1 / Math.max(scroller.clientWidth, 1)
       && visibleRatio <= DRAG_SAFE_END + 1 / Math.max(scroller.clientWidth, 1)) return;
@@ -1352,6 +1352,9 @@ export function Timeline({
     const rect = transport.getBoundingClientRect();
     const nextTime = Math.min(duration, Math.max(0, ((clientX - rect.left) / Math.max(rect.width, 1)) * duration));
     seekToTime(nextTime);
+    // The overview controls the whole source, not the zoomed waveform's edges.
+    // Reveal that same target now; ordinary drag following is suspended.
+    followPlayhead(nextTime, true);
   }
 
   function beginTransportScrub(event: PointerEvent<HTMLDivElement>) {

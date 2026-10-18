@@ -20,6 +20,28 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it.each(["LAYER", "CỘT"])("reveals overview seek targets during imported transport drag in %s layout", (layout) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
+    onSelectTrack={vi.fn()} onCutsChange={async () => true} />);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${layout}$`) }));
+  fireEvent.click(screen.getByRole("button", { name: /^Phóng to Timeline$/ }));
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  const ruler = layout === "LAYER" ? screen.getByLabelText("Ruler chung") : view.container.querySelector(".obs-timeline__column-ruler")!;
+  const before = ruler.textContent;
+  const playheadLabel = layout === "LAYER" ? "Playhead chung" : "Playhead Channel 1";
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 56, clientX: 800 });
+  expect(ruler.textContent).not.toBe(before);
+  expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "60%" });
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.currentTime)).toEqual([48, 48]);
+  fireEvent.pointerMove(progress, { pointerId: 56, clientX: 100 });
+  expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "20%" });
+  const held = ruler.textContent;
+  fireEvent.pointerUp(progress, { pointerId: 56, clientX: 100 });
+  expect(ruler.textContent).toBe(held);
+});
+
 it("limits selected imported playback to one track and retains its previous gain", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const props = { parent, tracks, selectedTrackId: null, onSelectTrack: vi.fn(), onCutsChange: vi.fn() };

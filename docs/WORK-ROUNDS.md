@@ -1,5 +1,17 @@
 # Work Rounds
 
+## Stabilization round56 — OVERVIEW-WAVEFORM-FOLLOW-01 (2026-10-18)
+
+Owner feedback: overview transport moved playhead/Script but left the zoomed
+waveform outside the seek target. Explicit overview seeking now reveals the same
+numeric target immediately during pointerdown/move/release, including disjoint
+selections. Preserve normal multi-selection no-scroll behavior, waveform/playhead
+safe-edge panning and release stability. Imported/archived OBS LAYER/CỘT controls
+retain their existing reveal behavior. ADR0113 and gate overview-follow56 record
+RED2cases, focused28+94passes, source browser forward/reverse drag and final gates.
+No saved timing/media/model/backend/project-schema changes. Phase03 stays60%;
+acoustic anchors, Checkpoint A and13processor gates remain open. Stop after round56.
+
 ## Stabilization round55 — WORD-MENU-NOTE-01 (2026-10-18)
 
 Owner feedback: word menus must remain inside the visible viewport, manual

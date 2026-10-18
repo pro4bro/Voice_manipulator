@@ -258,6 +258,28 @@ it("selects words in the focused editor opened from the OBS multitrack view", as
   expect(within(screen.getByLabelText("Script theo channel")).getByRole("button", { name: "chào · 00:03.000–00:04.000" })).toHaveClass("is-active");
 });
 
+it.each(["LAYER", "CỘT"])("reveals archived OBS overview targets before release in %s layout", async (layout) => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
+    status: "stopped", archiveStatus: "ready", endedMonotonicNs: 301_000_000_000 },
+    channels: [], sourceStems: [{ channelId: ids[0], alias: "Channel 1", assetId: "asset-0" }] }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 1" });
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${layout}$`) }));
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  const ruler = screen.getByLabelText(layout === "LAYER" ? "Ruler chung" : "Ruler Channel 1"), before = ruler.textContent;
+  const playheadLabel = layout === "LAYER" ? "Playhead chung" : "Playhead Channel 1";
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 56, clientX: 800 });
+  expect(ruler.textContent).not.toBe(before);
+  expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "50%" });
+  expect(view.container.querySelector("audio")!.currentTime).toBe(240);
+  fireEvent.pointerMove(progress, { pointerId: 56, clientX: 100 });
+  expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "50%" });
+  const held = ruler.textContent;
+  fireEvent.pointerUp(progress, { pointerId: 56, clientX: 100 });
+  expect(ruler.textContent).toBe(held);
+});
+
 it("follows archive playback across the view edge without recentering paused browsing", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording,
     status: "stopped", archiveStatus: "ready", endedMonotonicNs: 301_000_000_000 },

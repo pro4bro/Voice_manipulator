@@ -2133,3 +2133,24 @@ App update alpha0.5.15 NoVibeVoice:206payload hashes và210ZIP entries khớp;
 ZIP1,443,398bytes, không chứa core/model nặng. Actual payload UI kiểm tra cả2Note
 trên Test11 đạt, không console error. Full base/runtime gate chờ owner copy file
 nặng và VERIFY0failed; không báo standalone-ready. Xem gate report để lấy SHA256.
+
+
+## Round56 — OVERVIEW-WAVEFORM-FOLLOW-01 (2026-10-18)
+
+### Feedback và xử lý
+
+Kéo thanh tua toàn clip đã đổi clock/Script nhưng waveform zoom không cuộn theo.
+Layout follow bị chặn lúc transport drag để giữ ổn định edge drag. Overview nay
+chủ động reveal đúng targetTime đã dùng cho playhead/audio, không đợi media event
+hay lấy clock cũ. Cho phép thao tác tua rõ ràng khi đang chọn nhiều vùng; chọn
+nhiều vùng đơn thuần vẫn không tự scroll. Giữ safe edge10/90%, pan10%viewport/s
+và trạng thái thả chuột của waveform/playhead. Không sửa backend/media/timing.
+
+### Kiểm tra và còn lại
+
+RED2case scrollLeft0 thay vì1000 ở85s; focused28pass và94multitrack/OBS controls
+đạt. Test giữ chuột xác nhận active word Script, stale media event, stable release.
+Browser nguồn trên Test11 kéo thật tới30:50.492 rồi về07:37.049, ruler/waveform và
+Script cùng chuyển theo; không console error. Xem ADR0113/gate overview-follow56
+cho full gates và app pack. Phase03/60% giữ nguyên; acoustic anchors round48,
+Checkpoint A,13processor gates và wider editing UAT còn mở. Dừng sau round56.

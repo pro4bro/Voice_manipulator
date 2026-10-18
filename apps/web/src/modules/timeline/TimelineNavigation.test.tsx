@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useState } from "react";
 import { expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
+import { ScriptEditor } from "../script/ScriptEditor";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 
 function Harness() {
@@ -85,6 +86,35 @@ it.each(["playhead", "waveform", "transport"])("paints the %s drag position befo
   expect(playhead.style.transform).toBe("translate3d(450px, 0, 0)");
   expect(screen.getByText("00:00:45.000")).toBeInTheDocument();
   fireEvent.pointerUp(surface, { button: 0, pointerId: 4, clientX: 450 });
+});
+
+it.each([false, true])("keeps the zoomed waveform focused during overview transport drags (disjoint selection=%s)", (multiple) => {
+  const selection = multiple ? { indexes: [], anchor: null, ranges: [{ id: "a", start: 10, end: 11 }, { id: "b", start: 80, end: 81 }] } : EMPTY_SELECTION;
+  const change = vi.fn();
+  const words = [{ text: "early", start: 20, end: 21 }, { text: "late", start: 85, end: 86 }];
+  const view = render(<><ScriptEditor playbackAssetId="overview" value="early late" words={words} workflow="speech-to-text" onChange={vi.fn()} />
+    <Timeline rangeSelectionEnabled gain={0} onGainChange={vi.fn()} wordSelection={selection} onWordSelectionChange={change}
+      take={{ id: "overview", name: "overview.wav", duration: 100, url: "/audio.wav", words }} /></>);
+  const { scroller } = geometry(view.container);
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to timeline" }));
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  const playhead = screen.getByLabelText("Playhead indicator");
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 56, clientX: 850 });
+  expect(screen.getByText("00:01:25.000")).toBeInTheDocument();
+  expect(playhead.style.transform).toBe("translate3d(1700px, 0, 0)");
+  expect(scroller.scrollLeft).toBe(1000);
+  expect(screen.getByRole("button", { name: "Chọn từ late" })).toHaveClass("is-active");
+  fireEvent.pointerMove(progress, { pointerId: 56, clientX: 200 });
+  expect(playhead.style.transform).toBe("translate3d(400px, 0, 0)");
+  expect(scroller.scrollLeft).toBe(300);
+  expect(screen.getByRole("button", { name: "Chọn từ early" })).toHaveClass("is-active");
+  const audio = view.container.querySelector("audio")!;
+  audio.currentTime = 0; fireEvent.timeUpdate(audio);
+  expect(scroller.scrollLeft).toBe(300);
+  fireEvent.pointerUp(progress, { pointerId: 56, clientX: 200 });
+  expect(scroller.scrollLeft).toBe(300);
+  expect(change).not.toHaveBeenCalled();
 });
 
 

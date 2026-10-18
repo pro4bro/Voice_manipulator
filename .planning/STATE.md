@@ -6,11 +6,23 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-18 — Stabilization round55 word menus and visual notes.
-last_activity_desc: Round55 verifies viewport menus, Note and manual subtitle underline; see menu-note55 gate for results and portable parity. Phase03 stays60%.
+last_activity: 2026-10-18 — Stabilization round56 overview waveform follow.
+last_activity_desc: Round56 links overview drag targets with waveform viewport and Script; see overview-follow56 gate for final evidence. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round56 — OVERVIEW-WAVEFORM-FOLLOW-01 (2026-10-18)
+
+Owner feedback: overview transport moved playhead/Script but left the zoomed
+waveform outside the seek target. Explicit overview seeking now reveals the same
+numeric target immediately during pointerdown/move/release, including disjoint
+selections. Preserve normal multi-selection no-scroll behavior, waveform/playhead
+safe-edge panning and release stability. Imported/archived OBS LAYER/CỘT controls
+retain their existing reveal behavior. ADR0113 and gate overview-follow56 record
+RED2cases, focused28+94passes, source browser forward/reverse drag and final gates.
+No saved timing/media/model/backend/project-schema changes. Phase03 stays60%;
+acoustic anchors, Checkpoint A and13processor gates remain open. Stop after round56.
 
 ## Stabilization round55 — WORD-MENU-NOTE-01 (2026-10-18)
 
