@@ -40,7 +40,27 @@ runtime restart. Own server/tab closed; owner's existing tab preserved.
 ## Full gates and release
 
 Frontend:`npm test -- --maxWorkers=1`:1102pass/133files/273.66s.
-Typecheck/build187modules pass. API full run and numbered app-update parity pending.
+Typecheck/build187modules pass. Full API:`.venv/Scripts/python.exe -m pytest
+services/api/tests -q`:1150pass/479.45s,3existing/fixture warnings. Diff check and
+all599frozen input hashes pass. No skips, assertion relaxations or timeout changes.
+Full web/API ran sequentially; no retries were needed. Logs under `.scratch/follow56/`.
+
+## App-update verification
+
+Official generator allocated alpha0.5.17 NoVibeVoice from clean source
+9c9ebbc1aacd4787318e57db3afdae78075635af. Capture package gate passed. All206payload
+files match source hashes; all210ZIP entries match bytes and pass CRC. ZIP:
+`releases/updates/App-alpha-0.5.17-NoVibeVoice.zip`,1,443,424bytes.
+SHA256:7ef6cf0f9b536c45848e563a33923a8761307af03860b856e714e3374c1d10b1.
+
+Served the actual payload/apps/web/dist in an own preview origin with the existing
+local API. On Test11, maximum zoom and real forward/reverse overview drags reveal
+the correct waveform at30:50.492 then07:37.049. Source/pack scrollLeft1850386 and
+456943 respectively; playhead screen304.5/304.375 inside viewport199..1263. Script
+follows the passage; no console errors. Own preview tab/server closed. This proves
+compiled UI parity, not the installed full base/runtime stack: that gate remains
+deferred until the owner copies the heavy components and runs VERIFY0failed.
+No shared runtime restart, source media or transcript edits during QA.
 
 ## Remaining acceptance
 

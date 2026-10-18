@@ -21,6 +21,10 @@ selections. Preserve normal multi-selection no-scroll behavior, waveform/playhea
 safe-edge panning and release stability. Imported/archived OBS LAYER/CỘT controls
 retain their existing reveal behavior. ADR0113 and gate overview-follow56 record
 RED2cases, focused28+94passes, source browser forward/reverse drag and final gates.
+Final frontend1102pass/133files/273.66s (one worker), API1150pass/479.45s
+(3existing/fixture warnings). Typecheck/build187/diff pass;599frozen inputs match.
+App update alpha0.5.17:206payload hashes/210ZIP entries verified; actual payload
+forward/reverse drag matches source. Full installed base/runtime gate deferred.
 No saved timing/media/model/backend/project-schema changes. Phase03 stays60%;
 acoustic anchors, Checkpoint A and13processor gates remain open. Stop after round56.
 
