@@ -1,5 +1,19 @@
 # Portability Contract
 
+## Release storage
+
+Owner request, 2026-10-18: keep delivered portable folders, ZIPs, checksums and
+verification reports under repository-root `releases/`, which is excluded from
+Git. Use `.scratch/` for staging, investigation fixtures and temporary build logs.
+Pass an explicit `-OutputRoot` to the bundle/update generators: their legacy
+defaults still point into `.scratch/`. Retain numbered delivered releases until
+the owner decides to remove them; do not treat them as temporary cleanup targets.
+
+A thin portable release includes the application, full product source archive
+and `COPY-CORE-MODELS.md`. Heavy runtime/model folders remain deferred for the
+owner to copy. Its `.bundle-incomplete` marker remains until VERIFY-PORTABLE
+passes after that copy. An app update alone is not a complete portable folder.
+
 ## Feedback and release parity
 
 Owner decision, 2026-10-13: implement all feedback in the main app source first,
