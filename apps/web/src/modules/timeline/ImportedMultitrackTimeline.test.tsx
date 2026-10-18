@@ -20,6 +20,21 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it("keeps imported track mixer compact in the column header", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
+    onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: /^CỘT$/ }));
+  const lane = view.container.querySelector(".obs-timeline__lane")!;
+  const header = lane.querySelector<HTMLElement>(".obs-timeline__lane-header")!;
+  expect(header).toContainElement(lane.querySelector<HTMLElement>(".obs-timeline__lane-label"));
+  expect(header).toContainElement(lane.querySelector<HTMLElement>(".obs-timeline__lane-controls"));
+  expect(within(header).getByRole("slider", { name: "Gain Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("meter", { name: "Level Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("button", { name: "Tắt tiếng Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("button", { name: "Solo Channel 1" })).toBeInTheDocument();
+});
+
 it.each(["LAYER", "CỘT"])("reveals overview seek targets during imported transport drag in %s layout", (layout) => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}

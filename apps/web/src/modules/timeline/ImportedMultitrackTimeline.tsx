@@ -22,6 +22,7 @@ import { useDragAutoScroll } from "./drag-autoscroll";
 import { SelectionReadout } from "./SelectionReadout";
 import { ClippingOverlay } from "./ClippingOverlay";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
+import { LaneMixerControls } from "./LaneMixerControls";
 import { minimumTimelineSpan, timelineSpanAtZoomPosition, timelineZoomPosition, timelineZoomResolution,
   TIMELINE_ZOOM_STEPS } from "./zoom";
 import "./waveform.css";
@@ -618,9 +619,20 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
             const selectedWordIndexes = new Set(trackSelection.indexes);
             const selectedRanges = productionRanges(trackSelection, track.words);
             return <div className="obs-timeline__lane" key={track.id} style={layout === "columns" ? { width: columnWidths[track.id] ?? `max(240px, calc((100% - 12px - ${(visibleTracks.length - 1) * 6}px) / ${visibleTracks.length}))` } : undefined}>
-              <button aria-pressed={selected?.id === track.id} className="obs-timeline__lane-label" onClick={() => onSelectTrack(track.id)} type="button">
-                <TimelineLaneLabel text={`Channel ${index + 1} - ${trackName}`} title={track.name} />
-              </button>
+              <div className="obs-timeline__lane-header">
+                <button aria-pressed={selected?.id === track.id} className="obs-timeline__lane-label" onClick={() => onSelectTrack(track.id)} type="button">
+                  <TimelineLaneLabel text={`Channel ${index + 1} - ${trackName}`} title={track.name} />
+                </button>
+                <LaneMixerControls gain={gains[track.id] ?? 100} gainLabel={`Gain Channel ${index + 1}`} level={level}
+                  levelLabel={`Level Channel ${index + 1}`} muteLabel={`Tắt tiếng Channel ${index + 1}`} muted={Boolean(muted[track.id])}
+                  onGainChange={(gain) => setGains((current) => ({ ...current, [track.id]: gain }))}
+                  onMuteToggle={() => setMuted((current) => ({ ...current, [track.id]: !current[track.id] }))}
+                  onSoloToggle={() => setSolo((current) => ({ ...current, [track.id]: !current[track.id] }))}
+                  soloLabel={`Solo Channel ${index + 1}`} solo={Boolean(solo[track.id])}
+                  soloTitle="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực"
+                  title="Gain chỉ đổi âm lượng nghe lại trong Pro4Bro; không thay đổi source media."
+                  unmuteLabel={`Bật tiếng Channel ${index + 1}`} unsoloLabel={`Bỏ Solo Channel ${index + 1}`} />
+              </div>
               {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { moveScrub(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>{laneRulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => { if (!beginWaveSelection(event, track)) beginScrub(event); }} onPointerMove={(event) => { if (!moveWaveSelection(event, track)) moveScrub(event); }} onPointerUp={(event) => { if (!endWaveSelection(event, track)) endScrub(event); }} onPointerCancel={(event) => { if (!endWaveSelection(event, track, true)) cancelScrub(event); }}>
                 <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
@@ -677,14 +689,6 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
                     >{word.text}</button> : null;
                 }) : <span>{track.text ? "Transcript chưa có word timestamp" : "Chưa có lời nói"}</span>}
                 {excludedRanges.map((range) => { const style = intervalStyle(range.start, range.end, windowStart, span); return style ? <i aria-hidden="true" className="timeline-removed-range" key={`caption-${range.id}-${range.start}`} style={style} /> : null; })}
-              </div>
-              <div className="obs-timeline__lane-controls">
-                <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span><button aria-label={`${muted[track.id] ? "Bật tiếng" : "Tắt tiếng"} Channel ${index + 1}`} aria-pressed={Boolean(muted[track.id])} className="obs-timeline__mute" onClick={() => setMuted((current) => ({ ...current, [track.id]: !current[track.id] }))} title={muted[track.id] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button>
-                  <button aria-label={`${solo[track.id] ? "Bỏ Solo" : "Solo"} Channel ${index + 1}`} aria-pressed={Boolean(solo[track.id])}
-                    className="obs-timeline__mute obs-timeline__solo" onClick={() => setSolo((current) => ({ ...current, [track.id]: !current[track.id] }))}
-                    title="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực" type="button">S</button>
-                </div><input aria-label={`Gain Channel ${index + 1}`} max="200" min="0" onChange={(event) => setGains((current) => ({ ...current, [track.id]: Number(event.target.value) }))} type="range" value={gains[track.id] ?? 100} /><output>{gains[track.id] ?? 100}%</output></div>
-                <div aria-label={`Level Channel ${index + 1}`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={level} className="obs-timeline__level" role="meter"><span>LEVEL</span><div><i style={{ "--source-level": `${level}%` } as CSSProperties} /></div><output>{level}%</output></div>
               </div>
               {layout === "columns" && visibleTracks.indexOf(track) < visibleTracks.length - 1 ? <div aria-label={`Đổi độ rộng Channel ${index + 1}`} className="obs-timeline__column-resizer" onPointerDown={(event) => { event.stopPropagation(); resizeColumn(track.id, event); }} role="separator" tabIndex={0} /> : null}
             </div>;

@@ -92,3 +92,6 @@
     animation: none;
   }
 }
+.voice-output-list .voice-output-item { grid-template-columns: 6px auto minmax(0, 1fr); }
+
+.voice-output-function { flex: 0 0 auto; padding: 2px 4px; border: 1px solid var(--line); color: var(--accent-ink); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 800; }

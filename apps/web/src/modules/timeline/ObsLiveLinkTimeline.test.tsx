@@ -26,6 +26,23 @@ vi.mock("../obs-capture/obs-waveform-feed", () => ({
 
 const ids = ["channel-a", "channel-b"];
 
+it("keeps OBS channel mixer compact in the column header", async () => {
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
+    archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
+    sourceStems: ids.map((channelId, index) => ({ channelId, alias: `Channel ${index + 1}`, assetId: `asset-${index}` })) }]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId="recording" />);
+  await screen.findByRole("img", { name: "Sóng âm Channel 2" });
+  fireEvent.click(screen.getByRole("button", { name: /^CỘT$/ }));
+  const lane = screen.getByRole("img", { name: "Sóng âm Channel 1" }).closest<HTMLElement>(".obs-timeline__lane")!;
+  const header = lane.querySelector<HTMLElement>(".obs-timeline__lane-header")!;
+  expect(header).toContainElement(lane.querySelector<HTMLElement>(".obs-timeline__lane-label"));
+  expect(header).toContainElement(lane.querySelector<HTMLElement>(".obs-timeline__lane-controls"));
+  expect(within(header).getByRole("slider", { name: "Gain nghe lại Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("meter", { name: "Level nguồn Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("button", { name: "Tắt tiếng Channel 1" })).toBeInTheDocument();
+  expect(within(header).getByRole("button", { name: "Solo Channel 1" })).toBeInTheDocument();
+});
+
 it("limits selected archived OBS playback to one track while preserving mute and gain", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
     archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],

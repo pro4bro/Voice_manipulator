@@ -51,6 +51,7 @@ export type ManipulatorMode =
   | "voice-isolator"
   | "voice-changer"
   | "voice-dubber"
+  | "live-translate"
   | "voice-patch";
 
 export type ModuleId =
@@ -67,6 +68,8 @@ export type ModuleId =
   | "recent-takes"
   | "voice-output"
   | "voice-script"
+  | "voice-script-settings"
+  | "manipulator-service"
   | "manipulator-library"
   | "sound-reactor-input"
   | "sound-reactor-output"

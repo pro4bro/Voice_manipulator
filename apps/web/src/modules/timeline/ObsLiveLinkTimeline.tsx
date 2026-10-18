@@ -25,6 +25,7 @@ import { SelectionReadout } from "./SelectionReadout";
 import { useDragAutoScroll, zoomWindowStart } from "./drag-autoscroll";
 import { archiveTranscriptGaps } from "./archive-transcript-gaps";
 import { previewDbToPercent, previewPercentToDb } from "./gain-automation";
+import { LaneMixerControls } from "./LaneMixerControls";
 import { loadResumePosition, saveResumePosition, type ResumeSource } from "../../domain/workspace-resume";
 import { recordingName } from "../../domain/recording-name";
 import { obsTrackLabel } from "../../domain/obs-track-label";
@@ -1012,10 +1013,22 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
             // the user has not resized yet. Flex growth otherwise changes sibling widths.
             return <div className="obs-timeline__lane" key={lane.channelId}
               style={layout === "columns" ? { flexBasis: columnWidths[lane.channelId] ?? defaultColumnWidth, flexGrow: 0 } : undefined}>
-              <button aria-label={`Nghe kênh ${lane.label}`} aria-pressed={selectedLane?.channelId === lane.channelId}
-                className="obs-timeline__lane-label" onClick={() => setSelectedChannelId(lane.channelId)} type="button">
-                <TimelineLaneLabel text={`${obsTrackLabel(lane.label)} - ${lane.nativeName}`} />
-              </button>
+              <div className="obs-timeline__lane-header">
+                <button aria-label={`Nghe kênh ${lane.label}`} aria-pressed={selectedLane?.channelId === lane.channelId}
+                  className="obs-timeline__lane-label" onClick={() => setSelectedChannelId(lane.channelId)} type="button">
+                  <TimelineLaneLabel text={`${obsTrackLabel(lane.label)} - ${lane.nativeName}`} />
+                </button>
+                <LaneMixerControls gain={gain} gainLabel={`Gain nghe lại ${lane.label}`} level={level}
+                  levelLabel={`Level nguồn ${lane.label}`} muteLabel={`Tắt tiếng ${lane.label}`}
+                  muted={Boolean(mutedByChannel[gainKey])} onGainChange={(value) => setGainByChannel((current) => ({
+                    ...current, [gainKey]: value }))}
+                  onMuteToggle={() => setMutedByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
+                  onSoloToggle={() => setSoloByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
+                  soloLabel={`Solo ${lane.label}`} solo={Boolean(soloByChannel[gainKey])}
+                  soloTitle="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực"
+                  title="Gain chỉ đổi âm lượng nghe lại trong Pro4Bro; không đổi fader OBS hoặc PCM/MKA gốc."
+                  unmuteLabel={`Bật tiếng ${lane.label}`} unsoloLabel={`Bỏ Solo ${lane.label}`} />
+              </div>
               {layout === "columns" ? <div aria-label={`Điều chỉnh độ rộng Timeline ${lane.label}`}
                 aria-orientation="vertical" aria-valuemin={240} aria-valuemax={1200}
                 aria-valuenow={columnWidths[lane.channelId] ?? defaultColumnWidth}
@@ -1170,26 +1183,6 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                 <span>{caption ? obsTranscriptText(caption) || "Đang nghe…" : "Chưa có lời nói"}</span>
                 {caption ? <small>{caption.status === "final" ? "DRAFT" : "LIVE"}</small> : null}
               </div>}
-              <div className="obs-timeline__lane-controls" title="Gain chỉ đổi âm lượng nghe lại trong Pro4Bro; không đổi fader OBS hoặc PCM/MKA gốc.">
-                <div className="obs-timeline__gain"><div className="obs-timeline__gain-label"><span>GAIN</span>
-                  <button aria-label={`${mutedByChannel[gainKey] ? "Bật tiếng" : "Tắt tiếng"} ${lane.label}`}
-                    aria-pressed={Boolean(mutedByChannel[gainKey])} className="obs-timeline__mute"
-                    onClick={() => setMutedByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
-                    title={mutedByChannel[gainKey] ? "Bật tiếng track" : "Tắt tiếng track"} type="button">M</button>
-                  <button aria-label={`${soloByChannel[gainKey] ? "Bỏ Solo" : "Solo"} ${lane.label}`}
-                    aria-pressed={Boolean(soloByChannel[gainKey])} className="obs-timeline__mute obs-timeline__solo"
-                    onClick={() => setSoloByChannel((current) => ({ ...current, [gainKey]: !current[gainKey] }))}
-                    title="Chỉ nghe các track đang Solo trong selection; Mute vẫn có hiệu lực" type="button">S</button></div>
-                  <input aria-label={`Gain nghe lại ${lane.label}`} max="200" min="0"
-                    onChange={(event) => setGainByChannel((current) => ({ ...current,
-                      [gainKey]: Number(event.target.value) }))} step="1" type="range" value={gain} />
-                  <output>{gain}%</output>
-                </div>
-                <div className="obs-timeline__level" role="meter" aria-label={`Level nguồn ${lane.label}`}
-                  aria-valuemin={0} aria-valuemax={100} aria-valuenow={level} title={`Mức nguồn ${level}% · không chịu tác động của Gain nghe lại`}>
-                  <span>LEVEL</span><div><i style={{ "--source-level": `${level}%` } as CSSProperties} /></div><output>{level}%</output>
-                </div>
-              </div>
             </div>;
           })}
           {layout === "layers" && playhead >= 0 && playhead <= 100 ? <div className="obs-timeline__playhead-layer">

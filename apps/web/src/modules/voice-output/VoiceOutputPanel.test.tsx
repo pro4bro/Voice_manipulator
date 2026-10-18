@@ -14,6 +14,16 @@ function output(overrides: Partial<VoiceOutput> = {}): VoiceOutput {
 }
 
 describe("VoiceOutputPanel", () => {
+  it("labels results by the producing function while preserving their saved data", () => {
+    const source = output();
+    const patch = output({ id: "patched", text: "Lời đã sửa", parameters: { voicePatch: { jobId: "job", sourceOutputId: source.id } } });
+    const onOpen = vi.fn();
+    render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={onOpen} outputs={[source, patch]} speakers={[]} />);
+    expect(screen.getByRole("button", { name: /VO.*Xin chào mọi người/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /VP.*Lời đã sửa/ }));
+    expect(onOpen).toHaveBeenCalledWith(patch);
+    expect(source.name).toBe("An · Xin chào");
+  });
   it("lists generated speech with its voice and length, and opens it on the Timeline", () => {
     const onOpen = vi.fn();
     render(<VoiceOutputPanel activeOutputId="output-1" onDelete={vi.fn()} onOpen={onOpen} outputs={[output(), output({ id: "output-2", text: "Câu thứ hai" })]} speakers={[]} />);

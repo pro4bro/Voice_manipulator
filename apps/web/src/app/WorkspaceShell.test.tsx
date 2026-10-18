@@ -508,6 +508,24 @@ describe("WorkspaceShell STT synchronization", () => {
       currentRowId: null, message: null, output: null, error: null, startedAt: "2026-10-07T00:00:00Z", finishedAt: null };
   }
 
+  it("switches function panels without clearing Script or accidentally generating Voice Over", async () => {
+    prepareGeneration();
+    await waitFor(() => expect(collectionContext.current?.voiceScriptRows[0]?.text).toBe("xin chào"));
+    const rows = collectionContext.current!.voiceScriptRows;
+    expect(screen.getByRole("tab", { name: "VO · Voice Over" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "VP · Voice Patch" }));
+    expect(screen.queryByRole("button", { name: "read test script" })).not.toBeInTheDocument();
+    expect(collectionContext.current!.voiceScriptRows).toEqual(rows);
+    await act(async () => collectionContext.current!.onGenerate());
+    expect(apiMocks.readVoiceScript).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "LT · Live Translate" }));
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "manipulator-tab-live-translate");
+    expect(collectionContext.current!.voiceScriptRows).toEqual(rows);
+    fireEvent.click(screen.getByRole("tab", { name: "VO · Voice Over" }));
+    expect(screen.getByRole("button", { name: "read test script" })).toBeInTheDocument();
+    expect(collectionContext.current!.voiceScriptRows).toEqual(rows);
+  });
+
   it("does not reopen a cancelled reference menu when its late read returns", async () => {
     const pending = deferred<{ version: 1; revision: number; bindings: [] }>();
     apiMocks.getReferenceBindings.mockReturnValue(pending.promise);

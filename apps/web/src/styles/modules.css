@@ -493,6 +493,32 @@
 .timeline-lane-label[data-scrolling="true"] .timeline-lane-label__track { animation: timeline-lane-scroll var(--lane-scroll-duration) linear infinite; }
 .obs-timeline__lane-label:hover .timeline-lane-label__track,
 .obs-timeline__lane-label:focus-visible .timeline-lane-label__track { animation-play-state: paused; }
+/* Imported and archived multitrack column headers keep all per-track mix controls together. */
+.obs-timeline__track-scroll.is-columns .obs-timeline__lane { grid-template-rows: 42px 20px minmax(50px, 1fr) 25px; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__lane-header { grid-column: 1 / -1; grid-row: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 62%); border-bottom: 1px solid var(--audio-line); }
+.obs-timeline__track-scroll.is-columns .obs-timeline__lane-label { grid-column: 1; grid-row: 1; min-height: 0; padding: 0 5px; border: 0; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__lane-controls { grid-column: 2; grid-row: 1; min-height: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 1px 5px; padding: 2px 5px; border: 0; background: transparent; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__lane-toggles { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; }
+.obs-timeline__lane-toggles .obs-timeline__mute { width: 16px; height: 16px; min-width: 16px; font-size: 8px; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain,
+.obs-timeline__track-scroll.is-columns .obs-timeline__level { min-width: 0; display: grid; grid-template-columns: 31px minmax(0, 1fr) 30px; align-items: center; gap: 3px; font-size: calc(7px * var(--font-scale)); }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain { grid-column: 2; grid-row: 1; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__level { grid-column: 2; grid-row: 2; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain > span,
+.obs-timeline__track-scroll.is-columns .obs-timeline__level > span { grid-column: 1; grid-row: 1; writing-mode: horizontal-tb; transform: none; text-align: left; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain input,
+.obs-timeline__track-scroll.is-columns .obs-timeline__level > div { grid-column: 2; grid-row: 1; width: 100%; min-width: 0; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain input { height: 16px; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__gain output,
+.obs-timeline__track-scroll.is-columns .obs-timeline__level output { grid-column: 3; grid-row: 1; min-width: 0; text-align: right; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__wave,
+.obs-timeline__track-scroll.is-columns .obs-timeline__overlap-markers { grid-row: 3; }
+.obs-timeline__track-scroll.is-columns .obs-timeline__caption { grid-row: 4; }
+.obs-timeline__track-scroll.is-layers .obs-timeline__lane-header { display: contents; }
+.obs-timeline__track-scroll.is-layers .obs-timeline__lane-controls { grid-template-columns: 16px repeat(2, minmax(0, 1fr)); }
+.obs-timeline__track-scroll.is-layers .obs-timeline__lane-toggles { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.obs-timeline__track-scroll.is-layers .obs-timeline__gain { grid-column: 2; grid-row: 1; }
+.obs-timeline__track-scroll.is-layers .obs-timeline__level { grid-column: 3; grid-row: 1; }
 @keyframes timeline-lane-scroll { to { transform: translateX(calc(-50% - 12px)); } }
 @media (prefers-reduced-motion: reduce) { .timeline-lane-label[data-scrolling="true"] .timeline-lane-label__track { animation: none; } }
 .obs-script__badge { color: var(--accent-ink); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 800; white-space: nowrap; }

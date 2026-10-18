@@ -37,8 +37,8 @@ describe("workspaceManifest", () => {
 
   it("declares every manipulator mode without claiming unavailable processors are ready", () => {
     const manifest = workspaceManifest("voice-manipulator");
-    expect(manifest.modes).toEqual(["voice-over", "voice-isolator", "voice-dubber", "voice-patch"]);
-    expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-dubber"]);
+    expect(manifest.modes).toEqual(["voice-over", "voice-patch", "voice-dubber", "voice-isolator", "live-translate"]);
+    expect(manifest.plannedModes).toEqual(["voice-isolator", "voice-dubber", "live-translate"]);
   });
 
   it("lays Voice Changer out as Sound Library, two Sound Reactors, Voice Input and a recording Timeline", () => {

@@ -85,6 +85,8 @@ import { ModuleErrorBoundary } from "./ModuleErrorBoundary";
 import { reconcileScriptTextEdit } from "../modules/script/script-text-reconciliation";
 import { useProcessingChoice } from "../ui/ProcessingChoice";
 import { completedGenerationRows, completedTrainingTargets } from "../domain/processing-results";
+import { ManipulatorNavigation } from "../modules/manipulator/ManipulatorNavigation";
+import type { ManipulatorMode } from "../domain/types";
 
 interface WorkspaceShellProps {
   project: Project;
@@ -151,6 +153,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
 function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const processingChoice = useProcessingChoice();
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
+  const [manipulatorMode, setManipulatorMode] = useState<ManipulatorMode>("voice-over");
+  const [voiceScriptSettingsHost, setVoiceScriptSettingsHost] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // The workspace, not the OBS panel, owns the project target. A second tab
@@ -853,7 +857,9 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
       const source = mediaAssets.find((asset) => asset.id === scriptAssetId);
       const scoped = source && (!selectedScriptAssetIds || selectedScriptAssetIds.length <= 1)
         ? { ...wordSelection, scope: { kind: "asset" as const, id: source.id, revision: source.updatedAt } } : null;
-      setPatchSourceSelection(source && scoped && mediaPatchSpan(source, scoped) ? scoped : null);
+      const patchSelection = source && scoped && mediaPatchSpan(source, scoped) ? scoped : null;
+      setPatchSourceSelection(patchSelection);
+      if (patchSelection) setManipulatorMode("voice-patch");
     }
     if (page === "voice-training") {
       const selected = mediaAssets.find((asset) => asset.id === (selectedImportedTrackId ?? selectedAssetId));
@@ -2258,6 +2264,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } finally { setAiReviewBusy(false); }
   }
   async function generateVoice() {
+    if (activePage === "voice-manipulator" && manipulatorMode !== "voice-over") {
+      setNotice("Chọn Voice Over để tạo lời đọc; Voice Patch có bảng xử lý riêng.");
+      return;
+    }
     if (generationStartInFlight.current || voiceScriptJobRef.current?.status === "running") return;
     if (!voiceScript.ready || voiceScript.error) { setNotice(voiceScript.error ?? "Đang mở Script trong project…"); return; }
     const offered = voicesInCategory(projectVoices, voiceCategory);
@@ -2714,6 +2724,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }));
     },
     voiceScriptDocument: voiceScript.document,
+    manipulatorMode, voiceScriptSettingsHost,
+    onVoiceScriptSettingsHostChange: setVoiceScriptSettingsHost,
     onVoiceScriptDocumentChange: voiceScript.update,
     voiceScriptSaveError: voiceScript.error,
     onReloadVoiceScript: voiceScript.reload,
@@ -2891,12 +2903,16 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [manipulatorMode, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
-  const renderModule = (id: ModuleId) => <ModuleErrorBoundary key={id} name={id}
+  const renderModule = (id: ModuleId) => {
+    if (activePage === "voice-manipulator" && ((id === "voice-generator" && manipulatorMode !== "voice-over")
+      || (id === "voice-patch" && manipulatorMode !== "voice-patch"))) return null;
+    return <ModuleErrorBoundary key={id} name={id}
     onClearSelection={clearMediaSelection} resetKey={`${project.id}:${selectedAssetId ?? ""}:${selectedImportedTrackId ?? ""}`}>
     <ProgressiveModule context={context} id={id} />
   </ModuleErrorBoundary>;
+  };
 
   return (
     <main className="workspace-shell">
@@ -2918,8 +2934,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         </div>
       </header>
       <div className="workspace-body">
-        <aside className="project-rail"><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div><div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
-        <section className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
+        <aside className={`project-rail ${activePage === "voice-manipulator" ? "project-rail--manipulator" : ""}`}><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div>{activePage === "voice-manipulator" ? <ManipulatorNavigation mode={manipulatorMode} onChange={setManipulatorMode} /> : null}<div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
+        <section id={activePage === "voice-manipulator" ? "manipulator-workspace" : undefined} role={activePage === "voice-manipulator" ? "tabpanel" : undefined} aria-labelledby={activePage === "voice-manipulator" ? `manipulator-tab-${manipulatorMode}` : undefined} className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
           <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map(renderModule)}</div>

@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react"
 
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { SpeakerProfile, VoiceOutput, VoiceOutputExportMode } from "../../domain/types";
+import { voiceOutputPrefix } from "../../domain/voice-output-prefix";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "../../ui/list-canvas.css";
@@ -84,6 +85,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
               <button aria-label={`Chọn ${output.name}`} aria-pressed={selected.includes(output.id)} className="voice-output-select" onClick={(event) => select(event, output.id)} type="button">{selected.includes(output.id) ? "✓" : "□"}</button>
               <button aria-pressed={output.id === activeOutputId} className="voice-output-item" onClick={() => onOpen(output)} type="button">
                 <i style={{ background: colorOf(output.speakerProfileId) }} />
+                <b className="voice-output-function">{voiceOutputPrefix(output)}</b>
                 <span>
                   <strong>{output.text}</strong>
                   <small>{output.segments && output.segments.length > 1 ? `${output.segments.length} đoạn · ${output.voiceName}` : output.voiceName} · {clock(output.duration)} · {new Date(output.createdAt).toLocaleTimeString("vi-VN", { hour12: false })}</small>

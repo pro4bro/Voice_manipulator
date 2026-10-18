@@ -23,6 +23,7 @@ import type { ScriptDocumentChange } from "../script/script-document-actions";
 import { ScriptEditor } from "../script/ScriptEditor";
 import { ObsLiveLinkScript } from "../script/ObsLiveLinkScript";
 import { VoiceScript } from "../script/VoiceScript";
+import { ManipulatorService } from "../manipulator/ManipulatorNavigation";
 import { ChangerRecordControls } from "../voice-changer/ChangerRecordControls";
 import { SoundReactor } from "../voice-changer/SoundReactor";
 import { VoiceInput } from "../voice-changer/VoiceInput";
@@ -119,6 +120,9 @@ export interface StudioContext {
   onReferenceChange?: (ids: string[], selected: boolean) => Promise<void>;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   voiceScriptDocument?: import("../../domain/types").VoiceScriptDocument;
+  manipulatorMode?: import("../../domain/types").ManipulatorMode;
+  voiceScriptSettingsHost?: HTMLElement | null;
+  onVoiceScriptSettingsHostChange?: (host: HTMLDivElement | null) => void;
   voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
   onDerivedVoiceOutput?: (output: import("../../domain/types").VoiceOutput) => void;
   onPatchedVoiceOutput?: (output: import("../../domain/types").VoiceOutput) => void;
@@ -429,9 +433,13 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <VoiceOutputPanel pendingOutput={context.pendingVoiceOutput} onDismissPendingOutput={context.onDismissPendingVoiceOutput} activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator busy={context.generating} category={context.voiceCategory} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onCategoryChange={context.onVoiceCategoryChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
+    case "manipulator-service":
+      return <ManipulatorService mode={context.manipulatorMode ?? "voice-over"} />;
+    case "voice-script-settings":
+      return <ModuleFrame title="Thiết lập Script" eyebrow="GIỌNG / THỜI LƯỢNG" className="voice-script-dock"><div ref={context.onVoiceScriptSettingsHostChange} /></ModuleFrame>;
     case "voice-script": {
       const output = context.editedVoiceOutput ?? context.voiceOutputs.find((item) => item.id === context.activeOutputId) ?? null;
-      return <VoiceScript onFixedOutput={context.onDerivedVoiceOutput} onNavigateOutput={context.onNavigateVoiceOutput} voiceRender={context.voiceRender} timingContext={{ projectId: context.projectId, assets: context.mediaAssets, runs: context.trainingRuns, saved: context.voiceScriptSaved ?? false, editRevision: context.voiceEdits?.packet?.document.revision ?? 0 }} navigation={context.productionNavigation} onReferenceContext={context.onReferenceContext} document={context.voiceScriptDocument} onDocumentChange={context.onVoiceScriptDocumentChange} saveError={context.voiceScriptSaveError} onReload={context.onReloadVoiceScript} activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
+      return <VoiceScript settingsHost={context.voiceScriptSettingsHost} readDisabledReason={context.manipulatorMode && context.manipulatorMode !== "voice-over" ? "Tạo lời đọc tại tab Voice Over" : undefined} onFixedOutput={context.onDerivedVoiceOutput} onNavigateOutput={context.onNavigateVoiceOutput} voiceRender={context.voiceRender} timingContext={{ projectId: context.projectId, assets: context.mediaAssets, runs: context.trainingRuns, saved: context.voiceScriptSaved ?? false, editRevision: context.voiceEdits?.packet?.document.revision ?? 0 }} navigation={context.productionNavigation} onReferenceContext={context.onReferenceContext} document={context.voiceScriptDocument} onDocumentChange={context.onVoiceScriptDocumentChange} saveError={context.voiceScriptSaveError} onReload={context.onReloadVoiceScript} activityTasks={context.activityTasks} busy={context.generating} category={context.voiceCategory} defaultSpeakerId={context.selectedVoice || null} job={context.voiceScriptJob} onExport={output ? (mode) => context.onExportVoiceOutput(output, mode) : undefined} onOpenTraining={() => context.onSelectPage("voice-training")} onRead={context.onGenerate} onRowsChange={context.onVoiceScriptRowsChange} onWordSelectionChange={context.onWordSelectionChange} output={output} playbackId={context.take?.id ?? null} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} wordSelection={context.wordSelection} />;
     }
     case "sound-reactor-input":
     case "sound-reactor-output": {
