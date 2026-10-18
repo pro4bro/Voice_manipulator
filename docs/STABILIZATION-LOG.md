@@ -2162,3 +2162,30 @@ Không retry full gates, không đổi timeout/skip/assertion. App alpha0.5.17 k
 Actual payload UI kéo thật hai chiều đạt cùng bounds/scrollLeft với source,
 không console error. Chỉ là app update; full installed base gate chờ owner copy
 core/model và VERIFY0failed. GitHub source giữ toàn bộ source/test/tài liệu mới.
+
+## Round57 — VM-FUNCTION-LAYOUT-01 (2026-10-19)
+
+### Feedback và xử lý
+
+Thêm tab dọc VO/VP/VD/VI/LT ở mép trái. Script/Timeline cùng workspace; chỉ đổi
+bảng tác vụ ở cột phải. VO có guard ở nút và entrypoint; không chạy VO nhầm ở
+tab khác. Từ Input chuyển vùng hợp lệ sang Manipulator mở VP. Bốn nhóm thiết lập
+Script chuyển sang cột phải bằng portal của chính editor, giữ selection/document
+và refresh timing. Kết quả hiện nhãn VO/VP theo lineage thực; không theo tab đang
+mở. Imported/OBS dùng chung mixer trong header cột: M/S dọc, Gain trên Level.
+
+### Kiểm tra và còn lại
+
+Frontend1109pass/136files/312.67s; API1150pass/608.09s,3existing/fixture warnings.
+Typecheck/build191/diff pass;675frozen inputs khớp. Worker review không thấy
+regression cụ thể; browser fixture thật dùng source components, cả2theme và
+cột hẹp xác nhận header42px/contained, chọn câu2→sửa duration3.5→chuyển tab vẫn
+đúng giá trị. Controller thật không chạy502 nên không báo real-project/audio UAT.
+Xem ADR0114 và docs/gates/function-layout57-20261019.md. Code commit d3062ca.
+
+Owner đã đồng ý OmniVoice làm lõi; provider tương thích được chọn theo tác vụ.
+docs/OPEN-ENGINE-WORKFLOW-PLAN.md ghi9slice tích hợp tiếp theo, gồm VibeVoice-ASR,
+CosyVoice, Sokuji và các runtime chuyển giọng. Chưa cài/chạy engine mới; VD/VI/LT
+mới là workspace chuẩn bị. Prefix tên file xuất mới đi cùng processor tương ứng.
+Phase03 vẫn60%; acoustic timing/Checkpoint A và các gate processor còn mở.
+Không phát hành portable trong round này. Dừng sau round57 theo AGENTS.md.

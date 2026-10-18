@@ -1,4 +1,22 @@
-# Project Status — 2026-10-18
+# Project Status — 2026-10-19
+
+## Stabilization round57 — VM-FUNCTION-LAYOUT-01 (2026-10-19)
+
+Owner direction: keep OmniVoice primary and offer compatible providers per task.
+OPEN-ENGINE-WORKFLOW-PLAN.md records authorized VibeVoice-ASR, CosyVoice, Sokuji
+and live conversion integration slices; none is claimed newly runnable here.
+Round57 adds vertical VO/VP/VD/VI/LT tabs, preserves the shared Script/Timeline,
+scopes right-side function panels and guards VO generation in other functions.
+Script settings dock retains selection/document/refresh ownership through a portal.
+Applied-result badges derive VO/VP from provenance. Imported/OBS column headers
+contain vertical M/S plus horizontal Gain-over-Level; source mixing semantics stay.
+ADR0114 and function-layout57 gate record focused checks, independent review and
+memory-only browser fixtures in both themes, including narrow column containment.
+Frontend1109pass/136files/312.67s; API1150pass/608.09s (3existing/fixture warnings).
+Typecheck/build191/diff pass. Code commit d3062ca;675 frozen inputs match.
+Phase03 stays60%; acoustic timing, Checkpoint A, processor acceptance and new
+provider integrations remain open. No portable issued in this round.
+
 
 ## Stabilization round56 — OVERVIEW-WAVEFORM-FOLLOW-01 (2026-10-18)
 
