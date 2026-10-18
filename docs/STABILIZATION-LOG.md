@@ -2128,3 +2128,8 @@ chẩn đoán listener chiếm hết deadline trước health probe: thêm deter
 đảm bảo ít nhất1probe có giới hạn; giữ điều kiện health/deadline và exited-process.
 15focused cases đạt, full API cuối đạt. Build UI thực mở Test11/6744words, Note
 cả2module mở trái vừa viewport, không thấy console errors; không sửa transcript.
+
+App update alpha0.5.15 NoVibeVoice:206payload hashes và210ZIP entries khớp;
+ZIP1,443,398bytes, không chứa core/model nặng. Actual payload UI kiểm tra cả2Note
+trên Test11 đạt, không console error. Full base/runtime gate chờ owner copy file
+nặng và VERIFY0failed; không báo standalone-ready. Xem gate report để lấy SHA256.

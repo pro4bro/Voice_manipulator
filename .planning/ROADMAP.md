@@ -16,7 +16,9 @@ when diagnostics consumed its deadline; deterministic RED and15focused cases pas
 Final frontend1096pass/133files/376.02s with one worker; API1150pass/596.27s
 (3existing/fixture warnings). Typecheck/build187/diff pass;599frozen inputs match.
 Intermediate two-worker fixture timeouts and API RED remain in the gate report. No API implementation/model/media/
-project-format changes. Phase03 stays60%; acoustic anchors, Checkpoint A and13
+project-format changes. App update alpha0.5.15:206payload hashes/210ZIP entries verified; actual payload UI
+Script/Subtitle Note checks pass. Heavy base/full installed runtime gate deferred.
+Phase03 stays60%; acoustic anchors, Checkpoint A and13
 processor gates remain open. Stop after round55.
 
 ## Stabilization round54 — WORD-EDIT-RESUME-01 (2026-10-18)
