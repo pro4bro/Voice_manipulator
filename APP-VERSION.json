@@ -1,6 +1,6 @@
 {
-    "schemaVersion":  1,
-    "channel":  "alpha",
-    "version":  "0.5.13",
-    "lastIssuedVersion":  "0.5.13"
+  "schemaVersion": 1,
+  "channel": "alpha",
+  "version": "0.5.14",
+  "lastIssuedVersion": "0.5.14"
 }
