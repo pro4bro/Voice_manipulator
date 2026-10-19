@@ -13,6 +13,8 @@ interface VoiceGeneratorProps {
   category: VoiceCategory;
   onCategoryChange?: (category: VoiceCategory) => void;
   voices: ProjectVoice[];
+  allVoices?: ProjectVoice[];
+  generationEngine?: string | null;
   rows: VoiceScriptRow[];
   speakers: SpeakerProfile[];
   /** Generation values keyed by generator id. */
@@ -29,7 +31,11 @@ interface VoiceGeneratorProps {
 export const OWNED_ELSEWHERE = new Set(["speed"]);
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
-const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
+const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3" };
+
+export function voicesForGenerationEngine(voices: ProjectVoice[], engine: string | null): ProjectVoice[] {
+  return engine ? voices.filter((voice) => voice.engine === engine) : voices;
+}
 
 /** The generator that speaks voices of an engine: the first that can run, else the first. */
 export function generatorForEngine(generators: TrainingModelOption[], engine: string): TrainingModelOption | null {
@@ -37,12 +43,14 @@ export function generatorForEngine(generators: TrainingModelOption[], engine: st
   return matching.find((item) => item.available) ?? matching[0] ?? null;
 }
 
-function editableSpecs(generator: TrainingModelOption) {
-  return generator.parameters.filter((spec) => !OWNED_ELSEWHERE.has(spec.key));
+function editableSpecs(generator: TrainingModelOption, overrides: Record<string, TrainingParameterValue> = {}) {
+  const mode = overrides.mode ?? generator.parameters.find((spec) => spec.key === "mode")?.default;
+  return generator.parameters.filter((spec) => !OWNED_ELSEWHERE.has(spec.key)
+    && !(generator.engine === "cosyvoice3" && mode !== "instruct" && (spec.key === "language" || spec.key === "instruction")));
 }
 
 export function generatorProblems(generator: TrainingModelOption, overrides: Record<string, TrainingParameterValue>) {
-  return editableSpecs(generator).flatMap((spec) => {
+  return editableSpecs(generator, overrides).flatMap((spec) => {
     const problem = parameterProblem(spec, parameterValue(spec, overrides));
     return problem ? [[spec.key, problem] as const] : [];
   });
@@ -53,15 +61,21 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
     const next = { ...overrides };
     if (value === spec.default) delete next[spec.key];
     else next[spec.key] = value;
+    if (generator.engine === "cosyvoice3" && spec.key === "mode" && value !== "instruct") {
+      delete next.language;
+      delete next.instruction;
+    }
     onChange(next);
   }
-  const form = useParameterForm({ scope: generator.id, specs: editableSpecs(generator), overrides, onChange: setParameter });
+  const form = useParameterForm({ scope: generator.id, specs: editableSpecs(generator, overrides), overrides, onChange: setParameter });
+  const mode = overrides.mode ?? generator.parameters.find((spec) => spec.key === "mode")?.default;
   return (
     <section aria-label={`Tham số ${generator.label}`} className="train-engine-parameters voice-generator-parameters">
       <div className="train-section-label"><b>{generator.label}</b></div>
       {!generator.available ? <small className="voice-generator-warning">{generator.status}</small> : null}
       {form.basic}
       {form.advanced}
+      {generator.engine === "cosyvoice3" && mode !== "instruct" ? <small className="train-parameter-note">Ngôn ngữ theo nội dung Script; chế độ này không dùng chỉ dẫn cách đọc.</small> : null}
     </section>
   );
 }
@@ -71,33 +85,37 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
  * the Script itself; this panel shows which voices that adds up to, the
  * settings of each engine involved, and how far a read has got.
  */
-export function VoiceGenerator({ projectId, generators, category, onCategoryChange, voices, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onStop, onOpenTraining }: VoiceGeneratorProps) {
+export function VoiceGenerator({ projectId, generators, category, onCategoryChange, voices, allVoices = voices, generationEngine = null, rows, speakers, parameters, onParametersChange, job = null, busy = false, onGenerate, onStop, onOpenTraining }: VoiceGeneratorProps) {
+  const offered = voicesForGenerationEngine(voices, generationEngine);
+  const mismatched = generationEngine ? rows.find((row) => row.text.trim() && row.voiceId && allVoices.some((voice) => voice.id === row.voiceId && voice.engine !== generationEngine)) : undefined;
   const speakerOf = (id: string) => speakers.find((speaker) => speaker.id === id);
-  const readiness = scriptReadiness(rows, voices);
+  const readiness = scriptReadiness(rows, offered);
   const used = new Map<string, { voice: ProjectVoice; rows: number }>();
   for (const row of rows) {
-    const voice = row.text.trim() ? resolveRowVoice(row, voices) : null;
+    const voice = row.text.trim() ? resolveRowVoice(row, offered) : null;
     if (!voice) continue;
     const entry = used.get(voice.id) ?? { voice, rows: 0 };
     entry.rows += 1;
     used.set(voice.id, entry);
   }
-  const engines = [...new Set((used.size ? [...used.values()].map((entry) => entry.voice) : voices).map((voice) => voice.engine))];
+  const engines = [...new Set((used.size ? [...used.values()].map((entry) => entry.voice) : offered).map((voice) => voice.engine))];
   const sections = engines.map((engine) => generatorForEngine(generators, engine)).filter((item): item is TrainingModelOption => Boolean(item));
   const unavailable = sections.find((generator) => [...used.values()].some((entry) => entry.voice.engine === generator.engine) && !generator.available);
   const invalid = sections.some((generator) => generatorProblems(generator, parameters[generator.id] ?? {}).length);
   const missingEngine = [...used.values()].find((entry) => !generatorForEngine(generators, entry.voice.engine));
 
-  const ready = !busy && !readiness.problem && !unavailable && !invalid && !missingEngine;
+  const ready = !busy && !mismatched && !readiness.problem && !unavailable && !invalid && !missingEngine;
   const label = busy
     ? job ? `Đang đọc ${Math.min(job.done + 1, job.total)}/${job.total}...` : "Đang gửi..."
-    : readiness.problem
+    : mismatched ? `Script có voice ${ENGINE_LABELS[allVoices.find((voice) => voice.id === mismatched.voiceId)?.engine ?? ""] ?? "khác"}; chọn Tự động hoặc đổi voice từng dòng`
+      : readiness.problem
       ?? (missingEngine ? `Chưa có công cụ đọc voice ${ENGINE_LABELS[missingEngine.voice.engine] ?? missingEngine.voice.engine}` : null)
       ?? (unavailable ? `${unavailable.label} chưa sẵn sàng` : null)
       ?? (invalid ? "Tham số chưa hợp lệ" : `Đọc Script · ${readiness.rows.length} đoạn`);
 
   return (
     <ModuleFrame className="voice-generator-module" eyebrow="VOICE GENERATOR" index="01" title="Tạo giọng">
+      {generationEngine ? <small className="train-parameter-note">Đang lọc voice theo {ENGINE_LABELS[generationEngine] ?? generationEngine}.</small> : null}
       <div className={`voice-generator-category is-${category}`}>
         <span>DẠNG VOICE</span>
         {onCategoryChange ? <select aria-label="Loại voice" value={category} onChange={(event) => onCategoryChange(event.target.value as VoiceCategory)}>
@@ -124,9 +142,9 @@ export function VoiceGenerator({ projectId, generators, category, onCategoryChan
       ) : (
         <div className="voice-generator-empty">
           <Icon name="person" />
-          <b>{voices.length ? "Chưa chọn voice trong Script" : `Chưa có voice dạng ${CATEGORY_LABELS[category].toLowerCase()}`}</b>
-          <span>{voices.length ? "Bấm vào ô Speaker của từng dòng Script để chọn voice đọc dòng đó." : "Ở Voice Training, chọn dạng voice, tick Speaker Profile rồi bấm Bắt đầu."}</span>
-          {!voices.length && onOpenTraining ? <button className="button button--quiet" onClick={onOpenTraining} type="button">Mở Voice Training</button> : null}
+          <b>{offered.length ? "Chưa chọn voice trong Script" : `Chưa có voice dạng ${CATEGORY_LABELS[category].toLowerCase()}${generationEngine ? ` cho ${ENGINE_LABELS[generationEngine] ?? generationEngine}` : ""}`}</b>
+          <span>{offered.length ? "Bấm vào ô Speaker của từng dòng Script để chọn voice đọc dòng đó." : "Ở Voice Training, chọn dạng voice, tick Speaker Profile rồi bấm Bắt đầu."}</span>
+          {!offered.length && onOpenTraining ? <button className="button button--quiet" onClick={onOpenTraining} type="button">Mở Voice Training</button> : null}
         </div>
       )}
 

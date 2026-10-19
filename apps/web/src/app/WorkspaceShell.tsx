@@ -294,6 +294,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [asrAdapters, setAsrAdapters] = useState<ProjectAsrAdapter[]>([]);
   const [projectVoices, setProjectVoices] = useState<ProjectVoice[]>([]);
   const [generationCategoryOverride, setGenerationCategoryOverride] = useState<VoiceCategory | null>(null);
+  const [generationEngine, setGenerationEngine] = useState<string | null>(null);
   const generationCategoryChoiceMade = useRef(false);
   const generationCategoryInitializedProject = useRef<string | null>(null);
   const generationCategoryProject = useRef(project.id);
@@ -303,6 +304,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     generationCategoryInitializedProject.current = null;
     generationCategoryChoiceMade.current = false;
     setGenerationCategoryOverride(null);
+    setGenerationEngine(null);
   }, [project.id]);
   const [voiceOutputs, setVoiceOutputs] = useState<VoiceOutput[]>([]);
   const [generatorParameters, setGeneratorParameters] = useState<Record<string, Record<string, TrainingParameterValue>>>({});
@@ -2270,7 +2272,18 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     }
     if (generationStartInFlight.current || voiceScriptJobRef.current?.status === "running") return;
     if (!voiceScript.ready || voiceScript.error) { setNotice(voiceScript.error ?? "Đang mở Script trong project…"); return; }
-    const offered = voicesInCategory(projectVoices, voiceCategory);
+    const mismatch = generationEngine && voiceScriptRows.find((row) => row.text.trim() && row.voiceId && projectVoices.some((voice) => voice.id === row.voiceId && voice.engine !== generationEngine));
+    if (mismatch) {
+      const voice = projectVoices.find((item) => item.id === mismatch.voiceId);
+      setNotice(`Câu “${mismatch.text.slice(0, 40)}” đang gán voice ${voice?.name ?? "khác"} (${voice?.engine ?? "engine không rõ"}). Chọn Tự động hoặc đổi voice cho câu này.`);
+      return;
+    }
+    const selectedGenerator = generationEngine ? generatorForEngine(voiceGenerators, generationEngine) : null;
+    if (generationEngine && !selectedGenerator?.available) {
+      setNotice(selectedGenerator?.status ?? "Engine tạo giọng này chưa có trong catalog hiện tại.");
+      return;
+    }
+    const offered = voicesInCategory(projectVoices, voiceCategory).filter((voice) => !generationEngine || voice.engine === generationEngine);
     const readiness = scriptReadiness(voiceScriptRows, offered);
     if (readiness.problem) {
       setNotice(readiness.problem);
@@ -2708,6 +2721,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     asrAdapters,
     projectVoices,
     voiceGenerators,
+    generationEngine,
+    onGenerationEngineChange: setGenerationEngine,
     generatorParameters,
     generating,
     onGeneratorParametersChange: (generatorId, parameters) => setGeneratorParameters((current) => ({ ...current, [generatorId]: parameters })),
@@ -2903,7 +2918,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [manipulatorMode, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [manipulatorMode, generationEngine, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => {
     if (activePage === "voice-manipulator" && ((id === "voice-generator" && manipulatorMode !== "voice-over")

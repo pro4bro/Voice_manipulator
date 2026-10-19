@@ -90,6 +90,41 @@ describe("VoiceGenerator", () => {
     expect(onParametersChange).toHaveBeenLastCalledWith("omnivoice-generate", { num_step: 16 });
   });
 
+  it("filters voice choices by the selected engine and blocks dispatch while assigned rows mismatch", () => {
+    const cosy = voice({ id: "cosy", engine: "cosyvoice3", name: "An · CosyVoice3" });
+    const onGenerate = vi.fn();
+    const { rerender } = render(<VoiceGenerator {...props({ generationEngine: "cosyvoice3", allVoices: [voice(), cosy], voices: [voice(), cosy], onGenerate })} />);
+    expect(screen.getByRole("button", { name: /Script có voice OmniVoice/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Script có voice OmniVoice/ }));
+    expect(onGenerate).not.toHaveBeenCalled();
+
+    rerender(<VoiceGenerator {...props({ generationEngine: "cosyvoice3", allVoices: [voice(), cosy], voices: [voice(), cosy], rows: [{ id: "c", speakerProfileId: "speaker-an", voiceId: "cosy", text: "Xin chào" }] })} />);
+    const cast = screen.getByRole("list", { name: "Voice trong Script" });
+    expect(within(cast).getByText(/CosyVoice3/)).toBeInTheDocument();
+    expect(within(cast).queryByText(/OmniVoice/)).not.toBeInTheDocument();
+  });
+
+  it("offers CosyVoice language and delivery instructions only in instruct mode", () => {
+    const cosyVoice = voice({ engine: "cosyvoice3" });
+    const cosy: TrainingModelOption = { ...GENERATOR, id: "cosyvoice3-generate", engine: "cosyvoice3", label: "CosyVoice3",
+      parameters: [
+        { key: "mode", label: "Chế độ", group: "Chung", kind: "choice", default: "cross-lingual", options: [{ value: "cross-lingual", label: "Cross-language" }, { value: "instruct", label: "Chỉ dẫn" }], nullable: false, editable: true, advanced: false },
+        { key: "language", label: "Ngôn ngữ chỉ dẫn", group: "Chung", kind: "choice", default: "en", options: [{ value: "en", label: "English" }, { value: "ja", label: "Japanese" }], nullable: false, editable: true, advanced: false },
+        { key: "instruction", label: "Chỉ dẫn cách đọc", group: "Chung", kind: "text", default: "", options: [], nullable: false, editable: true, advanced: false },
+      ] };
+    const onParametersChange = vi.fn();
+    const base = props({ generators: [cosy], voices: [cosyVoice], rows: [ROWS[0]], onParametersChange });
+    const { rerender } = render(<VoiceGenerator {...base} />);
+    expect(screen.queryByLabelText("Ngôn ngữ chỉ dẫn")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Chỉ dẫn cách đọc")).not.toBeInTheDocument();
+    expect(screen.getByText(/Ngôn ngữ theo nội dung Script/)).toBeInTheDocument();
+
+    rerender(<VoiceGenerator {...base} parameters={{ "cosyvoice3-generate": { mode: "instruct", language: "ja", instruction: "Speak softly" } }} />);
+    expect(screen.getByLabelText("Ngôn ngữ chỉ dẫn")).toHaveValue("ja");
+    fireEvent.change(screen.getByLabelText("Chế độ"), { target: { value: "cross-lingual" } });
+    expect(onParametersChange).toHaveBeenLastCalledWith("cosyvoice3-generate", {});
+  });
+
   it("will not read a Script with a row lacking a voice or with an out-of-range value", () => {
     const { rerender } = render(<VoiceGenerator {...props({ rows: [{ id: "x", speakerProfileId: null, voiceId: null, text: "chưa ai đọc" }] })} />);
     expect(screen.getByRole("button", { name: /Đoạn 1 chưa chọn voice/ })).toBeDisabled();

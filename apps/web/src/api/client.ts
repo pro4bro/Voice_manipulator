@@ -69,6 +69,25 @@ import type {
 } from "../domain/types";
 import type { MediaPoolOrganization } from "../modules/media-pool/media-organization";
 
+export interface SokujiRuntimeStatus {
+  installed: boolean;
+  running: boolean;
+  reason?: string | null;
+  port?: number | null;
+  health?: { ok?: boolean; type?: string; running?: boolean } | null;
+}
+
+export interface SokujiTranslateModel {
+  id: string;
+  name: string;
+  kind: "translate";
+}
+
+export interface SokujiTranslateCatalog extends SokujiRuntimeStatus {
+  kind: "translate";
+  models: SokujiTranslateModel[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
   const response = await fetch(path, {
@@ -658,6 +677,10 @@ export const api = {
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
   getEngineCatalog: (task?: string) => request<TrainingModelOption[]>(`/api/engine-catalog${task ? `?task=${encodeURIComponent(task)}` : ""}`),
+  getSokujiHealth: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/health"),
+  startSokuji: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/start", { method: "POST" }),
+  stopSokuji: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/stop", { method: "POST" }),
+  getSokujiTranslateCatalog: () => request<SokujiTranslateCatalog>("/api/open-engines/sokuji/catalog?kind=translate"),
   listAsrAdapters: (projectId: string) => request<ProjectAsrAdapter[]>(`/api/projects/${projectId}/asr-adapters`),
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   deleteVoiceOutput: (projectId: string, outputId: string) =>
