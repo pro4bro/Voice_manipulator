@@ -5,6 +5,15 @@
   "family": "OmniVoice",
   "engine": "omnivoice",
   "mode": "generate",
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["vi", "en", "zh", "ja", "ko"],
+    "customVoiceFormat": "OmniVoice reference or LoRA",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": true,
+    "wordTiming": "none"
+  },
   "order": 10,
   "description": "Đọc text bằng một voice đã tạo ở Voice Training: nhái giọng từ đoạn mẫu, hoặc thêm adapter LoRA nếu voice đã được train.",
   "runnable": true,

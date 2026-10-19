@@ -5,6 +5,15 @@
   "family": "Whisper",
   "engine": "faster-whisper",
   "mode": "stt",
+  "tasks": ["transcribe"],
+  "capabilities": {
+    "languages": ["multilingual"],
+    "customVoiceFormat": null,
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "native"
+  },
   "order": 10,
   "description": "Speech to Text mặc định: có word timing DTW đủ tin cậy để cắt dữ liệu train.",
   "runnable": true,

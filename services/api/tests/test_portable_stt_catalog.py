@@ -52,6 +52,23 @@ def test_stt_api_stays_available_after_moving_the_portable(tmp_path):
     assert whisper["available"], whisper["status"]
 
 
+def test_whisper_choices_reflect_each_installed_weight_snapshot(tmp_path):
+    root = tmp_path / "portable"
+    entry = root / ".runtime" / "omnivoice-studio" / "studio_app" / "server.py"
+    entry.parent.mkdir(parents=True)
+    entry.write_text("# sidecar", encoding="utf-8")
+    snapshot = root / ".runtime" / "omnivoice-studio" / "models" / "models--Systran--faster-whisper-medium" / "snapshots" / "revision"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.bin").write_bytes(b"weights")
+    settings = replace(Settings.from_env(), project_root=root, data_root=tmp_path / "data", vibevoice_root=tmp_path / "no-vibevoice")
+
+    response = TestClient(create_app(settings=settings)).get("/api/stt-engines")
+    whisper = next(option for option in response.json() if option["id"] == "faster-whisper")
+    assert whisper["modelStatus"]["medium"] == "Sẵn sàng."
+    assert "Chưa có weights" in whisper["modelStatus"]["large-v3"]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows portable entrypoint")
 def test_catalog_gate_probe_runs_in_windows_powershell(tmp_path):
     root = Settings.from_env().project_root

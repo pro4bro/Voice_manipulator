@@ -657,6 +657,7 @@ export const api = {
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
+  getEngineCatalog: (task?: string) => request<TrainingModelOption[]>(`/api/engine-catalog${task ? `?task=${encodeURIComponent(task)}` : ""}`),
   listAsrAdapters: (projectId: string) => request<ProjectAsrAdapter[]>(`/api/projects/${projectId}/asr-adapters`),
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   deleteVoiceOutput: (projectId: string, outputId: string) =>

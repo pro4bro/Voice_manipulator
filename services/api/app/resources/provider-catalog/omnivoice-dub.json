@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "omnivoice-dub",
+  "label": "OmniVoice · Voice Dub",
+  "family": "OmniVoice",
+  "engine": "omnivoice",
+  "mode": "dub",
+  "tasks": ["voice-dub"],
+  "capabilities": {
+    "languages": ["vi", "en", "zh", "ja", "ko"],
+    "customVoiceFormat": "OmniVoice reference or LoRA",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": true,
+    "wordTiming": "none"
+  },
+  "runnable": false,
+  "blockedReason": "Bộ dựng Voice Dub chưa có job dịch, cast mapping và mix audio hoàn chỉnh.",
+  "repository": {
+    "root": "omnivoice",
+    "path": ".",
+    "entrypoint": "omnivoice/cli/infer.py",
+    "url": "https://github.com/k2-fsa/OmniVoice"
+  },
+  "description": "OmniVoice tạo câu với duration tuyệt đối; Voice Dub cần pipeline riêng trước khi kích hoạt."
+}

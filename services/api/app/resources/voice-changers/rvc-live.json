@@ -5,6 +5,15 @@
   "family": "RVC",
   "engine": "rvc",
   "mode": "live-convert",
+  "tasks": ["live-convert"],
+  "capabilities": {
+    "languages": ["model-dependent"],
+    "customVoiceFormat": "RVC model and index",
+    "streamingInput": true,
+    "streamingOutput": true,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
   "order": 10,
   "runnable": true,
   "blocked_reason": null,

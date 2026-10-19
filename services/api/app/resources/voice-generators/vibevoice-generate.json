@@ -5,6 +5,15 @@
   "family": "VibeVoice",
   "engine": "vibevoice",
   "mode": "generate",
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["en", "zh"],
+    "customVoiceFormat": "VibeVoice reference or LoRA",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
   "order": 20,
   "description": "Đọc text bằng voice VibeVoice đã tạo ở Voice Training: nhái giọng từ đoạn mẫu, hoặc thêm adapter LoRA đã train.",
   "runnable": true,

@@ -40,6 +40,7 @@ class Settings:
     # engine processes run offline against it: nothing is fetched, and a
     # missing model fails loudly instead of quietly downloading gigabytes.
     model_hub_cache: Path | None
+    cosyvoice_root: Path | None = None
 
     @property
     def stt_studio_root(self) -> Path:
@@ -124,6 +125,7 @@ class Settings:
             )
             / "voice-generators",
             model_hub_cache=_model_hub_cache(project_root),
+            cosyvoice_root=Path(os.getenv("PRO4BRO_COSYVOICE_ROOT", bundled_research_root / "CosyVoice")),
         )
 
 

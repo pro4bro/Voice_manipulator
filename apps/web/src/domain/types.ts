@@ -131,6 +131,8 @@ export interface StudioWord {
   selectedVariant?: "realtime" | "accurate" | "corrected" | "manual" | null;
   /** Stable diarization label (speaker-1, speaker-2, …); independent from a user profile. */
   diarizationSpeakerId?: string | null;
+  /** Raw speaker label emitted by an ASR model; never a Speaker Profile ID. */
+  asrSpeakerId?: string | null;
   /** Manual Script override used when a word is moved to another diarized row. */
   manualDiarizationSpeakerId?: string | null;
   /** Missing inherits the footage mapping; null explicitly leaves this word unassigned. */
@@ -813,11 +815,21 @@ export interface TrainingModelOption {
   repository: { root: string; path: string; entrypoint: string; recipe?: string | null; url?: string | null; revision?: string | null };
   dataFormat?: string | null;
   notes: string[];
+  tasks?: string[];
+  capabilities?: {
+    languages: string[];
+    customVoiceFormat: string | null;
+    streamingInput: boolean;
+    streamingOutput: boolean;
+    nativeDuration: boolean;
+    wordTiming: "native" | "segment" | "none";
+  };
   parameters: TrainingParameterSpec[];
   origin: "shipped" | "local";
   installed: boolean;
   available: boolean;
   status: string;
+  modelStatus?: Record<string, string>;
 }
 
 /** A voice a Speaker Profile can speak with, made by Voice Training. */

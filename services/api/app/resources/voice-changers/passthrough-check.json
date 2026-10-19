@@ -5,6 +5,15 @@
   "family": "Pro4Bro",
   "engine": "passthrough",
   "mode": "live-convert",
+  "tasks": ["live-convert"],
+  "capabilities": {
+    "languages": ["any"],
+    "customVoiceFormat": null,
+    "streamingInput": true,
+    "streamingOutput": true,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
   "order": 1,
   "runnable": true,
   "description": "Không đổi giọng. Dùng để kiểm tra micro, micro ảo, loa, độ trễ và file ghi 2 kênh trước khi có engine đổi giọng.",

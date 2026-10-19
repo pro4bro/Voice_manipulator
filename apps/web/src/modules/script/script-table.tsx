@@ -32,7 +32,7 @@ function normalizedDiarizationId(word: StudioWord) {
   if (profile) return `profile:${profile}`;
   const manual = word.manualDiarizationSpeakerId?.trim();
   if (manual) return manual;
-  return word.diarizationSpeakerId?.trim() || "speaker-1";
+  return word.diarizationSpeakerId?.trim() || word.asrSpeakerId?.trim() || "speaker-1";
 }
 function labelForDiarization(id: string) {
   if (id.startsWith("profile:")) return "Speaker 1";
@@ -57,7 +57,7 @@ export function buildSpeakerScriptRows(words: StudioWord[], speakers: SpeakerPro
   for (const [index, word] of words.entries()) {
     // Missing means inherit the take default; explicit null means the user
     // cleared this word's profile and must remain unassigned.
-    const unnamed = word.speakerId !== null && !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId;
+    const unnamed = word.speakerId !== null && !word.speakerId && !word.manualDiarizationSpeakerId && !word.diarizationSpeakerId && !word.asrSpeakerId;
     const diarizationId = unnamed && defaultSpeakerId ? `profile:${defaultSpeakerId}` : normalizedDiarizationId(word);
     const owner = word.speakerId || (unnamed ? defaultSpeakerId : null);
     const profile = owner ? profileById.get(owner) ?? null : null;

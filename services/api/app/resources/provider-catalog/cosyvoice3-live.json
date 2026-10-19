@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "cosyvoice3-live",
+  "label": "CosyVoice3 · streaming speech",
+  "family": "CosyVoice",
+  "engine": "cosyvoice3-live",
+  "mode": "live-tts",
+  "tasks": ["stream-generate", "live-translate"],
+  "capabilities": {
+    "languages": ["zh", "en", "ja", "ko", "de", "es", "fr", "it", "ru"],
+    "customVoiceFormat": "CosyVoice reference WAV and reference text",
+    "streamingInput": true,
+    "streamingOutput": true,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
+  "runnable": false,
+  "blockedReason": "Chưa có đường text/audio streaming và kiểm chứng độ trễ thiết bị trong Pro4Bro.",
+  "repository": {
+    "root": "cosyvoice",
+    "path": ".",
+    "entrypoint": "cosyvoice/cli/cosyvoice.py",
+    "url": "https://github.com/FunAudioLLM/CosyVoice"
+  },
+  "description": "TTS streaming; API voice conversion cần kiểm chứng riêng trước khi dùng live microphone."
+}

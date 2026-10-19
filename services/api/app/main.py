@@ -507,6 +507,11 @@ def create_app(
             "vibevoice": settings.vibevoice_root,
         },
     )
+    planned_providers = FileTrainingModelCatalog(
+        Path(__file__).resolve().parent / "resources" / "provider-catalog",
+        {"vibevoice": settings.vibevoice_root, "cosyvoice": settings.cosyvoice_root,
+         "omnivoice": settings.omnivoice_root},
+    )
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url,
         media,
@@ -1617,6 +1622,30 @@ def create_app(
         project_id: str, payload: MediaTranscriptionEnqueue
     ) -> list[ProjectMediaAsset]:
         try:
+            engine_id, separator, adapter_id = payload.model.partition("@")
+            options = {option.id: option for option in stt_engine_options()}
+            whisper = options.get("faster-whisper")
+            whisper_models = {
+                str(choice.value)
+                for spec in (whisper.parameters if whisper else [])
+                if spec.key == "model" and spec.kind == "choice"
+                for choice in spec.options
+            }
+            selected = whisper if payload.model in whisper_models else (
+                options.get(engine_id) if engine_id in media_importer.other_stt else None
+            )
+            if selected is None or not selected.runnable:
+                raise HTTPException(status_code=422, detail=f"Không có adapter STT cho model '{payload.model}'.")
+            if not selected.available:
+                raise HTTPException(status_code=409, detail=f"{selected.label}: {selected.status}")
+            if payload.model in whisper_models and selected.model_status.get(payload.model) != "Sẵn sàng.":
+                raise HTTPException(status_code=409, detail=selected.model_status[payload.model])
+            if separator:
+                if engine_id == "faster-whisper" or not adapter_id or not any(
+                    adapter.id == adapter_id and adapter.engine == engine_id
+                    for adapter in asr_adapters.list(project_id)
+                ):
+                    raise HTTPException(status_code=422, detail="ASR adapter không thuộc project hoặc engine đã chọn.")
             queued = await transcription_queue.enqueue(project_id, payload.asset_ids, model=payload.model)
             return [media.get(project_id, asset_id) for asset_id in queued]
         except KeyError as exc:
@@ -2095,14 +2124,44 @@ def create_app(
     def stt_engine_options() -> list[TrainingModelOption]:
         options = stt_engines.options()
         reason = vibevoice_asr.unavailable_reason()
+        if reason is None and vibevoice_runtime is not None and vibevoice_paths is not None:
+            missing = vibevoice_runtime.missing(ASR_PACKAGES, vibevoice_paths.microsoft)
+            if missing:
+                reason = f"Python của VibeVoice còn thiếu: {', '.join(missing)}."
         # The entrypoint check cannot see weights or the engine's Python; the
         # transcriber can, and says exactly which is missing.
-        return [
-            option.model_copy(update={"available": False, "status": reason})
-            if option.engine == "vibevoice-asr" and reason and option.available
-            else option
-            for option in options
+        described = []
+        for option in options:
+            if option.engine == "vibevoice-asr" and reason and option.available:
+                option = option.model_copy(update={"available": False, "status": reason})
+            if option.engine == "faster-whisper":
+                cache = Path(os.getenv("PRO4BRO_STT_MODEL_ROOT", settings.stt_studio_root / "models"))
+                model_status = {}
+                for spec in option.parameters:
+                    if spec.key != "model" or spec.kind != "choice":
+                        continue
+                    for choice in spec.options:
+                        name = str(choice.value)
+                        folder = cache / f"models--Systran--faster-whisper-{name}"
+                        ready = any(
+                            (snapshot / "config.json").is_file()
+                            and (snapshot / "model.bin").is_file()
+                            and (snapshot / "model.bin").stat().st_size > 0
+                            for snapshot in (folder / "snapshots").glob("*")
+                        )
+                        model_status[name] = "Sẵn sàng." if ready else f"Chưa có weights {name} trong {cache}."
+                option = option.model_copy(update={"model_status": model_status})
+            described.append(option)
+        return described
+
+    @app.get("/api/engine-catalog", response_model=list[TrainingModelOption])
+    def engine_catalog(task: str | None = None) -> list[TrainingModelOption]:
+        """Read task capabilities and machine readiness from the same options jobs use."""
+        options = [
+            *stt_engine_options(), *voice_generators.options(),
+            *voice_changer_engines.options(), *planned_providers.options(),
         ]
+        return [option for option in options if not task or task in option.tasks]
 
     @app.get("/api/projects/{project_id}/asr-adapters", response_model=list[ProjectAsrAdapter])
     def list_asr_adapters(project_id: str) -> list[ProjectAsrAdapter]:

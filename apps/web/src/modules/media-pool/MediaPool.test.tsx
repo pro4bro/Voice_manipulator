@@ -738,6 +738,9 @@ describe("MediaPool", () => {
     expect(sttChoices([]).map((choice) => choice.value)).toContain("large-v3");
     const adapter = { id: "asr-1", name: "An · VibeVoice-ASR LoRA", engine: "vibevoice-asr", baseModel: "microsoft/VibeVoice-ASR", adapterPath: "jobs/training/run-1/checkpoints", speakerProfileId: "speaker-an", sourceRunId: "run-1", createdAt: "" };
     expect(sttChoices(engines, [adapter]).find((choice) => choice.value === "vibevoice-asr@asr-1")?.label).toBe("+ An · VibeVoice-ASR LoRA");
+    const installed = sttChoices([{ ...engines[0], modelStatus: { small: "Chưa có weights small.", "large-v3": "Sẵn sàng." } }]);
+    expect(installed.find((choice) => choice.value === "small")?.available).toBe(false);
+    expect(installed.find((choice) => choice.value === "large-v3")?.available).toBe(true);
   });
 
   it("selects only chosen footage for Voice Training", () => {

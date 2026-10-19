@@ -448,6 +448,17 @@ class TrainingModelRequirement(DomainModel):
     label: str | None = None
 
 
+class ProviderCapabilities(DomainModel):
+    """What a provider actually exposes for one task, independent of readiness."""
+
+    languages: list[str] = Field(default_factory=list)
+    custom_voice_format: str | None = None
+    streaming_input: bool = False
+    streaming_output: bool = False
+    native_duration: bool = False
+    word_timing: Literal["native", "segment", "none"] = "none"
+
+
 class TrainingModelDescriptor(DomainModel):
     """A training option described by a JSON file, not by code.
 
@@ -476,6 +487,8 @@ class TrainingModelDescriptor(DomainModel):
     requires: list[TrainingModelRequirement] = Field(default_factory=list)
     data_format: str | None = None
     notes: list[str] = Field(default_factory=list)
+    tasks: list[str] = Field(default_factory=list)
+    capabilities: ProviderCapabilities = Field(default_factory=ProviderCapabilities)
     parameters: list[TrainingParameterSpec] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -494,6 +507,7 @@ class TrainingModelOption(TrainingModelDescriptor):
     installed: bool = False
     available: bool = False
     status: str = ""
+    model_status: dict[str, str] = Field(default_factory=dict)
 
 
 class LocalMediaImport(DomainModel):

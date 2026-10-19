@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -104,6 +105,19 @@ class VibeVoiceAsrTranscriber:
             return "Chưa thấy Python cho VibeVoice (.runtime/python/vibevoice-training)."
         if not self.model_dir or not (self.model_dir / "config.json").is_file():
             return "Chưa thấy weights VibeVoice_models/microsoft/VibeVoice-ASR."
+        index = self.model_dir / "model.safetensors.index.json"
+        if index.is_file():
+            try:
+                shards = set(json.loads(index.read_text(encoding="utf-8"))["weight_map"].values())
+            except (OSError, ValueError, KeyError, TypeError):
+                return "Index weights VibeVoice-ASR không đọc được."
+            if not shards or any(
+                Path(shard).name != shard or not (self.model_dir / shard).is_file()
+                or (self.model_dir / shard).stat().st_size == 0 for shard in shards
+            ):
+                return "Thiếu shard weights VibeVoice-ASR."
+        elif not (self.model_dir / "model.safetensors").is_file() or (self.model_dir / "model.safetensors").stat().st_size == 0:
+            return "Chưa thấy file weights VibeVoice-ASR."
         if not self.tokenizer_dir or not (self.tokenizer_dir / "tokenizer_config.json").is_file():
             return "Chưa thấy tokenizer VibeVoice_models/Qwen/Qwen2.5-7B."
         return None

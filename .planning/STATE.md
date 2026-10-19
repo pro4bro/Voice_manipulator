@@ -6,11 +6,24 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-19 — Stabilization round57 function workspace verified.
-last_activity_desc: Round57 function rail/settings dock/multitrack headers verified; see function-layout57 gate. New engine integrations remain planned. Phase03 stays60%.
+last_activity: 2026-10-19 — Round58 provider catalog verified.
+last_activity_desc: ENGINE-CATALOG-01 catalog and fail-closed STT selection verified; see engine-catalog58 gate. Four subsequent provider slices remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Round58 — ENGINE-CATALOG-01 (2026-10-19)
+
+Task provider catalog now reports capabilities and machine readiness; selected
+STT model/adapter IDs are checked before queueing and cannot silently fall back
+to Studio. Whisper weights are checked per model; VibeVoice-ASR speaker labels
+reach Script independently of Speaker Profiles and estimated word intervals
+stay untrusted. Planned streaming ASR and CosyVoice entries are disabled. See
+ADR0115 and docs/gates/engine-catalog58-20261019.md. Frontend1112pass/136files,
+typecheck/build191 pass; API1152pass (3 existing/fixture warnings); final
+focused backend15pass and diff check pass. No new model/audio artifact or
+project-format change. Exact next slice STT-VIBE-01; STT-VIBE-STREAM-01,
+TTS-COSY-01 and LIVE-COSY-01 remain open. Phase03 stays60%.
 
 ## Stabilization round57 — VM-FUNCTION-LAYOUT-01 (2026-10-19)
 

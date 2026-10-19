@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "vibevoice-asr-streaming",
+  "label": "VibeVoice-ASR-Streaming",
+  "family": "VibeVoice",
+  "engine": "vibevoice-asr-streaming",
+  "mode": "stt-stream",
+  "tasks": ["stream-transcribe", "live-translate"],
+  "capabilities": {
+    "languages": ["vi", "en", "zh", "ja", "ko"],
+    "customVoiceFormat": null,
+    "streamingInput": true,
+    "streamingOutput": true,
+    "nativeDuration": false,
+    "wordTiming": "segment"
+  },
+  "runnable": false,
+  "blockedReason": "Chưa có adapter streaming và checkpoint riêng đã kiểm chứng trong Pro4Bro.",
+  "repository": {
+    "root": "vibevoice",
+    "path": "VibeVoice",
+    "entrypoint": "demo/vibevoice_asr_streaming_fastapi_demo.py",
+    "url": "https://github.com/microsoft/VibeVoice/blob/main/docs/vibevoice-asr-streaming.md"
+  },
+  "description": "Nhận dạng theo chunk khi audio đang đến; kết quả chunk không phải word timing âm học."
+}

@@ -29,6 +29,7 @@ interface SttChoice {
   label: string;
   group: string;
   available: boolean;
+  status: string;
   engine: TrainingModelOption | null;
 }
 
@@ -40,18 +41,21 @@ interface SttChoice {
  */
 export function sttChoices(engines: TrainingModelOption[], adapters: ProjectAsrAdapter[] = []): SttChoice[] {
   if (!engines.length) {
-    return STT_MODELS.map((model) => ({ value: model.id, label: model.label, group: "faster-whisper", available: true, engine: null }));
+    return STT_MODELS.map((model) => ({ value: model.id, label: model.label, group: "faster-whisper", available: true, status: "", engine: null }));
   }
   return engines.flatMap((engine) => {
     const models = engine.parameters.find((spec) => spec.key === "model" && spec.kind === "choice");
     if (models) {
-      return models.options.map((option) => ({ value: String(option.value), label: option.label, group: engine.label, available: engine.available, engine }));
+      return models.options.map((option) => {
+        const status = engine.modelStatus?.[String(option.value)] ?? engine.status;
+        return { value: String(option.value), label: option.label, group: engine.label, available: engine.available && (!engine.modelStatus || status === "Sẵn sàng."), status, engine };
+      });
     }
     // Adapters this project trained for the engine follow it, as `engine@adapter`.
     const trained = adapters
       .filter((adapter) => adapter.engine === engine.id)
-      .map((adapter) => ({ value: `${engine.id}@${adapter.id}`, label: `+ ${adapter.name}`, group: engine.label, available: engine.available, engine }));
-    return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, engine }, ...trained];
+      .map((adapter) => ({ value: `${engine.id}@${adapter.id}`, label: `+ ${adapter.name}`, group: engine.label, available: engine.available, status: engine.status, engine }));
+    return [{ value: engine.id, label: engine.label, group: engine.label, available: engine.available, status: engine.status, engine }, ...trained];
   });
 }
 
@@ -1210,7 +1214,7 @@ export function MediaPool({
         </section> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><TaskStop scope="STT" onStop={(mode) => onControlTranscriptions(mode === "all" ? "stop-all" : "stop")} /></> : <button className="button button--accent media-send-training" disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)} onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}</small> : null}</div> : null}
+        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><TaskStop scope="STT" onStop={(mode) => onControlTranscriptions(mode === "all" ? "stop-all" : "stop")} /></> : <button className="button button--accent media-send-training" disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)} onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} title={choice.status} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}{chosen.available ? "" : ` · ${chosen.status}`}</small> : !chosen?.available && chosen?.status ? <small className="media-stt-engine-note">{chosen.status}</small> : null}</div> : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>

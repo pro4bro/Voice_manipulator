@@ -23,6 +23,7 @@ TranscriptionProgressCallback = Callable[[float], Awaitable[None]]
 STT_MAX_REQUEST_SECONDS = 90 * 60
 STT_CHUNK_SECONDS = min(60.0, STT_MAX_REQUEST_SECONDS * 0.99)
 STT_CHUNK_OVERLAP_SECONDS = 2.0
+STUDIO_STT_MODELS = frozenset({"tiny", "base", "small", "medium", "large-v3"})
 
 
 @dataclass(frozen=True)
@@ -558,6 +559,8 @@ class MediaImportProcessor:
             cancellation.check()
         engine_name, _, variant = model.partition("@")
         engine = self.other_stt.get(engine_name)
+        if engine is None and model not in STUDIO_STT_MODELS:
+            raise ValueError(f"Không có adapter STT cho model '{model}'.")
         if engine is not None:
             if on_progress is not None:
                 await on_progress(1)

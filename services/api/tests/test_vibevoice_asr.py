@@ -10,7 +10,7 @@ from app.adapters.engine_worker import EngineWorkerError
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.gpu_lease import GpuLease
-from app.adapters.media_import_processor import MediaImportProcessor
+from app.adapters.media_import_processor import MediaImportProcessor, STUDIO_STT_MODELS
 from app.adapters.training_model_catalog import FileTrainingModelCatalog
 from app.adapters.vibevoice_asr_transcriber import (
     TIMING_SOURCE,
@@ -62,11 +62,12 @@ def vibevoice_tree(tmp_path) -> Path:
         "VibeVoice/vibevoice/modular/modeling_vibevoice_asr.py",
         "VibeVoice/.venv/Scripts/python.exe",
         "VibeVoice_models/microsoft/VibeVoice-ASR/config.json",
+        "VibeVoice_models/microsoft/VibeVoice-ASR/model.safetensors",
         "VibeVoice_models/Qwen/Qwen2.5-7B/tokenizer_config.json",
     ):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("", encoding="utf-8")
+        path.write_text("weights" if path.name == "model.safetensors" else "", encoding="utf-8")
     return root
 
 
@@ -179,6 +180,30 @@ def test_the_queue_model_value_routes_transcription_to_vibevoice(tmp_path, monke
     assert updated.text == "Xin chào anh ờ vâng"
     assert updated.word_timing_quality == "needs-alignment"
     assert all(word.get("timingTrusted") is False for word in updated.words)
+    assert {word.get("asrSpeakerId") for word in media.get(project.id, asset.id).words} == {"speaker-1", "speaker-2"}
+    with pytest.raises(ValueError, match="Không có adapter STT"):
+        asyncio.run(processor.transcribe_existing(project, asset, model="unknown-provider"))
+
+
+def test_engine_catalog_exposes_task_capabilities_and_rejects_unknown_stt(tmp_path):
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = replace(Settings.from_env(), data_root=tmp_path / "data")
+    client = TestClient(create_app(settings=settings))
+    response = client.get("/api/engine-catalog?task=transcribe")
+
+    assert response.status_code == 200
+    by_id = {item["id"]: item for item in response.json()}
+    assert set(by_id) == {"faster-whisper", "vibevoice-asr"}
+    assert by_id["vibevoice-asr"]["capabilities"]["wordTiming"] == "segment"
+    assert by_id["vibevoice-asr"]["capabilities"]["customVoiceFormat"] is None
+    assert by_id["faster-whisper"]["capabilities"]["wordTiming"] == "native"
+    assert client.get("/api/engine-catalog?task=stream-transcribe").json()[0]["available"] is False
+    bad = client.post("/api/projects/unused/media/transcriptions", json={"assetIds": ["asset-1"], "model": "unknown-provider"})
+    assert bad.status_code == 422
 
 
 def test_stt_engines_are_described_like_every_other_capability():
@@ -205,4 +230,5 @@ def test_the_whisper_model_choices_are_the_ones_the_studio_accepts():
     choices = {choice.value for spec in whisper.parameters if spec.key == "model" for choice in spec.options}
 
     assert choices == supported
+    assert choices == STUDIO_STT_MODELS
 

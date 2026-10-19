@@ -52,6 +52,15 @@ describe("Script rows", () => {
     expect(rows.map((row) => row.diarizationLabel)).toEqual(["Khoa Trịnh", "Speaker 2"]);
   });
 
+  it("shows VibeVoice ASR speaker turns without treating labels as project profiles", () => {
+    const rows = buildSpeakerScriptRows([
+      word({ text: "Xin", asrSpeakerId: "speaker-1", timingTrusted: false }),
+      word({ text: "chào", asrSpeakerId: "speaker-2", timingTrusted: false }),
+    ], [AN]);
+    expect(rows.map((row) => row.diarizationLabel)).toEqual(["Speaker 1", "Speaker 2"]);
+    expect(rows.every((row) => row.profileId === null)).toBe(true);
+  });
+
   it("says Speaker 1 when no profile is assigned to the file either", () => {
     const rows = buildSpeakerScriptRows([word()], [AN], null);
 

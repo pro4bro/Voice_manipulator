@@ -5,6 +5,15 @@
   "family": "VibeVoice",
   "engine": "vibevoice-asr",
   "mode": "stt",
+  "tasks": ["transcribe"],
+  "capabilities": {
+    "languages": ["vi", "en", "zh", "ja", "ko", "multilingual"],
+    "customVoiceFormat": null,
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "segment"
+  },
   "order": 20,
   "description": "Nhận dạng dài tới 60 phút một lượt, ghi sát lời nói (giữ cả ừm, ờ, lặp từ) và tách người nói. Chỉ có mốc thời gian theo đoạn, không có word timing.",
   "runnable": true,

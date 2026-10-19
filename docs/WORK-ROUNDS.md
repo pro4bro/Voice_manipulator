@@ -1,5 +1,27 @@
 # Work Rounds
 
+## Round58 — ENGINE-CATALOG-01 (2026-10-19)
+
+Added a task-scoped provider catalog with declared languages, custom-voice
+format, streaming input/output, native duration, word timing and machine
+availability. Existing STT/generation/live-conversion choices share the same
+descriptors as their jobs. Planned streaming VibeVoice-ASR and CosyVoice choices
+remain disabled with exact missing prerequisites; OmniVoice Voice Dub is disabled
+until its separate processor exists. Whisper selection checks each installed
+weight snapshot; VibeVoice-ASR checks shards/tokenizer/Python; unknown or
+unavailable STT choices fail before queueing, without falling back to Studio.
+Script displays retained raw VibeVoice ASR speaker labels separately from user
+Speaker Profiles and keeps estimated word times untrusted. No project format,
+engine source, media or model weights changed. ADR0115 and gate
+engine-catalog58 record scope and evidence. Frontend1112pass/136files/174.93s,
+typecheck/build191 pass; API1152pass/651.42s with3 existing/fixture warnings;
+focused backend15pass after a catalog-label correction; diff check pass. An
+initial full run used the unsuitable portable Python and failed in a test
+fixture whose PYTHONPATH that interpreter ignores; the development `.venv`
+rerun is green. GPU was 99% occupied, so no inference acceptance was attempted.
+STT-VIBE-01, STT-VIBE-STREAM-01, TTS-COSY-01 and LIVE-COSY-01 remain open with
+their real corpus/model/device gates. Phase03 stays60%; Checkpoint A stays open.
+
 ## Stabilization round57 — VM-FUNCTION-LAYOUT-01 (2026-10-19)
 
 Owner direction: keep OmniVoice primary and offer compatible providers per task.

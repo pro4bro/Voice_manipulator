@@ -5,6 +5,15 @@
   "family": "MeanVC2",
   "engine": "meanvc2",
   "mode": "live-convert",
+  "tasks": ["live-convert"],
+  "capabilities": {
+    "languages": ["model-dependent"],
+    "customVoiceFormat": "reference WAV",
+    "streamingInput": true,
+    "streamingOutput": true,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
   "order": 20,
   "runnable": false,
   "category": "clone",

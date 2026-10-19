@@ -23,7 +23,7 @@ const TURN_EDGE_SECONDS = 0.25;
 
 function wordSpeaker(word: StudioWord): string | null {
   return word.speakerId?.trim() || word.manualDiarizationSpeakerId?.trim() ||
-    word.diarizationSpeakerId?.trim() || null;
+    word.diarizationSpeakerId?.trim() || word.asrSpeakerId?.trim() || null;
 }
 
 function trackLabel(track: ProjectMediaAsset): string {
