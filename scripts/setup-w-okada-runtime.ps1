@@ -19,6 +19,8 @@ $serverRoot = Join-Path $engineRoot "server"
 $requirements = Join-Path $serverRoot "requirements.txt"
 $report = Join-Path $runtimeRoot "official-requirements-dry-run.json"
 $probe = Join-Path $PSScriptRoot "probe-w-okada-runtime.py"
+$fairseqRoot = Join-Path $root ".runtime\engines\research\fairseq-w-okada"
+$fairseqRevision = "4a388e64cd646ed7d7ad8de8fae55df2b8eea91d"
 
 function Resolve-Python310 {
     $candidates = @(
@@ -61,6 +63,10 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "w-okada virtual environment did not create its Python executable: $python"
 }
 
+# Use the resolver validated with Fairseq's legacy OmegaConf metadata.
+& $python -m pip install --disable-pip-version-check "pip==22.3.1"
+if ($LASTEXITCODE -ne 0) { throw "Could not prepare the legacy w-okada dependency resolver." }
+
 Write-Host "Checking official w-okada server requirements with CPython 3.10; no packages are installed by this check."
 & $python -m pip install --disable-pip-version-check --no-input --dry-run --no-deps --report $report -r $requirements
 if ($LASTEXITCODE -ne 0) {
@@ -74,6 +80,24 @@ if (-not $Install) {
 
 & $python -m pip install --prefer-binary -r $requirements
 if ($LASTEXITCODE -ne 0) { throw "Could not install the official w-okada server requirements." }
+
+# RVC imports these dependencies although upstream requirements.txt omits them.
+# The Fairseq PyPI sdist omits libbase/balanced_assignment.cpp; build the complete
+# official v0.12.2 checkout instead. Never reset an existing checkout.
+if (-not (Test-Path -LiteralPath (Join-Path $fairseqRoot ".git"))) {
+    & git clone --depth 1 --branch v0.12.2 "https://github.com/facebookresearch/fairseq.git" $fairseqRoot
+    if ($LASTEXITCODE -ne 0) { throw "Could not download the official Fairseq source." }
+}
+$fairseqHead = & git -C $fairseqRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $fairseqHead.Trim() -ne $fairseqRevision) {
+    throw "Fairseq checkout does not match the supported v0.12.2 revision: $fairseqRoot"
+}
+& git -C $fairseqRoot diff --quiet HEAD --
+if ($LASTEXITCODE -ne 0) { throw "Fairseq checkout has tracked changes; inspect them before building." }
+& $python -m pip install "Cython==0.29.37" "wheel==0.48.0" "pyworld==0.3.4"
+if ($LASTEXITCODE -ne 0) { throw "Could not prepare Fairseq/RVC build dependencies." }
+& $python -m pip install --no-build-isolation $fairseqRoot
+if ($LASTEXITCODE -ne 0) { throw "Could not build the pinned Fairseq source; inspect the C++ compiler output." }
 
 $env:PYTHONPATH = if ($env:PYTHONPATH) { "$serverRoot;$env:PYTHONPATH" } else { $serverRoot }
 Push-Location $serverRoot
