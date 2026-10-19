@@ -1,5 +1,18 @@
 # Work Rounds
 
+## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
+
+Closed graduated edge speed and subtitle speaker cue feedback. Shared edge pan
+uses 10/20/30/40% viewport width per second at symmetric 90/95/100/outside bands;
+physical source bounds, safe playhead position and release/cancel behavior remain.
+Ordinary/manual subtitle bottom borders now retain assigned/inherited profile
+color across playback and selection; manual timing edits use the orange top
+border. Note explains both cues. ADR0118 and edge-speaker61 gate record RED cases,
+intentional old speed test input changes and 32 real-browser CSS checks.
+Focused 138 pass; frontend 1130 pass/136 files/149.48s; typecheck/build191 pass;
+API 1207 pass/3 warnings/677.64s. Native held-drag/installed portable acceptance
+remains separate. No portable issued; Phase03 stays60%. Stop after round61.
+
 ## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
 
 Closed the zoomed timeline endpoint regression. Ordinary dragging recognizes

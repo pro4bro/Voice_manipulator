@@ -120,12 +120,12 @@ it("auto-pans a held edge drag by 100px per second in a 1000px viewport and stop
     fireEvent.click(screen.getByRole("button", { name: "Phóng to timeline" }));
     scroller.scrollLeft = 500;
     const playhead = screen.getByLabelText("Playhead indicator");
-    fireEvent.pointerDown(playhead, { button: 0, pointerId: 1, clientX: 950 });
+    fireEvent.pointerDown(playhead, { button: 0, pointerId: 1, clientX: 925 });
     const before = scroller.scrollLeft;
     act(() => { frames.at(-1)?.(0); }); act(() => { frames.at(-1)?.(1000); });
     expect(scroller.scrollLeft - before).toBeCloseTo(100);
     expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + 900}px, 0, 0)`);
-    fireEvent.pointerUp(playhead, { button: 0, pointerId: 1, clientX: 950 });
+    fireEvent.pointerUp(playhead, { button: 0, pointerId: 1, clientX: 925 });
     const stopped = scroller.scrollLeft; act(() => { frames.at(-1)?.(2000); });
     expect(scroller.scrollLeft).toBe(stopped);
     view.unmount();
@@ -211,7 +211,7 @@ it.each(["playhead", "waveform"]) ("locks the %s at 10/90 percent during edge pa
       fireEvent.pointerMove(surface, { button: 0, pointerId: 9, clientX: pointer });
       expect(playhead.style.transform).toBe(`translate3d(${500 + safe}px, 0, 0)`);
       act(() => { frames.at(-1)?.(0); }); act(() => { frames.at(-1)?.(1000); });
-      expect(scroller.scrollLeft).toBe(500 + direction * 100);
+      expect(scroller.scrollLeft).toBe(500 + direction * 400);
       expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + safe}px, 0, 0)`);
       const releasedScroll = scroller.scrollLeft, releasedTransform = playhead.style.transform;
       fireEvent.pointerUp(surface, { button: 0, pointerId: 9, clientX: pointer });

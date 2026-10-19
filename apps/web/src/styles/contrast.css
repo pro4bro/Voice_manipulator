@@ -25,7 +25,15 @@
 
 /* Dynamic text resolves against these opaque surfaces, so nested translucent
    lane fills cannot silently change the contrast calculation. */
-.timeline-module .timeline-word:not(.is-compact) { background-color: var(--contrast-word-background); }
+.timeline-module .timeline-word:not(.is-compact) {
+  background-color: var(--contrast-word-background);
+  /* Identity is independent of playback, selection, timing edits and warnings. */
+  border-bottom: 2px solid var(--subtitle-speaker-underline, transparent) !important;
+}
+.timeline-module .timeline-word.timeline-word--edited:not(.is-compact) {
+  /* Timing edits use the top edge; the bottom edge is reserved for the speaker. */
+  border-top-color: var(--accent) !important;
+}
 .script-playback-layer, .script-tag-editor, .script-speaker-text,
 .script-table__content { background-color: var(--surface-field); }
 
@@ -57,9 +65,6 @@
 /* Manual text keeps its blue classification on each resolved state background. */
 .timeline-module .timeline-word.timeline-word--manual:not(.is-compact) {
   color: var(--subtitle-manual-foreground) !important;
-  border-bottom-color: var(--subtitle-speaker-underline, transparent) !important;
-  border-bottom-style: solid !important;
-  border-bottom-width: 2px !important;
 }
 .timeline-module .timeline-word.timeline-word--manual.timeline-word--untrusted:not(.is-compact) {
   /* Keep the orange timing outline while reserving the bottom edge for the speaker cue. */

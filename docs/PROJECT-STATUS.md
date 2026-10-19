@@ -1,5 +1,18 @@
 # Project Status — 2026-10-19
 
+## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
+
+Edge dragging now steps through 10/20/30/40% viewport width/sec at symmetric
+90/95/100/outside bands, preserving source boundaries and stable release.
+Speaker underlines are independent of playback/selection; the former orange
+manual-timing bottom cue moves to the top and is explained in Note. Actual
+browser CSS verifies both themes and before/active/past/selected states.
+Focused 138 pass; frontend 1130 pass/136 files/149.48s; typecheck/build191 pass;
+API 1207 pass/3 warnings/677.64s. See ADR0118 and
+docs/gates/timeline-edge-speaker61-20261019.md. Native held-drag/portable UAT is
+not claimed; no portable issued. Phase03 and separate provider/acoustic gates
+remain at their existing status.
+
 ## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
 
 Zoomed timeline dragging now recognizes physical footage boundaries despite DOM

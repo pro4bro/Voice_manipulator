@@ -84,7 +84,8 @@ const commonNotes = [
 ];
 const notes = {
   subtitle: [
-    ["speaker", "Vạch dưới màu Speaker", "Màu của Speaker Profile đã gán hoặc kế thừa từ footage. Không dùng màu Speaker để tô nền từ mới."],
+    ["speaker", "Vạch dưới màu Speaker", "Màu của Speaker Profile đã gán hoặc kế thừa từ footage; giữ nguyên trước và sau playhead. Chưa gán Profile thì không có vạch màu Speaker."],
+    ["timing-edit", "Viền trên cam", "Timing IN/OUT đã được sửa thủ công; khác với vạch Speaker ở phía dưới."],
     ["manual", "Chữ xanh", "Text do người dùng thêm hoặc sửa; giữ màu phân loại ngay cả khi chọn. Không có nghĩa timing đã khớp âm thanh."],
     ...commonNotes,
     ["collision", "Nền cam/đỏ", "Các khoảng timing đang lấn nhau; cần kiểm tra IN/OUT."],

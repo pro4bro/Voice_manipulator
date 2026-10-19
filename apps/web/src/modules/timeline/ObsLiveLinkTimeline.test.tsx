@@ -1369,7 +1369,7 @@ it("auto-scrolls an archived waveform drag at screen-relative speed and skips fu
   render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const wave = await screen.findByRole("img", { name: "Sóng âm Channel 1" });
   vi.spyOn(wave, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
-  fireEvent.pointerDown(wave, { button: 0, pointerId: 1, clientX: 950 });
+  fireEvent.pointerDown(wave, { button: 0, pointerId: 1, clientX: 925 });
   const before = frames.shift();
   expect(before).toBeDefined();
   act(() => { before!(0); frames.shift()!(1000); });
@@ -1377,12 +1377,12 @@ it("auto-scrolls an archived waveform drag at screen-relative speed and skips fu
   expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });
   const queuedAfterEdgePan = frames.shift();
   const rulerBeforeRelease = screen.getByLabelText("Ruler chung").textContent;
-  fireEvent.pointerUp(wave, { pointerId: 1, clientX: 950 });
-  fireEvent.click(wave, { clientX: 950 });
+  fireEvent.pointerUp(wave, { pointerId: 1, clientX: 925 });
+  fireEvent.click(wave, { clientX: 925 });
   expect(screen.getByText("00:01:00.000")).toBeInTheDocument();
   expect(screen.getByLabelText("Ruler chung").textContent).toBe(rulerBeforeRelease);
   expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });
-  fireEvent.pointerCancel(wave, { pointerId: 1, clientX: 950 });
+  fireEvent.pointerCancel(wave, { pointerId: 1, clientX: 925 });
   act(() => queuedAfterEdgePan?.(2000));
   expect(screen.getByText("00:01:00.000")).toBeInTheDocument();
   expect(screen.getByLabelText("Playhead chung")).toHaveStyle({ left: "90%" });

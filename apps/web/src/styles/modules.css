@@ -578,7 +578,6 @@
 .timeline-word__grip--in { left: -6px; }
 .timeline-word__grip--out { right: -6px; }
 .timeline-word__grip:hover { opacity: 1; }
-.timeline-word--edited { border-bottom: 2px solid var(--accent); }
 .timeline-word.is-past { color: var(--text-subtle); border-color: rgba(143,180,59,.35); }
 .timeline-word.timeline-word--untrusted { border-color: #e29a24; box-shadow: inset 0 -2px 0 #c96f16; }
 .timeline-word.timeline-word--untrusted:not(.timeline-word--manual) { color: var(--contrast-untrusted-foreground) !important; background: var(--contrast-untrusted-background) !important; }

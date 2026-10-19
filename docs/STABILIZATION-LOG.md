@@ -2213,3 +2213,28 @@ stub, không gọi đó là test kéo chuột native; server WAV ban đầu thi�
 đã bị loại khỏi evidence và sửa trước lần đo cuối. Xem ADR0117 và gate
 timeline-source-boundary60. Native mouse/portable UAT còn mở; không phát hành
 portable. Phase03 vẫn60%; provider/acoustic/complete processor gates giữ nguyên.
+
+## Round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
+
+### Feedback và xử lý
+
+Tăng tốc cuộn theo vị trí chuột: 90%/10% → 10%, 95%/5% → 20%, đúng mép
+100%/0% → 30%, ra ngoài → 40% khung nhìn/giây. Dùng chung cho playhead,
+waveform, gán timing chuột giữa, imported multitrack và OBS archive; giữ các
+ngoại lệ đầu/cuối nguồn, safe edge, release/cancel và tích lũy subpixel.
+
+Viền cam cũ là dấu timing đã sửa, không phải đổi Speaker. CSS is-past ghi đè
+viền này thành xanh; từ thường còn thiếu property vạch Speaker. Nay vạch dưới
+luôn theo Profile đã gán/kế thừa, viền trên cam đánh dấu timing sửa thủ công.
+Giữ phân loại text xanh và cập nhật Note cho hai dấu độc lập.
+
+### Kiểm tra và còn lại
+
+RED 3 fail/19 pass trước sửa; browser CSS tái hiện đúng cam → xanh. Final
+focused 138 pass/30.41s; frontend 1130 pass/136 files/149.48s; typecheck/build191
+pass; API 1207 pass/3 warnings/677.64s. Browser CSS 32 trường hợp qua đủ hai
+theme, before/active/past/selected, có profile/kế thừa/explicit null/manual text.
+Các test tốc độ cũ đổi vị trí chuột sang band10% hoặc kỳ vọng40% ngoài khung
+theo yêu cầu mới; không xóa case, giảm assertion hay tăng timeout. Xem ADR0118
+và gate timeline-edge-speaker61. Native held-drag/portable UAT còn tách riêng;
+không phát hành portable. Phase03 vẫn60%; dừng sau round61.

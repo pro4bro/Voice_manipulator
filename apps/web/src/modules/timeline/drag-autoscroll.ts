@@ -18,12 +18,14 @@ export function dragSeekTime(view: DragViewport, clientX: number): number {
   return Math.max(0, Math.min(view.duration, view.start + Math.max(minimum, Math.min(maximum, ratio)) * view.span));
 }
 
-/** Source seconds change with zoom; screen movement stays 10% of the view/sec. */
+/** Screen-relative speed steps up near/beyond either edge, independent of zoom. */
 export function edgeScrollStart(view: DragViewport, clientX: number, elapsedMs: number): number {
   const ratio = (clientX - view.left) / Math.max(1, view.width);
   const direction = ratio <= DRAG_SAFE_START ? -1 : ratio >= DRAG_SAFE_END ? 1 : 0;
+  const rate = ratio < 0 || ratio > 1 ? .4 : ratio === 0 || ratio === 1 ? .3
+    : ratio <= .05 || ratio >= .95 ? .2 : .1;
   return Math.max(0, Math.min(Math.max(0, view.duration - view.span),
-    view.start + direction * view.span * .1 * Math.max(0, elapsedMs) / 1000));
+    view.start + direction * view.span * rate * Math.max(0, elapsedMs) / 1000));
 }
 
 export function zoomWindowStart(playhead: number, span: number, duration: number): number {

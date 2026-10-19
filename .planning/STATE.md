@@ -6,11 +6,22 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-19 — Stabilization round60 timeline source boundaries.
-last_activity_desc: TIMELINE-SOURCE-BOUNDARY-01 closed; frontend1127pass, focused131pass, API1207pass. Browser DOM/media endpoints verified; native mouse/portable UAT remains. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
+last_activity: 2026-10-19 — Stabilization round61 edge acceleration and speaker cues.
+last_activity_desc: TIMELINE-EDGE-SPEAKER-01 closed; frontend1130pass, focused138pass, API1207pass. Real browser CSS passes32cases. Native held-drag/portable UAT remains separate. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
+
+Shared edge scrolling uses symmetric 10/20/30/40% viewport/sec bands. Subtitle
+bottom edges preserve profile identity across states, with manual timing edits
+on the orange top edge and updated Note. Frontend 1130 pass/136 files/149.48s;
+focused 138 pass; typecheck/build191 pass; API 1207 pass/3 warnings/677.64s.
+Real browser CSS checks pass32cases across themes and playback/selection states.
+See ADR0118 and edge-speaker61 gate. Native held-drag/portable UAT remains
+separate; no portable issued. Phase03 stays60%. Stop after round61; provider
+quality/device and complete processor acceptance remain separate future work.
 
 ## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
 

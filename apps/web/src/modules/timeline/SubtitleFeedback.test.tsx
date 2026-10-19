@@ -9,6 +9,19 @@ import type { StudioWord } from "../../domain/types";
 const initial: ActiveTake = { id: "feedback", name: "feedback", duration: 100, url: "/feedback.wav", text: "one two",
   words: [{ text: "one", start: 20, end: 21, speakerId: "s", diarizationSpeakerId: "speaker-2" }, { text: "two", start: 70, end: 71, speakerId: "s" }] };
 const speaker = { id: "s", name: "Speaker", color: "#caed70", language: "Tiếng Việt", languageId: "vi", region: "", age: null, gender: "female" as const, attributes: {}, createdAt: "" };
+
+it("keeps assigned/inherited speaker underlines on ordinary timing-edited words before, during and after playback", () => {
+  const words: StudioWord[] = [{ text: "assigned", start: 1, end: 2, speakerId: "s", timingSource: "manual" },
+    { text: "inherited", start: 3, end: 4 }, { text: "unassigned", start: 5, end: 6, speakerId: null }];
+  const view = render(<Timeline gain={0} onGainChange={vi.fn()} defaultSpeakerId="s" speakers={[speaker]}
+    take={{ id: "speaker-cue", name: "cue", url: "/cue.wav", duration: 10, words }} />);
+  const audio = view.container.querySelector("audio")!;
+  for (const time of [0, 1.5, 8]) {
+    audio.currentTime = time; fireEvent.timeUpdate(audio);
+    for (const word of ["assigned", "inherited"]) expect(screen.getByRole("button", { name: `Subtitle word ${word}` }).style.getPropertyValue("--subtitle-speaker-underline")).toBe(speaker.color);
+    expect(screen.getByRole("button", { name: "Subtitle word unassigned" }).style.getPropertyValue("--subtitle-speaker-underline")).toBe("");
+  }
+});
 function Harness({ changed = vi.fn() }: { changed?: (words: StudioWord[]) => void }) {
   const [take, setTake] = useState(initial);
   const [selection, setSelection] = useState<WordSelection>({ indexes: [0], anchor: 0, ranges: [{ id: "chosen", start: 20, end: 21 }] });
@@ -69,7 +82,7 @@ it("uses the footage's default speaker underline when a new word inherits its ro
   expect(unassigned.style.backgroundColor).not.toBe("rgb(202, 237, 112)");
 });
 
-it.each([{ direction: 0, zoom: 1 }, { direction: 1, zoom: 1 }, { direction: 0, zoom: 2 }, { direction: 1, zoom: 2 }])("edge-pans promoted timing at 10 percent viewport/s: %j", ({ direction, zoom }) => {
+it.each([{ direction: 0, zoom: 1 }, { direction: 1, zoom: 1 }, { direction: 0, zoom: 2 }, { direction: 1, zoom: 2 }])("edge-pans promoted timing outside the view at 40 percent viewport/s: %j", ({ direction, zoom }) => {
   const frames: FrameRequestCallback[] = [];
   const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((frame) => { frames.push(frame); return frames.length; });
   const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
@@ -84,7 +97,7 @@ it.each([{ direction: 0, zoom: 1 }, { direction: 1, zoom: 1 }, { direction: 0, z
     fireEvent.pointerMove(wave, { buttons: 4, pointerId: 5, clientX: pointer });
     expect(scroller.scrollLeft).toBe(500);
     act(() => frames.at(-1)?.(0)); act(() => frames.at(-1)?.(1000));
-    expect(scroller.scrollLeft).toBe(direction ? 600 : 400);
+    expect(scroller.scrollLeft).toBe(direction ? 900 : 100);
     const playhead = screen.getByLabelText("Playhead indicator");
     expect(playhead.style.transform).toBe(`translate3d(${scroller.scrollLeft + (direction ? 900 : 100)}px, 0, 0)`);
     const releasedScroll = scroller.scrollLeft, releasedPlayhead = playhead.style.transform;

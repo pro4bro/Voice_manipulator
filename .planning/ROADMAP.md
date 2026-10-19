@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
+
+Closed 10/20/30/40% viewport/sec edge acceleration and stable speaker underline
+feedback. Focused 138 pass; frontend 1130 pass/136 files; typecheck/build191;
+API 1207 pass/3 warnings; actual CSS passes32cases in both themes. See ADR0118
+and docs/gates/timeline-edge-speaker61-20261019.md. Native held-drag/portable UAT
+remains separate; no portable issued. Phase03 stays60%; provider/acoustic/full
+processor gates retain their existing status. Stop after this bounded round.
+
 ## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
 
 Closed source-end drag regression at zoom, endpoint preview replay and stale

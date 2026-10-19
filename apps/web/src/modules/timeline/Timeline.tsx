@@ -1718,7 +1718,7 @@ export function Timeline({
                     key={`${word.text}-${index}`}
                     style={{ left: `${(start / duration) * 100}%`, width: `${(layout.widthPixels / wordTrackCanvasWidth) * 100}%`, backgroundColor: manualPaint?.background,
                       color: manualPaint?.foreground ?? speakerTextColors.get(word.speakerId ?? ""), "--subtitle-manual-foreground": manualPaint?.foreground,
-                      "--subtitle-speaker-underline": manual ? speakerUnderlines.get(speakerId ?? "") : undefined } as CSSProperties}
+                      "--subtitle-speaker-underline": speakerUnderlines.get(speakerId ?? "") } as CSSProperties}
                     data-timing-note={word.timingTrusted === false ? "Timing chưa được xác nhận · cần đối chiếu waveform" : undefined}
                     title={word.timingTrusted === false ? undefined : "Chuột trái quét để chọn · chuột giữa kéo để dịch · kéo hai mép để chỉnh IN/OUT · chuột phải để gán Speaker"}
                     type="button"
