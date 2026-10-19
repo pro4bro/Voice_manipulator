@@ -2,12 +2,36 @@ from pathlib import Path
 from types import SimpleNamespace
 import hashlib
 import json
+import sys
 
 import pytest
 
 from app.adapters.cosyvoice import CosyVoicePaths, CosyVoiceSpeech
 from app.adapters.omnivoice_generator import SpeechRequest
 from app.domain.models import ProjectVoice
+
+
+def test_readiness_imports_model_configuration_dependencies_before_dispatch(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    fixtures = {
+        "cosyvoice/__init__.py": "",
+        "cosyvoice/cli/__init__.py": "",
+        "cosyvoice/cli/cosyvoice.py": "AutoModel = object\n",
+        "cosyvoice/flow/__init__.py": "",
+        "cosyvoice/flow/DiT/__init__.py": "",
+        "cosyvoice/flow/DiT/dit.py": "DiT = object\n",
+        "cosyvoice/flow/flow_matching.py": "raise ModuleNotFoundError('missing YAML dependency')\n",
+    }
+    for relative, content in fixtures.items():
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(CosyVoicePaths, "python", property(lambda self: Path(sys.executable)))
+    paths = CosyVoicePaths(repo, tmp_path / "runtime")
+
+    reason = paths._import_reason()
+
+    assert reason is not None and "missing YAML dependency" in reason
 
 
 def write_model_files(paths):

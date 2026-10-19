@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.adapters.omnivoice_generator import SpeechRequest
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "cosyvoice_worker.py"
+IMPORT_PROBE = WORKER_SCRIPT.with_name("cosyvoice_import_probe.py")
 LANGUAGES = {"zh", "en", "ja", "ko", "de", "es", "fr", "it", "ru"}
 MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
 MODEL_REVISION = "29e01c4e8d000f4bcd70751be16fa94bf3d85a18"
@@ -60,7 +61,8 @@ class CosyVoicePaths:
             return "Chưa có Python riêng cho CosyVoice."
         packages = site_packages(self.runtime)
         if packages is None or any(not (packages / name).exists() for name in
-                                   ("torch", "torchaudio", "transformers", "hyperpyyaml", "onnxruntime", "whisper")):
+                                   ("torch", "torchaudio", "transformers", "hyperpyyaml", "onnxruntime", "whisper",
+                                    "gdown", "wget.py", "pyarrow", "pyworld")):
             return "Python của CosyVoice còn thiếu dependency inference."
         if not (self.repo / "third_party/Matcha-TTS/matcha").is_dir():
             return "Chưa có submodule Matcha-TTS của CosyVoice."
@@ -118,8 +120,7 @@ class CosyVoicePaths:
                 return cached[1]
             try:
                 # Checking the actual imports catches broken DLLs and incompatible packages.
-                code = "import sys; sys.path[:0] = " + repr([str(self.repo.resolve()), str((self.repo / 'third_party/Matcha-TTS').resolve())]) + "; from cosyvoice.cli.cosyvoice import AutoModel; from cosyvoice.flow.DiT.dit import DiT"
-                result = subprocess.run([str(self.python), "-c", code], capture_output=True, text=True,
+                result = subprocess.run([str(self.python), str(IMPORT_PROBE), str(self.repo.resolve())], capture_output=True, text=True,
                                         encoding="utf-8", errors="replace", timeout=45,
                                         creationflags=0x08000000 if os.name == "nt" else 0)
                 lines = result.stderr.strip().splitlines()

@@ -76,8 +76,8 @@ if ($LASTEXITCODE -ne 0) { throw "Could not prepare the Whisper build environmen
 & $python -m pip install --prefer-binary --no-build-isolation -r $requirements
 if ($LASTEXITCODE -ne 0) { throw "Could not install CosyVoice inference requirements." }
 
-$env:PYTHONPATH = "$engineRoot;$matchaRoot"
-& $python -c "from cosyvoice.cli.cosyvoice import AutoModel; print('CosyVoice AutoModel import OK:', AutoModel.__name__)"
-if ($LASTEXITCODE -ne 0) { throw "CosyVoice AutoModel import failed in its isolated environment." }
+$probe = Join-Path $root "services\api\app\workers\cosyvoice_import_probe.py"
+& $python $probe $engineRoot
+if ($LASTEXITCODE -ne 0) { throw "CosyVoice model configuration imports failed in its isolated environment." }
 
 Write-Host "CosyVoice inference runtime is ready at .runtime/cosyvoice/.venv" -ForegroundColor Green

@@ -14,3 +14,9 @@ conformer==0.3.2
 x-transformers==2.11.24
 diffusers==0.29.0
 rich==13.7.1
+# The shipped model YAML also imports Matcha utilities and dataset processors.
+gdown==5.1.0
+wget==3.2
+pyarrow==18.1.0
+pyworld==0.3.4
+matplotlib==3.7.5
