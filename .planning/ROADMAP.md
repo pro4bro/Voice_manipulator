@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
+
+Repos and compatible choices are installed with product adapters for CosyVoice
+generation, streaming-ASR sessions and Sokuji inspection. Frontend1118pass;
+actual Cosy WAV and w-okada3.10 imports verified. Full API1207pass/737.89s;
+implementation/test gate closed. Complete provider acceptance remains open; see ADR0116 and
+docs/gates/open-engine-connect59-20261019.md. Preserve separate quality/device gates before
+claiming STT-VIBE/TTS-COSY/LIVE-COSY/translation/dub acceptance. Phase03 stays60%.
+
 ## Round58 — ENGINE-CATALOG-01 (2026-10-19)
 
 Task provider catalog now reports capabilities and machine readiness; selected

@@ -1,5 +1,24 @@
 # Project Status — 2026-10-19
 
+## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
+
+Missing planned repositories are downloaded and offered by capability. CosyVoice
+reference cloning/generation dispatch, isolated runtimes, bounded streaming-ASR
+sessions and Sokuji sidecar inspection are implemented; complete live/translation/
+dub acceptance remains open. Pinned model hash verification and model receipts
+prevent incomplete or mismatched weights from appearing ready. Per-function
+selectors preserve Script voice assignments and reject incompatible dispatch.
+ADR0116 and docs/gates/open-engine-connect59-20261019.md record exact revisions,
+commands, positive checks and host paging/startup failures. Typecheck/build191,
+focused Cosy/provisioning33 and final catalog28 pass. Frontend1118pass/136files/
+324.88s; two native startup cases recovered unchanged in44.53s. Full API rerun
+passed1207tests/3warnings/737.89s. Actual CosyVoice5.88s/24kHz/mono/FLOAT32 WAV passes basic signal
+checks; its readiness probe passes. w-okada3.10 server/RVC imports pass after
+building the complete pinned Fairseq source. Quality, models, devices and full
+live/dub/translation workflows keep their separate gates. Phase03 stays60%.
+Round59 implementation/test gate is closed; advance separate provider acceptance.
+No portable issued.
+
 ## Round58 — ENGINE-CATALOG-01 (2026-10-19)
 
 Task provider catalog now reports capabilities and machine readiness; selected

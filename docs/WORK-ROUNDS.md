@@ -1,5 +1,25 @@
 # Work Rounds
 
+## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
+
+Owner authorized missing repo/model downloads and per-function choices. Four
+verified Git checkouts plus existing Applio/Demucs are connected to the catalog;
+CosyVoice has a product worker/reference-clone choice, streaming ASR a separate
+bounded PCM endpoint, and Sokuji a real local inspection bridge/model selector.
+VD/VI/LT retain provider choices and explicit incomplete-processor status.
+CosyVoice model receipts reject stale/wrong base artifacts; final download hashes
+remain mandatory after resume. See ADR0116 and open-engine-connect59 gate.
+Typecheck/build191 pass. Final Cosy/provisioning33pass, task-filtered catalog28pass;
+frontend1118pass/136files/324.88s. Two startup/import failures recovered unchanged
+in44.53s after host resources became available; final full API1207pass/3warnings/
+737.89s. Real CosyVoice cross-language WAV:5.88s/24kHz/mono/FLOAT32, finite,
+non-silent and no full-scale clipping. Readiness passed in20.125s after fixing
+model-YAML dependencies. w-okada3.10 server/RVC imports pass after pinned Fairseq
+source build and pyworld installation. Complete quality/device/translation/dub/
+live gates remain open. No portable issued. Phase03 stays60%.
+Round59 implementation/test gate is closed. Next: separate provider quality,
+model/device and complete processor acceptance.
+
 ## Round58 — ENGINE-CATALOG-01 (2026-10-19)
 
 Added a task-scoped provider catalog with declared languages, custom-voice

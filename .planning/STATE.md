@@ -6,11 +6,24 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-19 — Round58 provider catalog verified.
-last_activity_desc: ENGINE-CATALOG-01 catalog and fail-closed STT selection verified; see engine-catalog58 gate. Four subsequent provider slices remain open. Phase03 stays60%.
+last_activity: 2026-10-19 — Round59 open-engine installation and adapters.
+last_activity_desc: OPEN-ENGINE-CONNECT-01 closed; frontend1118pass, API1207pass, native Cosy WAV verified and w-okada imports pass. Provider quality/device/workflow gates remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
+
+Round59 implementation/test gate is closed; advance separate provider acceptance.
+Repo installation, CosyVoice worker/reference cloning, streaming-ASR PCM sessions,
+Sokuji inspection and per-function provider choices are implemented. Model-local
+receipts bind pinned artifacts to readiness; Script assignments do not change
+when switching generation engines. Typecheck/build191, focused Cosy/provisioning33
+and final catalog28 pass. Frontend1118pass in136files/324.88s; two native startup
+cases recovered unchanged in44.53s. Final full API1207pass/3warnings/737.89s. Actual Cosy WAV
+5.88s/24kHz/mono passes basic signal checks; w-okada3.10 server/RVC imports pass.
+Complete acoustic/device/translation/dub/live gates remain open. No portable. See ADR0116 and
+docs/gates/open-engine-connect59-20261019.md. Phase03 remains60%.
 
 ## Round58 — ENGINE-CATALOG-01 (2026-10-19)
 
