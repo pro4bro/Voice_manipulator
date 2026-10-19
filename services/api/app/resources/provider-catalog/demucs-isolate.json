@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1, "id": "demucs-isolate", "label": "Demucs · tách vocal/background",
+  "family": "Demucs", "engine": "demucs", "mode": "isolate",
+  "tasks": ["voice-isolate"], "order": 10,
+  "capabilities": {"languages": ["language-independent"], "customVoiceFormat": null, "streamingInput": false, "streamingOutput": false, "nativeDuration": false, "wordTiming": "none"},
+  "runnable": false, "blockedReason": "Repo có trên máy; chưa có job tách stem và kiểm tra artifact trong workspace này.",
+  "repository": {"root": "research", "path": "demucs", "entrypoint": "demucs/separate.py", "url": "https://github.com/facebookresearch/demucs"},
+  "description": "Tách vocal và nhạc nền; không đồng nghĩa tách riêng từng người nói."
+}

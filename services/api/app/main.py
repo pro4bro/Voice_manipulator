@@ -21,6 +21,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.adapters import activity_center
+from app.adapters.cosyvoice import CosyVoicePaths, CosyVoiceSpeech
+from app.adapters.sokuji_bridge import SokujiBridge, make_sokuji_router
+from app.adapters.vibevoice_streaming import VibeVoiceStreamingAsr, make_vibevoice_streaming_router
 from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
@@ -319,12 +322,18 @@ def create_app(
     vibevoice_paths = VibeVoicePaths(settings.vibevoice_root, runtime_python=vibevoice_python) if settings.vibevoice_root else None
     vibevoice_runtime = VibeVoiceRuntime(vibevoice_paths) if vibevoice_paths else None
     asr_adapters = FileAsrAdapters(projects)
+    cosyvoice_paths = CosyVoicePaths(
+        settings.cosyvoice_root or settings.research_engines_root / "CosyVoice",
+        settings.cosyvoice_runtime_root or settings.project_root / ".runtime" / "cosyvoice" / ".venv",
+    )
+    sokuji_bridge = SokujiBridge(settings.research_engines_root / "sokuji", settings.project_root / ".runtime/sokuji")
     engine_roots = {
         "omnivoice": settings.omnivoice_root,
         "vibevoice": settings.vibevoice_root,
         "vibevoice-models": vibevoice_paths.models if vibevoice_paths else None,
         "hub": settings.model_hub_cache,
         "research": settings.research_engines_root,
+        "cosyvoice": cosyvoice_paths.repo,
     }
     rvc_paths = RvcPaths(settings.applio_root, settings.rvc_runtime_root)
 
@@ -378,14 +387,25 @@ def create_app(
         settings.voice_generators_root,
         engine_roots,
         settings.local_voice_generators_root,
-        readiness={"vibevoice": vibevoice_readiness},
+        readiness={"vibevoice": vibevoice_readiness, "cosyvoice3": cosyvoice_paths.unavailable_reason},
     )
     generation_worker = omnivoice_worker(training_runtime.python, engine_env)
     vibevoice_speech_worker = vibevoice_worker(vibevoice_paths) if vibevoice_paths else None
+    cosyvoice_speech_worker = cosyvoice_paths.worker()
+
+    def release_other_speech_workers(engine: str) -> None:
+        if engine != "omnivoice":
+            generation_worker.shutdown()
+        if engine != "vibevoice" and vibevoice_speech_worker is not None:
+            vibevoice_speech_worker.shutdown()
+        if engine != "cosyvoice3":
+            cosyvoice_speech_worker.shutdown()
+        vibevoice_asr.worker.shutdown()
 
     def free_gpu() -> None:
         """Stop every warm speech worker before something needs the whole GPU."""
         generation_worker.shutdown()
+        cosyvoice_speech_worker.shutdown()
         if vibevoice_speech_worker is not None:
             vibevoice_speech_worker.shutdown()
         # Studio owns warm inference children. Release only idle children; a
@@ -426,10 +446,11 @@ def create_app(
         gpu_lease,
         voice_generators,
         engines={
-            "vibevoice": VibeVoiceSpeech(vibevoice_speech_worker, vibevoice_paths, settings.data_root / "runtime" / "vibevoice-processors")
-        }
-        if vibevoice_paths and vibevoice_speech_worker
-        else None,
+            "cosyvoice3": CosyVoiceSpeech(cosyvoice_speech_worker, cosyvoice_paths),
+            **({"vibevoice": VibeVoiceSpeech(vibevoice_speech_worker, vibevoice_paths, settings.data_root / "runtime" / "vibevoice-processors")}
+               if vibevoice_paths and vibevoice_speech_worker else {}),
+        },
+        before_speech=release_other_speech_workers,
     )
     voice_script_speaker = VoiceScriptSpeaker(
         projects,
@@ -491,6 +512,7 @@ def create_app(
     reading_session_locks: dict[str, asyncio.Lock] = {}
     runtime_status = RuntimeStatus(settings.data_root)
     vibevoice_asr = VibeVoiceAsrTranscriber(settings.vibevoice_root, gpu_lease, before_gpu_work=free_gpu, python=vibevoice_python)
+    streaming_asr = VibeVoiceStreamingAsr(settings.vibevoice_root, vibevoice_python, gpu_lease, before_gpu_work=free_gpu)
 
     def vibevoice_stt(path: Path, duration: float, variant: str | None = None, project_id: str | None = None, *, cancellation_id: str | None = None) -> dict:
         adapter = asr_adapters.weights(project_id, variant) if variant and project_id else None
@@ -510,7 +532,8 @@ def create_app(
     planned_providers = FileTrainingModelCatalog(
         Path(__file__).resolve().parent / "resources" / "provider-catalog",
         {"vibevoice": settings.vibevoice_root, "cosyvoice": settings.cosyvoice_root,
-         "omnivoice": settings.omnivoice_root},
+         "omnivoice": settings.omnivoice_root, "research": settings.research_engines_root},
+        readiness={"vibevoice-asr-streaming": lambda descriptor: streaming_asr.unavailable_reason()},
     )
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url,
@@ -866,8 +889,13 @@ def create_app(
             await asyncio.to_thread(hybrid_patch_processor.close)
             await asyncio.to_thread(trained_media_patch_processor.close)
             await asyncio.to_thread(output_timing_repair.close)
+            await asyncio.to_thread(cosyvoice_speech_worker.shutdown)
+            await asyncio.to_thread(sokuji_bridge.stop)
+            await asyncio.to_thread(streaming_asr.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.include_router(make_sokuji_router(sokuji_bridge))
+    app.include_router(make_vibevoice_streaming_router(streaming_asr))
     app.include_router(make_voice_collection_transfer_router(voice_collections))
     app.include_router(make_voice_edit_router(voice_edits))
     app.include_router(make_voice_delivery_router())
@@ -2121,10 +2149,11 @@ def create_app(
         return training_runtime.report()
 
     @app.get("/api/stt-engines", response_model=list[TrainingModelOption])
-    def stt_engine_options() -> list[TrainingModelOption]:
-        options = stt_engines.options()
-        reason = vibevoice_asr.unavailable_reason()
-        if reason is None and vibevoice_runtime is not None and vibevoice_paths is not None:
+    def stt_engine_options(task: str | None = None) -> list[TrainingModelOption]:
+        options = stt_engines.options(task=task)
+        has_vibevoice_asr = any(option.engine == "vibevoice-asr" for option in options)
+        reason = vibevoice_asr.unavailable_reason() if has_vibevoice_asr else None
+        if has_vibevoice_asr and reason is None and vibevoice_runtime is not None and vibevoice_paths is not None:
             missing = vibevoice_runtime.missing(ASR_PACKAGES, vibevoice_paths.microsoft)
             if missing:
                 reason = f"Python của VibeVoice còn thiếu: {', '.join(missing)}."
@@ -2158,10 +2187,10 @@ def create_app(
     def engine_catalog(task: str | None = None) -> list[TrainingModelOption]:
         """Read task capabilities and machine readiness from the same options jobs use."""
         options = [
-            *stt_engine_options(), *voice_generators.options(),
-            *voice_changer_engines.options(), *planned_providers.options(),
+            *stt_engine_options(task=task), *voice_generators.options(task=task),
+            *voice_changer_engines.options(task=task), *planned_providers.options(task=task),
         ]
-        return [option for option in options if not task or task in option.tasks]
+        return options
 
     @app.get("/api/projects/{project_id}/asr-adapters", response_model=list[ProjectAsrAdapter])
     def list_asr_adapters(project_id: str) -> list[ProjectAsrAdapter]:

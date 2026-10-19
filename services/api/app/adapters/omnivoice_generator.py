@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from app.adapters.activity_center import CENTER
@@ -26,6 +26,7 @@ from app.domain.training_parameters import resolve_parameters
 
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_worker.py"
 VIBEVOICE_WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_tts_worker.py"
+COSYVOICE_WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "cosyvoice_worker.py"
 
 
 class VoiceGenerationError(RuntimeError):
@@ -55,6 +56,12 @@ class SpeechRequest:
     duration: float | None
     output: Path
     artifact_revision: str = ""
+
+
+class SpeechEngine(Protocol):
+    worker: EngineWorkerProcess
+
+    def payload(self, request: SpeechRequest) -> dict[str, Any]: ...
 
 
 class OmniVoiceSpeech:
@@ -116,7 +123,7 @@ class SpeechPlan:
     reference: Path
     adapter: Path | None
     model_dir: Path | None
-    engine_speech: "OmniVoiceSpeech | VibeVoiceSpeech"
+    engine_speech: SpeechEngine
     artifact_fingerprint: str = ""
 
 
@@ -131,7 +138,7 @@ def file_digest(path: Path) -> str:
 def speech_artifact_fingerprint(voice: ProjectVoice, reference: Path, adapter: Path | None, model: Path | None) -> str:
     """Content identity independent of a project's absolute location. Hash once per plan."""
     files = {"reference": file_digest(reference), "worker": file_digest(
-        VIBEVOICE_WORKER_SCRIPT if voice.engine == "vibevoice" else WORKER_SCRIPT,
+        {"vibevoice": VIBEVOICE_WORKER_SCRIPT, "cosyvoice3": COSYVOICE_WORKER_SCRIPT}.get(voice.engine, WORKER_SCRIPT),
     )}
     for label, folder in (("adapter", adapter), ("model", model)):
         if folder is not None:
@@ -163,14 +170,16 @@ class VoiceGenerator:
         worker: EngineWorkerProcess,
         gpu_lease: GpuLease,
         generators: FileTrainingModelCatalog,
-        engines: dict[str, OmniVoiceSpeech | VibeVoiceSpeech] | None = None,
+        engines: dict[str, SpeechEngine] | None = None,
+        before_speech: Callable[[str], None] | None = None,
     ) -> None:
         self.projects = projects
         self.voices = voices
         self.outputs = outputs
         self.gpu_lease = gpu_lease
         self.generators = generators
-        self.engines: dict[str, OmniVoiceSpeech | VibeVoiceSpeech] = {"omnivoice": OmniVoiceSpeech(worker), **(engines or {})}
+        self.engines: dict[str, SpeechEngine] = {"omnivoice": OmniVoiceSpeech(worker), **(engines or {})}
+        self.before_speech = before_speech
         self._operation_lock = threading.Lock()
         self._active_operations: dict[str, tuple[str, EngineWorkerProcess | None]] = {}
         self._reserved_operations: set[str] = set()
@@ -216,6 +225,9 @@ class VoiceGenerator:
         if engine is None:
             raise ValueError(f"Chưa có bộ tạo giọng cho engine {voice.engine}.")
         fingerprint = speech_artifact_fingerprint(voice, reference, adapter, model_dir)
+        extra_identity = getattr(engine, "artifact_identity", None)
+        if extra_identity is not None:
+            fingerprint = hashlib.sha256((fingerprint + extra_identity()).encode("utf-8")).hexdigest()
         return SpeechPlan(voice, option.id, option.label, option.engine, generation, language, speed, reference, adapter, model_dir, engine, fingerprint)
 
     def generator_for(self, engine: str) -> str | None:
@@ -233,6 +245,8 @@ class VoiceGenerator:
         cancellation_id: str | None = None,
     ) -> float:
         """Speak text into `output` and return its length. The caller holds the GPU lease."""
+        if self.before_speech is not None:
+            self.before_speech(plan.engine)
         reply = self._request(
             plan.engine_speech.worker,
             plan.engine_speech.payload(

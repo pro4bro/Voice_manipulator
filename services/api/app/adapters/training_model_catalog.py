@@ -48,8 +48,9 @@ class FileTrainingModelCatalog:
         # Python imports what this option needs. Returns why not, or None.
         self.readiness = readiness or {}
 
-    def options(self) -> list[TrainingModelOption]:
-        found: dict[str, TrainingModelOption] = {}
+    def _descriptors(self) -> dict[str, tuple[TrainingModelDescriptor, str]]:
+        """Merge descriptor sources before machine-specific readiness checks."""
+        found: dict[str, tuple[TrainingModelDescriptor, str]] = {}
         for origin, folder in (("shipped", self.shipped_root), ("local", self.local_root)):
             if not folder or not folder.is_dir():
                 continue
@@ -59,14 +60,25 @@ class FileTrainingModelCatalog:
                     continue
                 if descriptor.id in found:
                     logger.info("Training model '%s' from %s replaces an earlier descriptor", descriptor.id, path.name)
-                found[descriptor.id] = self._describe(descriptor, origin)
-        return sorted(found.values(), key=lambda option: (option.order, option.family, option.label))
+                found[descriptor.id] = (descriptor, origin)
+        return found
+
+    def options(self, task: str | None = None) -> list[TrainingModelOption]:
+        found = self._descriptors()
+        descriptors = [
+            (descriptor, origin)
+            for descriptor, origin in found.values()
+            if not task or task in descriptor.tasks
+        ]
+        options = [self._describe(descriptor, origin) for descriptor, origin in descriptors]
+        return sorted(options, key=lambda option: (option.order, option.family, option.label))
 
     def get(self, model_id: str) -> TrainingModelOption:
-        for option in self.options():
-            if option.id == model_id:
-                return option
-        raise KeyError(model_id)
+        match = self._descriptors().get(model_id)
+        if match is None:
+            raise KeyError(model_id)
+        descriptor, origin = match
+        return self._describe(descriptor, origin)
 
     def resolve(self, config: TrainingRunConfig) -> TrainingRunConfig:
         """The run config for a start request, checked against its descriptor.

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1, "id": "cosyvoice3-dub", "label": "CosyVoice3 · Voice Dub",
+  "family": "CosyVoice", "engine": "cosyvoice3", "mode": "dub", "tasks": ["voice-dub"],
+  "capabilities": {"languages": ["zh", "en", "ja", "ko", "de", "es", "fr", "it", "ru"], "customVoiceFormat": "CosyVoice reference WAV and reference text", "streamingInput": false, "streamingOutput": false, "nativeDuration": false, "wordTiming": "none"},
+  "runnable": false, "blockedReason": "Bộ tạo giọng đã nối; job Voice Dub còn cần dịch, cast mapping, đo timing và trộn background.",
+  "repository": {"root": "cosyvoice", "path": ".", "entrypoint": "cosyvoice/cli/cosyvoice.py", "url": "https://github.com/QwenAudio/CosyVoice"},
+  "description": "CosyVoice3 là lựa chọn tạo lời cho dub sau khi pipeline Voice Dub hoàn tất."
+}

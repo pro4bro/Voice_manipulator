@@ -156,7 +156,11 @@ class StoredManifest:
         return self.manifest
 
 
-def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path):
+@pytest.mark.parametrize("engine,model_id,base_model", [
+    ("omnivoice", "omnivoice-zero-shot-clone", "k2-fsa/OmniVoice"),
+    ("cosyvoice3", "cosyvoice3-zero-shot-clone", "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"),
+])
+def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path, engine, model_id, base_model):
     from app.adapters.file_voice_model_sets import FileVoiceModelSets
 
     projects, project = project_with_audio(tmp_path)
@@ -189,7 +193,7 @@ def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path
 
     runner._build_clone_voice = build  # type: ignore[method-assign]
 
-    runner.start(project.id, "dataset-1", TrainingRunConfig(model_id="omnivoice-zero-shot-clone", mode="zero-shot-clone"),
+    runner.start(project.id, "dataset-1", TrainingRunConfig(model_id=model_id, engine=engine, base_model=base_model, mode="zero-shot-clone"),
                  speaker_profile_ids=["speaker-an", "speaker-binh"])
 
     assert done.wait(timeout=5)
@@ -198,6 +202,8 @@ def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path
     assert set(published) == {"speaker-an", "speaker-binh"}
     assert published["speaker-an"].reference_segment_id == "an-train"
     assert published["speaker-an"].kind == "clone" and published["speaker-an"].language == "vi"
+    assert published["speaker-an"].engine == engine
+    assert published["speaker-an"].base_model == base_model
     sets = model_sets.list(project.id)
     assert len(sets) == 2
     assert {item.speaker_profile_id for item in sets} == {"speaker-an", "speaker-binh"}

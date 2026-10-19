@@ -7,20 +7,19 @@
   "mode": "stt-stream",
   "tasks": ["stream-transcribe", "live-translate"],
   "capabilities": {
-    "languages": ["vi", "en", "zh", "ja", "ko"],
+    "languages": ["en", "zh", "es", "pt", "de", "ja", "ko", "fr", "ru", "it"],
     "customVoiceFormat": null,
     "streamingInput": true,
     "streamingOutput": true,
     "nativeDuration": false,
-    "wordTiming": "segment"
+    "wordTiming": "none"
   },
-  "runnable": false,
-  "blockedReason": "Chưa có adapter streaming và checkpoint riêng đã kiểm chứng trong Pro4Bro.",
+  "runnable": true,
   "repository": {
     "root": "vibevoice",
-    "path": "VibeVoice",
+    "path": "VibeVoice-streaming",
     "entrypoint": "demo/vibevoice_asr_streaming_fastapi_demo.py",
     "url": "https://github.com/microsoft/VibeVoice/blob/main/docs/vibevoice-asr-streaming.md"
   },
-  "description": "Nhận dạng theo chunk khi audio đang đến; kết quả chunk không phải word timing âm học."
+  "description": "ASR streaming qua phiên PCM riêng của PRO4BRO; kết quả partial/final giữ nguyên speaker text. Chưa có tiếng Việt trong checkpoint streaming. Kết quả chunk không phải word timing âm học."
 }

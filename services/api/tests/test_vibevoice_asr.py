@@ -191,7 +191,8 @@ def test_engine_catalog_exposes_task_capabilities_and_rejects_unknown_stt(tmp_pa
 
     from app.main import create_app
 
-    settings = replace(Settings.from_env(), data_root=tmp_path / "data")
+    settings = replace(Settings.from_env(), data_root=tmp_path / "data",
+                       vibevoice_root=tmp_path / "missing-vibevoice", cosyvoice_root=tmp_path / "missing-cosyvoice")
     client = TestClient(create_app(settings=settings))
     response = client.get("/api/engine-catalog?task=transcribe")
 

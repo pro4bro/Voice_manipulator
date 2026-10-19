@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1, "id": "sokuji-live-translate", "label": "Sokuji · dịch trực tiếp",
+  "family": "Sokuji", "engine": "sokuji", "mode": "live-translate",
+  "tasks": ["live-translate", "translate"], "order": 10,
+  "capabilities": {"languages": ["model-dependent"], "customVoiceFormat": "Theo model TTS của Sokuji", "streamingInput": true, "streamingOutput": true, "nativeDuration": false, "wordTiming": "none"},
+  "runnable": false,
+  "blockedReason": "Repo có trên máy; có thể kết nối runtime và xem model. Luồng microphone → dịch → phát audio trong PRO4BRO đang chờ tích hợp và kiểm chứng.",
+  "repository": {"root": "research", "path": "sokuji", "entrypoint": "sidecar/sokuji_sidecar/__main__.py", "url": "https://github.com/kizuna-ai-lab/sokuji"},
+  "description": "Dịch local qua sidecar Sokuji. Ngôn ngữ, giọng và yêu cầu tài nguyên phụ thuộc model được chọn."
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "cosyvoice3-generate",
+  "label": "CosyVoice3 · tạo giọng",
+  "family": "CosyVoice",
+  "engine": "cosyvoice3",
+  "mode": "generate",
+  "order": 30,
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["zh", "en", "ja", "ko", "de", "es", "fr", "it", "ru"],
+    "customVoiceFormat": "CosyVoice reference WAV and reference text",
+    "streamingInput": false, "streamingOutput": false,
+    "nativeDuration": false, "wordTiming": "none"
+  },
+  "runnable": true,
+  "repository": {
+    "root": "cosyvoice", "path": ".", "entrypoint": "cosyvoice/cli/cosyvoice.py",
+    "url": "https://github.com/QwenAudio/CosyVoice"
+  },
+  "description": "Tạo audio từ voice reference của project bằng CosyVoice3. Zero-shot/cross-language dùng ngôn ngữ của nội dung Script; chế độ chỉ dẫn có hướng dẫn ngôn ngữ. Timing tự nhiên, chưa hỗ trợ duration tuyệt đối.",
+  "notes": ["Chưa có tiếng Việt trong danh sách ngôn ngữ hỗ trợ.", "Giọng mẫu không quá 30 giây; Japanese cần chuẩn bị text katakana theo hướng dẫn upstream."],
+  "parameters": [
+    {"key": "mode", "label": "Chế độ", "kind": "choice", "default": "cross-lingual", "source": "example.py",
+     "options": [{"value": "cross-lingual", "label": "Cross-language cloning"}, {"value": "zero-shot", "label": "Zero-shot với transcript mẫu"}, {"value": "instruct", "label": "Cloning với chỉ dẫn"}]},
+    {"key": "language", "label": "Ngôn ngữ chỉ dẫn", "kind": "choice", "default": "en", "source": "example.py:inference_instruct2", "help": "Chỉ dùng trong chế độ Cloning với chỉ dẫn. Đây là yêu cầu gửi cho model, cần nghe kiểm tra kết quả.",
+     "options": [{"value": "en", "label": "English"}, {"value": "zh", "label": "中文"}, {"value": "ja", "label": "日本語 (katakana)"}, {"value": "ko", "label": "한국어"}, {"value": "de", "label": "Deutsch"}, {"value": "es", "label": "Español"}, {"value": "fr", "label": "Français"}, {"value": "it", "label": "Italiano"}, {"value": "ru", "label": "Русский"}]},
+    {"key": "instruction", "label": "Chỉ dẫn cách đọc", "kind": "text", "default": "", "source": "example.py:inference_instruct2", "help": "Dùng trong chế độ Cloning với chỉ dẫn."},
+    {"key": "speed", "label": "Tốc độ", "kind": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.05, "source": "cosyvoice/cli/cosyvoice.py"}
+  ]
+}

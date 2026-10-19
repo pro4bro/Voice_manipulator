@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1, "id": "w-okada-live", "label": "w-okada · Voice Changer",
+  "family": "w-okada", "engine": "w-okada", "mode": "live-convert",
+  "tasks": ["live-convert"], "order": 15,
+  "capabilities": {"languages": ["model-dependent"], "customVoiceFormat": "Theo backend RVC/ONNX của w-okada", "streamingInput": true, "streamingOutput": true, "nativeDuration": false, "wordTiming": "none"},
+  "runnable": false,
+  "blockedReason": "Đã tải repo; adapter Socket.IO/audio, runtime riêng và kiểm chứng thiết bị w-okada chưa hoàn tất. Có thể dùng lựa chọn RVC/Applio đã tích hợp.",
+  "repository": {"root": "research", "path": "w-okada-voice-changer", "entrypoint": "server/MMVCServerSIO.py", "url": "https://github.com/w-okada/voice-changer"},
+  "description": "Runtime đổi giọng riêng của w-okada; kiểm tra định dạng model và routing trước khi chạy."
+}

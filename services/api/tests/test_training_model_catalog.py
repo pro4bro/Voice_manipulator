@@ -118,6 +118,74 @@ def test_a_local_descriptor_adds_an_option_and_can_replace_a_shipped_one(tmp_pat
     assert options["omnivoice-lora"].origin == "local"
 
 
+def test_task_filter_skips_unrelated_readiness_checks(tmp_path):
+    shipped = tmp_path / "shipped"
+    shipped.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "train.py").write_text("", encoding="utf-8")
+    (shipped / "dub.json").write_text(json.dumps(descriptor(
+        id="dub", engine="dub-engine", runnable=True, tasks=["voice-dub"])), encoding="utf-8")
+    (shipped / "isolate.json").write_text(json.dumps(descriptor(
+        id="isolate", engine="isolate-engine", runnable=True, tasks=["voice-isolate"])), encoding="utf-8")
+    checked = []
+    models = FileTrainingModelCatalog(shipped, {"demo": repo}, readiness={
+        "dub-engine": lambda item: checked.append(item.id),
+        "isolate-engine": lambda item: checked.append(item.id),
+    })
+
+    options = models.options(task="voice-dub")
+
+    assert [option.id for option in options] == ["dub"]
+    assert checked == ["dub"]
+
+
+def test_local_override_is_merged_before_filtering_its_task(tmp_path):
+    shipped = tmp_path / "shipped"
+    local = tmp_path / "local"
+    repo = tmp_path / "repo"
+    shipped.mkdir()
+    local.mkdir()
+    repo.mkdir()
+    (repo / "train.py").write_text("", encoding="utf-8")
+    (shipped / "model.json").write_text(json.dumps(descriptor(
+        id="model", engine="demo-engine", runnable=True, tasks=["voice-dub"])), encoding="utf-8")
+    (local / "model.json").write_text(json.dumps(descriptor(
+        id="model", label="Local model", engine="demo-engine", runnable=True, tasks=["voice-isolate"])), encoding="utf-8")
+    checked = []
+    models = FileTrainingModelCatalog(shipped, {"demo": repo}, local, readiness={
+        "demo-engine": lambda item: checked.append(item.label),
+    })
+
+    assert models.options(task="voice-dub") == []
+    replacement = models.options(task="voice-isolate")
+
+    assert len(replacement) == 1
+    assert replacement[0].label == "Local model"
+    assert replacement[0].origin == "local"
+    assert checked == ["Local model"]
+
+
+def test_get_checks_readiness_only_for_the_requested_id(tmp_path):
+    shipped = tmp_path / "shipped"
+    shipped.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "train.py").write_text("", encoding="utf-8")
+    for model_id in ("target", "unrelated"):
+        (shipped / f"{model_id}.json").write_text(json.dumps(descriptor(
+            id=model_id, engine=model_id, runnable=True)), encoding="utf-8")
+    checked = []
+    models = FileTrainingModelCatalog(shipped, {"demo": repo}, readiness={
+        model_id: lambda item: checked.append(item.id) for model_id in ("target", "unrelated")
+    })
+
+    option = models.get("target")
+
+    assert option.id == "target"
+    assert checked == ["target"]
+
+
 @pytest.mark.parametrize(
     "broken",
     [

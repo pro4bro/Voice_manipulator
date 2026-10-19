@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1, "id": "cosyvoice3-zero-shot-clone",
+  "label": "CosyVoice3 · Nhái giọng (không train)",
+  "family": "CosyVoice", "engine": "cosyvoice3", "mode": "zero-shot-clone",
+  "order": 7, "category": "clone", "runnable": true,
+  "description": "Tạo voice reference riêng cho CosyVoice3 từ đoạn mẫu của Speaker Profile. Dùng cho các ngôn ngữ CosyVoice3 hỗ trợ.",
+  "repository": {"root": "cosyvoice", "path": ".", "entrypoint": "cosyvoice/cli/cosyvoice.py", "url": "https://github.com/QwenAudio/CosyVoice"},
+  "parameters": [
+    {"key": "model_name_or_path", "label": "Base model", "kind": "choice", "default": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512", "runField": "base_model", "source": "README.md", "options": [{"value": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512", "label": "Fun-CosyVoice3-0.5B-2512"}]},
+    {"key": "reference_min_seconds", "label": "Đoạn mẫu ngắn nhất", "kind": "float", "default": 3.0, "min": 1, "max": 15, "source": "PRO4BRO voice reference selection"},
+    {"key": "reference_max_seconds", "label": "Đoạn mẫu dài nhất", "kind": "float", "default": 10.0, "min": 3, "max": 30, "source": "cosyvoice/cli/frontend.py:_extract_speech_token"}
+  ]
+}
