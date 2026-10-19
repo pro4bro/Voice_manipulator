@@ -1,5 +1,19 @@
 # Work Rounds
 
+## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
+
+Closed the zoomed timeline endpoint regression. Ordinary dragging recognizes
+physical DOM scroll limits despite fractional canvas widths; shared seek math
+tolerates numerical boundary roundoff. At source boundaries the playhead reaches
+0/duration outside10%–90%, retaining its released viewport. Interior safe-zone
+and10% viewport/sec scrolling remain. Empty endpoint previews stay paused; delayed
+canvas resize repaint uses the latest playhead time. ADR0117 and source-boundary60
+gate record failing reproductions and evidence. Focused131pass; final frontend
+1127pass/136files/161.28s, typecheck/build191 pass; API1207pass/3warnings/642.63s.
+Browser DOM/media probe retains0/20.123s at fractional/max zoom after resize/media
+events; native mouse capture and installed portable acceptance remain manual.
+No portable issued. Phase03 stays60%; provider/acoustic/processor gates stay open.
+
 ## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
 
 Owner authorized missing repo/model downloads and per-function choices. Four

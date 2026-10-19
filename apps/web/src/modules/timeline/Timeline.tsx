@@ -251,6 +251,7 @@ export function Timeline({
 }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(currentTime); currentTimeRef.current = currentTime;
   const resumeIdentity = JSON.stringify([resumeProjectId, resumeSource]);
   const resumeHydration = useRef<{ key: string; time: number } | null>(null);
   const pendingResume = useRef<number | null>(null);
@@ -405,17 +406,22 @@ export function Timeline({
     const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
     if (!scroller || !canvas) return null;
     const width = scroller.clientWidth || scroller.getBoundingClientRect().width;
-    const fullWidth = canvas.getBoundingClientRect().width;
+    const fullWidth = scroller.scrollWidth || canvas.getBoundingClientRect().width;
     if (!width || !fullWidth) return null;
-    return { left: scroller.getBoundingClientRect().left, width, start: scroller.scrollLeft / fullWidth * duration,
-      span: Math.min(duration, width / fullWidth * duration), duration };
+    // DOM scroll extents are integer CSS pixels; scrollLeft/rendered width can
+    // be fractional. Recognize physical limits before applying the safe zone.
+    const maxScroll = Math.max(0, fullWidth - width);
+    const span = maxScroll <= 1 ? duration : Math.min(duration, width / fullWidth * duration);
+    const start = scroller.scrollLeft <= 1 ? 0 : scroller.scrollLeft >= maxScroll - 1
+      ? duration - span : scroller.scrollLeft / fullWidth * duration;
+    return { left: scroller.getBoundingClientRect().left, width, start, span, duration };
   }
   const dragScroll = useDragAutoScroll({ sourceKey: take?.id,
     viewport: dragViewport,
     pan: (start) => {
       const scroller = timelineScrollRef.current, canvas = timelineCanvasRef.current;
       if (!scroller || !canvas) return;
-      scroller.scrollLeft = start / duration * canvas.getBoundingClientRect().width;
+      scroller.scrollLeft = start / duration * (scroller.scrollWidth || canvas.getBoundingClientRect().width);
       setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
     },
     seek: (time) => promotionDragRef.current ? previewPromotionDrag(time) : seekToTime(time),
@@ -550,7 +556,7 @@ export function Timeline({
         zoomAnchorRef.current = null;
         setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
       } else if (scroller) setTimelineViewport((current) => current.width !== scroller.clientWidth ? { left: scroller.scrollLeft, width: scroller.clientWidth } : current);
-      paintPlayhead(currentTime);
+      paintPlayhead(currentTimeRef.current);
     };
     update();
     if (typeof ResizeObserver === "undefined") return undefined;

@@ -8,8 +8,13 @@ export const DRAG_SAFE_END = .9;
  * At a physical source boundary, the pointer can still reach the first/last sample. */
 export function dragSeekTime(view: DragViewport, clientX: number): number {
   const ratio = (clientX - view.left) / Math.max(1, view.width);
-  const minimum = view.start > 0 ? DRAG_SAFE_START : 0;
-  const maximum = view.start + view.span < view.duration ? DRAG_SAFE_END : 1;
+  const tolerance = Number.EPSILON * Math.max(1, view.duration, Math.abs(view.start), view.span) * 8;
+  const atStart = view.start <= tolerance;
+  const atEnd = view.start + view.span >= view.duration - tolerance;
+  if (atStart && ratio <= 0) return 0;
+  if (atEnd && ratio >= 1) return view.duration;
+  const minimum = atStart ? 0 : DRAG_SAFE_START;
+  const maximum = atEnd ? 1 : DRAG_SAFE_END;
   return Math.max(0, Math.min(view.duration, view.start + Math.max(minimum, Math.min(maximum, ratio)) * view.span));
 }
 

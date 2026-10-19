@@ -20,6 +20,69 @@ function geometry(container: HTMLElement) {
   return { scroller, canvas, width };
 }
 
+it("repaints the current endpoint after a delayed canvas resize instead of the position captured at zoom", () => {
+  let resize = () => {};
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element) { if (target.classList.contains("timeline-canvas")) resize = () => this.callback([], this as unknown as ResizeObserver); }
+    disconnect() {}
+  });
+  try {
+    const view = render(<Harness />); const { scroller, width } = geometry(view.container);
+    const audio = view.container.querySelector("audio")!;
+    audio.currentTime = 50; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Phóng to timeline" }));
+    const playhead = screen.getByLabelText("Playhead indicator");
+    for (const end of [true, false]) {
+      scroller.scrollLeft = end ? width() - 1000 : 0;
+      const x = end ? 1001 : -1;
+      fireEvent.pointerDown(playhead, { button: 0, pointerId: 61, clientX: x });
+      fireEvent.pointerUp(playhead, { pointerId: 61, clientX: x });
+      const releasedLeft = scroller.scrollLeft;
+      act(() => resize());
+      expect(Number.parseFloat(playhead.style.transform.slice("translate3d(".length))).toBe(end ? width() : 0);
+      expect(scroller.scrollLeft).toBe(releasedLeft);
+    }
+    view.unmount();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it.each([
+  { gesture: "playhead", rounding: -.4 }, { gesture: "playhead", rounding: .4 },
+  { gesture: "waveform", rounding: -.4 }, { gesture: "waveform", rounding: .4 },
+])("reaches and retains source endpoints with $gesture drags (fractional width $rounding)", ({ gesture, rounding }) => {
+  const view = render(<Harness />);
+  const { scroller, canvas, width } = geometry(view.container);
+  let actualLeft = 0;
+  const realWidth = () => width() + rounding;
+  Object.defineProperties(scroller, {
+    scrollWidth: { configurable: true, get: () => Math.round(realWidth()) },
+    scrollLeft: { configurable: true, get: () => actualLeft,
+      set: (value: number) => { actualLeft = Math.max(0, Math.min(realWidth() - 1000, value)); } },
+  });
+  vi.spyOn(canvas, "getBoundingClientRect").mockImplementation(() => ({ left: -actualLeft, width: realWidth() } as DOMRect));
+  const playhead = screen.getByLabelText("Playhead indicator");
+  const surface = gesture === "playhead" ? playhead : screen.getByLabelText("Waveform timeline");
+  const audio = view.container.querySelector("audio")!;
+  for (const slider of [100, 500, 1000]) {
+    fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: String(slider) } });
+    for (const end of [true, false]) {
+      scroller.scrollLeft = end ? realWidth() - 1000 : 0;
+      const releasedLeft = scroller.scrollLeft;
+      const x = end ? 1001 : -1;
+      fireEvent.pointerDown(surface, { button: 0, pointerId: 60, clientX: end ? 950 : 50 });
+      fireEvent.pointerMove(surface, { pointerId: 60, clientX: x });
+      const expected = end ? realWidth() : 0;
+      expect(Number.parseFloat(playhead.style.transform.slice("translate3d(".length))).toBeCloseTo(expected, 6);
+      expect(screen.getAllByText(end ? "00:01:40.000" : "00:00:00.000").length).toBeGreaterThan(0);
+      fireEvent.pointerUp(surface, { pointerId: 60, clientX: x });
+      fireEvent.timeUpdate(audio); fireEvent.seeked(audio);
+      expect(Number.parseFloat(playhead.style.transform.slice("translate3d(".length))).toBeCloseTo(expected, 6);
+      expect(scroller.scrollLeft).toBe(releasedLeft);
+    }
+  }
+});
+
 it("clears selection on plain empty waveform/subtitle clicks without inventing a nearest word", () => {
   const view = render(<Harness />); geometry(view.container);
   const wave = screen.getByLabelText("Waveform timeline");

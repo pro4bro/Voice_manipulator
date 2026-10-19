@@ -75,7 +75,11 @@ export class AudioScrubber {
     preview.audio.playbackRate = 1;
     clearTimeout(preview.stopTimer);
     const version = ++preview.version;
-    const milliseconds = Math.max(0, Math.min(120, (this.previewEnd(preview.target) - preview.target) * 1000));
+    const sourceEnd = Number.isFinite(preview.audio.duration) ? preview.audio.duration : Infinity;
+    const milliseconds = Math.max(0, Math.min(120, (Math.min(sourceEnd, this.previewEnd(preview.target)) - preview.target) * 1000));
+    // play() at the media endpoint restarts it from zero, even for a 0ms
+    // preview. Leave an empty preview paused at the requested final sample.
+    if (milliseconds <= 0) { preview.audio.pause(); return; }
     void Promise.resolve(preview.audio.play()).then(() => {
       // A pending browser play may settle after release/unmount or another drag.
       if (!this.active || !this.previews.includes(preview)) {

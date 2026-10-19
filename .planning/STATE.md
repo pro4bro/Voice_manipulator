@@ -6,11 +6,22 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-19 — Round59 open-engine installation and adapters.
-last_activity_desc: OPEN-ENGINE-CONNECT-01 closed; frontend1118pass, API1207pass, native Cosy WAV verified and w-okada imports pass. Provider quality/device/workflow gates remain open. Phase03 stays60%.
+last_activity: 2026-10-19 — Stabilization round60 timeline source boundaries.
+last_activity_desc: TIMELINE-SOURCE-BOUNDARY-01 closed; frontend1127pass, focused131pass, API1207pass. Browser DOM/media endpoints verified; native mouse/portable UAT remains. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
+
+Source-boundary drag exception now survives fractional DOM extents, numerical
+roundoff, empty endpoint audio previews and delayed canvas resize repaint.
+Final frontend1127pass/136files/161.28s; focused131pass; typecheck/build191 pass;
+API1207pass/3warnings/642.63s. Browser DOM/media probes retain0/20.123s at source
+limits after release/layout/media events. Native mouse capture and installed
+portable acceptance remain manual. ADR0117 and source-boundary60 gate record
+scope and evidence. No portable; Phase03 stays60%. Resume separate provider
+quality/device and complete processor gates from Round59 when requested.
 
 ## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
 

@@ -61,3 +61,36 @@ it("uses the same safe seek position before pan, on pan frames and on release", 
   expect(dragSeekTime({ ...view, start: 90 }, 1200)).toBe(100);
   expect(dragSeekTime({ ...view, start: 0, span: 100 }, 1200)).toBe(100);
 });
+
+it("reaches mathematical source ends despite floating point roundoff", () => {
+  const duration = 100.123;
+  const span = 33.37433333333333;
+  const start = duration - span - Number.EPSILON * duration;
+  expect(dragSeekTime({ left: 0, width: 1000, start, span, duration }, 1000)).toBe(duration);
+  expect(dragSeekTime({ left: 0, width: 1000, start: Number.EPSILON, span, duration }, 0)).toBe(0);
+});
+
+it.each([false, true])("unlocks the physical edge during a held pan and keeps it on release (end=%s)", (end) => {
+  let callback: FrameRequestCallback = () => undefined;
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { callback = cb; return 1; });
+  const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  const duration = 100.123, span = duration / 3;
+  let start = end ? duration - span - .01 : .01;
+  const seek = vi.fn();
+  const viewport = () => ({ left: 0, width: 1000, start, span, duration });
+  const hook = renderHook(() => useDragAutoScroll({ viewport, pan: (next) => { start = next; }, seek }));
+  try {
+    const pointer = end ? 1000 : 0, expected = end ? duration : 0;
+    act(() => { hook.result.current.begin(pointer); hook.result.current.seek(pointer); callback(0); callback(1000); });
+    expect(seek).toHaveBeenLastCalledWith(expected);
+    act(() => callback(2000));
+    expect(seek).toHaveBeenLastCalledWith(expected);
+    act(() => { hook.result.current.seek(pointer); hook.result.current.stop(); });
+    expect(seek).toHaveBeenLastCalledWith(expected);
+    const releasedStart = start;
+    act(() => callback(3000));
+    expect(start).toBe(releasedStart);
+    // Returning to the interior still uses the pointer's actual position.
+    expect(dragSeekTime(viewport(), 500)).toBeCloseTo(start + span / 2);
+  } finally { hook.unmount(); raf.mockRestore(); cancel.mockRestore(); }
+});

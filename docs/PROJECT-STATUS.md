@@ -1,5 +1,18 @@
 # Project Status — 2026-10-19
 
+## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
+
+Zoomed timeline dragging now recognizes physical footage boundaries despite DOM
+pixel rounding and floating point error, permitting exact0/duration beyond the
+10%–90% safe window. Interior constraints/rate remain. Empty endpoint audio
+previews no longer restart ended media; delayed canvas resize repaint reads the
+current playhead time. Final frontend1127pass/136files/161.28s, focused131pass,
+typecheck/build191 pass; full API1207pass/3warnings/642.63s. See ADR0117 and
+docs/gates/timeline-source-boundary60-20261019.md. Browser DOM/media evidence
+covers fractional/max zoom and stable endpoints after release/layout/media events;
+native mouse capture and installed portable UAT remain unclaimed. No portable.
+Phase03 stays60%; existing provider/acoustic/complete processor gates remain open.
+
 ## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
 
 Missing planned repositories are downloaded and offered by capability. CosyVoice

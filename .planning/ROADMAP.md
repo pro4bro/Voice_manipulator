@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Stabilization round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
+
+Closed source-end drag regression at zoom, endpoint preview replay and stale
+resize repaint. Frontend1127pass/136files, focused131pass, typecheck/build191,
+API1207pass/3warnings; browser DOM/media endpoints retain0/20.123s after updates.
+See ADR0117 and docs/gates/timeline-source-boundary60-20261019.md. Native mouse
+capture/installed portable UAT remains manual; no portable issued. Phase03 stays60%.
+Round59 provider quality/device/full processor gates remain separate and open.
+
 ## Round59 — OPEN-ENGINE-CONNECT-01 (2026-10-19)
 
 Repos and compatible choices are installed with product adapters for CosyVoice

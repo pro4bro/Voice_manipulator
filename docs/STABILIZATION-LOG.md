@@ -2189,3 +2189,27 @@ CosyVoice, Sokuji và các runtime chuyển giọng. Chưa cài/chạy engine m�
 mới là workspace chuẩn bị. Prefix tên file xuất mới đi cùng processor tương ứng.
 Phase03 vẫn60%; acoustic timing/Checkpoint A và các gate processor còn mở.
 Không phát hành portable trong round này. Dừng sau round57 theo AGENTS.md.
+
+## Round60 — TIMELINE-SOURCE-BOUNDARY-01 (2026-10-19)
+
+### Feedback và xử lý
+
+Khi zoom và kéo tới cuối footage, playhead bị giữ ở90%. Nguyên nhân gồm canvas
+rộng lẻ pixel so với giới hạn scrollWidth/clientWidth nguyên, so sánh float quá
+chặt, và ResizeObserver vẽ lại vị trí cũ lúc zoom. Chuẩn hóa hai đầu scroll trong
+sai số1CSSpx, dùng cùng extent cho pan/seek, nhận diện mốc toán học bằng ULP và
+vẽ lại theo playhead hiện tại. Hai đầu cho phép0/duration ngoài10%–90%; giữ tốc
+độ10%khung nhìn/giây khi còn footage để cuộn. Không gọi play cho audio preview
+rỗng ở cuối nguồn để tránh media tự chạy lại từ0.
+
+### Kiểm tra và còn lại
+
+Các repro RED có3lỗi boundary,1lỗi empty preview và1lỗi delayed resize trước
+khi sửa. Final focused131pass/6files/28.23s; frontend1127pass/136files/161.28s;
+typecheck/build191 pass; API1207pass/3warnings/642.63s; diff check pass. Browser
+DOM/media probe dùng WAV tổng hợp20.123s, giữ đúng0/20.123s cùng transform/scroll
+sau release/resize/media events ở zoom lẻ và tối đa. Fixture pointer capture có
+stub, không gọi đó là test kéo chuột native; server WAV ban đầu thiếu byte-range
+đã bị loại khỏi evidence và sửa trước lần đo cuối. Xem ADR0117 và gate
+timeline-source-boundary60. Native mouse/portable UAT còn mở; không phát hành
+portable. Phase03 vẫn60%; provider/acoustic/complete processor gates giữ nguyên.

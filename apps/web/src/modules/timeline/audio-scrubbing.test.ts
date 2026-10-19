@@ -77,6 +77,20 @@ describe("audio pointer previews", () => {
     scrubber.end();
   });
 
+  it("does not restart media by playing an empty preview at the source endpoint", async () => {
+    const element = audio();
+    // Browsers restart an ended media element from zero when play() is called.
+    vi.mocked(element.play).mockImplementation(async () => { if (element.currentTime >= element.duration) element.currentTime = 0; });
+    const scrubber = new AudioScrubber(); scrubber.begin([element]);
+    scrubber.move(60);
+    element.dispatchEvent(new Event("seeked"));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(element.play).not.toHaveBeenCalled();
+    expect(element.currentTime).toBe(60);
+    scrubber.end();
+    expect(element.currentTime).toBe(60);
+  });
+
   it("does not let a previous delayed play pause a newer drag of the same channel", async () => {
     const element = audio(); let finish!: () => void;
     vi.mocked(element.play).mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
