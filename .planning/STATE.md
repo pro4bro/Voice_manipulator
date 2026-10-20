@@ -6,11 +6,21 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-19 — Stabilization round61 edge acceleration and speaker cues.
-last_activity_desc: TIMELINE-EDGE-SPEAKER-01 closed; frontend1130pass, focused138pass, API1207pass. Real browser CSS passes32cases. Native held-drag/portable UAT remains separate. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
+last_activity: 2026-10-20 — Stabilization round62 selection gate, subtitle copy and Space.
+last_activity_desc: SELECTION-DUPLICATE-SPACE-01 frontend1138pass, focused88pass, typecheck/build191pass, full API1207pass on retry. No native held-drag or portable UAT claimed. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
 ---
 
 # Project State
+
+## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
+
+Unselected footage views hide Script/Timeline data. Alt-left drag duplicates
+selected subtitle words at the drop time with a translucent preview and Script
+text update; moved timing is untrusted, with original intervals retained.
+Space toggles ordinary/imported Timeline playback. Focused88pass, final
+frontend1138pass/136files, typecheck/build191pass. Full API1207pass on retry.
+ADR0119 and selection-copy-space62 gate hold evidence and limits. No source
+media, project schema or engine change; Phase03 remains60%.
 
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 

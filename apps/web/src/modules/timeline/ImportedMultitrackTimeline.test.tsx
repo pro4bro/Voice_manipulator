@@ -20,6 +20,21 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it("toggles imported Timeline playback with Space", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
+    onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+  play.mockClear();
+  const module = view.container.querySelector<HTMLElement>(".timeline-module")!;
+  fireEvent.keyDown(module, { key: " " });
+  await waitFor(() => expect(play).toHaveBeenCalled());
+  expect(screen.getByRole("button", { name: "Tạm dừng footage" })).toBeInTheDocument();
+  fireEvent.keyDown(module, { key: " " });
+  expect(screen.getByRole("button", { name: "Phát footage" })).toBeInTheDocument();
+  play.mockRestore();
+});
+
 it("keeps imported track mixer compact in the column header", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}

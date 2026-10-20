@@ -1,4 +1,16 @@
-# Project Status — 2026-10-19
+# Project Status — 2026-10-20
+
+## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
+
+Unselected footage no longer exposes Script or Timeline data. Alt-left dragging
+selected subtitle words shows a translucent copy preview and inserts copies at
+the drop time, updating Script text. Rippled timing is provisional and retains
+source provenance; out-of-bounds drops leave data unchanged. Space controls
+ordinary/imported Timeline playback; OBS overview already supports Space.
+Focused88pass, frontend1138pass/136files, typecheck/build191pass;
+API1207pass/663.29s on full retry. See ADR0119 and
+docs/gates/selection-copy-space62-20261020.md. No
+audio, model or schema change; Phase03 stays60%, separate gates remain open.
 
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 

@@ -1,5 +1,15 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
+
+Unselected footage is blank in Script/Timeline; Alt-left drag copies selected
+subtitle words with a ghost above the lane and inserts them at the drop time;
+Space toggles ordinary/imported Timeline playback. Copies/displaced words have
+untrusted timing, and out-of-bounds drops do not write. Frontend1138pass/136
+files, focused88pass, typecheck/build191pass; full API1207pass on retry. See ADR0119
+and docs/gates/selection-copy-space62-20261020.md. Phase03 remains60%; separate
+acoustic/provider/processor gates stay open. Stop after this bounded round.
+
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 
 Closed 10/20/30/40% viewport/sec edge acceleration and stable speaker underline

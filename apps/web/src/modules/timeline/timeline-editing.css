@@ -15,6 +15,8 @@
 @keyframes timeline-collision-pulse { 50% { background: var(--accent); color: var(--text-on-accent); } }
 @media (prefers-reduced-motion: reduce) { .timeline-module .timeline-word.is-timing-collision { animation: none; } }
 .timeline-word-edit { position: absolute; z-index: 8; top: 0; min-width: 100px; height: 100%; border: 1px solid var(--lime); background: var(--surface-field); color: var(--text); }
+.timeline-word-duplicate-preview { position: absolute; z-index: 7; top: -23px; height: 21px; overflow: hidden; box-sizing: border-box; padding: 4px 2px; border: 1px dashed var(--accent); background: var(--surface-field); color: var(--text); opacity: .58; font-family: var(--editorial); font-size: calc(10px * var(--font-scale)); line-height: 1; white-space: nowrap; pointer-events: none; }
+.timeline-word-duplicate-preview.is-invalid { border-color: var(--gold-ink); }
 .word-track > .timeline-removed-range { top: 0; bottom: 0; pointer-events: none; }
 .timeline-module .timeline-removed-range:not(.is-staged) { background: color-mix(in srgb, var(--text-muted) 35%, transparent); border-color: var(--text-muted); }
 .timeline-module .obs-timeline__removed-range { background: color-mix(in srgb, var(--text-muted) 35%, transparent); border-color: var(--text-muted); }

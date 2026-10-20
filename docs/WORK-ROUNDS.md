@@ -1,5 +1,20 @@
 # Work Rounds
 
+## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
+
+Script/Timeline footage views now expose no stale waveform, transcript or
+transport detail until footage or a selected OBS recording is opened. Alt plus
+left drag on selected subtitle words previews translucent copies above the lane
+and inserts them at the exact drop time, updating Script text. Occupied later
+words move right with untrusted timing and retained source provenance; a drop
+past the footage end is rejected without a write. Escape cancels the preview.
+Space toggles ordinary and imported Timeline playback; OBS overview retains its
+existing shortcut. ADR0119 and selection-copy-space62 gate record boundaries.
+Focused88pass/4files; final frontend1138pass/136files/165.48s; typecheck and
+build191pass. Full API1207pass/663.29s on retry after one transient timeout.
+No media/model/project-schema change;
+Phase03 stays60%. Stop after this round.
+
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 
 Closed graduated edge speed and subtitle speaker cue feedback. Shared edge pan

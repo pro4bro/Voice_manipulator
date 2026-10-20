@@ -1,11 +1,41 @@
 import { describe, expect, it } from "vitest";
 
 import type { StudioWord } from "../../domain/types";
-import { MINIMUM_WORD_SECONDS, applyWordDrag, assignWordInterval } from "./word-timing";
+import { MINIMUM_WORD_SECONDS, applyWordDrag, assignWordInterval, canDuplicateWordsAtTime, duplicateWordsAtTime } from "./word-timing";
 
 function words(spec: Array<[string, number, number]>): StudioWord[] {
   return spec.map(([text, start, end]) => ({ text, start, end })) as StudioWord[];
 }
+
+describe("duplicateWordsAtTime", () => {
+  const source = words([["xin", 1, 1.4], ["chào", 1.5, 1.9], ["anh", 2, 2.4]]);
+  it("places a selected group at the exact drop time and preserves the original words", () => {
+    const result = duplicateWordsAtTime(source, [0, 1], 3, 8)!;
+    expect(result.insertedIndexes).toEqual([3, 4]);
+    expect(result.words.slice(0, 3)).toEqual(source);
+    expect(result.words.slice(3).map((word) => word.text)).toEqual(["xin", "chào"]);
+    expect(result.words[3].start).toBeCloseTo(3);
+    expect(result.words[3].end).toBeCloseTo(3.4);
+    expect(result.words[4].start).toBeCloseTo(3.5);
+    expect(result.words[4].end).toBeCloseTo(3.9);
+    expect(result.words[3]).toMatchObject({ timingTrusted: false, timingSource: "user-interpolated" });
+  });
+  it("ripples occupied subtitles without retaining false source timing trust", () => {
+    const result = duplicateWordsAtTime(source, [0], 1.6, 8)!;
+    expect(result.insertedIndexes).toEqual([1]);
+    expect(result.words.map((word) => word.text)).toEqual(["xin", "xin", "chào", "anh"]);
+    expect(result.words[1]).toMatchObject({ start: 1.6, end: 2, timingTrusted: false });
+    expect(result.words[2]).toMatchObject({ start: 2, end: 2.4, timingTrusted: false,
+      sourceTiming: { start: 1.5, end: 1.9 } });
+    expect(result.words[3].start).toBeCloseTo(2.5);
+  });
+  it("rejects a drop that would send subtitles past the footage end", () => {
+    expect(canDuplicateWordsAtTime(source, [0, 1], 2, 2.5)).toBe(false);
+    expect(duplicateWordsAtTime(source, [0, 1], 2, 2.5)).toBeNull();
+    expect(duplicateWordsAtTime(source, [0], 1.9, 2.5)).toBeNull();
+    expect(canDuplicateWordsAtTime(source, [0], 3, 8)).toBe(true);
+  });
+});
 
 describe("applyWordDrag", () => {
   const three = words([["a", 1, 1.4], ["b", 1.5, 1.9], ["c", 2, 2.4]]);

@@ -140,6 +140,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   const [editFocus, setEditFocus] = useState<{ assetId: string; request: { wordIndex?: number; insertTime?: number; promoteIndex?: number; contextIndex?: number; contextTime?: number; serial: number } } | null>(null);
   const editFocusRef = useRef(editFocus);
   const moduleRef = useRef<HTMLElement>(null);
+  const playbackActionRef = useRef<() => void>(() => undefined);
   useScriptShortcuts(moduleRef, { undo: onUndo, redo: onRedo }, ".timeline-module", !editFocus);
   editFocusRef.current = editFocus;
   const duration = Math.max(parent.duration, ...tracks.map((track) => track.duration), 0);
@@ -347,6 +348,37 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
       setError("Không phát được các track đã chọn.");
     }
   }
+  function togglePlayback() {
+    if (!selected?.url) return;
+    audioScrubber.end();
+    if (playing) { ++playbackRevision.current; audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); return; }
+    const startAt = nextPlayableTime(currentTime, duration, excludedRanges);
+    if (startAt >= duration) { setCurrentTime(duration); return; }
+    seek(startAt);
+    audioRefs.current.forEach((audio) => { audio.currentTime = startAt; audio.playbackRate = rate; });
+    void playSelectedTracks();
+  }
+  playbackActionRef.current = togglePlayback;
+  useEffect(() => {
+    const module = moduleRef.current;
+    if (!module || editFocus) return;
+    let pointerInside = false;
+    const enter = () => { pointerInside = true; };
+    const leave = () => { pointerInside = false; };
+    const keydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.defaultPrevented || event.key !== " " || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey ||
+          (!pointerInside && !(target instanceof Node && module.contains(target))) ||
+          (target instanceof HTMLElement && (target.isContentEditable ||
+            Boolean(target.closest("input, textarea, select, button, [role='slider']"))))) return;
+      event.preventDefault();
+      playbackActionRef.current();
+    };
+    module.addEventListener("pointerenter", enter);
+    module.addEventListener("pointerleave", leave);
+    document.addEventListener("keydown", keydown);
+    return () => { module.removeEventListener("pointerenter", enter); module.removeEventListener("pointerleave", leave); document.removeEventListener("keydown", keydown); };
+  }, [editFocus]);
   const reconnectPlayback = useRef<() => void>(() => undefined);
   reconnectPlayback.current = () => {
     if (!visibleTracks.length) { setPlaying(false); return; }
@@ -708,16 +740,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
         })}
       </div> : null}
       <div className="transport-bar obs-timeline__transport">
-        <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={() => {
-          audioScrubber.end(); if (playing) { ++playbackRevision.current; audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
-          else {
-            const startAt = nextPlayableTime(currentTime, duration, excludedRanges);
-            if (startAt >= duration) { setCurrentTime(duration); return; }
-            seek(startAt);
-            audioRefs.current.forEach((audio) => { audio.currentTime = startAt; audio.playbackRate = rate; });
-            void playSelectedTracks();
-          }
-        }} type="button"><Icon name={playing ? "pause" : "play"} /></button>
+        <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={togglePlayback} type="button"><Icon name={playing ? "pause" : "play"} /></button>
         <code>{clock(currentTime)}</code>
         <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub" onPointerDown={(event) => beginScrub(event, true)} onPointerMove={(event) => { moveScrub(event, true); }} onPointerUp={(event) => endScrub(event, true)} onPointerCancel={cancelScrub}><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /><b style={{ left: `${duration ? currentTime / duration * 100 : 0}%` }} /></div>
         <code>{clock(duration)}</code>

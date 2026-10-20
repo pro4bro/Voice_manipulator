@@ -39,6 +39,72 @@ function SelectableTimeline(props: Parameters<typeof Timeline>[0]) {
 }
 
 describe("Timeline", () => {
+  it("uses Space over the Timeline to play and pause without stealing editable controls", async () => {
+    const { container } = render(<Timeline gain={0} onGainChange={vi.fn()}
+      take={{ id: "space", name: "space.wav", url: "/space.wav", duration: 8 }} />);
+    const module = container.querySelector<HTMLElement>(".timeline-module")!;
+    const audio = container.querySelector("audio")!;
+    let paused = true;
+    Object.defineProperty(audio, "paused", { configurable: true, get: () => paused });
+    const play = vi.spyOn(audio, "play").mockImplementation(async () => { paused = false; });
+    const pause = vi.spyOn(audio, "pause").mockImplementation(() => { paused = true; });
+    play.mockClear(); pause.mockClear();
+    fireEvent.keyDown(module, { key: " " });
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+    pause.mockClear();
+    fireEvent.keyDown(module, { key: " " });
+    expect(pause).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Tốc độ phát" }), { key: " " });
+    fireEvent.keyDown(module, { key: " ", altKey: true });
+    fireEvent.keyDown(module, { key: " ", repeat: true });
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("previews Alt-left duplication above subtitle and commits copies at the drop time", () => {
+    const source = [{ text: "xin", start: 1, end: 1.4 }, { text: "anh.", start: 2, end: 2.4 }];
+    const onWordsChange = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={vi.fn()} onWordsChange={onWordsChange}
+      wordSelection={{ indexes: [0, 1], anchor: 1 }}
+      take={{ id: "copy", name: "copy.wav", url: "/copy.wav", duration: 8, text: "xin anh.", words: source }} />);
+    const canvas = container.querySelector<HTMLElement>(".timeline-canvas")!;
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, width: 800 } as DOMRect);
+    const track = container.querySelector<HTMLElement>(".word-track")!;
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Subtitle word xin" }), { button: 0, altKey: true, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(track, { pointerId: 1, clientX: 400 });
+    expect(container.querySelectorAll(".timeline-word-duplicate-preview")).toHaveLength(2);
+    expect(onWordsChange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(track, { pointerId: 1, clientX: 400 });
+    expect(container.querySelectorAll(".timeline-word-duplicate-preview")).toHaveLength(0);
+    expect(onWordsChange).toHaveBeenCalledOnce();
+    const [next, text] = onWordsChange.mock.calls[0];
+    expect(next.map((word: { text: string }) => word.text)).toEqual(["xin", "anh.", "xin", "anh."]);
+    expect(next[2].start).toBe(4);
+    expect(next[3].start).toBe(5);
+    expect(text).toBe("xin anh. xin anh.");
+  });
+
+  it("cancels an Alt drag on Escape and rejects a drop past the footage end", () => {
+    const onWordsChange = vi.fn();
+    const { container } = render(<Timeline gain={0} onGainChange={vi.fn()} onWordsChange={onWordsChange}
+      wordSelection={{ indexes: [0], anchor: 0 }}
+      take={{ id: "copy-cancel", name: "copy.wav", url: "/copy.wav", duration: 3,
+        text: "xin anh", words: [{ text: "xin", start: 1, end: 1.4 }, { text: "anh", start: 2, end: 2.4 }] }} />);
+    vi.spyOn(container.querySelector<HTMLElement>(".timeline-canvas")!, "getBoundingClientRect")
+      .mockReturnValue({ left: 0, width: 300 } as DOMRect);
+    const track = container.querySelector<HTMLElement>(".word-track")!;
+    const word = screen.getByRole("button", { name: "Subtitle word xin" });
+    fireEvent.pointerDown(word, { button: 0, altKey: true, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(track, { pointerId: 1, clientX: 280 });
+    expect(container.querySelector(".timeline-word-duplicate-preview")).toHaveClass("is-invalid");
+    fireEvent.pointerUp(track, { pointerId: 1, clientX: 280 });
+    expect(screen.getByRole("alert")).toHaveTextContent("Không đủ chỗ");
+    fireEvent.pointerDown(word, { button: 0, altKey: true, pointerId: 2, clientX: 100 });
+    fireEvent.pointerMove(track, { pointerId: 2, clientX: 50 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerUp(track, { pointerId: 2, clientX: 50 });
+    expect(container.querySelector(".timeline-word-duplicate-preview")).not.toBeInTheDocument();
+    expect(onWordsChange).not.toHaveBeenCalled();
+  });
   it("keeps mapped seek until preview metadata arrives after commit completion", async () => {
     vi.useFakeTimers();
     const sourcePacket = { document: { revision: 0, cursor: 0, sampleRate: 24000, sourceFrames: 240000, operations: [], outputId: "o" }, duration: 10, audioUrl: "/source.wav", output: {} as never } as VoiceEditPacket;

@@ -5,6 +5,58 @@ export const MINIMUM_WORD_SECONDS = 0.02;
 
 export type WordDragMode = "move" | "trim-start" | "trim-end";
 
+function duplicatePlacement(words: StudioWord[], indexes: number[], dropTime: number, duration: number) {
+  const selected = [...new Set(indexes)].filter((index) => index >= 0 && index < words.length).sort((a, b) => a - b);
+  if (!selected.length || !Number.isFinite(dropTime) || !Number.isFinite(duration)) return null;
+  const first = words[selected[0]];
+  const span = words[selected.at(-1)!].end - first.start;
+  if (!Number.isFinite(span) || span <= 0 || dropTime < 0 || dropTime + span > duration) return null;
+  // Editable subtitle words are ordered and non-overlapping. Locate the first
+  // occupied cue without scanning the whole transcript on every pointer move.
+  let low = 0, high = words.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (words[middle].end <= dropTime) low = middle + 1;
+    else high = middle;
+  }
+  const insertAt = low;
+  const shift = insertAt < words.length ? Math.max(0, dropTime + span - words[insertAt].start) : 0;
+  if (insertAt < words.length && words.at(-1)!.end + shift > duration) return null;
+  return { selected, first, insertAt, shift };
+}
+
+export function canDuplicateWordsAtTime(words: StudioWord[], indexes: number[], dropTime: number, duration: number) {
+  return Boolean(duplicatePlacement(words, indexes, dropTime, duration));
+}
+
+/** Insert copies at the pointer time without claiming new acoustic alignment. */
+export function duplicateWordsAtTime(words: StudioWord[], indexes: number[], dropTime: number, duration: number) {
+  const placement = duplicatePlacement(words, indexes, dropTime, duration);
+  if (!placement) return null;
+  const { selected, first, insertAt, shift } = placement;
+  const suffix = words.slice(insertAt);
+  const copies = selected.map((index) => {
+    const source = words[index];
+    return {
+      text: source.text, start: dropTime + source.start - first.start, end: dropTime + source.end - first.start,
+      speakerId: source.speakerId, environmentProfileIds: source.environmentProfileIds,
+      emotion: source.emotion, timingSource: "user-interpolated", timingTrusted: false,
+      sourceTiming: source.sourceTiming ?? { start: source.start, end: source.end, source: source.timingSource },
+      reviewState: "manual" as const, selectedVariant: "manual" as const,
+    } satisfies StudioWord;
+  });
+  const moved = suffix.map((word) => shift ? {
+    ...word, start: word.start + shift, end: word.end + shift,
+    timingSource: "user-interpolated", timingTrusted: false,
+    sourceTiming: word.sourceTiming ?? { start: word.start, end: word.end, source: word.timingSource },
+  } : word);
+  return {
+    words: [...words.slice(0, insertAt), ...copies, ...moved],
+    insertedIndexes: copies.map((_, offset) => insertAt + offset),
+    insertAt,
+  };
+}
+
 function retainedDuration(word: StudioWord) {
   // Preserve ten percent even when the source word is sub-millisecond.
   const span = Math.max(Number.EPSILON, word.end - word.start);

@@ -339,6 +339,13 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     return children.length ? children : workingAssets.filter((asset) => asset.id === selectedId);
   }).map((asset) => [asset.id, asset])).values()];
   const selectedParents = new Set(selectedTracks.map((asset) => asset.sourceArchiveAssetId ?? asset.id));
+  const selectedRecording = context.obsTimelineActive && Boolean(context.obsTimelineRecordingId);
+  if ((id === "script" || id === "timeline") && context.workflow !== "voice-manipulator" &&
+      context.workflow !== "voice-changer" && !context.readingSession &&
+      (context.selectedScriptAssetIds?.length === 0 ||
+        (!context.selectedAssetId && !context.selectedImportedTrackId && !selectedTracks.length && !selectedRecording))) {
+    return <ModuleFrame title={id === "script" ? "Script" : "Timeline"}><p role="status">Chọn footage để xem nội dung.</p></ModuleFrame>;
+  }
   if ((id === "script" || id === "timeline") && context.workflow !== "voice-manipulator" &&
       (context.selectedScriptAssetIds?.length ?? 0) > 1 && selectedParents.size !== 1) {
     return <ModuleFrame title={id === "script" ? "Script" : "Timeline"}><p role="status">Đã chọn {context.selectedScriptAssetIds!.length} mục · chọn các track trong cùng một footage để mở dữ liệu.</p></ModuleFrame>;

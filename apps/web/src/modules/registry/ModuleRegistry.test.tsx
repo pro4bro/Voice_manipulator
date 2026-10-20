@@ -49,7 +49,20 @@ it("shows no stale transcript or track switch when nothing is selected", () => {
     readingSession: null, wordSelection: EMPTY_SELECTION, obsTimelineActive: false, onScriptChange: vi.fn() } as unknown as StudioContext;
   render(<ModuleRegistry context={context} id="script" />);
   expect(screen.queryByText("stale")).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Script transcript" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chọn footage để xem nội dung.");
   expect(screen.queryByRole("button", { name: /MỞ SCRIPT/ })).not.toBeInTheDocument();
+});
+
+it("shows no waveform or transport data until footage is selected", () => {
+  const context = { workflow: "speech-to-text", selectedAssetId: null, selectedImportedTrackId: null,
+    mediaAssets: [], take: { name: "stale.wav", url: "/stale.wav", duration: 6 },
+    obsTimelineActive: false, recordingPreview: null } as unknown as StudioContext;
+  render(<ModuleRegistry context={context} id="timeline" />);
+  expect(screen.queryByLabelText("Waveform timeline")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Phát" })).not.toBeInTheDocument();
+  expect(screen.queryByText("stale.wav")).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chọn footage để xem nội dung.");
 });
 
 it("does not load any transcript when several footage are selected", () => {
@@ -70,7 +83,7 @@ it("does not fall back to live OBS rows after deselecting archived footage", () 
     obsTimelineActive: true, obsTimelineRecordingId: "recording", obsTranscriptRows: [], onScriptChange: vi.fn() } as unknown as StudioContext;
   render(<ModuleRegistry context={context} id="script" />);
   expect(screen.queryByRole("region", { name: "Lượt nói OBS LiveLink" })).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("");
+  expect(screen.queryByRole("textbox", { name: "Script transcript" })).not.toBeInTheDocument();
 });
 
 it("excludes untrained footage from Voice Training Media Pool", () => {
