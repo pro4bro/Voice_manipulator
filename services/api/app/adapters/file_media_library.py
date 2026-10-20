@@ -170,6 +170,18 @@ class FileMediaLibrary:
                 return self._resolved_project_path(root, asset.analysis_path)
         raise KeyError(asset_id)
 
+    def resolve_video_path(self, project_id: str, asset_id: str) -> Path:
+        """Resolve only a live project's original video, never a client path."""
+        with self._lock(project_id):
+            for asset in self._load(project_id, include_words=False):
+                if asset.id != asset_id:
+                    continue
+                if asset.media_kind != "video" or asset.deleted_at or asset.disabled:
+                    raise KeyError(asset_id)
+                root = Path(self.projects.get(project_id).project_path).resolve()
+                return self._resolved_project_path(root, asset.source_path)
+        raise KeyError(asset_id)
+
     # ---------- writes ----------
 
     def create(

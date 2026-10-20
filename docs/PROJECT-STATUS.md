@@ -1,5 +1,20 @@
 # Project Status — 2026-10-20
 
+## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
+
+LipSync now has its own Input-shaped page. A Media Pool video and generated
+Voice Output can be selected and auditioned against one clock; video and voice
+have independent timeline starts and source IN points. Original video is served
+through a project-validated, range-capable endpoint. Draft timing is not saved;
+After, Generate, and face replacement remain disabled pending a real adapter,
+persisted approval, artifact checks and QC. See ADR0120 and
+docs/gates/lipsync-preview63-20261020.md. Focused frontend10pass plus
+WorkspaceShell61pass, full frontend1144pass/138files, typecheck/build194
+modules; focused API2pass.
+Full backend1207pass/1 unrelated VibeVoice import timeout/3warnings; that
+specific test passed alone after a direct warm import. Phase03 stays60%; Phase06
+is an implemented preview slice with render gates open.
+
 ## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
 
 Unselected footage no longer exposes Script or Timeline data. Alt-left dragging
@@ -3236,7 +3251,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 | 03-04 | Durable guided capture, QC, tiering, reference harvesting, identity lock | Packs, capture tier, HQ Recorder, teleprompter, and read-along exist mostly in UI memory | In progress |
 | 04-01 | Six-zone dock plus `WorkspaceSession` | Fixed page manifests and Dashboard exist; no dock state/migration/session ownership | Planned |
 | 05-01 | Evaluate and ship file/live Voice Changer only after Vietnamese gate | RVC/Applio, consent, live device stream, recording, and first gate exist | In progress; gate incomplete/failing |
-| 06-01 | LipSync page, engine adapter, jobs, QC | No product implementation found | Planned |
+| 06-01 | LipSync page, engine adapter, jobs, QC | Source preview and timing draft exist; persistence, adapter, jobs and QC do not | Preview slice; plan open |
 | 07-01 | Define model/security seams only | Models, ports, and glossary split exist; intentionally no adapters | Complete |
 | Phase 07 release | Install/download/verify models, secure credentials, package/update app | Training descriptors exist, but release infrastructure does not | Not started |
 
@@ -3277,7 +3292,7 @@ exists but the whole contract or end-to-end acceptance gate is still open.
 | Voice Changer gate completion | Cross-speaker CER fails; similarity, cross-gender, loopback latency, owner A/B absent | Fast output is not enough if Vietnamese words change or the target identity is unproven. |
 | File-conversion workflow | Live conversion exists, but the planned persisted file job/lineage acceptance is incomplete | Offline converted audio needs reproducible inputs, parameters, output, and next-step routing. |
 | Isolation, dubbing, Voice Patch | Honest placeholders/partial surfaces, no complete processors | These are core Manipulator promises and must return verifiable artifacts before being called available. |
-| LipSync | Plan only | The fourth production workflow cannot yet render or QC video derivatives. |
+| LipSync render and QC | Preview slice only | The fourth production workflow cannot yet render or QC video derivatives. |
 | Model delivery | No download/hash/update/disk-management adapters | A clean workstation cannot reliably acquire the same runtimes and weights. |
 | Security enforcement | Secrets remain outside the planned DPAPI store; no auth/authorization adapters | Remote or multi-user use would expose credentials and actions without enforceable identity. |
 | Desktop release | No installer, signing, updater, rollback, or offline acceptance | The product remains a development checkout rather than a supportable desktop application. |

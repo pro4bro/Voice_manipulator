@@ -1,4 +1,4 @@
-export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator" | "voice-changer";
+export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator" | "voice-changer" | "lip-sync";
 export type ThemeMode = "light" | "dark";
 export type RuntimeAction = "start" | "stop" | "restart";
 
@@ -82,6 +82,10 @@ export type ModuleId =
   | "train"
   | "voice-generator"
   | "pipeline-dashboard"
+  | "lipsync-sources"
+  | "video-preview"
+  | "lipsync-controls"
+  | "lipsync-timeline"
   | "dataset-readiness";
 
 export interface Project {

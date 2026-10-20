@@ -78,6 +78,22 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     modes: [],
     plannedModes: [],
   },
+  "lip-sync": {
+    page: "lip-sync",
+    label: "LipSync",
+    eyebrow: "FOOTAGE / GENERATED VOICE / ALIGN",
+    // These regions share one playback clock in LipSyncWorkspace. The page owns
+    // the composition until the dock/session contract can move them separately.
+    modules: ["lipsync-sources", "video-preview", "lipsync-controls", "lipsync-timeline"],
+    columns: {
+      left: ["lipsync-sources"],
+      center: ["video-preview"],
+      right: ["lipsync-controls"],
+      bottom: ["lipsync-timeline"],
+    },
+    modes: [],
+    plannedModes: [],
+  },
 };
 
 export function workspaceManifest(page: WorkspacePage): WorkspaceManifest {

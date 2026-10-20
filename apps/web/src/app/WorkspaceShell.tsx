@@ -86,6 +86,7 @@ import { reconcileScriptTextEdit } from "../modules/script/script-text-reconcili
 import { useProcessingChoice } from "../ui/ProcessingChoice";
 import { completedGenerationRows, completedTrainingTargets } from "../domain/processing-results";
 import { ManipulatorNavigation } from "../modules/manipulator/ManipulatorNavigation";
+import { LipSyncWorkspace } from "../modules/lip-sync/LipSyncWorkspace";
 import type { ManipulatorMode } from "../domain/types";
 
 interface WorkspaceShellProps {
@@ -104,6 +105,7 @@ const pages: Array<{ id: WorkspacePage; label: string; short: string; icon: Icon
   { id: "voice-training", label: "Voice Training", short: "TRAIN", icon: "training" },
   { id: "voice-manipulator", label: "Voice Manipulator", short: "VOICE", icon: "wrench" },
   { id: "voice-changer", label: "Voice Changer", short: "LIVE", icon: "waveform" },
+  { id: "lip-sync", label: "LipSync", short: "VIDEO", icon: "project" },
 ];
 
 const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
@@ -111,7 +113,7 @@ const CHANGER_SETTINGS_KEY = "pro4bro:voice-changer:settings";
 // Pages that open straight onto their modules. The heading row repeated the
 // page name the top navigation already shows, and the Manipulator's mode tabs
 // switched nothing (Voice Patch sits in the right column; the rest are planned).
-const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer"]);
+const COMPACT_PAGES = new Set<WorkspacePage>(["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer", "lip-sync"]);
 
 function emptyTrainingCatalog(): TrainingCatalog {
   return {
@@ -2952,14 +2954,14 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         <aside className={`project-rail ${activePage === "voice-manipulator" ? "project-rail--manipulator" : ""}`}><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div>{activePage === "voice-manipulator" ? <ManipulatorNavigation mode={manipulatorMode} onChange={setManipulatorMode} /> : null}<div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
         <section id={activePage === "voice-manipulator" ? "manipulator-workspace" : undefined} role={activePage === "voice-manipulator" ? "tabpanel" : undefined} aria-labelledby={activePage === "voice-manipulator" ? `manipulator-tab-${manipulatorMode}` : undefined} className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
-          <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          {activePage === "lip-sync" ? <LipSyncWorkspace projectId={project.id} assets={mediaAssets} outputs={voiceOutputs} leftWidth={leftWidth} rightWidth={rightWidth} onResizeStart={beginResize} onResizeKeyDown={resizeWithKeyboard} /> : <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map(renderModule)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map(renderModule)}</div>
             <div aria-label="Co kéo cột phải" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("right", event)} onPointerDown={(event) => beginResize("right", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--right">{manifest.columns.right.map(renderModule)}</div>
             <div className="module-column module-column--bottom">{manifest.columns.bottom.map(renderModule)}</div>
-          </div>
+          </div>}
         </section>
       </div>
       <WorkspaceStatusBar metrics={systemMetrics} tasks={activityTasks} />

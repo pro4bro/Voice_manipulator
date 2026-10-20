@@ -15,6 +15,37 @@ from app.main import create_app
 from app.settings import Settings
 
 
+def test_lipsync_video_endpoint_serves_only_live_project_footage(tmp_path):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="LipSync sources"))
+    root = Path(project.project_path)
+    library = FileMediaLibrary(projects)
+    source = root / "assets" / "media" / "scene.mp4"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"sample video bytes")
+    video = library.create(project.id, MediaAssetCreate(
+        name="Scene", source_extension=".mp4", media_kind="video",
+        source_path="assets/media/scene.mp4", origin="import", duration=2,
+    ))
+    audio = library.create(project.id, MediaAssetCreate(
+        name="Mic", source_extension=".wav", media_kind="audio",
+        source_path="assets/media/mic.wav", origin="import", duration=2,
+    ))
+    client = TestClient(create_app(project_repository=projects,
+        settings=replace(Settings.from_env(), data_root=tmp_path / "data")))
+    url = f"/api/projects/{project.id}/media/{video.id}/video"
+    response = client.get(url)
+    assert response.status_code == 200
+    assert response.content == b"sample video bytes"
+    assert response.headers["content-type"].startswith("video/mp4")
+    partial = client.get(url, headers={"Range": "bytes=0-5"})
+    assert partial.status_code == 206
+    assert partial.content == b"sample"
+    assert client.get(f"/api/projects/{project.id}/media/{audio.id}/video").status_code == 404
+    library.send_to_recycle_bin(project.id, video.id)
+    assert client.get(url).status_code == 404
+
+
 def test_import_and_diarization_stage_selection_persist_per_track(tmp_path):
     projects = FileProjectRepository(tmp_path / "registry")
     project = projects.create(ProjectCreate(name="Stage selection"))

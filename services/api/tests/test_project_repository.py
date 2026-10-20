@@ -48,6 +48,9 @@ def test_project_repository_persists_last_page(tmp_path):
 
     assert updated.last_page == "voice-manipulator"
     assert restarted_repository.get(created.id).last_page == "voice-manipulator"
+    lip_sync = restarted_repository.set_last_page(created.id, "lip-sync")
+    assert lip_sync.last_page == "lip-sync"
+    assert FileProjectRepository(tmp_path).get(created.id).last_page == "lip-sync"
 
 
 def test_project_repository_creates_assets_at_a_chosen_location(tmp_path):

@@ -1,5 +1,25 @@
 # Work Rounds
 
+## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
+
+Added a separate LipSync page shaped like Input: Media Pool video and generated
+Voice Output selection at left, Preview Video in the center, timing controls at
+right, and two draggable tracks below. The project-scoped video endpoint serves
+the original footage by asset ID with byte-range seeking and rejects recycled,
+disabled, non-video and missing sources. Preview mutes source audio, plays the
+generated voice, and maps independent timeline starts and source IN points to a
+shared clock. Timing is an explicitly unsaved session draft; After, Generate,
+and face replacement stay disabled until a verified render adapter and output
+exist. ADR0120 and lipsync-preview63 gate define later portable approval, job,
+artifact and QC slices. Focused frontend10pass/3files plus WorkspaceShell61pass;
+full frontend1144pass/
+138files; typecheck/build194 modules pass. Focused API2pass incl Range and
+last-page persistence.
+Full API1207pass/1timeout/3warnings in736.65s; VibeVoice Streaming's separate
+60s import gate passed alone after a measured47.63s direct warm import. No
+source-media mutation, model, project.json structure change or rendered artifact. Phase03
+stays60%; Phase06 remains open. Stop after this round.
+
 ## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
 
 Script/Timeline footage views now expose no stale waveform, transcript or

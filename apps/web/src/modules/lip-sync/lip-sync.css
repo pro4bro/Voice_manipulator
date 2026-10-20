@@ -1,0 +1,50 @@
+.lipsync-board { grid-template-rows: minmax(0, 1fr) minmax(220px, 31%); }
+.lipsync-board .module-frame { min-height: 0; }
+.lipsync-sources, .lipsync-preview, .lipsync-controls, .lipsync-timeline { flex: 1; display: flex; flex-direction: column; }
+.lipsync-sources .module-frame__body, .lipsync-preview .module-frame__body, .lipsync-controls .module-frame__body, .lipsync-timeline .module-frame__body { min-height: 0; flex: 1; }
+.lipsync-sources .module-frame__body { display: flex; flex-direction: column; padding: 0; }
+.lipsync-tabs { display: flex; border-bottom: 1px solid var(--line); }
+.lipsync-tabs button { flex: 1; min-height: 42px; padding: 7px; color: var(--text-muted); background: transparent; font-size: calc(10px * var(--font-scale)); font-weight: 700; }
+.lipsync-tabs button[aria-selected="true"] { color: var(--text); border-bottom: 2px solid var(--accent); background: var(--soft-fill); }
+.lipsync-tabs b { color: var(--accent-ink); }
+.lipsync-source-list { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding: 8px; }
+.lipsync-source-list button { display: grid; gap: 4px; min-height: 53px; padding: 8px 10px; border: 1px solid var(--line); color: var(--text); background: var(--paper); text-align: left; }
+.lipsync-source-list button.is-selected { border-color: var(--accent); background: var(--soft-fill); }
+.lipsync-source-list b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(11px * var(--font-scale)); }
+.lipsync-source-list small, .lipsync-source-list p { color: var(--text-muted); font-size: calc(10px * var(--font-scale)); }
+.lipsync-preview .module-frame__body { display: flex; flex-direction: column; gap: 8px; }
+.lipsync-compare { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.lipsync-compare b { padding: 6px 8px; border-bottom: 2px solid var(--accent); }
+.lipsync-compare button { padding: 6px 8px; color: var(--text-muted); background: var(--paper-3); cursor: not-allowed; }
+.lipsync-preview-screen { position: relative; display: grid; place-items: center; flex: 1; min-height: 170px; overflow: hidden; background: #111; color: #fff; }
+.lipsync-preview-screen video { width: 100%; height: 100%; max-height: 100%; object-fit: contain; }
+.lipsync-empty-video, .lipsync-video-curtain { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; background: #111; color: #ddd; font-size: calc(11px * var(--font-scale)); }
+.lipsync-transport { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: calc(10px * var(--font-scale)); }
+.lipsync-transport button { min-height: 30px; padding: 0 10px; color: var(--text-on-accent); background: var(--accent); font-weight: 800; }
+.lipsync-transport button:disabled { opacity: .5; }
+.lipsync-transport span:last-child { color: var(--text-muted); }
+.lipsync-preview input[type="range"] { width: 100%; accent-color: var(--accent); }
+.lipsync-preview audio { display: none; }
+.lipsync-preview p[role="alert"] { margin: 0; color: var(--danger, #b33423); font-size: calc(10px * var(--font-scale)); }
+.lipsync-controls .module-frame__body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.lipsync-controls p { margin: 0; color: var(--text-muted); font-size: calc(10px * var(--font-scale)); line-height: 1.5; }
+.lipsync-controls fieldset { display: grid; gap: 7px; margin: 0; padding: 9px; border: 1px solid var(--line); }
+.lipsync-controls legend { padding: 0 4px; font-family: var(--mono); font-size: calc(10px * var(--font-scale)); font-weight: 800; }
+.lipsync-controls label { display: grid; gap: 3px; color: var(--text-muted); font-size: calc(9px * var(--font-scale)); }
+.lipsync-controls input { width: 100%; min-height: 30px; padding: 0 7px; color: var(--text); background: var(--paper); border: 1px solid var(--line); font-family: var(--mono); }
+.lipsync-render-state { display: grid; gap: 7px; margin-top: auto; padding: 10px; background: var(--soft-fill); font-size: calc(10px * var(--font-scale)); }
+.lipsync-render-state span { color: var(--text-muted); line-height: 1.45; }
+.lipsync-render-state button { min-height: 30px; background: var(--paper-3); color: var(--text-muted); border: 1px solid var(--line); cursor: not-allowed; }
+.lipsync-timeline .module-frame__body { display: grid; gap: 8px; }
+.lipsync-ruler { display: flex; justify-content: space-between; margin-left: 62px; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--text-muted); cursor: crosshair; font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+.lipsync-lanes { position: relative; display: grid; gap: 7px; }
+.lipsync-lane { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 8px; }
+.lipsync-lane > span { color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); font-weight: 800; }
+.lipsync-lane-track { position: relative; height: 37px; overflow: hidden; background: var(--paper-3); border: 1px solid var(--line); }
+.lipsync-lane-track button { position: absolute; top: 3px; bottom: 3px; min-width: 14px; overflow: hidden; padding: 0 8px; color: var(--text-on-accent); background: var(--accent); cursor: grab; touch-action: none; text-overflow: ellipsis; text-align: left; white-space: nowrap; font-size: calc(10px * var(--font-scale)); }
+.lipsync-lane:nth-child(2) .lipsync-lane-track button { color: var(--text); background: var(--lime); }
+.lipsync-lane-track button:active { cursor: grabbing; }
+.lipsync-lane-track small { display: block; padding: 10px; color: var(--text-muted); }
+.lipsync-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--gold); pointer-events: none; }
+.lipsync-timeline p { margin: 0 0 0 62px; color: var(--text-muted); font-family: var(--mono); font-size: calc(9px * var(--font-scale)); }
+@media (max-width: 900px) { .lipsync-board { display: block; overflow-y: auto; } .lipsync-preview-screen { height: 300px; } .lipsync-board .module-column--bottom { min-height: 235px; } }

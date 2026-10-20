@@ -274,6 +274,15 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" })).toBeChecked();
   });
 
+  it("reopens LipSync as its own four-region page", async () => {
+    const view = render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => ({ ...project, lastPage: "lip-sync" })}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={{ ...project, lastPage: "lip-sync" }} runtime={null} theme="dark" />);
+    expect(screen.getByRole("heading", { name: "Preview Video" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Timeline LipSync" })).toBeInTheDocument();
+    expect(view.container.querySelector(".lipsync-board")).toHaveStyle({ "--left-column": "300px", "--right-column": "340px" });
+    expect(screen.getByRole("separator", { name: "Co kéo cột trái" })).toBeInTheDocument();
+  });
+
   it("transfers a qualified source span to Patch without reusing it as generated-output selection", async () => {
     const source = { ...mediaAsset("complete", "xin chào", "2026-10-16T00:00:00Z"),
       words: [{ text: "xin", start: 1, end: 1.4 }, { text: "chào", start: 1.5, end: 2 }] };

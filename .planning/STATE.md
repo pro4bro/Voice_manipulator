@@ -6,11 +6,20 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-20 — Round62 release follow-up, portable alpha 0.5.18.
-last_activity_desc: Round62 frontend1138pass, focused88pass, typecheck/build191pass, full API1207pass on retry. Alpha 0.5.18 app pack and full portable issued; bundle gate33/0 and local core API/UI/STT ASGI probes pass. Old API requirements require migration to the new base. No native held-drag or second-device UAT claimed. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
+last_activity: 2026-10-20 — Round63 LipSync preview page and alignment draft.
+last_activity_desc: Media Pool video and generated Voice Output preview on a shared two-track clock. Frontend1144pass/138files, focused10pass plus WorkspaceShell61pass, typecheck/build194 modules; focused API2pass. Full API1207pass/1 unrelated 60s VibeVoice import timeout; isolated test passed after warm import. Render/After/face replacement remain disabled; Phase03 stays60% and Phase06 render gate is open.
 ---
 
 # Project State
+
+## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
+
+Added LipSync navigation, source selection, original-video playback endpoint,
+generated-voice audition, and independent clip placement/IN points on a
+two-track timeline. Draft is session-only; no render or face swap is claimed.
+Full frontend1144pass, focused API2pass, build/typecheck pass. Full API1207pass/1 installed
+VibeVoice import timeout; isolated rerun passed. ADR0120 and lipsync-preview63
+gate record evidence. Phase03 remains60%; Phase06 is open.
 
 ## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
 

@@ -1267,6 +1267,20 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project audio not found")
         return FileResponse(audio_path, media_type="audio/wav")
 
+    @app.get("/api/projects/{project_id}/media/{asset_id}/video")
+    def project_media_video(project_id: str, asset_id: str) -> Response:
+        try:
+            video_path = media.resolve_video_path(project_id, asset_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Project video not found") from exc
+        if not video_path.is_file():
+            raise HTTPException(status_code=404, detail="Project video not found")
+        video_types = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mkv": "video/x-matroska"}
+        media_type = video_types.get(video_path.suffix.lower())
+        if media_type is None:
+            raise HTTPException(status_code=415, detail="Unsupported source video format")
+        return FileResponse(video_path, media_type=media_type)
+
     @app.post(
         "/api/projects/{project_id}/media/import",
         response_model=MediaImportResult,

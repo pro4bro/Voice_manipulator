@@ -17,7 +17,7 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
 
 
-WorkspacePage = Literal["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer"]
+WorkspacePage = Literal["dashboard", "speech-to-text", "voice-training", "voice-manipulator", "voice-changer", "lip-sync"]
 
 
 class ProjectCreate(DomainModel):

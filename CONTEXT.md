@@ -22,7 +22,8 @@
 - **Dataset Manifest**: A deterministic, portable snapshot of selected audio segments, verified text, timing, speaker, and emotion attribution that a Training Run consumes.
 - **Training Run**: One job that may fine-tune multiple Speaker Profiles and emits periodic checkpoint backups.
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
-- **Workspace Page**: Speech to Text, Voice Training, or Voice Manipulator.
+- **Workspace Page**: Dashboard, Input (Speech to Text), Voice Training, Voice Manipulator, Voice Changer, or LipSync.
+- **LipSync Alignment Draft**: Session-only placement of one Media Pool video and one generated Voice Output on a shared preview clock; source IN points and timeline starts do not modify either Asset or imply a rendered derivative.
 - **Manipulator Mode**: Voice Over, Voice Isolator, Voice Changer, Voice Dubber, or Voice Patch.
 - **Script**: The time-aware transcript document shown and edited in the Script module.
 - **OBS LiveLink Connection**: One OBS process's machine-local link and control state; it can be active while app recording is idle.

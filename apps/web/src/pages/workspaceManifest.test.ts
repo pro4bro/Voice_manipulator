@@ -61,4 +61,13 @@ describe("workspaceManifest", () => {
     expect(manifest.modules).not.toContain("recent-takes");
     expect(workspaceManifest("speech-to-text").modules).not.toContain("voice-output");
   });
+
+  it("gives LipSync the Input column structure with Preview Video in place of Script", () => {
+    const manifest = workspaceManifest("lip-sync");
+    expect(manifest.columns).toEqual({
+      left: ["lipsync-sources"], center: ["video-preview"],
+      right: ["lipsync-controls"], bottom: ["lipsync-timeline"],
+    });
+    expect(manifest.modules).not.toContain("script");
+  });
 });

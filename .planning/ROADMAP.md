@@ -1,5 +1,15 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
+
+LipSync now has its separate Input-shaped page, a project-scoped video route,
+Media Pool/Voice Output selection, shared preview clock and two-track timing
+draft. After, Generate and optional face replacement remain gated on persisted
+alignment, adapter-backed render jobs and verified video QC. Frontend1144pass/
+138files, typecheck/build194 modules; focused API2pass. Full API1207pass/
+1 unrelated VibeVoice import timeout, isolated rerun pass. See ADR0120 and
+lipsync-preview63 gate. Phase03 stays60%; Phase06 remains open.
+
 ## Stabilization round62 — SELECTION-DUPLICATE-SPACE-01 (2026-10-20)
 
 Unselected footage is blank in Script/Timeline; Alt-left drag copies selected
@@ -1828,7 +1838,7 @@ processors remain open.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 06-01: LipSync page, adapter contract, render lifecycle, engine gate, and QC.
+- [ ] 06-01: LipSync page preview slice exists; portable alignment approval, adapter contract, render lifecycle, engine gate, and QC remain.
 
 ### Phase 7: Desktop Release
 **Goal**: Deliver the proven workstation as an installable, updateable, secure Windows application with explicit model/runtime management.
@@ -1857,7 +1867,7 @@ installer, updater, signing, and release verification are not started.
 | 3. Voice Training | 2/4 | In progress | Compiler and large run/runtime slice pass; gated set publication remains |
 | 4. Dockable Workspace | 0/1 | Planned | Fixed manifests only; no dock/session contract |
 | 5. Manipulator Pipeline | 0/1 | In progress | Generation and RVC live slices exist; plan gate remains incomplete |
-| 6. LipSync | 0/1 | Planned | Plan only |
+| 6. LipSync | 0/1 | In progress | Source preview/timing draft; render and QC gates open |
 | 7. Desktop Release | 1/1 | In progress | Architecture seams complete; release implementation absent |
 
 The GSD plan counter is only an artifact counter. Phase status above is the
