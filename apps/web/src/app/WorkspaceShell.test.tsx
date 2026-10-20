@@ -278,7 +278,8 @@ describe("WorkspaceShell STT synchronization", () => {
     const view = render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => ({ ...project, lastPage: "lip-sync" })}
       onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={{ ...project, lastPage: "lip-sync" }} runtime={null} theme="dark" />);
     expect(screen.getByRole("heading", { name: "Preview Video" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Timeline LipSync" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Timeline" })).toBeInTheDocument();
+    expect(view.container.querySelector(".timeline-module--alignment")).toBeInTheDocument();
     expect(view.container.querySelector(".lipsync-board")).toHaveStyle({ "--left-column": "300px", "--right-column": "340px" });
     expect(screen.getByRole("separator", { name: "Co kéo cột trái" })).toBeInTheDocument();
   });

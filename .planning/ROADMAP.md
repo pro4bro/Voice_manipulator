@@ -1,5 +1,17 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
+
+LipSync uses Input's proportions and presents Preview Video where Script sat.
+The Timeline module renders video and generated-voice alignment lanes with
+zoom, scroll, ruler, transport, pointer/keyboard placement and non-destructive
+IN/OUT trims. Its generated waveform uses the existing output endpoint.
+Frontend1146pass/138files and typecheck/build195 modules; browser layout
+measured at1900×900. Full backend1208pass/3warnings/667.15s. ADR0121 and
+lipsync-timeline64 gate define this UI slice. Engine candidate/license research
+is separate; no model or render job is integrated. Phase03 stays60%; Phase06
+output artifact, After QC and face replacement remain open.
+
 ## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
 
 LipSync now has its separate Input-shaped page, a project-scoped video route,

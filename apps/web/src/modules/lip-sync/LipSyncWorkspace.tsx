@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 
 import type { ProjectMediaAsset, VoiceOutput } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
-import { clampPlacement, clipLength, sourceTime, timelineLength, type ClipPlacement } from "./alignment";
+import { Icon } from "../../ui/Icon";
+import { Timeline } from "../timeline/Timeline";
+import { clampPlacement, sourceTime, timelineLength, type ClipPlacement } from "./alignment";
 import "./lip-sync.css";
 
 interface Props {
@@ -18,8 +20,8 @@ interface Props {
 const EMPTY_PLACEMENT: ClipPlacement = { start: 0, inPoint: 0 };
 
 function clock(seconds: number): string {
-  const whole = Math.floor(seconds);
-  return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}.${String(Math.floor((seconds - whole) * 100)).padStart(2, "0")}`;
+  const centiseconds = Math.max(0, Math.round(seconds * 100));
+  return `${String(Math.floor(centiseconds / 6000)).padStart(2, "0")}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, "0")}.${String(centiseconds % 100).padStart(2, "0")}`;
 }
 
 export function LipSyncWorkspace({ projectId, assets, outputs, leftWidth, rightWidth, onResizeStart, onResizeKeyDown }: Props) {
@@ -33,7 +35,6 @@ export function LipSyncWorkspace({ projectId, assets, outputs, leftWidth, rightW
   const [previewError, setPreviewError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const drag = useRef<{ kind: "video" | "audio"; x: number; start: number; length: number } | null>(null);
 
   const videos = assets.filter((asset) => asset.mediaKind === "video" && !asset.deletedAt && !asset.disabled && asset.duration > 0);
   const audios = outputs.filter((output) => output.audioAvailable !== false && output.duration > 0);
@@ -47,13 +48,15 @@ export function LipSyncWorkspace({ projectId, assets, outputs, leftWidth, rightW
   useEffect(() => { setPlayhead((current) => Math.min(current, length)); }, [length]);
 
   useEffect(() => {
-    if (!playing) {
-      videoRef.current?.pause();
-      audioRef.current?.pause();
-      if (videoRef.current && video) videoRef.current.currentTime = Math.min(video.duration, sourceTime(playhead, video.duration, videoPlace) ?? videoPlace.inPoint);
-      if (audioRef.current && output) audioRef.current.currentTime = Math.min(output.duration, sourceTime(playhead, output.duration, audioPlace) ?? audioPlace.inPoint);
-      return;
-    }
+    if (playing) return;
+    videoRef.current?.pause();
+    audioRef.current?.pause();
+    if (videoRef.current && video) videoRef.current.currentTime = Math.min(video.duration, sourceTime(playhead, video.duration, videoPlace) ?? videoPlace.inPoint);
+    if (audioRef.current && output) audioRef.current.currentTime = Math.min(output.duration, sourceTime(playhead, output.duration, audioPlace) ?? audioPlace.inPoint);
+  }, [playing, playhead, video, output, videoPlace, audioPlace]);
+
+  useEffect(() => {
+    if (!playing) return;
     const origin = performance.now() - playhead * 1000;
     let frame = 0;
     const tick = () => {
@@ -93,66 +96,59 @@ export function LipSyncWorkspace({ projectId, assets, outputs, leftWidth, rightW
     setPlaying(false);
     const duration = kind === "video" ? video?.duration ?? 0 : output?.duration ?? 0;
     const setter = kind === "video" ? setVideoPlace : setAudioPlace;
-    setter((current) => ({ ...current, inPoint: clampPlacement(value, Math.max(0, duration - 0.1)) }));
+    setter((current) => ({ ...current, inPoint: clampPlacement(value, Math.max(0, (current.outPoint ?? duration) - 0.1)) }));
   };
-  const beginDrag = (kind: "video" | "audio", event: PointerEvent<HTMLButtonElement>) => {
-    drag.current = { kind, x: event.clientX, start: kind === "video" ? videoPlace.start : audioPlace.start, length };
-    event.currentTarget.setPointerCapture(event.pointerId);
+  const placeOut = (kind: "video" | "audio", value: number) => {
+    setPlaying(false);
+    const duration = kind === "video" ? video?.duration ?? 0 : output?.duration ?? 0;
+    const setter = kind === "video" ? setVideoPlace : setAudioPlace;
+    setter((current) => ({ ...current, outPoint: Math.max(current.inPoint + 0.1, clampPlacement(value, duration)) }));
   };
-  const moveDrag = (event: PointerEvent<HTMLButtonElement>) => {
-    const current = drag.current;
-    const width = event.currentTarget.parentElement?.clientWidth ?? 0;
-    if (!current || current.kind !== event.currentTarget.dataset.kind || width <= 0) return;
-    placeStart(current.kind, current.start + (event.clientX - current.x) / width * current.length);
+  const updatePlacement = (kind: "video" | "audio", placement: ClipPlacement) => {
+    setPlaying(false);
+    (kind === "video" ? setVideoPlace : setAudioPlace)(placement);
   };
 
   return <div className="studio-board studio-board--lip-sync lipsync-board" style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
     <div className="module-column module-column--left">
-      <ModuleFrame title="Nguồn LipSync" eyebrow="MEDIA POOL / VOICE OUTPUT" className="lipsync-sources">
-        <div className="lipsync-tabs" role="tablist" aria-label="Nguồn LipSync">
-          <button aria-selected={sourceTab === "video"} onClick={() => setSourceTab("video")} role="tab" type="button">Media Pool · Video <b>{videos.length}</b></button>
-          <button aria-selected={sourceTab === "audio"} onClick={() => setSourceTab("audio")} role="tab" type="button">Voice Output <b>{audios.length}</b></button>
+      <section className="library-panel lipsync-library">
+        <div className="library-panel-tabs" role="tablist" aria-label="Nguồn LipSync">
+          <button aria-selected={sourceTab === "video"} className={sourceTab === "video" ? "is-active" : ""} onClick={() => setSourceTab("video")} role="tab" type="button"><Icon name="folder" />Media Pool <b>{videos.length}</b></button>
+          <button aria-selected={sourceTab === "audio"} className={sourceTab === "audio" ? "is-active" : ""} onClick={() => setSourceTab("audio")} role="tab" type="button"><Icon name="waveform" />Voice Output <b>{audios.length}</b></button>
         </div>
+      <ModuleFrame title={sourceTab === "video" ? "Media Pool" : "Voice Output"} eyebrow={sourceTab === "video" ? "FOOTAGE VIDEO" : "GENERATED AUDIO"} className="lipsync-sources">
         {sourceTab === "video" ? <div className="lipsync-source-list" role="tabpanel">
           {videos.length ? videos.map((item) => <button aria-pressed={item.id === videoId} className={item.id === videoId ? "is-selected" : ""} key={item.id} onClick={() => chooseVideo(item)} type="button"><b>{item.name}</b><small>{clock(item.duration)} · {item.sourceExtension.toUpperCase()}</small></button>) : <p>Chưa có video trong Media Pool. Import footage tại page Input.</p>}
         </div> : <div className="lipsync-source-list" role="tabpanel">
           {audios.length ? audios.map((item) => <button aria-pressed={item.id === outputId} className={item.id === outputId ? "is-selected" : ""} key={item.id} onClick={() => chooseAudio(item)} type="button"><b>{item.name}</b><small>{clock(item.duration)} · {item.voiceName}</small></button>) : <p>Chưa có voice generated. Tạo giọng tại Voice Manipulator.</p>}
         </div>}
       </ModuleFrame>
+      </section>
     </div>
     <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => onResizeKeyDown("left", event)} onPointerDown={(event) => onResizeStart("left", event)} role="separator" tabIndex={0}><i /></div>
     <div className="module-column module-column--center">
-      <ModuleFrame title="Preview Video" eyebrow="BEFORE / SOURCE FOOTAGE" className="lipsync-preview">
+      <ModuleFrame title="Preview Video" eyebrow="BEFORE / SOURCE FOOTAGE" className="lipsync-preview script-module">
         <div className="lipsync-compare"><b>Before · footage gốc</b><button disabled title="After chỉ xuất hiện khi có video LipSync đã render" type="button">After · chờ render</button></div>
         <div className="lipsync-preview-screen">
-          {video ? <video aria-label="Video trước LipSync" muted onError={() => { setPlaying(false); setPreviewError("Trình duyệt không phát được footage này. Cần bản MP4/WebM tương thích để preview."); }} playsInline preload="metadata" ref={videoRef} src={videoUrl} /> : <div className="lipsync-empty-video">Chọn footage video từ Media Pool</div>}
+          {video ? <video aria-label="Video trước LipSync" muted onError={() => { setPlaying(false); setPreviewError("Trình duyệt không phát được footage này. Cần bản MP4/WebM tương thích để preview."); }} onLoadedMetadata={(event) => { event.currentTarget.currentTime = sourceTime(playhead, video.duration, videoPlace) ?? videoPlace.inPoint; }} playsInline preload="metadata" ref={videoRef} src={videoUrl} /> : <div className="lipsync-empty-video"><Icon name="play" /><b>Chọn footage video từ Media Pool</b></div>}
           {video && !visibleVideo ? <div className="lipsync-video-curtain">Video chưa bắt đầu tại vị trí này</div> : null}
         </div>
-        {output ? <audio aria-label="Voice Output cho LipSync" onError={() => { setPlaying(false); setPreviewError("Không đọc được file Voice Output đã chọn. Tải lại danh sách và chọn một output có audio hợp lệ."); }} preload="metadata" ref={audioRef} src={audioUrl} /> : null}
+        {output ? <audio aria-label="Voice Output cho LipSync" onError={() => { setPlaying(false); setPreviewError("Không đọc được file Voice Output đã chọn. Tải lại danh sách và chọn một output có audio hợp lệ."); }} onLoadedMetadata={(event) => { event.currentTarget.currentTime = sourceTime(playhead, output.duration, audioPlace) ?? audioPlace.inPoint; }} preload="metadata" ref={audioRef} src={audioUrl} /> : null}
         {previewError ? <p role="alert">{previewError}</p> : null}
-        <div className="lipsync-transport"><button disabled={!video && !output} onClick={() => setPlaying((value) => !value)} type="button">{playing ? "Tạm dừng" : "Phát preview"}</button><span>{clock(playhead)} / {clock(length)}</span><span>Audio gốc của video được tắt; chỉ nghe Voice Output.</span></div>
-        <input aria-label="Vị trí preview" max={length} min="0" onChange={(event) => seek(Number(event.target.value))} step="0.01" type="range" value={Math.min(playhead, length)} />
+        <div className="lipsync-preview-caption"><b>{video?.name ?? "Chưa chọn video"}</b><span>{clock(playhead)} / {clock(length)} · Audio gốc tắt · nghe Voice Output trên Timeline</span></div>
       </ModuleFrame>
     </div>
     <div aria-label="Co kéo cột phải" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => onResizeKeyDown("right", event)} onPointerDown={(event) => onResizeStart("right", event)} role="separator" tabIndex={0}><i /></div>
     <div className="module-column module-column--right">
       <ModuleFrame title="Căn timing" eyebrow="VIDEO / GENERATED VOICE" className="lipsync-controls">
         <p>Đặt vị trí bắt đầu của mỗi clip trên timeline và điểm lấy nguồn. Preview dùng chung một đồng hồ.</p>
-        <fieldset disabled={!video}><legend>Video</legend><label>Vị trí trên timeline (s)<input min="0" onChange={(event) => placeStart("video", Number(event.target.value))} step="0.01" type="number" value={videoPlace.start} /></label><label>Điểm IN nguồn (s)<input max={Math.max(0, (video?.duration ?? 0) - .1)} min="0" onChange={(event) => placeIn("video", Number(event.target.value))} step="0.01" type="number" value={videoPlace.inPoint} /></label></fieldset>
-        <fieldset disabled={!output}><legend>Voice Output</legend><label>Vị trí trên timeline (s)<input min="0" onChange={(event) => placeStart("audio", Number(event.target.value))} step="0.01" type="number" value={audioPlace.start} /></label><label>Điểm IN nguồn (s)<input max={Math.max(0, (output?.duration ?? 0) - .1)} min="0" onChange={(event) => placeIn("audio", Number(event.target.value))} step="0.01" type="number" value={audioPlace.inPoint} /></label></fieldset>
+        <fieldset disabled={!video}><legend>Video</legend><label>Vị trí trên timeline (s)<input min="0" onChange={(event) => placeStart("video", Number(event.target.value))} step="0.01" type="number" value={videoPlace.start} /></label><label>Điểm IN nguồn (s)<input max={Math.max(0, (videoPlace.outPoint ?? video?.duration ?? 0) - .1)} min="0" onChange={(event) => placeIn("video", Number(event.target.value))} step="0.01" type="number" value={videoPlace.inPoint} /></label><label>Điểm OUT nguồn (s)<input max={video?.duration ?? 0} min={videoPlace.inPoint + .1} onChange={(event) => placeOut("video", Number(event.target.value))} step="0.01" type="number" value={videoPlace.outPoint ?? video?.duration ?? 0} /></label></fieldset>
+        <fieldset disabled={!output}><legend>Voice Output</legend><label>Vị trí trên timeline (s)<input min="0" onChange={(event) => placeStart("audio", Number(event.target.value))} step="0.01" type="number" value={audioPlace.start} /></label><label>Điểm IN nguồn (s)<input max={Math.max(0, (audioPlace.outPoint ?? output?.duration ?? 0) - .1)} min="0" onChange={(event) => placeIn("audio", Number(event.target.value))} step="0.01" type="number" value={audioPlace.inPoint} /></label><label>Điểm OUT nguồn (s)<input max={output?.duration ?? 0} min={audioPlace.inPoint + .1} onChange={(event) => placeOut("audio", Number(event.target.value))} step="0.01" type="number" value={audioPlace.outPoint ?? output?.duration ?? 0} /></label></fieldset>
         <div className="lipsync-render-state"><b>Bản nháp preview</b><span>Timing chưa được lưu vào project. Render LipSync và thay face cần adapter, job và kiểm tra video đầu ra.</span><button disabled title="Chưa có engine LipSync và job tạo video" type="button">Generate LipSync</button><button disabled title="Chưa có nguồn face và adapter thay face" type="button">Thay face (tuỳ chọn)</button></div>
       </ModuleFrame>
     </div>
     <div className="module-column module-column--bottom">
-      <ModuleFrame title="Timeline LipSync" eyebrow="2 TRACK / DRAG ĐỂ CĂN VỊ TRÍ" className="lipsync-timeline">
-        <div className="lipsync-ruler" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seek((event.clientX - rect.left) / rect.width * length); }} role="presentation"><span>00:00</span><span>{clock(length / 2)}</span><span>{clock(length)}</span></div>
-        <div className="lipsync-lanes">
-          <div className="lipsync-lane"><span>VIDEO</span><div className="lipsync-lane-track">{video ? <button aria-label={`Di chuyển video ${video.name}`} data-kind="video" onPointerDown={(event) => beginDrag("video", event)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} style={{ left: `${videoPlace.start / length * 100}%`, width: `${clipLength(video.duration, videoPlace) / length * 100}%` }} type="button">{video.name}</button> : <small>Chọn video</small>}</div></div>
-          <div className="lipsync-lane"><span>VOICE</span><div className="lipsync-lane-track">{output ? <button aria-label={`Di chuyển voice ${output.name}`} data-kind="audio" onPointerDown={(event) => beginDrag("audio", event)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} style={{ left: `${audioPlace.start / length * 100}%`, width: `${clipLength(output.duration, audioPlace) / length * 100}%` }} type="button">{output.name}</button> : <small>Chọn Voice Output</small>}</div></div>
-          <div className="lipsync-playhead" style={{ left: `calc(${playhead / length * 100}% + ${62 * (1 - playhead / length)}px)` }} />
-        </div>
-        <p>Video: {video ? `${clock(videoPlace.start)} → ${clock(videoPlace.start + clipLength(video.duration, videoPlace))}` : "—"} · Voice: {output ? `${clock(audioPlace.start)} → ${clock(audioPlace.start + clipLength(output.duration, audioPlace))}` : "—"}</p>
-      </ModuleFrame>
+      <Timeline take={null} gain={0} onGainChange={() => undefined} alignment={{ duration: length, video: video ? { name: video.name, duration: video.duration, placement: videoPlace } : null, audio: output ? { name: output.name, duration: output.duration, placement: audioPlace } : null, audioUrl, playhead, playing, onSeek: seek, onTogglePlay: () => setPlaying((value) => !value), onPlacementChange: updatePlacement }} />
     </div>
   </div>;
 }

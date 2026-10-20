@@ -1,4 +1,19 @@
-# Project Status — 2026-10-20
+# Project Status — 2026-10-21
+
+## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
+
+LipSync now matches Input's region sizing. Preview Video occupies the Script
+region; the Timeline module's alignment mode displays draggable, source-trimmable
+video and generated-voice lanes with shared ruler, zoom, scroll and transport.
+The generated-voice waveform uses its existing endpoint. Timing remains a
+session draft, so Generate/After/face replacement remain disabled. Browser
+layout at1900×900, frontend1146pass/138files and build/typecheck195 modules
+pass. Full backend1208pass/3warnings/667.15s. ADR0121 and
+docs/gates/lipsync-timeline64-20261021.md record scope. Repo and license
+screen in docs/research/lipsync-engines-2026-10-21.md recommends MuseTalk 1.5
+for a measured prototype, with LatentSync 1.6 as a higher-VRAM comparator;
+neither has passed project-footage quality or redistribution review. Phase03
+stays60%; Phase06 render remains open.
 
 ## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
 

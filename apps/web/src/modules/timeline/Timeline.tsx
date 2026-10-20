@@ -35,6 +35,7 @@ import type { RecordingWaveformPreview, SpeakerProfile, StudioWord, TimelineEdit
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { minimumTimelineSpan, timelineSpanAtZoomPosition, timelineZoomPosition, timelineZoomResolution } from "./zoom";
+import { TimelineAlignment, type TimelineAlignmentProps } from "./TimelineAlignment";
 
 export interface ActiveTake {
   id?: string;
@@ -69,6 +70,7 @@ interface DetailWaveformRequest {
 }
 
 interface TimelineProps {
+  alignment?: TimelineAlignmentProps;
   resumeProjectId?: string;
   resumeSource?: ResumeSource;
   onPlayheadChange?: (seconds: number) => void;
@@ -219,7 +221,7 @@ function activeWordAt(words: StudioWord[], time: number) {
   return time >= word.start && time <= word.end ? candidate : -1;
 }
 
-export function Timeline({
+function AudioTimeline({
   resumeProjectId, resumeSource, onPlayheadChange,
   voiceEdits,
   navigation,
@@ -1922,4 +1924,9 @@ export function Timeline({
       ) : null}
     </ModuleFrame>
   );
+}
+
+export function Timeline(props: TimelineProps) {
+  if (props.alignment) return <TimelineAlignment {...props.alignment} />;
+  return <AudioTimeline {...props} />;
 }

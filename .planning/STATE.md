@@ -6,11 +6,22 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-20 — Round63 LipSync preview page and alignment draft.
-last_activity_desc: Media Pool video and generated Voice Output preview on a shared two-track clock. Frontend1144pass/138files, focused10pass plus WorkspaceShell61pass, typecheck/build194 modules; focused API2pass. Full API1207pass/1 unrelated 60s VibeVoice import timeout; isolated test passed after warm import. Render/After/face replacement remain disabled; Phase03 stays60% and Phase06 render gate is open.
+last_activity: 2026-10-21 — Round64 LipSync Input-layout and Timeline alignment UI.
+last_activity_desc: Input-sized Preview Video and shared Timeline presentation with draggable video/voice, IN/OUT trims and generated waveform. Frontend1146pass/138files, typecheck/build195 modules; browser layout verified at1900×900; full backend1208pass/3warnings/667.15s. Research shortlists MuseTalk 1.5 and LatentSync 1.6 without claiming quality/license clearance. Render/After/face replacement remain disabled; Phase03 stays60% and Phase06 render gate remains open.
 ---
 
 # Project State
+
+## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
+
+Input's grid proportions, library tabs and center Script footprint now shape
+LipSync. Timeline's alignment mode adds video and Voice Output lanes with
+pointer/keyboard movement, source IN/OUT trims, source waveform, shared zoom
+and transport. Browser fixture layout and frontend1146pass/typecheck/build
+verify the UI; full backend1208pass/3warnings. Alignment is not saved,
+no model is installed and no output video exists. ADR0121 and the round64 gate
+record boundaries; engine research is separate. Phase03 remains60%, Phase06
+render remains open.
 
 ## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
 

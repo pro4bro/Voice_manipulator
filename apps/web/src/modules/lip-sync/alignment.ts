@@ -1,10 +1,11 @@
 export interface ClipPlacement {
   start: number;
   inPoint: number;
+  outPoint?: number | null;
 }
 
 export function clipLength(duration: number, placement: ClipPlacement): number {
-  return Math.max(0, duration - placement.inPoint);
+  return Math.max(0, Math.min(duration, placement.outPoint ?? duration) - placement.inPoint);
 }
 
 export function sourceTime(time: number, duration: number, placement: ClipPlacement): number | null {

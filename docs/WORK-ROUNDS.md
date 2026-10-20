@@ -1,5 +1,23 @@
 # Work Rounds
 
+## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
+
+LipSync now uses Input's column and Timeline row proportions. Its Media Pool /
+Voice Output selector uses the shared library treatment, Preview Video fills
+the Script footprint, and the right timing form exposes render status at the
+reference viewport. The bottom calls the Timeline module in alignment mode:
+video and generated voice share its ruler, zoom, navigator and transport, with
+separate draggable/IN/OUT trimmable lanes. Voice waveform comes from the
+existing endpoint. Numeric and keyboard timing controls remain. Source media
+and project.json are untouched; the draft is session-only. ADR0121 and
+lipsync-timeline64 gate record the UI boundary and visual check. Current
+engine/license research is in docs/research/lipsync-engines-2026-10-21.md;
+MuseTalk is a prototype candidate, not a quality acceptance or bundled model.
+Final frontend1146pass/138files, typecheck/build195 modules. Full backend
+1208pass/3warnings/667.15s. Browser layout was measured at1900×900;
+real media playback was not part of the fixture. Phase03 stays60%; Phase06
+render, After QC and face replacement remain open. Stop after this round.
+
 ## Round63 — LIPSYNC-PREVIEW-01 (2026-10-20)
 
 Added a separate LipSync page shaped like Input: Media Pool video and generated
