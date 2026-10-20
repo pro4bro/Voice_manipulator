@@ -6,8 +6,8 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-20 — Stabilization round62 selection gate, subtitle copy and Space.
-last_activity_desc: SELECTION-DUPLICATE-SPACE-01 frontend1138pass, focused88pass, typecheck/build191pass, full API1207pass on retry. No native held-drag or portable UAT claimed. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
+last_activity: 2026-10-20 — Round62 release follow-up, portable alpha 0.5.18.
+last_activity_desc: Round62 frontend1138pass, focused88pass, typecheck/build191pass, full API1207pass on retry. Alpha 0.5.18 app pack and full portable issued; bundle gate33/0 and local core API/UI/STT ASGI probes pass. Old API requirements require migration to the new base. No native held-drag or second-device UAT claimed. Provider/acoustic/workflow gates remain open. Phase03 stays60%.
 ---
 
 # Project State
@@ -21,6 +21,13 @@ Space toggles ordinary/imported Timeline playback. Focused88pass, final
 frontend1138pass/136files, typecheck/build191pass. Full API1207pass on retry.
 ADR0119 and selection-copy-space62 gate hold evidence and limits. No source
 media, project schema or engine change; Phase03 remains60%.
+
+Release follow-up: app alpha 0.5.18 has 221 verified payload files / 226 ZIP entries.
+The API requirements delta after 0.5.17 blocks app upgrades on the old base; full
+portable `f185bb5` contains 82,208 files / 41.00 GiB, including runtime/model layers.
+Bundle gate: 33 passed / 0 failed; local core API/UI/STT ASGI probes pass.
+See portable-update-0.5.18-20261020 gate for artifact and runtime evidence.
+Packaging does not start another product round.
 
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 

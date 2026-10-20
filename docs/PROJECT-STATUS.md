@@ -12,6 +12,13 @@ API1207pass/663.29s on full retry. See ADR0119 and
 docs/gates/selection-copy-space62-20261020.md. No
 audio, model or schema change; Phase03 stays60%, separate gates remain open.
 
+Release follow-up: alpha 0.5.18 NoVibeVoice app pack verifies 221 payload / 226 ZIP
+files. An API requirements change since 0.5.17 requires the new full portable
+for migration from the old base: 82,208 files / 41.00 GiB, including runtime/model layers.
+The app updater's dependency guard remains enforced. Final evidence:
+docs/gates/portable-update-0.5.18-20261020.md. Bundle gate 33 passed / 0 failed;
+local core API/UI/STT ASGI probes pass. No new product round.
+
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 
 Edge dragging now steps through 10/20/30/40% viewport width/sec at symmetric

@@ -10,6 +10,12 @@ files, focused88pass, typecheck/build191pass; full API1207pass on retry. See ADR
 and docs/gates/selection-copy-space62-20261020.md. Phase03 remains60%; separate
 acoustic/provider/processor gates stay open. Stop after this bounded round.
 
+Release follow-up: alpha 0.5.18 app pack has 221 payload / 226 ZIP files. Full portable
+(82,208 files / 41.00 GiB) provides the current base for old 0.5.16/0.5.17 installs,
+whose API requirements differ. Dependency guard retained. Evidence in
+docs/gates/portable-update-0.5.18-20261020.md. Bundle gate 33 passed / 0 failed;
+local core API/UI/STT ASGI probes pass. No product-round advancement.
+
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 
 Closed 10/20/30/40% viewport/sec edge acceleration and stable speaker underline

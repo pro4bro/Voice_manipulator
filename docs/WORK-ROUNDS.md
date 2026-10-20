@@ -15,6 +15,15 @@ build191pass. Full API1207pass/663.29s on retry after one transient timeout.
 No media/model/project-schema change;
 Phase03 stays60%. Stop after this round.
 
+Release follow-up, 2026-10-20: issued alpha 0.5.18 NoVibeVoice from clean app
+source `1ee57da`; 221 payload hashes and 226 ZIP entries verified. Since the API
+requirements gained websockets after 0.5.17, the unchanged updater rejects this
+app pack on the old base. Built a full portable from clean release source
+`f185bb5`: 82,208 files / 44,019,963,564 bytes (41.00 GiB), with runtime/models ready.
+Full bundle gate: 33 passed / 0 failed; local core API/UI/STT ASGI probes pass.
+See docs/gates/portable-update-0.5.18-20261020.md for final release verification.
+This packages round62 without advancing a product round or Phase03.
+
 ## Stabilization round61 — TIMELINE-EDGE-SPEAKER-01 (2026-10-19)
 
 Closed graduated edge speed and subtitle speaker cue feedback. Shared edge pan
