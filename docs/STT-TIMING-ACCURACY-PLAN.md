@@ -71,3 +71,21 @@ After confirmation of completion and reviewed regions, preserve a separate
 reference copy with source PCM hashes and explicit word IN/OUT. This reviewed
 project can supply independent anchors; do not require duplicate work in the
 offline worksheet or score unreviewed original STT timings as acoustic truth.
+
+## Owner reference received — 2026-10-21, round78
+
+The owner has finished the Conviction timing/duration review, with approximate
+boundaries and intentional omissions in overlapping speech. Its 697-word Script
+and original 665-word STT/audio are retained privately by hash. There are 680
+explicitly manual trusted words; 581 have unique lexical partners across all
+optimal edit paths. No duplicate worksheet work is required from the owner.
+
+See `docs/gates/stt-conviction78-20261021.md` for separate IN/OUT/duration metrics,
+current decoder replay, candidate confidence/overlap failures, exact artifacts
+and next scope. Typical CTC boundaries improve substantially, but tail errors
+and cross-phrase overlap reject an automatic default replacement. A fixed scalar
+offset and confidence-only selection are unsupported. Preserve manual locks;
+the next candidate must resolve window consistency and evaluate corrected text
+separately, then pass unchanged gates on held-out speech. The acoustic gate is
+still open; the earlier statement that a Conviction reference is missing is now
+superseded.

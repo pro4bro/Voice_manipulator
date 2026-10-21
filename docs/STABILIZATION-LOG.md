@@ -2238,3 +2238,46 @@ Các test tốc độ cũ đổi vị trí chuột sang band10% hoặc kỳ vọ
 theo yêu cầu mới; không xóa case, giảm assertion hay tăng timeout. Xem ADR0118
 và gate timeline-edge-speaker61. Native held-drag/portable UAT còn tách riêng;
 không phát hành portable. Phase03 vẫn60%; dừng sau round61.
+
+
+## 2026-10-21 — Round78 STT-CONVICTION-REFERENCE-01
+
+### Feedback — 2026-10-21
+
+**Nguyên văn (copy từ chat):**
+
+> Anh đã refine lại timing của từng từ trong subtitle của project Conviction. Có một số từ anh không cho vào dù trên waveform đang có sóng âm, đó là vì 2 người trong hội thoại đang chồng tiếng lên nhau. Nên rất khó xác định. Đây không phải là chính xác 100% về mặt timing vì sòng âm không có biên giới cứng, anh chỉ xác định dựa theo sóng âm và lắng nghe. Anh có bổ sung thêm từ vì nhận diện chưa chính xác. Tuy nhiên chất lượng nhận diện âm thanh rất đáng khen. Timing cũng rất đúng, chỉ là độ dài của từng từ lại không chính xác và dường như bị offset một chút khi mà subtitle ghi nhận thòi điểm kết thúc của từ lại là thời điểm bắt đầu của chính từ đó trên âm thanh, sóng âm. Anh đã điều chỉnh cả timing lẫn timespan của từng từ. Độ chính xác thì trong khoảng 80% nhưng đó là do không xác định chính xác được điểm đầu và cuối của từ do sóng âm có lên xuống theo tình tự chứ không dứt khoát. Nhưng về vị trí của từ và độ tin cậy thì cao vì anh đã tự tay làm.
+>
+> Em hãy dựa vào đây để so sánh với chức năng STT của mình, và tìm cách cải thiện nó lên
+
+**Cách agent hiểu:** Conviction đã có mốc nghe thủ công cho cả IN/OUT và độ dài.
+Biên âm học còn dung sai; 80% là tự đánh giá của chủ dự án, không phải ngưỡng
+80ms hay độ chính xác STT. Có bổ sung từ, và thiếu có chủ đích ở vùng chồng tiếng.
+Phải ghép đúng nội dung/thứ tự, giữ riêng từ chưa review hoặc ước lượng, không
+ép toàn bộ sóng âm thành từ của một người hoặc tự cộng offset toàn bản.
+
+### Agent tự kiểm
+
+Đóng băng 697 từ hiện tại, STT gốc 665 từ và MP3/WAV tại
+`.scratch/stt-conviction78`. PCM giải mã lại khớp WAV từng byte, không clipping.
+680 từ có timing manual/trusted; 581 cặp không mơ hồ theo mọi đường edit tối ưu.
+Giữ hiện rõ 99 mốc manual không ghép được và 17 từ không đủ provenance manual.
+Số đo và kiểm tra cuối nằm ở `docs/gates/stt-conviction78-20261021.md`.
+
+Trên 581 cặp, sai số trung vị IN/OUT STT cũ là 161.9/103.8ms, OUT gần IN đã sửa
+hơn (53.1ms). Replay refiner hiện tại không sửa được phần lớn sai lệch. CTC250h
+thử nghiệm giảm trung vị xuống 18.3/24.8ms, nhưng OUT p95 tăng384.9→495.5ms,
+có41 cặp khoảng chồng lấn;15 từ sai>500ms dù confidence>0.7. Lần ghi artifact
+đầu lỗi numpy int64 được giữ nguyên; serializer có regression, chạy lại ở run-2.
+Replay decoder hiện tại trả692 từ/587 cặp manual: median có dấu IN/OUT trước
+refiner là-159.8/-100.8ms, xác nhận triệu chứng trước bước ghi SRT. Full API1245
+pass/3warning cũ/641.34s; focused35pass, frontend1175/145files, typecheck/build205
+pass. Hash nguồn/bản sao và PCM bốn chunk đều giữ nguyên, provenance source pass.
+
+### Kết quả so với ngưỡng
+
+Ứng viên chưa đạt p95 IN/OUT≤250ms và không được thay default. Reference không
+còn thiếu; acoustic gate vẫn mở. Hướng tiếp: nhất quán cửa sổ/câu và timeline
+toàn bản, thử corrected transcript riêng, review chồng tiếng, giữ manual lock
+và xác minh thêm hội thoại độc lập. Không thay dữ liệu Conviction, engine upstream,
+format project hoặc phát hành portable. Phase03 giữ60%; dừng sau round78.
