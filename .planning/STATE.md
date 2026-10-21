@@ -6,11 +6,34 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-21 — round78 measured owner-reviewed Conviction STT timing.
-last_activity_desc: STT-CONVICTION-REFERENCE-01 preserves the heard reference and proves early boundaries in current raw DTW before refinement/SRT. CTC improves typical boundaries but fails tail/overlap gates; no default change. Focused35/frontend1175/typecheck/build/API1245 and closure hashes pass. Owner media and existing LipSync edits retained. Phase03 stays60%, Phase06 open; stop78.
+last_activity: 2026-10-21 — round79 implemented reviewed subtitle alignment.
+last_activity_desc: SUBTITLE-ALIGNMENT-01 adds measured offsets, PCM-vector anchors, reviewed apply/restore and manual locks. Explicit+116ms preview selects640/692 and reduces paired IN/OUT medians to69.1/56.3ms; strict automatic21/692 remains experimental. Full frontend1184/typecheck/build/API1297 plus latest focused50 pass. Browser acceptance pending due Work settings. Phase03 stays60%, Phase06 open; stop79.
 ---
 
 # Project State
+
+## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
+
+Implemented Script subtitle proposals, explicit independent IN/OUT offsets,
+measured common-offset prefill, automatic local group translations, PCM-vector
+landmarks and duration/rate warnings. Before/after waveform and source audition,
+review/edit/confirm, selected Apply, source-bound Restore and shared Undo/Redo
+retain manual timing, labels and original media. Portable proposal/receipt
+snapshots fence stale text/audio/cuts and interrupted writes. See ADR0127,
+`docs/SUBTITLE-ALIGNMENT-PLAN.md` and `docs/gates/subtitle-alignment79-20261021.md`.
+
+Real Conviction clone: strict automatic21/692 selected; coverage remains small.
+Opt-in measured+116ms common-offset preview selects640/692; paired IN median
+159.8→69.1ms, OUT111.8→56.3ms, no new>500ms errors. Spans stay unchanged. Actual
+bulk apply/restore and moved-project reopen pass; owner source/reference hashes
+remain equal. Vector corners support CTC anchors; direct corner snapping is
+rejected because25/44 onset errors worsen. General acoustic acceptance stays open.
+
+Full frontend1184/146files, typecheck/build208 and API1297/3existingwarnings pass;
+latest focused backend50 passes after separating position correction from span
+warnings. Final browser verification is pending: Work settings disabled browser
+use during the fixture check. No visual/device-audio acceptance is claimed.
+Phase03 stays60%, Phase06 open; no portable or STT default change. Stop79.
 
 ## Round78 — STT-CONVICTION-REFERENCE-01 (2026-10-21)
 

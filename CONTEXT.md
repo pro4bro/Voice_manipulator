@@ -1,5 +1,7 @@
 # Domain Glossary
 
+- **Subtitle Alignment Proposal**: A reviewable set of word-boundary changes for one finalized footage or audio track, bound to its current Script and immutable audio. It preserves manual timing, original provenance and uncertain words; an applied proposal has a reversible input snapshot.
+
 - **Project**: A portable folder containing one voice production effort, its manifest, assets, activity, notes, jobs, exports, cache, and last workspace state.
 - **Asset**: An immutable audio or transcript input/output with provenance.
 - **Take**: A playable audio Asset created by recording, generation, conversion, dubbing, or patching.

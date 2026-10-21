@@ -1,5 +1,28 @@
 # Project Status — 2026-10-21
 
+## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
+
+Implemented Script subtitle proposals, explicit independent IN/OUT offsets,
+measured common-offset prefill, automatic local group translations, PCM-vector
+landmarks and duration/rate warnings. Before/after waveform and source audition,
+review/edit/confirm, selected Apply, source-bound Restore and shared Undo/Redo
+retain manual timing, labels and original media. Portable proposal/receipt
+snapshots fence stale text/audio/cuts and interrupted writes. See ADR0127,
+`docs/SUBTITLE-ALIGNMENT-PLAN.md` and `docs/gates/subtitle-alignment79-20261021.md`.
+
+Real Conviction clone: strict automatic21/692 selected; coverage remains small.
+Opt-in measured+116ms common-offset preview selects640/692; paired IN median
+159.8→69.1ms, OUT111.8→56.3ms, no new>500ms errors. Spans stay unchanged. Actual
+bulk apply/restore and moved-project reopen pass; owner source/reference hashes
+remain equal. Vector corners support CTC anchors; direct corner snapping is
+rejected because25/44 onset errors worsen. General acoustic acceptance stays open.
+
+Full frontend1184/146files, typecheck/build208 and API1297/3existingwarnings pass;
+latest focused backend50 passes after separating position correction from span
+warnings. Final browser verification is pending: Work settings disabled browser
+use during the fixture check. No visual/device-audio acceptance is claimed.
+Phase03 stays60%, Phase06 open; no portable or STT default change. Stop79.
+
 ## Round78 — STT-CONVICTION-REFERENCE-01 (2026-10-21)
 
 The owner-reviewed Conviction reference is now available and preserved by hash.

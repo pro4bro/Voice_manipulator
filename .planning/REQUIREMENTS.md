@@ -1,5 +1,12 @@
 # Requirements
 
+## Subtitle Alignment
+
+- **STT-ALIGN-01**: Finalized footage/track subtitle timing has an explicit local automatic/IN-OUT-offset proposal workflow, with measured anchors, waveform evidence and duration/rate anomalies distinguished from verified word identity.
+- **STT-ALIGN-02**: Users inspect original/proposed intervals against waveform/audio, select eligible words and confirm/edit uncertain boundaries; manually timed words remain protected.
+- **STT-ALIGN-03**: Apply and restore retain complete input/provenance and reject changed words/audio, invalid or conflicting intervals atomically, with portable project-owned evidence and synchronized Script/Timeline/SRT.
+- **STT-ALIGN-04**: Real-media evaluation reports shared-reference IN/OUT/duration errors and accepted/review coverage without fitting a fixed offset to Conviction or lowering acoustic gates; missing alignment runtime and unsafe mixed speech remain explicit.
+
 ## Foundation
 
 - **ENG-01**: OmniVoice source is present in `engines/OmniVoice` and Pro4Bro does not modify it.
