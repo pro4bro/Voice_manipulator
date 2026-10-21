@@ -74,6 +74,8 @@ from app.adapters.output_word_review_routes import make_output_word_review_route
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
 from app.adapters.lipsync_routes import lipsync_router
+from app.adapters.subtitle_alignment import SubtitleAlignment
+from app.adapters.subtitle_alignment_routes import subtitle_alignment_router
 from app.adapters.lipsync_runtime import LipSyncRuntime
 from app.adapters.reference_resolver import ReferenceResolver
 from app.adapters.file_timing_plans import FileTimingPlans
@@ -898,6 +900,7 @@ def create_app(
             await asyncio.to_thread(streaming_asr.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.include_router(subtitle_alignment_router(SubtitleAlignment(projects, media, settings.project_root)))
     app.include_router(lipsync_router(planned_providers, projects, media, voice_outputs, runtime_root=settings.project_root, gpu_lease=gpu_lease))
     app.include_router(make_sokuji_router(sokuji_bridge))
     app.include_router(make_vibevoice_streaming_router(streaming_asr))
