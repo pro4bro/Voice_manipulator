@@ -1,4 +1,5 @@
 import { editableWordTimings } from "../domain/editable-word-timing";
+import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult } from "../domain/subtitle-alignment";
 import { lipSyncUrl, type LipSyncSessions, type LipSyncVersionState, type LipSyncDocument, type LipSyncCoverage, type LipSyncPreflight } from "../domain/lipsync";
 import type { LipSyncJob, LipSyncRuntimeReport, FaceGallery, FaceReview, LipSyncRenderPlan } from "../modules/lip-sync/LipSyncProcessing";
 import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
@@ -190,6 +191,20 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
 }
 
 export const api = {
+  getSubtitleAlignment: (projectId: string, assetId: string) => request<SubtitleAlignmentProposal | null>(
+    `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/latest`),
+  analyzeSubtitleAlignment: (projectId: string, assetId: string, payload: SubtitleAlignmentRequest) => request<SubtitleAlignmentProposal>(
+    `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/proposals`,
+    { method: "POST", body: JSON.stringify(payload) }),
+  applySubtitleAlignment: async (projectId: string, assetId: string, id: string, indexes: number[], edits: SubtitleAlignmentEdit[]) => {
+    const result = await request<SubtitleAlignmentResult>(`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/${encodeURIComponent(id)}/apply`,
+      { method: "POST", body: JSON.stringify({ indexes, edits }) });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
+  restoreSubtitleAlignment: async (projectId: string, assetId: string, id: string) => {
+    const result = await request<SubtitleAlignmentResult>(`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/${encodeURIComponent(id)}/restore`, { method: "POST" });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
   getActivity: (after = 0, limit = 400) =>
     request<ActivitySnapshot>(`/api/activity?after=${after}&limit=${limit}`),
   getRuntimeStatus: () => request<RuntimeWorkloadState>("/api/runtime/status"),

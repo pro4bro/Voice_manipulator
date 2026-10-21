@@ -193,6 +193,8 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const mediaAssetsRef = useRef<ProjectMediaAsset[]>([]);
   const wordWriteQueues = useRef(new Map<string, Promise<void>>());
   const wordWriteVersions = useRef(new Map<string, number>());
+  const wordWriteErrors = useRef(new Map<string, string>());
+  const alignmentPreparedVersions = useRef(new Map<string, number>());
   const timelineWriteQueues = useRef(new Map<string, Promise<boolean>>());
   const timelineWriteVersions = useRef(new Map<string, number>());
   // Full-list requests started before a permanent delete must not reinsert it.
@@ -1267,17 +1269,20 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     setMediaAssets((current) => current.map((item) => item.id === asset.id ? { ...item, text: nextText, words, speakerProfileIds, environmentProfileIds, emotion } : item));
     const version = (wordWriteVersions.current.get(asset.id) ?? 0) + 1;
     wordWriteVersions.current.set(asset.id, version);
+    wordWriteErrors.current.delete(asset.id);
     const previousWrite = wordWriteQueues.current.get(asset.id) ?? Promise.resolve();
     const write = previousWrite.catch(() => undefined).then(async () => {
       try {
         await api.updateMediaScript(project.id, asset.id, nextText, "user", words);
         const updated = await api.updateMediaAnnotations(project.id, asset.id, speakerProfileIds, environmentProfileIds, emotion);
         if (wordWriteVersions.current.get(asset.id) !== version) return;
+        wordWriteErrors.current.delete(asset.id);
         setMediaAssets((current) => current.map((item) => item.id === updated.id ? { ...item, text: updated.text, words: updated.words, speakerProfileIds: updated.speakerProfileIds, environmentProfileIds: updated.environmentProfileIds, emotion: updated.emotion, wordTimingQuality: updated.wordTimingQuality, wordTimingNote: updated.wordTimingNote, revisions: updated.revisions } : item));
         if (scriptAssetIdRef.current === asset.id) setTake((current) => current ? { ...current, words: updated.words, text: updated.text, wordTimingQuality: updated.wordTimingQuality, wordTimingNote: updated.wordTimingNote } : current);
         void refreshDatasetReadiness();
         setNotice("Đã lưu text, timestamp và nhãn theo từ.");
       } catch (error) {
+        if (wordWriteVersions.current.get(asset.id) === version) wordWriteErrors.current.set(asset.id, error instanceof Error ? error.message : "Không lưu được text/timestamp");
         setNotice(error instanceof Error ? error.message : "Không lưu được text/timestamp");
       }
     });
@@ -1292,6 +1297,43 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     if (!indexes.length) return;
     const words = assignProfileToWords(asset.words, indexes, speakerProfileId);
     await changeWordAnnotations(words, asset.text, assetId);
+  }
+
+  async function prepareSubtitleAlignment(assetId: string) {
+    flushCurrentMediaDraft();
+    let pending: Promise<void> | undefined;
+    while ((pending = wordWriteQueues.current.get(assetId))) {
+      await pending;
+      if (wordWriteQueues.current.get(assetId) === pending) break;
+    }
+    const failure = wordWriteErrors.current.get(assetId);
+    if (failure) throw new Error(`Lưu Script trước khi căn chỉnh: ${failure}`);
+    alignmentPreparedVersions.current.set(assetId, wordWriteVersions.current.get(assetId) ?? 0);
+  }
+
+  function acceptSubtitleAlignment(updated: ProjectMediaAsset) {
+    const previous = mediaAssetsRef.current.find((asset) => asset.id === updated.id);
+    if (!previous) return;
+    if ((wordWriteVersions.current.get(updated.id) ?? 0) !== alignmentPreparedVersions.current.get(updated.id)) {
+      setNotice("Script vừa được sửa thêm; giữ thay đổi đang lưu và phân tích lại timing.");
+      return;
+    }
+    const snapshot = (asset: ProjectMediaAsset): ScriptEditSnapshot => ({ text: asset.text, words: asset.words,
+      speakerProfileIds: asset.speakerProfileIds, environmentProfileIds: asset.environmentProfileIds, emotion: asset.emotion });
+    scriptEditHistory.current.record(updated.id, snapshot(previous), snapshot(updated));
+    scriptDraftBases.current.delete(updated.id);
+    wordWriteVersions.current.set(updated.id, (wordWriteVersions.current.get(updated.id) ?? 0) + 1);
+    mediaAssetsRef.current = mediaAssetsRef.current.map((asset) => asset.id === updated.id ? updated : asset);
+    setMediaAssets((current) => current.map((asset) => asset.id === updated.id ? updated : asset));
+    if (scriptAssetIdRef.current === updated.id) {
+      scriptRef.current = updated.text;
+      setScript(updated.text);
+      setScriptDirty(false);
+      setTake((current) => current ? { ...current, text: updated.text, words: updated.words,
+        wordTimingQuality: updated.wordTimingQuality, wordTimingNote: updated.wordTimingNote } : current);
+    }
+    void refreshDatasetReadiness();
+    setNotice("Đã lưu căn chỉnh subtitle. Có thể Undo hoặc khôi phục trong bảng căn chỉnh.");
   }
 
   function restoreScriptEdit(direction: "undo" | "redo") {
@@ -2953,6 +2995,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       if (blockedByRecycleBin()) return;
       scriptEditHistory.current.batch(() => changes.forEach((change) => { void changeWordAnnotations(change.words, change.text, change.assetId); }));
     },
+    onPrepareSubtitleAlignment: prepareSubtitleAlignment,
+    onSubtitleAlignmentApplied: acceptSubtitleAlignment,
     onAssetWordsChange: (assetId, words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text, assetId); },
     onWordsChange: (words, text) => { if (!blockedByRecycleBin()) void changeWordAnnotations(words, text); },
     onScriptUndo: () => restoreScriptEdit("undo"),

@@ -1,0 +1,59 @@
+.subtitle-alignment-trigger { border: 1px solid var(--line); padding: 6px 10px; color: var(--text); background: var(--soft-fill); font: inherit; cursor: pointer; }
+.subtitle-alignment-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.subtitle-alignment-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 18px; background: rgb(0 0 0 / 58%); }
+.subtitle-alignment-dialog { width: min(1120px, 96vw); max-height: min(840px, 94vh); display: flex; flex-direction: column; overflow: hidden; color: var(--text); background: var(--surface-panel); border: 1px solid var(--line); box-shadow: 0 16px 48px rgb(0 0 0 / 35%); }
+.subtitle-alignment-dialog header, .subtitle-alignment-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.subtitle-alignment-dialog header h2 { margin: 0; font-size: 1.15rem; }
+.subtitle-alignment-dialog header p { margin: 5px 0 0; color: var(--text-muted); font-size: .9rem; }
+.subtitle-alignment-dialog button, .subtitle-alignment-dialog input, .subtitle-alignment-dialog select { font: inherit; }
+.subtitle-alignment-dialog button { color: var(--text); }
+.subtitle-alignment-dialog header > button { border: 0; background: transparent; font-size: 1.5rem; cursor: pointer; }
+.subtitle-alignment-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.subtitle-alignment-controls label { display: grid; gap: 5px; font-size: .82rem; color: var(--text-muted); }
+.subtitle-alignment-controls select, .subtitle-alignment-controls input[type="number"] { min-height: 34px; min-width: 100px; padding: 5px 8px; color: var(--text); background: var(--surface-field); border: 1px solid var(--line); }
+.subtitle-alignment-controls > label:first-child { min-width: 180px; flex: 1; }
+.subtitle-alignment-controls fieldset { display: flex; align-items: center; gap: 10px; min-height: 34px; margin: 0; padding: 4px 9px; border: 1px solid var(--line); }
+.subtitle-alignment-controls legend { padding: 0 4px; color: var(--text-muted); font-size: .78rem; }
+.subtitle-alignment-controls fieldset label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.subtitle-alignment-controls > button, .subtitle-alignment-dialog footer button, .subtitle-alignment-detail button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); background: var(--soft-fill); cursor: pointer; }
+.subtitle-alignment-dialog button:disabled { opacity: .5; cursor: not-allowed; }
+.subtitle-alignment-warning { margin: 8px 18px; padding: 8px 10px; border-left: 3px solid var(--gold-ink); background: var(--soft-fill); }
+.subtitle-alignment-summary { padding: 9px 18px; color: var(--text-muted); background: var(--surface-sunken); font-size: .86rem; }
+.subtitle-alignment-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(240px, .8fr); }
+.subtitle-alignment-list { min-height: 0; overflow: auto; border-right: 1px solid var(--line); }
+.subtitle-alignment-list table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.subtitle-alignment-list th { position: sticky; top: 0; z-index: 1; padding: 8px; text-align: left; color: var(--text-muted); background: var(--surface-panel); border-bottom: 1px solid var(--line); }
+.subtitle-alignment-list td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.subtitle-alignment-list tr.is-focused { background: var(--soft-fill); }
+.subtitle-alignment-word { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.subtitle-alignment-word small { color: var(--text-muted); font-size: .72rem; }
+.subtitle-alignment-times { display: flex; gap: 6px; }
+.subtitle-alignment-times label { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px; font-size: .75rem; }
+.subtitle-alignment-times small, .subtitle-alignment-time-note { color: var(--text-muted); font-size: .7rem; white-space: nowrap; }
+.subtitle-alignment-times input { grid-column: 1 / -1; width: 92px; padding: 4px; color: var(--text); background: var(--surface-field); border: 1px solid var(--line); }
+.subtitle-alignment-detail { overflow: auto; padding: 14px; }
+.subtitle-alignment-detail ul { padding-left: 18px; color: var(--text-muted); font-size: .82rem; }
+.subtitle-alignment-wave-legend { display: flex; gap: 12px; margin: 7px 0 4px; font-size: .75rem; }
+.subtitle-alignment-wave-legend span:first-child { text-decoration: underline dashed; text-underline-offset: 3px; }
+.subtitle-alignment-wave-legend span:last-child { text-decoration: underline; text-underline-offset: 3px; color: var(--gold-ink); }
+.subtitle-alignment-detail h3 { margin: 0 0 5px; }
+.subtitle-alignment-detail p { color: var(--text-muted); font-size: .86rem; }
+.subtitle-alignment-waveform { height: 96px; display: grid; place-items: center; overflow: hidden; color: var(--text-muted); background: var(--soft-fill); border: 1px solid var(--line); }
+.subtitle-alignment-waveform svg { width: 100%; height: 100%; }
+.subtitle-alignment-waveform__signal { stroke: var(--accent); stroke-width: .7; }
+.subtitle-alignment-waveform__before { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 2 2; }
+.subtitle-alignment-waveform__after { stroke: var(--gold-ink); stroke-width: 1.3; }
+.subtitle-alignment-audition { display: flex; gap: 8px; margin-top: 10px; }
+.subtitle-alignment-confirm { margin-top: 10px; }
+.subtitle-alignment-dialog footer { justify-content: flex-end; border-top: 1px solid var(--line); border-bottom: 0; }
+.subtitle-alignment-audio, .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@media (max-width: 720px) {
+  .subtitle-alignment-backdrop { padding: 6px; }
+  .subtitle-alignment-dialog { width: 100%; max-height: 98vh; }
+  .subtitle-alignment-workspace { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 1fr) auto; }
+  .subtitle-alignment-list { border-right: 0; }
+  .subtitle-alignment-detail { border-top: 1px solid var(--line); }
+  .subtitle-alignment-controls > label:first-child { flex-basis: 100%; }
+}
+
+.subtitle-alignment-waveform__anchor { fill: var(--clone-ink); stroke: var(--surface-panel); stroke-width: .5; }
