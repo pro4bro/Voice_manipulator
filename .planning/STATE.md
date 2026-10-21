@@ -6,11 +6,27 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-21 — round79 implemented reviewed subtitle alignment.
-last_activity_desc: SUBTITLE-ALIGNMENT-01 adds measured offsets, PCM-vector anchors, reviewed apply/restore and manual locks. Explicit+116ms preview selects640/692 and reduces paired IN/OUT medians to69.1/56.3ms; strict automatic21/692 remains experimental. Full frontend1184/typecheck/build/API1297 plus latest focused50 pass. Browser acceptance pending due Work settings. Phase03 stays60%, Phase06 open; stop79.
+last_activity: 2026-10-22 — round80 implemented Input subtitle refinement and drift review.
+last_activity_desc: INPUT-SUBTITLE-REFINEMENT-01 exposes eight methods in Input right column, actual vector review proposals and read-only manual-word drift evidence. Common offset640/692; vector21 changed/all review. Current177/68 CTC suspects versus reviewed18/1 are not certified errors. Full frontend1186/API1307 plus focused18/60, typecheck/build210 pass. Browser/device and held-out quality pending. Phase03 stays60%, Phase06 open; stop80.
 ---
 
 # Project State
+
+## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
+
+Input right-column refinement exposes eight separately selectable methods and
+read-only drift reports including manual words,250/500ms discrepancies and
+unassessed coverage. Explicit vector mode produces21 real changed proposals on
+the frozen source, all review. Common-offset640/692 preserves spans and reduces
+paired IN/OUT medians to69.1/56.3ms. No learned universal calibration is claimed.
+
+Current177/68 CTC suspicions versus reviewed18/1 support targeted audition while
+retaining model uncertainty. Fresh owner-reviewed diagnosis keeps all words
+unchanged. Source hashes and actual bulk apply/restore pass. ADR0128 and the
+subtitle-refinement80 gate hold exact evidence. Full frontend1186/API1307 and
+latest focused18/60, typecheck/build210 pass. Browser/device audition blocked by
+Work settings; held-out quality remains open. Phase03 stays60%, Phase06 open;
+no STT default/portable release change. Stop80.
 
 ## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
 

@@ -106,3 +106,39 @@ and a review aid, not a promise of word identity from energy alone. Round78's
 ungated CTC improves typical errors but has a bad tail and overlaps; production
 selection must expose and constrain those cases. Model license, unavailable
 runtime, long speech, ambiguous labels and cross-speaker audio stay visible.
+
+## Round80 — Input right-column refinement and drift review (2026-10-22)
+
+Owner explicitly requests a right-column Input tool, all methods selectable for
+separate trials, and detection of large text/audio drift. No general learned
+calibration is claimed from one Conviction reference.
+
+- STT-ALIGN-05: Input right column owns Tinh chỉnh subtitle. Existing finalized
+  single/multitrack selection feeds an eight-method dialog: diagnose, conservative
+  combined auto, common measured offset, separate measured IN/OUT offsets, group
+  offsets, individual CTC, PCM-vector and manual offset. Each new proposal is
+  independent, source-bound and reversible.
+- STT-ALIGN-06: Read-only diagnostics include manually timed words, identify CTC
+  displacement>=250ms / >=500ms, quiet/invalid spans and unassessed evidence, with
+  inspectable word coordinates. Low coverage is unknown, never a clean result.
+  Thresholds are review indicators, not acoustic accuracy or recognition scores.
+- Waveform-vector is now an explicit trial method: nearest same-direction corner
+  near a CTC edge, else near the source edge. It never becomes ready automatically;
+  ambiguous, absent and conflicting corners remain review. No reference timing
+  fits selection or thresholds. Manual timing stays locked in every method.
+- Diagnostics cannot apply. Measured common/edge offsets require at least three
+  valid CTC anchors, with medians and dispersion visible. Missing model yields
+  unknown diagnostics; manual offset and vector review remain available.
+- Verify method routing and right-column placement, all-manual read-only diagnosis,
+  severities/unknown coverage, vector proposals, restore and stale-input fences.
+  Reuse immutable Conviction CTC only after exact words/audio hashes match; test
+  owner-corrected words separately if actual diagnosis needs fresh inference.
+  Full frontend/API gates, real evidence and browser availability are recorded.
+  Complete this bounded round80 and stop.
+
+Implemented and measured in `docs/gates/subtitle-refinement80-20261022.md` and
+ADR0128. Common-offset selects640/692 on the frozen source; vector produces21
+changed proposals, all requiring review. Drift reports177/68 suspect words at
+250/500ms on current STT versus18/1 on the owner-reviewed transcript. These are
+CTC discrepancies, not certified mistakes. Browser/device audition acceptance
+and held-out conversation quality remain open; no universal calibration learned.

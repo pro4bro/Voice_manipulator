@@ -1,4 +1,22 @@
-# Project Status — 2026-10-21
+# Project Status — 2026-10-22
+
+## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
+
+Input now has a right-column Tinh chỉnh subtitle module with eight selectable
+methods, including actual PCM-vector proposals and read-only drift detection on
+manual words. All editing methods preserve manual locks, source-bound review,
+Apply/Restore and shared Undo/Redo. No general calibration learned from Conviction.
+
+Common-offset trial selects640/692, paired IN/OUT medians69.1/56.3ms; vector21
+changed proposals all require confirmation. CTC suspects at250/500ms:177/68 on
+current STT and18/1 on fresh owner-reviewed diagnosis, with236/210 words unknown.
+These findings do not certify mistakes. Owner source/reference hashes unchanged.
+See ADR0128 and `docs/gates/subtitle-refinement80-20261022.md`.
+
+Full frontend1186/147files, API1307/3existingwarnings; latest focused18/60,
+typecheck/build210 pass. Browser/device audition and held-out acoustic acceptance
+remain open; local browser use is disabled in Work settings. Phase03 stays60%,
+Phase06 open. No STT default/portable release change; stop80.
 
 ## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
 

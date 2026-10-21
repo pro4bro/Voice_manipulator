@@ -1,5 +1,26 @@
 # Work Rounds
 
+## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
+
+Input right-column Tinh chỉnh subtitle opens eight separate refinement/diagnostic
+methods on any finalized footage/track. Common/edge/group offsets, individual CTC,
+manual offset, PCM-vector review and conservative combined retain source-bound
+preview, selected Apply/Restore and manual locks. Read-only drift includes manual
+words,250/500ms suspicions, inspectable CTC coordinates and unknown coverage.
+Matching acoustic artifacts are reused across trials; no universal learned rule.
+
+Frozen current Conviction: common640/692 ready, IN/OUT medians69.1/56.3ms on587
+fixed pairs; vector21 changed proposals, all review. Current177/68 CTC suspicions
+at250/500ms versus18/1 on a fresh owner-reviewed-word diagnosis. These are model
+disagreements to hear again, not confirmed owner errors. Owner hashes unchanged.
+See ADR0128 and `docs/gates/subtitle-refinement80-20261022.md`.
+
+Full frontend1186/147files and API1307/3existingwarnings pass; latest focused18
+frontend/60 backend, final typecheck/build210 pass. Isolated diagnosis mutation is
+killed. Browser/device audition remains pending because Work settings disabled
+browser access. Held-out acoustic quality remains open. Phase03 stays60%, Phase06
+open; no STT default or portable release change. Stop80.
+
 ## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
 
 Implemented Script subtitle proposals, explicit independent IN/OUT offsets,

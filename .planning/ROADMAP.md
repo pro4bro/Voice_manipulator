@@ -1,5 +1,21 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
+
+Implemented Input right-column subtitle refinement with eight independent trial
+methods, actual PCM-vector proposals and read-only drift detection including
+manual words. Every editing method retains preview/manual locks/Apply/Restore.
+Common-offset640/692 and vector21 changed/all review reproduce on frozen media;
+CTC discrepancies177/68 current versus18/1 owner-reviewed remain review evidence.
+No universal learned rule or held-out quality acceptance is claimed.
+
+Full frontend1186/API1307, latest focused18/60 and typecheck/build210 pass; owner
+hashes unchanged. ADR0128 and `docs/gates/subtitle-refinement80-20261022.md` record
+artifacts and limitations. Next quality gaps: actual browser/device audition
+(Work settings disabled browser use), held-out speech and reliable vector boundary
+selection. Phase03 stays60%, Phase06 open; no STT default/portable release change.
+Stop80.
+
 ## Round79 — SUBTITLE-ALIGNMENT-01 (2026-10-21)
 
 Implemented Script subtitle proposals, explicit independent IN/OUT offsets,

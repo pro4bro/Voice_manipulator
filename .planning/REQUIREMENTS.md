@@ -6,6 +6,8 @@
 - **STT-ALIGN-02**: Users inspect original/proposed intervals against waveform/audio, select eligible words and confirm/edit uncertain boundaries; manually timed words remain protected.
 - **STT-ALIGN-03**: Apply and restore retain complete input/provenance and reject changed words/audio, invalid or conflicting intervals atomically, with portable project-owned evidence and synchronized Script/Timeline/SRT.
 - **STT-ALIGN-04**: Real-media evaluation reports shared-reference IN/OUT/duration errors and accepted/review coverage without fitting a fixed offset to Conviction or lowering acoustic gates; missing alignment runtime and unsafe mixed speech remain explicit.
+- **STT-ALIGN-05**: Input's right column exposes subtitle refinement for any finalized selected footage/track, with separately selectable common, independent IN/OUT, group, CTC, waveform-vector, manual-offset, conservative combined and diagnostic methods. Every editable proposal retains preview, manual locks and reversible explicit application.
+- **STT-ALIGN-06**: Read-only drift reports include manual words, qualified CTC displacement at 250/500 ms, quiet/invalid spans, inspectable coordinates and unassessed coverage. Waveform corners are supporting evidence; missing or sparse evidence cannot certify correct timing.
 
 ## Foundation
 
