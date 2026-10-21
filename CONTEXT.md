@@ -24,6 +24,15 @@
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
 - **Workspace Page**: Dashboard, Input (Speech to Text), Voice Training, Voice Manipulator, Voice Changer, or LipSync.
 - **LipSync Alignment Draft**: Session-only placement of one Media Pool video and one generated Voice Output on a shared preview clock; source IN points and timeline starts do not modify either Asset or imply a rendered derivative.
+- **LipSync Session**: One independent video product within a Project, listed in Video Output, containing Version slots and sharing the Project's Media Pool and generated Voice Outputs.
+- **LipSync Version**: One editable slot within a LipSync Session, owning its composition, face-review drafts, bounded Undo/Redo history and processing jobs. New version clones editing decisions and completed analysis, starts a separate history, and references the same immutable source assets.
+- **Send to**: A source-routing action that opens a compatible workspace or stages shared footage/Voice Output references for a selected LipSync Version; it does not implicitly convert generated speech into Training footage.
+- **LipSync Composition**: A revisioned project-owned arrangement of immutable video source spans on ordered layers and a generated audio placement, with engine settings and processing scopes. It supersedes the session-only alignment draft; it is not a rendered video.
+- **LipSync Processing Scope**: An independent selection for detection or lip synchronization: chosen layers, an optional range, and visible, placed or full-source coverage. Source mode uses source time; other modes use composition time.
+- **LipSync Preflight**: A saved-input snapshot of source coverage, generated speaker-turn intersections, native engine settings and unresolved blockers. It is not proof of detected identities or successful inference.
+- **LipSync Face Observation**: A detected face at one sampled source time, with a thumbnail, embedding and proposed Face ID. A proposal is unreviewed until explicitly accepted; it is not a Speaker Profile.
+- **LipSync Face Review**: A revisioned project-owned correction of observation IDs and explicit bindings from reviewed Face IDs to existing Speaker Profiles. Each analysis is a separate snapshot; new analyses currently need another review.
+- **LipSync Render Job**: A durable snapshot of composition, reviewed identities, generated speaker turns, settings and immutable input fingerprints. Its completion requires decoded output artifacts; structural QC does not establish mouth/identity quality acceptance.
 - **Manipulator Mode**: Voice Over, Voice Isolator, Voice Changer, Voice Dubber, or Voice Patch.
 - **Script**: The time-aware transcript document shown and edited in the Script module.
 - **OBS LiveLink Connection**: One OBS process's machine-local link and control state; it can be active while app recording is idle.

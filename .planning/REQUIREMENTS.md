@@ -101,6 +101,30 @@
 - **WF-04**: Media Pool is shared by Speech to Text, Voice Training, and Voice Manipulator as the source-of-truth asset collection.
 - **WF-05**: Timeline playback resolves project-owned analysis audio instead of relying on an external engine output path.
 
+## LipSync
+
+- **LIP-01**: Offer MuseTalk, LatentSync and Wav2Lip with source provenance, engine-specific grouped inference settings, independent drafts, defaults and actual runtime/model/adapter readiness. Respect each selected model's usage terms.
+- **LIP-02**: Persist portable video clips/layers and separate generated-audio tracks; support duplicate, split, trim, extend within source limits, layer order, undo/redo and vertical scrolling. Preview and rendering use the same visible top-layer schedule.
+- **LIP-03**: Detect/track visible faces per shot, propose recurring identity IDs across shots, show thumbnail galleries and allow manual identity merge/split/correction without losing reviewed decisions.
+- **LIP-04**: Map reviewed face IDs to Speaker Profiles and generated speech-turn timing. Only matching visible faces sync during their assigned speaker's speech; offscreen/unassigned faces and hidden layers remain untouched.
+- **LIP-05**: Run selected engines through isolated verified runtimes and durable cancellable jobs. Validate real output video/audio and provide synchronized Before/After QC with project-relative derivative provenance.
+- **LIP-06**: Voice Over edits invalidate affected face-render intervals and required engine context; regenerate those intervals while retaining unaffected frames and rejecting stale job outputs.
+- **LIP-07**: Detection and LipSync independently target layers and optional time ranges using visible, placed-including-hidden or full-source coverage. State the clock explicitly, preserve audio anchors per occurrence, reject ambiguous full-source audio assignments, and report missing detection coverage before processing.
+
+- **LIP-08**: Video Output contains independent product Sessions and expandable Version slots. New session is empty; New version clones the current composition/settings/face decisions with an independent history. Save and restore each slot's bounded Undo/Redo across navigation and reload, with revision fencing and portable paths. Scope every job, face gallery and After/artifact to its originating Version.
+- **LIP-09**: Each Face ID card places its Voice Profile selector immediately underneath and updates all cards of that ID. Media Pool and generated Voice Output context menus expose Send to with compatible Training, Voice Manipulation and LipSync destinations. Stage sources for an explicit Session/Version, import shared footage references and import/replace generated voice without changing other slots or source files.
+
+Round76 implements LIP-08/09's Session/Version persistence, local history, inline
+face mapping and compatible source-routing slice. See ADR0125 and the
+lipsync-sessions76 gate; these editing features do not close inference quality.
+
+Rounds71–75 implement the first LIP-03/04/05/07 prototype path through actual
+MuseTalk Offline v1.5 artifacts and reviewed identities. These requirements are
+not globally closed: client/generated-voice and simultaneous multiperson quality,
+cross-analysis identity continuity/Preview overlays, other native pipelines,
+face replacement and LIP-06 automatic selective repair remain open. Evidence:
+docs/gates/lipsync-runtime71-75-20261021.md and ADR0124.
+
 ## Traceability
 
 | Requirement group | Phase |
@@ -110,3 +134,4 @@
 | TRN | 03 Voice Training |
 | MAN, WF completion | 04 Manipulator Pipeline |
 | Packaging and model management | 05 Desktop Release |
+| LIP | 06 LipSync |

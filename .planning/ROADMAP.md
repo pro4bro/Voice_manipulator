@@ -1,5 +1,79 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round78 — STT-CONVICTION-REFERENCE-01 (2026-10-21)
+
+Conviction's heard owner reference is preserved and measured. Current raw DTW
+reproduces early IN/OUT before refinement and SRT; PCM clocks match. CTC improves
+typical boundaries but tail/overlap gates reject automatic replacement. The
+conviction78 gate records archived/current/CTC paired evidence and unchanged
+acceptance limits. Reference availability is resolved; acoustic quality remains
+open. Focused35/frontend1175/typecheck/build/API1245 and closure hashes pass.
+Next bounded work: consistent short alignment windows, corrected-text arm and
+held-out speech. Phase03 remains60%, Phase06 open; no portable, stop78.
+
+## Round77 — SUBTITLE-SCRUB-PREVIEW-01 (2026-10-21)
+
+Fixed Vietnamese subtitle font shaping and clipping. Added saved start/center/end
+audition positions (default center), repeating 120ms held previews, shared faint
+range overlays and release/cancel cleanup across ordinary/imported/archived OBS
+Timeline. Source/cut limits, mute/gain and logical pointer clocks remain valid.
+Frontend1175/145files, typecheck/build205 and headless audio/typography pass;
+full API1232 passed / 3 existing warnings. ADR0126 and subtitle-scrub77 gate hold evidence. Existing
+LipSync edits retained; no portable, Phase03 stays60%, Phase06 open. Stop77.
+
+## Round76 — LipSync product Sessions and Version slots (2026-10-21)
+
+Implemented Video Output Sessions/Versions, inline Face ID → Voice Profile cards,
+portable per-Version composition/face/history state and scoped jobs/After/exports.
+New session starts empty; New version clones current editing decisions and
+completed analysis with a fresh history. Undo/Redo (100 combined steps) persists
+across page/version switches and reload, including face decisions. Save/validation
+fences protect navigation and late responses. Shared-source Send to menus connect
+Input footage and generated Voice Outputs to a chosen LipSync slot, with compatible
+Training/Voice Manipulation routes. ADR0125 and the sessions76 gate hold details.
+
+Full frontend1162pass/144files and API1230pass/3existing warnings; typecheck/build204
+pass. Latest history/Page4 and portable API3 also pass. Real WorkspaceShell browser
+checks restore independent history and source routing. New Version2 render job
+591cd789 completes75applied/55skipped with3 decoded MP4s; After640×854/4s plays,
+Range routes pass and other Versions return404. Three upstream repos remain clean.
+Fixture evidence does not approve real-client/generated-voice or multiperson
+quality, additional native engines, cross-analysis identity continuity, face swap
+or selective repair. No portable release. Phase03 stays60%; Phase06 open. Stop76.
+
+## Rounds71–75 — actual MuseTalk/face-review prototype (2026-10-21)
+
+Implemented isolated verified runtime/models, scoped face gallery, revisioned
+manual identity correction and Speaker mapping, per-frame speaker/face gating,
+and durable cancellable MuseTalk Offline v1.5 jobs with actual composition and
+full-source artifacts. Before/After share Timeline. See ADR0124 and runtime71-75
+gate for full1153/1224 and final focused74/37/catalog81/cleanup3 evidence.
+Phase03 stays60%; Phase06 remains open for real generated-voice quality,
+simultaneous multiperson/cross-analysis identity continuity, full native/other
+engine pipelines, face replacement and selective Voice Over repair. Stop75.
+
+## Rounds66–70 — LipSync composition/scope batch (2026-10-21)
+
+Closed the explicitly authorized native-settings, portable-composition,
+multilayer-editor, processing-scope and preflight slices. Independent detection
+and sync scopes implement LIP-07; LIP-02 editing/persistence is implemented while
+real media/engine artifact acceptance remains separate. Full frontend1153pass,
+API1220pass plus final focused11/10, build/typecheck200 and browser fixture checks
+are recorded in the composition66-70 gate. ADR0123 defines clocks/visibility and
+preflight semantics. Next: real isolated engine output, then reviewed Face IDs,
+profile/turn bindings, multi-face composition/After and selective repair. Phase03
+stays60%; Phase06 remains open. No portable release; stop after round70.
+
+## Round65 — LIPSYNC-ENGINE-SETTINGS-01 (2026-10-21)
+
+Closed source/catalog/settings slice for MuseTalk, LatentSync and Wav2Lip.
+Frontend1148pass/139files, typecheck/build196; API evidence in the round65 gate.
+LIP-01..06 and docs/LIPSYNC-IMPLEMENTATION-PLAN.md order remaining slices:
+portable multi-clip/layer editing, first real engine artifact, visible shot/face
+identity review, Speaker Profile/turn scheduling, composite/After QC and selective
+Voice Over repair. ADR0122 records boundaries. No render or identity processing
+is available yet; Phase03 stays60% and Phase06 remains open.
+
 ## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
 
 LipSync uses Input's proportions and presents Preview Video where Script sat.

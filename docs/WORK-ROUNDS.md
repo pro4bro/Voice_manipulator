@@ -1,5 +1,127 @@
 # Work Rounds
 
+## Round78 — STT-CONVICTION-REFERENCE-01 (2026-10-21)
+
+Received the owner's heard Conviction reference and froze all original media,
+Script and STT by hash. Of697 edited words,680 are explicitly manual/trusted;
+581 match the archived665-word STT unambiguously across all optimal lexical
+alignments.99 unmatched manual and17 nonmanual references stay reported.
+MP3 decode exactly matches analysis PCM; no clipping or source-clock offset.
+
+Actual current60s/2s CPU large-v3 replay produces692 words/587 unique manual
+pairs. Before refinement/SRT, signed IN/OUT medians are-159.8/-100.8ms. The early
+boundary symptom is reproduced before persistence. Experimental offline250h CTC
+improves typical IN/OUT to18.2/24.5ms absolute medians on565 shared anchors, but
+OUT p95452.7ms versus current404.9ms and41 overlapping pairs reject a default
+replacement. No scalar offset is fitted. See the conviction78 gate for complete
+paired metrics, retained failures, model/source provenance and limitations.
+
+Focused35 pass; frontend1175/145files, typecheck/build205 pass. Full API1245pass/
+3existing warnings/641.34s; closure input/chunk/source hashes pass. New comparison/probe tooling only; existing LipSync and
+Timeline edits remain intact. No owner-media/transcript, upstream engine,
+project-format, production STT default or portable release changes. Phase03
+stays60%. Next: consistent bounded alignment windows, corrected-text comparison
+and held-out conversation; acoustic acceptance remains open. Stop after78.
+
+## Round77 — SUBTITLE-SCRUB-PREVIEW-01 (2026-10-21)
+
+Fixed Vietnamese subtitle gaps caused by Georgia Pro tone-mark advance and
+clipped line boxes. Ordinary/imported/OBS words and copy ghosts use Arial/Segoe
+UI fallbacks; normal labels have enough line height for composed/decomposed text.
+Preferences → Timeline now saves start/center/end audition positions, with center
+as the default. A shared 120ms grain repeats while a plain click/drag is held;
+its faint overlay shares the exact bounded source interval. Release/cancel,
+Escape, blur and source cleanup stop it and restore the pointer clock/rate.
+Removed audio stays silent; clip endpoints and partial metadata are bounded.
+
+Final frontend 1175 passed / 145 files (170.64s), typecheck/build205 passed;
+full API 1232 passed / 3 existing warnings (606.48s). Real headless audio checks
+pass all three positions, and all 18
+Vietnamese shaping/ink cases pass. ADR0126 and subtitle-scrub77 gate hold evidence.
+Existing uncommitted LipSync work is retained. No media/model/engine/project
+format changes or portable release. Phase03 stays60%; stop after round77.
+
+## Round76 — LipSync product Sessions and Version slots (2026-10-21)
+
+Implemented Video Output Sessions/Versions, inline Face ID → Voice Profile cards,
+portable per-Version composition/face/history state and scoped jobs/After/exports.
+New session starts empty; New version clones current editing decisions and
+completed analysis with a fresh history. Undo/Redo (100 combined steps) persists
+across page/version switches and reload, including face decisions. Save/validation
+fences protect navigation and late responses. Shared-source Send to menus connect
+Input footage and generated Voice Outputs to a chosen LipSync slot, with compatible
+Training/Voice Manipulation routes. ADR0125 and the sessions76 gate hold details.
+
+Full frontend1162pass/144files and API1230pass/3existing warnings; typecheck/build204
+pass. Latest history/Page4 and portable API3 also pass. Real WorkspaceShell browser
+checks restore independent history and source routing. New Version2 render job
+591cd789 completes75applied/55skipped with3 decoded MP4s; After640×854/4s plays,
+Range routes pass and other Versions return404. Three upstream repos remain clean.
+Fixture evidence does not approve real-client/generated-voice or multiperson
+quality, additional native engines, cross-analysis identity continuity, face swap
+or selective repair. No portable release. Phase03 stays60%; Phase06 open. Stop76.
+
+## Rounds71–75 — reviewed-face MuseTalk prototype (2026-10-21)
+
+Owner explicitly requested five more rounds. Closed the runtime/checkpoint,
+scoped face analysis, reviewed identity/profile mapping, speaker scheduling and
+actual MuseTalk job/artifact slices. See ADR0124 and
+docs/gates/lipsync-runtime71-75-20261021.md. Isolated CUDA runtime and pinned
+checkpoints pass verification. UI analyzes/reviews faces, schedules only bound
+speakers, runs/cancels jobs, auditions After on the shared Timeline and exports
+composition/source derivatives. Real visible fixture:35 applied/45 skipped;
+full-source:75/55 with3 decoded MP4s. Running cancellation releases GPU/no After.
+Full frontend1153pass and API1224pass; final focused74/37 plus catalog81 and
+cleanup3 pass; typecheck/build201. Browser found/fixed portrait cropping and
+gallery width. No client/generated-voice visual quality acceptance, real
+simultaneous multiperson gate, full native pipelines, face swap, automatic
+selective repair or release. Phase03 stays60%; Phase06 remains open. Stop75.
+
+## Rounds66–70 — authorized LipSync batch (2026-10-21)
+
+Owner explicitly requested five consecutive rounds, overriding the usual stop
+for this invocation. All five implemented slices are closed; artifact gates stay
+open. ADR0123 and docs/gates/lipsync-composition66-70-20261021.md hold evidence.
+
+- **66 LIPSYNC-NATIVE-SETTINGS-01:** backend resolves each engine's own controls,
+  rejects foreign keys, applies mode defaults and validates native crop vectors.
+- **67 LIPSYNC-COMPOSITION-STORE-01:** portable revisioned document, atomic saves,
+  source validation, reload/move compatibility and save-in-flight fencing.
+- **68 LIPSYNC-MULTILAYER-EDIT-01:** shared Timeline supports multiple clips/layers,
+  duplicate/split/trim/extend/delete, order/enable, Undo/Redo and scrolling. Preview
+  follows the top visible layer; original video/audio remain immutable.
+- **69 LIPSYNC-PROCESSING-SCOPE-01:** independent detection/sync scopes choose
+  layers, ranges and visible/placed/full-source clocks, with exact coverage review.
+- **70 LIPSYNC-PREFLIGHT-REVIEW-01:** saved-input fingerprints, native settings,
+  speaker-turn intersections, source-anchor conflict/detection-coverage checks and
+  portable preflight snapshots. No face analysis or inference execution is claimed.
+
+Full frontend1153pass/142files; full API1220pass/3warnings/623.30s, plus final
+focused API11pass and frontend10pass after browser-driven corrections. Typecheck
+and build200 pass. Real browser fixture confirms engine controls, video decoding,
+top-layer visibility, seven-layer/audio scroll, scope save and real API preflight.
+An earlier OBS RAF test failed once; isolated and full retry passed without OBS
+changes. No model/runtime/face ID/render artifact or portable release. Phase03
+stays60%; Phase06 remains open. Next: first isolated engine/artifact gate; stop70.
+
+## Round65 — LIPSYNC-ENGINE-SETTINGS-01 (2026-10-21)
+
+Downloaded MuseTalk, LatentSync and Wav2Lip as independent clean Git checkouts
+under ignored runtime/engines/lipsync, with origin/commit receipts and repeatable
+selective provisioning. The right column reads three task catalog entries and
+offers source-traced, grouped inference parameters, independent engine drafts,
+reset, numeric validation and MuseTalk offline/realtime defaults. Source presence
+does not imply render readiness; all Generate/After operations stay disabled.
+ADR0122, docs/LIPSYNC-IMPLEMENTATION-PLAN.md and LIP-01..06 requirements capture
+the authorized next slices: portable multilayer composition/visibility schedule,
+real engine artifact, recurring reviewed face identities, Speaker Profile/turn
+scheduling, compositing and selective Voice Over repair. Engine capability/license
+review is in docs/research/lipsync-compositor-capability-2026-10-21.md.
+Final frontend1148pass/139files; typecheck/build196 modules pass. Full API evidence
+is recorded in docs/gates/lipsync-engine-settings65-20261021.md. No new model,
+runtime, face recognition or output video. Phase03 stays60%; Phase06 remains open.
+Stop after this bounded round under AGENTS.md.
+
 ## Round64 — LIPSYNC-TIMELINE-UI-01 (2026-10-21)
 
 LipSync now uses Input's column and Timeline row proportions. Its Media Pool /
