@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "id": "latentsync-lipsync",
+  "label": "LatentSync 1.6",
+  "family": "LatentSync",
+  "engine": "latentsync",
+  "mode": "lip-sync",
+  "tasks": [
+    "lip-sync"
+  ],
+  "order": 20,
+  "runnable": false,
+  "blockedReason": "Đã có source; cần weights, GPU phù hợp, runtime, adapter render và kiểm tra video đầu ra.",
+  "repository": {
+    "root": "lipsync",
+    "path": "LatentSync",
+    "entrypoint": "scripts/inference.py",
+    "url": "https://github.com/bytedance/LatentSync"
+  },
+  "description": "Ứng viên so chất lượng vùng miệng 512×512; README yêu cầu tối thiểu 18 GB VRAM cho inference 1.6.",
+  "notes": [
+    "Code Apache-2.0; checkpoint 1.6 trên Hugging Face dùng OpenRAIL++. Phải duyệt điều khoản weights riêng."
+  ],
+  "parameters": [
+    {
+      "key": "inference_steps",
+      "label": "Số bước inference",
+      "group": "Chất lượng và đồng bộ",
+      "kind": "int",
+      "default": 20,
+      "codeDefault": 20,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 1,
+      "source": "https://github.com/bytedance/LatentSync/blob/a229c3948406bc2cf6eaf4873e662e70c6a04746/scripts/inference.py"
+    },
+    {
+      "key": "guidance_scale",
+      "label": "Sync guidance scale",
+      "group": "Chất lượng và đồng bộ",
+      "kind": "float",
+      "default": 1.0,
+      "codeDefault": 1.0,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": "Tăng guidance có thể làm méo hoặc rung hình; cần so Before/After.",
+      "min": 0,
+      "source": "https://github.com/bytedance/LatentSync/blob/a229c3948406bc2cf6eaf4873e662e70c6a04746/scripts/inference.py"
+    },
+    {
+      "key": "seed",
+      "label": "Seed (-1: ngẫu nhiên)",
+      "group": "Tái lập kết quả",
+      "kind": "int",
+      "default": 1247,
+      "codeDefault": 1247,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": -1,
+      "source": "https://github.com/bytedance/LatentSync/blob/a229c3948406bc2cf6eaf4873e662e70c6a04746/scripts/inference.py"
+    },
+    {
+      "key": "enable_deepcache",
+      "label": "Bật DeepCache",
+      "group": "Hiệu năng",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "source": "https://github.com/bytedance/LatentSync/blob/a229c3948406bc2cf6eaf4873e662e70c6a04746/scripts/inference.py"
+    }
+  ]
+}

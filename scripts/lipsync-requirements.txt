@@ -1,0 +1,12 @@
+# Isolated reviewed-face adapter; upstream training/Gradio/MMlab are not loaded.
+# Torch CUDA wheels are installed separately as documented in the runtime gate.
+diffusers==0.30.2
+accelerate==0.28.0
+numpy==1.26.4
+opencv-python==4.9.0.80
+soundfile==0.12.1
+transformers==4.39.2
+huggingface_hub==0.30.2
+librosa==0.11.0
+einops==0.8.1
+Pillow==11.1.0

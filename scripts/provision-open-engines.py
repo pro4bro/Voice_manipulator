@@ -49,6 +49,9 @@ REPOSITORIES = (
     {"name": "w-okada-voice-changer", "url": "https://github.com/w-okada/voice-changer.git", "path": ".runtime/engines/research/w-okada-voice-changer", "submodules": False},
     {"name": "VibeVoice-streaming", "url": "https://github.com/microsoft/VibeVoice.git", "path": ".runtime/engines/vibevoice/VibeVoice-streaming", "submodules": False},
     {"name": "Applio", "url": "https://github.com/IAHispano/Applio", "path": ".runtime/engines/research/Applio", "submodules": False, "reuse_only": True},
+    {"name": "MuseTalk", "url": "https://github.com/TMElyralab/MuseTalk.git", "path": ".runtime/engines/lipsync/MuseTalk", "submodules": False},
+    {"name": "LatentSync", "url": "https://github.com/bytedance/LatentSync.git", "path": ".runtime/engines/lipsync/LatentSync", "submodules": False},
+    {"name": "Wav2Lip", "url": "https://github.com/Rudrabha/Wav2Lip.git", "path": ".runtime/engines/lipsync/Wav2Lip", "submodules": False},
 )
 
 class ProvisionError(RuntimeError):
@@ -509,7 +512,10 @@ def _write_receipt_locked(path: Path, repos: list[dict[str, Any]] | None, model_
         except (OSError, json.JSONDecodeError):
             pass
     if repos is not None:
-        receipt["repositories"] = repos
+        previous_repos = receipt.get("repositories", [])
+        by_name = {item["name"]: item for item in previous_repos if isinstance(item, dict) and isinstance(item.get("name"), str)}
+        by_name.update({item["name"]: item for item in repos})
+        receipt["repositories"] = list(by_name.values())
     if model_files is not None:
         models = receipt.get("models", {})
         if not isinstance(models, dict):
@@ -534,6 +540,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--model", choices=(*MODELS.keys(), "all"), help="Fetch one pinned model, or all models")
     parser.add_argument("--models", action="store_true", help="Fetch all pinned models as well as repositories")
     parser.add_argument("--repos-only", action="store_true", help="Provision/verify repositories only (default)")
+    parser.add_argument("--repo", action="append", choices=[item["name"] for item in REPOSITORIES], help="Provision only this repository (repeatable)")
     parser.add_argument("--download-workers", type=int, choices=range(1, 9), default=3, metavar="1..8", help="Maximum parallel file downloads per model (default: 3)")
     args = parser.parse_args(argv)
     if args.repos_only and (args.models or args.model):
@@ -543,7 +550,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     model_results = None
     try:
         if not args.model:
-            repo_results = [provision_repository(repo) for repo in REPOSITORIES]
+            selected_repos = [repo for repo in REPOSITORIES if not args.repo or repo["name"] in args.repo]
+            repo_results = [provision_repository(repo) for repo in selected_repos]
             for repo in repo_results:
                 if repo.get("originVerified", True):
                     print(f"repo {repo['name']}: {repo['revision']} ({repo['origin']})")

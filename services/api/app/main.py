@@ -73,6 +73,8 @@ from app.adapters.output_word_review import OutputWordReview
 from app.adapters.output_word_review_routes import make_output_word_review_router
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.adapters.file_reference_bindings import FileReferenceBindings
+from app.adapters.lipsync_routes import lipsync_router
+from app.adapters.lipsync_runtime import LipSyncRuntime
 from app.adapters.reference_resolver import ReferenceResolver
 from app.adapters.file_timing_plans import FileTimingPlans
 from app.domain.timing_plan import TimingPlanRequest
@@ -532,8 +534,10 @@ def create_app(
     planned_providers = FileTrainingModelCatalog(
         Path(__file__).resolve().parent / "resources" / "provider-catalog",
         {"vibevoice": settings.vibevoice_root, "cosyvoice": settings.cosyvoice_root,
-         "omnivoice": settings.omnivoice_root, "research": settings.research_engines_root},
-        readiness={"vibevoice-asr-streaming": lambda descriptor: streaming_asr.unavailable_reason()},
+         "omnivoice": settings.omnivoice_root, "research": settings.research_engines_root,
+         "lipsync": settings.project_root / ".runtime" / "engines" / "lipsync"},
+        readiness={"vibevoice-asr-streaming": lambda descriptor: streaming_asr.unavailable_reason(),
+                   "musetalk": lambda descriptor: "; ".join(LipSyncRuntime(settings.project_root).report()["blockers"]) or None},
     )
     media_importer = MediaImportProcessor(
         settings.legacy_studio_url,
@@ -894,6 +898,7 @@ def create_app(
             await asyncio.to_thread(streaming_asr.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.include_router(lipsync_router(planned_providers, projects, media, voice_outputs, runtime_root=settings.project_root, gpu_lease=gpu_lease))
     app.include_router(make_sokuji_router(sokuji_bridge))
     app.include_router(make_vibevoice_streaming_router(streaming_asr))
     app.include_router(make_voice_collection_transfer_router(voice_collections))

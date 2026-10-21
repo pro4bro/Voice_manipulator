@@ -482,6 +482,7 @@ class TrainingModelDescriptor(DomainModel):
     # Whether Pro4Bro has an adapter that actually runs this option. A
     # descriptor may describe a model before its runner exists.
     runnable: bool = False
+    readiness_required: bool = False
     blocked_reason: str | None = None
     repository: TrainingModelRepository
     requires: list[TrainingModelRequirement] = Field(default_factory=list)
@@ -711,6 +712,7 @@ class EmotionStylePreferences(DomainModel):
 
 class TimelinePreferences(DomainModel):
     clipping_highlight_auto_hide: bool = False
+    scrub_preview_position: Literal["start", "center", "end"] = "center"
 
 
 class AppPreferences(DomainModel):

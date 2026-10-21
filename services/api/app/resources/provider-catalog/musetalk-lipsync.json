@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "id": "musetalk-lipsync",
+  "label": "MuseTalk 1.5",
+  "family": "MuseTalk",
+  "engine": "musetalk",
+  "mode": "lip-sync",
+  "tasks": [
+    "lip-sync"
+  ],
+  "order": 10,
+  "runnable": true,
+  "readinessRequired": true,
+  "blockedReason": "Adapter reviewed-face Offline v1.5 cần runtime/model đã xác minh và Face ID đã duyệt. Realtime/v1 chưa có adapter.",
+  "repository": {
+    "root": "lipsync",
+    "path": "MuseTalk",
+    "entrypoint": "scripts/inference.py",
+    "url": "https://github.com/TMElyralab/MuseTalk"
+  },
+  "description": "Ứng viên thử nghiệm đầu tiên: video + audio, chỉnh vùng mặt 256×256; chất lượng cần đo trên footage thật.",
+  "notes": [
+    "Code MIT; README cho phép dùng model đã train cho thương mại. Cần kiểm tra license từng dependency và checkpoint trước khi đóng gói."
+  ],
+  "parameters": [
+    {
+      "key": "pipeline",
+      "label": "Chế độ inference",
+      "group": "Model",
+      "kind": "choice",
+      "default": "offline",
+      "options": [
+        {
+          "value": "offline",
+          "label": "Offline"
+        },
+        {
+          "value": "realtime",
+          "label": "Realtime / avatar cache"
+        }
+      ],
+      "help": "Realtime cần bước chuẩn bị avatar theo face track đã duyệt.",
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py",
+      "editable": true,
+      "nullable": false,
+      "advanced": false
+    },
+    {
+      "key": "version",
+      "label": "Phiên bản MuseTalk",
+      "group": "Model",
+      "kind": "choice",
+      "default": "v15",
+      "codeDefault": "v15",
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "options": [
+        {
+          "value": "v1",
+          "label": "v1"
+        },
+        {
+          "value": "v15",
+          "label": "v15"
+        }
+      ],
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "bbox_shift",
+      "label": "Dịch vùng mặt",
+      "group": "Vùng mặt và hòa trộn",
+      "kind": "int",
+      "default": 0,
+      "codeDefault": 0,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": "Native v1 mới áp dụng bbox_shift; v15 cố định 0. Adapter reviewed-face v15 dùng crop YuNet đã xác minh từng frame.",
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "extra_margin",
+      "label": "Lề crop mặt",
+      "group": "Vùng mặt và hòa trộn",
+      "kind": "int",
+      "default": 10,
+      "codeDefault": 10,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "parsing_mode",
+      "label": "Mask hòa trộn",
+      "group": "Vùng mặt và hòa trộn",
+      "kind": "choice",
+      "default": "jaw",
+      "codeDefault": "jaw",
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "options": [
+        {
+          "value": "raw",
+          "label": "raw"
+        },
+        {
+          "value": "jaw",
+          "label": "jaw"
+        }
+      ],
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "left_cheek_width",
+      "label": "Vùng má trái",
+      "group": "Vùng mặt và hòa trộn",
+      "kind": "int",
+      "default": 90,
+      "codeDefault": 90,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "right_cheek_width",
+      "label": "Vùng má phải",
+      "group": "Vùng mặt và hòa trộn",
+      "kind": "int",
+      "default": 90,
+      "codeDefault": 90,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "audio_padding_length_left",
+      "label": "Audio context trái",
+      "group": "Audio context",
+      "kind": "int",
+      "default": 2,
+      "codeDefault": 2,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "audio_padding_length_right",
+      "label": "Audio context phải",
+      "group": "Audio context",
+      "kind": "int",
+      "default": 2,
+      "codeDefault": 2,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "fps",
+      "label": "FPS cho nguồn ảnh",
+      "group": "Đầu ra",
+      "kind": "int",
+      "default": 25,
+      "codeDefault": 25,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": "Video sử dụng FPS nguồn; thông số này dành cho chuỗi ảnh.",
+      "min": 1,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "batch_size",
+      "label": "Batch inference",
+      "group": "Hiệu năng",
+      "kind": "int",
+      "default": 8,
+      "codeDefault": 8,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 1,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "gpu_id",
+      "label": "GPU ID",
+      "group": "Hiệu năng",
+      "kind": "int",
+      "default": 0,
+      "codeDefault": 0,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "min": 0,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "use_float16",
+      "label": "Dùng float16",
+      "group": "Hiệu năng",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "use_saved_coord",
+      "label": "Dùng tọa độ đã cache",
+      "group": "Cache tọa độ",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": "Cache phải khớp source, crop và face track đã duyệt.",
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "saved_coord",
+      "label": "Lưu tọa độ",
+      "group": "Cache tọa độ",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "editable": true,
+      "nullable": false,
+      "advanced": false,
+      "help": null,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/inference.py"
+    },
+    {
+      "key": "skip_save_images",
+      "label": "Không lưu frame trung gian",
+      "group": "Hiệu năng",
+      "kind": "bool",
+      "default": false,
+      "codeDefault": false,
+      "source": "https://github.com/TMElyralab/MuseTalk/blob/0a89dec45a0192b824e3cf4daf96c239440c5ed8/scripts/realtime_inference.py",
+      "editable": true,
+      "nullable": false,
+      "advanced": false
+    }
+  ]
+}

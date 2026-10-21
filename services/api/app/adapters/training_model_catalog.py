@@ -126,7 +126,7 @@ class FileTrainingModelCatalog:
         else:
             status = "Sẵn sàng."
             check = self.readiness.get(descriptor.engine)
-            reason = check(descriptor) if check else None
+            reason = check(descriptor) if check else ("Chưa cấu hình kiểm tra runtime/model cho adapter." if descriptor.readiness_required else None)
             if reason:
                 available = False
                 status = reason

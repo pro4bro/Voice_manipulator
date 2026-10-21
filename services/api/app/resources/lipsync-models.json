@@ -1,0 +1,82 @@
+{
+  "face-parse-bisent": {
+    "repo": "ManyOtherFunctions/face-parse-bisent",
+    "revision": "0073b233a5a3c4b1377d4dbf49245017938a72b5",
+    "files": {
+      "79999_iter.pth": {
+        "hash": "sha256:468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+        "size": 53289463
+      },
+      "resnet18-5c106cde.pth": {
+        "hash": "sha256:5c106cde386e87d4033832f2996f5493238eda96ccf559d1d62760c4de0613f8",
+        "size": 46827520
+      }
+    }
+  },
+  "musetalk": {
+    "repo": "TMElyralab/MuseTalk",
+    "revision": "2bcb936e2fddb4d86db4c62fd45b387d0c061571",
+    "files": {
+      "musetalkV15/musetalk.json": {
+        "hash": "git-sha1:b822db87e503a283fbbee73617f89dcd294cb91c",
+        "size": 748
+      },
+      "musetalkV15/unet.pth": {
+        "hash": "sha256:7ebf6c98c181e20838e4c0054e96e944ac60d5d692cc01db42839fe11b787007",
+        "size": 3400074924
+      }
+    }
+  },
+  "sd-vae": {
+    "repo": "stabilityai/sd-vae-ft-mse",
+    "revision": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+    "files": {
+      "config.json": {
+        "hash": "git-sha1:0db26717579be63eb0ddbf15b43faa43700dfe5a",
+        "size": 547
+      },
+      "diffusion_pytorch_model.bin": {
+        "hash": "sha256:1b4889b6b1d4ce7ae320a02dedaeff1780ad77d415ea0d744b476155c6377ddc",
+        "size": 334707217
+      }
+    }
+  },
+  "sface": {
+    "repo": "opencv/face_recognition_sface",
+    "revision": "3d7082438a6e4551e840c9b2bb60b71e8da4b524",
+    "files": {
+      "face_recognition_sface_2021dec.onnx": {
+        "hash": "sha256:0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+        "size": 38696353
+      }
+    }
+  },
+  "whisper": {
+    "repo": "openai/whisper-tiny",
+    "revision": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+    "files": {
+      "config.json": {
+        "hash": "git-sha1:417aa9de49a132dd3eb6a56d3be2718b15f08917",
+        "size": 1983
+      },
+      "pytorch_model.bin": {
+        "hash": "sha256:9607f98a2b22d9e229ae43c52ecea79dcede9e0c5cfae67e8da6eda86d8aac1d",
+        "size": 151095027
+      },
+      "preprocessor_config.json": {
+        "hash": "git-sha1:c2048dfa9fd94a052e62e908d2c4dfb18534b4d2",
+        "size": 184990
+      }
+    }
+  },
+  "yunet": {
+    "repo": "opencv/face_detection_yunet",
+    "revision": "3cc26e7f1014a5ee5d74a42acee58bafc9d0a310",
+    "files": {
+      "face_detection_yunet_2023mar.onnx": {
+        "hash": "sha256:8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+        "size": 232589
+      }
+    }
+  }
+}

@@ -77,6 +77,22 @@ def test_applio_packaged_snapshot_is_reused_without_claiming_git_origin(tmp_path
     assert all(item["hash"].startswith("sha256:") for item in result["files"])
 
 
+def test_partial_lipsync_checkout_receipt_preserves_other_repositories(tmp_path):
+    older = {"name": "CosyVoice", "revision": "a" * 40}
+    added = {"name": "MuseTalk", "revision": "b" * 40}
+    provisioner._write_receipt([older], None, root=tmp_path)
+    provisioner._write_receipt([added], None, root=tmp_path)
+    receipt = json.loads((tmp_path / ".runtime" / "open-engines-install.json").read_text(encoding="utf-8"))
+    assert {item["name"] for item in receipt["repositories"]} == {"CosyVoice", "MuseTalk"}
+
+
+def test_lipsync_repositories_use_distinct_ignored_runtime_checkouts():
+    repos = {item["name"]: item for item in provisioner.REPOSITORIES}
+    assert {repos[name]["path"] for name in ("MuseTalk", "LatentSync", "Wav2Lip")} == {
+        ".runtime/engines/lipsync/MuseTalk", ".runtime/engines/lipsync/LatentSync", ".runtime/engines/lipsync/Wav2Lip",
+    }
+
+
 def test_ignored_range_restarts_from_zero_and_verifies_full_hash(tmp_path):
     payload = b"complete model bytes"
     target = tmp_path / "model.bin"

@@ -71,6 +71,29 @@ def test_timeline_preferences_default_to_persistent_clipping_highlights_and_roun
     assert preferences.get().timeline.clipping_highlight_auto_hide is True
 
 
+def test_scrub_preview_position_roundtrip_and_old_preferences_default(tmp_path):
+    from app.domain.models import TimelinePreferences
+
+    preferences = FileAppPreferences(tmp_path / "runtime")
+    assert preferences.get().timeline.scrub_preview_position == "center"
+    for position in ("start", "center", "end"):
+        saved = preferences.save(AppPreferences(timeline=TimelinePreferences(
+            clipping_highlight_auto_hide=True, scrub_preview_position=position,
+        )))
+        assert saved.timeline.scrub_preview_position == position
+        assert preferences.get().timeline.scrub_preview_position == position
+        assert saved.timeline.clipping_highlight_auto_hide is True
+
+
+def test_scrub_preview_position_rejects_unknown_values():
+    import pytest
+    from pydantic import ValidationError
+    from app.domain.models import TimelinePreferences
+
+    with pytest.raises(ValidationError):
+        TimelinePreferences.model_validate({"scrubPreviewPosition": "outside"})
+
+
 def test_saving_preferences_preserves_unrecognized_existing_fields_and_secrets(tmp_path):
     import json
 
