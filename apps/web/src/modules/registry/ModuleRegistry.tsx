@@ -85,6 +85,7 @@ export interface StudioContext {
   liveTranscriptText: string | null;
   emotionStyle: EmotionStylePreferences;
   clippingHighlightAutoHide?: boolean;
+  scrubPreviewPosition?: import("../../domain/types").ScrubPreviewPosition;
   aiReviewText: string | null;
   aiReviewKey: string | null;
   aiReviewBusy: boolean;
@@ -227,6 +228,8 @@ export interface StudioContext {
   onCollectionImported?: (result: import("../../domain/types").VoiceCollectionImport) => void;
   onPrepareCollectionExport?: () => Promise<void>;
   onSendToTraining: () => void;
+  onSendMediaTo?: (target: import("../../ui/SendToMenu").SendTarget, assetIds: string[]) => void;
+  onSendOutputTo?: (target: import("../../ui/SendToMenu").SendTarget, outputs: import("../../domain/types").VoiceOutput[]) => void;
   onGenerate: () => void;
   onDeferredAction: (action: string, assetIds?: string[]) => void;
   onRunAiReview: (assetIds?: string[]) => void;
@@ -297,6 +300,7 @@ function mediaPoolProps(context: StudioContext) {
     selectedImportedTrackId: context.selectedImportedTrackId,
     selectedScriptAssetIds: context.selectedScriptAssetIds,
     onSendToTraining: context.onSendToTraining,
+    onSendTo: context.onSendMediaTo,
     onToggleTraining: context.onToggleTraining,
     onToggleTranscription: context.onToggleTranscription,
     onToggleImport: context.onToggleImport,
@@ -388,7 +392,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <ObsCapture onImportSlotChange={context.onObsImportSlotChange} onImportSlotRemoved={context.onObsImportSlotRemoved} onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {
-        return <ObsLiveLinkTimeline resumeProjectId={context.projectId} clippingHighlightAutoHide={context.clippingHighlightAutoHide} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} onRecordingIdChange={context.onObsTimelineRecordingChange}
+        return <ObsLiveLinkTimeline resumeProjectId={context.projectId} scrubPreviewPosition={context.scrubPreviewPosition} clippingHighlightAutoHide={context.clippingHighlightAutoHide} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} onRecordingIdChange={context.onObsTimelineRecordingChange}
           wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           onPlayheadChange={context.onObsPlayheadChange}
@@ -404,7 +408,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const importedTracks = workingAssets.filter((asset) => asset.sourceArchiveAssetId === importedParent?.id)
         .sort((a, b) => (a.sourceArchiveStreamIndex ?? 0) - (b.sourceArchiveStreamIndex ?? 0));
       if (context.workflow === "speech-to-text" && importedParent && importedTracks.length > 0) {
-        return <ImportedMultitrackTimeline resumeProjectId={context.projectId} clippingHighlightAutoHide={context.clippingHighlightAutoHide} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={importedParent.id} parent={importedParent} tracks={importedTracks}
+        return <ImportedMultitrackTimeline resumeProjectId={context.projectId} scrubPreviewPosition={context.scrubPreviewPosition} clippingHighlightAutoHide={context.clippingHighlightAutoHide} onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} key={importedParent.id} parent={importedParent} tracks={importedTracks}
           speakers={context.trainingCatalog.speakers} onAssetWordsChange={context.onAssetWordsChange} onAssetTimelineStateChange={context.onAssetTimelineStateChange}
           selectedTrackId={context.selectedImportedTrackId} singleTrackView={Boolean(context.selectedImportedTrackId)} onSelectTrack={context.onSelectImportedTrack} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange}
           visibleTrackIds={selectedTracks.map((asset) => asset.id)}
@@ -416,7 +420,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       const generatedOnly = context.workflow === "voice-manipulator";
       const selectedAsset = generatedOnly ? undefined : workingAssets.find((asset) => asset.id === context.selectedAssetId);
       const noop = () => undefined;
-      return <Timeline resumeProjectId={context.projectId} resumeSource={generatedOnly && context.take?.id ? { kind: "output", id: context.take.id } : selectedAsset ? { kind: "asset", id: selectedAsset.id } : undefined} clippingHighlightAutoHide={context.clippingHighlightAutoHide} voiceEdits={generatedOnly ? context.voiceEdits : undefined} navigation={generatedOnly ? context.productionNavigation : undefined} onReferenceContext={generatedOnly ? context.onReferenceContext : undefined} rangeSelectionEnabled onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} defaultSpeakerId={selectedAsset?.speakerProfileIds?.[0] ?? null} take={generatedOnly || selectedAsset ? context.take : null} />;
+      return <Timeline resumeProjectId={context.projectId} resumeSource={generatedOnly && context.take?.id ? { kind: "output", id: context.take.id } : selectedAsset ? { kind: "asset", id: selectedAsset.id } : undefined} scrubPreviewPosition={context.scrubPreviewPosition} clippingHighlightAutoHide={context.clippingHighlightAutoHide} voiceEdits={generatedOnly ? context.voiceEdits : undefined} navigation={generatedOnly ? context.productionNavigation : undefined} onReferenceContext={generatedOnly ? context.onReferenceContext : undefined} rangeSelectionEnabled onUndo={context.onScriptUndo} onRedo={context.onScriptRedo} workingRange={selectedAsset?.workingRange ?? null} cutPoints={selectedAsset?.cutPoints ?? []} onEditStateChange={generatedOnly ? undefined : context.onTimelineStateChange} wordSelection={context.wordSelection} onWordSelectionChange={context.onWordSelectionChange} gain={context.gain} gainKeyframes={selectedAsset?.gainKeyframes ?? []} onGainChange={context.onGainChange} onGainKeyframesChange={generatedOnly ? noop : (keyframes) => context.onTimelineEditsChange(selectedAsset?.removedRanges ?? [], keyframes)} onRemovedRangesChange={generatedOnly ? noop : context.onTimelineEditsChange} onWordsChange={generatedOnly ? undefined : context.onWordsChange} emptyNote={generatedOnly ? { title: "Chưa có giọng nào được tạo", hint: "Nhập lời thoại ở Script rồi bấm Tạo voice; file sẽ hiện ở đây" } : undefined} recordingPreview={generatedOnly ? null : context.recordingPreview} removedRanges={selectedAsset?.removedRanges ?? []} speakers={context.trainingCatalog.speakers} defaultSpeakerId={selectedAsset?.speakerProfileIds?.[0] ?? null} take={generatedOnly || selectedAsset ? context.take : null} />;
     }
     case "reference-detail":
       return <ReferenceDetail projectId={context.projectId} onResolve={context.onResolveReference} document={context.referenceDocument} error={context.referenceError} onReload={context.onReloadReferences} onNavigate={context.onNavigateReference} onDelete={context.onDeleteReference} />;
@@ -439,7 +443,7 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "recent-takes":
       return <RecentTakes />;
     case "voice-output":
-      return <VoiceOutputPanel pendingOutput={context.pendingVoiceOutput} onDismissPendingOutput={context.onDismissPendingVoiceOutput} activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
+      return <VoiceOutputPanel onSendTo={context.onSendOutputTo} pendingOutput={context.pendingVoiceOutput} onDismissPendingOutput={context.onDismissPendingVoiceOutput} activeOutputId={context.activeOutputId} onDelete={context.onDeleteVoiceOutput} onDeleteMany={context.onDeleteVoiceOutputs} onExport={context.onExportVoiceOutput} onOpen={context.onOpenVoiceOutput} outputs={context.voiceOutputs} speakers={context.trainingCatalog.speakers} />;
     case "voice-generator":
       return <VoiceGenerator allVoices={context.projectVoices} busy={context.generating} category={context.voiceCategory} generationEngine={context.generationEngine} generators={context.voiceGenerators} job={context.voiceScriptJob} onStop={context.onStopGeneration} onGenerate={context.onGenerate} onOpenTraining={() => context.onSelectPage("voice-training")} onParametersChange={context.onGeneratorParametersChange} onCategoryChange={context.onVoiceCategoryChange} parameters={context.generatorParameters} projectId={context.projectId} rows={context.voiceScriptRows} speakers={context.trainingCatalog.speakers} voices={voicesInCategory(context.projectVoices, context.voiceCategory)} />;
     case "manipulator-service":
@@ -464,9 +468,9 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "changer-timeline": {
       const recording = context.changerRecordings.find((item) => item.id === context.take?.id) ?? null;
       const status = context.changerStatus;
-      return <Timeline clippingHighlightAutoHide={context.clippingHighlightAutoHide} gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onDeleteMany={context.onDeleteChangerRecordings} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
+      return <Timeline scrubPreviewPosition={context.scrubPreviewPosition} clippingHighlightAutoHide={context.clippingHighlightAutoHide} gain={context.gain} leadingActions={<ChangerRecordControls activeRecordingId={recording?.id ?? null} busy={context.changerBusy} onDelete={context.onDeleteChangerRecording} onDeleteMany={context.onDeleteChangerRecordings} onOpen={context.onOpenChangerRecording} onRecord={context.onStartChangerRecording} onStopRecording={context.onStopChangerRecording} recordings={context.changerRecordings} status={status} />} liveCaption={status?.recording ? "REC · MICRO THẬT (L) + GIỌNG ĐÃ ĐỔI (R)" : null} onGainChange={context.onGainChange} speakers={context.trainingCatalog.speakers} take={recording ? context.take : null} />;
     }
     case "manipulator-library":
-      return <ManipulatorLibrary referenceAssets={context.mediaAssets} referenceLibrary={{ ...mediaPoolProps(context), onReferenceChange: context.onReferenceChange }} projectId={context.projectId} onCollectionImported={context.onCollectionImported} onPrepareCollectionExport={context.onPrepareCollectionExport} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={workingAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onDeleteOutputs={context.onDeleteVoiceOutputs} onExportOutput={context.onExportVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
+      return <ManipulatorLibrary onSendOutputTo={context.onSendOutputTo} referenceAssets={context.mediaAssets} referenceLibrary={{ ...mediaPoolProps(context), onReferenceChange: context.onReferenceChange }} projectId={context.projectId} onCollectionImported={context.onCollectionImported} onPrepareCollectionExport={context.onPrepareCollectionExport} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} activeOutputId={context.activeOutputId} assets={workingAssets} catalog={context.trainingCatalog} environments={context.trainingCatalog.environmentProfiles} onCatalogChange={context.onCatalogChange} onDeleteOutput={context.onDeleteVoiceOutput} onDeleteOutputs={context.onDeleteVoiceOutputs} onExportOutput={context.onExportVoiceOutput} onOpenOutput={context.onOpenVoiceOutput} onSelectVoice={context.onVoiceChange} outputs={context.voiceOutputs} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} speakers={context.trainingCatalog.speakers} />;
   }
 }

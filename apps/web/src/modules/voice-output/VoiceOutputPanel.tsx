@@ -1,5 +1,7 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
+import { createPortal } from "react-dom";
+import { SendToMenu, type SendTarget } from "../../ui/SendToMenu";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { SpeakerProfile, VoiceOutput, VoiceOutputExportMode } from "../../domain/types";
 import { voiceOutputPrefix } from "../../domain/voice-output-prefix";
@@ -23,6 +25,7 @@ interface VoiceOutputPanelProps {
   speakers: SpeakerProfile[];
   activeOutputId: string | null;
   onOpen: (output: VoiceOutput) => void;
+  onSendTo?: (target: SendTarget, outputs: VoiceOutput[]) => void;
   onExport?: (output: VoiceOutput, mode: VoiceOutputExportMode) => void;
   onDelete: (output: VoiceOutput) => void;
   onDeleteMany?: (outputs: VoiceOutput[]) => void;
@@ -39,8 +42,17 @@ function clock(seconds: number) {
  * Speech made in Voice Manipulator. Kept out of Media Pool on purpose: Media
  * Pool is source material for STT and training, this is what came out.
  */
-export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onExport, onDelete, onDeleteMany, pendingOutput, onDismissPendingOutput }: VoiceOutputPanelProps) {
+export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, onSendTo, onExport, onDelete, onDeleteMany, pendingOutput, onDismissPendingOutput }: VoiceOutputPanelProps) {
   // Deleting removes the file for good, so it takes a second, deliberate click.
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: globalThis.PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenu(null); };
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") setMenu(null); };
+    document.addEventListener("pointerdown", close); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [menu]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
@@ -81,7 +93,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
             {onDismissPendingOutput && visiblePendingOutput.status !== "starting" && visiblePendingOutput.status !== "running" ? <button aria-label="Ẩn trạng thái" className="voice-output-pending__dismiss" onClick={() => onDismissPendingOutput(visiblePendingOutput.id)} type="button">×</button> : null}
           </li> : null}
           {outputs.map((output) => (
-            <li className={`${output.id === activeOutputId ? "is-active" : ""} ${selected.includes(output.id) ? "is-selected" : ""}`} key={output.id}>
+            <li onContextMenu={onSendTo ? (event) => { event.preventDefault(); setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 265)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 310)), ids: selected.includes(output.id) ? selected : [output.id] }); } : undefined} className={`${output.id === activeOutputId ? "is-active" : ""} ${selected.includes(output.id) ? "is-selected" : ""}`} key={output.id}>
               <button aria-label={`Chọn ${output.name}`} aria-pressed={selected.includes(output.id)} className="voice-output-select" onClick={(event) => select(event, output.id)} type="button">{selected.includes(output.id) ? "✓" : "□"}</button>
               <button aria-pressed={output.id === activeOutputId} className="voice-output-item" onClick={() => onOpen(output)} type="button">
                 <i style={{ background: colorOf(output.speakerProfileId) }} />
@@ -114,6 +126,7 @@ export function VoiceOutputPanel({ outputs, speakers, activeOutputId, onOpen, on
           <span>Nhập Script, chọn voice cho từng dòng rồi bấm Tạo voice. Kết quả nằm ở đây, không lẫn vào Media Pool.</span>
         </div>
       )}
+      {menu && onSendTo ? createPortal(<div ref={menuRef} className="voice-output-context-menu" role="menu" aria-label="Voice Output actions" style={{ left: menu.x, top: menu.y }}><SendToMenu disabled={{ "voice-training": "Training dùng footage nguồn trong Media Pool", "voice-manipulator": menu.ids.length !== 1 ? "Mở từng Voice Output trong Voice Manipulation" : undefined }} onSend={(target) => { setMenu(null); onSendTo(target, outputs.filter((output) => menu.ids.includes(output.id))); }} /></div>, document.body) : null}
     </ModuleFrame>
   );
 }

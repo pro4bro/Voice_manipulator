@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AudioScrubber } from "./audio-scrubbing";
 
-function audio() {
+function audio(duration = 60) {
   const element = document.createElement("audio");
-  Object.defineProperty(element, "duration", { value: 60 });
+  Object.defineProperty(element, "duration", { value: duration });
   Object.defineProperty(element, "play", { value: vi.fn().mockResolvedValue(undefined) });
   Object.defineProperty(element, "pause", { value: vi.fn() });
   return element;
@@ -13,7 +13,60 @@ describe("audio pointer previews", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it("coalesces movement to the latest pointer, stops stationary audio and restores rate without changing volume", async () => {
+  it.each([["start", 10], ["center", 9.94], ["end", 9.88]] as const)("anchors the preview at %s and keeps repeating while held", async (position, start) => {
+    const element = audio(); const scrubber = new AudioScrubber();
+    scrubber.position = position;
+    scrubber.begin([element]); scrubber.move(10);
+    expect(element.currentTime).toBeCloseTo(start);
+    expect(scrubber.range).toEqual({ start, end: start + .12 });
+    await vi.advanceTimersByTimeAsync(370);
+    expect(element.play).toHaveBeenCalledTimes(4);
+    expect(element.currentTime).toBeCloseTo(start);
+    scrubber.end();
+    expect(element.currentTime).toBe(10);
+    expect(scrubber.range).toBeNull();
+    const count = vi.mocked(element.play).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(element.play).toHaveBeenCalledTimes(count);
+  });
+
+  it("clips a centered preview to both removed boundaries and never loops excluded audio", async () => {
+    const element = audio(); const scrubber = new AudioScrubber(); scrubber.position = "center";
+    scrubber.begin([element], (time) => time >= 5 && time < 10, () => 10, () => 5);
+    scrubber.move(5.02);
+    expect(scrubber.range?.start).toBe(5);
+    expect(scrubber.range?.end).toBeCloseTo(5.08);
+    expect(element.currentTime).toBe(5);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(element.play).toHaveBeenCalledTimes(4);
+    scrubber.move(10);
+    expect(scrubber.range).toBeNull();
+    const count = vi.mocked(element.play).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(element.play).toHaveBeenCalledTimes(count);
+    scrubber.end();
+  });
+
+  it("bounds repeat work for a sub-millisecond fragment at the source end", async () => {
+    const element = audio(); const scrubber = new AudioScrubber();
+    scrubber.begin([element]); scrubber.move(59.9999);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(vi.mocked(element.play).mock.calls.length).toBeLessThanOrEqual(11);
+    scrubber.end();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not truncate an unloaded long track to another channel's shorter duration", () => {
+    const short = audio(2), loading = audio(NaN);
+    const scrubber = new AudioScrubber(); scrubber.position = "end";
+    scrubber.begin([short, loading], () => true, () => 8); scrubber.move(5);
+    expect(scrubber.range).toEqual({ start: 4.88, end: 5 });
+    expect(short.play).not.toHaveBeenCalled();
+    expect(loading.play).toHaveBeenCalledOnce();
+    scrubber.end();
+  });
+
+  it("coalesces movement to the latest pointer, repeats held audio and restores rate without changing volume", async () => {
     const element = audio(); element.volume = .4; element.playbackRate = 1.5;
     const scrubber = new AudioScrubber(); scrubber.begin([element]);
     scrubber.move(1); scrubber.move(2); scrubber.move(3);

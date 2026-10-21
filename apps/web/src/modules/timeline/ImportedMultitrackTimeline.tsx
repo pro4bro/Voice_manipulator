@@ -1,3 +1,5 @@
+import type { ScrubPreviewPosition } from "../../domain/types";
+import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useAudioScrubber } from "./audio-scrubbing";
 import { usePreviewMixer } from "./preview-mixer";
@@ -71,6 +73,7 @@ interface Props {
   resumeProjectId?: string;
   singleTrackView?: boolean;
   clippingHighlightAutoHide?: boolean;
+  scrubPreviewPosition?: ScrubPreviewPosition;
   visibleTrackIds?: string[] | null;
   onSelectTrack: (assetId: string) => void;
   onCutsChange: (assetIds: string[], ranges: TimelineEditRange[]) => Promise<boolean>;
@@ -84,7 +87,7 @@ interface Props {
   onRedo?: () => void;
 }
 
-export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, resumeProjectId, singleTrackView = false, clippingHighlightAutoHide = false, visibleTrackIds = null, onSelectTrack, onCutsChange, readOnly = false, wordSelection, onWordSelectionChange, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
+export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, resumeProjectId, singleTrackView = false, clippingHighlightAutoHide = false, scrubPreviewPosition = "center", visibleTrackIds = null, onSelectTrack, onCutsChange, readOnly = false, wordSelection, onWordSelectionChange, speakers = [], onAssetWordsChange, onAssetTimelineStateChange, onUndo, onRedo }: Props) {
   const [layout, setLayout] = useState<Layout>("layers");
   const [windowSeconds, setWindowSeconds] = useState<number>(Number.POSITIVE_INFINITY);
   const [windowStart, setWindowStart] = useState(0);
@@ -174,7 +177,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   const previewGain = (id: string) => muted[id] || hasSolo && !solo[id] ? 0 : (gains[id] ?? 100) / 100;
   const trackSources = visibleTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
   useEffect(() => () => { ++playbackRevision.current; }, [trackSources]);
-  const audioScrubber = useAudioScrubber(trackSources);
+  const audioScrubber = useAudioScrubber(trackSources, scrubPreviewPosition);
   const ids = orderedTracks.map((track) => track.id);
 
   useEffect(() => {
@@ -525,7 +528,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
     if (!full) dragScroll.begin(event.clientX);
     notifyPlaybackInteraction(ids);
     audioScrubber.begin([...audioRefs.current.values()], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
-      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)),
+      (time) => Math.max(0, ...excludedRanges.filter((range) => range.end <= time).map((range) => range.end)));
     setPlaying(false);
     void preparePlayback();
     scrubbingRef.current = true;
@@ -582,7 +586,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   const playhead = (currentTime - windowStart) / span * 100;
   if (editFocus) {
     const track = orderedTracks.find((item) => item.id === editFocus.assetId);
-    if (track) return <Timeline clippingHighlightAutoHide={clippingHighlightAutoHide} resumeProjectId={resumeProjectId} resumeSource={resumeSource} onPlayheadChange={reportFocusedPlayhead} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
+    if (track) return <Timeline scrubPreviewPosition={scrubPreviewPosition} clippingHighlightAutoHide={clippingHighlightAutoHide} resumeProjectId={resumeProjectId} resumeSource={resumeSource} onPlayheadChange={reportFocusedPlayhead} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
       onWordSelectionChange={(selection) => onWordSelectionChange?.(scopedSelection(track, selection))}
       editRequest={editFocus.request}
       gain={previewPercentToDb(previewGain(track.id) * 100)}
@@ -668,6 +672,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
               {layout === "columns" ? <div className="obs-timeline__column-ruler obs-timeline__ruler" onPointerDown={(event) => beginScrub(event)} onPointerMove={(event) => { moveScrub(event); }} onPointerUp={(event) => endScrub(event)} onPointerCancel={cancelScrub}>{laneRulerMarks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}</div> : null}
               <div aria-label={`Waveform Channel ${index + 1}`} className="obs-timeline__wave" ref={selected?.id === track.id ? selectedWaveRef : undefined} onPointerDown={(event) => { if (!beginWaveSelection(event, track)) beginScrub(event); }} onPointerMove={(event) => { if (!moveWaveSelection(event, track)) moveScrub(event); }} onPointerUp={(event) => { if (!endWaveSelection(event, track)) endScrub(event); }} onPointerCancel={(event) => { if (!endWaveSelection(event, track, true)) cancelScrub(event); }}>
                 <svg aria-hidden="true" className="timeline-waveform__svg" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={waveformPath(envelope, windowStart, span, muted[track.id] ? 0 : (gains[track.id] ?? 100) / 100)} /></svg>
+              <ScrubPreviewOverlay range={audioScrubber.range} windowStart={windowStart} windowSpan={span} />
                 {envelope ? <ClippingOverlay points={envelope.points} gain={previewGain(track.id)} windowStart={(envelope.start ?? 0) - windowStart} windowDuration={(envelope.end ?? envelope.duration) - (envelope.start ?? 0)} duration={span} autoCalibrate={false} autoHide={clippingHighlightAutoHide} sourceKey={`${track.id}:${track.updatedAt}`} /> : null}
                 {selectedRanges.map((range) => {
                   const style = intervalStyle(range.start, range.end, windowStart, span);

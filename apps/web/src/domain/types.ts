@@ -483,8 +483,11 @@ export interface EmotionStylePreferences {
   backgroundOpacity: number;
 }
 
+export type ScrubPreviewPosition = "start" | "center" | "end";
+
 export interface TimelinePreferences {
   clippingHighlightAutoHide: boolean;
+  scrubPreviewPosition?: ScrubPreviewPosition;
 }
 
 export interface AppPreferences {

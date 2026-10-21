@@ -1,3 +1,5 @@
+import type { ScrubPreviewPosition } from "../../domain/types";
+import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
 import { notifyPlaybackInteraction, publishPlaybackWord } from "../../domain/playback-sync";
@@ -78,6 +80,7 @@ interface TimelineProps {
   navigation?: import("../../domain/reference-bindings").ProductionNavigation | null;
   rangeSelectionEnabled?: boolean;
   clippingHighlightAutoHide?: boolean;
+  scrubPreviewPosition?: ScrubPreviewPosition;
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   take: ActiveTake | null;
   gain: number;
@@ -245,7 +248,7 @@ function AudioTimeline({
   wordSelection = EMPTY_SELECTION,
   onWordSelectionChange,
   rangeSelectionEnabled = false,
-  clippingHighlightAutoHide = false,
+  clippingHighlightAutoHide = false, scrubPreviewPosition = "center",
   onReferenceContext,
   leadingActions = null,
   liveCaption = null,
@@ -325,7 +328,7 @@ function AudioTimeline({
   const playbackClockFrameRef = useRef<number | null>(null);
   const lastClockStateUpdateRef = useRef(0);
   const scrubbingRef = useRef(false);
-  const audioScrubber = useAudioScrubber(take?.url);
+  const audioScrubber = useAudioScrubber(take?.url, scrubPreviewPosition);
   const gainInteractionRef = useRef(false);
   // A sweep is measured from where it began, against the selection as it stood
   // then, so dragging back over the run shrinks it instead of piling up.
@@ -1502,7 +1505,8 @@ function AudioTimeline({
     const audio = audioRef.current;
     if (!audio) return;
     audioScrubber.begin([audio], (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
-      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)),
+      (time) => Math.max(0, ...excludedRanges.filter((range) => range.end <= time).map((range) => range.end)));
     setPlaying(false);
     stopPlaybackClock();
     stopSignalMeter();
@@ -1748,6 +1752,7 @@ function AudioTimeline({
                 autoCalibrate={autoCalibrate} autoHide={clippingHighlightAutoHide} sourceKey={take?.id ?? "none"} /> : null}
               {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
               {excludedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
+              <ScrubPreviewOverlay range={audioScrubber.range} windowSpan={duration} />
               {cutPoints.map((point) => <i className="timeline-cut-point" key={point} style={{ left: `${point / duration * 100}%` }} />)}
               {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
               {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}

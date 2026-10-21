@@ -8,6 +8,7 @@ import { missingPreparation } from "../../domain/footagePipeline";
 import { obsTrackLabel } from "../../domain/obs-track-label";
 import { reconcileListSelection, selectAllListItems, selectListItem, type ListSelection } from "../../domain/listSelection";
 import type { EmotionLabel, EnvironmentNoiseProfile, MediaImportChoice, ObsLiveLinkRecordingJournal, PendingLocalMedia, ProjectAsrAdapter, ProjectMediaAsset, SpeakerProfile, TrainingModelOption, WorkspacePage } from "../../domain/types";
+import { SendToMenu, type SendTarget } from "../../ui/SendToMenu";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { TaskStop } from "../../ui/TaskStop";
@@ -171,6 +172,7 @@ interface MediaPoolProps {
   onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
+  onSendTo?: (target: SendTarget, assetIds: string[]) => void;
   onOpenObsRecording?: (recordingId: string) => void;
   onOpenObsTrack?: (recordingId: string, channelId: string) => void;
   selectedObsRecordingId?: string | null;
@@ -576,7 +578,7 @@ export function MediaPool({
   onReveal,
   onSetDisabled,
   onUpdateAnnotations,
-  onSendToTraining,
+  onSendToTraining, onSendTo,
   onOpenObsRecording,
   onOpenObsTrack,
   selectedObsRecordingId,
@@ -1286,6 +1288,11 @@ export function MediaPool({
             </div>; })}
           </div><p>Tick Import để thêm track hoặc đưa track trở lại workspace. MKV đang ghi cần Finish trước khi thêm track đã bỏ qua.</p></section> : null}
           <footer>
+            {onSendTo ? <SendToMenu disabled={{
+              "voice-manipulator": menuAssets.filter((asset) => !asset.disabled).length !== 1 ? "Chọn một footage để mở Voice Manipulation" : undefined,
+              "lip-sync": menuAssets.every((asset) => asset.mediaKind !== "video" || asset.disabled) ? "Chọn footage video đang bật" : undefined,
+              "voice-training": !menuTrainingEligible.length ? "Cần footage có audio để Training" : undefined,
+            }} onSend={(target) => { setContextMenu(null); onSendTo(target, menuAssets.filter((asset) => !asset.disabled).map((asset) => asset.id)); }} /> : null}
             <button onClick={() => { setContextMenu(null); onReveal(contextAsset, "original"); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Explorer</button>
             <button disabled={Boolean(contextSource?.hasExternalSource && !contextSource.localCacheEnabled)} onClick={() => { setContextMenu(null); onReveal(contextAsset, "project"); }} role="menuitem" type="button"><Icon name="folder" /> Reveal in Project Folder</button>
             {contextAsset.hasExternalSource ? <button onClick={() => { setContextMenu(null); onSetLocalCache(contextAsset.id, !contextAsset.localCacheEnabled); }} role="menuitem" type="button"><Icon name="folder" /> {contextAsset.localCacheEnabled ? "Use original file" : "Local File Caching"}</button> : null}

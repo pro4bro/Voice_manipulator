@@ -1,4 +1,6 @@
 import { editableWordTimings } from "../domain/editable-word-timing";
+import { lipSyncUrl, type LipSyncSessions, type LipSyncVersionState, type LipSyncDocument, type LipSyncCoverage, type LipSyncPreflight } from "../domain/lipsync";
+import type { LipSyncJob, LipSyncRuntimeReport, FaceGallery, FaceReview, LipSyncRenderPlan } from "../modules/lip-sync/LipSyncProcessing";
 import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
 import type {
   ActivitySnapshot,
@@ -677,6 +679,24 @@ export const api = {
   getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
   getEngineCatalog: (task?: string) => request<TrainingModelOption[]>(`/api/engine-catalog${task ? `?task=${encodeURIComponent(task)}` : ""}`),
+  getLipSync: (projectId: string, versionId?: string) => request<LipSyncDocument>(lipSyncUrl(projectId, ``, versionId)),
+  getLipSyncSessions: (projectId: string) => request<LipSyncSessions>(lipSyncUrl(projectId, "/sessions")),
+  createLipSyncSession: (projectId: string, revision: number, name?: string) => request<LipSyncSessions>(lipSyncUrl(projectId, "/sessions"), { method: "POST", body: JSON.stringify({ revision, name }) }),
+  createLipSyncVersion: (projectId: string, revision: number, sourceId: string, sourceRevision: number) => request<LipSyncSessions>(lipSyncUrl(projectId, "/versions"), { method: "POST", body: JSON.stringify({ revision, sourceId, sourceRevision }) }),
+  selectLipSyncVersion: (projectId: string, revision: number, versionId: string) => request<LipSyncSessions>(lipSyncUrl(projectId, "/selection"), { method: "PUT", body: JSON.stringify({ revision, versionId }) }),
+  getLipSyncState: (projectId: string, versionId: string) => request<LipSyncVersionState>(lipSyncUrl(projectId, "/state", versionId)),
+  saveLipSyncState: (projectId: string, versionId: string, state: LipSyncVersionState) => request<LipSyncVersionState>(lipSyncUrl(projectId, "/state", versionId), { method: "PUT", body: JSON.stringify(state) }),
+  getLipSyncRuntime: () => request<LipSyncRuntimeReport>("/api/lipsync/runtime"),
+  listLipSyncJobs: (projectId: string, versionId?: string) => request<LipSyncJob[]>(lipSyncUrl(projectId, `/jobs`, versionId)),
+  startLipSyncJob: (projectId: string, body: { kind: "analysis" | "render"; revision: number; analysisId?: string; analysisRevision?: number }, versionId?: string) => request<LipSyncJob>(lipSyncUrl(projectId, `/jobs`, versionId), { method: "POST", body: JSON.stringify(body) }),
+  cancelLipSyncJob: (projectId: string, id: string, versionId?: string) => request<LipSyncJob>(lipSyncUrl(projectId, `/jobs/${id}/cancel`, versionId), { method: "POST" }),
+  getLipSyncJobLog: (projectId: string, id: string, versionId?: string) => request<{ text: string }>(lipSyncUrl(projectId, `/jobs/${id}/log`, versionId)),
+  getLipSyncFaces: (projectId: string, id: string, versionId?: string) => request<FaceGallery>(lipSyncUrl(projectId, `/faces/${id}`, versionId)),
+  saveLipSyncFaces: (projectId: string, review: FaceReview, versionId?: string) => request<FaceReview>(lipSyncUrl(projectId, `/faces/${review.analysisId}`, versionId), { method: "PUT", body: JSON.stringify(review) }),
+  getLipSyncRenderPlan: (projectId: string, id: string, versionId?: string) => request<LipSyncRenderPlan>(lipSyncUrl(projectId, `/render-plan/${id}`, versionId)),
+  inspectLipSyncCoverage: (projectId: string, document: LipSyncDocument, versionId?: string) => request<LipSyncCoverage>(lipSyncUrl(projectId, `/coverage`, versionId), { method: "POST", body: JSON.stringify(document) }),
+  prepareLipSync: (projectId: string, document: LipSyncDocument, versionId?: string) => request<LipSyncPreflight>(lipSyncUrl(projectId, `/preflight`, versionId), { method: "POST", body: JSON.stringify(document) }),
+  saveLipSync: (projectId: string, document: LipSyncDocument, versionId?: string) => request<LipSyncDocument>(lipSyncUrl(projectId, ``, versionId), { method: "PUT", body: JSON.stringify(document) }),
   getSokujiHealth: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/health"),
   startSokuji: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/start", { method: "POST" }),
   stopSokuji: () => request<SokujiRuntimeStatus>("/api/open-engines/sokuji/stop", { method: "POST" }),

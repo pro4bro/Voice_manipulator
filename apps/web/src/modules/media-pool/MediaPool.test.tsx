@@ -1068,3 +1068,13 @@ describe("MediaPool", () => {
     expect(onSetDisabled).toHaveBeenCalledWith(parked, false);
   });
 });
+
+it("sends video from the footage context submenu without changing its source", () => {
+  const onSendTo = vi.fn();
+  render(<MediaPool {...props({ onSendTo })} />);
+  fireEvent.contextMenu(screen.getByText("interview.mov", { exact: true }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Send to/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "LipSync" }));
+  expect(onSendTo).toHaveBeenCalledWith("lip-sync", [asset.id]);
+  expect(asset.sourcePath).toBe("assets/media/asset-1/source.mov");
+});

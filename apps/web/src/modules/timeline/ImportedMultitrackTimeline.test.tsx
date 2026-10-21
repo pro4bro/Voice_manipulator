@@ -64,12 +64,16 @@ it.each(["LAYER", "CỘT"])("reveals overview seek targets during imported trans
   fireEvent.pointerDown(progress, { button: 0, pointerId: 56, clientX: 800 });
   expect(ruler.textContent).not.toBe(before);
   expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "60%" });
-  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.currentTime)).toEqual([48, 48]);
+  // The shared playhead is at 48s; centered audition starts 60ms earlier.
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.currentTime)).toEqual([47.94, 47.94]);
+  expect(screen.getAllByRole("img", { name: /Đoạn nghe thử/ })).toHaveLength(2);
   fireEvent.pointerMove(progress, { pointerId: 56, clientX: 100 });
   expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "20%" });
   const held = ruler.textContent;
   fireEvent.pointerUp(progress, { pointerId: 56, clientX: 100 });
   expect(ruler.textContent).toBe(held);
+  expect([...view.container.querySelectorAll("audio")].map((audio) => audio.currentTime)).toEqual([6, 6]);
+  expect(screen.queryByRole("img", { name: /Đoạn nghe thử/ })).not.toBeInTheDocument();
 });
 
 it("limits selected imported playback to one track and retains its previous gain", () => {

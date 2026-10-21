@@ -50,6 +50,7 @@ interface LibraryPanelProps {
   onSetDisabled: (asset: ProjectMediaAsset, disabled: boolean) => void;
   onUpdateAnnotations: (assetId: string, speakerProfileIds: string[], environmentProfileIds: string[], emotion: EmotionLabel) => void;
   onSendToTraining: () => void;
+  onSendTo?: (target: import("../../ui/SendToMenu").SendTarget, assetIds: string[]) => void;
   onCatalogChange: (catalog: TrainingCatalog) => void;
   onSelectVoice: (voiceId: string) => void;
   voices?: ProjectVoice[];
@@ -98,6 +99,7 @@ interface ManipulatorLibraryProps {
   outputs: VoiceOutput[];
   activeOutputId: string | null;
   onOpenOutput: (output: VoiceOutput) => void;
+  onSendOutputTo?: (target: import("../../ui/SendToMenu").SendTarget, outputs: VoiceOutput[]) => void;
   onExportOutput: (output: VoiceOutput, mode: VoiceOutputExportMode) => void;
   onDeleteOutput: (output: VoiceOutput) => void;
   onDeleteOutputs?: (outputs: VoiceOutput[]) => void;
@@ -118,7 +120,7 @@ export function ManipulatorLibrary(props: ManipulatorLibraryProps) {
       </div>
       {tab === "reference" ? <ReferenceLibrary {...props.referenceLibrary} projectId={props.projectId} assets={props.referenceAssets ?? props.assets} /> : tab === "sound"
         ? <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />
-        : <VoiceOutputPanel activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onExport={props.onExportOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
+        : <VoiceOutputPanel onSendTo={props.onSendOutputTo} activeOutputId={props.activeOutputId} onDelete={props.onDeleteOutput} onDeleteMany={props.onDeleteOutputs} onExport={props.onExportOutput} onOpen={props.onOpenOutput} outputs={props.outputs} speakers={props.speakers} />}
     </section>
   );
 }

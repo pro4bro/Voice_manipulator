@@ -289,12 +289,16 @@ it.each(["LAYER", "CỘT"])("reveals archived OBS overview targets before releas
   fireEvent.pointerDown(progress, { button: 0, pointerId: 56, clientX: 800 });
   expect(ruler.textContent).not.toBe(before);
   expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "50%" });
-  expect(view.container.querySelector("audio")!.currentTime).toBe(240);
+  // Logical playhead stays at 240s while centered audition begins 60ms earlier.
+  expect(view.container.querySelector("audio")!.currentTime).toBe(239.94);
+  expect(screen.getByRole("img", { name: /Đoạn nghe thử/ })).toHaveAttribute("data-start", "239.94");
   fireEvent.pointerMove(progress, { pointerId: 56, clientX: 100 });
   expect(screen.getByLabelText(playheadLabel)).toHaveStyle({ left: "50%" });
   const held = ruler.textContent;
   fireEvent.pointerUp(progress, { pointerId: 56, clientX: 100 });
   expect(ruler.textContent).toBe(held);
+  expect(view.container.querySelector("audio")!.currentTime).toBe(30);
+  expect(screen.queryByRole("img", { name: /Đoạn nghe thử/ })).not.toBeInTheDocument();
 });
 
 it("follows archive playback across the view edge without recentering paused browsing", async () => {

@@ -1,0 +1,7 @@
+.send-to-menu { width: 100%; }
+.send-to-menu > summary { display: flex; justify-content: space-between; cursor: pointer; padding: 8px 12px; color: var(--text); font-size: 11px; }
+.send-to-menu > summary:hover { background: var(--soft-fill); }
+.send-to-menu > div { display: grid; padding: 4px 8px 8px 18px; gap: 3px; }
+.send-to-menu button { display: grid !important; gap: 3px; text-align: left; color: var(--text); background: var(--soft-fill); padding: 8px; }
+.send-to-menu small { color: var(--text-muted); font-size: 9px; white-space: normal; }
+.voice-output-context-menu { position: fixed; z-index: 400; width: 245px; max-height: min(420px, 85vh); overflow-y: auto; border: 1px solid var(--line); background: var(--surface-panel); box-shadow: 0 8px 28px #0005; padding: 5px; }

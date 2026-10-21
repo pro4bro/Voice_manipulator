@@ -1372,7 +1372,7 @@
 .timeline-waveform-detail-status { position: absolute; z-index: 8; right: 8px; top: 6px; padding: 2px 5px; color: var(--text); background: color-mix(in srgb, var(--surface-audio) 80%, transparent); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); pointer-events: none; }
 /* PCM and subtitle positions share the exact same zero point; labels no longer offset the waveform. */
 .waveform { padding-left: 0; }
-.timeline-word { box-sizing: border-box; overflow: visible; text-overflow: clip; }
+.timeline-word { box-sizing: border-box; overflow: visible; text-overflow: clip; display: flex; align-items: center; padding-block: 0; line-height: 1.5; font-family: Arial, "Segoe UI", sans-serif; }
 .timeline-word__label { display: block; width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap; pointer-events: none; }
 .timeline-word.is-active { z-index: 2; }
 /* Do not tint a whole Script panel, table row or speaker block during word follow. */

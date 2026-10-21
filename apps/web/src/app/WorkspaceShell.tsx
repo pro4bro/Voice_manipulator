@@ -86,7 +86,9 @@ import { reconcileScriptTextEdit } from "../modules/script/script-text-reconcili
 import { useProcessingChoice } from "../ui/ProcessingChoice";
 import { completedGenerationRows, completedTrainingTargets } from "../domain/processing-results";
 import { ManipulatorNavigation } from "../modules/manipulator/ManipulatorNavigation";
-import { LipSyncWorkspace } from "../modules/lip-sync/LipSyncWorkspace";
+import { LipSyncPage } from "../modules/lip-sync/LipSyncPage";
+import type { LipSyncSendRequest } from "../domain/lipsync";
+import type { SendTarget } from "../ui/SendToMenu";
 import type { ManipulatorMode } from "../domain/types";
 
 interface WorkspaceShellProps {
@@ -140,7 +142,7 @@ function defaultPreferences(): AppPreferences {
     diarization: { enabled: true, model: "pyannote/speaker-diarization-community-1", huggingfaceToken: null, huggingfaceTokenConfigured: false },
     speakerSimilarity: { embedderId: "pyannote-community-1" },
     emotionStyle: { ...DEFAULT_EMOTION_STYLE, emotionColors: { ...DEFAULT_EMOTION_STYLE.emotionColors } },
-    timeline: { clippingHighlightAutoHide: false },
+    timeline: { clippingHighlightAutoHide: false, scrubPreviewPosition: "center" },
   };
 }
 
@@ -856,7 +858,57 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     if (selected && !(children.length ? children.some((asset) => asset.trainingSelected) : selected.trainingSelected)) clearMediaSelection();
   }, [activePage, mediaAssets, selectedAssetId, selectedImportedTrackId]);
 
+  const lipSyncNavigation = useRef<(() => Promise<boolean>) | null>(null);
+  const [lipSyncIncoming, setLipSyncIncoming] = useState<LipSyncSendRequest | null>(null);
+  async function sendMediaTo(target: SendTarget, ids: string[]) {
+    const sources = mediaAssets.filter((asset) => ids.includes(asset.id) && !asset.deletedAt && !asset.disabled);
+    if (target === "lip-sync") {
+      const videos = sources.filter((asset) => asset.mediaKind === "video" && asset.duration > 0);
+      if (!videos.length) { setNotice("Chọn footage video để gửi tới LipSync."); return; }
+      setLipSyncIncoming({ id: crypto.randomUUID(), projectId: project.id, kind: "media", ids: videos.map((asset) => asset.id) });
+      await selectPage(target);
+    } else if (target === "voice-training") {
+      try {
+        const saved: ProjectMediaAsset[] = [];
+        const targets = [...new Map(sources.flatMap((asset) => {
+          const tracks = mediaAssets.filter((item) => item.sourceArchiveAssetId === asset.id);
+          return tracks.length ? tracks : [asset];
+        }).filter((asset) => !asset.deletedAt && !asset.disabled && asset.status !== "no-audio" && asset.importSelected !== false).map((asset) => [asset.id, asset])).values()];
+        if (!targets.length) { setNotice("Chọn footage có audio để gửi tới Training."); return; }
+        for (const asset of targets) saved.push(await api.setMediaTrainingSelected(project.id, asset.id, true));
+        setMediaAssets((current) => current.map((asset) => saved.find((item) => item.id === asset.id) ?? asset));
+        await selectPage(target);
+        setNotice(`Đã chọn ${saved.length} footage cho Training.`);
+      } catch (reason) { setNotice(String(reason)); }
+    } else {
+      const source = sources[0];
+      if (!source || sources.length !== 1) { setNotice("Chọn một footage để mở trong Voice Manipulation."); return; }
+      selectMediaAsset(source.id);
+      await selectPage(target);
+      const selection: WordSelection = { indexes: source.words.map((_, index) => index), anchor: source.words.length ? 0 : null,
+        scope: { kind: "asset", id: source.id, revision: source.updatedAt } };
+      setPatchSourceSelection(mediaPatchSpan(source, selection) ? selection : null);
+      setManipulatorMode("voice-patch");
+      if (!source.words.length) setNotice("Đã mở footage cho Voice Patch. Chạy STT tại Input để có lời thoại và timing trước khi sửa voice.");
+    }
+  }
+  async function sendOutputTo(target: SendTarget, outputs: VoiceOutput[]) {
+    const available = outputs.filter((output) => output.audioAvailable !== false && output.duration > 0);
+    if (!available.length) { setNotice("Voice Output không còn audio khả dụng."); return; }
+    if (target === "lip-sync") {
+      setLipSyncIncoming({ id: crypto.randomUUID(), projectId: project.id, kind: "voice", ids: available.map((output) => output.id) });
+      await selectPage(target);
+    } else if (target === "voice-manipulator") {
+      if (available.length !== 1) { setNotice("Mở từng Voice Output trong Voice Manipulation."); return; }
+      openVoiceOutput(available[0]); await selectPage(target);
+    }
+  }
+  async function backToProjects() {
+    if (activePage === "lip-sync" && lipSyncNavigation.current && !await lipSyncNavigation.current()) return;
+    onBack();
+  }
   async function selectPage(page: WorkspacePage) {
+    if (activePage === "lip-sync" && page !== activePage && lipSyncNavigation.current && !await lipSyncNavigation.current()) return;
     if (page === "voice-manipulator" && activePage === "speech-to-text") {
       const source = mediaAssets.find((asset) => asset.id === scriptAssetId);
       const scoped = source && (!selectedScriptAssetIds || selectedScriptAssetIds.length <= 1)
@@ -2704,6 +2756,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     liveTranscriptText: latestLiveRevision?.text ?? null,
     emotionStyle: preferences.emotionStyle,
     clippingHighlightAutoHide: preferences.timeline?.clippingHighlightAutoHide ?? false,
+    scrubPreviewPosition: preferences.timeline?.scrubPreviewPosition ?? "center",
     aiReviewText: latestAiRevision?.text ?? null,
     aiReviewKey: latestAiRevision?.id ?? null,
     aiReviewBusy,
@@ -2908,6 +2961,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onCollectionImported: collectionImported,
     onPrepareCollectionExport: prepareCollectionOperation,
     onSendToTraining: sendSelectedToTraining,
+    onSendMediaTo: (target, ids) => { void sendMediaTo(target, ids); },
+    onSendOutputTo: (target, outputs) => { void sendOutputTo(target, outputs); },
     onGenerate: () => void generateVoice(),
     onStopDiarization: stopDiarization,
     onStopTraining: stopTraining,
@@ -2942,7 +2997,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         if (referenceRequestId.current === referenceSession.id) setNotice(`Đã lưu reference cho ${assignment.targets.length} vùng · ${saved.bindings.length} vùng đã gán. Các đặc tính đang chờ phân tích và áp dụng vào audio.`);
       }} /> : null}
       <header className="workspace-topbar">
-<div className="workspace-identity"><button className="workspace-brand" onClick={onBack} type="button"><img alt="" className="workspace-brand__logo" src="/pro4bro-logo.png" /><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
+<div className="workspace-identity"><button className="workspace-brand" onClick={() => void backToProjects()} type="button"><img alt="" className="workspace-brand__logo" src="/pro4bro-logo.png" /><b>VOICE<br />MANIPULATOR</b></button><div className="workspace-project-context" title={project.name}><span>PROJECT</span><b>{project.name}</b></div></div>
         <nav aria-label="Quy trình chính">{pages.map((page, index) => <button className={activePage === page.id ? "is-active" : ""} key={page.id} onClick={() => void selectPage(page.id)} type="button"><span>{String(index).padStart(2, "0")}</span><Icon name={page.icon} /><b>{page.label}</b></button>)}</nav>
         <div className="workspace-meta">
           <span><i />{engine?.installed ? "ENGINE READY" : "ENGINE OFFLINE"}</span>
@@ -2951,10 +3006,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         </div>
       </header>
       <div className="workspace-body">
-        <aside className={`project-rail ${activePage === "voice-manipulator" ? "project-rail--manipulator" : ""}`}><button aria-label="Về danh sách project" onClick={onBack} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div>{activePage === "voice-manipulator" ? <ManipulatorNavigation mode={manipulatorMode} onChange={setManipulatorMode} /> : null}<div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
+        <aside className={`project-rail ${activePage === "voice-manipulator" ? "project-rail--manipulator" : ""}`}><button aria-label="Về danh sách project" onClick={() => void backToProjects()} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div>{activePage === "voice-manipulator" ? <ManipulatorNavigation mode={manipulatorMode} onChange={setManipulatorMode} /> : null}<div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
         <section id={activePage === "voice-manipulator" ? "manipulator-workspace" : undefined} role={activePage === "voice-manipulator" ? "tabpanel" : undefined} aria-labelledby={activePage === "voice-manipulator" ? `manipulator-tab-${manipulatorMode}` : undefined} className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
-          {activePage === "lip-sync" ? <LipSyncWorkspace projectId={project.id} assets={mediaAssets} outputs={voiceOutputs} leftWidth={leftWidth} rightWidth={rightWidth} onResizeStart={beginResize} onResizeKeyDown={resizeWithKeyboard} /> : <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          {activePage === "lip-sync" ? <LipSyncPage key={project.id} navigationRef={lipSyncNavigation} incoming={lipSyncIncoming} onIncomingConsumed={(id) => setLipSyncIncoming((current) => current?.id === id ? null : current)} projectId={project.id} assets={mediaAssets} outputs={voiceOutputs} leftWidth={leftWidth} rightWidth={rightWidth} onResizeStart={beginResize} onResizeKeyDown={resizeWithKeyboard} /> : <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map(renderModule)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map(renderModule)}</div>
@@ -2982,7 +3037,11 @@ function PreferencesDialog({ preferences, saving, onClose, onSave }: { preferenc
         <header><div><span>WINDOWS / PREFERENCES</span><h2>Preferences</h2></div><button aria-label="Đóng Preferences" onClick={onClose} type="button">×</button></header>
         <ObsPluginPreferences />
         <section className="preferences-section"><h3>Timeline</h3>
-          <label className="preferences-switch"><input checked={draft.timeline?.clippingHighlightAutoHide ?? false} onChange={(event) => setDraft({ ...draft, timeline: { clippingHighlightAutoHide: event.target.checked } })} type="checkbox" /><span>Tự ẩn highlight quá âm lượng sau 5 giây</span></label>
+          <label><span>Vị trí playhead trong đoạn nghe thử</span><select value={draft.timeline?.scrubPreviewPosition ?? "center"} onChange={(event) => setDraft({ ...draft, timeline: { clippingHighlightAutoHide: draft.timeline?.clippingHighlightAutoHide ?? false, ...draft.timeline, scrubPreviewPosition: event.target.value as "start" | "center" | "end" } })}>
+            <option value="start">Đầu — nghe sau playhead</option><option value="center">Giữa — nghe quanh playhead</option><option value="end">Cuối — nghe trước playhead</option>
+          </select></label>
+          <small className="preferences-note">Đoạn nghe thử 120 ms lặp lại khi giữ chuột trên waveform hoặc kéo playhead. Highlight mờ chỉ phạm vi đang nghe; thả chuột để dừng.</small>
+          <label className="preferences-switch"><input checked={draft.timeline?.clippingHighlightAutoHide ?? false} onChange={(event) => setDraft({ ...draft, timeline: { ...draft.timeline, clippingHighlightAutoHide: event.target.checked } })} type="checkbox" /><span>Tự ẩn highlight quá âm lượng sau 5 giây</span></label>
         </section>
         <section className="preferences-section"><h3>AI Transcript Review</h3><p>STT kỹ chạy local ở background. AI fix chỉ gửi transcript tới API tương thích OpenAI khi bạn bấm nút AI fix trong Script.</p>
           <label className="preferences-switch"><input checked={draft.aiReview.enabled} onChange={(event) => setDraft({ ...draft, aiReview: { ...draft.aiReview, enabled: event.target.checked } })} type="checkbox" /><span>Bật AI check transcript</span></label>

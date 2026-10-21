@@ -1,3 +1,5 @@
+import type { ScrubPreviewPosition } from "../../domain/types";
+import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 import { useAudioScrubber } from "./audio-scrubbing";
 import { usePreviewMixer } from "./preview-mixer";
@@ -205,7 +207,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                                       transcriptRows = [], seekRequest = null, selectedOverlap = null, onOverlapSelect,
                                       assets = EMPTY_ASSETS, onCutsChange, visibleAssetId = null, visibleAssetIds = null, speakers = [], onAssetWordsChange,
                                       onAssetTimelineStateChange, onUndo, onRedo, wordSelection = EMPTY_SELECTION, onWordSelectionChange,
-                                      clippingHighlightAutoHide = false }: {
+                                      clippingHighlightAutoHide = false, scrubPreviewPosition = "center" }: {
   projectId: string; resumeProjectId?: string; projectName?: string; requestedRecordingId: string | null;
   onRecordingIdChange?: (recordingId: string) => void;
   onPlayheadChange?: (seconds: number) => void;
@@ -225,6 +227,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
   selectedOverlap?: ObsOverlapSelection | null;
   onOverlapSelect?: (selection: ObsOverlapSelection | null) => void;
   clippingHighlightAutoHide?: boolean;
+  scrubPreviewPosition?: ScrubPreviewPosition;
 }) {
   const [status, setStatus] = useState<ObsLiveLinkStatus | null>(null);
   const [journals, setJournals] = useState<ObsLiveLinkRecordingJournal[]>([]);
@@ -573,7 +576,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
   const playbackUrl = selectedLane?.assetId
     ? `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(selectedLane.assetId)}/audio`
     : null;
-  const audioScrubber = useAudioScrubber(`${recordingId}:${playbackUrl}:${isLive}`);
+  const audioScrubber = useAudioScrubber(`${recordingId}:${playbackUrl}:${isLive}`, scrubPreviewPosition);
   const dragAutoScroll = useDragAutoScroll({ sourceKey: `${recordingId}:${isLive}`,
     viewport: () => {
       const element = autoScrollElementRef.current;
@@ -782,7 +785,8 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
     const audios: HTMLAudioElement[] = [];
     forEachPlaybackAudio((audio) => audios.push(audio));
     audioScrubber.begin(audios, (time) => !excludedRanges.some((range) => range.start <= time && time < range.end),
-      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)));
+      (time) => Math.min(duration, ...excludedRanges.filter((range) => range.start > time).map((range) => range.start)),
+      (time) => Math.max(0, ...excludedRanges.filter((range) => range.end <= time).map((range) => range.end)));
     setPlaying(false);
     if (audioRef.current) preparePreviewAudio(audioRef.current);
     scrubbingRef.current = true;
@@ -870,7 +874,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
 
   if (focusedAsset && editFocus && !isLive) return <Timeline resumeProjectId={resumeProjectId} resumeSource={resumeSource}
     onPlayheadChange={reportFocusedPlayhead} onUndo={onUndo} onRedo={onRedo} rangeSelectionEnabled
-    clippingHighlightAutoHide={clippingHighlightAutoHide}
+    scrubPreviewPosition={scrubPreviewPosition} clippingHighlightAutoHide={clippingHighlightAutoHide}
     wordSelection={visibleAssetId === focusedAsset.id ? wordSelection : focusedWordSelection}
     onWordSelectionChange={visibleAssetId === focusedAsset.id ? onWordSelectionChange : setFocusedWordSelection}
     editRequest={editFocus.request}
@@ -1088,6 +1092,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                   gain={mutedByChannel[gainKey] ? 0 : gain / 100} fallbackPath={path}
                   clippingHighlightAutoHide={clippingHighlightAutoHide} /> :
                   <svg aria-hidden="true" className="timeline-waveform__svg is-live" preserveAspectRatio="none" viewBox="0 0 1000 60"><path d={path} /></svg>}
+              <ScrubPreviewOverlay range={audioScrubber.range} windowStart={windowStart} windowSpan={windowSpan} />
                 {archivedSelectionRanges.map((range) => {
                   const start = Math.max(windowStart, range.start);
                   const end = Math.min(windowStart + windowSpan, range.end);

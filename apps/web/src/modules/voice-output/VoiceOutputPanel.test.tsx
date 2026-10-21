@@ -157,3 +157,19 @@ describe("VoiceOutputPanel", () => {
     expect(screen.queryByRole("button", { name: "Xác nhận xoá 1" })).not.toBeInTheDocument();
   });
 });
+
+it("sends selected generated versions through the context submenu and dismisses on Escape", () => {
+  const onSendTo = vi.fn();
+  const first = output(), second = output({ id: "output-2", name: "Second", text: "Câu thứ hai" });
+  render(<VoiceOutputPanel activeOutputId={null} onDelete={vi.fn()} onOpen={vi.fn()} outputs={[first, second]} speakers={[]} onSendTo={onSendTo} />);
+  fireEvent.click(screen.getByRole("button", { name: `Chọn ${first.name}` }));
+  fireEvent.click(screen.getByRole("button", { name: "Chọn Second" }), { ctrlKey: true });
+  fireEvent.contextMenu(screen.getByText("Câu thứ hai"));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Send to/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "LipSync" }));
+  expect(onSendTo).toHaveBeenCalledWith("lip-sync", [first, second]);
+  expect(screen.queryByRole("menu", { name: "Voice Output actions" })).not.toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByText("Câu thứ hai"));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("menu", { name: "Voice Output actions" })).not.toBeInTheDocument();
+});

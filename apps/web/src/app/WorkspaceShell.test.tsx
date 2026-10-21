@@ -5,6 +5,7 @@ import { Profiler } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, ProjectMediaAsset, ProjectVoice, ReadingSession, SpeakerProfile, TrainingCatalog, TrainingModelOption, VoiceScriptJob } from "../domain/types";
+import type { LipSyncVersionState } from "../domain/lipsync";
 import { voicesInCategory } from "../domain/voiceScript";
 import { VoiceScript } from "../modules/script/VoiceScript";
 import type { StudioContext } from "../modules/registry/ModuleRegistry";
@@ -18,6 +19,13 @@ const apiMocks = vi.hoisted(() => ({
   listVoiceOutputs: vi.fn(),
   getTrainingModels: vi.fn(),
   getVoiceGenerators: vi.fn(),
+  getEngineCatalog: vi.fn(),
+  getLipSyncSessions: vi.fn().mockResolvedValue({ version: 1, revision: 0, sessions: [{ id: "s", name: "Session 1", versions: [{ id: "shell-version", name: "Version 1", createdAt: "2026-10-21T00:00:00Z", parentVersionId: null }] }], activeSessionId: "s", activeVersionId: "shell-version" }),
+  saveLipSyncState: vi.fn(),
+  getLipSyncState: vi.fn().mockResolvedValue({ document: { version: 1, revision: 0, layers: [], clips: [], audio: null, engineId: null, engineSettings: {}, detectionScope: { mode: "visible", layerIds: [], range: null }, syncScope: { mode: "visible", layerIds: [], range: null } }, past: [], future: [] }),
+  getLipSyncRuntime: vi.fn().mockResolvedValue({ analysis: { ready: false, blockers: [] }, render: { ready: false, blockers: [] } }),
+  listLipSyncJobs: vi.fn().mockResolvedValue([]),
+  getLipSync: vi.fn().mockResolvedValue({ version: 1, revision: 0, layers: [], clips: [], audio: null, engineId: null, engineSettings: {}, detectionScope: { mode: "visible", layerIds: [], range: null }, syncScope: { mode: "visible", layerIds: [], range: null } }),
   compileDataset: vi.fn(),
   setMediaTrainingSelected: vi.fn(),
   startTrainingRun: vi.fn(),
@@ -113,7 +121,7 @@ vi.mock("../modules/registry/ModuleRegistry", () => ({
 const GENERATED = {
   id: "output-1", name: "Script · 35 đoạn", text: "xin chào", voiceId: "voice-1", voiceName: "Anh Vũ",
   speakerProfileId: "speaker-1", engine: "omnivoice", generatorId: "omnivoice-generate", parameters: {},
-  duration: 208, audioPath: "assets/voice-output/output-1/audio.wav", words: [], segments: [],
+  duration: 208, sampleRate: 24000, audioPath: "assets/voice-output/output-1/audio.wav", words: [], segments: [],
   createdAt: "2026-09-17T00:00:00Z",
 };
 vi.mock("../modules/workspace-status/WorkspaceStatusBar", () => ({ WorkspaceStatusBar: () => null }));
@@ -209,6 +217,7 @@ describe("WorkspaceShell STT synchronization", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.saveLipSyncState.mockImplementation(async (_projectId: string, _versionId: string, state: LipSyncVersionState) => ({ ...state, document: { ...state.document, revision: state.document.revision + 1 } }));
     apiMocks.getVoiceScript.mockResolvedValue({ version: 1, revision: 0, settings: {}, segments: [], rows: [] });
     apiMocks.saveVoiceScript.mockImplementation(async (_id, doc) => ({ ...doc, revision: doc.revision + 1 }));
     apiMocks.getTimingPlans.mockResolvedValue({ version: 1, revision: 0, plans: [] });
@@ -251,6 +260,7 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.listVoiceOutputs.mockResolvedValue([]);
     apiMocks.getTrainingModels.mockResolvedValue([]);
     apiMocks.getVoiceGenerators.mockResolvedValue([]);
+    apiMocks.getEngineCatalog.mockResolvedValue([]);
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
@@ -274,9 +284,71 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" })).toBeChecked();
   });
 
+  it("saves the audition position without losing the clipping setting, then restores both", async () => {
+    apiMocks.savePreferences.mockImplementation(async (value) => value);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(apiMocks.getPreferences).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "WINDOWS" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
+    const position = screen.getByRole("combobox", { name: "Vị trí playhead trong đoạn nghe thử" });
+    expect(position).toHaveValue("center");
+    fireEvent.change(position, { target: { value: "end" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Preferences" }));
+    await waitFor(() => expect(apiMocks.savePreferences).toHaveBeenCalledWith(expect.objectContaining({
+      timeline: { clippingHighlightAutoHide: true, scrubPreviewPosition: "end" },
+    })));
+    await waitFor(() => expect(collectionContext.current?.scrubPreviewPosition).toBe("end"));
+    fireEvent.click(screen.getByRole("button", { name: "WINDOWS" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
+    expect(screen.getByRole("combobox", { name: "Vị trí playhead trong đoạn nghe thử" })).toHaveValue("end");
+    expect(screen.getByRole("checkbox", { name: "Tự ẩn highlight quá âm lượng sau 5 giây" })).toBeChecked();
+  });
+
+  it("routes footage and generated voice from Send to into the selected LipSync version", async () => {
+    const source = { ...mediaAsset("complete", "", "now"), name: "Scene.mp4", mediaKind: "video" as const, sourceExtension: ".mp4" };
+    apiMocks.listProjectMedia.mockResolvedValue([source]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.listVoiceOutputs.mockResolvedValue([GENERATED]);
+    const scopedProject = { ...project, id: "send-to-lipsync" };
+    const view = render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => scopedProject}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={scopedProject} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current?.mediaAssets).toHaveLength(1));
+    act(() => collectionContext.current?.onSendMediaTo?.("lip-sync", [source.id]));
+    await screen.findByText("Bố cục đã tải");
+    fireEvent.click(screen.getByRole("button", { name: "Đưa nguồn vào version này" }));
+    expect(screen.getByRole("button", { name: "Di chuyển video Scene.mp4" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /03Voice Manipulator/ }));
+    await waitFor(() => expect(collectionContext.current?.workflow).toBe("voice-manipulator"));
+    expect(apiMocks.saveLipSyncState).toHaveBeenCalledWith("send-to-lipsync", "shell-version", expect.objectContaining({ document: expect.objectContaining({ clips: [expect.objectContaining({ assetId: source.id })] }) }));
+    act(() => collectionContext.current?.onSendOutputTo?.("lip-sync", [GENERATED]));
+    await screen.findByRole("button", { name: "Đưa nguồn vào version này" });
+    fireEvent.click(screen.getByRole("button", { name: "Đưa nguồn vào version này" }));
+    expect(view.container.querySelector("audio[aria-label='Voice Output cho LipSync']")).toHaveAttribute("src", `/api/projects/send-to-lipsync/voice-outputs/${GENERATED.id}/audio`);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(view.container.querySelector("audio[aria-label='Voice Output cho LipSync']")).not.toBeInTheDocument();
+  });
+
+  it("sends only imported live audio tracks to Training from a multitrack source", async () => {
+    const parent = { ...mediaAsset("complete", "", "now"), id: "archive" };
+    const tracks = ["one", "two"].map((id, i) => ({ ...parent, id, sourceArchiveAssetId: parent.id, importSelected: i === 0 }));
+    apiMocks.listProjectMedia.mockResolvedValue([parent, ...tracks]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.setMediaTrainingSelected.mockImplementation(async (_project: string, id: string) => ({ ...tracks.find((item) => item.id === id), trainingSelected: true }));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current?.mediaAssets).toHaveLength(3));
+    act(() => collectionContext.current?.onSendMediaTo?.("voice-training", [parent.id]));
+    await waitFor(() => expect(apiMocks.setMediaTrainingSelected).toHaveBeenCalledTimes(1));
+    expect(apiMocks.setMediaTrainingSelected).toHaveBeenCalledWith(project.id, "one", true);
+    await waitFor(() => expect(collectionContext.current?.workflow).toBe("voice-training"));
+  });
+
   it("reopens LipSync as its own four-region page", async () => {
     const view = render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => ({ ...project, lastPage: "lip-sync" })}
       onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={{ ...project, lastPage: "lip-sync" }} runtime={null} theme="dark" />);
+    await screen.findByText("Bố cục đã tải");
     expect(screen.getByRole("heading", { name: "Preview Video" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Timeline" })).toBeInTheDocument();
     expect(view.container.querySelector(".timeline-module--alignment")).toBeInTheDocument();
