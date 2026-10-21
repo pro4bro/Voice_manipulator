@@ -5,6 +5,9 @@ from __future__ import annotations
 import math
 import statistics
 from typing import Any
+from app.domain.subtitle_alignment_drift import inspect_drift
+
+ALIGNMENT_MODES = {"auto", "offset", "common-offset", "edge-offset", "group-offset", "ctc", "waveform", "diagnose"}
 
 _MIN_DURATION = 0.025
 _MAX_READY_MOVE = 0.150
@@ -166,8 +169,8 @@ def propose_alignment(
     source_duration = _number(duration)
     if source_duration is None or source_duration < 0:
         raise ValueError("Audio duration must be finite and nonnegative.")
-    if mode not in {"auto", "offset"}:
-        raise ValueError("mode must be 'auto' or 'offset'.")
+    if mode not in ALIGNMENT_MODES:
+        raise ValueError("Unknown subtitle refinement method.")
     in_offset, out_offset = _number(start_offset), _number(end_offset)
     if in_offset is None or out_offset is None:
         raise ValueError("Offsets must be finite seconds.")
@@ -206,7 +209,7 @@ def propose_alignment(
     # Stable global endpoint-offset consensus: a minimum of three independent
     # high-score anchors, with low median absolute deviation on both edges.
     anchor_records: list[tuple[float, float, float]] = []
-    if mode == "auto" and aligned is not None:
+    if mode != "offset" and aligned is not None:
         for measured, interval in zip(aligned, before):
             score = _number(measured.get("score"))
             new_start, new_end = _number(measured.get("start")), _number(measured.get("end"))
@@ -235,13 +238,18 @@ def propose_alignment(
         if max(local_start_mad, local_end_mad) <= 0.030:
             stable_local_centers += 1
     stable_group = stable_local_centers > 0
+    measured_offsets = mode in {"common-offset", "edge-offset"} and len(anchor_deltas) >= 3
+    if measured_offsets:
+        in_offset, out_offset = (median_start + median_end) / 2, (median_start + median_end) / 2
+        if mode == "edge-offset":
+            in_offset, out_offset = median_start, median_end
 
     translations, translation_groups = ({}, [])
     landmarks = waveform_landmarks or []
     if any(mark.get("kind") not in {"onset", "offset"} or _number(mark.get("time")) is None or
            not 0 <= mark["time"] <= source_duration for mark in landmarks):
         raise ValueError("Invalid source waveform landmark.")
-    if mode == "auto" and aligned is not None:
+    if mode in {"auto", "group-offset"} and aligned is not None:
         translations, translation_groups = _group_translations(words, before, aligned, selected, source_duration, rms_values, frame, landmarks)
 
     rows: list[dict[str, Any]] = []
@@ -261,20 +269,50 @@ def propose_alignment(
         elif old is None or not _valid_interval(old, source_duration):
             status, method = "review", "source"
             reasons.append("invalid-source-interval")
-        elif mode == "offset":
-            method = "explicit-offset"
+        elif mode == "diagnose":
+            method = "diagnostic"
+            reasons.append("read-only-diagnosis")
+        elif mode in {"offset", "common-offset", "edge-offset"}:
+            method = {"offset": "explicit-offset", "common-offset": "measured-common-offset", "edge-offset": "measured-edge-offset"}[mode]
+            if mode != "offset" and not measured_offsets:
+                status = "review"
+                reasons.append("insufficient-offset-anchors")
+                rows.append({"index": index, "text": str(word.get("text", "")), "before": original,
+                             "after": original.copy(), "status": status, "method": method, "reasons": reasons, "score": None})
+                continue
             candidate = (old[0] + in_offset, old[1] + out_offset)
-            reasons.append("user-specified-offset-seconds")
+            reasons.append("user-specified-offset-seconds" if mode == "offset" else "measured-offset-preview")
             if _valid_interval(candidate, source_duration):
                 status = "ready"
             else:
                 status = "review"
                 reasons.append("offset-would-break-source-or-duration-bounds")
+        elif mode == "waveform":
+            method, status = "waveform-vector", "review"
+            measured = aligned[index] if aligned is not None else {}
+            score = _number(measured.get("score"))
+            bounds = [_number(measured.get(edge)) for edge in ("start", "end")]
+            phonetic = score is not None and score >= .8 and all(v is not None for v in bounds)
+            centers = bounds if phonetic else old
+            candidates = []
+            for kind, center in zip(("onset", "offset"), centers):
+                possible = [m["time"] for m in landmarks if m["kind"] == kind and abs(m["time"] - center) <= (.08 if phonetic else .3)]
+                candidates.append(min(possible, key=lambda t: abs(t - center)) if possible else None)
+            if all(v is not None for v in candidates) and _valid_interval(tuple(candidates), source_duration):
+                candidate = tuple(candidates)
+                reasons.append("waveform-vector-review")
+                if not phonetic:
+                    reasons.append("waveform-word-identity-unverified")
+            else:
+                reasons.append("waveform-no-clear-boundary")
         elif index in translations:
             offset = translations[index]
             candidate = (old[0] + offset, old[1] + offset)
             status, method = "ready", "automatic-offset"
             reasons.append("stable-group-translation")
+        elif mode == "group-offset":
+            status, method = "review", "automatic-offset"
+            reasons.append("no-stable-offset-group")
         elif aligned is None:
             reasons.append("local-ctc-unavailable")
         else:
@@ -324,10 +362,10 @@ def propose_alignment(
             # A common translation does not alter a questionable span. Keep the
             # span warning visible without vetoing an independently supported
             # offset correction. Span-changing refinements still need review.
-            translation_only = method == "automatic-offset" or (method == "explicit-offset" and in_offset == out_offset)
-            if not translation_only:
+            translation_only = method == "automatic-offset" or (method in {"explicit-offset", "measured-common-offset", "measured-edge-offset"} and in_offset == out_offset)
+            if not translation_only and mode != "diagnose":
                 status = "review"
-        if status == "ready" and mode == "auto" and method != "automatic-offset" and rms_values is not None:
+        if status == "ready" and mode in {"auto", "ctc"} and method != "automatic-offset" and rms_values is not None:
             if candidate is None or not _waveform_support(candidate, rms_values, frame):
                 status = "review"
                 reasons.append("waveform-activity-uncorroborated")
@@ -343,7 +381,7 @@ def propose_alignment(
             "status": status,
             "method": method,
             "reasons": reasons,
-            "score": _number(aligned[index].get("score")) if aligned is not None and mode == "auto" else None,
+            "score": _number(aligned[index].get("score")) if aligned is not None and mode != "offset" else None,
         })
 
     # Validate the candidate as a batch. Existing defects on untouched rows do
@@ -401,6 +439,9 @@ def propose_alignment(
         })
     diagnostics = {
         "mode": mode,
+        "estimatedStartOffsetMs": in_offset * 1000 if measured_offsets else None,
+        "estimatedEndOffsetMs": out_offset * 1000 if measured_offsets else None,
+        "drift": inspect_drift(words, aligned, source_duration, sorted(selected), rms_values, frame, landmarks),
         "duration": source_duration,
         "ctc_available": aligned is not None,
         "ctc_anchor_count": len(anchor_deltas),

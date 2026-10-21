@@ -179,3 +179,66 @@ def test_malformed_pcm_is_a_visible_validation_error(tmp_path):
     audio.write_bytes(b"not a wav")
     response = client.post(url(p, asset) + "/proposals", json={"mode": "offset"})
     assert response.status_code == 422
+
+
+def test_manual_words_are_diagnosed_read_only_and_modes_reuse_bound_acoustic_artifact(tmp_path, monkeypatch):
+    _, p, media, asset, _, store, client = setup(tmp_path)
+    base = url(p, asset)
+    before = deepcopy(media.get(p.id, asset.id).words)
+    monkeypatch.setattr("app.adapters.subtitle_alignment.pcm_envelope", lambda _: {
+        "rms": [.1] * 300, "frameSeconds": .01, "duration": 3})
+    monkeypatch.setattr(store.aligner, "report", lambda: {"status": "available"})
+    monkeypatch.setattr(store, "_alignment_identity", lambda: {"worker": "fixture", "model": "fixture"})
+    calls = []
+    def run(root, audio, words, folder, indexes):
+        from app.adapters.subtitle_alignment_audio import sha256
+        calls.append(indexes)
+        measured = [{"text": w["text"], "start": w["start"] + .7, "end": w["end"] + .7, "score": .95} for w in words]
+        result = {"status": "complete", "words": measured, "audioSha256": sha256(audio)}
+        (folder / "alignment-input.json").write_text(json.dumps({"words": words, "audioSha256": sha256(audio), "indexes": indexes}), encoding="utf-8")
+        (folder / "alignment-output.json").write_text(json.dumps(result), encoding="utf-8")
+        (folder / "alignment.log").write_text("unit-test aligner stub", encoding="utf-8")
+        return result
+    monkeypatch.setattr(store.aligner, "run", run)
+    diagnostic = client.post(base + "/proposals", json={"mode": "diagnose"})
+    assert diagnostic.status_code == 200, diagnostic.text
+    data = diagnostic.json()
+    assert calls == [[0, 1]]
+    assert data["diagnostics"]["drift"]["comparedWords"] == 2
+    assert data["diagnostics"]["drift"]["severeCount"] == 2
+    assert data["rows"][1]["status"] == "locked"
+    response = client.post(base + f"/{data['id']}/apply", json={"indexes": [0], "edits": [
+        {"index": 0, "start": .3, "end": .5, "reviewed": True}]})
+    assert response.status_code == 422
+    for mode in ("ctc", "waveform", "group-offset", "common-offset", "edge-offset"):
+        response = client.post(base + "/proposals", json={"mode": mode})
+        assert response.status_code == 200, response.text
+        assert response.json()["aligner"]["reused"] is True
+    assert client.post(base + "/proposals", json={"mode": "offset", "startOffsetMs": 100, "endOffsetMs": 100}).status_code == 200
+    assert client.post(base + "/proposals", json={"mode": "diagnose"}).json()["aligner"]["reused"] is True
+    assert len(calls) == 1
+    assert media.get(p.id, asset.id).words == before
+    changed = deepcopy(before)
+    changed[0]["start"] = .21
+    media.update_script(p.id, asset.id, asset.text, "user", changed)
+    assert client.post(base + "/proposals", json={"mode": "diagnose"}).status_code == 200
+    assert len(calls) == 2
+    all_manual = [{**w, "timingSource": "manual"} for w in media.get(p.id, asset.id).words]
+    media.update_script(p.id, asset.id, asset.text, "user", all_manual)
+    response = client.post(base + "/proposals", json={"mode": "diagnose"})
+    assert response.status_code == 200, response.text
+    assert response.json()["summary"]["locked"] == 2
+    assert response.json()["diagnostics"]["drift"]["comparedWords"] == 2
+    assert len(calls) == 3
+    assert media.get(p.id, asset.id).words == all_manual
+
+
+def test_diagnosis_keeps_invalid_source_words_inspectable_when_cuts_exist(tmp_path):
+    _, p, media, asset, _, _, client = setup(tmp_path)
+    words = deepcopy(media.get(p.id, asset.id).words)
+    words[0]["start"] = None
+    media.update_script(p.id, asset.id, asset.text, "user", words)
+    media.update_timeline_edits(p.id, asset.id, [TimelineEditRange(start=.1, end=.5)], [])
+    response = client.post(url(p, asset) + "/proposals", json={"mode": "diagnose"})
+    assert response.status_code == 200, response.text
+    assert response.json()["diagnostics"]["drift"]["invalidCount"] == 1

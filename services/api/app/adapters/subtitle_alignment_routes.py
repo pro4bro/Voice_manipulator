@@ -9,7 +9,7 @@ Index = Annotated[int, Field(strict=True, ge=0)]
 
 class ProposalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    mode: Literal["auto", "offset"] = "auto"
+    mode: Literal["auto", "offset", "common-offset", "edge-offset", "group-offset", "ctc", "waveform", "diagnose"] = "auto"
     start_offset_ms: StrictFloat = Field(default=0, alias="startOffsetMs", ge=-2000, le=2000)
     end_offset_ms: StrictFloat = Field(default=0, alias="endOffsetMs", ge=-2000, le=2000)
     indexes: list[Index] | None = None

@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import re
+import shutil
 from threading import BoundedSemaphore
 from uuid import uuid4
 
@@ -128,6 +129,43 @@ class SubtitleAlignment:
             return None
         return self.get(project_id, asset_id, json.loads(path.read_text(encoding="utf-8"))["id"])
 
+    def _alignment_identity(self):
+        weights = self.aligner.model / "pytorch_model.bin"
+        if not weights.is_file() or not self.aligner.worker.is_file():
+            return None
+        runtime = self.aligner.python.parent.parent if self.aligner.python.parent.name.lower() == "scripts" else self.aligner.python.parent
+        packages = runtime / "Lib/site-packages"
+        dependencies = [path for name in ("whisperx", "torch", "transformers", "faster_whisper", "av") for path in packages.glob(f"{name}-*.dist-info/METADATA")]
+        alignment_code = packages / "whisperx/alignment.py"
+        if alignment_code.is_file():
+            dependencies.append(alignment_code)
+        return {"workerSha256": sha256(self.aligner.worker), "weightsSha256": sha256(weights),
+                "modelConfigSha256": fingerprint({p.name: sha256(p) for p in self.aligner.model.glob("*.json")}),
+                "runtimeSha256": fingerprint({p.relative_to(packages).as_posix(): sha256(p) for p in dependencies})}
+
+    def _reuse_alignment(self, project_id, asset_id, directory, folder, snapshot, indexes, identity):
+        if identity is None:
+            return None
+        try:
+            latest_id = json.loads((directory / "acoustic-latest.json").read_text(encoding="utf-8"))["id"]
+            previous = json.loads(self._path(project_id, asset_id, latest_id).read_text(encoding="utf-8"))
+            if (previous["inputSignature"] != fingerprint(snapshot) or previous.get("alignmentIdentity") != identity
+                    or previous.get("alignmentIndexes") != indexes or previous["aligner"]["status"] != "complete"):
+                return None
+            source = directory / latest_id
+            request = json.loads((source / "alignment-input.json").read_text(encoding="utf-8"))
+            result = json.loads((source / "alignment-output.json").read_text(encoding="utf-8"))
+            if (request["words"] != snapshot["asset"]["words"] or request["audioSha256"] != snapshot["audioSha256"]
+                    or result["audioSha256"] != snapshot["audioSha256"] or request["indexes"] != indexes
+                    or len(result["words"]) != len(request["words"])
+                    or any(a["text"] != b["text"] for a, b in zip(result["words"], request["words"]))):
+                return None
+            for name in ("alignment-input.json", "alignment-output.json", "alignment.log"):
+                shutil.copy2(source / name, folder / name)
+            return {**previous["aligner"], **result, "reused": True, "sourceProposalId": latest_id}
+        except (OSError, KeyError, TypeError, ValueError):
+            return None
+
     def analyze(self, project_id, asset_id, *, mode="auto", start_offset_ms=0, end_offset_ms=0, indexes=None):
         with self.media._lock(project_id):
             asset, audio, snapshot, _ = self._snapshot(project_id, asset_id)
@@ -142,19 +180,32 @@ class SubtitleAlignment:
         if indexes is not None and (len(indexes) != len(set(indexes)) or any(type(i) is not int or not 0 <= i < len(asset.words) for i in indexes)):
             raise ValueError("Phạm vi từ không hợp lệ.")
         scoped = list(range(len(asset.words))) if indexes is None else indexes
-        scoped = [i for i in scoped if not any(asset.words[i].get("start", 0) < r.end and asset.words[i].get("end", 0) > r.start for r in asset.removed_ranges)]
-        preflight = propose_alignment(asset.words, None, asset.duration, indexes=scoped)
-        eligible = [r["index"] for r in preflight["rows"] if r["status"] != "locked"]
+        scoped = [i for i in scoped if not interval(asset.words[i], asset.duration) or not any(asset.words[i]["start"] < r.end and asset.words[i]["end"] > r.start for r in asset.removed_ranges)]
+        # Read-only diagnosis includes manual words; application still locks them.
+        eligible = scoped
+        alignment_identity = None
         aligned = {"status": "not-used", "words": None, "reason": "Bù offset theo giá trị đã chọn."}
-        if mode == "auto":
+        if mode != "offset":
             aligned = {**self.aligner.report(), "words": None}
             if eligible and aligned["status"] == "available" and max(envelope["rms"], default=0) > .0001:
-                if not self._cpu.acquire(blocking=False):
-                    raise AlignmentConflict("Đang có tác vụ căn âm học khác. Thử lại sau khi tác vụ đó xong.")
-                try:
-                    aligned = self.aligner.run(self._root(project_id), audio, asset.words, folder, eligible)
-                finally:
-                    self._cpu.release()
+                alignment_identity = self._alignment_identity()
+                reused = self._reuse_alignment(project_id, asset_id, directory, folder, snapshot, eligible, alignment_identity)
+                if reused is not None:
+                    aligned = reused
+                else:
+                    if not self._cpu.acquire(blocking=False):
+                        raise AlignmentConflict("Đang có tác vụ căn âm học khác. Thử lại sau khi tác vụ đó xong.")
+                    try:
+                        aligned = self.aligner.run(self._root(project_id), audio, asset.words, folder, eligible)
+                    finally:
+                        self._cpu.release()
+        elif (directory / "acoustic-latest.json").is_file():
+            # Manual offset never starts a model. Existing bound evidence can
+            # still explain the source's drift without another inference run.
+            alignment_identity = self._alignment_identity()
+            reused = self._reuse_alignment(project_id, asset_id, directory, folder, snapshot, eligible, alignment_identity)
+            if reused is not None:
+                aligned = reused
         result = propose_alignment(asset.words, aligned.get("words"), asset.duration, rms=envelope["rms"],
             frame_seconds=envelope["frameSeconds"], mode=mode, start_offset=start_offset_ms / 1000,
             end_offset=end_offset_ms / 1000, indexes=scoped, waveform_landmarks=landmarks)
@@ -163,11 +214,14 @@ class SubtitleAlignment:
             "state": "proposed", "inputSignature": fingerprint(snapshot), "input": snapshot,
             "audioPath": audio.relative_to(self._root(project_id)).as_posix(),
             "mode": mode, "startOffsetMs": start_offset_ms, "endOffsetMs": end_offset_ms,
+            "alignmentIdentity": alignment_identity, "alignmentIndexes": eligible,
             "scope": indexes, "aligner": {k: v for k, v in aligned.items() if k not in {"words", "groups"}},
             "audio": {k: v for k, v in envelope.items() if k != "rms"}, **result}
         with self.media._lock(project_id):
             self._write(directory / f"{identity}.json", document)
             self._write(directory / "latest.json", {"id": identity})
+            if aligned["status"] == "complete":
+                self._write(directory / "acoustic-latest.json", {"id": identity})
             return self.get(project_id, asset_id, identity)
 
     def apply(self, project_id, asset_id, identity, indexes, edits):
@@ -175,6 +229,8 @@ class SubtitleAlignment:
             path, document, asset, _, snapshot = self._read(project_id, asset_id, identity)
             if document["state"] != "proposed" or fingerprint(snapshot) != document["inputSignature"]:
                 raise AlignmentConflict("Text, timing hoặc audio đã đổi. Phân tích lại trước khi áp dụng.")
+            if document["mode"] == "diagnose":
+                raise ValueError("Kiểm tra độ lệch chỉ đọc dữ liệu. Chọn một phương pháp tinh chỉnh để áp dụng.")
             if not indexes or len(set(indexes)) != len(indexes):
                 raise ValueError("Chọn ít nhất một từ; không chọn trùng.")
             overrides = {e["index"]: e for e in edits}
