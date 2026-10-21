@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/client";
+import { SUBTITLE_ALIGNMENT_METHODS, type SubtitleAlignmentMode } from "../../domain/subtitle-alignment";
+import { SubtitleDriftReport } from "./SubtitleDriftReport";
 import type { SubtitleAlignmentEdit, SubtitleAlignmentProposal, SubtitleAlignmentRow } from "../../domain/subtitle-alignment";
 import type { ProjectMediaAsset } from "../../domain/types";
 import type { WordSelection } from "../../domain/word-selection";
@@ -11,6 +13,7 @@ interface WavePoint { min: number; max: number }
 interface WaveLandmark { time: number; kind: "onset" | "offset" }
 interface EditableRow extends SubtitleAlignmentRow { start: string; end: string; checked: boolean; heard: boolean }
 interface Props {
+  triggerLabel?: string;
   projectId: string;
   assets: ProjectMediaAsset[];
   selection?: WordSelection;
@@ -28,12 +31,12 @@ function eligible(asset: ProjectMediaAsset): boolean {
 }
 function shownBounds(row: SubtitleAlignmentRow) { return row.after.start !== null && row.after.end !== null ? row.after : row.before; }
 
-export function SubtitleAlignmentControl({ projectId, assets, selection, prepare, onApplied }: Props) {
+export function SubtitleAlignmentControl({ projectId, assets, selection, prepare, onApplied, triggerLabel = "Căn chỉnh subtitle" }: Props) {
   const choices = useMemo(() => assets.filter(eligible), [assets]);
   const [open, setOpen] = useState(false);
   const [assetId, setAssetId] = useState(choices[0]?.id ?? "");
   const asset = choices.find((item) => item.id === assetId);
-  const [mode, setMode] = useState<"auto" | "offset">("auto");
+  const [mode, setMode] = useState<SubtitleAlignmentMode>("auto");
   const [startOffset, setStartOffset] = useState("0");
   const [endOffset, setEndOffset] = useState("0");
   const [scope, setScope] = useState<"whole" | "selected">("whole");
@@ -66,6 +69,9 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
   const offsetInputsValid = mode !== "offset" || (startOffset.trim() !== "" && endOffset.trim() !== "" && Number.isFinite(Number(startOffset)) && Number.isFinite(Number(endOffset)));
   const stale = Boolean(proposal && (proposal.stale || proposalSignature !== currentSignature));
   const focusedRow = rows.find((row) => row.index === focusedIndex) ?? rows[0];
+  const readOnly = proposal?.mode === "diagnose";
+  const drift = proposal?.diagnostics.drift;
+  const focusedEvidence = drift?.suspects.find((row) => row.index === focusedRow?.index);
   const applyable = rows.filter((row) => row.checked && row.status !== "locked");
   const selectedForApply = applyable.map((row) => row.index);
 
@@ -94,7 +100,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
     const target = latestAsset.current;
     if (target) void api.getSubtitleAlignment(projectId, target.id).then((value) => {
       if (serial.current !== version || !latestAsset.current || latestSignature.current !== signature(target)) return;
-      if (value) { setProposal(value); setProposalSignature(signature(target)); setRows(value.rows.map((row) => ({ ...row, start: String(shownBounds(row).start ?? ""), end: String(shownBounds(row).end ?? ""), checked: row.status === "ready", heard: false }))); setFocusedIndex(value.rows[0]?.index ?? null); }
+      if (value) { setMode(value.mode); setStartOffset(String(value.startOffsetMs)); setEndOffset(String(value.endOffsetMs)); setProposal(value); setProposalSignature(signature(target)); setRows(value.rows.map((row) => ({ ...row, start: String(shownBounds(row).start ?? ""), end: String(shownBounds(row).end ?? ""), checked: row.status === "ready", heard: false }))); setFocusedIndex(value.rows[0]?.index ?? null); }
     }).catch((reason) => { if (serial.current === version) setError(errorText(reason)); });
     return () => { document.removeEventListener("keydown", keydown); serial.current += 1; stopAudio(); };
     // Opening initializes the latest persisted proposal for the selected asset.
@@ -129,6 +135,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
   useEffect(() => { stopAudio(); }, [assetId, focusedIndex, stopAudio]);
 
   function close() { setOpen(false); }
+  function clearProposal() { invalidate(); setProposal(null); setRows([]); setNotice(null); setError(null); }
   function chooseAsset(id: string) { invalidate(); setAssetId(id); setProposal(null); setRows([]); setFocusedIndex(null); setScope("whole"); setError(null); }
   function setRow(index: number, patch: Partial<EditableRow>) { setRows((current) => current.map((row) => row.index === index ? { ...row, ...patch } : row)); }
   function parseEdits(): SubtitleAlignmentEdit[] | null {
@@ -145,7 +152,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
     return edits;
   }
   const edits = parseEdits();
-  const validApply = Boolean(asset && proposal?.state === "proposed" && !stale && !proposal.stale && selectedForApply.length && edits && !busy);
+  const validApply = Boolean(asset && !readOnly && proposal?.state === "proposed" && !stale && !proposal.stale && selectedForApply.length && edits && !busy);
 
   async function analyze() {
     if (!asset || busy || mutation.current || (scope === "selected" && !selectionMatches)) return;
@@ -185,10 +192,10 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
     } catch (reason) { if (serial.current === version) setError(errorText(reason)); }
     finally { mutation.current = false; if (mounted.current) setBusy(false); }
   }
-  function audition(which: "before" | "after") {
+  function audition(which: "before" | "after" | "ctc") {
     const row = focusedRow, audio = audioRef.current;
     if (!asset || !row || !audio) return;
-    const bounds = which === "before" ? row.before : rowAfterBounds(row);
+    const bounds = which === "before" ? row.before : which === "ctc" ? { start: focusedEvidence?.ctcStart ?? null, end: focusedEvidence?.ctcEnd ?? null } : rowAfterBounds(row);
     if (bounds.start === null || bounds.end === null || bounds.end <= bounds.start) return;
     stopAudio(); audio.src = subtitleAudioUrl(projectId, asset.id); audio.dataset.stopAt = String(Math.min(asset.duration, bounds.end + .2)); audio.currentTime = Math.max(0, bounds.start - .2);
     const generation = audioGeneration.current;
@@ -197,29 +204,32 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
   }
 
   return <>
-    <button ref={triggerRef} className="subtitle-alignment-trigger" type="button" disabled={!choices.length} onClick={() => setOpen(true)}>Căn chỉnh subtitle</button>
+    <button ref={triggerRef} className="subtitle-alignment-trigger" type="button" disabled={!choices.length} onClick={() => setOpen(true)}>{triggerLabel}</button>
     {open ? createPortal(<div className="subtitle-alignment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <div ref={dialogRef} className="subtitle-alignment-dialog" role="dialog" aria-modal="true" aria-labelledby="subtitle-alignment-title">
         <header><div><h2 id="subtitle-alignment-title">Căn chỉnh subtitle</h2><p>So sánh mốc từ với âm thanh gốc. Từ thủ công vẫn khóa; bản gốc không bị thay đổi.</p></div><button data-close type="button" aria-label="Đóng căn chỉnh subtitle" onClick={close}>×</button></header>
+        <div className="subtitle-alignment-content">
         <div className="subtitle-alignment-controls">
           <label>Track<select aria-label="Track căn chỉnh" value={assetId} onChange={(event) => chooseAsset(event.target.value)}>{choices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <fieldset><legend>Phạm vi</legend><label><input type="radio" checked={scope === "whole"} onChange={() => setScope("whole")} />Toàn track</label><label><input type="radio" checked={scope === "selected"} disabled={!selectionMatches || busy} onChange={() => setScope("selected")} />Từ đang chọn ({selectionMatches ? selectedIndexes.length : 0})</label></fieldset>
-          <fieldset><legend>Phương pháp</legend><label><input type="radio" checked={mode === "auto"} onChange={() => setMode("auto")} />Tự động</label><label><input type="radio" checked={mode === "offset"} onChange={() => setMode("offset")} />Offset</label></fieldset>
-          <label>Offset IN (ms)<input type="number" step="1" value={startOffset} disabled={busy || mode !== "offset"} onChange={(event) => setStartOffset(event.target.value)} /></label>
-          <label>Offset OUT (ms)<input type="number" step="1" value={endOffset} disabled={busy || mode !== "offset"} onChange={(event) => setEndOffset(event.target.value)} /></label>
-          <button type="button" disabled={!asset || busy || !offsetInputsValid || (scope === "selected" && !selectionMatches)} onClick={() => void analyze()}>{busy ? "Đang xử lý…" : "Tạo đề xuất"}</button>
+          <fieldset><legend>Phạm vi</legend><label><input type="radio" checked={scope === "whole"} onChange={() => { clearProposal(); setScope("whole"); }} />Toàn track</label><label><input type="radio" checked={scope === "selected"} disabled={!selectionMatches || busy} onChange={() => { clearProposal(); setScope("selected"); }} />Từ đang chọn ({selectionMatches ? selectedIndexes.length : 0})</label></fieldset>
+          <label className="subtitle-refinement-method">Phương pháp tinh chỉnh<select aria-label="Phương pháp tinh chỉnh" value={mode} disabled={busy} onChange={(event) => { clearProposal(); setMode(event.target.value as SubtitleAlignmentMode); }}>{SUBTITLE_ALIGNMENT_METHODS.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+          <label>Offset IN (ms)<input type="number" step="1" value={startOffset} disabled={busy || mode !== "offset"} onChange={(event) => { clearProposal(); setStartOffset(event.target.value); }} /></label>
+          <label>Offset OUT (ms)<input type="number" step="1" value={endOffset} disabled={busy || mode !== "offset"} onChange={(event) => { clearProposal(); setEndOffset(event.target.value); }} /></label>
+          <button type="button" disabled={!asset || busy || !offsetInputsValid || (scope === "selected" && !selectionMatches)} onClick={() => void analyze()}>{busy ? "Đang xử lý…" : mode === "diagnose" ? "Kiểm tra độ lệch" : "Tạo đề xuất"}</button>
         </div>
+        <p className="subtitle-refinement-description">{SUBTITLE_ALIGNMENT_METHODS.find((item) => item.id === mode)?.description}</p>
+        {drift ? <SubtitleDriftReport report={drift} onInspect={setFocusedIndex} /> : null}
         {scope === "selected" && !selectionMatches ? <p className="subtitle-alignment-warning" role="alert">Phạm vi chọn đã hết hiệu lực vì track không còn khớp.</p> : null}
         {stale ? <p className="subtitle-alignment-warning" role="alert">Script, text hoặc điểm cắt đã đổi. Đề xuất cũ đã bị khóa; hãy tạo đề xuất mới.</p> : null}
         {proposal && (proposal.aligner.status === "unavailable" || proposal.aligner.status === "failed") ? <p className="subtitle-alignment-warning" role="status">{proposal.aligner.reason ?? alignerLabel(proposal.aligner.status)}</p> : null}
         {notice ? <p role="status">{notice}</p> : null}{error ? <p role="alert">{error}</p> : null}
-        {proposal ? <><div className="subtitle-alignment-summary" role="status">Đề xuất: {proposal.summary.ready} sẵn sàng · {proposal.summary.review} cần nghe lại · {proposal.summary.locked} khóa · {proposal.summary.unchanged} không đổi. Bộ căn chỉnh: {alignerLabel(proposal.aligner.status)}{proposal.aligner.model ? ` · ${proposal.aligner.model}` : ""}{proposal.aligner.license ? ` · ${proposal.aligner.license}` : ""}</div><div className="subtitle-alignment-workspace">
+        {proposal ? <><div className="subtitle-alignment-summary" role="status">Phương pháp: {SUBTITLE_ALIGNMENT_METHODS.find((item) => item.id === proposal.mode)?.label} · Đề xuất: {proposal.summary.ready} sẵn sàng · {proposal.summary.review} cần nghe lại · {proposal.summary.locked} khóa · {proposal.summary.unchanged} không đổi. Bộ căn chỉnh: {alignerLabel(proposal.aligner.status)}{proposal.aligner.model ? ` · ${proposal.aligner.model}` : ""}{proposal.aligner.license ? ` · ${proposal.aligner.license}` : ""}</div><div className="subtitle-alignment-workspace">
           <section className="subtitle-alignment-list" aria-label="Các từ trong đề xuất">
             <table><thead><tr><th><span className="sr-only">Áp dụng</span></th><th>Từ</th><th>Trạng thái</th><th>IN / OUT (s)</th></tr></thead><tbody>{rows.map((row) => <tr key={row.index} className={focusedIndex === row.index ? "is-focused" : ""}>
-              <td><input type="checkbox" aria-label={`Chọn từ ${row.text} ${row.index + 1}`} checked={row.checked} disabled={busy || stale || proposal.stale || proposal.state !== "proposed" || row.status === "locked" || (needsHeardConfirmation(row) && !row.heard)} onChange={(event) => { setRow(row.index, { checked: event.target.checked }); setFocusedIndex(row.index); }} /></td>
+              <td><input type="checkbox" aria-label={`Chọn từ ${row.text} ${row.index + 1}`} checked={row.checked} disabled={readOnly || busy || stale || proposal.stale || proposal.state !== "proposed" || row.status === "locked" || (needsHeardConfirmation(row) && !row.heard)} onChange={(event) => { setRow(row.index, { checked: event.target.checked }); setFocusedIndex(row.index); }} /></td>
               <td><button className="subtitle-alignment-word" type="button" onClick={() => setFocusedIndex(row.index)}>{row.text}<small>#{row.index + 1}</small></button></td>
               <td>{statusLabel(row.status)}</td>
-              <td>{row.status === "locked" ? <>{formatTime(row.before.start)} / {formatTime(row.before.end)}<small className="subtitle-alignment-time-note">Trước · khóa</small></> : <div className="subtitle-alignment-times"><label>IN <small>{formatTime(row.before.start)} →</small><input aria-label={`IN từ ${row.index + 1}`} inputMode="decimal" value={row.start} disabled={busy || stale || proposal.state !== "proposed"} onChange={(event) => setRow(row.index, { start: event.target.value, checked: false, heard: false })} /></label><label>OUT <small>{formatTime(row.before.end)} →</small><input aria-label={`OUT từ ${row.index + 1}`} inputMode="decimal" value={row.end} disabled={busy || stale || proposal.state !== "proposed"} onChange={(event) => setRow(row.index, { end: event.target.value, checked: false, heard: false })} /></label></div>}</td>
+              <td>{row.status === "locked" ? <>{formatTime(row.before.start)} / {formatTime(row.before.end)}<small className="subtitle-alignment-time-note">Trước · khóa</small></> : <div className="subtitle-alignment-times"><label>IN <small>{formatTime(row.before.start)} →</small><input aria-label={`IN từ ${row.index + 1}`} inputMode="decimal" value={row.start} disabled={readOnly || busy || stale || proposal.state !== "proposed"} onChange={(event) => setRow(row.index, { start: event.target.value, checked: false, heard: false })} /></label><label>OUT <small>{formatTime(row.before.end)} →</small><input aria-label={`OUT từ ${row.index + 1}`} inputMode="decimal" value={row.end} disabled={readOnly || busy || stale || proposal.state !== "proposed"} onChange={(event) => setRow(row.index, { end: event.target.value, checked: false, heard: false })} /></label></div>}</td>
             </tr>)}</tbody></table>
           </section>
           <aside className="subtitle-alignment-detail"><h3>{focusedRow?.text ?? "Chi tiết từ"}</h3><p>{focusedRow ? methodLabel(focusedRow.method) : ""} · {focusedRow?.score === null || focusedRow?.score === undefined ? "Không có điểm" : `Điểm ${focusedRow.score.toFixed(2)}`}</p>
@@ -232,11 +242,13 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
             }}>Thử offset chung {signedMs(measuredCommonOffset(proposal)! / 1000)} ms</button> : null}
             <p className="subtitle-alignment-wave-legend"><span>Nét đứt: trước</span><span>Nét liền: đề xuất</span><span>Chấm: mốc âm tăng/giảm rõ</span></p><Waveform points={wave} range={waveRange} landmarks={readLandmarks(proposal.diagnostics.waveform_landmarks)} label="Dạng sóng với biên trước và đề xuất" before={focusedRow?.before} after={focusedRow ? rowAfterBounds(focusedRow) : undefined} />{waveError ? <p role="status">Không tải được dạng sóng: {waveError}</p> : null}
             <div className="subtitle-alignment-audition"><button type="button" disabled={!focusedRow || focusedRow.before.start === null} onClick={() => audition("before")}>Nghe trước</button><button type="button" disabled={!focusedRow || focusedRow.after.start === null} onClick={() => audition("after")}>Nghe đề xuất</button></div>
-            {focusedRow && needsHeardConfirmation(focusedRow) ? <button type="button" className="subtitle-alignment-confirm" disabled={busy || stale || proposal.state !== "proposed" || !validBounds(focusedRow, asset?.duration)} onClick={() => setRow(focusedRow.index, { heard: true, checked: true })}>{focusedRow.heard ? "Đã xác nhận bằng tai" : "Tôi đã nghe và xác nhận mốc"}</button> : null}
+            {focusedEvidence?.ctcStart != null ? <><p>Mốc đối chiếu CTC: {formatTime(focusedEvidence.ctcStart)} → {formatTime(focusedEvidence.ctcEnd)} s.</p><button type="button" onClick={() => audition("ctc")}>Nghe mốc đối chiếu CTC</button></> : null}
+            {!readOnly && focusedRow && needsHeardConfirmation(focusedRow) ? <button type="button" className="subtitle-alignment-confirm" disabled={busy || stale || proposal.state !== "proposed" || !validBounds(focusedRow, asset?.duration)} onClick={() => setRow(focusedRow.index, { heard: true, checked: true })}>{focusedRow.heard ? "Đã xác nhận bằng tai" : "Tôi đã nghe và xác nhận mốc"}</button> : null}
             {focusedRow?.status === "locked" ? <p>Từ manual không thể thay đổi.</p> : null}
           </aside>
         </div></> : null}
-        <footer>{proposal?.state === "applied" ? <button type="button" disabled={busy || stale} onClick={() => void restore()}>Khôi phục bản đã áp dụng</button> : null}<button type="button" disabled={!validApply} onClick={() => void apply()}>Áp dụng {selectedForApply.length} từ đã chọn</button><button type="button" onClick={close}>Đóng</button></footer>
+        </div>
+        <footer>{readOnly ? <span>Kiểm tra chỉ đọc · chọn phương pháp khác để tạo đề xuất chỉnh sửa.</span> : null}{proposal?.state === "applied" ? <button type="button" disabled={busy || stale} onClick={() => void restore()}>Khôi phục bản đã áp dụng</button> : null}<button type="button" disabled={!validApply} onClick={() => void apply()}>Áp dụng {selectedForApply.length} từ đã chọn</button><button type="button" onClick={close}>Đóng</button></footer>
         <audio ref={audioRef} className="subtitle-alignment-audio" preload="none" onTimeUpdate={(event) => { const audio = event.currentTarget; if (audio.currentTime >= Number(audio.dataset.stopAt)) stopAudio(); }} onEnded={stopAudio} />
       </div>
     </div>, document.body) : null}
@@ -251,8 +263,8 @@ function needsHeardConfirmation(row: EditableRow) {
   return Number(row.start) !== row.after.start || Number(row.end) !== row.after.end;
 }
 function statusLabel(status: SubtitleAlignmentRow["status"]) { return ({ ready: "Sẵn sàng · cần kiểm tra", review: "Cần nghe lại", locked: "Khóa · thủ công", unchanged: "Không đổi · xác nhận nếu áp dụng" })[status]; }
-function methodLabel(method: string) { return ({ ctc: "Đề xuất từ bộ căn CTC", "explicit-offset": "Bù offset đã nhập", "automatic-offset": "Bù offset theo cụm mốc đồng thuận", manual: "Mốc thủ công", source: "Giữ mốc nguồn", scope: "Ngoài phạm vi chọn" } as Record<string, string>)[method] ?? "Đề xuất căn chỉnh"; }
-function reasonLabel(reason: string) { return ({ "stable-group-translation": "Dịch cả cụm theo offset ổn định, giữ độ dài từng từ.", "manual-timing-locked": "Mốc từ đã được chỉnh thủ công và được khóa.", "outside-selected-scope": "Từ nằm ngoài phạm vi đã chọn.", "invalid-source-interval": "Mốc nguồn chưa hợp lệ.", "user-specified-offset-seconds": "Dùng offset IN/OUT đã nhập.", "offset-would-break-source-or-duration-bounds": "Offset vượt khỏi thời lượng nguồn.", "local-ctc-unavailable": "Không có mô hình căn CTC trên máy.", "invalid-ctc-interval": "Mốc CTC không hợp lệ.", "existing-source-overlap": "Mốc nguồn đang chồng lấn từ khác.", "ctc-confidence-uncertain": "Điểm tin cậy CTC còn thấp.", "ctc-offset-not-corroborated": "Offset CTC chưa được các mốc lân cận xác nhận.", "ctc-move-large": "Mốc CTC dịch chuyển quá xa.", "duration-outlier": "Thời lượng từ khác thường; cần nghe lại.", "speaking-rate-outlier": "Nhịp nói tại từ này khác các từ lân cận.", "ctc-measured-and-offset-corroborated": "Mốc CTC được nhóm mốc lân cận xác nhận.", "waveform-activity-uncorroborated": "Dạng sóng chưa xác nhận hoạt động gần cả hai biên.", "whole-output-interval-conflict": "Mốc này chồng lấn khi xét toàn track." } as Record<string, string>)[reason] ?? "Cần kiểm tra mốc này."; }
+function methodLabel(method: string) { return ({ "waveform-vector": "Căn theo waveform vector · cần xác nhận", diagnostic: "Đối chiếu chỉ đọc", "measured-common-offset": "Offset chung đo từ CTC", "measured-edge-offset": "Offset IN/OUT đo riêng", ctc: "Đề xuất từ bộ căn CTC", "explicit-offset": "Bù offset đã nhập", "automatic-offset": "Bù offset theo cụm mốc đồng thuận", manual: "Mốc thủ công", source: "Giữ mốc nguồn", scope: "Ngoài phạm vi chọn" } as Record<string, string>)[method] ?? "Đề xuất căn chỉnh"; }
+function reasonLabel(reason: string) { return ({ "waveform-vector-review": "Biên đề xuất từ điểm sóng tăng/giảm rõ; cần nghe xác nhận.", "waveform-word-identity-unverified": "Chưa có mốc CTC xác nhận từ; sóng chưa chứng minh biên từ.", "waveform-no-clear-boundary": "Không tìm được cặp biên sóng rõ và hợp lệ gần từ.", "no-stable-offset-group": "Chưa có nhóm offset đủ ổn định.", "measured-offset-preview": "Offset được ước lượng từ mốc CTC; cần nghe kiểm tra.", "insufficient-offset-anchors": "Chưa có đủ ba mốc CTC để ước lượng offset.", "read-only-diagnosis": "Chỉ kiểm tra, chưa đề xuất thay đổi.", "stable-group-translation": "Dịch cả cụm theo offset ổn định, giữ độ dài từng từ.", "manual-timing-locked": "Mốc từ đã được chỉnh thủ công và được khóa.", "outside-selected-scope": "Từ nằm ngoài phạm vi đã chọn.", "invalid-source-interval": "Mốc nguồn chưa hợp lệ.", "user-specified-offset-seconds": "Dùng offset IN/OUT đã nhập.", "offset-would-break-source-or-duration-bounds": "Offset vượt khỏi thời lượng nguồn.", "local-ctc-unavailable": "Không có mô hình căn CTC trên máy.", "invalid-ctc-interval": "Mốc CTC không hợp lệ.", "existing-source-overlap": "Mốc nguồn đang chồng lấn từ khác.", "ctc-confidence-uncertain": "Điểm tin cậy CTC còn thấp.", "ctc-offset-not-corroborated": "Offset CTC chưa được các mốc lân cận xác nhận.", "ctc-move-large": "Mốc CTC dịch chuyển quá xa.", "duration-outlier": "Thời lượng từ khác thường; cần nghe lại.", "speaking-rate-outlier": "Nhịp nói tại từ này khác các từ lân cận.", "ctc-measured-and-offset-corroborated": "Mốc CTC được nhóm mốc lân cận xác nhận.", "waveform-activity-uncorroborated": "Dạng sóng chưa xác nhận hoạt động gần cả hai biên.", "whole-output-interval-conflict": "Mốc này chồng lấn khi xét toàn track." } as Record<string, string>)[reason] ?? "Cần kiểm tra mốc này."; }
 function alignerLabel(status: string) { return ({ available: "Mô hình đã sẵn sàng", complete: "Đã tạo đề xuất từ mô hình", unavailable: "Chưa có mô hình căn trên máy", failed: "Mô hình căn gặp lỗi", "not-used": "Không dùng mô hình (offset thủ công)" } as Record<string, string>)[status] ?? `Trạng thái mô hình: ${status}`; }
 function finiteOrZero(value: string) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 function formatTime(value: number | null) { return value === null ? "—" : value.toFixed(3); }

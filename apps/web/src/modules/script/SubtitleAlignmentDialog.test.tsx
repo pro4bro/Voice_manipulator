@@ -30,6 +30,7 @@ const props = (overrides: Partial<Parameters<typeof SubtitleAlignmentControl>[0]
 const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ points: [{ min: -.2, max: .3 }] }) }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(api.getSubtitleAlignment).mockResolvedValue(null);
   vi.mocked(api.analyzeSubtitleAlignment).mockResolvedValue(proposal(rows));
   vi.mocked(api.applySubtitleAlignment).mockResolvedValue({ asset: asset(), proposal: proposal(rows, "applied") });
@@ -39,6 +40,41 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("SubtitleAlignmentControl", () => {
+  it("restores the saved method and offsets before making another proposal", async () => {
+    vi.mocked(api.getSubtitleAlignment).mockResolvedValue({ ...proposal(rows), mode: "offset", startOffsetMs: 80, endOffsetMs: 110 });
+    render(<SubtitleAlignmentControl {...props({ selection: undefined })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Căn chỉnh subtitle" }));
+    await waitFor(() => expect(screen.getByLabelText("Phương pháp tinh chỉnh")).toHaveValue("offset"));
+    expect(screen.getByLabelText("Offset IN (ms)")).toHaveValue(80);
+    expect(screen.getByLabelText("Offset OUT (ms)")).toHaveValue(110);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo đề xuất" }));
+    await waitFor(() => expect(api.analyzeSubtitleAlignment).toHaveBeenCalledWith("project", "track-a", { mode: "offset", startOffsetMs: 80, endOffsetMs: 110 }));
+  });
+
+  it("shows drift evidence and keeps diagnosis read-only even with editable proposal rows", async () => {
+    const diagnostic = { ...proposal(rows), mode: "diagnose" as const };
+    diagnostic.diagnostics.drift = { status: "large-drift", scopeWords: 3, comparedWords: 2, unassessedCount: 1,
+      evidenceCoverage: 2 / 3, largeCount: 1, severeCount: 1, quietCount: 0, invalidCount: 0,
+      largeThresholdMs: 250, severeThresholdMs: 500, suspects: [{ index: 0, text: "xin", start: 1, end: 1.2,
+        ctcStart: 1.7, ctcEnd: 1.9, startOffsetMs: 700, endOffsetMs: 700, flags: ["severe-displacement"], waveformSupport: true }] };
+    vi.mocked(api.analyzeSubtitleAlignment).mockResolvedValue(diagnostic);
+    render(<SubtitleAlignmentControl {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Căn chỉnh subtitle" }));
+    fireEvent.change(screen.getByLabelText("Phương pháp tinh chỉnh"), { target: { value: "diagnose" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra độ lệch" }));
+    expect(await screen.findByText("Có dấu hiệu chữ lệch xa voice")).toBeInTheDocument();
+    expect(screen.getByText(/Đối chiếu được 2\/3 từ/)).toBeInTheDocument();
+    expect(screen.getByLabelText("IN từ 1")).toBeDisabled();
+    expect(screen.getByLabelText("Chọn từ xin 1")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Áp dụng 1 từ đã chọn" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nghe mốc đối chiếu CTC" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Phương pháp tinh chỉnh"), { target: { value: "waveform" } });
+    expect(screen.queryByText("Có dấu hiệu chữ lệch xa voice")).not.toBeInTheDocument();
+    expect(api.applySubtitleAlignment).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo đề xuất" }));
+    await waitFor(() => expect(api.analyzeSubtitleAlignment).toHaveBeenLastCalledWith("project", "track-a", expect.objectContaining({ mode: "waveform" })));
+  });
+
   it("prefills a measured common offset without analyzing or applying until requested", async () => {
     const result = proposal(rows);
     result.diagnostics.local_offset_group = { anchor_count: 12, median_start_offset: .133, median_end_offset: .099 };
@@ -89,7 +125,7 @@ describe("SubtitleAlignmentControl", () => {
   it("sends independent offsets and only the matching selected indexes", async () => {
     const input = props(); render(<SubtitleAlignmentControl {...input} />);
     fireEvent.click(screen.getByRole("button", { name: "Căn chỉnh subtitle" }));
-    fireEvent.click(await screen.findByLabelText("Offset"));
+    fireEvent.change(await screen.findByLabelText("Phương pháp tinh chỉnh"), { target: { value: "offset" } });
     fireEvent.change(screen.getByLabelText("Offset IN (ms)"), { target: { value: "-80" } });
     fireEvent.change(screen.getByLabelText("Offset OUT (ms)"), { target: { value: "35" } });
     fireEvent.click(screen.getByLabelText("Từ đang chọn (2)"));

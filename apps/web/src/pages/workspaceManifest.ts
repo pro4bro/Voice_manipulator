@@ -21,11 +21,11 @@ const manifests: Record<WorkspacePage, WorkspaceManifest> = {
     page: "speech-to-text",
     label: "Input",
     eyebrow: "CAPTURE / TRANSCRIBE / REVIEW",
-    modules: ["library-panel", "speaker-isolation", "speaker-emotion", "script", "obs-capture", "recorder", "timeline"],
+    modules: ["library-panel", "subtitle-refinement", "speaker-isolation", "speaker-emotion", "script", "obs-capture", "recorder", "timeline"],
     columns: {
       left: ["library-panel"],
       center: ["script"],
-      right: ["obs-capture", "recorder", "speaker-emotion", "speaker-isolation"],
+      right: ["obs-capture", "recorder", "subtitle-refinement", "speaker-emotion", "speaker-isolation"],
       bottom: ["timeline"],
     },
     modes: [],
