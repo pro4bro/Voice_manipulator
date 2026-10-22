@@ -1,5 +1,20 @@
 # Project Status — 2026-10-22
 
+## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
+
+MKV native selection retains the standard Import dialog with cache/link, Import/
+STT by track and normal Import; MKV adds its follow action within that review.
+Pending row shortcuts open the same dialog. Confirmation, cancellation, focus and
+no-track/processing guards preserve explicit user control. Browser upload/handoff
+and existing backend behavior remain. Source confirms local faster-whisper tiny
+for live preview; detailed MKV uses large-v3. No inference policy change.
+
+Frontend1219, focused135/latest69+2, typecheck/build213, related API32 and mutation
+pass. ADR0133 and `docs/gates/mkv-import85-20261022.md` retain evidence and limits.
+Browser/device UAT and Round84's full-API process containment gap remain open.
+Runtime ports are stopped at closure; build is ready for the next normal launch.
+No backend/media/default STT change. Phase03 stays60%, Phase06 open; stop85.
+
 ## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
 
 Growing MKV refresh preserves an ongoing scrub and its released playhead. Paused

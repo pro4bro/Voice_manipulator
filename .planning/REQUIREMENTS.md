@@ -40,6 +40,7 @@
 - **UI-06**: Independent workspace reads do not wait on unrelated engine schemas; data reads have a bounded deadline, OBS polling stays single-flight and failed reads expose a retry without terminal restart.
 - **UI-07**: Full zoom-out remains a fit-to-source intent during ordinary recording, OBS LiveLink and growing-MKV import. Updated source duration expands the fitted extent without further input; explicit zoom-in retains manual navigation and maximum density. OBS acquisition stays bounded independently of the viewport extent, including when source-linked seeking suspends playhead following.
 - **UI-08**: Growing-MKV refresh preserves an active scrub and its released playhead. Paused/stale audio events cannot overwrite that coordinate; published PCM revisions reload audio and restore position before the playback clock resumes. Scrubbing cancels obsolete pending Play activation.
+- **UI-09**: Native MKV selection opens the ordinary Import review with cache/link choice, per-track Import/STT controls and an additional MKV follow action. No work starts before confirmation; cancellation is available by button, backdrop or Escape, and keyboard focus stays in the review. Ordinary multitrack media keeps the same review without MKV-only actions.
 
 ## Speech To Text
 

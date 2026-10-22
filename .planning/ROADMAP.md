@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
+
+Delivered the ordinary native Import review with cache/link and per-track Import/
+STT, plus MKV-only follow options. Explicit confirmation/cancel, keyboard focus,
+pending-row reopening and processing/no-track guards remain. Current source uses
+local faster-whisper tiny for OBS/MKV live preview; inference behavior is unchanged.
+
+Frontend1219, focused135/latest69+2, typecheck/build213, related API32 and mutation
+pass. ADR0133 and mkv-import85 gate record proof/limits. Browser/device UAT and
+Round84's full-API process containment gap stay open. Runtime ports are stopped
+at closure; build is ready for normal launch. No backend/media/default STT change.
+Phase03 stays60%, Phase06 open; stop85.
+
 ## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
 
 Delivered stable playhead/audition during and after growing-MKV refresh. Only

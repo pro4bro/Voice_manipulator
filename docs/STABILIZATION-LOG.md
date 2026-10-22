@@ -2437,3 +2437,42 @@ log recovery và health cuối được lưu. Trước lần full API trên runt
 theo phải chặn terminate ngoài cây process fixture trước khi gọi stop. Gate này
 và browser/device UAT còn mở; không hạ ngưỡng để báo pass. Phase03 giữ60%, Phase06
 mở, không đổi default STT/portable; dừng84.
+
+## Round85 — Dialog Import thông thường và tùy chọn MKV (2026-10-22)
+
+### Feedback
+
+Chủ dự án hỏi tool Live Transcribe hiện tại và muốn MKV vẫn hiện dialog Import
+thông thường, bổ sung các lựa chọn riêng của MKV.
+
+### Agent tự kiểm
+
+Đọc source xác nhận Studio local tạo faster_whisper.WhisperModel; OBS live và
+growing-MKV live chọn tiny, MKV preview3s, detailed phase chọn large-v3. Không đổi
+model. Luồng Host trước đây mở context menu ngay khi probe MKV xong, cache còn
+nằm trong dialog thứ hai.4 test đỏ bắt đúng việc thiếu review thông thường.
+
+Đã gom thành LocalMediaImportDialog tự mở: Cache/link, Import/STT mỗi track, nút
+Import file và phần MKV riêng với Theo dõi MKV đang ghi. Chưa bấm xác nhận thì
+không chạy import/STT. Cache giữ nguyên khi đổi track; click/phải chuột mục chờ
+mở lại review; đang xử lý không mở lại. Hủy/backdrop/Escape hủy mục chờ; focus vào
+control đang bật, vòng Tab trong dialog và trả focus khi đóng. Hướng dẫn browser
+handoff và notice sau Follow khớp auto final import/full-file STT tùy chọn.
+
+Frontend full1219/150file/192.68s pass; focused135/17.45s, final69/12.16s và2/2.37s
+pass. Typecheck/build213/409ms pass. Lượt focused đầu7 fail gồm4 fixture thiếu import
+within và3 entry point còn trỏ menu cũ; sửa fixture/entry point theo yêu cầu mới,
+giữ nguyên assertion callback/cache/follow60s. Mutation đảo điều kiện MKV bị2 case
+bắt đúng, hash product giữ nguyên. Không skip/suppression/nới timeout.
+
+### Kết quả so với ngưỡng
+
+API liên quan MKV32 pass/2 warning cũ/91.37s, gồm real-media và final-tail. Không
+chạy lại full API chứa test process chưa cách ly an toàn đã dừng source ở Round84;
+gate này còn mở, không được coi32 targeted là full pass. Không sửa backend/media/
+engine, không ghi project chủ dự án. Browser vẫn bị tắt trong Work settings nên
+không nhận UAT browser/thiết bị mới. Runtime ports không listen lúc chốt; log trước
+round có controller khác tiếp quản, chưa quy nguyên nhân dừng hiện tại và không
+restart runtime trong round UI. Build sẵn cho lần mở app bình thường tiếp theo.
+ADR0133 và `docs/gates/mkv-import85-20261022.md` giữ bằng chứng. Phase03 giữ60%,
+Phase06 mở, không đổi STT default/portable; dừng85.

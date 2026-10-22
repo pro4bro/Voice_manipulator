@@ -1,5 +1,26 @@
 # Work Rounds
 
+## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
+
+Native MKV/multitrack selection now opens the ordinary Import review immediately:
+cache/link, per-track Import/STT and normal Import, with a separate MKV follow
+section. Pending click/right-click reopens the review; processing cannot reopen
+it. Cache survives track edits; no work starts before explicit confirmation.
+Cancel/backdrop/Escape withdraw pending selection and focus stays in the dialog.
+Browser upload keeps its queue/native handoff. Follow notice matches automatic
+final import and optional full-file STT. ADR0133 records the contract.
+
+Source confirms local faster-whisper/Whisper tiny for OBS and MKV live preview;
+MKV preview slices3s, detailed phase large-v3. No model/media/backend change.
+Frontend1219/150files/192.68s, focused135 then latest69+2, typecheck/build213/409ms,
+related API32/2 existing warnings/91.37s and isolated mutation pass. Four new
+regressions; existing callback assertions remain. See mkv-import85 gate.
+
+Browser remains disabled; no live UI/device UAT. Full API containment gap from84
+remains open; unsafe process tests are not repeated or waived. Runtime ports are
+stopped at closure; no runtime restart/owner project writes for this UI round.
+Build is ready for the next normal launch. Phase03 stays60%, Phase06 open; stop85.
+
 ## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
 
 Fixes a reproduced96→60s playhead reset after dragging across growing-MKV refresh.

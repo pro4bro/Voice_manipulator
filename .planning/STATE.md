@@ -6,11 +6,25 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round84 fixes playhead rewind across growing-MKV refresh.
-last_activity_desc: GROWING-MKV-PLAYHEAD-01 preserves pointer/paused position, keeps audition across payload polling, reloads published PCM revisions and restores position before clock updates. Frontend1215, focused77+16, typecheck/build212, real MKV/WAV and mutation pass. API1317 pass/1 portable updater isolation failure stopped the live stack; canonical console recovery restores healthy API/Studio/current build. No live rerun or gate waiver; containment and browser/device UAT remain open. ADR0132 and mkv-playhead84 gate retain evidence. Phase03 stays60%, Phase06 open; stop84.
+last_activity: 2026-10-22 — round85 restores standard Import review with extra MKV options.
+last_activity_desc: MKV-IMPORT-REVIEW-01 opens cache/link, per-track Import/STT and normal Import together, with MKV follow as an extra section. Explicit confirmation/cancellation, focus and processing guards remain. Local faster-whisper tiny live configuration is confirmed; no model change. Frontend1219, focused135/latest69+2, typecheck/build213, related API32 and mutation pass. Browser/device and Round84 full-API containment gaps stay open; runtime ports stopped at closure, build ready for normal launch. ADR0133/mkv-import85 gate record evidence. Phase03 stays60%, Phase06 open; stop85.
 ---
 
 # Project State
+
+## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
+
+Native MKV/multitrack selection immediately opens the standard Import review,
+retaining cache/link, track Import/STT and normal Import with MKV follow added.
+Explicit confirmation, cancel/Escape/backdrop, focus wrapping and processing/no-
+track guards are covered. Browser queue/native handoff remains. Source confirms
+local faster-whisper tiny live preview; no model or backend/media changes.
+
+Frontend1219/150files, focused135/latest69+2, typecheck/build213, related API32 and
+isolated mutation pass. ADR0133/mkv-import85 gate retain earlier failures and
+limits. Browser/device UAT and full-API containment remain open. Runtime ports
+are stopped at closure; no restart for this UI round. Phase03 stays60%, Phase06
+open; stop85.
 
 ## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
 
