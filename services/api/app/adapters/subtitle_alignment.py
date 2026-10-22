@@ -166,7 +166,7 @@ class SubtitleAlignment:
         except (OSError, KeyError, TypeError, ValueError):
             return None
 
-    def analyze(self, project_id, asset_id, *, mode="auto", start_offset_ms=0, end_offset_ms=0, indexes=None):
+    def analyze(self, project_id, asset_id, *, mode="auto", start_offset_ms=0, end_offset_ms=0, indexes=None, methods=None):
         with self.media._lock(project_id):
             asset, audio, snapshot, _ = self._snapshot(project_id, asset_id)
             directory = self._directory(project_id, asset_id)
@@ -185,7 +185,8 @@ class SubtitleAlignment:
         eligible = scoped
         alignment_identity = None
         aligned = {"status": "not-used", "words": None, "reason": "Bù offset theo giá trị đã chọn."}
-        if mode != "offset":
+        needs_acoustic = mode != "offset" and (methods is None or any(method["mode"] != "offset" for method in methods))
+        if needs_acoustic:
             aligned = {**self.aligner.report(), "words": None}
             if eligible and aligned["status"] == "available" and max(envelope["rms"], default=0) > .0001:
                 alignment_identity = self._alignment_identity()
@@ -206,14 +207,19 @@ class SubtitleAlignment:
             reused = self._reuse_alignment(project_id, asset_id, directory, folder, snapshot, eligible, alignment_identity)
             if reused is not None:
                 aligned = reused
-        result = propose_alignment(asset.words, aligned.get("words"), asset.duration, rms=envelope["rms"],
-            frame_seconds=envelope["frameSeconds"], mode=mode, start_offset=start_offset_ms / 1000,
-            end_offset=end_offset_ms / 1000, indexes=scoped, waveform_landmarks=landmarks)
+        evidence = dict(rms=envelope["rms"], frame_seconds=envelope["frameSeconds"], indexes=scoped, waveform_landmarks=landmarks)
+        if methods is not None:
+            from app.domain.subtitle_refinement import compose_refinement
+            result = compose_refinement(asset.words, aligned.get("words"), asset.duration, methods=methods, **evidence)
+        else:
+            result = propose_alignment(asset.words, aligned.get("words"), asset.duration,
+                mode=mode, start_offset=start_offset_ms / 1000, end_offset=end_offset_ms / 1000, **evidence)
         result["diagnostics"]["waveform_source"] = "timeline-pcm-peak-vectors"
         document = {"id": identity, "assetId": asset_id, "createdAt": datetime.now(timezone.utc).isoformat(),
             "state": "proposed", "inputSignature": fingerprint(snapshot), "input": snapshot,
             "audioPath": audio.relative_to(self._root(project_id)).as_posix(),
             "mode": mode, "startOffsetMs": start_offset_ms, "endOffsetMs": end_offset_ms,
+            "methods": methods,
             "alignmentIdentity": alignment_identity, "alignmentIndexes": eligible,
             "scope": indexes, "aligner": {k: v for k, v in aligned.items() if k not in {"words", "groups"}},
             "audio": {k: v for k, v in envelope.items() if k != "rms"}, **result}
@@ -224,13 +230,21 @@ class SubtitleAlignment:
                 self._write(directory / "acoustic-latest.json", {"id": identity})
             return self.get(project_id, asset_id, identity)
 
-    def apply(self, project_id, asset_id, identity, indexes, edits):
+    def apply_preview(self, project_id, asset_id, identity):
+        proposal = self.get(project_id, asset_id, identity)
+        if proposal["mode"] != "pipeline":
+            raise ValueError("Đây không phải Ghost Preview.")
+        indexes = [row["index"] for row in proposal["rows"] if row["status"] != "locked" and row["before"] != row["after"]]
+        return self.apply(project_id, asset_id, identity, indexes, [], reviewed_preview=True)
+
+    def apply(self, project_id, asset_id, identity, indexes, edits, *, reviewed_preview=False):
         with self.media._lock(project_id):
             path, document, asset, _, snapshot = self._read(project_id, asset_id, identity)
             if document["state"] != "proposed" or fingerprint(snapshot) != document["inputSignature"]:
                 raise AlignmentConflict("Text, timing hoặc audio đã đổi. Phân tích lại trước khi áp dụng.")
             if document["mode"] == "diagnose":
                 raise ValueError("Kiểm tra độ lệch chỉ đọc dữ liệu. Chọn một phương pháp tinh chỉnh để áp dụng.")
+            reviewed_preview = reviewed_preview and document["mode"] == "pipeline"
             if not indexes or len(set(indexes)) != len(indexes):
                 raise ValueError("Chọn ít nhất một từ; không chọn trùng.")
             overrides = {e["index"]: e for e in edits}
@@ -245,7 +259,7 @@ class SubtitleAlignment:
                 edit = overrides.get(index)
                 if edit and edit.get("reviewed") is not True:
                     raise ValueError("Nghe và xác nhận mốc sửa trước khi áp dụng.")
-                if row["status"] != "ready" and not edit:
+                if row["status"] != "ready" and not edit and not reviewed_preview:
                     raise ValueError("Từ chưa chắc cần được nghe và xác nhận.")
                 bounds = edit or row["after"]
                 if not interval(bounds, asset.duration):
@@ -257,8 +271,10 @@ class SubtitleAlignment:
                     "timingTrusted": True, "subtitleAlignmentId": identity}
                 if edit:
                     words[index].update(reviewState="manual", selectedVariant="manual")
+                if reviewed_preview:
+                    words[index]["subtitleTimingConflict"] = index in document["diagnostics"]["conflictIndexes"]
             for i, j in conflicts(words, asset.duration):
-                if i in indexes or j in indexes:
+                if (i in indexes or j in indexes) and not reviewed_preview:
                     raise ValueError("Các mốc được chọn chồng lên từ bên cạnh. Review các từ cùng đoạn trước.")
             return self._publish(project_id, asset_id, path, document, snapshot, words, asset.text, "apply")
 

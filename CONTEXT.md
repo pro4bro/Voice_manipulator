@@ -2,6 +2,7 @@
 
 - **Subtitle Alignment Proposal**: A reviewable set of word-boundary changes for one finalized footage or audio track, bound to its current Script and immutable audio. It preserves manual timing, original provenance and uncertain words; an applied proposal has a reversible input snapshot.
 - **Subtitle Drift Report**: Read-only evidence comparing current word timing with qualified acoustic coordinates, including manual words. Displacement, quiet or invalid spans identify places to listen again; unassessed words and CTC uncertainty remain explicit, and the report cannot apply changes.
+- **Subtitle Timing Ghost**: A transient Timeline overlay of changed word coordinates computed from enabled refinement methods and a bound source snapshot. Ghost Preview never saves timing; Apply New Timing commits its valid changes together. Explicitly retained overlap remains visible as a timing conflict, including after reopen.
 
 - **Project**: A portable folder containing one voice production effort, its manifest, assets, activity, notes, jobs, exports, cache, and last workspace state.
 - **Asset**: An immutable audio or transcript input/output with provenance.

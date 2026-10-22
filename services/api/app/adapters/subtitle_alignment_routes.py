@@ -5,11 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat
 from app.adapters.subtitle_alignment import AlignmentConflict
 
 Index = Annotated[int, Field(strict=True, ge=0)]
+MethodMode = Literal["auto", "offset", "common-offset", "edge-offset", "group-offset", "ctc", "waveform", "diagnose"]
 
 
 class ProposalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    mode: Literal["auto", "offset", "common-offset", "edge-offset", "group-offset", "ctc", "waveform", "diagnose"] = "auto"
+    mode: MethodMode = "auto"
     start_offset_ms: StrictFloat = Field(default=0, alias="startOffsetMs", ge=-2000, le=2000)
     end_offset_ms: StrictFloat = Field(default=0, alias="endOffsetMs", ge=-2000, le=2000)
     indexes: list[Index] | None = None
@@ -27,6 +28,21 @@ class ApplyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     indexes: list[Index] = Field(min_length=1)
     edits: list[ReviewedEdit] = Field(default_factory=list)
+
+
+class RefinementMethod(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    mode: MethodMode
+    start_offset_ms: StrictFloat = Field(default=0, alias="startOffsetMs", ge=-2000, le=2000)
+    end_offset_ms: StrictFloat = Field(default=0, alias="endOffsetMs", ge=-2000, le=2000)
+    strength: StrictFloat = Field(default=100, ge=0, le=100)
+    max_move_ms: StrictFloat = Field(default=2000, alias="maxMoveMs", ge=0, le=2000)
+
+
+class PreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    methods: list[RefinementMethod] = Field(min_length=1, max_length=8)
+    indexes: list[Index] | None = None
 
 
 def subtitle_alignment_router(store):
@@ -49,6 +65,15 @@ def subtitle_alignment_router(store):
     @router.get("/latest")
     def latest(project_id: str, asset_id: str):
         return checked(lambda: store.latest(project_id, asset_id))
+
+    @router.post("/preview")
+    def preview(project_id: str, asset_id: str, payload: PreviewRequest):
+        return checked(lambda: store.analyze(project_id, asset_id, mode="pipeline", indexes=payload.indexes,
+            methods=[method.model_dump() for method in payload.methods]))
+
+    @router.post("/{identity}/apply-preview")
+    def apply_preview(project_id: str, asset_id: str, identity: str):
+        return checked(lambda: store.apply_preview(project_id, asset_id, identity))
 
     @router.post("/{identity}/apply")
     def apply(project_id: str, asset_id: str, identity: str, payload: ApplyRequest):
