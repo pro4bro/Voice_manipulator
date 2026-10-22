@@ -6,11 +6,29 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round80 implemented Input subtitle refinement and drift review.
-last_activity_desc: INPUT-SUBTITLE-REFINEMENT-01 exposes eight methods in Input right column, actual vector review proposals and read-only manual-word drift evidence. Common offset640/692; vector21 changed/all review. Current177/68 CTC suspects versus reviewed18/1 are not certified errors. Full frontend1186/API1307 plus focused18/60, typecheck/build210 pass. Browser/device and held-out quality pending. Phase03 stays60%, Phase06 open; stop80.
+last_activity: 2026-10-22 — round81 implemented Input Ghost timing, retained live drafts and automatic closed-MKV import.
+last_activity_desc: INPUT-FEEDBACK-01 delivers enabled methods, editable offsets, contextual Ghost Preview and bulk Apply with visible conflicts. OBS Stop preserves drafts and imports full MKV/tail; optional STT uses ordinary full-file queue. Capture Source gates OBS controls; verified load/poll stalls have retry. Full frontend1201/typecheck/build212, real browser/FFmpeg checks pass; API closure in gate. Historical hang root cause, physical OBS/device and held-out acoustics remain open. Owner hashes equal; Phase03 stays60%, Phase06 open; stop81.
 ---
 
 # Project State
+
+## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
+
+Input timing now uses enable/collapse methods, editable IN/OUT and Timeline Ghost
+Preview before one bulk Apply. Unchanged/manual coordinates stay exact; previewed
+conflicts remain red/pulse, Restore/Undo and source fencing remain. OBS live drafts
+persist; Capture Source owns OBS module/lease and survives remounts. Automatic
+closed-MKV import includes the full tail, preserves drafts and queues no final
+STT. Explicit STT uses the ordinary full-file track queue; late growing results
+cannot overwrite it. Reproduced load/poll stalls have bounded reads and retry;
+the earlier whole-app hang's exact cause is not established.
+
+Frontend1201/150files, typecheck/build212, real browser Apply/Restore/visibility
+and FFmpeg live-writer/two-track full PCM pass. API closure, metrics and failures:
+input-feedback81 gate and ADR0129. Frozen common690 changes/4 conflict indexes,
+paired medians64.3/54.2ms; vector21 changes experimental. Owner hashes equal.
+Managed runtime healthy after idle reload. Physical OBS/device and held-out
+acoustics remain open. Phase03 stays60%, Phase06 open; stop81.
 
 ## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
 

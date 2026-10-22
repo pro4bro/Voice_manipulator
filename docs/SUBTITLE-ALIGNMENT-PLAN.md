@@ -1,5 +1,23 @@
 # Subtitle Alignment — Round79 plan and specification
 
+## Round81 Input interaction update (2026-10-22)
+
+The owner's feedback supersedes the per-word review interaction in Input.
+Eight enable checkboxes expose collapsible method parameters, including editable
+IN/OUT offsets. Ghost Preview composes enabled methods in display order and draws
+changed positions translucently above original words in the actual Timeline.
+No parameters or preview save timing. One Apply New Timing applies all displayed
+valid changes; unchanged/manual coordinates remain exact. Conflicts against both
+changed and unchanged words stay red and briefly pulse before/after Apply, with
+reduced-motion support. Restore/Undo and source fingerprints remain enforced.
+Legacy Training selected-word Apply retains its conflict rejection; no acoustic
+confidence threshold is weakened. See ADR0129 and the input-feedback81 gate.
+
+This workflow is also available on finalized imported/OBS tracks. Growing MKV
+now automatically imports its complete closed source in the background after
+OBS Stop/sealed Segment, retains draft text, and offers optional ordinary
+full-file STT afterward. Input settings never run recognition implicitly.
+
 2026-10-21. Owner authorized planning and implementation together. Implements
 STT-ALIGN-01..04 in one bounded vertical product round. Existing tasks/plan.md
 contains historical OBS work and is preserved; task tracking uses the project's

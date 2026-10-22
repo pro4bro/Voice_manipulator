@@ -3,11 +3,13 @@
 ## Subtitle Alignment
 
 - **STT-ALIGN-01**: Finalized footage/track subtitle timing has an explicit local automatic/IN-OUT-offset proposal workflow, with measured anchors, waveform evidence and duration/rate anomalies distinguished from verified word identity.
-- **STT-ALIGN-02**: Users inspect original/proposed intervals against waveform/audio, select eligible words and confirm/edit uncertain boundaries; manually timed words remain protected.
-- **STT-ALIGN-03**: Apply and restore retain complete input/provenance and reject changed words/audio, invalid or conflicting intervals atomically, with portable project-owned evidence and synchronized Script/Timeline/SRT.
+- **STT-ALIGN-02**: Users inspect original/proposed intervals against waveform/audio and confirm the reviewed timing change; Input supports contextual bulk Ghost review while legacy selected-word review remains available. Manually timed words remain protected.
+- **STT-ALIGN-03**: Apply and restore retain complete input/provenance and reject changed words/audio and structurally invalid intervals atomically, with portable project-owned evidence and synchronized Script/Timeline/SRT. Ordinary selected Apply rejects conflicts; explicit Input Ghost Apply may retain the shown conflicts under STT-ALIGN-08.
 - **STT-ALIGN-04**: Real-media evaluation reports shared-reference IN/OUT/duration errors and accepted/review coverage without fitting a fixed offset to Conviction or lowering acoustic gates; missing alignment runtime and unsafe mixed speech remain explicit.
 - **STT-ALIGN-05**: Input's right column exposes subtitle refinement for any finalized selected footage/track, with separately selectable common, independent IN/OUT, group, CTC, waveform-vector, manual-offset, conservative combined and diagnostic methods. Every editable proposal retains preview, manual locks and reversible explicit application.
 - **STT-ALIGN-06**: Read-only drift reports include manual words, qualified CTC displacement at 250/500 ms, quiet/invalid spans, inspectable coordinates and unassessed coverage. Waveform corners are supporting evidence; missing or sparse evidence cannot certify correct timing.
+- **STT-ALIGN-07**: Input refinement exposes enable checkboxes with collapsible method settings, editable IN/OUT and contextual Ghost Preview above original subtitles. Parameters never save timing; a fresh source-bound preview precedes one Apply New Timing operation over changed unlocked words.
+- **STT-ALIGN-08**: Explicit Ghost Apply preserves displayed timing conflicts with red, brief slow pulse and textual counts before and after application. Unchanged word coordinates remain exact; normalization cannot conceal overlaps. Reduced-motion preferences disable animation; Restore remains available. This is an explicit reviewed operation, not a relaxed automatic acoustic gate.
 
 ## Foundation
 
@@ -35,6 +37,7 @@
 - **UI-03**: Loading, empty, ready, recording, processing, success, and error states are visually explicit.
 - **UI-04**: Keyboard focus, labels, contrast, and reduced-motion behavior meet baseline accessibility expectations.
 - **UI-05**: Light and dark themes use one synchronized surface/token system across Project Hub and every module, including Recorder and Timeline.
+- **UI-06**: Independent workspace reads do not wait on unrelated engine schemas; data reads have a bounded deadline, OBS polling stays single-flight and failed reads expose a retry without terminal restart.
 
 ## Speech To Text
 
@@ -57,8 +60,10 @@
 - **STT-OBS-04**: An optional OBS plugin sends selected source PCM and recording events to the local app while OBS records video. The app durably records each source as its own project-owned audio stem and can run provisional live transcription. Transport loss creates explicit gap markers without blocking or corrupting OBS recording.
 - **STT-OBS-05**: Provisional live captions can appear in the OBS composition, while the original recording and final corrected captions remain separately recoverable.
 - **STT-OBS-06**: A finished session can render a new video with reviewed hard subtitles while preserving the original recording.
-- **STT-OBS-07**: OBS stop finalizes the app-side live stems, associates the finished OBS recording with the same capture session, and automatically queues authoritative per-source Final STT; the final revision replaces the live draft as the Script/SRT source.
+- **STT-OBS-07**: OBS Stop finalizes app-side live stems and associates the finished recording with its capture session. Retain Live STT after Stop/reopen until explicit clearing or requested STT replaces it. Stop does not itself request final recognition.
 - **STT-OBS-08**: Every captured source has an explicit role. Microphone sources identify the primary user or people near that microphone; meeting-application sources identify remote guests. Diarization runs independently per source when requested, and Script/SRT speaker labels retain both the source role and diarized speaker identity.
+- **STT-OBS-09**: Capture Source owns OBS LiveLink module visibility and target lease; viewing older footage does not activate capture controls. Source choice survives Recorder remounts; hiding controls does not issue Stop.
+- **STT-OBS-10**: A followed MKV automatically imports the complete closed source in the background after an authenticated matching OBS Stop or a sealed Matroska Segment. Never infer closure from silence or file inactivity alone. Preserve original media and Live STT; reject late segmented publication. Subsequent explicit Speech to text processes the finalized full track through the ordinary queue, without growing-file block segmentation.
 
 ## Distribution
 

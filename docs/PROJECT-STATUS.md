@@ -1,5 +1,25 @@
 # Project Status — 2026-10-22
 
+## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
+
+Input refinement now uses method enable/collapse settings, editable IN/OUT,
+contextual Timeline ghosts, bulk Apply and retained red conflicts. Manual and
+unchanged coordinates stay exact; stale-source checks, Restore/Undo remain.
+OBS draft text persists after Stop; Capture Source gates OBS controls and lease.
+Closed followed MKV auto-imports its full source/tail in the background, retains
+drafts and offers explicit ordinary full-file STT afterward. No automatic final
+recognition; late growing results are fenced. Verified load/poll stalls have
+bounded reads/retry; exact historical hang attribution remains open.
+
+Full frontend1201/150files, typecheck/build212; actual FFmpeg writer/two-track
+PCM/tail, browser Ghost Apply/Restore and source visibility pass. API closure and
+retained failures: `docs/gates/input-feedback81-20261022.md`, ADR0129. Measured
+common trial690 changed/4 conflict indexes, median64.3/54.2ms on587 fixed pairs;
+vector21 changes experimental. No general calibration or acoustic gate reduction.
+Owner reference/media hashes equal. Managed runtime healthy after idle reload.
+Physical OBS/device and held-out quality pending. Phase03 stays60%, Phase06 open;
+no default STT/portable release change. Stop81.
+
 ## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
 
 Input now has a right-column Tinh chỉnh subtitle module with eight selectable

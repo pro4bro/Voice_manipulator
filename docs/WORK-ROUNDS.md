@@ -1,5 +1,31 @@
 # Work Rounds
 
+## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
+
+Replaced Input's per-word refinement modal with eight enable/collapse methods,
+editable IN/OUT, contextual Timeline Ghost Preview and one Apply New Timing.
+Changed words move; manual/unchanged coordinates remain exact. Shown conflicts
+remain red/pulse after explicit Apply; source fencing and Restore/Undo remain.
+Retained OBS Live STT survives Stop/reopen/clear semantics. Capture Source owns
+OBS visibility/lease and survives Recorder remounts. Independent loading,
+single-flight polls,15s reads and retry address reproduced stalls; the historical
+whole-app hang's exact cause remains unproven.
+
+OBS Stop/sealed MKV now triggers full background source import with tail and
+byte-verified final PCM; no automatic final STT. Explicit STT afterward uses the
+ordinary full-file track queue; late growing results cannot overwrite it.
+Actual live-writer, two-track tail, retained text, whole-file recognition,
+shutdown drain and real browser Ghost Apply/Restore/source visibility checks pass.
+Full frontend1201/150files, typecheck/build212 pass; API closure in the gate.
+Frozen692-word common trial changes690 with4 conflicting indexes, IN/OUT median
+64.3/54.2ms on587 evaluator pairs. Vector21 changes remain experimental; this
+reviewed bulk operation does not lower acoustic gates. Heard owner hashes equal.
+
+ADR0129 and `docs/gates/input-feedback81-20261022.md` retain failures, measurements
+and limitations. Physical OBS/device audition and held-out acoustics remain open.
+Managed runtime reloaded healthy after29-project idle preflight. Phase03 stays60%,
+Phase06 open; no default STT/portable release change. Stop81.
+
 ## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
 
 Input right-column Tinh chỉnh subtitle opens eight separate refinement/diagnostic

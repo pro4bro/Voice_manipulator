@@ -1,5 +1,23 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
+
+Delivered enabled/collapsible refinement settings, editable IN/OUT, contextual
+Timeline Ghost Preview, bulk Apply, visible persisted conflicts and exact
+manual/unchanged coordinates. Retained OBS draft text and Capture Source gating
+are implemented. Followed MKV automatically imports the complete closed source
+including tail; optional explicit STT uses the ordinary full-file queue. Late
+segmented publication is fenced. Independent loads, single-flight polls and read
+deadline/retry address reproduced stalls; historical hang root cause is unproven.
+
+Full frontend1201/typecheck/build212, real browser Apply/Restore/source visibility
+and actual FFmpeg writer/two-track full-PCM checks pass. API closure, exact
+measurements and retained failures are in the input-feedback81 gate and ADR0129.
+Common reviewed690/692 changes preserve gates and expose4 conflicts; vector21
+changes remain experimental. Owner hashes equal. Managed runtime reloaded healthy.
+Next acceptance gaps: physical OBS/device audition and held-out acoustic quality.
+Phase03 stays60%, Phase06 open; no STT default or portable release change. Stop81.
+
 ## Round80 — INPUT-SUBTITLE-REFINEMENT-01 (2026-10-22)
 
 Implemented Input right-column subtitle refinement with eight independent trial

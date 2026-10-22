@@ -2281,3 +2281,42 @@ còn thiếu; acoustic gate vẫn mở. Hướng tiếp: nhất quán cửa sổ
 toàn bản, thử corrected transcript riêng, review chồng tiếng, giữ manual lock
 và xác minh thêm hội thoại độc lập. Không thay dữ liệu Conviction, engine upstream,
 format project hoặc phát hành portable. Phase03 giữ60%; dừng sau round78.
+
+## Round81 — Input Ghost, giữ Live STT, hoàn tất MKV (2026-10-22)
+
+### Feedback
+
+Chủ dự án yêu cầu bỏ checklist từng từ; bật/tắt từng phương pháp, xổ thông số,
+chỉnh IN/OUT, xem Ghost ngay trên Timeline rồi Apply một lần. Xung đột phải đỏ,
+chớp; từ không đổi đứng yên. Live STT phải còn sau Stop; chỉ hiện cụm OBS khi
+Capture Source là OBS. Khi OBS Stop, tự nhập MKV hoàn chỉnh ở nền và lấy đủ đuôi;
+STT lại là tùy chọn toàn file. Kiểm tra tình trạng workspace cần khởi động terminal lại.
+
+### Agent tự kiểm
+
+Đã triển khai các luồng trên, giữ manual lock, source fingerprint, Restore/Undo.
+Đọc footer MKV trước kiểm tra header live, hoặc nhận Stop đã xác thực đúng đường
+dẫn, rồi copy/hash/decode toàn track ở nền. Không dùng im lặng/kích thước file đứng
+yên làm tín hiệu kết thúc; không tự chạy Final STT. Có fence khi inference trả muộn
+và khóa media khi kiểm tra/ghi. Explicit STT sau đó đi qua queue toàn file sẵn có.
+
+Frontend1201/150file, typecheck/build212 pass. FFmpeg writer thật và MKV AAC hai
+track xác nhận PCM cuối khớp từng byte với decode độc lập, đủ đuôi; draft/clear/STT
+và shutdown drain có regression. Browser thật trên clone độc lập xác nhận Ghost,
+Apply690 từ/+116ms,4 chỉ số xung đột, Restore692/692 tọa độ, OBS source ẩn/hiện.
+API closure, log lỗi giữ lại và mutation bị giết nằm ở input-feedback81 gate.
+Runtime nạp lại bằng controller sau kiểm tra29 project không có job/OBS đang ghi.
+
+### Kết quả so với ngưỡng
+
+Common trial trên692 từ thay690, median IN/OUT64.3/54.2ms ở587 cặp chỉ dùng chấm
+điểm. Vector21 thay đổi chưa đạt nghiệm thu tổng quát. Bulk Apply có xung đột là
+thao tác review chủ dự án yêu cầu, hiển thị rõ; không hạ acoustic gate hoặc sửa tọa
+độ từ khóa để che xung đột. Hash nguồn/reference Conviction giữ nguyên.
+
+Đã tái hiện và sửa load bị chặn bởi schema,21 request OBS chồng nhau, GET treo và
+clear cũ chặn STT mới. Chưa đủ bằng chứng quy nguyên nhân chính xác lần app treo
+trước. Chưa nghiệm thu OBS vật lý/âm thanh thiết bị hoặc hội thoại độc lập. MKV
+unknown-size không có kết nối Stop giữ nút Finish dự phòng. ADR0129 và
+`docs/gates/input-feedback81-20261022.md` ghi đầy đủ. Phase03 giữ60%, Phase06 mở;
+không đổi default STT/portable. Dừng81.
