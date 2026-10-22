@@ -17,14 +17,22 @@ from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.growing_mkv import scan_committed
+from app.adapters.media_asset_paths import media_asset_directory, media_asset_file
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.domain.models import ProjectCreate
 from app.main import create_app
 from app.settings import Settings
 
 
+@pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("close_signal", ["sealed-segment", "obs-stop"])
-def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path, two_track_mkv, monkeypatch, close_signal):
+def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path, two_track_mkv, monkeypatch, close_signal, legacy):
+    if legacy:
+        def create_legacy(root, asset_id, _filename):
+            directory = root / "assets" / "media" / asset_id
+            directory.mkdir(parents=True, exist_ok=False)
+            return directory
+        monkeypatch.setattr("app.adapters.file_growing_mkv_follower.create_media_asset_directory", create_legacy)
     ffmpeg, closed = two_track_mkv
     payload = closed.read_bytes()
     first = scan_committed(closed).clusters[0]
@@ -57,8 +65,9 @@ def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path,
         assert follower.request_finish(project, str(source)) == [imported.asset.id]
     final = follower.advance(project, imported.asset.id)
     assert final["finished"]
-    directory = Path(project.project_path) / "assets" / "media" / imported.asset.id
-    assert (directory / "source-final.mkv").read_bytes() == payload
+    directory = media_asset_directory(Path(project.project_path), imported.asset.id)
+    assert directory.name == (imported.asset.id if legacy else f"growing--{imported.asset.id}")
+    assert (media_asset_file(directory, "source-final.mkv")).read_bytes() == payload
     for track in final["tracks"]:
         expected = tmp_path / f"expected-{track['streamIndex']}.wav"
         follower._decode_to_wav(closed, track["streamIndex"], expected)
@@ -288,7 +297,7 @@ def test_detailed_button_snapshots_committed_frames_and_waits_for_next_full_bloc
     follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
         str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
     result = follower.start(project, str(closed), [0, 1], [0, 1], 60)
-    directory = Path(project.project_path) / "assets/media" / result.asset.id
+    directory = media_asset_directory(Path(project.project_path), result.asset.id)
     follow_path = directory / "follow-state.json"
 
     def grow(seconds):
@@ -371,7 +380,7 @@ def test_hard_stop_cancels_owned_mkv_live_or_detailed_segment_without_publicatio
         str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")),
     )
     result = follower.start(project, str(closed), [0, 1], [0, 1], 60)
-    directory = Path(project.project_path) / "assets" / "media" / result.asset.id
+    directory = media_asset_directory(Path(project.project_path), result.asset.id)
     follow_path = directory / "follow-state.json"
     follow = json.loads(follow_path.read_text(encoding="utf-8"))
     pcm_sources = []
@@ -504,7 +513,7 @@ def test_follows_only_complete_clusters_and_recovers_without_replay(tmp_path, tw
     root = Path(project.project_path)
     for child_id, track in zip(result.track_asset_ids, final["tracks"]):
         child = library.get(project.id, child_id)
-        assert child.analysis_path.startswith(f"assets/media/{parent_id}/final/")
+        assert (root / child.analysis_path).parent == media_asset_directory(root, parent_id) / "final"
         assert _frames(root / child.analysis_path) == track["frames"]
         assert child.duration == pytest.approx(track["frames"] / 24000)
     state = json.loads((root / result.asset.source_path).parent.joinpath("follow-state.json").read_text())
@@ -522,7 +531,7 @@ def test_follows_only_complete_clusters_and_recovers_without_replay(tmp_path, tw
 
 def _restore_legacy_automatic_detail(project, parent_id):
     """Existing pre-MKV-STT-02 checkpoints must retain their automatic queue."""
-    path = Path(project.project_path) / "assets/media" / parent_id / "follow-state.json"
+    path = media_asset_directory(Path(project.project_path), parent_id) / "follow-state.json"
     state = json.loads(path.read_text(encoding="utf-8"))
     state.pop("sttDetailedEnabled", None)
     path.write_text(json.dumps(state), encoding="utf-8")

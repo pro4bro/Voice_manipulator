@@ -55,7 +55,7 @@ class ProjectActivityLog:
             "Project này là một folder tự chứa và có thể di chuyển nguyên folder.\n\n"
             "- `project.json`: metadata chuẩn; `projectPath` và `location` dùng `.`.\n"
             "- `assets/media/index.json`: Media Pool, transcript, word timing và revision.\n"
-            "- `assets/media/<asset-id>/`: source gốc và `analysis.wav`.\n"
+            "- `assets/media/<tên-footage>--<asset-id>/`: source/cache mang tên footage; cấu trúc cũ `<asset-id>/` vẫn được hỗ trợ.\n"
             "- `activity/events.jsonl`: lịch sử máy đọc được.\n"
             "- `notes/ACTIVITY.md`: lịch sử tóm tắt cho người và session sau.\n"
             "- `jobs/`, `exports/`, `cache/`: trạng thái job, thành phẩm và cache riêng của project.\n\n"

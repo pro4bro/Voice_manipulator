@@ -15,6 +15,7 @@ import wave
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from app.adapters.media_asset_paths import asset_id_from_directory, media_asset_directory, media_asset_file
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_growing_mkv_follower import _read_atomic_json
 from app.adapters.media_import_processor import MediaImportProcessor
@@ -113,7 +114,7 @@ class GrowingMkvTranscription:
     def _paths(project: ProjectRecord, parent_id: str) -> tuple[Path, Path, Path]:
         if not parent_id.startswith("asset-") or not parent_id[6:].isalnum():
             raise ValueError("Footage id không hợp lệ")
-        directory = Path(project.project_path) / "assets" / "media" / parent_id
+        directory = media_asset_directory(Path(project.project_path), parent_id)
         return directory, directory / "follow-state.json", directory / "stt-state.json"
 
     def _load(self, project: ProjectRecord, parent_id: str) -> tuple[Path, dict, Path, dict]:
@@ -144,7 +145,7 @@ class GrowingMkvTranscription:
 
     @staticmethod
     def _result_path(directory: Path, asset_id: str, phase: str, start: int) -> Path:
-        return directory / "stt-segments" / asset_id / phase / f"{start:012d}.json"
+        return directory / "stt-segments" / asset_id / phase / media_asset_file(directory, f"{start:012d}.json").name
 
     @staticmethod
     def _results(directory: Path, asset_id: str, phase: str) -> list[dict]:
@@ -232,8 +233,8 @@ class GrowingMkvTranscription:
         root = Path(project.project_path) / "assets" / "media"
         requested = set(asset_ids) if asset_ids is not None else None
         touched: list[str] = []
-        for follow_path in root.glob("asset-*/follow-state.json"):
-            parent_id = follow_path.parent.name
+        for follow_path in root.glob("*/follow-state.json"):
+            parent_id = asset_id_from_directory(follow_path.parent)
             try:
                 _, follow, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
                 tracks = {track["assetId"] for track in follow.get("tracks", [])}

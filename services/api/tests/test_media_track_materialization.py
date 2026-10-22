@@ -55,6 +55,10 @@ def test_concurrent_addition_publishes_one_child_and_survives_project_move(tmp_p
     children = asyncio.run(add())
     assert len({child.id for child in children}) == 1
     child = children[0]
+    for track in library.list(project.id):
+        if track.source_archive_asset_id == parent.id:
+            assert Path(track.analysis_path).parent.name.startswith("two - Track ")
+            assert Path(track.analysis_path).name.startswith("two - Track ")
     with wave.open(str(Path(project.project_path) / child.analysis_path), "rb") as audio:
         assert (audio.getnchannels(), audio.getframerate(), audio.getsampwidth()) == (1, 24000, 2)
         assert audio.getnframes() / 24000 == pytest.approx(0.5, abs=0.025)

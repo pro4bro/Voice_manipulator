@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.adapters.media_asset_paths import media_asset_directory
 from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
@@ -353,7 +354,7 @@ class SequentialDiarizationQueue:
         without spending another GPU run. The spans are the processor's evidence
         and belong with the asset, in project-relative form like everything else.
         """
-        directory = Path(project_path) / "assets" / "media" / asset_id / "diarization"
+        directory = media_asset_directory(Path(project_path), asset_id) / "diarization"
         try:
             directory.mkdir(parents=True, exist_ok=True)
             payload = {

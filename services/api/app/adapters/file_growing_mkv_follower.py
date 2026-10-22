@@ -23,6 +23,7 @@ from uuid import uuid4
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.growing_mkv import assert_same_source, has_closed_segment, scan_committed, source_identity
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
+from app.adapters.media_asset_paths import create_media_asset_directory, media_asset_directory, media_asset_file, safe_media_stem
 from app.domain.models import MediaAssetCreate, MediaAudioTrackChoice, MediaImportResult, ProjectRecord
 
 
@@ -106,7 +107,7 @@ class FileGrowingMkvFollower:
     def _paths(project: ProjectRecord, parent_id: str) -> tuple[Path, Path]:
         if not parent_id.startswith("asset-") or not parent_id[6:].isalnum():
             raise ValueError("Footage id không hợp lệ")
-        directory = Path(project.project_path) / "assets" / "media" / parent_id
+        directory = media_asset_directory(Path(project.project_path), parent_id)
         return directory, directory / "follow-state.json"
 
     def _run(self, command: list[str]) -> subprocess.CompletedProcess[bytes]:
@@ -213,10 +214,10 @@ class FileGrowingMkvFollower:
         if not 10 <= stt_segment_seconds <= 600:
             raise ValueError("Độ dài đoạn STT phải từ 10 đến 600 giây")
         parent_id = f"asset-{uuid4().hex[:12]}"
-        directory, state_path = self._paths(project, parent_id)
-        directory.mkdir(parents=True, exist_ok=False)
+        directory = create_media_asset_directory(Path(project.project_path), parent_id, source.name)
+        state_path = directory / "follow-state.json"
         root = Path(project.project_path)
-        snapshot = directory / "source.mkv"
+        snapshot = media_asset_file(directory, "source.mkv")
         with source.open("rb") as original, snapshot.open("wb") as output:
             output.write(original.read(header_end))
             output.flush()
@@ -226,14 +227,13 @@ class FileGrowingMkvFollower:
             if stream["index"] not in selected:
                 continue
             child_id = f"asset-{uuid4().hex[:12]}"
-            child_dir = root / "assets" / "media" / child_id
-            child_dir.mkdir(parents=True, exist_ok=False)
-            analysis = child_dir / "analysis.wav"
+            child_dir = create_media_asset_directory(root, child_id, f"{safe_media_stem(source.name)[:40]} - Track {stream['index']}.wav")
+            analysis = media_asset_file(child_dir, "analysis.wav")
             analysis.write_bytes(_wav_header(0))
             title = str((stream.get("tags") or {}).get("title") or f"Track {ordinal}")[:160]
             track_states.append({"assetId": child_id, "streamIndex": stream["index"],
                                  "title": title, "frames": 0, "gaps": [], "lastChunk": 0})
-        first_analysis = (root / "assets" / "media" / track_states[0]["assetId"] / "analysis.wav").relative_to(root).as_posix()
+        first_analysis = (media_asset_file(media_asset_directory(root, track_states[0]["assetId"]), "analysis.wav")).relative_to(root).as_posix()
         identity = source_identity(source, header_end)
         identity["headerEnd"] = header_end
         state = {"version": 1, "parentId": parent_id, "identity": identity,
@@ -266,7 +266,7 @@ class FileGrowingMkvFollower:
         for track in track_states:
             stream = next(item for item in audio_streams if item["index"] == track["streamIndex"])
             child_id = track["assetId"]
-            relative = (root / "assets" / "media" / child_id / "analysis.wav").relative_to(root).as_posix()
+            relative = (media_asset_file(media_asset_directory(root, child_id), "analysis.wav")).relative_to(root).as_posix()
             self.library.create(project.id, MediaAssetCreate(
                 name=f"{source.name} · {track['title']}", source_extension=".wav",
                 media_kind="audio", source_path=relative, analysis_path=relative,
@@ -299,7 +299,7 @@ class FileGrowingMkvFollower:
         if state.get("parentId") != parent_id or state.get("version") != 1:
             raise ValueError("Checkpoint MKV không hợp lệ")
         if state["finished"]:
-            final_source = directory / "source-final.mkv"
+            final_source = media_asset_file(directory, "source-final.mkv")
             if not final_source.is_file():
                 raise FileNotFoundError("Bản MKV cuối trong project đã mất")
             return directory, state_path, state, final_source
@@ -312,14 +312,14 @@ class FileGrowingMkvFollower:
         return directory, state_path, state, source
 
     def _recover(self, project: ProjectRecord, directory: Path, state: dict) -> None:
-        snapshot = directory / "source.mkv"
+        snapshot = media_asset_file(directory, "source.mkv")
         if snapshot.stat().st_size < state["snapshotBytes"]:
             raise ValueError("Bản sao MKV trong project ngắn hơn checkpoint")
         with snapshot.open("r+b") as output:
             output.truncate(state["snapshotBytes"])
         root = Path(project.project_path)
         for track in state["tracks"]:
-            path = root / "assets" / "media" / track["assetId"] / "analysis.wav"
+            path = media_asset_file(media_asset_directory(root, track["assetId"]), "analysis.wav")
             expected = WAV_HEADER + track["frames"] * SAMPLE_BYTES
             if path.stat().st_size < expected:
                 raise ValueError("Audio trong project ngắn hơn checkpoint")
@@ -354,12 +354,12 @@ class FileGrowingMkvFollower:
         tracks = {}
         for track in state["tracks"]:
             if final:
-                path = directory / "final" / f"{track['streamIndex']}.wav"
+                path = directory / "final" / media_asset_file(directory, f"{track['streamIndex']}.wav").name
             else:
-                path = root / "assets" / "media" / track["assetId"] / "analysis.wav"
+                path = media_asset_file(media_asset_directory(root, track["assetId"]), "analysis.wav")
             frames = track.get("finalFrames", track["frames"]) if final else track["frames"]
             tracks[track["assetId"]] = (path.relative_to(root).as_posix(), frames / RATE)
-        final_source = (directory / "source-final.mkv").relative_to(root).as_posix() if final else None
+        final_source = (media_asset_file(directory, "source-final.mkv")).relative_to(root).as_posix() if final else None
         self.library.refresh_followed_mkv(project.id, state["parentId"], tracks, final_source)
 
     def poll(self, project: ProjectRecord, parent_id: str, *, final: bool = False,
@@ -373,7 +373,7 @@ class FileGrowingMkvFollower:
             self._recover(project, directory, state)
             scan = scan_committed(source, from_offset=state["cursor"], final=final,
                                   max_clusters=max_clusters)
-            snapshot = directory / "source.mkv"
+            snapshot = media_asset_file(directory, "source.mkv")
             with snapshot.open("rb") as stored:
                 header_bytes = stored.read(state["identity"]["headerEnd"])
             root = Path(project.project_path)
@@ -405,7 +405,7 @@ class FileGrowingMkvFollower:
                         gap = 0
                     else:
                         gap = 0
-                    analysis = root / "assets" / "media" / track["assetId"] / "analysis.wav"
+                    analysis = media_asset_file(media_asset_directory(root, track["assetId"]), "analysis.wav")
                     track["frames"] = self._append_pcm(analysis, track["frames"], pcm,
                                                         gap_frames=gap)
                     track["lastChunk"] = sequence
@@ -536,7 +536,7 @@ class FileGrowingMkvFollower:
             state = _read_atomic_json(state_path)
             assert_same_source(source, state["identity"], state["cursor"],
                                state["lastCluster"], allow_header_change=True)
-            final_source = directory / "source-final.mkv"
+            final_source = media_asset_file(directory, "source-final.mkv")
             with source.open("rb") as original, final_source.open("wb") as output:
                 shutil.copyfileobj(original, output, 1024 * 1024)
                 output.flush()
@@ -548,7 +548,7 @@ class FileGrowingMkvFollower:
             final_dir = directory / "final"
             final_dir.mkdir(exist_ok=True)
             for track in state["tracks"]:
-                destination = final_dir / f"{track['streamIndex']}.wav"
+                destination = final_dir / media_asset_file(directory, f"{track['streamIndex']}.wav").name
                 self._decode_to_wav(final_source, track["streamIndex"], destination)
                 with wave.open(str(destination), "rb") as audio:
                     track["finalFrames"] = audio.getnframes()

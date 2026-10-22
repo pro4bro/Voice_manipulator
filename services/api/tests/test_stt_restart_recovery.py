@@ -148,7 +148,8 @@ def test_recovery_cancels_archive_metadata_without_a_dedicated_checkpoint(tmp_pa
     assert media.get(project.id, growing.id).diarization_status == "cancelled"
 
 
-def test_startup_preserves_only_assets_owned_by_valid_detailed_or_follow_checkpoints(tmp_path, monkeypatch):
+@pytest.mark.parametrize("named_folder", [False, True])
+def test_startup_preserves_only_assets_owned_by_valid_detailed_or_follow_checkpoints(tmp_path, monkeypatch, named_folder):
     from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
     from app.adapters.obs_livelink_detailed_stt import ObsLiveLinkDetailedStt
 
@@ -258,6 +259,9 @@ def test_startup_preserves_only_assets_owned_by_valid_detailed_or_follow_checkpo
         "version": 1, "parentId": active_parent.id, "segmentSeconds": 60,
         "tracks": {active_child.id: {"liveFrame": 0, "finalFrame": 0, "publishedFinalFrame": -1}},
     }), encoding="utf-8")
+
+    if named_folder:
+        active_folder.rename(active_folder.with_name(f"Interview take--{active_parent.id}"))
 
     detailed_resumed = threading.Event()
     growing_resumed = threading.Event()

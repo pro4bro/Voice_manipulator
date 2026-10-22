@@ -40,6 +40,7 @@ from app.domain.ports import MediaLibrary
 from app.adapters.word_timing_quality import reconcile_word_timing_quality, space_recognized_words
 from app.domain.timeline_intervals import excluded_intervals
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
+from app.adapters.media_asset_paths import create_media_asset_directory, media_asset_file, safe_media_stem
 from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError
 
 
@@ -113,9 +114,8 @@ class MediaImportProcessor:
                        for stream in probe.get("streams", [])):
                 raise ValueError("Nguồn hiện tại không còn track audio đã chọn.")
             child_id = f"asset-{uuid4().hex[:12]}"
-            folder = root / "assets" / "media" / child_id
-            folder.mkdir(parents=True, exist_ok=False)
-            analysis = folder / "analysis.wav"
+            folder = create_media_asset_directory(root, child_id, f"{safe_media_stem(parent.name)[:40]} - Track {stream_index} - {choice.title}.wav")
+            analysis = media_asset_file(folder, "analysis.wav")
             # A failed decode leaves only an unpublished derivative; retry gets a
             # fresh file, and the source/parent selection remains untouched.
             await asyncio.to_thread(self._extract_audio_streams, source, [(analysis, stream_index)])
@@ -176,9 +176,8 @@ class MediaImportProcessor:
             raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
 
         asset_id = f"asset-{uuid4().hex[:12]}"
-        asset_dir = Path(project.project_path) / "assets" / "media" / asset_id
-        asset_dir.mkdir(parents=True, exist_ok=False)
-        source_path = asset_dir / f"source{extension}"
+        asset_dir = create_media_asset_directory(Path(project.project_path), asset_id, filename)
+        source_path = media_asset_file(asset_dir, f"source{extension}")
         await self._save_upload(upload, source_path)
         if source_content_hash is not None:
             actual_hash = await asyncio.to_thread(self._sha256_file, source_path)
@@ -230,7 +229,7 @@ class MediaImportProcessor:
             )
             return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
-        analysis_path = asset_dir / "analysis.wav"
+        analysis_path = media_asset_file(asset_dir, "analysis.wav")
         await asyncio.to_thread(self._extract_audio, source_path, analysis_path)
         portable_analysis_path = analysis_path.relative_to(Path(project.project_path)).as_posix()
         common = {
@@ -312,9 +311,8 @@ class MediaImportProcessor:
 
         asset_id = f"asset-{uuid4().hex[:12]}"
         project_root = Path(project.project_path)
-        asset_dir = project_root / "assets" / "media" / asset_id
-        asset_dir.mkdir(parents=True, exist_ok=False)
-        cache_path = asset_dir / f"source{extension}"
+        asset_dir = create_media_asset_directory(project_root, asset_id, original_path.name)
+        cache_path = media_asset_file(asset_dir, f"source{extension}")
         working_source = original_path
         cached_at: datetime | None = None
         if cache_local:
@@ -359,7 +357,7 @@ class MediaImportProcessor:
 
         analysis_path: Path | None = None
         if audio_stream:
-            analysis_path = asset_dir / "analysis.wav"
+            analysis_path = media_asset_file(asset_dir, "analysis.wav")
             await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
 
         asset = self.library.create(
@@ -460,9 +458,8 @@ class MediaImportProcessor:
             if stream_index not in selected:
                 continue
             child_id = f"asset-{uuid4().hex[:12]}"
-            child_dir = root / "assets" / "media" / child_id
-            child_dir.mkdir(parents=True, exist_ok=False)
-            analysis = child_dir / "analysis.wav"
+            child_dir = create_media_asset_directory(root, child_id, f"{safe_media_stem(filename)[:40]} - Track {stream_index}.wav")
+            analysis = media_asset_file(child_dir, "analysis.wav")
             title = str((stream.get("tags") or {}).get("title") or f"Track {ordinal}").strip()[:160]
             prepared.append((child_id, analysis, stream, title))
         await asyncio.to_thread(self._extract_audio_streams, source, [
@@ -717,7 +714,7 @@ class MediaImportProcessor:
             kept.append((cursor, duration))
         if not kept:
             raise ValueError("Toàn bộ footage đã bị loại khỏi timeline; hãy Uncut hoặc Reset trước khi chạy STT.")
-        destination = analysis_path.with_name("analysis-timeline-edited.wav")
+        destination = analysis_path.with_name(f"{analysis_path.stem}-timeline-edited.wav")
         filters = [
             f"[0:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS[s{index}]"
             for index, (start, end) in enumerate(kept)
@@ -868,7 +865,7 @@ class MediaImportProcessor:
             for index, chunk in enumerate(chunks, start=1):
                 if cancellation:
                     cancellation.check()
-                chunk_path = cache_dir / f"stt-{job_id}-{index:03d}.wav"
+                chunk_path = cache_dir / f"{analysis_path.stem}-stt-{job_id}-{index:03d}.wav"
 
                 async def report_chunk_progress(value: float, *, completed: int = index - 1) -> None:
                     if on_progress is None:

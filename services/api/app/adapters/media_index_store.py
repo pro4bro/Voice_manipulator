@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.adapters.media_asset_paths import media_asset_directory
 from app.domain.models import ProjectMediaAsset
 
 
@@ -15,7 +16,7 @@ class MediaIndexStore:
     Word timings dominate the size of a project: a 2.7 hour recording carries tens
     of thousands of words, and keeping them in the shared index made every read of
     any field parse and re-validate all of them. Metadata therefore lives in a
-    small `index.json`, while each asset owns `assets/media/<id>/words.json`.
+    small `index.json`, while each asset owns `assets/media/<footage>--<id>/words.json` (legacy: `<id>` only).
 
     Both layers are cached in memory and revalidated by file identity, so repeated
     reads cost a `stat` instead of a parse. Writes stay atomic through a temporary
@@ -140,7 +141,7 @@ class MediaIndexStore:
 
     @classmethod
     def _words_path(cls, project_root: Path, asset_id: str) -> Path:
-        return project_root / "assets" / "media" / asset_id / cls.WORDS_FILE
+        return media_asset_directory(project_root, asset_id) / cls.WORDS_FILE
 
     @staticmethod
     def _signature(path: Path) -> tuple[int, int] | None:

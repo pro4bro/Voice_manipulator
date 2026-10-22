@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from app.adapters.media_asset_paths import media_asset_directory
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
 from app.adapters.project_dataset_compiler import (
@@ -236,7 +237,7 @@ class FileContextPatchSource:
         source_hash = self._hash_bytes(audio_path.read_bytes())
         asset_hash = self._hash_json(asset.model_dump(mode="json", by_alias=True))
         root = Path(self.projects.get(project_id).project_path).resolve()
-        diarization_path = root / "assets" / "media" / asset_id / "diarization" / "spans.json"
+        diarization_path = media_asset_directory(root, asset_id) / "diarization" / "spans.json"
         diarization_hash = self._hash_file(diarization_path) if diarization_path.is_file() else None
         context = _SpeakerContext.for_asset(asset, root)
         return {
@@ -397,7 +398,8 @@ class FileContextPatchSource:
         )
 
     def _selected_artifact_matches(self, project_id: str, capture: dict[str, Any], candidate: ContextPatchCandidate) -> bool:
-        expected_relative = (Path("assets") / "media" / capture["asset"].id / "context-patch"
+        root = Path(self.projects.get(project_id).project_path).resolve()
+        expected_relative = (media_asset_directory(root, capture["asset"].id).relative_to(root) / "context-patch"
                              / "references" / f"{candidate.id}.wav").as_posix()
         if candidate.artifact_path != expected_relative or not candidate.artifact_sha256:
             return False
@@ -666,7 +668,7 @@ class FileContextPatchSource:
             if not pcm or len(pcm) != (end - start) * _WIDTH:
                 raise ValueError("Context candidate PCM range is incomplete.")
             root = Path(self.projects.get(project_id).project_path).resolve()
-            relative = Path("assets") / "media" / draft.asset_id / "context-patch" / "references" / f"{candidate.id}.wav"
+            relative = media_asset_directory(root, draft.asset_id).relative_to(root) / "context-patch" / "references" / f"{candidate.id}.wav"
             destination = self._project_path(project_id, relative.as_posix())
             destination.parent.mkdir(parents=True, exist_ok=True)
             temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")

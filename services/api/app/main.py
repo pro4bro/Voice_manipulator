@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.adapters.media_asset_paths import asset_id_from_directory, media_asset_directory, media_asset_file
 from app.adapters import activity_center
 from app.adapters.cosyvoice import CosyVoicePaths, CosyVoiceSpeech
 from app.adapters.sokuji_bridge import SokujiBridge, make_sokuji_router
@@ -688,8 +689,8 @@ def create_app(
         mkv_stt_ids: list[str] = []
         detailed_ids: list[str] = []
 
-        for checkpoint in media_root.glob("asset-*/follow-state.json"):
-            parent_id = checkpoint.parent.name
+        for checkpoint in media_root.glob("*/follow-state.json"):
+            parent_id = asset_id_from_directory(checkpoint.parent)
             try:
                 follow = json.loads(checkpoint.read_text(encoding="utf-8"))
                 if follow.get("parentId") != parent_id:
@@ -1254,7 +1255,7 @@ def create_app(
                 Path(project.project_path)
                 / "cache"
                 / "waveforms"
-                / f"{asset_id}.json"
+                / media_asset_file(media_asset_directory(Path(project.project_path), asset_id), f"{asset_id}.json").name
             )
             if start is None and end is None and points is None:
                 return await asyncio.to_thread(
@@ -1936,6 +1937,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/media/{asset_id}/reveal", status_code=status.HTTP_204_NO_CONTENT)
     def reveal_media_file(project_id: str, asset_id: str, location: Literal["original", "project"] = "original") -> Response:
@@ -1961,6 +1964,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project or media asset not found") from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

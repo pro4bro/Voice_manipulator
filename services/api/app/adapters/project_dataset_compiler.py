@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.adapters.media_asset_paths import media_asset_directory
 from app.domain.timeline_intervals import excluded_intervals
 
 import hashlib
@@ -237,7 +238,7 @@ def _read_diarization(project_root: Path, asset_id: str) -> tuple[list[dict], li
     overlaps. That reads as "no overlap measured", not as "no overlap": re-run
     diarization to have talk-over excluded from its segments.
     """
-    path = project_root / "assets" / "media" / asset_id / "diarization" / "spans.json"
+    path = media_asset_directory(project_root, asset_id) / "diarization" / "spans.json"
     if not path.is_file():
         return [], []
     try:
