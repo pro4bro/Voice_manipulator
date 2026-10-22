@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -15,6 +17,8 @@ from app.domain.models import (
 from app.domain.training_parameters import apply_to_run_config
 
 logger = logging.getLogger(__name__)
+READINESS_PENDING_PREFIX = "Đang kiểm tra runtime/model"
+READINESS_PENDING_STATUS = f"{READINESS_PENDING_PREFIX}…"
 
 
 class TrainingModelUnavailable(ValueError):
@@ -63,14 +67,22 @@ class FileTrainingModelCatalog:
                 found[descriptor.id] = (descriptor, origin)
         return found
 
-    def options(self, task: str | None = None) -> list[TrainingModelOption]:
+    def options(
+        self,
+        task: str | None = None,
+        *,
+        check_readiness: bool = True,
+    ) -> list[TrainingModelOption]:
         found = self._descriptors()
         descriptors = [
             (descriptor, origin)
             for descriptor, origin in found.values()
             if not task or task in descriptor.tasks
         ]
-        options = [self._describe(descriptor, origin) for descriptor, origin in descriptors]
+        options = [
+            self._describe(descriptor, origin, check_readiness=check_readiness)
+            for descriptor, origin in descriptors
+        ]
         return sorted(options, key=lambda option: (option.order, option.family, option.label))
 
     def get(self, model_id: str) -> TrainingModelOption:
@@ -104,7 +116,13 @@ class FileTrainingModelCatalog:
             logger.warning("Skipping training model descriptor %s: %s", path.name, exc)
             return None
 
-    def _describe(self, descriptor: TrainingModelDescriptor, origin: str) -> TrainingModelOption:
+    def _describe(
+        self,
+        descriptor: TrainingModelDescriptor,
+        origin: str,
+        *,
+        check_readiness: bool = True,
+    ) -> TrainingModelOption:
         repository = descriptor.repository
         root = self.roots.get(repository.root)
         entrypoint = (root / repository.path / repository.entrypoint) if root else None
@@ -125,11 +143,15 @@ class FileTrainingModelCatalog:
             status = descriptor.blocked_reason or "Đã có repo, chưa có adapter chạy thật trong Pro4Bro."
         else:
             status = "Sẵn sàng."
-            check = self.readiness.get(descriptor.engine)
-            reason = check(descriptor) if check else ("Chưa cấu hình kiểm tra runtime/model cho adapter." if descriptor.readiness_required else None)
-            if reason:
+            if not check_readiness and (descriptor.readiness_required or descriptor.engine in self.readiness):
                 available = False
-                status = reason
+                status = READINESS_PENDING_STATUS
+            else:
+                check = self.readiness.get(descriptor.engine)
+                reason = check(descriptor) if check else ("Chưa cấu hình kiểm tra runtime/model cho adapter." if descriptor.readiness_required else None)
+                if reason:
+                    available = False
+                    status = reason
         return TrainingModelOption(
             **descriptor.model_dump(),
             origin=origin,
@@ -137,3 +159,102 @@ class FileTrainingModelCatalog:
             available=available,
             status=status,
         )
+
+
+class BackgroundTrainingModelOptions:
+    """Serve quick descriptor metadata while runtime readiness probes run in one daemon thread."""
+
+    def __init__(
+        self,
+        catalog: FileTrainingModelCatalog,
+        *,
+        ttl_seconds: float = 60.0,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.catalog = catalog
+        self.ttl_seconds = ttl_seconds
+        self._monotonic = monotonic
+        self._lock = threading.Lock()
+        self._refreshing = False
+        self._checked_at: float | None = None
+        self._results: dict[str, tuple[bool, str]] = {}
+
+    def options(self, task: str | None = None) -> list[TrainingModelOption]:
+        # Reading descriptor files and checking repository paths is bounded; do
+        # not invoke engine-specific imports/model checks on the request thread.
+        options = self.catalog.options(task=task, check_readiness=False)
+        pending_ids = {
+            option.id for option in options
+            if option.status.startswith(READINESS_PENDING_PREFIX)
+        }
+        if not pending_ids:
+            return options
+        now = self._monotonic()
+        with self._lock:
+            fresh = self._checked_at is not None and now - self._checked_at < self.ttl_seconds
+            missing = pending_ids.difference(self._results) if fresh else pending_ids
+            if not fresh or missing:
+                self._start_refresh_locked(pending_ids)
+            results = self._results.copy() if fresh else {}
+
+        described: list[TrainingModelOption] = []
+        for option in options:
+            if not option.status.startswith(READINESS_PENDING_PREFIX):
+                described.append(option)
+                continue
+            result = results.get(option.id)
+            if result is None:
+                described.append(option.model_copy(update={
+                    "available": False,
+                    "status": READINESS_PENDING_STATUS,
+                }))
+                continue
+            available, status = result
+            described.append(option.model_copy(update={"available": available, "status": status}))
+        return described
+
+    def _start_refresh_locked(self, pending_ids: set[str]) -> None:
+        if self._refreshing:
+            return
+        self._refreshing = True
+        thread = threading.Thread(
+            target=self._refresh,
+            name="voice-generator-readiness",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception as exc:
+            self._refreshing = False
+            self._checked_at = self._monotonic()
+            message = f"Không kiểm tra được runtime/model: {exc or 'lỗi không xác định.'}"
+            self._results = {model_id: (False, message) for model_id in pending_ids}
+
+    def _refresh(self) -> None:
+        try:
+            options = self.catalog.options()
+            results = {
+                option.id: (option.available, option.status)
+                for option in options
+                if (option.readiness_required or option.engine in self.catalog.readiness) and option.runnable
+            }
+        except Exception as exc:
+            logger.exception("Voice generator readiness refresh failed")
+            results = self._failed_results(str(exc))
+        with self._lock:
+            self._results = results
+            self._checked_at = self._monotonic()
+            self._refreshing = False
+
+    def _failed_results(self, reason: str) -> dict[str, tuple[bool, str]]:
+        try:
+            pending = self.catalog.options(check_readiness=False)
+        except Exception:
+            logger.exception("Could not enumerate voice generators after readiness failure")
+            return {}
+        message = f"Không kiểm tra được runtime/model: {reason or 'lỗi không xác định.'}"
+        return {
+            option.id: (False, message)
+            for option in pending
+            if option.status.startswith(READINESS_PENDING_PREFIX)
+        }

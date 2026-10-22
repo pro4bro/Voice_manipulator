@@ -416,12 +416,13 @@ with socket.socket() as listener:
         str(Path(env["USERPROFILE"]) / "Documents/WindowsPowerShell/Modules"),
     ])
     processes: list[subprocess.Popen] = []
+    sentinel_process: subprocess.Popen | None = None
     try:
         roles = [(18119, "app.runtime_controller", bundle / "services/api")]
         if full_stack:
             roles += [(18120, "app", bundle / "services/api"),
                       (18081, "studio_app.server", bundle / ".runtime/omnivoice-studio")]
-        listener_maps, identity_maps = [], []
+        listener_maps, identity_maps, fixture_owned_pids = [], [], set()
         for standard_port, module, cwd in roles:
             cwd.mkdir(parents=True, exist_ok=True)
             ready = tmp_path / f"ready-{standard_port}.json"
@@ -436,14 +437,16 @@ with socket.socket() as listener:
                 time.sleep(0.05)
             assert ready.exists(), f"{module} fixture did not bind its isolated port"
             ready_state = json.loads(ready.read_text())
+            fixture_owned_pids.update({process.pid, ready_state["pid"]})
             with socket.create_connection(("127.0.0.1", ready_state["port"]), timeout=2):
                 pass
             listener_maps.append({"standard": standard_port, "actual": ready_state["port"]})
             if not (foreign_controller and standard_port == 18119):
                 identity_maps.extend({"pid": pid, "module": module} for pid in {process.pid, ready_state["pid"]})
         # Remap only this isolated process/port to the portable controller's
-        # identity. Production stop functions and the actual CWD lock are real;
-        # the source stack on the standard ports is never touched.
+        # identity. Production stop functions and the actual CWD lock are real.
+        # A PowerShell kill fence below prevents any host process outside these
+        # fixture-owned PIDs from being terminated.
         def ps_quote(value: Path) -> str:
             return "'" + str(value).replace("'", "''") + "'"
 
@@ -456,15 +459,41 @@ with socket.socket() as listener:
         entry.update(bytes=len(new_launcher), sha256=hashlib.sha256(new_launcher).hexdigest().upper())
         write_json(package / "app-update.json", manifest)
         write_json(bundle / "data/runtime/pro4bro-console.json", {"consolePid": -1})
+        sentinel_process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(300)"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
         wrapper = tmp_path / "apply-running.ps1"
         wrapper.write_text(f"""
 $ErrorActionPreference = 'Stop'
 # NetTCPIP exports CDXML functions. Import before defining the isolated
 # lookups, otherwise lazy import can overwrite the test's function override.
 Import-Module NetTCPIP, CimCmdlets
-$protectedProcessIds = @(NetTCPIP\\Get-NetTCPConnection -LocalPort 18119,18120,18081 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+$protectedProcessIds = @(@(NetTCPIP\\Get-NetTCPConnection -LocalPort 18119,18120,18081 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique) + {sentinel_process.pid})
 $listenerMaps = '{json.dumps(listener_maps)}' | ConvertFrom-Json
 $identityMaps = '{json.dumps(identity_maps)}' | ConvertFrom-Json
+$global:pro4broAllowedStopIds = [int[]]@({', '.join(str(int(pid)) for pid in sorted(fixture_owned_pids))})
+$global:pro4broRejectedStopProcessIds = [Collections.Generic.List[int]]::new()
+function Stop-Process {{
+    [CmdletBinding()] param([int[]]$Id, [switch]$Force)
+    foreach ($processId in $Id) {{
+        if ($global:pro4broAllowedStopIds -notcontains $processId) {{
+            $global:pro4broRejectedStopProcessIds.Add($processId)
+            throw "Refusing to stop process $processId outside the fixture-owned allowlist."
+        }}
+    }}
+    Microsoft.PowerShell.Management\\Stop-Process -Id $Id -Force:$Force -ErrorAction Stop
+}}
+# Prove the fence refuses a live, unrelated sentinel before invoking the updater.
+$sentinelRejected = $false
+try {{ Stop-Process -Id {sentinel_process.pid} -Force }} catch {{ $sentinelRejected = $true }}
+if (-not $sentinelRejected -or $global:pro4broRejectedStopProcessIds -notcontains {sentinel_process.pid}) {{
+    throw 'The process termination fence did not reject its sentinel preflight.'
+}}
+if (-not (Get-Process -Id {sentinel_process.pid} -ErrorAction SilentlyContinue)) {{
+    throw 'The process termination fence stopped its sentinel.'
+}}
+$global:pro4broRejectedStopProcessIds.Clear()
 function Get-NetTCPConnection {{
     [CmdletBinding()] param([int[]]$LocalPort, [string]$State)
     foreach ($mapping in $listenerMaps) {{
@@ -498,6 +527,9 @@ try {{
             throw "Protected source process $protectedId was stopped by the isolated test."
         }}
     }}
+    if ($global:pro4broRejectedStopProcessIds.Count) {{
+        throw "Updater attempted to stop unowned process IDs: $($global:pro4broRejectedStopProcessIds -join ', ')"
+    }}
 }}
 """, encoding="utf-8")
         result = subprocess.run(
@@ -511,7 +543,16 @@ try {{
             assert (bundle / ".portable-bundle.json").read_bytes() == old_manifest
             return
         for process in processes:
-            process.wait(timeout=5)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pytest.fail(
+                    "Fixture process did not exit after the portable updater stop operation.\n"
+                    f"Updater exit code: {result.returncode}\n"
+                    f"Updater stdout:\n{result.stdout}\n"
+                    f"Updater stderr:\n{result.stderr}",
+                    pytrace=False,
+                )
         assert not (bundle / "data/runtime/pro4bro-console.json").exists()
         if restart:
             deadline = time.monotonic() + 5
@@ -537,6 +578,10 @@ try {{
                 # owned test tree even when a preflight deliberately refused it.
                 subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
             process.wait(timeout=5)
+        if sentinel_process is not None:
+            if sentinel_process.poll() is None:
+                sentinel_process.terminate()
+            sentinel_process.wait(timeout=5)
 
 
 def test_new_phase_and_stable_baseline_are_issued_before_patch_increment(tmp_path: Path) -> None:

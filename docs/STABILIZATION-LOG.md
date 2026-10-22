@@ -2476,3 +2476,24 @@ round có controller khác tiếp quản, chưa quy nguyên nhân dừng hiện 
 restart runtime trong round UI. Build sẵn cho lần mở app bình thường tiếp theo.
 ADR0133 và `docs/gates/mkv-import85-20261022.md` giữ bằng chứng. Phase03 giữ60%,
 Phase06 mở, không đổi STT default/portable; dừng85.
+
+
+## Supplemental validation — rounds87–91 (2026-10-22)
+
+### Agent tự kiểm
+
+Trong đợt tích hợp engine theo yêu cầu owner, sửa test harness
+`test_update_stops_controller_holding_api_directory` từng làm dừng source API ở
+round84. Wrapper chỉ cho Stop-Process đi tới native cmdlet với PID launcher/child
+của fixture; sentinel sống chứng minh từ chối PID khác trước khi kill. Assertion
+source PID, stop fixture, rollback/restart/foreign-controller vẫn giữ nguyên.
+Đổi test cũ để cô lập side effect nguy hiểm, không đổi hành vi production hay
+nới acceptance. Năm case focused pass68.84s; tất cả pass trong full API.
+
+### Kết quả so với ngưỡng
+
+Full API1372 pass/1 VibeVoice embedded-import timeout/3 warnings/662.71s, chưa
+full green. Cùng import test chạy riêng pass35.26s với timeout60s nguyên bản;
+không sửa skip/timeout. Chưa quy được nguyên nhân sâu của stall nhất thời.
+Gate `docs/gates/expressive-engines87-91-20261022.md` giữ chi tiết và log.
+Đây là bổ sung containment/evidence, không đổi con trỏ stabilization NEXT cũ.

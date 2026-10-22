@@ -80,3 +80,96 @@ along with Index's own codec/tokenizer/weights. Worker seeding, exact upstream
 call signatures and actual22.05k WAV decode are covered with fake model classes.
 Focused Index/adapter/catalog group **33 passed / 3.70s**, two existing warnings.
 No real Index model or emotional quality claim; required weights/runtime absent.
+
+## Round91 / ED-FISH-01
+
+Registered Fish S2 Pro's isolated worker, local reference transcript/audio,
+natural-language instruction prefix and preserved inline tags. Sampling controls
+map to the pinned request schema. Loader rejects Drama3's incompatible backbone
+and requires S2's `fish_qwen3_omni` config plus `modded_dac_vq` codec. A model error
+even after a partial/final response cannot publish success.
+
+Latest Fish/Index/adapter/catalog group **37 passed / 3.71s**, two existing
+dependency warnings. Fish contract tests use fake upstream classes; common worker
+and project dispatch tests use real WAV files and fake model workers. No new
+engine weights/private runtime or acoustic quality is validated by these tests.
+
+### Full backend containment and remaining runtime check
+
+Round84's updater process fixture now fences Stop-Process to its exact fixture
+launcher/child PIDs before native termination. An unrelated live sentinel proves
+the fence refuses unowned termination; source listener PIDs remain protected.
+Production stop functions and all prior success/rollback/foreign-controller
+assertions remain. Timeout diagnostics retain the PowerShell output.
+
+Focused updater cases: **5 passed / 68.84s**. Full API run:
+**1372 passed, 1 failed, 3 warnings / 662.71s**. Updater containment passes in the
+full run. The remaining failure is VibeVoice's existing embedded-runtime import
+test timing out after 60s; this full run is not green. The exact same test passes
+alone in **35.26s** with the original timeout. Its heavy PyTorch/Transformers import
+is timing-sensitive under suite conditions (also recorded in round62); the exact
+transient cause is not established. No timeout/skip or test assertion was changed.
+Logs: `.scratch/expressive87/updater-containment-final.log`, `backend-full.log`.
+Standalone import log: `.scratch/expressive87/vibevoice-import-serial.log`.
+
+### Browser and final build
+
+The idle managed stack was restarted through its controller after full tests
+finished and after checking there were no active tasks/OBS recording. Controller,
+API and Studio report healthy/running. `/api/voice-generators` reports seven
+entries; all four new entries have installed=true, available=false and the exact
+missing model receipt. An automatic approval review rejected a separate scratch
+API launch; the ordinary existing controller restart provided the managed path.
+
+Browser inspection uses only the separately created scratch project. It confirms
+all training choices, F5 fine-tune controls and blocked trainer status, generator
+selection without existing voices and Fish's instruction/sampling fields with
+Generate disabled. Initial cold readiness probes exceeded the UI read deadline and erased the
+optional catalog. This was reproduced after cache expiry and fixed within91:
+`?background=true` returns metadata/pending unavailable states immediately; a
+single daemon checks readiness while the UI polls until completion. Default HTTP
+and job validation remain synchronous. Cold request after managed restart:
+**23ms, seven entries, six pending**; the full list is present during checks.
+New background/catalog API groups **32 passed / 20.92s**. Final integrated
+Fish/Index/adapter/catalog/background group **42 passed / 4.40s** (two existing
+warnings). UI polling/cancellation plus WorkspaceShell/control groups **116 passed
+/6 files /17.25s**; read-timeout/polling group3 passed; final typecheck/build pass
+(213 modules/380ms, JS `index-Cx6RXNn3.js`).
+
+Browser inspection found the shared F5/ViVoice family label ambiguous; explicit
+engine labels now distinguish them. Shared reading speed is disabled for an
+explicit engine without a speed parameter (Fish/Index); generator notes agree.
+New speed regression failed before the fix and passes afterwards. Index emotion
+mode now shows only its active vector/text controls and clears conflicting fields
+on mode changes; its regression proves a mode switch cannot submit stale values. Intermediate related
+frontend **47 passed / 4 files / 6.22s**, typecheck/build pass, 213 modules/387ms.
+The earlier full frontend run was **1223 passed** before this final UI correction.
+
+### Scope boundary
+
+OmniVoice's existing LoRA/full trainer remains. New reference/generation adapters
+are connected, with missing source/runtime/model reasons and per-engine controls.
+New deep trainers remain blocked; Index/Fish have no invented training parameters.
+Private environment/model provisioning, pretrained inference/listening benchmark,
+F5 trainer/exporter and multi-state LoRA scheduling/publication are next rounds.
+The plan and ADR0135 retain that boundary. Phase03 remains60%, Phase06 open.
+
+
+### Final review and closure
+
+Source/API review of Fish has no remaining actionable finding; no review pretends
+fake models establish pretrained quality. Lead reviewed the background readiness
+path and corrected coverage for registered checks whose descriptor flag is false.
+Jobs and the default HTTP catalog retain strict checks; only the UI snapshot is
+cached. All four cloned source HEADs were rechecked clean at their pinned SHAs.
+No owner audio, existing project media or OmniVoice upstream was changed.
+
+Browser proof is retained under `.scratch/expressive87/` in the dedicated test
+project. Runtime is left healthy on the final served frontend build. Five rounds
+stop at91; new pretrained inference/deep training remains explicitly unverified.
+
+Final browser checks on JS `index-Cx6RXNn3.js`: distinct F5-TTS/ViVoice labels,
+Fish speed disabled/Generate unavailable, Index reference mode hides vector,
+vector mode reveals eight controls, and no console errors. Screenshot:
+`.scratch/expressive87/fish-ui-final.jpg`. The scratch test project remains
+available for review; existing owner projects were not edited.

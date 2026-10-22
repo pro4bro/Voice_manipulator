@@ -23,7 +23,42 @@ publication nhiều variant là các vòng tiếp theo, có acceptance riêng. K
 tải nhiều GB weights hoặc bắt đầu Training Run trên dữ liệu owner trong vòng
 clone/catalog. Tính năng clone/reference không được trình bày như fine-tune.
 
-Ngày kiểm tra: **2026-10-22**. Phạm vi: nghiên cứu nguồn chính thức và code hiện
+### Trạng thái sau năm round kết nối
+
+Các repo đã clone và ghim revision ở `.runtime/engines/research`: EasyVoice,
+F5-TTS, IndexTTS, FishSpeech. EasyVoice là nguồn tham khảo workflow; app gọi F5
+qua adapter riêng, không chạy thêm một app EasyVoice. Danh sách mới gồm hai
+engine ID F5-TTS và ViVoice riêng, IndexTTS2.5 và Fish S2 Pro, bên cạnh OmniVoice.
+Mỗi engine có lựa chọn reference, generator và deep-training riêng. Lựa chọn
+deep-training mới chỉ cho xem và giải thích vì sao chưa chạy được.
+
+| Engine | Kết nối đã có | Phần còn thiếu để chạy model thật |
+|---|---|---|
+| OmniVoice | LoRA/full trainer và generator hiện có | Scheduler nhiều trạng thái, dataset/acceptance theo emotion và vocal effort |
+| F5-TTS / ViVoice | Reference publication, worker, config/vocab và control riêng | Private Python `f5-tts`, checkpoint tương ứng và Vocos; trainer/exporter và benchmark |
+| IndexTTS2.5 | Reference, worker, 8 emotion weights/text, relative duration | Private Python `index-tts`, weights cùng ba model phụ; benchmark và trainer xác thực |
+| Fish S2 Pro | Reference, worker, inline instruction, sampling, codec S2 | Private Python `fish-speech`, weights S2/codec; benchmark và trainer tương thích S2 |
+
+Model weights chưa được tải trong năm round này. Provisioner hỗ trợ tải có chọn
+lọc bằng `.venv/Scripts/python.exe scripts/provision-open-engines.py --model ID`.
+ID cần cho từng engine:
+
+- F5: `f5-tts` và `vocos`; ViVoice: `vivoice` và `vocos`.
+- Index: `indextts25`, `indextts25-w2v-bert`, `indextts25-campplus`, `indextts25-bigvgan`.
+- Fish: `fish-s2-pro`.
+
+Private Python nằm dưới `.runtime/python/<tên-runtime>/`; bước cài môi trường
+và đo inference thật là round tiếp theo, chưa có installer private-runtime mới
+đã nghiệm thu. App kiểm tra source pin, receipt/files, import; worker hash lại
+weights trước khi load. Thiếu thành phần nào thì hiển thị lý do và chặn Generate.
+Không dùng việc clone repo hoặc test với fake model làm bằng chứng giọng thật.
+
+Ưu tiên tiếp theo: provision một engine (Fish cho thử VI, F5/ViVoice làm baseline),
+chạy bộ câu/reference cố định và nghe chấm identity/emotion/effort; sau đó mới
+bật trainer mới hoặc scheduler OmniVoice nhiều LoRA. Giữ các gate dữ liệu,
+artifact và acoustic ở mục 9 cho từng lát triển khai.
+
+Ngày kiểm tra nghiên cứu: **2026-10-22**. Phạm vi phần nghiên cứu gốc: nguồn chính thức và code hiện
 tại; chưa cài engine, tải weights, thu âm, train hay chạy inference. Đây là đề
 xuất triển khai tiếp nối Phase03, không phải thông báo hoàn tất tính năng hay
 tăng tiến độ Round86/Phase03. Mốc code sản phẩm: `ca0a8255d7ea4192352d369642dbef77d9bc3359`.

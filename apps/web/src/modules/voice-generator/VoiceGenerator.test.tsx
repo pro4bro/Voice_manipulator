@@ -168,6 +168,29 @@ describe("VoiceGenerator", () => {
     expect(screen.getByRole("button", { name: /Đang đọc 2\/3/ })).toBeDisabled();
   });
 
+  it("offers only the active Index emotion controls and clears conflicting values when switching mode", () => {
+    const index: TrainingModelOption = { ...GENERATOR, id: "index", engine: "indextts25", label: "Index",
+      parameters: [
+        { key: "emotion_mode", label: "Nguồn cảm xúc", group: "Emotion", kind: "choice", default: "reference", options: [{ value: "reference", label: "Reference" }, { value: "vector", label: "Vector" }, { value: "text", label: "Text" }], nullable: false, editable: true, advanced: false },
+        { key: "emo_happy", label: "Vui", group: "Emotion", kind: "float", default: 0, options: [], nullable: false, editable: true, advanced: false },
+        { key: "emo_text", label: "Mô tả cảm xúc", group: "Emotion", kind: "text", default: "", options: [], nullable: false, editable: true, advanced: false },
+      ] };
+    const onParametersChange = vi.fn();
+    const base = props({ generators: [index], generationEngine: "indextts25", voices: [], rows: [], onParametersChange });
+    const view = render(<VoiceGenerator {...base} />);
+    expect(screen.queryByLabelText("Vui")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Mô tả cảm xúc")).not.toBeInTheDocument();
+    view.rerender(<VoiceGenerator {...base} parameters={{ index: { emotion_mode: "vector", emo_happy: 0.8 } }} />);
+    expect(screen.getByLabelText("Vui")).toHaveValue("0.8");
+    fireEvent.change(screen.getByLabelText("Nguồn cảm xúc"), { target: { value: "text" } });
+    expect(onParametersChange).toHaveBeenLastCalledWith("index", { emotion_mode: "text" });
+    view.rerender(<VoiceGenerator {...base} parameters={{ index: { emotion_mode: "text", emo_text: "sad" } }} />);
+    expect(screen.getByLabelText("Mô tả cảm xúc")).toHaveValue("sad");
+    expect(screen.queryByLabelText("Vui")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Nguồn cảm xúc"), { target: { value: "reference" } });
+    expect(onParametersChange).toHaveBeenLastCalledWith("index", {});
+  });
+
   it("picks a runnable generator for an engine", () => {
     const offline = { ...GENERATOR, id: "offline", available: false };
     expect(generatorForEngine([offline, GENERATOR], "omnivoice")?.id).toBe("omnivoice-generate");

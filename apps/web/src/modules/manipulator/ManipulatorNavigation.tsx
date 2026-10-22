@@ -11,7 +11,10 @@ export const MANIPULATOR_FUNCTIONS = [
   { id: "voice-isolator", prefix: "VI", label: "Voice Isolator" },
   { id: "live-translate", prefix: "LT", label: "Live Translate" },
 ] as const;
-const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3" };
+const ENGINE_LABELS: Record<string, string> = {
+  omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3",
+  "f5-tts": "F5-TTS", vivoice: "ViVoice", indextts25: "IndexTTS 2.5", "fish-s2-pro": "Fish S2 Pro",
+};
 
 export function ManipulatorNavigation({ mode, onChange }: { mode: ManipulatorMode; onChange: (mode: ManipulatorMode) => void }) {
   return <div className="manipulator-navigation" role="tablist" aria-label="Chức năng Voice Manipulator" aria-orientation="vertical">

@@ -1,5 +1,36 @@
 # Project Status — 2026-10-22
 
+## Rounds87–91 — EXPRESSIVE-ENGINE-CONNECTIONS (2026-10-22)
+
+Owner explicitly requested the first five integration rounds in one invocation.
+87 pins/clones EasyVoice, F5-TTS, IndexTTS and FishSpeech with on-demand model
+receipts;88 adds reference/train/generate choices and isolated parameter forms;
+89 connects F5 v1/ViVoice;90 connects IndexTTS2.5 emotion/relative duration;
+91 connects Fish S2 Pro tags/sampling/codec and verifies the integrated seams.
+EasyVoice is workflow context; product workers call F5 directly. OmniVoice's
+existing LoRA/full trainer remains; upstream is read-only. New deep trainers are
+visible but blocked. No new model weights/private runtime or pretrained acoustic
+benchmark was performed; missing assets correctly block Generate. Multi-state
+LoRA scheduling/publication remains subsequent work, not a completed trainer.
+
+Frontend full1223/150 files before final labels/speed correction; final related
+116/6 files, typecheck/build213 pass. API final related42 plus catalog32 pass (overlap); full1372 pass/1 VibeVoice
+embedded-import timeout/3 warnings/662.71s. That same import test passes alone in
+35.26s with the unchanged60s limit; full suite is not green. Updater process
+containment from84 is fixed: exact owned-PID fence, sentinel and protected-source
+checks; five focused cases pass68.84s and all pass in the full run. No test gate
+or timeout was weakened. Read-only Fish API/source review has no open finding.
+
+Cold generator metadata returns in23ms while readiness runs in the background;
+UI polls pending states and strict job checks remain synchronous.
+Managed idle stack restarted through its controller, healthy; seven generator
+entries include the four new engines, installed=true/available=false with exact
+missing receipt reasons. Browser checks use a separate scratch project. Gate
+`docs/gates/expressive-engines87-91-20261022.md`, ADR0135 and the updated emotion/
+delivery plan retain pins, commands, evidence and remaining gaps. Phase03 stays
+60%, Phase06 open; stop91. Next: private runtime/model provisioning and real
+identity/emotion/effort benchmark, followed by verified trainers and scheduling.
+
 ## Round86 — MEDIA-STORAGE-INPUT-01 (2026-10-22)
 
 New imports/followed MKV use footage-named unique folders and prefixed source,

@@ -6,11 +6,43 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round86 readable new-import storage, Windows Reveal and right Input STT dock.
-last_activity_desc: MEDIA-STORAGE-INPUT-01 names only new imports and their caches; legacy footage is unchanged. Native Shell Reveal and STT dock below Recorder preserve original routing and queue state. Frontend1221, focused91, typecheck/build213; related API136/55/latest51 plus track7, native item round-trip and mutation pass. Running idle stack restarted through controller, healthy/current build. Browser/Explorer UAT and prior full-API containment remain open. ADR0134/media-storage86 gate hold evidence. Phase03 stays60%, Phase06 open; stop86.
+last_activity: 2026-10-22 — rounds87–91 expressive engine catalogs and isolated reference/generation workers.
+last_activity_desc: Five owner-requested connection rounds complete through91. Four sources cloned/pinned, per-engine catalogs and F5/ViVoice, IndexTTS2.5, Fish S2 Pro workers connected. New model/runtime/trainer and acoustic benchmark gaps remain explicit. Frontend full1223 then final focused116, typecheck/build pass. API full1372 pass/1 intermittent VibeVoice import timeout; standalone import passes35.26s at original limit. Updater containment5 cases pass. Idle managed stack restarted healthy. ADR0135/expressive87-91 gate record evidence. Phase03 stays60%, Phase06 open; stop91.
 ---
 
 # Project State
+
+## Rounds87–91 — EXPRESSIVE-ENGINE-CONNECTIONS (2026-10-22)
+
+Owner explicitly requested the first five integration rounds in one invocation.
+87 pins/clones EasyVoice, F5-TTS, IndexTTS and FishSpeech with on-demand model
+receipts;88 adds reference/train/generate choices and isolated parameter forms;
+89 connects F5 v1/ViVoice;90 connects IndexTTS2.5 emotion/relative duration;
+91 connects Fish S2 Pro tags/sampling/codec and verifies the integrated seams.
+EasyVoice is workflow context; product workers call F5 directly. OmniVoice's
+existing LoRA/full trainer remains; upstream is read-only. New deep trainers are
+visible but blocked. No new model weights/private runtime or pretrained acoustic
+benchmark was performed; missing assets correctly block Generate. Multi-state
+LoRA scheduling/publication remains subsequent work, not a completed trainer.
+
+Frontend full1223/150 files before final labels/speed correction; final related
+116/6 files, typecheck/build213 pass. API final related42 plus catalog32 pass (overlap); full1372 pass/1 VibeVoice
+embedded-import timeout/3 warnings/662.71s. That same import test passes alone in
+35.26s with the unchanged60s limit; full suite is not green. Updater process
+containment from84 is fixed: exact owned-PID fence, sentinel and protected-source
+checks; five focused cases pass68.84s and all pass in the full run. No test gate
+or timeout was weakened. Read-only Fish API/source review has no open finding.
+
+Cold generator metadata returns in23ms while readiness runs in the background;
+UI polls pending states and strict job checks remain synchronous.
+Managed idle stack restarted through its controller, healthy; seven generator
+entries include the four new engines, installed=true/available=false with exact
+missing receipt reasons. Browser checks use a separate scratch project. Gate
+`docs/gates/expressive-engines87-91-20261022.md`, ADR0135 and the updated emotion/
+delivery plan retain pins, commands, evidence and remaining gaps. Phase03 stays
+60%, Phase06 open; stop91. Next: private runtime/model provisioning and real
+identity/emotion/effort benchmark, followed by verified trainers and scheduling.
+
 
 ## Round86 — MEDIA-STORAGE-INPUT-01 (2026-10-22)
 

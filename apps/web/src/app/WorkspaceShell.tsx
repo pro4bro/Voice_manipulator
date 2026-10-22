@@ -1,3 +1,4 @@
+import { useVoiceGeneratorCatalog } from "../modules/voice-generator/useVoiceGeneratorCatalog";
 import { SubtitleTimingProvider } from "../modules/script/SubtitleTimingPreview";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
@@ -506,6 +507,8 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [changerPageOpen, changerRunning]);
 
+  useVoiceGeneratorCatalog(project.id, loadAttempt, setVoiceGenerators, setNotice);
+
   const voiceScriptRunning = voiceScriptJob?.status === "running";
   useEffect(() => {
     if (!voiceScriptRunning || !voiceScriptJob) return;
@@ -571,11 +574,6 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
       api.getSttEngines()
         .then((options) => { if (!cancelled) setSttEngines(options); })
         .catch(() => { if (!cancelled) setSttEngines([]); });
-    }
-    if (typeof api.getVoiceGenerators === "function") {
-      api.getVoiceGenerators()
-        .then((options) => { if (!cancelled) setVoiceGenerators(options); })
-        .catch(() => { if (!cancelled) setVoiceGenerators([]); });
     }
     void refreshProjectVoices();
     if (typeof api.listVoiceOutputs === "function") {

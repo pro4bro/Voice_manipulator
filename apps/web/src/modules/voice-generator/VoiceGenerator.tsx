@@ -45,7 +45,9 @@ export function generatorForEngine(generators: TrainingModelOption[], engine: st
 
 function editableSpecs(generator: TrainingModelOption, overrides: Record<string, TrainingParameterValue> = {}) {
   const mode = overrides.mode ?? generator.parameters.find((spec) => spec.key === "mode")?.default;
+  const emotionMode = overrides.emotion_mode ?? generator.parameters.find((spec) => spec.key === "emotion_mode")?.default ?? "reference";
   return generator.parameters.filter((spec) => !OWNED_ELSEWHERE.has(spec.key)
+    && !(generator.engine === "indextts25" && (spec.key === "emo_text" ? emotionMode !== "text" : /^emo_(happy|angry|sad|afraid|disgusted|melancholic|surprised|calm)$/.test(spec.key) && emotionMode !== "vector"))
     && !(generator.engine === "cosyvoice3" && mode !== "instruct" && (spec.key === "language" || spec.key === "instruction")));
 }
 
@@ -64,6 +66,14 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
     if (generator.engine === "cosyvoice3" && spec.key === "mode" && value !== "instruct") {
       delete next.language;
       delete next.instruction;
+    }
+    if (generator.engine === "indextts25" && spec.key === "emotion_mode") {
+      if (value !== "text") delete next.emo_text;
+      if (value !== "vector") {
+        for (const key of Object.keys(next)) {
+          if (/^emo_(happy|angry|sad|afraid|disgusted|melancholic|surprised|calm)$/.test(key)) delete next[key];
+        }
+      }
     }
     onChange(next);
   }
@@ -155,7 +165,7 @@ export function VoiceGenerator({ projectId, generators, category, onCategoryChan
       {sections.map((generator) => (
         <GeneratorSection generator={generator} key={generator.id} onChange={(next) => onParametersChange(generator.id, next)} overrides={parameters[generator.id] ?? {}} />
       ))}
-      {sections.length ? <small className="train-parameter-note">Text lấy từ Script ở giữa · tốc độ lấy từ Control Rack.</small> : null}
+      {sections.length ? <small className="train-parameter-note">Text lấy từ Script ở giữa.{sections.some((section) => section.parameters.some((spec) => spec.key === "speed")) ? " Tốc độ lấy từ Control Rack cho engine có tham số speed." : " Các engine này không dùng tốc độ từ Control Rack."}</small> : null}
 
       {job && (busy || job.status === "failed") ? (
         <div className={`voice-generator-progress ${job.status === "failed" ? "is-failed" : ""}`} role="status">

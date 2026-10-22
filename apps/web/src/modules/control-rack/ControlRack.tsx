@@ -7,6 +7,7 @@ interface ControlRackProps {
   onSpeedChange: (value: number) => void;
   onGainChange: (value: number) => void;
   compact?: boolean;
+  speedSupported?: boolean;
   environmentProfiles?: EnvironmentNoiseProfile[];
   environmentProfileId?: string | null;
   onEnvironmentProfileChange?: (profileId: string | null) => void;
@@ -18,6 +19,7 @@ export function ControlRack({
   onSpeedChange,
   onGainChange,
   compact = false,
+  speedSupported = true,
   environmentProfiles = [],
   environmentProfileId = null,
   onEnvironmentProfileChange,
@@ -28,6 +30,7 @@ export function ControlRack({
         <span><b>Tốc độ đọc</b><output>{speed.toFixed(2)}×</output></span>
         <input
           aria-label="Tốc độ đọc"
+          disabled={!speedSupported}
           max="1.35"
           min="0.65"
           onChange={(event) => onSpeedChange(Number(event.target.value))}
@@ -36,6 +39,7 @@ export function ControlRack({
           value={speed}
         />
         <small><span>Chậm</span><span>Tự nhiên</span><span>Nhanh</span></small>
+        {!speedSupported ? <small>Engine đã chọn không hỗ trợ tham số tốc độ đọc.</small> : null}
       </label>
       <label className="rack-control">
         <span><b>Source gain</b><output>{gain > 0 ? "+" : ""}{gain.toFixed(1)} dB</output></span>

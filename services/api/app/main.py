@@ -129,6 +129,7 @@ from app.adapters.processing_cancellation import ProcessingStopError
 from app.adapters.runtime_status import RuntimeStatus
 from app.adapters.training_runtime import TrainingRuntime
 from app.adapters.training_model_catalog import (
+    BackgroundTrainingModelOptions,
     FileTrainingModelCatalog,
     TrainingModelUnavailable,
 )
@@ -332,9 +333,7 @@ def create_app(
         settings.cosyvoice_root or settings.research_engines_root / "CosyVoice",
         settings.cosyvoice_runtime_root or settings.project_root / ".runtime" / "cosyvoice" / ".venv",
     )
-    expressive = {key: paths for key, paths in expressive_paths(
-        settings.research_engines_root, settings.project_root / ".runtime" / "python",
-    ).items() if key in {"f5-tts", "vivoice", "indextts25"}}
+    expressive = expressive_paths(settings.research_engines_root, settings.project_root / ".runtime" / "python")
     sokuji_bridge = SokujiBridge(settings.research_engines_root / "sokuji", settings.project_root / ".runtime/sokuji")
     engine_roots = {
         "omnivoice": settings.omnivoice_root,
@@ -400,6 +399,7 @@ def create_app(
         readiness={"vibevoice": vibevoice_readiness, "cosyvoice3": cosyvoice_paths.unavailable_reason,
                    **{key: paths.unavailable_reason for key, paths in expressive.items()}},
     )
+    voice_generator_ui_options = BackgroundTrainingModelOptions(voice_generators, ttl_seconds=60.0)
     generation_worker = omnivoice_worker(training_runtime.python, engine_env)
     vibevoice_speech_worker = vibevoice_worker(vibevoice_paths) if vibevoice_paths else None
     cosyvoice_speech_worker = cosyvoice_paths.worker()
@@ -2266,7 +2266,9 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
     @app.get("/api/voice-generators", response_model=list[TrainingModelOption])
-    def voice_generator_options() -> list[TrainingModelOption]:
+    def voice_generator_options(background: bool = False) -> list[TrainingModelOption]:
+        if background:
+            return voice_generator_ui_options.options()
         return voice_generators.options()
 
     @app.get("/api/projects/{project_id}/voices", response_model=list[ProjectVoice])

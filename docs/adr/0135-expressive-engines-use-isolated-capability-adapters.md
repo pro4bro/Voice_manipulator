@@ -29,6 +29,12 @@ loading weights. Source checkouts must match the supported SHA and be clean.
 Only decoded finite non-silent audio can report worker success. This structural
 gate does not establish language, identity or emotional quality.
 
+The UI requests generator metadata with `background=true`; runtime checks run in
+one daemon and pending options stay unavailable while the UI polls. This avoids
+losing all choices when a cold import exceeds the normal read deadline. The
+default HTTP endpoint and job catalog resolution retain synchronous validation;
+the UI readiness cache never authorizes generation.
+
 The UI permits inspecting unavailable choices and their settings/status but
 prevents starting them. Per-descriptor values remain separate. Emotion, vocal
 effort and rendered audio gain remain independent; multi-variant publication and

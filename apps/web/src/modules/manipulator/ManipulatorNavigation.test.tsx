@@ -38,12 +38,16 @@ describe("Manipulator function navigation", () => {
     const generators = [
       { id: "omni-generate", engine: "omnivoice", family: "OmniVoice", label: "OmniVoice generate", available: true, status: "Sẵn sàng." },
       { id: "cosy-generate", engine: "cosyvoice3", family: "CosyVoice3", label: "CosyVoice3 generate", available: false, status: "Chưa tải engine." },
+      { id: "f5-generate", engine: "f5-tts", family: "EasyVoice · F5/ViVoice", label: "F5 generate", available: false, status: "Thiếu weights F5." },
+      { id: "vi-generate", engine: "vivoice", family: "EasyVoice · F5/ViVoice", label: "ViVoice generate", available: false, status: "Thiếu weights VI." },
     ] as TrainingModelOption[];
     const onGenerationEngineChange = vi.fn();
     render(<ManipulatorService mode="voice-over" voiceGenerators={generators} generationEngine={null} onGenerationEngineChange={onGenerationEngineChange} />);
     const selector = screen.getByRole("combobox", { name: "Engine tạo giọng" });
     expect(within(selector).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ })).toBeEnabled();
     expect(screen.getByText("Chưa tải engine.")).toBeInTheDocument();
+    expect(within(selector).getByRole("option", { name: "F5-TTS · Thiếu weights F5." })).toHaveValue("f5-tts");
+    expect(within(selector).getByRole("option", { name: "ViVoice · Thiếu weights VI." })).toHaveValue("vivoice");
     fireEvent.change(selector, { target: { value: "cosyvoice3" } });
     expect(onGenerationEngineChange).toHaveBeenLastCalledWith("cosyvoice3");
     fireEvent.change(selector, { target: { value: "omnivoice" } });

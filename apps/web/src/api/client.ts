@@ -714,7 +714,7 @@ export const api = {
   getGpuLease: () => request<GpuLeaseHolder | null>("/api/gpu-lease"),
   getTrainingRuntime: () => request<TrainingRuntimeReport>("/api/training-runtime"),
   getTrainingModels: () => request<TrainingModelOption[]>("/api/training-models"),
-  getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators"),
+  getVoiceGenerators: () => request<TrainingModelOption[]>("/api/voice-generators?background=true"),
   getSttEngines: () => request<TrainingModelOption[]>("/api/stt-engines"),
   getEngineCatalog: (task?: string) => request<TrainingModelOption[]>(`/api/engine-catalog${task ? `?task=${encodeURIComponent(task)}` : ""}`),
   getLipSync: (projectId: string, versionId?: string) => request<LipSyncDocument>(lipSyncUrl(projectId, ``, versionId)),

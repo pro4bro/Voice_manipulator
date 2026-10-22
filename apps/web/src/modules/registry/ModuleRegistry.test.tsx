@@ -17,6 +17,16 @@ function importContext(values: Record<string, unknown>) {
   } as unknown as StudioContext;
 }
 
+it("disables shared reading speed for a selected engine without a speed parameter", () => {
+  const context = importContext({ speed: 1, gain: 0, generationEngine: "fish-s2-pro",
+    voiceGenerators: [{ engine: "fish-s2-pro", parameters: [] }, { engine: "f5-tts", parameters: [{ key: "speed" }] }],
+    onSpeedChange: vi.fn(), onGainChange: vi.fn() });
+  const view = render(<ModuleRegistry id="control-rack" context={context} />);
+  expect(screen.getByRole("slider", { name: "Tốc độ đọc" })).toBeDisabled();
+  view.rerender(<ModuleRegistry id="control-rack" context={{ ...context, generationEngine: "f5-tts" }} />);
+  expect(screen.getByRole("slider", { name: "Tốc độ đọc" })).toBeEnabled();
+});
+
 it("keeps STT in its right dock while switching the Input library tab", () => {
   function InputModules() {
     const [host, setHost] = useState<HTMLDivElement | null>(null);
