@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from app.adapters.expressive_engines import ExpressivePaths, ExpressiveSpeech, SPECS
+import app.adapters.expressive_engines as expressive_engines
 from app.adapters.omnivoice_generator import SpeechRequest
 from app.domain.models import ProjectVoice
 from app.adapters.verified_model_component import verified_component
@@ -81,6 +82,158 @@ def test_reference_transcript_and_model_family_cannot_be_silently_replaced(tmp_p
 def test_unprovisioned_runtime_is_not_available(tmp_path):
     paths = ExpressivePaths(tmp_path, tmp_path / "python", SPECS["f5-tts"])
     assert paths.unavailable_reason() is not None
+
+
+def _runtime_readiness_fixture(tmp_path, engine="f5-tts", *, receipt_content=None):
+    spec = SPECS[engine]
+    repo = tmp_path / ".runtime/engines/research" / spec.repo_name
+    runtime = tmp_path / ".runtime/python" / spec.runtime_name
+    entrypoint = repo / spec.entrypoint
+    entrypoint.parent.mkdir(parents=True, exist_ok=True)
+    entrypoint.touch()
+    python = runtime / "python.exe"
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.touch()
+    requirements_name = {
+        "f5-tts": "requirements-expressive-f5.txt",
+        "index-tts": "requirements-expressive-index.txt",
+        "fish-speech": "requirements-expressive-fish.txt",
+    }[spec.runtime_name]
+    requirement_file = tmp_path / "scripts" / requirements_name
+    requirement_file.parent.mkdir(parents=True, exist_ok=True)
+    requirement_file.write_text("pinned==1\n", encoding="utf-8")
+    if spec.runtime_name == "fish-speech":
+        (tmp_path / "scripts" / "requirements-expressive-fish-overrides.txt").write_text(
+            "protobuf>=3.20.0,<6.0.0\n", encoding="utf-8")
+    paths = ExpressivePaths(repo, runtime, spec)
+    receipt_path = runtime / ".pro4bro-expressive-runtime.json"
+    if receipt_content is not None:
+        receipt_path.write_text(receipt_content, encoding="utf-8")
+    return paths, receipt_path, requirement_file
+
+
+def _valid_runtime_receipt(engine, requirement_file, *, receipt_engine=None):
+    spec = SPECS[engine]
+    record = {
+        "schema": 1,
+        "runtime": spec.runtime_name,
+        "engine": receipt_engine or engine,
+        "sourceRevision": spec.revision,
+        "sourcePathFromRuntime": "../../engines/research/" + spec.repo_name,
+        "pythonVersion": "3.11.9",
+        "requirementsSha256": hashlib.sha256(requirement_file.read_bytes()).hexdigest(),
+    }
+    if spec.runtime_name == "fish-speech":
+        override = requirement_file.parent / "requirements-expressive-fish-overrides.txt"
+        record["overrideSha256"] = hashlib.sha256(override.read_bytes()).hexdigest()
+    return json.dumps(record)
+
+
+@pytest.mark.parametrize("invalid_field", [None, "malformed", "empty", "schema", "runtime", "source", "source_path", "python", "requirements"])
+def test_runtime_probe_waits_for_matching_ready_receipt(tmp_path, monkeypatch, invalid_field):
+    paths, receipt_path, requirements = _runtime_readiness_fixture(tmp_path)
+    monkeypatch.setattr(expressive_engines, "PRODUCT_ROOT", tmp_path)
+    monkeypatch.setattr(ExpressivePaths, "model_identity", lambda _self: "model-fixture")
+    if invalid_field is None:
+        (paths.runtime / ".pro4bro-expressive-managed.json").write_text("{}", encoding="utf-8")
+    else:
+        if invalid_field == "malformed":
+            receipt_path.write_text("{not-json", encoding="utf-8")
+        elif invalid_field == "empty":
+            receipt_path.write_text("{}", encoding="utf-8")
+        else:
+            data = json.loads(_valid_runtime_receipt("f5-tts", requirements))
+            data[{
+                "schema": "schema", "runtime": "runtime", "source": "sourceRevision",
+                "source_path": "sourcePathFromRuntime", "python": "pythonVersion",
+                "requirements": "requirementsSha256",
+            }[invalid_field]] = "0" * 64 if invalid_field == "requirements" else "mismatch"
+            receipt_path.write_text(json.dumps(data), encoding="utf-8")
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def run(args, **_kwargs):
+        calls.append(args)
+        if args[0] == "git":
+            return ResultWithOutput(0, paths.spec.revision if args[-2:] == ["rev-parse", "HEAD"] else "")
+        return Result()
+
+    class ResultWithOutput:
+        def __init__(self, returncode, stdout):
+            self.returncode, self.stdout, self.stderr = returncode, stdout, ""
+
+    monkeypatch.setattr(expressive_engines.subprocess, "run", run)
+    reason = paths.unavailable_reason()
+    assert reason is not None
+    assert "runtime" in reason.lower() or "receipt" in reason.lower()
+    assert not any(str(paths.python) == args[0] for args in calls)
+
+
+def test_matching_ready_receipt_allows_import_probe_and_shared_f5_runtime(tmp_path, monkeypatch):
+    paths, receipt_path, requirements = _runtime_readiness_fixture(tmp_path, "f5-tts")
+    monkeypatch.setattr(expressive_engines, "PRODUCT_ROOT", tmp_path)
+    monkeypatch.setattr(ExpressivePaths, "model_identity", lambda _self: "model-fixture")
+    receipt_path.write_text(_valid_runtime_receipt("f5-tts", requirements, receipt_engine="vivoice"), encoding="utf-8")
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    class ResultWithOutput(Result):
+        pass
+
+    def run(args, **_kwargs):
+        calls.append(args)
+        if args[0] == "git":
+            result = ResultWithOutput()
+            result.stdout = paths.spec.revision if args[-2:] == ["rev-parse", "HEAD"] else ""
+            return result
+        return Result()
+
+    monkeypatch.setattr(expressive_engines.subprocess, "run", run)
+    assert paths.unavailable_reason() is None
+    assert any(args[0] == str(paths.python) and args[1] == str(expressive_engines.PROBE) for args in calls)
+
+
+@pytest.mark.parametrize("override_state", ["missing", "changed", "malformed", "missing-file"])
+def test_fish_runtime_probe_requires_current_override_hash(tmp_path, monkeypatch, override_state):
+    paths, receipt_path, requirements = _runtime_readiness_fixture(tmp_path, "fish-s2-pro")
+    monkeypatch.setattr(expressive_engines, "PRODUCT_ROOT", tmp_path)
+    monkeypatch.setattr(ExpressivePaths, "model_identity", lambda _self: "model-fixture")
+    record = json.loads(_valid_runtime_receipt("fish-s2-pro", requirements))
+    override = tmp_path / "scripts/requirements-expressive-fish-overrides.txt"
+    if override_state == "missing":
+        record.pop("overrideSha256")
+    elif override_state == "changed":
+        override.write_text("protobuf>=4,<6\n", encoding="utf-8")
+    elif override_state == "malformed":
+        record["overrideSha256"] = ["not", "a", "hash"]
+    elif override_state == "missing-file":
+        override.unlink()
+    receipt_path.write_text(json.dumps(record), encoding="utf-8")
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def run(args, **_kwargs):
+        calls.append(args)
+        result = Result()
+        if args[0] == "git" and args[-2:] == ["rev-parse", "HEAD"]:
+            result.stdout = paths.spec.revision
+        return result
+
+    monkeypatch.setattr(expressive_engines.subprocess, "run", run)
+    assert paths.unavailable_reason() is not None
+    assert not any(str(paths.python) == args[0] for args in calls)
 
 
 def receipt(folder, *, model_id="demo", revision="a" * 40, name="weights.bin"):

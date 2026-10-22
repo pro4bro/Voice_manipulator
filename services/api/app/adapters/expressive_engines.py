@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 WORKER = Path(__file__).resolve().parents[1] / "workers" / "expressive_worker.py"
 PROBE = WORKER.with_name("expressive_import_probe.py")
+PRODUCT_ROOT = Path(__file__).resolve().parents[4]
+RUNTIME_REQUIREMENTS = {
+    "f5-tts": "requirements-expressive-f5.txt",
+    "index-tts": "requirements-expressive-index.txt",
+    "fish-speech": "requirements-expressive-fish.txt",
+}
 EMOTIONS = ("happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm")
 _PROBES: dict[tuple[str, str, str], tuple[float, str | None]] = {}
 _PROBE_LOCK = threading.Lock()
@@ -103,6 +109,44 @@ class ExpressivePaths:
         return json.dumps({"models": receipts, "source": self.spec.revision,
                            "workers": [hashlib.sha256(path.read_bytes()).hexdigest() for path in handlers]}, sort_keys=True)
 
+    def runtime_receipt_reason(self) -> str | None:
+        receipt_path = self.runtime / ".pro4bro-expressive-runtime.json"
+        try:
+            record = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return f"{self.spec.repo_name}: runtime chưa có receipt cài đặt thành công."
+        except (OSError, ValueError):
+            return f"{self.spec.repo_name}: receipt runtime không hợp lệ."
+        requirements = PRODUCT_ROOT / "scripts" / RUNTIME_REQUIREMENTS[self.spec.runtime_name]
+        try:
+            requirements_hash = hashlib.sha256(requirements.read_bytes()).hexdigest()
+        except OSError:
+            return f"{self.spec.repo_name}: thiếu requirements runtime để xác minh receipt."
+        override_hash = None
+        if self.spec.runtime_name == "fish-speech":
+            override = PRODUCT_ROOT / "scripts" / "requirements-expressive-fish-overrides.txt"
+            try:
+                override_hash = hashlib.sha256(override.read_bytes()).hexdigest()
+            except OSError:
+                return f"{self.spec.repo_name}: thiếu uv override để xác minh receipt."
+        allowed_engines = {"f5-tts", "vivoice"} if self.spec.runtime_name == "f5-tts" else {
+            "index-tts": {"indextts25"}, "fish-speech": {"fish-s2-pro"},
+        }[self.spec.runtime_name]
+        expected = {
+            "schema": 1,
+            "runtime": self.spec.runtime_name,
+            "sourceRevision": self.spec.revision,
+            "sourcePathFromRuntime": "../../engines/research/" + self.spec.repo_name,
+            "pythonVersion": "3.11.9",
+            "requirementsSha256": requirements_hash,
+        }
+        if (not isinstance(record, dict) or any(record.get(key) != value for key, value in expected.items())
+                or record.get("engine") not in allowed_engines):
+            return f"{self.spec.repo_name}: receipt runtime không khớp source hoặc requirements hiện tại."
+        if override_hash is not None and record.get("overrideSha256") != override_hash:
+            return f"{self.spec.repo_name}: receipt uv override không khớp cấu hình hiện tại."
+        return None
+
     def unavailable_reason(self, descriptor=None) -> str | None:
         if not (self.repo / self.spec.entrypoint).is_file():
             return f"Chưa có repo {self.spec.repo_name}."
@@ -120,6 +164,9 @@ class ExpressivePaths:
             return str(exc)
         if not self.python.is_file():
             return f"Chưa có Python riêng cho {self.spec.repo_name}."
+        receipt_reason = self.runtime_receipt_reason()
+        if receipt_reason:
+            return receipt_reason
         key = (str(self.python.resolve()), str(self.repo.resolve()), self.spec.runtime_name)
         with _PROBE_LOCK:
             cached = _PROBES.get(key)

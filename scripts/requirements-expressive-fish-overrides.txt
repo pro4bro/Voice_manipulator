@@ -1,0 +1,4 @@
+# Matches FishSpeech's pinned [tool.uv].override-dependencies declaration.
+# descript-audiotools pins protobuf below 3.20; FishSpeech overrides that
+# transitive constraint for compatibility with the rest of its runtime.
+protobuf>=3.20.0,<6.0.0

@@ -14,6 +14,7 @@ import urllib.request
 import zipfile
 
 PYTHON_VERSION = "3.11.9"
+UV_VERSION = "0.8.14"
 PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embeddable-amd64.zip"
 PYTHON_SHA256 = "33B448F95FECB7C6F802157DBD5E6B40A2AD9BFC8B95CA634A06BA4073AD1AC0"
 RUNTIME_SCHEMA = 1
@@ -28,6 +29,20 @@ TORCH_WHEELS = {
         "filename": "torchaudio-2.8.0+cu128-cp311-cp311-win_amd64.whl",
         "sha256": "7a1eb6154e05b8056b34c7a41495e09d57f79eb0180eb4e7f3bb2a61845ca8ea",
         "url": "https://download-r2.pytorch.org/whl/cu128/torchaudio-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl",
+    },
+}
+PINNED_PYPI_ARTIFACTS = {
+    "uv": {
+        "version": UV_VERSION,
+        "filename": "uv-0.8.14-py3-none-win_amd64.whl",
+        "sha256": "5091d588753bbbd1f120f13311ede2ae113d7ec2760e149fc502a237f2516075",
+        "url": "https://files.pythonhosted.org/packages/45/5e/9bf7004bd53e9279265d73a131fe2a6c7d74c1125c53e805b5e9f4047f37/uv-0.8.14-py3-none-win_amd64.whl",
+    },
+    "unidic-lite": {
+        "version": "1.0.8",
+        "filename": "unidic-lite-1.0.8.tar.gz",
+        "sha256": "db9d4572d9fdd4d00a97949d4b0741ec480ee05a7e7e2e32f547500dae27b245",
+        "url": "https://files.pythonhosted.org/packages/55/2b/8cf7514cb57d028abcef625afa847d60ff1ffbf0049c36b78faa7c35046f/unidic-lite-1.0.8.tar.gz",
     },
 }
 
@@ -106,7 +121,9 @@ def pth_contents(source: Path, runtime: Path, include_src: bool = False) -> str:
     paths = ["python311.zip", ".", relative]
     if include_src:
         paths.append(relative + "/src")
-    paths.extend(("../../../services/api", "site-packages", "import site", ""))
+    # Every import root is explicit. Enabling site also adds the Windows user
+    # site directory even with embedded _pth isolation, leaking other installs.
+    paths.extend(("../../../services/api", "site-packages", ""))
     return "\n".join(paths)
 
 
@@ -129,6 +146,36 @@ def success_receipt(engine: str, spec: dict, source: Path, requirements: Path, s
     return receipt
 
 
+def uv_install_command(uv: Path, python: Path, site: Path, requirements: Path,
+                       override: Path | None = None) -> list[str]:
+    """Build an isolated uv target install command (never the caller Python)."""
+    command = [str(uv), "pip", "install", "--python", str(python), "--target", str(site),
+               "--no-config", "--no-python-downloads", "--native-tls"]
+    if override is not None:
+        command.extend(("--override", str(override)))
+    command.extend(("--requirement", str(requirements)))
+    return command
+
+
+def installed_uv_version(uv_bootstrap: Path) -> str:
+    """Read the uv wheel metadata from its private pip --target directory."""
+    for dist in metadata.distributions(path=[str(uv_bootstrap)]):
+        name = dist.metadata.get("Name", "").lower().replace("_", "-").replace(".", "-")
+        if name == "uv":
+            return dist.version
+    raise SetupError(f"Pinned uv distribution metadata is missing from its private bootstrap: {uv_bootstrap}")
+
+
+def validate_uv_marker(path: Path, runtime: str) -> None:
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SetupError(f"Existing uv bootstrap marker is unreadable; preserving it: {path}") from exc
+    if (record.get("schema") != RUNTIME_SCHEMA or record.get("runtime") != runtime
+            or record.get("uvVersion") != UV_VERSION):
+        raise SetupError(f"Existing uv bootstrap marker does not match this provisioner; preserving it: {path.parent}")
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -137,44 +184,66 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _cached_artifact_requirement(name: str, artifact: dict, wheel_cache: Path) -> str:
+    """Return an approved logical URL pin, substituting only a verified cached copy."""
+    digest = artifact["sha256"]
+    cached = wheel_cache / artifact["filename"]
+    if cached.exists():
+        if not cached.is_file():
+            raise SetupError(f"Cached {name} artifact is not a file; preserving path: {cached}")
+        actual = sha256_file(cached)
+        if actual != digest:
+            raise SetupError(f"Cached {name} artifact SHA256 mismatch; preserving file: {cached}")
+        url = cached.resolve().as_uri()
+    else:
+        url = artifact["url"]
+    return f"{name} @ {url}#sha256={digest}"
+
+
 def stage_requirements(source: Path, destination: Path, wheel_cache: Path) -> Path:
-    """Use verified local copies of pinned Torch wheels while leaving source pins intact."""
+    """Use verified local copies of specifically pinned artifacts, leaving source unchanged."""
     staged = []
     for line in source.read_text(encoding="utf-8").splitlines():
         requirement, separator, url = line.partition(" @ ")
-        wheel = TORCH_WHEELS.get(requirement.strip().lower()) if separator else None
-        if wheel is None:
+        name = requirement.strip().lower()
+        artifact = (TORCH_WHEELS | PINNED_PYPI_ARTIFACTS).get(name) if separator else None
+        if artifact is None:
             staged.append(line)
             continue
-        expected_fragment = "#sha256=" + wheel["sha256"]
-        if url != wheel["url"] + expected_fragment:
-            raise SetupError(f"Pinned {requirement} source URL/hash differs from the approved wheel.")
-        cached = wheel_cache / wheel["filename"]
-        if cached.exists():
-            actual = sha256_file(cached)
-            if actual != wheel["sha256"]:
-                raise SetupError(f"Cached {requirement} wheel SHA256 mismatch; preserving file: {cached}")
-            staged.append(f"{requirement} @ {cached.resolve().as_uri()}{expected_fragment}")
-        else:
-            staged.append(line)
+        expected = artifact["url"] + "#sha256=" + artifact["sha256"]
+        if url != expected:
+            raise SetupError(f"Pinned {requirement} source URL/hash differs from the approved artifact.")
+        staged.append(_cached_artifact_requirement(name, artifact, wheel_cache))
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(staged) + "\n", encoding="utf-8")
     return destination
+
+
+def uv_bootstrap_requirement(wheel_cache: Path) -> str:
+    artifact = PINNED_PYPI_ARTIFACTS["uv"]
+    return _cached_artifact_requirement("uv", artifact, wheel_cache)
 
 
 def plan(root: Path, engine: str) -> dict:
     spec = ENGINES[engine]
     runtime, source, _receipt = runtime_layout(root, engine)
     drive = shutil.disk_usage(root)
+    files = ["official CPython embeddable zip (SHA256 verified)", "scripts/" + spec["requirements"],
+             ".runtime/python/.downloads/wheels/<approved SHA256-pinned artifact>",
+             "private staged requirements file", ".pro4bro-expressive-managed.json",
+             "python311._pth", ".pro4bro-expressive-runtime.json"]
+    files.append(runtime.relative_to(root).as_posix() + "/uv-bootstrap (uv==" + UV_VERSION + ")")
+    if engine == "fish-s2-pro":
+        files.append("scripts/requirements-expressive-fish-overrides.txt")
     return {"engine": engine, "runtime": runtime.relative_to(root).as_posix(),
             "source": source.relative_to(root).as_posix(), "sourceRevision": spec["revision"],
-            "files": ["official CPython embeddable zip (SHA256 verified)", "scripts/" + spec["requirements"],
-                      ".runtime/python/.downloads/wheels/<official hashed Torch wheel>",
-                      "private staged requirements file", ".pro4bro-expressive-managed.json",
-                      "python311._pth", ".pro4bro-expressive-runtime.json"],
-            "commands": ["download and verify CPython 3.11.9", "install pip into the private runtime target",
+            "files": files,
+            "commands": ["download and verify CPython 3.11.9", "use bootstrap pip only to stage pinned uv into this private runtime",
                          "install SHA256-pinned Torch wheels from local cache when available, or their official URLs",
-                         "pip install --target " + runtime.relative_to(root).as_posix() + "/site-packages -r scripts/" + spec["requirements"],
+                         (f"bootstrap uv=={UV_VERSION} into the private runtime; uv pip install --python <runtime/python.exe> "
+                          "--target <runtime/site-packages> --no-config --no-python-downloads" +
+                          (" --override scripts/requirements-expressive-fish-overrides.txt" if engine == "fish-s2-pro" else "") +
+                          " -r scripts/" + spec["requirements"]),
                          "run expressive_import_probe.py with the runtime python.exe"],
             "requiredFreeBytes": DISK_BUDGET, "availableFreeBytes": drive.free}
 
@@ -237,25 +306,55 @@ def setup(root: Path, engine: str, bootstrap: Path | None = None) -> None:
     bootstrap = bootstrap or Path(os.environ.get("PRO4BRO_BOOTSTRAP_PYTHON", sys.executable))
     if not bootstrap.is_file():
         raise SetupError(f"Bootstrap Python executable is missing: {bootstrap}")
-    # Pip is invoked from a caller-supplied development Python but writes only into this runtime.
+    # Pip is invoked from a caller-supplied development Python only to place the
+    # pinned uv executable in this engine's private runtime directory.
     pip_env = os.environ.copy()
     for key in ("PIP_TARGET", "PIP_USER", "PIP_PREFIX", "PIP_ROOT", "PIP_REQUIRE_VIRTUALENV"):
         pip_env.pop(key, None)
     pip_env["PIP_CONFIG_FILE"] = os.devnull
-    run([str(bootstrap), "-m", "pip", "--disable-pip-version-check", "install", "--target", str(site),
-         "--upgrade", "pip"], env=pip_env)
     requirements = root / "scripts" / spec["requirements"]
     requirements_hash = sha256_file(requirements)
     staged_requirements = stage_requirements(
         requirements, runtime / f".requirements-{spec['runtime']}.txt", cache / "wheels")
-    run([str(bootstrap), "-m", "pip", "--disable-pip-version-check", "install", "--target", str(site),
-         "--upgrade", "-r", str(staged_requirements)], env=pip_env)
+    override = root / "scripts" / "requirements-expressive-fish-overrides.txt" if engine == "fish-s2-pro" else None
+    override_hash = sha256_file(override) if override is not None else None
+    uv_bootstrap = runtime / "uv-bootstrap"
+    uv_marker = uv_bootstrap / ".pro4bro-uv-bootstrap.json"
+    # Do not replace an existing unrelated directory. This path is private and
+    # product-owned once the marker is present.
+    if uv_bootstrap.exists() and any(uv_bootstrap.iterdir()) and not uv_marker.is_file():
+        raise SetupError(f"Existing uv bootstrap is unowned; preserving it: {uv_bootstrap}")
+    if uv_marker.is_file():
+        validate_uv_marker(uv_marker, spec["runtime"])
+    uv_bootstrap.mkdir(parents=True, exist_ok=True)
+    uv_marker.write_text(json.dumps({"schema": RUNTIME_SCHEMA, "runtime": spec["runtime"],
+                                     "uvVersion": UV_VERSION}, indent=2), encoding="utf-8")
+    run([str(bootstrap), "-m", "pip", "--disable-pip-version-check", "install", "--target",
+         str(uv_bootstrap), "--upgrade", uv_bootstrap_requirement(cache / "wheels")], env=pip_env)
+    # This pinned wheel places its bundled executable under bin for pip --target
+    # even on Windows (it is not a generated Python console entry point).
+    uv = uv_bootstrap / "bin" / "uv.exe"
+    if not uv.is_file():
+        raise SetupError(f"Pinned uv bootstrap did not create the expected executable: {uv}")
+    uv_version = installed_uv_version(uv_bootstrap)
+    if uv_version != UV_VERSION:
+        raise SetupError(f"Pinned uv version mismatch: expected {UV_VERSION}, found {uv_version}")
+    uv_env = {key: value for key, value in os.environ.items() if not key.startswith("UV_")}
+    uv_env["UV_CACHE_DIR"] = str(runtime / "uv-cache")
+    # Bound concurrent requests/builds on the local Windows runtime host.
+    uv_env.update(UV_CONCURRENT_DOWNLOADS="4", UV_CONCURRENT_BUILDS="1", UV_CONCURRENT_INSTALLS="4")
+    run(uv_install_command(uv, python, site, staged_requirements, override), env=uv_env)
     probe = root / "services" / "api" / "app" / "workers" / "expressive_import_probe.py"
     run([str(python), str(probe), spec["runtime"], str(source)])
     # A success receipt is written only after the exact product probe succeeds.
     receipt = success_receipt(engine, spec, source, requirements, site)
     if receipt["requirementsSha256"] != requirements_hash:
         raise SetupError("Expressive runtime requirements changed during installation; refusing a ready receipt.")
+    receipt.update({"resolver": "uv", "uvVersion": uv_version})
+    if override is not None:
+        if sha256_file(override) != override_hash:
+            raise SetupError("Fish uv override changed during installation; refusing a ready receipt.")
+        receipt["overrideSha256"] = override_hash
     receipt_path.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
     marker.unlink(missing_ok=True)
 

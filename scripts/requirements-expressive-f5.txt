@@ -6,6 +6,8 @@ transformers==4.52.1
 tokenizers==0.21.0
 accelerate==1.8.1
 datasets==4.4.1
+# Newer Arrow26 requires NumPy2; this F5 profile intentionally uses NumPy1.26.
+pyarrow==21.0.0
 ema_pytorch==0.7.7
 # 1.6.7 caps huggingface-hub below Transformers 4.52.1's required version.
 cached_path==1.8.0

@@ -55,6 +55,101 @@ def test_success_receipt_records_requirements_hash_and_installed_versions(tmp_pa
     assert "--extra-index-url" not in SCRIPT.read_text(encoding="utf-8")
 
 
+def test_fish_uv_command_targets_private_embedded_python_and_uses_override(tmp_path):
+    uv = tmp_path / "runtime/uv-bootstrap/bin/uv.exe"
+    python = tmp_path / "runtime/python.exe"
+    site = tmp_path / "runtime/site-packages"
+    override = tmp_path / "scripts/requirements-expressive-fish-overrides.txt"
+    requirements = tmp_path / "runtime/.requirements-fish-speech.txt"
+    assert setup_runtime.uv_install_command(uv, python, site, requirements, override) == [
+        str(uv), "pip", "install", "--python", str(python), "--target", str(site),
+        "--no-config", "--no-python-downloads", "--native-tls", "--override", str(override),
+        "--requirement", str(requirements),
+    ]
+    assert setup_runtime.uv_install_command(uv, python, site, requirements) == [
+        str(uv), "pip", "install", "--python", str(python), "--target", str(site),
+        "--no-config", "--no-python-downloads", "--native-tls", "--requirement", str(requirements),
+    ]
+    source_path = SCRIPT.parents[1] / ".runtime/engines/research/FishSpeech/pyproject.toml"
+    assert source_path.is_file()
+    assert "protobuf>=3.20.0,<6.0.0" in source_path.read_text(encoding="utf-8")
+    assert "protobuf>=3.20.0,<6.0.0" in (SCRIPT.parent / "requirements-expressive-fish-overrides.txt").read_text(encoding="utf-8")
+
+
+def test_uv_version_is_read_from_real_private_dist_info(tmp_path):
+    target = tmp_path / "runtime/uv-bootstrap"
+    info = target / f"uv-{setup_runtime.UV_VERSION}.dist-info"
+    info.mkdir(parents=True)
+    (info / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: uv\nVersion: {setup_runtime.UV_VERSION}\n\n", encoding="utf-8")
+
+    assert setup_runtime.installed_uv_version(target) == setup_runtime.UV_VERSION
+
+    missing = tmp_path / "runtime/empty-uv-bootstrap"
+    missing.mkdir()
+    with pytest.raises(setup_runtime.SetupError, match="distribution metadata is missing"):
+        setup_runtime.installed_uv_version(missing)
+
+
+def test_fish_uv_install_failure_keeps_ready_receipt_absent(tmp_path, monkeypatch):
+    engine = "fish-s2-pro"
+    runtime, source, receipt = setup_runtime.runtime_layout(tmp_path, engine)
+    entrypoint = source / setup_runtime.ENGINES[engine]["entrypoint"]
+    entrypoint.parent.mkdir(parents=True)
+    entrypoint.touch()
+    requirements = tmp_path / "scripts" / setup_runtime.ENGINES[engine]["requirements"]
+    requirements.parent.mkdir(parents=True)
+    requirements.write_text("fake==1\n", encoding="utf-8")
+    override = tmp_path / "scripts/requirements-expressive-fish-overrides.txt"
+    override.write_text("protobuf>=3.20.0,<6.0.0\n", encoding="utf-8")
+    monkeypatch.setattr(setup_runtime.os, "name", "nt")
+    monkeypatch.setattr(setup_runtime, "validate_source", lambda *_a, **_k: None)
+    monkeypatch.setattr(setup_runtime.shutil, "disk_usage", lambda *_a: type("Usage", (), {"free": setup_runtime.DISK_BUDGET})())
+    monkeypatch.setattr(setup_runtime, "download_python", lambda *_a, **_k: tmp_path / "python.zip")
+
+    def bootstrap(_archive, destination):
+        destination.mkdir(parents=True, exist_ok=True)
+        python = destination / "python.exe"
+        python.touch()
+        return python
+
+    monkeypatch.setattr(setup_runtime, "bootstrap_python", bootstrap)
+    bootstrap_python = tmp_path / "dev-python.exe"
+    bootstrap_python.touch()
+    calls = []
+
+    def run(args, **_kwargs):
+        calls.append(args)
+        if len(calls) == 1:
+            uv = runtime / "uv-bootstrap/bin/uv.exe"
+            uv.parent.mkdir(parents=True, exist_ok=True)
+            uv.touch()
+            info = runtime / "uv-bootstrap" / f"uv-{setup_runtime.UV_VERSION}.dist-info"
+            info.mkdir()
+            (info / "METADATA").write_text(
+                f"Metadata-Version: 2.1\nName: uv\nVersion: {setup_runtime.UV_VERSION}\n\n", encoding="utf-8")
+        elif len(calls) == 2:
+            raise setup_runtime.SetupError("simulated uv dependency resolution failure")
+
+    monkeypatch.setattr(setup_runtime, "run", run)
+    with pytest.raises(setup_runtime.SetupError, match="simulated uv dependency resolution failure"):
+        setup_runtime.setup(tmp_path, engine, bootstrap_python)
+
+    assert not receipt.exists()
+    fish_install = calls[1]
+    assert fish_install[fish_install.index("--python") + 1] == str(runtime / "python.exe")
+    assert fish_install[fish_install.index("--target") + 1] == str(runtime / "site-packages")
+    assert fish_install[fish_install.index("--override") + 1] == str(override)
+
+
+def test_invalid_uv_marker_is_not_reused(tmp_path):
+    marker = tmp_path / "uv-bootstrap/.pro4bro-uv-bootstrap.json"
+    marker.parent.mkdir()
+    marker.write_text(json.dumps({"schema": 1, "runtime": "other", "uvVersion": setup_runtime.UV_VERSION}), encoding="utf-8")
+    with pytest.raises(setup_runtime.SetupError, match="does not match this provisioner"):
+        setup_runtime.validate_uv_marker(marker, "fish-speech")
+
+
 def test_stage_requirements_uses_only_a_hash_verified_cached_wheel(tmp_path, monkeypatch):
     content = b"verified wheel bytes"
     digest = hashlib.sha256(content).hexdigest()
@@ -100,12 +195,60 @@ def test_stage_requirements_falls_back_to_unchanged_official_url(tmp_path, monke
     assert staged.read_text(encoding="utf-8") == original
 
 
+def test_pypi_artifact_cache_substitution_preserves_source_pin(tmp_path, monkeypatch):
+    artifact = dict(setup_runtime.PINNED_PYPI_ARTIFACTS["unidic-lite"])
+    content = b"same pinned artifact fixture"
+    artifact["sha256"] = hashlib.sha256(content).hexdigest()
+    monkeypatch.setitem(setup_runtime.PINNED_PYPI_ARTIFACTS, "unidic-lite", artifact)
+    name = "unidic-lite"
+    source = tmp_path / "requirements.txt"
+    original = f"{name} @ {artifact['url']}#sha256={artifact['sha256']}\n"
+    source.write_text(original, encoding="utf-8")
+    cache = tmp_path / "wheels"
+    cache.mkdir()
+    cached = cache / artifact["filename"]
+    cached.write_bytes(content)
+
+    staged_path = setup_runtime.stage_requirements(source, tmp_path / "staged.txt", cache)
+
+    assert cached.resolve().as_uri() in staged_path.read_text(encoding="utf-8")
+    assert source.read_text(encoding="utf-8") == original
+
+
+def test_uv_bootstrap_uses_approved_cached_file_or_hashed_official_url(tmp_path, monkeypatch):
+    artifact = setup_runtime.PINNED_PYPI_ARTIFACTS["uv"]
+    cache = tmp_path / "wheels"
+    cache.mkdir()
+    assert setup_runtime.uv_bootstrap_requirement(cache) == (
+        f"uv @ {artifact['url']}#sha256={artifact['sha256']}"
+    )
+
+    cached = cache / artifact["filename"]
+    content = b"pinned uv wheel fixture"
+    cached.write_bytes(content)
+    monkeypatch.setitem(setup_runtime.PINNED_PYPI_ARTIFACTS["uv"], "sha256", hashlib.sha256(content).hexdigest())
+    assert setup_runtime.uv_bootstrap_requirement(cache) == (
+        f"uv @ {cached.resolve().as_uri()}#sha256={hashlib.sha256(content).hexdigest()}"
+    )
+
+
+def test_pypi_cached_artifact_hash_mismatch_fails_without_mutating_file(tmp_path):
+    artifact = setup_runtime.PINNED_PYPI_ARTIFACTS["uv"]
+    cache = tmp_path / "wheels"
+    cache.mkdir()
+    cached = cache / artifact["filename"]
+    cached.write_bytes(b"corrupt cached artifact")
+    with pytest.raises(setup_runtime.SetupError, match="SHA256 mismatch"):
+        setup_runtime.uv_bootstrap_requirement(cache)
+    assert cached.read_bytes() == b"corrupt cached artifact"
+
+
 def test_python_path_file_uses_relative_engine_and_api_paths(tmp_path):
     runtime = tmp_path / ".runtime/python/f5-tts"
     source = tmp_path / ".runtime/engines/research/F5-TTS"
     lines = setup_runtime.pth_contents(source, runtime, include_src=True).splitlines()
     assert lines == ["python311.zip", ".", "../../engines/research/F5-TTS", "../../engines/research/F5-TTS/src",
-                     "../../../services/api", "site-packages", "import site"]
+                     "../../../services/api", "site-packages"]
 
 
 def test_source_validation_requires_exact_revision_and_clean_checkout(tmp_path):
@@ -201,12 +344,19 @@ def test_failed_import_probe_never_writes_success_receipt(tmp_path, monkeypatch)
     bootstrap_python.touch()
     runtime.mkdir(parents=True, exist_ok=True)
     receipt.write_text(json.dumps(setup_runtime.expected_receipt(engine, setup_runtime.ENGINES[engine], source)), encoding="utf-8")
-    calls = 0
+    calls = []
 
     def fail_probe(args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 3:
+        calls.append(args)
+        if len(calls) == 1:
+            uv = runtime / "uv-bootstrap/bin/uv.exe"
+            uv.parent.mkdir(parents=True, exist_ok=True)
+            uv.touch()
+            info = runtime / "uv-bootstrap" / f"uv-{setup_runtime.UV_VERSION}.dist-info"
+            info.mkdir()
+            (info / "METADATA").write_text(
+                f"Metadata-Version: 2.1\nName: uv\nVersion: {setup_runtime.UV_VERSION}\n\n", encoding="utf-8")
+        if len(calls) == 3:
             raise setup_runtime.SetupError("probe failed")
 
     monkeypatch.setattr(setup_runtime, "run", fail_probe)
@@ -214,3 +364,7 @@ def test_failed_import_probe_never_writes_success_receipt(tmp_path, monkeypatch)
         setup_runtime.setup(tmp_path, engine, bootstrap_python)
     assert not receipt.exists()
     assert (runtime / ".pro4bro-expressive-managed.json").is_file()
+    assert calls[0][calls[0].index("--target") + 1] == str(runtime / "uv-bootstrap")
+    assert calls[1][0] == str(runtime / "uv-bootstrap/bin/uv.exe")
+    assert calls[1][calls[1].index("--python") + 1] == str(runtime / "python.exe")
+    assert "--override" not in calls[1]
