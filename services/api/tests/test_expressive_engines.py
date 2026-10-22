@@ -158,7 +158,7 @@ class F5TTS:
     assert not (tmp_path / "silence.wav").exists()
 
 
-@pytest.mark.parametrize("engine", ["f5-tts", "vivoice"])
+@pytest.mark.parametrize("engine", ["f5-tts", "vivoice", "indextts25"])
 def test_project_generation_dispatch_keeps_engine_and_relative_provenance(tmp_path, engine):
     """Exercise product publication with a fake model worker and actual project/WAV files."""
     import wave

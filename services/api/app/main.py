@@ -334,7 +334,7 @@ def create_app(
     )
     expressive = {key: paths for key, paths in expressive_paths(
         settings.research_engines_root, settings.project_root / ".runtime" / "python",
-    ).items() if key in {"f5-tts", "vivoice"}}
+    ).items() if key in {"f5-tts", "vivoice", "indextts25"}}
     sokuji_bridge = SokujiBridge(settings.research_engines_root / "sokuji", settings.project_root / ".runtime/sokuji")
     engine_roots = {
         "omnivoice": settings.omnivoice_root,

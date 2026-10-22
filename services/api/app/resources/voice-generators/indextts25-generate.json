@@ -25,10 +25,10 @@
     "revision": "d9e41aac89fd00b3d71497fddb287b7f24613712"
   },
   "description": "Tạo giọng từ speaker reference và điều khiển cảm xúc theo cấu hình. Ngôn ngữ được chuẩn hóa trước khi gửi model.",
-  "notes": ["IndexTTS 2.5 hỗ trợ EN, ZH, JA, ES và AR; chưa có tiếng Việt.", "Điều khiển emotion không đặt thời lượng tuyệt đối và không thay đổi identity reference."],
+  "notes": ["IndexTTS 2.5 hỗ trợ EN, ZH, JA, ES và AR; chưa có tiếng Việt.", "Theo giọng mẫu dùng cách đọc của reference hiện tại; vector và mô tả điều khiển cảm xúc riêng.", "Upstream có chuẩn hóa trọng số vector; hệ số thời lượng là tương đối. Cần nghe kiểm tra identity sau khi đổi cảm xúc."],
   "parameters": [
     { "key": "language", "label": "Ngôn ngữ", "group": "Đọc", "kind": "choice", "default": "EN", "source": "IndexTTS 2.5 inference", "options": [{ "value": "EN", "label": "English" }, { "value": "ZH", "label": "中文" }, { "value": "JA", "label": "日本語" }, { "value": "ES", "label": "Español" }, { "value": "AR", "label": "العربية" }] },
-    { "key": "emotion_mode", "label": "Nguồn cảm xúc", "group": "Cảm xúc", "kind": "choice", "default": "reference", "source": "IndexTTS-2.5 inference", "options": [{ "value": "reference", "label": "Emotion reference" }, { "value": "vector", "label": "Emotion vector" }, { "value": "text", "label": "Text description" }] },
+    { "key": "emotion_mode", "label": "Nguồn cảm xúc", "group": "Cảm xúc", "kind": "choice", "default": "reference", "source": "IndexTTS-2.5 inference", "options": [{ "value": "reference", "label": "Theo cách đọc của giọng mẫu" }, { "value": "vector", "label": "Emotion vector" }, { "value": "text", "label": "Text description" }] },
     { "key": "emo_alpha", "label": "Cường độ cảm xúc", "group": "Cảm xúc", "kind": "float", "default": 1.0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
     { "key": "emo_text", "label": "Mô tả cảm xúc", "group": "Cảm xúc", "kind": "text", "default": "", "source": "IndexTTS-2.5 inference" },
     { "key": "emo_happy", "label": "Vui", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },

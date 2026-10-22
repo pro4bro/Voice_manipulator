@@ -66,3 +66,17 @@ EngineWorkerProcess already configures UTF-8 in production.
 
 Full frontend **1223 passed / 150 files / 172.90s**, typecheck/build passed
 (213 modules, build779ms). No new model weights/private engine runtime installed.
+
+## Round90 / ED-INDEX-01
+
+Registered IndexTTS2.5's isolated worker and reference voice path. Language is
+restricted to EN/ZH/JA/ES/AR. Emotion follows the current speaker reference,
+an explicit eight-value vector, or a text description; contradictory inactive
+mode values fail before inference. Text mode explicitly loads the local Qwen
+emotion model. Relative duration_factor is distinct from native duration/speed.
+
+Preflight requires separate pinned receipts for W2v-BERT, CAMPPlus and BigVGAN,
+along with Index's own codec/tokenizer/weights. Worker seeding, exact upstream
+call signatures and actual22.05k WAV decode are covered with fake model classes.
+Focused Index/adapter/catalog group **33 passed / 3.70s**, two existing warnings.
+No real Index model or emotional quality claim; required weights/runtime absent.
