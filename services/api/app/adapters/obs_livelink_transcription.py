@@ -86,6 +86,8 @@ class ObsLiveLinkTranscription:
                  *, window_seconds: float = 4.0, silence_seconds: float = 0.5,
                  max_queue_chunks: int = 1024, max_queued_bytes: int = 8 * 1024 * 1024) -> None:
         self.projects = projects
+        from app.adapters.file_media_library import FileMediaLibrary
+        self.media = FileMediaLibrary(projects)
         self.studio_url = studio_url.rstrip("/")
         self.batch_running = batch_running
         self.recognizer = recognizer or self._recognize
@@ -201,6 +203,10 @@ class ObsLiveLinkTranscription:
             if event_key:
                 self._event_keys[path][event_key] = event
             self._valid_bytes[path] += len(line)
+        if status == "final":
+            # A final utterance can arrive just after archive publication.
+            from app.adapters.obs_retained_live_script import retain_live_script
+            await asyncio.to_thread(retain_live_script, self.media, item.project_id, path.parent)
 
     def _progress_path(self, key: tuple[str, str, str]) -> Path:
         project_id, recording_id, channel_id = key

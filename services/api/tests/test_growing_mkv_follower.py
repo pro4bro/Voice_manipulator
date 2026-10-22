@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import json
-import json
 import shutil
 import subprocess
 import time
@@ -22,6 +21,125 @@ from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.domain.models import ProjectCreate
 from app.main import create_app
 from app.settings import Settings
+
+
+@pytest.mark.parametrize("close_signal", ["sealed-segment", "obs-stop"])
+def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path, two_track_mkv, monkeypatch, close_signal):
+    ffmpeg, closed = two_track_mkv
+    payload = closed.read_bytes()
+    first = scan_committed(closed).clusters[0]
+    if close_signal == "obs-stop":
+        # Streaming muxers can leave Segment size unknown even when closed.
+        data = bytearray(payload)
+        offset = payload.index(bytes.fromhex("18538067")) + 4
+        mask, width = 128, 1
+        while not data[offset] & mask:
+            mask >>= 1
+            width += 1
+        data[offset:offset + width] = bytes([mask * 2 - 1]) + b"\xff" * (width - 1)
+        payload = bytes(data)
+    source = tmp_path / "growing.mkv"
+    source.write_bytes(payload[:first.end])
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Auto final import"))
+    library = FileMediaLibrary(projects)
+    follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
+        str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
+    imported = follower.start(project, str(source), [0, 1], [0], 10)
+    assert not follower.advance(project, imported.asset.id)["finished"]
+    child_id = imported.track_asset_ids[0]
+    library.update_live_transcript(project.id, child_id, "Retained live draft", [], .4)
+    before = library.get(project.id, child_id)
+    source.write_bytes(payload)
+    if close_signal == "obs-stop":
+        assert not follower.advance(project, imported.asset.id)["finished"]
+        assert follower.request_finish(project, str(tmp_path / "other.mkv")) == []
+        assert follower.request_finish(project, str(source)) == [imported.asset.id]
+    final = follower.advance(project, imported.asset.id)
+    assert final["finished"]
+    directory = Path(project.project_path) / "assets" / "media" / imported.asset.id
+    assert (directory / "source-final.mkv").read_bytes() == payload
+    for track in final["tracks"]:
+        expected = tmp_path / f"expected-{track['streamIndex']}.wav"
+        follower._decode_to_wav(closed, track["streamIndex"], expected)
+        child = library.get(project.id, track["assetId"])
+        assert (Path(project.project_path) / child.analysis_path).read_bytes() == expected.read_bytes()
+        assert child.duration > 4
+    assert library.get(project.id, child_id).text == before.text
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Stop must not launch final segmented STT")
+    worker = GrowingMkvTranscription(library, MediaImportProcessor("http://127.0.0.1:1", library, ffmpeg), forbidden)
+    assert asyncio.run(worker.process_once(project, imported.asset.id))["done"]
+    library.update_script(project.id, child_id, "", "user", [])
+    assert asyncio.run(worker.process_once(project, imported.asset.id))["done"]
+    assert library.get(project.id, child_id).text == ""
+    with pytest.raises(ValueError, match="toàn bộ"):
+        follower.configure_detailed_stt(project, imported.asset.id, 10)
+    # The explicit action uses the ordinary importer once for the whole final WAV.
+    importer = MediaImportProcessor("http://127.0.0.1:1", library, ffmpeg)
+    calls = []
+    async def whole_file(path, *args, **kwargs):
+        calls.append(_frames(path))
+        return {"text": "Final tail", "words": [{"text": "Final", "start": .1, "end": .3},
+            {"text": "tail", "start": 3.7, "end": 3.9}]}, .1
+    monkeypatch.setattr(importer, "_run_studio_import", whole_file)
+    final_child = library.get(project.id, child_id)
+    updated, _ = asyncio.run(importer.transcribe_existing(project, final_child))
+    assert calls == [_frames(Path(project.project_path) / final_child.analysis_path)]
+    assert calls[0] > 4 * 24000
+    assert updated.text == "Final tail"
+    assert asyncio.run(worker.process_once(project, imported.asset.id))["done"]
+    assert library.get(project.id, child_id).text == "Final tail"
+
+
+@pytest.mark.parametrize("edit_during_stt", [False, True])
+def test_live_only_text_survives_finish_restart_and_clear_until_explicit_detailed_stt(tmp_path, two_track_mkv, edit_during_stt):
+    ffmpeg, source = two_track_mkv
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Live retention"))
+    library = FileMediaLibrary(projects)
+    follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
+        str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
+    result = follower.start(project, str(source), [0], [0], 60)
+    follower.poll(project, result.asset.id)
+    async def recognize(_segment, model):
+        if model == "large-v3" and edit_during_stt:
+            library.update_script(project.id, result.track_asset_ids[0], "New edit during STT", "user")
+        return {"text": model, "words": [{"text": model, "start": .1, "end": .3}]}
+    importer = MediaImportProcessor("http://127.0.0.1:1", library, ffmpeg)
+    worker = GrowingMkvTranscription(library, importer, recognize)
+    asyncio.run(worker.process_once(project, result.asset.id))
+    child_id = result.track_asset_ids[0]
+    assert library.get(project.id, child_id).text == "tiny"
+    follower.finish(project, result.asset.id)
+    restarted = GrowingMkvTranscription(library, importer, recognize)
+    asyncio.run(restarted.process_once(project, result.asset.id))
+    assert FileMediaLibrary(projects).get(project.id, child_id).text == "tiny"
+    library.update_script(project.id, child_id, "", "user", [])
+    asyncio.run(restarted.process_once(project, result.asset.id))
+    assert library.get(project.id, child_id).text == ""
+    follower.configure_detailed_stt(project, result.asset.id, 60)
+    asyncio.run(restarted.process_once(project, result.asset.id))
+    assert library.get(project.id, child_id).text == ("New edit during STT" if edit_during_stt else "large-v3")
+
+
+def test_late_live_result_cannot_replace_script_after_auto_final_import(tmp_path, two_track_mkv):
+    ffmpeg, source = two_track_mkv
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Stop during live inference"))
+    library = FileMediaLibrary(projects)
+    follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
+        str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
+    result = follower.start(project, str(source), [0], [0], 10)
+    follower.poll(project, result.asset.id)
+    child_id = result.track_asset_ids[0]
+    library.update_live_transcript(project.id, child_id, "Retained before Stop", [], 4)
+    async def stop_during_recognition(*args):
+        follower.advance(project, result.asset.id)
+        return {"text": "Late result", "words": []}
+    worker = GrowingMkvTranscription(library, MediaImportProcessor("http://127.0.0.1:1", library, ffmpeg), stop_during_recognition)
+    assert asyncio.run(worker.process_once(project, result.asset.id))["done"]
+    assert library.get(project.id, child_id).text == "Retained before Stop"
 
 
 def test_checkpoint_replace_retries_transient_windows_reader(tmp_path, monkeypatch):
@@ -599,6 +717,43 @@ def test_detailed_stt_keeps_user_script_in_review_after_finish(tmp_path, two_tra
     assert any(revision.source == "stt" and revision.text == "Lời STT" for revision in child.revisions)
 
 
+def test_auto_final_import_waits_for_real_writer_close(tmp_path, two_track_mkv):
+    ffmpeg, _ = two_track_mkv
+    source = tmp_path / "auto-writer.mkv"
+    writer = subprocess.Popen([ffmpeg, "-y", "-re", "-v", "error", "-f", "lavfi", "-i",
+        "sine=frequency=440:duration=6", "-c:a", "aac", "-cluster_time_limit", "500",
+        "-flush_packets", "1", "-f", "matroska", str(source)], stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                if scan_committed(source).clusters:
+                    break
+            except (OSError, ValueError):
+                pass
+            time.sleep(.05)
+        projects = FileProjectRepository(tmp_path / "registry")
+        project = projects.create(ProjectCreate(name="Closed writer"))
+        library = FileMediaLibrary(projects)
+        follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
+            str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
+        imported = follower.start(project, str(source), [0])
+        assert writer.poll() is None
+        assert not follower.advance(project, imported.asset.id)["finished"]
+        assert writer.wait(timeout=10) == 0
+        assert follower.advance(project, imported.asset.id)["finished"]
+        child = library.get(project.id, imported.track_asset_ids[0])
+        assert child.duration >= 6
+        expected = tmp_path / "full.wav"
+        follower._decode_to_wav(source, 0, expected)
+        assert (Path(project.project_path) / child.analysis_path).read_bytes() == expected.read_bytes()
+    finally:
+        if writer.poll() is None:
+            writer.kill()
+            writer.wait(timeout=5)
+
+
 def test_reads_a_file_while_a_real_mkv_writer_is_still_running(tmp_path, two_track_mkv):
     ffmpeg, _ = two_track_mkv
     growing = tmp_path / "active-writer.mkv"
@@ -743,10 +898,14 @@ def test_follow_api_exposes_start_poll_finish(tmp_path, two_track_mkv):
         growing.write_bytes(original)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            if client.get(f"{base}/{parent_id}/follow/status").json()["clusters"] > 1:
+            if client.get(f"{base}/{parent_id}/follow/status").json()["finished"]:
                 break
             time.sleep(0.1)
         assert client.get(f"{base}/{parent_id}/follow/status").json()["clusters"] > 1
+        assert client.get(f"{base}/{parent_id}/follow/status").json()["finished"], "Background watcher must finish without a manual click"
+        child = next(item for item in client.get(base).json() if item["id"] == payload["trackAssetIds"][0])
+        assert child["duration"] > 4
+        assert "/final/" in child["analysisPath"]
         finish = client.post(f"{base}/{parent_id}/follow/finish")
         assert finish.status_code == 200, finish.text
         assert finish.json()["finished"]

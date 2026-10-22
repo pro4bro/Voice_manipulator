@@ -1109,6 +1109,11 @@ def test_mka_has_one_verified_track_per_source_and_portable_children(tmp_path, m
                     frame_count=480, sample_rate=48000, channels=1,
                     obs_audio_timestamp_ns=at, plugin_monotonic_ns=at,
                     sha256=hashlib.sha256(pcm).hexdigest(), pcm=pcm)
+    events = [{"channelId": channel, "utteranceId": f"utterance-{index}", "revision": 1,
+               "startSeconds": .1, "text": f"Live draft {index}", "pending": "", "status": "final"}
+              for index, (channel, _) in enumerate(identities)]
+    (root / "assets" / "obs-livelink" / recording_id / "transcript-events.jsonl").write_text(
+        "\n".join(json.dumps(event) for event in events), encoding="utf-8")
     if source_count == 2:
         advertise(1)  # The second OBS source disappears before app Stop.
     lifecycle(runtime, token, hello, snapshot, 1, "obs-stop", 2_000_000_000, "span-1")
@@ -1145,6 +1150,10 @@ def test_mka_has_one_verified_track_per_source_and_portable_children(tmp_path, m
     assert "token" not in json.dumps(manifest).lower()
     for track, stem in zip(archive["tracks"], finalized["sourceStems"]):
         child = media.get(project.id, stem["assetId"])
+        index = next(index for index, (channel, _) in enumerate(identities) if channel == stem["channelId"])
+        assert child.text == f"Live draft {index}"
+        assert child.transcription_status == "skipped"
+        assert child.words == []
         assert child.source_archive_asset_id == archive["parentAssetId"]
         assert child.source_archive_stream_index == track["streamIndex"]
         assert child.source_archive_track_uid == track["trackUid"]

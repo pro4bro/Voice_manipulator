@@ -628,19 +628,26 @@ def create_app(
 
     async def watch_growing_mkv(project_id: str, asset_id: str) -> None:
         key = (project_id, asset_id)
+        failures = 0
         while True:
             try:
                 # Argument evaluation happens before to_thread: resolve the
                 # project separately so a repository lock cannot stall startup.
                 project = await asyncio.to_thread(projects.get, project_id)
-                result = await asyncio.to_thread(growing_mkv.poll, project, asset_id,
+                result = await asyncio.to_thread(growing_mkv.advance, project, asset_id,
                                                  max_clusters=8)
             except (FileNotFoundError, KeyError, ValueError, RuntimeError, OSError) as exc:
                 mkv_watch_errors[key] = str(exc)
+                failures += 1
+                if failures < 4:
+                    await asyncio.sleep(1)
+                    continue
                 logging.getLogger(__name__).warning("Growing MKV follow stopped for %s: %s", asset_id, exc)
                 return
             mkv_watch_errors.pop(key, None)
+            failures = 0
             if result["finished"]:
+                await growing_mkv_stt.stop_parent(project, asset_id, include_active=True)
                 return
             await asyncio.sleep(0.75)
 
@@ -709,6 +716,8 @@ def create_app(
                     continue
                 if not follow.get("finished"):
                     mkv_watch_ids.append(parent_id)
+                if follow.get("finalSttMode") == "explicit-full-file":
+                    continue
                 has_selected_track = False
                 for track in follow_tracks:
                     if not isinstance(track, dict):
@@ -829,6 +838,8 @@ def create_app(
                     record = json.loads(await asyncio.to_thread(journal.read_text, encoding="utf-8"))
                     if record.get("deletedAt"):
                         continue
+                    from app.adapters.obs_retained_live_script import retain_live_script
+                    await asyncio.to_thread(retain_live_script, media, project.id, journal.parent)
                     # This method schedules asyncio workers as well as reading
                     # their journal; it must retain event-loop ownership.
                     live_tracks += obs_livelink_stt.resume_recording(project.id, journal.parent.name)
@@ -1447,7 +1458,7 @@ def create_app(
     @app.post("/api/projects/{project_id}/media/{asset_id}/follow/poll")
     async def poll_growing_mkv(project_id: str, asset_id: str) -> dict:
         try:
-            result = await asyncio.to_thread(growing_mkv.poll, projects.get(project_id), asset_id)
+            result = await asyncio.to_thread(growing_mkv.advance, projects.get(project_id), asset_id)
             mkv_watch_errors.pop((project_id, asset_id), None)
             if not result["finished"]:
                 ensure_mkv_watcher(project_id, asset_id)
@@ -1460,9 +1471,10 @@ def create_app(
     @app.post("/api/projects/{project_id}/media/{asset_id}/follow/finish")
     async def finish_growing_mkv(project_id: str, asset_id: str) -> dict:
         try:
-            result = await asyncio.to_thread(growing_mkv.finish, projects.get(project_id), asset_id)
+            project = projects.get(project_id)
+            result = await asyncio.to_thread(growing_mkv.finish, project, asset_id, explicit_final_stt=True)
             mkv_watch_errors.pop((project_id, asset_id), None)
-            ensure_mkv_stt_worker(project_id, asset_id)
+            await growing_mkv_stt.stop_parent(project, asset_id, include_active=True)
             return result
         except (KeyError, FileNotFoundError) as exc:
             raise HTTPException(status_code=404, detail="MKV follow not found") from exc
@@ -1647,7 +1659,7 @@ def create_app(
             updated = media.set_transcription_selected(project_id, asset_id, payload.selected)
             if payload.selected and updated.source_archive_asset_id:
                 parent = media.get(project_id, updated.source_archive_asset_id)
-                if parent.growing_mkv_follow:
+                if parent.growing_mkv_follow and not parent.source_path.endswith("source-final.mkv"):
                     ensure_mkv_stt_worker(project_id, parent.id)
             return updated
         except KeyError as exc:
@@ -1696,6 +1708,18 @@ def create_app(
                     for adapter in asr_adapters.list(project_id)
                 ):
                     raise HTTPException(status_code=422, detail="ASR adapter không thuộc project hoặc engine đã chọn.")
+            project = await asyncio.to_thread(projects.get, project_id)
+            finished_parents = set()
+            for asset_id in payload.asset_ids:
+                asset = await asyncio.to_thread(media.get, project_id, asset_id)
+                if asset.source_archive_asset_id:
+                    parent = await asyncio.to_thread(media.get, project_id, asset.source_archive_asset_id)
+                    if parent.growing_mkv_follow:
+                        if not parent.source_path.endswith("source-final.mkv"):
+                            raise HTTPException(status_code=409, detail="MKV đang ghi; chờ nhập hoàn chỉnh sau khi OBS dừng.")
+                        finished_parents.add(parent.id)
+            for parent_id in finished_parents:
+                await growing_mkv_stt.stop_parent(project, parent_id, include_active=True)
             queued = await transcription_queue.enqueue(project_id, payload.asset_ids, model=payload.model)
             return [media.get(project_id, asset_id) for asset_id in queued]
         except KeyError as exc:
@@ -3374,9 +3398,20 @@ def create_app(
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
     @app.post("/api/obs-livelink/v3/lifecycle")
-    def obs_livelink_lifecycle(payload: dict, request: Request) -> dict:
+    async def obs_livelink_lifecycle(payload: dict, request: Request, background_tasks: BackgroundTasks) -> dict:
         try:
-            return obs_livelink_runtime.event(request.headers.get("authorization", ""), payload)
+            result = await asyncio.to_thread(obs_livelink_runtime.event, request.headers.get("authorization", ""), payload)
+            if payload.get("kind") == "obs-stop" and payload.get("lastRecordingPath"):
+                async def finish_matching_follows():
+                    for project in await asyncio.to_thread(projects.list):
+                        try:
+                            ids = await asyncio.to_thread(growing_mkv.request_finish, project, payload["lastRecordingPath"])
+                            for parent_id in ids:
+                                ensure_mkv_watcher(project.id, parent_id)
+                        except (OSError, ValueError, KeyError):
+                            logging.getLogger(__name__).exception("Could not request MKV final import for %s", project.id)
+                background_tasks.add_task(finish_matching_follows)
+            return result
         except LiveLinkError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.adapters.file_media_library import FileMediaLibrary
-from app.adapters.growing_mkv import assert_same_source, scan_committed, source_identity
+from app.adapters.growing_mkv import assert_same_source, has_closed_segment, scan_committed, source_identity
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.domain.models import MediaAssetCreate, MediaAudioTrackChoice, MediaImportResult, ProjectRecord
 
@@ -439,6 +439,41 @@ class FileGrowingMkvFollower:
         _, _, state, source = self._load(project, parent_id)
         return self._status(state, source.stat().st_size)
 
+    def request_finish(self, project: ProjectRecord, source_value: str) -> list[str]:
+        """Bind an authenticated OBS Stop path to matching local follow checkpoints."""
+        source = Path(source_value).expanduser().resolve()
+        matched = []
+        for parent in self.library.list(project.id):
+            if not parent.growing_mkv_follow or parent.deleted_at or parent.disabled:
+                continue
+            locator = self.registry.get(project.id, parent.id)
+            if not locator or Path(locator).resolve() != source:
+                continue
+            with self._lock(parent.id):
+                _, path, state, _ = self._load(project, parent.id)
+                if state["finished"]:
+                    continue
+                state["finishRequested"] = True
+                _atomic_json(path, state)
+            matched.append(parent.id)
+        return matched
+
+    def advance(self, project: ProjectRecord, parent_id: str, *, max_clusters: int = 8) -> dict:
+        """Follow live clusters, or import the complete closed source in the worker."""
+        with self._lock(parent_id):
+            _, _, state, source = self._load(project, parent_id)
+            if state["finished"]:
+                return self.status(project, parent_id)
+            if state.get("finishRequested") or has_closed_segment(source):
+                return self.finish(project, parent_id, explicit_final_stt=True)
+            try:
+                return self.poll(project, parent_id, max_clusters=max_clusters)
+            except ValueError:
+                # OBS may seal the header between the closure check and poll.
+                if has_closed_segment(source):
+                    return self.finish(project, parent_id, explicit_final_stt=True)
+                raise
+
     def configure_detailed_stt(self, project: ProjectRecord, parent_id: str,
                                segment_seconds: int) -> dict:
         if not 10 <= segment_seconds <= 600:
@@ -455,6 +490,8 @@ class FileGrowingMkvFollower:
             state = _read_atomic_json(state_path)
             if state.get("parentId") != parent_id:
                 raise ValueError("MKV follow checkpoint không hợp lệ")
+            if state.get("finalSttMode") == "explicit-full-file":
+                raise ValueError("MKV đã hoàn tất; dùng Speech to text để STT toàn bộ track")
             selected = []
             for track in state["tracks"]:
                 asset = self.library.get(project.id, track["assetId"])
@@ -472,11 +509,13 @@ class FileGrowingMkvFollower:
             plan = state.setdefault("sttPlan", {"id": uuid4().hex, "initialFrames": {}})
             for track in selected:
                 plan["initialFrames"].setdefault(track["assetId"], requested_frames.get(track["assetId"], 0))
+                plan.setdefault("inputRevisionCounts", {}).setdefault(track["assetId"],
+                    len(self.library.get(project.id, track["assetId"]).revisions))
             _atomic_json(state_path, state)
             return {"assetId": parent_id, "segmentSeconds": segment_seconds,
                     "selectedTrackCount": len(selected), "finished": bool(state["finished"])}
 
-    def finish(self, project: ProjectRecord, parent_id: str) -> dict:
+    def finish(self, project: ProjectRecord, parent_id: str, *, explicit_final_stt: bool = False) -> dict:
         with self._lock(parent_id):
             directory, state_path, state, source = self._load(project, parent_id)
             if state["finished"]:
@@ -486,6 +525,13 @@ class FileGrowingMkvFollower:
             second = source.stat()
             if (first.st_size, first.st_mtime_ns) != (second.st_size, second.st_mtime_ns):
                 raise ValueError("MKV vẫn đang thay đổi; chỉ Finish sau khi recorder dừng")
+            if explicit_final_stt:
+                # Fence late inference before decoding/copying the full file.
+                # Publication uses this same media lock for its check and write.
+                with self.library._lock(project.id):
+                    state["finalSttMode"] = "explicit-full-file"
+                    state["sttDetailedEnabled"] = False
+                    _atomic_json(state_path, state)
             self.poll(project, parent_id, final=True)
             state = _read_atomic_json(state_path)
             assert_same_source(source, state["identity"], state["cursor"],

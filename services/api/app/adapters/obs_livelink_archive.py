@@ -255,6 +255,8 @@ class ObsLiveLinkArchiver:
                 project_id, stem["assetId"], parent_id, track.stream_index,
                 track.track_uid, stem["analysisPath"],
             )
+        from app.adapters.obs_retained_live_script import retain_live_script
+        retain_live_script(self.media, project_id, folder)
         return archive
 
     def _verify(self, path: Path, attachment: Path, stems: list[dict], root: Path,

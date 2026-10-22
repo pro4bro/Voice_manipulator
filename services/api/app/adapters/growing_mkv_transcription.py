@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from app.adapters.file_media_library import FileMediaLibrary
+from app.adapters.file_growing_mkv_follower import _read_atomic_json
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.media_presentation import render_srt
 from app.adapters.processing_cancellation import (
@@ -65,6 +66,24 @@ def _copy_frames(source: Path, destination: Path, start: int, end: int) -> None:
 
 
 class GrowingMkvTranscription:
+    def _publish_live(self, project_id, asset_id, item, duration, follow_path):
+        with self.library._lock(project_id):
+            if _read_atomic_json(follow_path).get("finalSttMode") == "explicit-full-file":
+                return
+            self.library.update_live_transcript(project_id, asset_id, item["text"], item["words"], duration)
+
+    def _publish_finished(self, project_id, asset_id, item, duration, revision_start, follow_path):
+        with self.library._lock(project_id):
+            if _read_atomic_json(follow_path).get("finalSttMode") == "explicit-full-file":
+                return
+            asset = self.library.get(project_id, asset_id)
+            user_edited = any(revision.source == "user" and revision.text == asset.text
+                              for revision in asset.revisions[revision_start:])
+            self.library.apply_transcription(project_id, asset_id, item, duration,
+                                             preserve_user_text=user_edited)
+            if not user_edited:
+                self.library.set_transcription_state(project_id, asset_id, "complete", progress=100)
+
     def __init__(self, library: FileMediaLibrary, importer: MediaImportProcessor,
                  recognizer: Recognizer | None = None) -> None:
         self.library = library
@@ -312,6 +331,14 @@ class GrowingMkvTranscription:
             # metadata and library locks must not hold that same event loop.
             directory, follow, stt_path, state = await asyncio.to_thread(self._load, project, parent_id)
             root = Path(project.project_path)
+            if follow.get("finalSttMode") == "explicit-full-file":
+                for tasks in (self._live_tasks, self._detailed_tasks):
+                    active = tasks.pop(parent_id, None)
+                    if active:
+                        active[1].request()
+                        await active[1].cancel()
+                        await asyncio.gather(active[2], return_exceptions=True)
+                return {"parentId": parent_id, "finished": bool(follow["finished"]), "done": True}
             finished = bool(follow["finished"])
             detailed_enabled = bool(follow.get("sttDetailedEnabled", True))
             plan = follow.get("sttPlan")
@@ -480,28 +507,28 @@ class GrowingMkvTranscription:
                             )
                     if progress.get("stopMode") == "all":
                         continue
+                # Final import may complete while inference is awaiting its model.
+                # Do not let a late live/segment result replace the retained draft
+                # or a subsequent explicit full-file recognition.
+                latest_follow = await asyncio.to_thread(_read_atomic_json, directory / "follow-state.json")
+                if latest_follow.get("finalSttMode") == "explicit-full-file":
+                    return {"parentId": parent_id, "finished": True, "done": True}
                 if finished and detailed_enabled and int(progress["finalFrame"]) == total:
                     if changed or asset.transcription_status not in ("complete", "reviewing"):
                         # A cursor may have committed before publication. Replaying this
                         # step reuses the saved result and leaves a user edit intact.
                         final_results = self._results(directory, asset_id, final_phase)
                         item = self._combine(final_results, total / RATE)
-                        user_edited = any(
-                            revision.source == "user" and revision.text == asset.text
-                            for revision in asset.revisions
-                        )
-                        self.library.apply_transcription(
-                            project.id, asset_id, item, total / RATE, preserve_user_text=True,
-                        )
-                        if not user_edited:
-                            self.library.set_transcription_state(project.id, asset_id, "complete", progress=100)
+                        revision_start = (plan or {}).get("inputRevisionCounts", {}).get(asset_id, 0)
+                        await asyncio.to_thread(self._publish_finished, project.id, asset_id, item,
+                                                total / RATE, revision_start, directory / "follow-state.json")
                 elif changed:
                     final_results = self._results(directory, asset_id, final_phase)
                     live_results = [result for result in self._results(directory, asset_id, "live")
                                     if result["startFrame"] >= int(progress["finalFrame"])]
                     item = self._combine(final_results + live_results, total / RATE)
-                    self.library.update_live_transcript(project.id, asset_id, item["text"],
-                                                        item["words"], total / RATE)
+                    await asyncio.to_thread(self._publish_live, project.id, asset_id, item,
+                                            total / RATE, directory / "follow-state.json")
                 if changed or (finished and detailed_enabled):
                     final_item = self._combine(self._results(directory, asset_id, final_phase), total / RATE)
                     # Durable, per-channel SRT contains detailed results only, never live guesses.

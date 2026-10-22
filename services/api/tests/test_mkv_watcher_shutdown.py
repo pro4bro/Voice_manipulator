@@ -27,13 +27,15 @@ def test_shutdown_waits_for_inflight_mkv_checkpoint_writer(tmp_path, monkeypatch
     shutdown, closed = threading.Event(), threading.Event()
     errors = []
 
-    def poll(self, project_record, asset_id, *, max_clusters=8):
+    def advance(self, project_record, asset_id, *, max_clusters=8):
         entered.set()
         release.wait()
         finished.set()
         return {"finished": False}
 
-    monkeypatch.setattr(FileGrowingMkvFollower, "poll", poll)
+    # The watcher now advances either live clusters or the final full-file import.
+    # Block its writer boundary; keep every shutdown/drain assertion unchanged.
+    monkeypatch.setattr(FileGrowingMkvFollower, "advance", advance)
 
     def run_api():
         try:

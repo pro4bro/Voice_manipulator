@@ -179,6 +179,22 @@ def scan_committed(path: Path, *, from_offset: int = 0, final: bool = False,
         return ScanResult(header_end, committed_end, tuple(found), size)
 
 
+def has_closed_segment(path: Path) -> bool:
+    """A seekable Matroska writer seals Segment length when closing the file.
+
+    An idle/paused growing file still has unknown length (or a length past EOF).
+    Never infer closure from silence or an unchanged file size alone.
+    """
+    size = path.stat().st_size
+    with path.open("rb") as stream:
+        ebml = _element(stream, size)
+        if ebml is None or ebml.element_id != EBML or ebml.end is None or ebml.end > size:
+            return False
+        stream.seek(ebml.end)
+        segment = _element(stream, size)
+        return bool(segment and segment.element_id == SEGMENT and segment.end == size)
+
+
 def source_identity(path: Path, header_end: int) -> dict[str, int | str]:
     stat = path.stat()
     with path.open("rb") as stream:
