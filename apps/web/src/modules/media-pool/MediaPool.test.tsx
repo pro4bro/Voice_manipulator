@@ -23,6 +23,43 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("shows the growing MKV recording marker on its footage and tracks until final import, independently of STT", () => {
+    const parent = { ...asset, id: "parent", name: "Live take.mkv", growingMkvFollow: true,
+      sourcePath: "assets/media/parent/source.mkv" };
+    const tracks = ["Mic", "Desktop"].map((name, index) => ({ ...asset, id: `track-${index}`, name,
+      sourceArchiveAssetId: parent.id, sourceArchiveStreamIndex: index,
+      importSelected: index === 0, transcriptionStatus: "processing" as const }));
+    const onToggleImport = vi.fn();
+    const view = render(<MediaPool {...props({ assets: [parent, ...tracks], onToggleImport })} />);
+    fireEvent.click(screen.getByRole("button", { name: `Xổ track của ${parent.name}` }));
+    const footage = screen.getByRole("button", { name: /Live take.mkv.*VIDEO/ }).closest(".media-pool-item");
+    expect(footage).toHaveClass("is-mkv-recording");
+    for (const item of [parent, ...tracks]) {
+      const control = screen.getByLabelText(`Import ${item.name}`);
+      expect(control).toHaveAttribute("aria-busy", "true");
+      expect(control.closest("label")).toHaveClass("is-recording");
+    }
+    expect(screen.getByRole("button", { name: "Mở Script Mic" }).closest(".media-pool-item__channel")).toHaveClass("is-mkv-recording");
+    expect(screen.getByRole("button", { name: "Mở Script Desktop" }).closest(".media-pool-item__channel")).toHaveClass("is-mkv-recording");
+    fireEvent.click(screen.getByLabelText("Import Desktop"));
+    expect(onToggleImport).toHaveBeenCalledWith("track-1", true);
+    view.rerender(<MediaPool {...props({ assets: [{ ...parent, sourcePath: "assets/media/parent/source-final.mkv" }, ...tracks], onToggleImport })} />);
+    expect(footage).not.toHaveClass("is-mkv-recording");
+    for (const item of [parent, ...tracks]) {
+      const control = screen.getByLabelText(`Import ${item.name}`);
+      expect(control).not.toHaveAttribute("aria-busy");
+      expect(control.closest("label")).not.toHaveClass("is-recording");
+    }
+    expect(screen.getByRole("button", { name: "Mở Script Mic" }).closest(".media-pool-item__channel")).not.toHaveClass("is-mkv-recording");
+    expect(screen.getByLabelText("Import Mic")).toBeChecked();
+    expect(screen.getByLabelText("Import Desktop")).not.toBeChecked();
+  });
+
+  it("does not mark ordinary MKV footage as recording", () => {
+    render(<MediaPool {...props({ assets: [{ ...asset, name: "Closed.mkv", sourcePath: "assets/media/source.mkv" }] })} />);
+    expect(screen.getByLabelText("Import Closed.mkv").closest("label")).not.toHaveClass("is-recording");
+  });
+
   it("shows the OBS start slot immediately, then swaps to the journal on the Start acknowledgement event", async () => {
     let records: ObsLiveLinkRecordingJournal[] = [];
     const list = vi.spyOn(api, "listObsLiveLinkRecordings").mockImplementation(async () => records);

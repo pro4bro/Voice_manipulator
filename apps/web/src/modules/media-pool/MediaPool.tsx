@@ -475,13 +475,15 @@ function PendingObsFootage({ projectId, assets, showEmpty, startingRecording, on
     </section></div> : null}</>;
 }
 
-function StageToggle({ name, stage, selected, mixed = false, disabled = false, running = false, ariaLabel, onChange }: {
+function StageToggle({ name, stage, selected, mixed = false, disabled = false, running = false, recording = false, ariaLabel, onChange }: {
   name: string; stage: "Import" | "STT" | "Speaker Diarization" | "Train";
-  selected: boolean; mixed?: boolean; disabled?: boolean; running?: boolean; ariaLabel?: string; onChange: (selected: boolean) => void;
+  selected: boolean; mixed?: boolean; disabled?: boolean; running?: boolean; recording?: boolean; ariaLabel?: string; onChange: (selected: boolean) => void;
 }) {
   const status = running ? " · đang chạy" : "";
-  return <label className={`media-training-toggle ${selected ? "is-selected" : ""} ${mixed ? "is-mixed" : ""} ${running ? "is-running" : ""}`} title={running ? `${stage}: đang chạy` : undefined}>
-    <input aria-busy={running || undefined} aria-label={`${ariaLabel ?? `${stage} ${name}`}${status}`} checked={selected} disabled={disabled} onChange={(event) => onChange(event.target.checked)}
+  const isRecording = stage === "Import" && recording;
+  const recordingDescription = "MKV đang ghi / chờ nhập hoàn chỉnh. App tự hoàn tất sau OBS Stop hoặc khi MKV đóng; vẫn có thể đổi lựa chọn Import.";
+  return <label className={`media-training-toggle ${selected ? "is-selected" : ""} ${mixed ? "is-mixed" : ""} ${running ? "is-running" : ""} ${isRecording ? "is-recording" : ""}`} title={isRecording ? recordingDescription : running ? `${stage}: đang chạy` : undefined}>
+    <input aria-busy={running || isRecording || undefined} aria-description={isRecording ? recordingDescription : undefined} aria-label={`${ariaLabel ?? `${stage} ${name}`}${status}`} checked={selected} disabled={disabled} onChange={(event) => onChange(event.target.checked)}
       ref={(element) => { if (element) element.indeterminate = mixed; }} type="checkbox" />
     <span>{stage === "Speaker Diarization" ? "DIA" : stage.toUpperCase()}</span>
   </label>;
@@ -1081,34 +1083,37 @@ export function MediaPool({
     const selected = asset.deletedAt ? selectedBinIds.includes(asset.id) : selectedIds.includes(asset.id);
     const active = asset.id === selectedAssetId;
     const recycled = Boolean(asset.deletedAt);
+    // The parent source switches atomically only after all final track WAVs exist.
+    // Children share this state even while their STT jobs are still running.
+    const mkvRecording = !recycled && Boolean(asset.growingMkvFollow) && !asset.sourcePath.endsWith("source-final.mkv");
     const parked = Boolean(asset.disabled) && !recycled;
     const codec = asset.audioCodec ?? asset.videoCodec ?? asset.sourceExtension.slice(1).toUpperCase();
     const assignedNames = speakers.filter((speaker) => asset.speakerProfileIds.includes(speaker.id)).map((speaker) => speaker.name);
     const environmentNames = environments.filter((profile) => asset.environmentProfileIds.includes(profile.id)).map((profile) => profile.name);
     const missing = recycled || channels.length ? [] : missingPreparation(asset);
     return (
-      <div className={`media-pool-item ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} draggable={organizable && !recycled} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)} onDragStart={organizable ? (event) => { draggedAssetId.current = asset.id; event.dataTransfer.setData("text/plain", asset.id); event.dataTransfer.effectAllowed = "move"; } : undefined} onDragEnd={organizable ? () => { draggedAssetId.current = null; } : undefined} onDragOver={organizable ? handleAssetDragOver : undefined} onDrop={organizable ? (event) => handleAssetDrop(event, folderId, asset.id) : undefined}>
+      <div className={`media-pool-item ${mkvRecording ? "is-mkv-recording" : ""} ${channels.length ? "has-children" : ""} ${active ? "is-active" : ""} ${selected ? "is-selected" : ""} ${recycled ? "is-recycled" : ""} ${parked ? "is-disabled" : ""} ${!imported.selected && !imported.mixed ? "is-not-imported" : ""}`} draggable={organizable && !recycled} key={asset.id} onContextMenu={(event) => openContextMenu(event, asset.id)} onDragStart={organizable ? (event) => { draggedAssetId.current = asset.id; event.dataTransfer.setData("text/plain", asset.id); event.dataTransfer.effectAllowed = "move"; } : undefined} onDragEnd={organizable ? () => { draggedAssetId.current = null; } : undefined} onDragOver={organizable ? handleAssetDragOver : undefined} onDrop={organizable ? (event) => handleAssetDrop(event, folderId, asset.id) : undefined}>
         {channels.length ? <button aria-expanded={expandedAssets.includes(asset.id)} aria-label={`${expandedAssets.includes(asset.id) ? "Thu gọn" : "Xổ"} track của ${asset.name}`} className="media-pool-item__expand" onClick={() => setExpandedAssets((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} type="button">{expandedAssets.includes(asset.id) ? "▾" : "▸"}</button> : null}
         <button aria-pressed={selected} className="media-pool-item__main" onClick={(event) => selectAsset(event, asset)} type="button">
           <span className={`media-kind media-kind--${asset.mediaKind}`}><Icon name={asset.mediaKind === "video" ? "project" : "waveform"} /></span>
           <span className="media-item-copy">
             <strong>{missing.length ? <span aria-label={`Chưa xong: ${missing.join(", ")}`} className="media-prep-warning" role="img" title={`Chưa xong: ${missing.join(", ")}`}>!</span> : null}{asset.name}</strong>
-            <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}{channels.length ? ` · ${channels.length} TRACK` : ""}</small>
+            <small>{asset.mediaKind.toUpperCase()} · {codec} · {durationLabel(asset.duration)}{channels.length ? ` · ${channels.length} TRACK` : ""}{mkvRecording ? <b className="media-mkv-recording-label"> · MKV ĐANG GHI</b> : null}</small>
             <em>{channels.length ? asset.obsRecordingId ? "SCRIPT THEO TRACK" : "STT TỪNG TRACK" : transcriptionLabel(asset)} · {asset.revisions.length} REV · {emotionLabel(asset.emotion).toUpperCase()} · {assignedNames.join(", ") || "CHƯA GÁN SPEAKER"}{environmentNames.length ? " · " + environmentNames.join(", ") : ""}{asset.hasExternalSource ? asset.localCacheEnabled ? " · CACHE ✓ " + (asset.localCacheUpdatedAt ? new Date(asset.localCacheUpdatedAt).toLocaleString("vi-VN") : "") : " · ORIGINAL FILE" : ""}</em>
             {["queued", "processing", "reviewing", "paused"].includes(asset.transcriptionStatus) ? <span aria-label={`Tiến trình Speech to text ${transcriptionProgressLabel(asset.transcriptionProgress)}%`} className={`media-transcription-progress ${asset.transcriptionStatus === "paused" ? "is-paused" : ""}`}><i style={{ width: `${asset.transcriptionProgress ?? 0}%` }} /><b>{asset.transcriptionStatus === "paused" ? "TẠM DỪNG" : asset.transcriptionStatus === "reviewing" ? "AI CHECK" : asset.transcriptionStatus === "queued" ? "WAITING" : "STT KỸ"} · {transcriptionProgressLabel(asset.transcriptionProgress)}%</b></span> : null}
           </span>
         </button>
         <div className="media-pool-item__toggles">
         {recycled ? <><button className="media-restore-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "restore", assetIds: selectedBinIds }); else onRestore(asset); }} title="Đưa footage trở lại Media Pool" type="button">Restore</button><button className="media-remove-action" onClick={() => { if (selectedBinIds.length > 1 && selectedBinIds.includes(asset.id)) onBatchAction({ kind: "delete", assetIds: selectedBinIds }); else onRemove(asset); }} title="Xóa hẳn, không khôi phục được" type="button">Delete</button></> : <>
-          <StageToggle disabled={asset.status === "no-audio" || busy} mixed={imported.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "import", value)} selected={imported.selected} stage="Import" />
+          <StageToggle recording={mkvRecording} disabled={asset.status === "no-audio" || busy} mixed={imported.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "import", value)} selected={imported.selected} stage="Import" />
           <StageToggle ariaLabel={`Đưa ${asset.name} vào hàng đợi Speech to text`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed || ["queued", "processing", "reviewing"].includes(asset.transcriptionStatus)} mixed={stt.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "stt", value)} running={sttRunning} selected={stt.selected} stage="STT" />
           <StageToggle disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={diarization.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "diarization", value)} running={diarizationRunning} selected={diarization.selected} stage="Speaker Diarization" />
           <StageToggle ariaLabel={`Dùng ${asset.name} cho Voice Training`} disabled={asset.status === "no-audio" || !imported.selected && !imported.mixed} mixed={training.mixed} name={asset.name} onChange={(value) => toggleStageForAsset(asset, "training", value)} running={trainingRunning} selected={training.selected} stage="Train" /></>}
         </div>
-        {channels.length && expandedAssets.includes(asset.id) && !recycled ? <div className="media-pool-item__channels">{channels.map((track) => <div className={`media-pool-item__channel ${track.importSelected === false ? "is-not-imported" : ""}`} key={track.id}>
+        {channels.length && expandedAssets.includes(asset.id) && !recycled ? <div className="media-pool-item__channels">{channels.map((track) => <div className={`media-pool-item__channel ${mkvRecording ? "is-mkv-recording" : ""} ${track.importSelected === false ? "is-not-imported" : ""}`} key={track.id}>
           <button aria-label={`Mở Script ${asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}`} aria-pressed={selectedListIds.includes(track.id)} className="media-pool-item__channel-name" disabled={track.importSelected === false} onClick={(event) => { setBinSelection({ ids: [], anchorId: null }); const next = selectListItem(selection, selectableIds, track.id, { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey }); setSelection(next); if (next.ids.length === 1) openSelectedItem(next.ids[0]); else if (!next.ids.length) onClearSelection(); }} title={track.importSelected === false ? "Tick Import để đưa track trở lại" : track.name} type="button">{asset.obsRecordingId ? obsTrackLabel(track.name.replace(/^OBS LiveLink · /, "")) : track.name}<small>{durationLabel(track.duration)}</small></button>
           <div className="media-pool-item__toggles">
-            <StageToggle name={track.name} onChange={(value) => toggleStageForAsset(track, "import", value)} selected={track.importSelected !== false} stage="Import" />
+            <StageToggle recording={mkvRecording} name={track.name} onChange={(value) => toggleStageForAsset(track, "import", value)} selected={track.importSelected !== false} stage="Import" />
             <StageToggle disabled={track.importSelected === false || ["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} name={track.name} onChange={(value) => toggleStageForAsset(track, "stt", value)} running={["queued", "processing", "reviewing"].includes(track.transcriptionStatus)} selected={track.transcriptionSelected} stage="STT" />
             <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => toggleStageForAsset(track, "diarization", value)} running={["queued", "processing"].includes(track.diarizationStatus ?? "idle")} selected={Boolean(track.diarizationSelected)} stage="Speaker Diarization" />
             <StageToggle disabled={track.importSelected === false} name={track.name} onChange={(value) => toggleStageForAsset(track, "training", value)} running={trainingAssetIds.has(track.id)} selected={track.trainingSelected} stage="Train" />

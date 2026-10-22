@@ -50,3 +50,37 @@
 @media (prefers-reduced-motion: reduce) {
   .media-training-toggle.is-running { animation: none; }
 }
+
+/* A 24px tile makes the 45-degree stripes loop smoothly toward the right. */
+.media-pool-item.is-mkv-recording:not(.is-recycled),
+.media-pool-item__channel.is-mkv-recording {
+  background-image: repeating-linear-gradient(45deg,
+    color-mix(in srgb, var(--red) 14%, transparent) 0 8.485px,
+    transparent 8.485px 16.97px);
+  background-size: 24px 24px;
+  animation: media-mkv-recording-stripes 1.8s linear infinite;
+}
+.media-mkv-recording-label { color: var(--red-ink, var(--red)); font-weight: 600; }
+.media-training-toggle.is-recording input {
+  appearance: none;
+  flex-shrink: 0;
+  border: 2px solid var(--red-ink, var(--red));
+  border-radius: 50%;
+  background: transparent;
+  animation: media-mkv-recording-dot 1.8s ease-in-out infinite;
+}
+.media-training-toggle.is-recording input:checked,
+.media-training-toggle.is-recording input:indeterminate { background: var(--red-ink, var(--red)); }
+@keyframes media-mkv-recording-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 24px 0; }
+}
+@keyframes media-mkv-recording-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .media-pool-item.is-mkv-recording:not(.is-recycled),
+  .media-pool-item__channel.is-mkv-recording,
+  .media-training-toggle.is-recording input { animation: none; }
+}
