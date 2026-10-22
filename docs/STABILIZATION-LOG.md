@@ -2392,3 +2392,48 @@ reset viewport không thể xác nhận vì Work settings tắt browser ở lúc
 Ảnh và số đo trước đó nằm ở `docs/gates/timeline-fit83-20261022.md`, ADR0131.
 Không đổi backend/media/engine/default STT, không hạ gate. OBS thiết bị thật và
 nghiệm thu âm học độc lập vẫn mở. Phase03 giữ60%, Phase06 mở; dừng83.
+
+## Round84 — Playhead MKV đang ghi tự nhảy về mốc cũ (2026-10-22)
+
+### Feedback
+
+Kéo playhead trong MKV đã import khi đang ghi thì nó tự nhảy về vị trí trước đó.
+
+### Agent tự kiểm
+
+Tái hiện bằng component thật: WAV còn metadata60s, footage đã120s, kéo tới96s rồi
+timeupdate kéo ngược về60s. Resume/viewport không cần đổi để gây lỗi. onTimeUpdate
+trước đây nhận cả clock đang pause; updatedAt còn nằm trong lifecycle key nên poll
+kết thúc audition đang kéo. Sau khi chỉ đổi quyền clock, cả2 case drag đã pass.
+
+Đã giữ quyền pointer/paused playhead, ổn định danh tính scrubber qua poll, thêm
+revision URL từ path/duration PCM và đợi metadata khôi phục vị trí trước khi nhận
+clock phát. Bắt cả18.5→0 khi resource đang load và Play cũ trả muộn sau thả chuột;
+scrub mới hủy activation cũ. Không sửa shared scrubber hoặc backend/media.
+
+Frontend full1215/150file/177.12s, focused77+16, typecheck/build212/424ms và mutation
+pass. Ba fixture cũ nhận timeupdate khi pause được sửa cách khởi tạo: bật Play thật
+hoặc pointer seek; giữ nguyên mọi assertion. Full đầu1214 pass/1 fixture fail và
+lỗi nullable typecheck được giữ lại, không suppression/nới timeout.
+
+MKV AAC hai track thật cho duration2.925625→11.702625→24.0326667s;6 HTTP Range
+query trả206, final WAV24kHz mono PCM16 đủ576784 frame, source-final bằng hash.
+Probe đầu giả định WAV header44 byte sai với LIST chunk; đọc4096 byte là đủ, không
+đổi product. Fixture chỉ ghi scratch, không chạy model. Browser bị tắt trong Work
+settings nên không nhận nghiệm thu browser/thiết bị mới. ADR0132 và gate
+`docs/gates/mkv-playhead84-20261022.md` giữ bằng chứng.
+
+### Kết quả so với ngưỡng
+
+API full chưa xanh:1317 pass/1 fail/3 warning cũ/615.14s. Test portable updater
+`test_update_stops_controller_holding_api_directory[True-False-False-False]` báo
+protected source API PID54648 bị dừng; controller/API/Studio cũng ngừng. Chưa quy
+được chính xác đường terminate. Không sửa/skip test này hoặc chạy lại trên app sống.
+Wrapper lỗi và issue containment nằm trong `.scratch/playhead84/`.
+
+Đã khôi phục bằng console chuẩn ở nền: controller/API/Studio running, busy=false,
+lastError=null, health=ok, phục vụ build mới. Console6064 giữ quyền sở hữu stack;
+log recovery và health cuối được lưu. Trước lần full API trên runtime sống tiếp
+theo phải chặn terminate ngoài cây process fixture trước khi gọi stop. Gate này
+và browser/device UAT còn mở; không hạ ngưỡng để báo pass. Phase03 giữ60%, Phase06
+mở, không đổi default STT/portable; dừng84.

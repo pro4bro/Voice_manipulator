@@ -1,5 +1,28 @@
 # Work Rounds
 
+## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
+
+Fixes a reproduced96→60s playhead reset after dragging across growing-MKV refresh.
+Pointer/paused coordinates retain authority; only active primary playback owns
+the clock. Stable track identity keeps audition alive across payload polling.
+Analysis-path/duration revisions reload new PCM and restore position before its
+clock resumes; a scrub invalidates pending full Play activation. Normal imports,
+full-fit and safe-edge navigation remain. ADR0132 and the mkv-playhead84 gate
+record the evidence and six new regressions.
+
+Frontend1215/150files/177.12s, focused77+16, typecheck/build212 and isolated mutation
+pass. Real two-track MKV/WAV queries grow2.925625→24.0326667s; six Range reads206,
+full final PCM and source hashes pass. Browser is disabled in Work settings, so
+new browser/device UAT remains open. No backend/media/persistence changes.
+
+API full is not green:1317 pass/1 portable updater isolation failure/3 existing
+warnings/615.14s. Its protected-process check reports the live source API stopped;
+the managed stack also went down. Canonical console start restores healthy API/
+Studio/current build. Do not repeat the live portable process test until its
+termination containment is fixed; the failed wrapper and local issue remain in
+`.scratch/playhead84/`. No assertions/gates are weakened. Phase03 stays60%, Phase06
+open; stop84 with this verification gap explicit.
+
 ## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
 
 Full zoom-out now retains fit intent while imported MKV or OBS footage grows.

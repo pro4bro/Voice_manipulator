@@ -1,5 +1,23 @@
 # Project Status — 2026-10-22
 
+## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
+
+Growing MKV refresh preserves an ongoing scrub and its released playhead. Paused
+or stale media clocks cannot overwrite it; published PCM revisions reload audio
+and restore metadata/position before primary playback resumes. Transcript-only
+polling keeps stable audition identity; scrubbing cancels pending full Play.
+
+Frontend1215/150files, focused77+16, typecheck/build212, real two-track MKV/WAV
+Range reads and isolated mutation pass. Browser/device UAT remains open because
+Work settings disable browser access. ADR0132 and `docs/gates/mkv-playhead84-20261022.md`
+retain exact tests, earlier failures and media evidence. No backend/media/default
+STT change. Phase03 stays60%, Phase06 open; stop84.
+
+API full remains open:1317 pass/1 portable updater process-isolation failure.
+Its protected source API process was stopped; canonical console recovery restores
+healthy API/Studio/current build. No live rerun or relaxed test gate. Future full
+API validation must first contain that portable test's termination calls.
+
 ## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
 
 Fully zoomed-out imported/OBS Timelines keep fitting the growing source extent;

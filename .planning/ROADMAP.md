@@ -1,5 +1,20 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
+
+Delivered stable playhead/audition during and after growing-MKV refresh. Only
+active primary playback advances the held coordinate. PCM path/duration revisions
+refresh audio and restore metadata position before clock handoff; a new scrub
+cancels pending full Play activation. Normal imports/full-fit/edge-pan remain.
+
+Frontend1215, focused77+16, typecheck/build212, real two-track MKV/WAV Range proof
+and isolated mutation pass. API1317 pass/1 portable process-isolation failure
+remains open; canonical console recovery restores healthy API/Studio/current
+build. Contain termination calls before any future live test rerun. Browser/device
+UAT is unavailable in Work settings. ADR0132 and mkv-playhead84 gate record the
+evidence and gaps. No backend/default STT change. Phase03 stays60%, Phase06 open;
+stop84.
+
 ## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
 
 Delivered continuous full fit for growing MKV/OBS footage after slider/minus

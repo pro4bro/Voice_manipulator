@@ -6,11 +6,26 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round83 retains full-fit zoom while recording and imported MKV footage grows.
-last_activity_desc: GROWING-TIMELINE-FIT-01 keeps imported/OBS full zoom-out fitted to growing source extent and preserves finite manual zoom. OBS live display grows beyond120s while acquisition stays bounded; a held playhead no longer freezes extent. Actual browser verifies MKV2.925625→24.0326667s and retained manual span, with full final PCM/source checks. Frontend1209/API1318, typecheck/build and isolated mutation pass. ADR0131 and timeline-fit83 gate retain evidence/limits. Phase03 stays60%, Phase06 open; stop83.
+last_activity: 2026-10-22 — round84 fixes playhead rewind across growing-MKV refresh.
+last_activity_desc: GROWING-MKV-PLAYHEAD-01 preserves pointer/paused position, keeps audition across payload polling, reloads published PCM revisions and restores position before clock updates. Frontend1215, focused77+16, typecheck/build212, real MKV/WAV and mutation pass. API1317 pass/1 portable updater isolation failure stopped the live stack; canonical console recovery restores healthy API/Studio/current build. No live rerun or gate waiver; containment and browser/device UAT remain open. ADR0132 and mkv-playhead84 gate retain evidence. Phase03 stays60%, Phase06 open; stop84.
 ---
 
 # Project State
+
+## Round84 — GROWING-MKV-PLAYHEAD-01 (2026-10-22)
+
+Fixed reproduced96→60s playhead rewind after dragging across growing MKV refresh.
+Pointer/paused coordinates keep ownership; audition survives payload polling.
+PCM path/duration revisions refresh media, restore held position before clock
+updates and preserve ordinary primary/secondary playback. A scrub cancels pending
+full Play activation. No shared scrubber/backend/media/persistence change.
+
+Frontend1215/150files, focused77+16, typecheck/build212, real two-track MKV/WAV
+queries and isolated mutation pass. API full1317 pass/1 portable isolation failure
+is not green; the live source API stopped and the managed stack was recovered
+through its canonical console. Do not repeat the live test until containment is
+fixed. Browser/device UAT remains open. ADR0132 and mkv-playhead84 gate hold all
+evidence/limits. Phase03 stays60%, Phase06 open; stop84.
 
 ## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
 
