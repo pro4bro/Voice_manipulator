@@ -1344,7 +1344,8 @@ it("boosts only preview playback through a channel-scoped Web Audio gain node", 
   expect(graph.createMediaElementSource).toHaveBeenCalledWith(container.querySelector("audio"));
   expect(gain.gain.value).toBe(1.5);
   expect((container.querySelector("audio") as HTMLAudioElement).volume).toBe(1);
-  expect(screen.getByRole("meter", { name: "Level nguồn Channel 1" })).toHaveAttribute("aria-valuenow", "37");
+  await waitFor(() => expect(screen.getByRole("meter", { name: "Level nguồn Channel 1" }))
+    .toHaveAttribute("aria-valuenow", "37"));
   fireEvent.click(screen.getByRole("button", { name: "Nghe kênh Channel 2" }));
   expect(source.disconnect).toHaveBeenCalled();
   expect(graph.close).toHaveBeenCalled();
