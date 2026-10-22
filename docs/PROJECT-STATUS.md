@@ -1,5 +1,21 @@
 # Project Status — 2026-10-22
 
+## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
+
+Media Pool now shows pulsing red Import circles and moving45-degree stripes on
+the provisional MKV parent and all tracks. Final-parent publication restores
+normal controls/appearance and saved Import choices even while STT runs. There
+is no extra polling or independent track guess; reduced-motion stays static.
+Actual browser verifies all three indicators and automatic completion without
+reload on an isolated two-track AAC MKV, with full8.034125s final PCM/source bytes.
+ADR0130 and `docs/gates/mkv-recording-slots82-20261022.md` retain checks/limits.
+Phase03 stays60%, Phase06 open; no backend/default STT/portable change. Stop82.
+
+Full frontend1203/150files, typecheck/build212, API1318/3 existing warnings pass;
+isolated state mutation killed. The first existing frontend waiter timeout and
+successful unchanged rechecks remain in the gate. App serves the new build and
+JSON health is ok; no runtime restart needed.
+
 ## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
 
 Input refinement now uses method enable/collapse settings, editable IN/OUT,

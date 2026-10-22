@@ -2320,3 +2320,40 @@ trước. Chưa nghiệm thu OBS vật lý/âm thanh thiết bị hoặc hội t
 unknown-size không có kết nối Stop giữ nút Finish dự phòng. ADR0129 và
 `docs/gates/input-feedback81-20261022.md` ghi đầy đủ. Phase03 giữ60%, Phase06 mở;
 không đổi default STT/portable. Dừng81.
+
+## Round82 — MKV recording slot indicators (2026-10-22)
+
+### Feedback
+
+MKV được import khi còn ghi cần vòng tròn đỏ nhấp nháy thay tick Import và sọc
+chéo45 độ chạy trái sang phải ngay trong slot. Áp dụng cả footage cha và track con;
+khi nhập hoàn chỉnh phải trở lại giao diện bình thường.
+
+### Agent tự kiểm
+
+Trạng thái lấy từ parent growingMkvFollow và publication source-final.mkv sẵn có.
+Không đoán từ im lặng, duration, kích thước file hay trạng thái STT; không thêm
+polling/backend. Import vẫn là checkbox native có busy/description và giữ lựa
+chọn; chưa chọn Import là vòng tròn rỗng. Reduced-motion giữ chỉ báo tĩnh.
+
+Regression ban đầu1 fail/64 pass bắt đúng trạng thái còn thiếu; sau sửa65 pass.
+Browser app/API thật trên fixture MKV AAC hai track xác nhận3 slot có sọc45 độ,
+vị trí ngang tăng12.7194→14.4971px. Sau append phần đuôi, cả3 tự hết highlight và
+trở lại checkbox native, không reload. Hai track đủ8.034125s,24kHz mono PCM16;
+source-final bằng byte với file kín. Không ghi vào project của chủ dự án.
+
+### Kết quả so với ngưỡng
+
+Frontend full replay1203/150file/193.56s pass, typecheck/build212 pass. Full đầu
+1202 pass/1 timeout1s ở Voice Output; chạy riêng5 pass và full lại đều pass, không
+sửa test/product Voice Output hoặc nới timeout. Lỗi đầu được giữ. Backend closure
+và ảnh hai trạng thái nằm ở `docs/gates/mkv-recording-slots82-20261022.md`.
+
+Chỉ báo bao gồm lúc đang follow và lúc chờ nhập đầy đủ; không báo tick sẵn sàng
+trước khi artifact đầy đủ tồn tại. Các giới hạn OBS thật/unknown-size không có Stop
+vẫn là contract Round81. ADR0130 ghi quyết định. Phase03 giữ60%, Phase06 mở;
+không đổi media, default STT hoặc portable. Dừng82.
+
+Chốt gate: API full1318 pass/3 warning cũ/629.79s. Mutation đảo điều kiện source
+final bị test bắt đúng; hash file product không đổi. App phục vụ build mới và
+`/api/health` JSON status=ok; không cần restart runtime. Đã dọn tab/server fixture.

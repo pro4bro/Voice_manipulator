@@ -1,5 +1,18 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
+
+Delivered red pulsing Import circles and45-degree stripes moving left-to-right
+on followed-MKV parent/track slots. Final-parent publication restores native
+checkboxes and saved selections independently of STT; existing asset refresh
+updates the UI without reload. Reduced-motion preserves static cues. No new
+backend/polling behavior. Browser actual-app fixture verifies three slots and
+two full8.034125s final PCM tracks. ADR0130 and the recording-slots82 gate hold
+test closure/limits. Phase03 stays60%, Phase06 open; stop82.
+
+Full frontend1203, typecheck/build212 and API1318/3 existing warnings pass. The
+isolated state mutation is killed; initial frontend waiter/rechecks are retained.
+
 ## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
 
 Delivered enabled/collapsible refinement settings, editable IN/OUT, contextual

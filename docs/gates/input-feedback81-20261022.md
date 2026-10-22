@@ -130,7 +130,9 @@ Latest frontend:1201 passed/150 files/170.23s, typecheck and build212 pass. Brow
 Restore confirms692/692 original coordinates (`browser-restore-report.json`).
 Managed restart preflight checked29 projects: no active STT/training jobs and no
 OBS process. Controller returned running API/Studio, busy=false, lastError=null;
-`/health` succeeds (`runtime-healthy-final.json`). No active capture was interrupted.
+the runtime status receipt is retained (`runtime-healthy-final.json`). No active
+capture was interrupted. Correction in Round82: `/health` is the SPA fallback;
+the JSON API health endpoint is `/api/health`, verified in `.scratch/input82/runtime-health.json`.
 The final source/reference hash check passes all four frozen Conviction files.
 
 Five-axis self-review covered source/finalization races, manual timing invariants,

@@ -64,6 +64,7 @@
 - **STT-OBS-08**: Every captured source has an explicit role. Microphone sources identify the primary user or people near that microphone; meeting-application sources identify remote guests. Diarization runs independently per source when requested, and Script/SRT speaker labels retain both the source role and diarized speaker identity.
 - **STT-OBS-09**: Capture Source owns OBS LiveLink module visibility and target lease; viewing older footage does not activate capture controls. Source choice survives Recorder remounts; hiding controls does not issue Stop.
 - **STT-OBS-10**: A followed MKV automatically imports the complete closed source in the background after an authenticated matching OBS Stop or a sealed Matroska Segment. Never infer closure from silence or file inactivity alone. Preserve original media and Live STT; reject late segmented publication. Subsequent explicit Speech to text processes the finalized full track through the ordinary queue, without growing-file block segmentation.
+- **STT-OBS-11**: Provisional followed-MKV footage and all displayed child tracks show red pulsing circles in place of Import checkmarks and45-degree stripes moving left-to-right. Parent final-source publication clears this state for all tracks, restoring native Import controls and their selections independently of STT. Status text/description and reduced-motion support remain available; ordinary imports and recycled footage do not acquire recording indicators.
 
 ## Distribution
 

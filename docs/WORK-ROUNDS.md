@@ -1,5 +1,26 @@
 # Work Rounds
 
+## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
+
+Followed-MKV footage and every displayed track show a pulsing red circle in place
+of the Import tick and45-degree stripes moving left-to-right until final-source
+publication. Existing Import choices stay functional/unchanged. The parent's
+completion signal clears all track indicators independently of STT; ordinary
+imports and recycled footage are excluded. Status descriptions/text and static
+reduced-motion cues remain. No new polling, media or backend behavior.
+
+Browser on an isolated real-app/two-track AAC MKV fixture confirms three recording
+slots, actual positive horizontal stripe motion and automatic return to three
+native Import controls without reload. Final source bytes match; both24kHz mono
+PCM16 tracks include the full8.034125s. ADR0130 and the recording-slots82 gate
+record verification and the provisional-state meaning. Phase03 stays60%, Phase06
+open; physical OBS/device acceptance remains open. Stop82.
+
+Validation: frontend1203/150files/193.56s, typecheck/build212; API1318/3 existing
+warnings/629.79s. First frontend waiter failure is retained; unchanged focused5
+and full replay pass. Isolated recording-state mutation is killed. No thresholds
+or assertions relaxed; app health JSON is ok and current build is served.
+
 ## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
 
 Replaced Input's per-word refinement modal with eight enable/collapse methods,

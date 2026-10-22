@@ -6,11 +6,26 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round81 implemented Input Ghost timing, retained live drafts and automatic closed-MKV import.
-last_activity_desc: INPUT-FEEDBACK-01 delivers enabled methods, editable offsets, contextual Ghost Preview and bulk Apply with visible conflicts. OBS Stop preserves drafts and imports full MKV/tail; optional STT uses ordinary full-file queue. Capture Source gates OBS controls; verified load/poll stalls have retry. Full frontend1201/typecheck/build212, real browser/FFmpeg checks pass; API closure in gate. Historical hang root cause, physical OBS/device and held-out acoustics remain open. Owner hashes equal; Phase03 stays60%, Phase06 open; stop81.
+last_activity: 2026-10-22 — round82 shows recording/final-import indicators on MKV parent and track slots.
+last_activity_desc: MKV-RECORDING-SLOTS-01 adds red pulsing Import circles and moving45-degree stripes until parent final-source publication. All tracks then restore normal controls and saved selections independently of STT. Actual-browser two-track fixture verifies motion and automatic completion without reload; full PCM/source checks pass. ADR0130 and recording-slots82 gate hold test closure/limits. No backend/polling/default STT change; Phase03 stays60%, Phase06 open; stop82.
 ---
 
 # Project State
+
+## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
+
+Media Pool followed-MKV slots and tracks display red pulsing Import circles and
+animated45-degree stripes until verified final-parent publication. All tracks
+restore native checkbox appearance and saved choices together, independently of
+STT. Existing refresh supplies the automatic transition. Static reduced-motion
+cues, accessible descriptions and normal controls remain; ordinary/recycled
+imports are excluded. Browser three-slot motion/automatic completion and full
+two-track8.034125s media checks pass on an isolated fixture. ADR0130 and the
+recording-slots82 gate retain validation/limits. Phase03 stays60%, Phase06 open;
+no backend/default STT/portable change. Stop82.
+
+Full frontend1203/150files, typecheck/build212, API1318/3 existing warnings pass.
+Isolated state mutation killed; initial waiter/recheck evidence remains in gate.
 
 ## Round81 — INPUT-FEEDBACK-01 (2026-10-22)
 
