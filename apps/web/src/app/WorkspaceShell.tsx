@@ -1890,7 +1890,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       applyMediaAsset(assets.find((asset) => asset.id === result.asset.id) ?? result.asset, assets);
       setPendingLocalMedia(null);
       setNotice(mode === "follow"
-        ? `Đang theo dõi MKV với ${streamIndexes.length} track${transcribeStreamIndexes.length ? `; STT nhanh chạy cho ${transcribeStreamIndexes.length} track` : ""}. Bấm Speech to text để bắt đầu STT kỹ. Khi OBS dừng, chọn Finish MKV để hoàn tất file và xử lý nốt hàng đợi đã bật.`
+        ? `Đang theo dõi MKV với ${streamIndexes.length} track${transcribeStreamIndexes.length ? `; STT nhanh chạy cho ${transcribeStreamIndexes.length} track` : ""}. Bấm Speech to text để bắt đầu STT kỹ. Khi OBS dừng, app tự import bản hoàn chỉnh ở nền và giữ bản nháp. Sau đó có thể nhận diện lại toàn bộ track bằng Speech to text.`
         : `Đã import ${streamIndexes.length} track. Các track đã tick STT sẵn sàng trong hàng chờ.`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Không import được track đã chọn";

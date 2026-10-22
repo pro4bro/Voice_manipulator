@@ -26,6 +26,15 @@
 .media-import-cache-choice span { display: grid; gap: 3px; font-weight: 700; }
 .media-import-cache-choice small { color: var(--text-muted); font-size: calc(10px * var(--font-scale)); font-weight: 400; line-height: 1.4; }
 
+.media-import-dialog--tracks { overflow-y: auto; }
+.media-import-dialog--tracks header { align-items: flex-start; gap: 12px; }
+.media-import-dialog--tracks header strong { min-width: 0; overflow-wrap: anywhere; }
+.media-import-track-list { max-height: 28dvh; overflow-y: auto; }
+.media-import-mkv-options { min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); }
+.media-import-mkv-options legend { color: var(--text); font: 700 calc(10px * var(--font-scale)) var(--mono); }
+.media-import-mkv-options p { margin: 0 0 10px; color: var(--text-muted); font-size: calc(11px * var(--font-scale)); line-height: 1.45; }
+.media-import-dialog--tracks footer { flex-wrap: wrap; }
+
 @keyframes media-pool-import-pulse {
   50% { opacity: .35; transform: scale(.84); }
 }

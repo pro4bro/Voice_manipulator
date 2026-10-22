@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -92,6 +92,8 @@ describe("MediaPool", () => {
   it("animates the pending multitrack import while the selected tracks are being prepared", () => {
     render(<MediaPool {...props({ assets: [], pendingLocalMedia: { sourcePath: "C:/take.mkv", name: "take.mkv", processing: true, tracks: [] } })} />);
     expect(screen.getByLabelText("Footage take.mkv: ĐANG IMPORT")).toHaveAttribute("aria-busy", "true");
+    fireEvent.contextMenu(screen.getByLabelText("Footage take.mkv: ĐANG IMPORT"));
+    expect(screen.queryByRole("dialog", { name: "Tùy chọn import media" })).not.toBeInTheDocument();
   });
   it("keeps a controlled two-track selection when Workspace opens its parent view", async () => {
     const tracks = ["a", "b", "c"].map((id) => ({ ...asset, id, name: `Mic ${id}`,
@@ -383,8 +385,7 @@ describe("MediaPool", () => {
       { streamIndex: 0, title: "Audio", codec: "pcm", channels: 2, imported: true, transcribe: false },
     ] };
     render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia })} />);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Import file đã hoàn tất" }));
-    expect(screen.getByRole("dialog", { name: "Tùy chọn cache file media" })).toHaveTextContent("recording.wav");
+    expect(await screen.findByRole("dialog", { name: "Tùy chọn import media" })).toHaveTextContent("recording.wav");
     fireEvent.click(screen.getByRole("checkbox", { name: "Cache file" }));
     fireEvent.click(screen.getByRole("button", { name: "Import file" }));
     expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("import", undefined, false);
@@ -581,7 +582,77 @@ describe("MediaPool", () => {
     expect(onImport).not.toHaveBeenCalled();
   });
 
-  it("configures import and STT per pending native track from the right-click menu", () => {
+  it("opens the normal import dialog for pending MKV with cache, track choices and its extra follow action", () => {
+    const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: false },
+      { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2, imported: true, transcribe: false },
+    ] };
+    const onConfirmPendingLocalMedia = vi.fn();
+    const onPendingLocalTrackChange = vi.fn();
+    const options = { assets: [], pendingLocalMedia, onConfirmPendingLocalMedia, onPendingLocalTrackChange };
+    const view = render(<MediaPool {...props(options)} />);
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    expect(dialog).toHaveTextContent("recording.mkv");
+    expect(screen.queryByRole("menu", { name: "Chọn track cho recording.mkv" })).not.toBeInTheDocument();
+    const cache = within(dialog).getByRole("checkbox", { name: "Cache file" });
+    expect(cache).toBeChecked();
+    fireEvent.click(cache);
+    fireEvent.click(within(dialog).getByLabelText("STT track 2 Desktop"));
+    expect(onPendingLocalTrackChange).toHaveBeenCalledWith(2, "transcribe", true);
+    view.rerender(<MediaPool {...props({ ...options, pendingLocalMedia: { ...pendingLocalMedia,
+      tracks: pendingLocalMedia.tracks.map(track => ({ ...track, transcribe: track.streamIndex === 2 })) } })} />);
+    expect(cache).not.toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Theo dõi MKV đang ghi" })).toBeEnabled();
+    expect(onConfirmPendingLocalMedia).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import file" }));
+    expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("import", undefined, false);
+    expect(screen.queryByRole("dialog", { name: "Tùy chọn import media" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the normal dialog for ordinary multitrack media without MKV actions", () => {
+    const pendingLocalMedia = { sourcePath: "C:/video.mov", name: "video.mov", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: false },
+    ] };
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia })} />);
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    expect(within(dialog).getByRole("checkbox", { name: "Cache file" })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Import file" })).toBeEnabled();
+    expect(within(dialog).queryByRole("button", { name: "Theo dõi MKV đang ghi" })).not.toBeInTheDocument();
+  });
+
+  it("keeps keyboard focus in the pending import review and cancels without starting work", () => {
+    const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: false },
+    ] };
+    const onConfirmPendingLocalMedia = vi.fn();
+    const onCancelPendingLocalMedia = vi.fn();
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia, onCancelPendingLocalMedia })} />);
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    const first = within(dialog).getByRole("checkbox", { name: "Cache file" });
+    const last = within(dialog).getByRole("button", { name: "Import file" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Escape" });
+    expect(onCancelPendingLocalMedia).toHaveBeenCalledOnce();
+    expect(onConfirmPendingLocalMedia).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Tùy chọn import media" })).not.toBeInTheDocument();
+  });
+
+  it("blocks both MKV import modes when no audio track is selected", () => {
+    const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
+      { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: false, transcribe: false },
+    ] };
+    render(<MediaPool {...props({ assets: [], pendingLocalMedia })} />);
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    expect(within(dialog).getByRole("button", { name: "Import file" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Theo dõi MKV đang ghi" })).toBeDisabled();
+    expect(within(dialog).getByLabelText("STT track 1 Mic")).toBeDisabled();
+  });
+
+  it("configures import and STT per pending native track in the default import dialog", () => {
     const pendingLocalMedia = { sourcePath: "C:/recording.mkv", name: "recording.mkv", tracks: [
       { streamIndex: 1, title: "Mic", codec: "aac", channels: 2, imported: true, transcribe: false },
       { streamIndex: 2, title: "Desktop", codec: "aac", channels: 2, imported: true, transcribe: false },
@@ -589,14 +660,14 @@ describe("MediaPool", () => {
     const onPendingLocalTrackChange = vi.fn();
     const onConfirmPendingLocalMedia = vi.fn();
     render(<MediaPool {...props({ assets: [], pendingLocalMedia, onPendingLocalTrackChange, onConfirmPendingLocalMedia })} />);
-    const menu = screen.getByRole("menu", { name: "Chọn track cho recording.mkv" });
-    expect(menu).toHaveTextContent("Mic");
-    expect(menu).toHaveTextContent("Desktop");
+    const dialog = screen.getByRole("dialog", { name: "Tùy chọn import media" });
+    expect(dialog).toHaveTextContent("Mic");
+    expect(dialog).toHaveTextContent("Desktop");
     fireEvent.click(screen.getByLabelText("Import track 1 Mic"));
     fireEvent.click(screen.getByLabelText("STT track 2 Desktop"));
     expect(onPendingLocalTrackChange).toHaveBeenCalledWith(1, "imported", false);
     expect(onPendingLocalTrackChange).toHaveBeenCalledWith(2, "transcribe", true);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Theo dõi MKV đang ghi" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Theo dõi MKV đang ghi" }));
     expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("follow", 60);
   });
 
@@ -607,7 +678,7 @@ describe("MediaPool", () => {
     const onConfirmPendingLocalMedia = vi.fn();
     render(<MediaPool {...props({ assets: [], pendingLocalMedia, onConfirmPendingLocalMedia })} />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Chọn track cho recording.mkv" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Theo dõi MKV đang ghi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Theo dõi MKV đang ghi" }));
     expect(screen.queryByRole("dialog", { name: "Thiết lập STT MKV" })).not.toBeInTheDocument();
     expect(onConfirmPendingLocalMedia).toHaveBeenCalledWith("follow", 60);
   });
