@@ -215,6 +215,44 @@ def add_bias(words, offsets, duration):
     return candidate
 
 
+def mfa_diagnostics(folder):
+    """Reproduce calibration-only partial MFA diagnostics after product rejection."""
+    from subtitle_mfa_partial_probe import build_partial_probe
+
+    protocol = verify(folder)
+    seed = read(folder / "current.json")["words"]
+    runs = []
+    for config in protocol["configurations"]:
+        if config["engine"] != "mfa":
+            continue
+        work = folder / "runs" / config["id"]
+        if not (work / "failure.json").is_file():
+            raise ValueError("This diagnostic requires a terminal, product-rejected MFA attempt")
+        raw_path = work / "mfa-raw.json"
+        partial = build_partial_probe(read(raw_path), seed, digest(raw_path), model_identity=read(work / "identity.json"))
+        save(work / "diagnostic-output.json", partial)
+        candidate, _ = effective(seed, partial["words"], protocol["audio"]["duration"], "mfa", 2000)
+        metrics = {"raw": score(folder, partial["words"], "calibration", seed),
+                   "effective": score(folder, candidate, "calibration", seed)}
+        save(work / "diagnostic-calibration.json", metrics)
+        failure = read(work / "failure.json")
+        runs.append({"configId": config["id"], "settings": config["settings"], "productStatus": "failed",
+            "runtimeFailureWallSeconds": failure["wallSeconds"], "rawSha256": digest(raw_path),
+            "rawLabelCount": partial["rawLabelCount"], "mappedWords": partial["mappedWords"],
+            "unknownMeasuredCount": len(partial["unknownMeasuredIndexes"]),
+            "calibrationRaw": metrics["raw"], "calibrationEffectiveDiagnostic": metrics["effective"],
+            "rankTuple": rank(metrics["effective"])})
+    if not runs:
+        raise ValueError("No failed MFA runs to diagnose")
+    winner = min(runs, key=lambda row: row["rankTuple"])
+    verify(folder)
+    save(folder / "mfa-diagnostic-selection.json", {"schema": "subtitle-mfa-diagnostic-selection-v1",
+        "status": "frozen-calibration-only-diagnostic-selection", "validationRead": False, "fullSplitRead": False,
+        "protocolSha256": digest(folder / "protocol.json"), "runnerSha256": digest(Path(__file__)),
+        "winner": {key: winner[key] for key in ("configId", "settings", "rankTuple", "rawSha256")}, "runs": runs,
+        "limitations": "Partial unique lexical diagnostics and simulated fallback only; all product attempts remain failed. Ties preserve config order."})
+
+
 def select(folder):
     protocol = verify(folder)
     for config in protocol["configurations"]:
@@ -381,7 +419,7 @@ def corrected(folder):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "run", "select", "evaluate", "corrected", "verify"))
+    parser.add_argument("action", choices=("prepare", "run", "mfa-diagnostic", "select", "evaluate", "corrected", "verify"))
     parser.add_argument("folder", type=Path)
     parser.add_argument("--config", action="append")
     args = parser.parse_args()
@@ -392,6 +430,8 @@ if __name__ == "__main__":
         run(folder, args.config)
     elif args.action == "select":
         select(folder)
+    elif args.action == "mfa-diagnostic":
+        mfa_diagnostics(folder)
     elif args.action == "evaluate":
         evaluate(folder)
     elif args.action == "corrected":
