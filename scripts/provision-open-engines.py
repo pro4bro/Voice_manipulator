@@ -41,9 +41,51 @@ MODELS = {
         "path": Path(".runtime/engines/vibevoice/VibeVoice_models/microsoft/VibeVoice-ASR-Streaming-7B"),
         "omit": {"figures/"},
     },
+    "f5-tts": {
+        "repo": "SWivid/F5-TTS", "revision": "84e5a410d9cead4de2f847e7c9369a6440bdfaca",
+        "path": Path(".runtime/engines/research/F5-TTS/checkpoints/base"),
+        "include": {"F5TTS_v1_Base/model_1250000.safetensors", "F5TTS_v1_Base/vocab.txt", "README.md"},
+    },
+    "vivoice": {
+        "repo": "hynt/F5-TTS-Vietnamese-ViVoice", "revision": "5c14cdd4e3f62b69e75140558bea2b2e293ee8f1",
+        "path": Path(".runtime/engines/research/F5-TTS/checkpoints/vivoice"),
+        "include": {"model_last.pt", "config.json", "README.md"},
+    },
+    "vocos": {
+        "repo": "charactr/vocos-mel-24khz", "revision": "0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21",
+        "path": Path(".runtime/engines/research/F5-TTS/checkpoints/vocos"),
+        "include": {"config.yaml", "pytorch_model.bin", "README.md"},
+    },
+    "indextts25": {
+        "repo": "IndexTeam/IndexTTS-2.5", "revision": "c39ce5ba981572cb187443877ff559dfb246ce63",
+        "path": Path(".runtime/engines/research/IndexTTS/checkpoints"), "omit": set(),
+    },
+    "fish-s2-pro": {
+        "repo": "fishaudio/s2-pro", "revision": "1de9996b6be38b745688de084d87a5633f714e4e",
+        "path": Path(".runtime/engines/research/FishSpeech/checkpoints/s2-pro"), "omit": {"overview.png"},
+    },
+    "indextts25-w2v-bert": {
+        "repo": "facebook/w2v-bert-2.0", "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+        "path": Path(".runtime/engines/research/IndexTTS/checkpoints/hf_cache/w2v-bert-2.0"),
+        "include": {"config.json", "preprocessor_config.json", "model.safetensors"},
+    },
+    "indextts25-campplus": {
+        "repo": "funasr/campplus", "revision": "e4b6ede7ce16997aff4ae69fbca1f0175e2afede",
+        "path": Path(".runtime/engines/research/IndexTTS/checkpoints/hf_cache"),
+        "include": {"campplus_cn_common.bin"},
+    },
+    "indextts25-bigvgan": {
+        "repo": "nvidia/bigvgan_v2_22khz_80band_256x", "revision": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+        "path": Path(".runtime/engines/research/IndexTTS/checkpoints/hf_cache/bigvgan"),
+        "include": {"config.json", "bigvgan_generator.pt"},
+    },
 }
 
 REPOSITORIES = (
+    {"name": "EasyVoice", "url": "https://github.com/XavierChuu/EasyVoice.git", "path": ".runtime/engines/research/EasyVoice", "revision": "af299a5cce44c6f877047bff54496fc1a823c090", "submodules": False},
+    {"name": "F5-TTS", "url": "https://github.com/SWivid/F5-TTS.git", "path": ".runtime/engines/research/F5-TTS", "revision": "2f866649b779881af8bd644e76b9a6d95053da29", "submodules": False},
+    {"name": "IndexTTS", "url": "https://github.com/index-tts/index-tts.git", "path": ".runtime/engines/research/IndexTTS", "revision": "d9e41aac89fd00b3d71497fddb287b7f24613712", "submodules": False},
+    {"name": "FishSpeech", "url": "https://github.com/fishaudio/fish-speech.git", "path": ".runtime/engines/research/FishSpeech", "revision": "541566932abbaebcb0a40e562a1f846738383f38", "submodules": False},
     {"name": "CosyVoice", "url": "https://github.com/QwenAudio/CosyVoice.git", "path": ".runtime/engines/research/CosyVoice", "submodules": True},
     {"name": "sokuji", "url": "https://github.com/kizuna-ai-lab/sokuji.git", "path": ".runtime/engines/research/sokuji", "submodules": False},
     {"name": "w-okada-voice-changer", "url": "https://github.com/w-okada/voice-changer.git", "path": ".runtime/engines/research/w-okada-voice-changer", "submodules": False},
@@ -58,9 +100,9 @@ class ProvisionError(RuntimeError):
     """A repository or model could not be safely verified/provisioned."""
 
 
-def _run_git(args: list[str], *, cwd: Path | None = None) -> str:
+def _run_git(args: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
     try:
-        result = subprocess.run(args, cwd=cwd, check=True, text=True, capture_output=True)
+        result = subprocess.run(args, cwd=cwd, env=env, check=True, text=True, encoding="utf-8", errors="replace", capture_output=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         detail = getattr(exc, "stderr", None) or str(exc)
         raise ProvisionError(f"Command failed: {' '.join(args)}: {detail.strip()}") from exc
@@ -88,6 +130,10 @@ def _without_windows_extended_prefix(path: Path) -> Path:
 
 def provision_repository(repo: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
     destination = _inside_root(repo["path"], root=root)
+    requested_revision = repo.get("revision")
+    cloned = False
+    git_env = os.environ.copy()
+    git_env["GIT_LFS_SKIP_SMUDGE"] = "1"
     if destination.exists():
         if not (destination / ".git").exists():
             if repo.get("reuse_only"):
@@ -98,11 +144,14 @@ def provision_repository(repo: dict[str, Any], *, root: Path | None = None) -> d
             raise ProvisionError(f"Required reusable checkout is missing: {destination}")
         destination.parent.mkdir(parents=True, exist_ok=True)
         command = ["git", "clone", "--depth", "1"]
+        if requested_revision:
+            command.append("--no-checkout")
         if repo.get("submodules"):
             command.append("--recurse-submodules")
         command.extend([repo["url"], str(destination)])
         try:
-            _run_git(command)
+            _run_git(command, env=git_env)
+            cloned = True
         except ProvisionError as exc:
             raise ProvisionError(
                 f"Clone failed for {repo['name']}; inspect any partial checkout at {destination}: {exc}"
@@ -111,9 +160,20 @@ def provision_repository(repo: dict[str, Any], *, root: Path | None = None) -> d
     origin = _run_git(["git", "-C", str(destination), "remote", "get-url", "origin"])
     if _normalize_git_url(origin) != _normalize_git_url(repo["url"]):
         raise ProvisionError(f"Wrong origin for {repo['name']}: expected {repo['url']}, found {origin}")
+    if requested_revision and cloned:
+        try:
+            _run_git(["git", "-C", str(destination), "fetch", "--depth", "1", "origin", requested_revision], env=git_env)
+            _run_git(["git", "-C", str(destination), "checkout", "--detach", requested_revision], env=git_env)
+        except ProvisionError as exc:
+            raise ProvisionError(f"Could not check out pinned revision {requested_revision} for {repo['name']}: {exc}") from exc
     revision = _run_git(["git", "-C", str(destination), "rev-parse", "HEAD"])
     if not re.fullmatch(r"[0-9a-fA-F]{40,64}", revision):
         raise ProvisionError(f"Git returned an invalid revision for {repo['name']}: {revision!r}")
+    if requested_revision and revision.lower() != requested_revision.lower():
+        raise ProvisionError(
+            f"Pinned revision mismatch for {repo['name']}: expected {requested_revision}, found {revision}. "
+            "Existing checkouts are never changed; remove or move this checkout and rerun to provision the pin."
+        )
     if repo.get("submodules"):
         submodules = _run_git(["git", "-C", str(destination), "submodule", "status", "--recursive"])
         if any(line.startswith(("-", "+", "U")) for line in submodules.splitlines()):
@@ -211,7 +271,10 @@ def _safe_model_relative_path(value: str) -> PurePosixPath:
 def _should_download(relative: PurePosixPath, model_id: str) -> bool:
     path = relative.as_posix()
     name = relative.name
-    omitted = MODELS[model_id]["omit"]
+    model = MODELS[model_id]
+    if "include" in model:
+        return path in model["include"]
+    omitted = model.get("omit", set())
     if any(path.startswith(item) for item in omitted if item.endswith("/")):
         return False
     if name in omitted:

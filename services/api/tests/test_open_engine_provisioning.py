@@ -93,6 +93,73 @@ def test_lipsync_repositories_use_distinct_ignored_runtime_checkouts():
     }
 
 
+def test_round87_model_pins_and_selective_includes_are_explicit():
+    models = provisioner.MODELS
+    assert models["f5-tts"]["revision"] == "84e5a410d9cead4de2f847e7c9369a6440bdfaca"
+    assert models["vivoice"]["revision"] == "5c14cdd4e3f62b69e75140558bea2b2e293ee8f1"
+    assert models["vocos"]["revision"] == "0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21"
+    assert models["indextts25"]["revision"] == "c39ce5ba981572cb187443877ff559dfb246ce63"
+    assert models["fish-s2-pro"]["revision"] == "1de9996b6be38b745688de084d87a5633f714e4e"
+    assert models["indextts25-w2v-bert"]["include"] == {"config.json", "preprocessor_config.json", "model.safetensors"}
+    assert models["indextts25-campplus"]["include"] == {"campplus_cn_common.bin"}
+    assert models["indextts25-bigvgan"]["include"] == {"config.json", "bigvgan_generator.pt"}
+    assert provisioner._should_download(provisioner.PurePosixPath("README.md"), "vivoice")
+    assert provisioner._should_download(provisioner.PurePosixPath("config.json"), "vivoice")
+    assert not provisioner._should_download(provisioner.PurePosixPath("other.pt"), "vivoice")
+    assert not provisioner._should_download(provisioner.PurePosixPath("overview.png"), "fish-s2-pro")
+    assert provisioner._should_download(provisioner.PurePosixPath("emotion/qwen_config.json"), "indextts25")
+
+
+def test_new_pinned_repository_clone_fetches_exact_revision_with_lfs_smudge_disabled(tmp_path):
+    repo = next(item for item in provisioner.REPOSITORIES if item["name"] == "EasyVoice")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[1] == "clone":
+            (tmp_path / repo["path"] / ".git").mkdir(parents=True)
+            return type("Result", (), {"stdout": ""})()
+        output = {
+            "remote": repo["url"],
+            "rev-parse": repo["revision"],
+        }
+        return type("Result", (), {"stdout": output.get(args[3], "")})()
+
+    with patch.object(provisioner.subprocess, "run", side_effect=fake_run):
+        result = provisioner.provision_repository(repo, root=tmp_path)
+
+    assert result["revision"] == repo["revision"]
+    clone_args, clone_kwargs = calls[0]
+    assert clone_args[1:4] == ["clone", "--depth", "1"]
+    assert "--no-checkout" in clone_args
+    assert clone_kwargs["env"]["GIT_LFS_SKIP_SMUDGE"] == "1"
+    assert any(call[0][-2:] == ["origin", repo["revision"]] for call in calls if "fetch" in call[0])
+    assert any(call[0][-2:] == ["--detach", repo["revision"]] for call in calls if "checkout" in call[0])
+    assert all(call[1]["env"]["GIT_LFS_SKIP_SMUDGE"] == "1" for call in calls if "fetch" in call[0] or "checkout" in call[0])
+
+
+def test_existing_pinned_repository_mismatch_is_preserved_without_mutation(tmp_path):
+    repo = next(item for item in provisioner.REPOSITORIES if item["name"] == "F5-TTS")
+    destination = tmp_path / repo["path"]
+    (destination / ".git").mkdir(parents=True)
+    sentinel = destination / "owner-work.txt"
+    sentinel.write_text("preserve", encoding="utf-8")
+    outputs = iter([repo["url"], "0" * 40])
+    commands = []
+
+    def fake_run(args, **_kwargs):
+        commands.append(args)
+        return type("Result", (), {"stdout": next(outputs)})()
+
+    with patch.object(provisioner.subprocess, "run", side_effect=fake_run):
+        with pytest.raises(provisioner.ProvisionError, match="Pinned revision mismatch"):
+            provisioner.provision_repository(repo, root=tmp_path)
+
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
+    assert len(commands) == 2
+    assert not any(command[3] in ("fetch", "checkout", "reset") for command in commands)
+
+
 def test_ignored_range_restarts_from_zero_and_verifies_full_hash(tmp_path):
     payload = b"complete model bytes"
     target = tmp_path / "model.bin"
@@ -370,11 +437,11 @@ def test_existing_repository_with_wrong_origin_fails_without_clone_or_reset(tmp_
 
 
 def test_failed_clone_preserves_racing_checkout_contents_for_inspection(tmp_path):
-    repo = provisioner.REPOSITORIES[1]
+    repo = next(item for item in provisioner.REPOSITORIES if item["name"] == "sokuji")
     destination = tmp_path / repo["path"]
     sentinel = destination / "racing-checkout.txt"
 
-    def competing_clone(_args):
+    def competing_clone(_args, **_kwargs):
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.write_text("created by concurrent clone", encoding="utf-8")
         raise provisioner.ProvisionError("git clone failed")
@@ -388,7 +455,7 @@ def test_failed_clone_preserves_racing_checkout_contents_for_inspection(tmp_path
 
 
 def test_existing_cosyvoice_checkout_requires_initialized_pinned_submodules(tmp_path):
-    repo = provisioner.REPOSITORIES[0]
+    repo = next(item for item in provisioner.REPOSITORIES if item["name"] == "CosyVoice")
     destination = tmp_path / repo["path"]
     (destination / ".git").mkdir(parents=True)
     outputs = iter([repo["url"], "a" * 40, "-" + "b" * 40 + " submodule/path"])
