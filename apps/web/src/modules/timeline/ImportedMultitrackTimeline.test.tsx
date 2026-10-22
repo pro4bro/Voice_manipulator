@@ -53,6 +53,110 @@ it("toggles imported Timeline playback with Space", async () => {
   play.mockRestore();
 });
 
+it.each(["LAYER", "CỘT"])("holds the dragged playhead across growing MKV refresh and delayed audio events in %s", (layout) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 120, points: [] }) }));
+  const props = { parent: { ...parent, growingMkvFollow: true }, tracks, selectedTrackId: null,
+    resumeProjectId: "growing-project", onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  if (layout === "CỘT") fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
+  const audio = view.container.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 60 });
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 84, clientX: 500 });
+  view.rerender(<ImportedMultitrackTimeline {...props} parent={{ ...props.parent, duration: 120 }}
+    tracks={tracks.map(track => ({ ...track, duration: 120, updatedAt: "2026-10-22T00:00:01Z" }))} />);
+  expect(screen.getAllByRole("img", { name: /Đoạn nghe thử/ })).toHaveLength(2);
+  fireEvent.pointerMove(progress, { pointerId: 84, clientX: 800 });
+  expect(screen.getByText("01:36")).toBeInTheDocument();
+  // The loaded audio still describes the earlier60s prefix; its late events must
+  // not take ownership from a pointer that selected96s in the growing footage.
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("01:36")).toBeInTheDocument();
+  fireEvent.pointerUp(progress, { pointerId: 84, clientX: 800 });
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("01:36")).toBeInTheDocument();
+  expect(loadResumePosition("growing-project", { kind: "asset", id: "parent" })).toBe(96);
+});
+
+it("uses the primary audio clock during playback and ignores delayed clock events after pausing", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
+    onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  await act(async () => {});
+  const [primary, secondary] = [...view.container.querySelectorAll("audio")];
+  primary.currentTime = 18.5;
+  fireEvent.timeUpdate(primary);
+  expect(screen.getByText("00:18")).toBeInTheDocument();
+  expect(secondary.currentTime).toBe(18.5);
+  secondary.currentTime = 5;
+  fireEvent.timeUpdate(secondary);
+  expect(screen.getByText("00:18")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Tạm dừng footage" }));
+  primary.currentTime = 5;
+  fireEvent.timeUpdate(primary);
+  expect(screen.getByText("00:18")).toBeInTheDocument();
+});
+
+it("refreshes growing MKV audio only when the published PCM changes and restores the held seek after metadata", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 120, points: [] }) }));
+  const props = { parent: { ...parent, growingMkvFollow: true }, tracks, selectedTrackId: null,
+    onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  const audio = view.container.querySelector("audio")!;
+  const initialSource = audio.getAttribute("src");
+  const refreshed = tracks.map(track => ({ ...track, updatedAt: "2026-10-22T00:00:01Z" }));
+  view.rerender(<ImportedMultitrackTimeline {...props} tracks={refreshed} />);
+  expect(audio.getAttribute("src")).toBe(initialSource);
+  const grown = refreshed.map(track => ({ ...track, duration: 120 }));
+  view.rerender(<ImportedMultitrackTimeline {...props} tracks={grown} parent={{ ...props.parent, duration: 120 }} />);
+  const grownSource = audio.getAttribute("src");
+  expect(grownSource).not.toBe(initialSource);
+  Object.defineProperty(audio, "duration", { configurable: true, value: 60 });
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 85, clientX: 800 });
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBeCloseTo(95.94);
+  fireEvent.pointerUp(progress, { pointerId: 85, clientX: 800 });
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBe(96);
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("01:36")).toBeInTheDocument();
+  view.rerender(<ImportedMultitrackTimeline {...props} parent={{ ...props.parent, duration: 120, sourcePath: "assets/source-final.mkv" }}
+    tracks={grown.map(track => ({ ...track, analysisPath: `assets/final/${track.id}.wav` }))} />);
+  expect(audio.getAttribute("src")).not.toBe(grownSource);
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBe(96);
+});
+
+it("holds the playback clock until a refreshed growing WAV has restored its metadata position", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 120, points: [] }) }));
+  const props = { parent: { ...parent, growingMkvFollow: true }, tracks, selectedTrackId: null,
+    onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  const audio = view.container.querySelector("audio")!;
+  fireEvent.loadedMetadata(audio);
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  await act(async () => {});
+  audio.currentTime = 18.5;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("00:18")).toBeInTheDocument();
+  view.rerender(<ImportedMultitrackTimeline {...props} parent={{ ...props.parent, duration: 120 }}
+    tracks={tracks.map(track => ({ ...track, duration: 120 }))} />);
+  await act(async () => {});
+  audio.currentTime = 0;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("00:18")).toBeInTheDocument();
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBe(18.5);
+  audio.currentTime = 19.5;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("00:19")).toBeInTheDocument();
+});
+
 it("keeps imported track mixer compact in the column header", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
@@ -142,6 +246,33 @@ it("discards pending playback of withdrawn imported tracks before audio activati
   await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
   expect((play.mock.instances[0] as HTMLAudioElement).getAttribute("src")).toBe(tracks[1].url);
   expect(view.container.querySelectorAll("audio")).toHaveLength(1);
+});
+
+it("does not resume pending full playback after the user scrubs and releases", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  let activate = () => {};
+  const activated = new Promise<void>((resolve) => { activate = resolve; });
+  vi.stubGlobal("AudioContext", class {
+    destination = {};
+    createMediaElementSource = () => ({ connect: vi.fn() });
+    createGain = () => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() });
+    resume = () => activated;
+    close = async () => {};
+  });
+  const view = render(<ImportedMultitrackTimeline parent={parent} tracks={tracks} selectedTrackId={null}
+    onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 86, clientX: 500 });
+  fireEvent.pointerUp(progress, { pointerId: 86, clientX: 500 });
+  await act(async () => {});
+  play.mockClear();
+  await act(async () => { activate(); await activated; });
+  expect(play).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Phát footage" })).toBeInTheDocument();
+  expect(screen.getByText("00:30")).toBeInTheDocument();
 });
 
 it("resumes Script following by dragging an imported multitrack waveform", () => {
@@ -648,9 +779,12 @@ it("restores and persists imported child positions across remounts without overw
   const audioA = view.container.querySelector("audio")!;
   fireEvent.loadedMetadata(audioA);
   expect(audioA.currentTime).toBe(12.5);
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  await act(async () => {});
   audioA.currentTime = 16;
   fireEvent.timeUpdate(audioA);
   await waitFor(() => expect(loadResumePosition("project", sourceA)).toBe(16));
+  fireEvent.click(screen.getByRole("button", { name: "Tạm dừng footage" }));
 
   view.rerender(<ImportedMultitrackTimeline {...props} selectedTrackId="b" />);
   await waitFor(() => expect(screen.getByText("00:38")).toBeInTheDocument());
@@ -675,7 +809,10 @@ it("centers imported zoom, clears blank selections and edge-pans a virtual viewp
       wordSelection={{ indexes: [], anchor: null, ranges: [{ id: "selected", start: 10, end: 12 }] }}
       onWordSelectionChange={onSelection} onSelectTrack={vi.fn()} onCutsChange={vi.fn()} />);
     const audio = view.container.querySelector("audio")!;
-    audio.currentTime = 30; fireEvent.timeUpdate(audio);
+    const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+    vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+    fireEvent.pointerDown(progress, { button: 0, clientX: 500, pointerId: 6 });
+    fireEvent.pointerUp(progress, { button: 0, clientX: 500, pointerId: 6 });
     fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline" }));
     // 30 seconds is centered in the 30-second viewport (15–45).
     expect(view.container.querySelector<HTMLElement>(".obs-timeline__playhead")!.style.left).toBe("50%");

@@ -36,7 +36,7 @@ function viewport(container: HTMLElement) {
 
 afterEach(() => { cleanup(); publishPlaybackWords({}); vi.restoreAllMocks(); });
 
-it("shares the real imported track clock with Script after STT creates a different sidecar item ID", () => {
+it("shares the real imported track clock with Script after STT creates a different sidecar item ID", async () => {
   const ctx = context("import-track");
   ctx.mediaAssets = ctx.mediaAssets.map((asset) => ({ ...asset, duration: 20, url: `/audio/${asset.id}.wav` }));
   ctx.onObsTimelineCutsChange = vi.fn();
@@ -44,6 +44,8 @@ it("shares the real imported track clock with Script after STT creates a differe
   vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => ({ duration: 20, points: [] }) } as Response);
   const { container } = render(<><ModuleRegistry id="script" context={ctx} /><ModuleRegistry id="timeline" context={ctx} /></>);
   const audio = container.querySelector("audio")!;
+  fireEvent.click(screen.getByRole("button", { name: "Phát footage" }));
+  await act(async () => {});
   audio.currentTime = 3.2;
   fireEvent.timeUpdate(audio);
   expect(container.querySelector('.imported-timeline__word.is-active')).toHaveTextContent("word3");

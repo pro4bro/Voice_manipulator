@@ -113,6 +113,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   const [detailEnvelopes, setDetailEnvelopes] = useState<Record<string, Envelope>>({});
   const [error, setError] = useState<string | null>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
+  const loadedAudioSources = useRef(new Map<string, string | null>());
   const playbackRevision = useRef(0);
   const audioCallbacks = useRef(new Map<string, (element: HTMLAudioElement | null) => void>());
   const audioGraphRef = useRef<{ context: AudioContext; nodes: Map<string, { element: HTMLAudioElement; gain: GainNode }> } | null>(null);
@@ -124,6 +125,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
         else {
           audioRefs.current.get(id)?.pause();
           audioRefs.current.delete(id);
+          loadedAudioSources.current.delete(id);
           audioGraphRef.current?.nodes.get(id)?.gain.disconnect();
           audioGraphRef.current?.nodes.delete(id);
         }
@@ -176,9 +178,16 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   primaryClockTrackRef.current = visibleTracks[0]?.id;
   const hasSolo = orderedTracks.some((track) => solo[track.id]);
   const previewGain = (id: string) => muted[id] || hasSolo && !solo[id] ? 0 : (gains[id] ?? 100) / 100;
-  const trackSources = visibleTracks.map((track) => `${track.id}:${track.url}:${track.updatedAt}`).join("|");
+  function playbackUrl(track: ProjectMediaAsset) {
+    if (!parent.growingMkvFollow || !track.url) return track.url;
+    // PCM grows behind the same endpoint; transcript timestamps are not media revisions.
+    const revision = `${track.analysisPath ?? track.sourcePath}:${track.duration}`;
+    return `${track.url}${track.url.includes("?") ? "&" : "?"}mkvRevision=${encodeURIComponent(revision)}`;
+  }
+  const playbackIdentity = visibleTracks.map((track) => `${track.id}:${track.url}`).join("|");
+  const trackSources = visibleTracks.map((track) => `${track.id}:${playbackUrl(track)}:${track.updatedAt}`).join("|");
   useEffect(() => () => { ++playbackRevision.current; }, [trackSources]);
-  const audioScrubber = useAudioScrubber(trackSources, scrubPreviewPosition);
+  const audioScrubber = useAudioScrubber(playbackIdentity, scrubPreviewPosition);
   const ids = orderedTracks.map((track) => track.id);
 
   useEffect(() => {
@@ -524,6 +533,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
 
   function beginScrub(event: PointerEvent<HTMLElement>, full = false) {
     if (event.button !== 0) return;
+    ++playbackRevision.current;
     if (!event.ctrlKey && !event.metaKey && !event.shiftKey) onWordSelectionChange?.(EMPTY_SELECTION);
     scrubSurface.current = full ? null : event.currentTarget;
     if (!full) dragScroll.begin(event.clientX);
@@ -760,7 +770,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
       if (audioScrubber.active) return;
       if (track.id === visibleTracks[0]?.id) { audioRefs.current.forEach((audio) => audio.pause()); setPlaying(false); }
     }} onTimeUpdate={(event) => {
-      if (audioScrubber.active || track.id !== visibleTracks[0]?.id || track.id !== primaryClockTrackRef.current) return;
+      if (scrubbingRef.current || !playing || audioScrubber.active || track.id !== visibleTracks[0]?.id || track.id !== primaryClockTrackRef.current) return;
+      // A refreshed PCM resource must restore metadata/position before owning the clock.
+      if (parent.growingMkvFollow && loadedAudioSources.current.get(track.id) !== playbackUrl(track)) return;
       const time = event.currentTarget.currentTime;
       const playable = nextPlayableTime(time, duration, excludedRanges);
       const next = playable > time + .001 ? playable : time;
@@ -768,7 +780,11 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
       setCurrentTime(next);
       setWindowStart((start) => next <= start + span ? start : Math.min(Math.max(0, duration - span), next - span / 2));
       audioRefs.current.forEach((audio, id) => { if (Math.abs(audio.currentTime - next) > .08) audio.currentTime = next; });
-    }} onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime, event.currentTarget.duration || currentTime); }}
-      preload="none" ref={audioCallback(track.id)} src={track.url} /> : null)}
+    }} onLoadedMetadata={(event) => {
+      loadedAudioSources.current.set(track.id, playbackUrl(track));
+      if (audioScrubber.active) audioScrubber.move(currentTime);
+      else event.currentTarget.currentTime = Math.min(currentTime, event.currentTarget.duration || currentTime);
+    }}
+      preload="none" ref={audioCallback(track.id)} src={playbackUrl(track) ?? undefined} /> : null)}
   </ModuleFrame>;
 }
