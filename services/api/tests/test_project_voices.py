@@ -4,6 +4,7 @@ import json
 import sys
 import textwrap
 import threading
+import wave
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ from app.adapters.file_training_runs import FileTrainingRuns
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.engine_worker import REPLY_PREFIX, EngineWorkerError, EngineWorkerProcess
-from app.adapters.omnivoice_generator import VoiceGenerationError, VoiceGenerator
+from app.adapters.omnivoice_generator import VoiceGenerationCancelled, VoiceGenerationError, VoiceGenerator
 from app.adapters.training_model_catalog import FileTrainingModelCatalog
 from app.adapters.training_runner import TrainingRunner
 from app.domain.models import (
@@ -216,7 +217,7 @@ def test_zero_shot_clone_publishes_one_voice_per_target_without_the_gpu(tmp_path
 
 
 FAKE_WORKER = textwrap.dedent(f"""
-    import json, sys
+    import json, sys, wave
     PREFIX = {REPLY_PREFIX!r}
     print("library chatter that is not a reply")
     print(PREFIX + json.dumps({{"ready": True}}), flush=True)
@@ -229,7 +230,9 @@ FAKE_WORKER = textwrap.dedent(f"""
             print(PREFIX + json.dumps({{"id": request["id"], "ok": False, "error": "RuntimeError: boom"}}), flush=True)
             continue
         print("Loading weights: 50%", flush=True)
-        open(request["output"], "wb").write(b"RIFF-generated")
+        with wave.open(request["output"], "wb") as audio:
+            audio.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+            audio.writeframes(b"\\x01\\x00" * 36000)
         print(PREFIX + json.dumps({{"id": request["id"], "ok": True, "output": request["output"], "seconds": 1.5}}), flush=True)
 """)
 
@@ -249,7 +252,9 @@ def test_the_worker_protocol_ignores_chatter_and_survives_a_failed_request(tmp_p
         worker.shutdown()
 
     assert failed["ok"] is False and "boom" in failed["error"]
-    assert worked["ok"] is True and (tmp_path / "out.wav").read_bytes() == b"RIFF-generated"
+    assert worked["ok"] is True
+    with wave.open(str(tmp_path / "out.wav"), "rb") as audio:
+        assert audio.getframerate() == 24000 and audio.getnframes() == 36000
     assert not worker.running
 
 
@@ -293,7 +298,8 @@ def test_generated_speech_lands_in_voice_output_not_media_pool(tmp_path):
     assert output.text == "Xin chào mọi người" and output.duration == 1.5
     assert output.parameters["num_step"] == 16 and output.parameters["language"] == "vi"
     assert output.audio_path == f"assets/voice-output/{output.id}/audio.wav"
-    assert outputs.audio_path(project.id, output.id).read_bytes() == b"RIFF-generated"
+    with wave.open(str(outputs.audio_path(project.id, output.id)), "rb") as audio:
+        assert audio.getframerate() == 24000 and audio.getnframes() == 36000
     assert outputs.list(project.id) == [output]
     assert FileMediaLibrary(FileProjectRepository(tmp_path / "registry")).list(project.id) == []
     assert lease.holder() is None
@@ -344,6 +350,43 @@ def test_a_failed_generation_leaves_no_half_made_asset(tmp_path):
         worker.shutdown()
 
     assert list(outputs.root(project.id).iterdir()) == []
+
+
+def test_converter_failure_discards_native_and_published_reservation(tmp_path, monkeypatch):
+    worker = fake_worker(tmp_path)
+    project, voice, outputs, lease, generator = generator_fixture(tmp_path, worker)
+
+    def failed_conversion(*_args, **_kwargs):
+        raise RuntimeError("converter failed")
+
+    monkeypatch.setattr(generator.output_audio, "publish", failed_conversion)
+    try:
+        with pytest.raises(VoiceGenerationError, match="converter failed"):
+            generator.generate(project.id, voice.id, VoiceGenerateRequest(text="Xin chào"))
+    finally:
+        worker.shutdown()
+    assert list(outputs.root(project.id).iterdir()) == []
+    assert lease.holder() is None
+
+
+def test_cancel_after_conversion_discards_reservation_before_publication(tmp_path, monkeypatch):
+    worker = fake_worker(tmp_path)
+    project, voice, outputs, lease, generator = generator_fixture(tmp_path, worker)
+    publish = generator.output_audio.publish
+
+    def publish_then_cancel(*args, **kwargs):
+        artifact = publish(*args, **kwargs)
+        assert generator.stop(project.id)
+        return artifact
+
+    monkeypatch.setattr(generator.output_audio, "publish", publish_then_cancel)
+    try:
+        with pytest.raises(VoiceGenerationCancelled):
+            generator.generate(project.id, voice.id, VoiceGenerateRequest(text="Xin chào"))
+    finally:
+        worker.shutdown()
+    assert list(outputs.root(project.id).iterdir()) == []
+    assert lease.holder() is None
 
 
 # ---------------------------------------------------------------- descriptor values

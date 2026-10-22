@@ -328,10 +328,12 @@ def test_project_generation_dispatch_keeps_engine_and_relative_provenance(tmp_pa
         def request(self, payload):
             assert payload["engine"] == engine
             assert payload["ref_text"] == "A reference sentence."
-            with wave.open(payload["output"], "wb") as wav:
-                wav.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
-                wav.writeframes(b"\x01\x00" * 2400)
-            return {"ok": True, "seconds": .1}
+            import numpy as np
+            import soundfile as sf
+
+            rate = 22050 if engine == "indextts25" else 44100 if engine == "fish-s2-pro" else 24000
+            sf.write(payload["output"], np.full(2400, .1, dtype=np.float32), rate, subtype="FLOAT")
+            return {"ok": True, "seconds": .001, "sampleRate": rate}
 
     class WrongWorker:
         def request(self, payload):
@@ -368,11 +370,27 @@ def test_project_generation_dispatch_keeps_engine_and_relative_provenance(tmp_pa
     outputs = FileVoiceOutputs(projects)
     lease = GpuLease(tmp_path / "lease.json")
     generator = VoiceGenerator(projects, voices, outputs, WrongWorker(), lease, catalog,
-        engines={engine: ExpressiveSpeech(ModelWorker(), paths)})
+        engines={engine: ExpressiveSpeech(ModelWorker(), paths)},
+        ffmpeg_path=Path(__file__).resolve().parents[3] / ".tools" / "ffmpeg" / "ffmpeg.exe")
     output = generator.generate(project.id, voice.id, VoiceGenerateRequest(
         generator_id=f"{engine}-generate", text="New words."))
     assert output.engine == engine and output.generator_id == f"{engine}-generate"
-    assert outputs.audio_path(project.id, output.id).is_file()
+    canonical = outputs.audio_path(project.id, output.id)
+    with wave.open(str(canonical), "rb") as wav:
+        assert (wav.getframerate(), wav.getnchannels(), wav.getsampwidth()) == (24000, 1, 2)
+        assert output.duration == pytest.approx(wav.getnframes() / 24000)
+    native = canonical.parent / "native-audio.wav"
+    import soundfile as sf
+    native_audio, native_rate = sf.read(native)
+    assert native_rate == (22050 if engine == "indextts25" else 44100 if engine == "fish-s2-pro" else 24000)
+    assert native_audio.mean() == pytest.approx(.1, abs=.001)
+    provenance = json.loads((canonical.parent / "audio-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["engine"] == engine
+    assert provenance["native"]["sample_rate"] == native_rate
+    assert provenance["published"]["sample_rate"] == output.sample_rate == 24000
+    assert provenance["native"]["sha256"] == hashlib.sha256(native.read_bytes()).hexdigest()
+    assert provenance["workerReportedSeconds"] == .001
+    assert output.duration != provenance["workerReportedSeconds"]
     assert lease.holder() is None
     assert not Path(voice.reference_audio).is_absolute()
 

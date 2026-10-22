@@ -471,6 +471,7 @@ def create_app(
                if vibevoice_paths and vibevoice_speech_worker else {}),
         },
         before_speech=release_other_speech_workers,
+        ffmpeg_path=settings.ffmpeg_path,
     )
     voice_script_speaker = VoiceScriptSpeaker(
         projects,

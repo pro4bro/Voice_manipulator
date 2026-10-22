@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import hashlib
 import json
+import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from app.adapters.file_project_voices import FileProjectVoices
 from app.adapters.gpu_lease import GpuLease
 from app.adapters.training_model_catalog import FileTrainingModelCatalog, TrainingModelUnavailable
 from app.adapters.file_voice_outputs import FileVoiceOutputs
+from app.adapters.voice_output_audio import CanonicalVoiceOutputAudio
 from app.adapters.vibevoice_training import VibeVoicePaths, write_processor_dir
 from app.domain.models import ProjectVoice, VoiceGenerateRequest, VoiceOutput
 from app.domain.ports import ProjectRepository
@@ -174,6 +176,8 @@ class VoiceGenerator:
         generators: FileTrainingModelCatalog,
         engines: dict[str, SpeechEngine] | None = None,
         before_speech: Callable[[str], None] | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
     ) -> None:
         self.projects = projects
         self.voices = voices
@@ -182,6 +186,7 @@ class VoiceGenerator:
         self.generators = generators
         self.engines: dict[str, SpeechEngine] = {"omnivoice": OmniVoiceSpeech(worker), **(engines or {})}
         self.before_speech = before_speech
+        self.output_audio = CanonicalVoiceOutputAudio(ffmpeg_path, ffprobe_path)
         self._operation_lock = threading.Lock()
         self._active_operations: dict[str, tuple[str, EngineWorkerProcess | None]] = {}
         self._reserved_operations: set[str] = set()
@@ -340,7 +345,21 @@ class VoiceGenerator:
             lease = self.gpu_lease.acquire(f"voice-generate:{voice.id}")
             self._raise_if_cancelled(request_id)
             output_id, audio = self.outputs.reserve(project_id)
-            seconds = self.speak(plan, request.text, audio, request.duration, cancellation_id=request_id)
+            native_audio = audio.parent / "native-audio.wav"
+            worker_reported_seconds = self.speak(
+                plan, request.text, native_audio, request.duration, cancellation_id=request_id,
+            )
+            self._raise_if_cancelled(request_id)
+            try:
+                artifact = self.output_audio.publish(native_audio, audio)
+                self.output_audio.write_provenance(
+                    audio.parent / "audio-provenance.json", artifact, engine=plan.engine,
+                    generator_id=plan.generator_id, artifact_identity=plan.artifact_fingerprint,
+                    worker_reported_seconds=worker_reported_seconds,
+                )
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+                raise VoiceGenerationError(f"Không thể chuẩn bị audio Voice Output: {exc}") from exc
+            seconds = artifact.published.duration
             self._raise_if_cancelled(request_id)
             spent = time.perf_counter() - began
             with self._operation_lock:
@@ -357,7 +376,8 @@ class VoiceGenerator:
                         engine=plan.engine,
                         generator_id=plan.generator_id,
                         parameters={**plan.generation, "language": plan.language, "speed": plan.speed, "duration": request.duration},
-                        duration=seconds,
+                        duration=artifact.published.duration,
+                        sample_rate=artifact.published.sample_rate,
                         audio_path=audio.relative_to(project_root).as_posix(),
                     ),
                 )
