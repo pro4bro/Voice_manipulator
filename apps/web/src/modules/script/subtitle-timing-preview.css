@@ -5,6 +5,11 @@
 @media (prefers-reduced-motion: reduce) { .subtitle-timing-ghosts.has-conflict, .has-refinement-conflict { animation: none !important; } }
 .subtitle-refinement-settings { display: grid; gap: 8px; margin-top: 10px; }
 .subtitle-refinement-settings > label { display: grid; gap: 4px; }
+.subtitle-refinement-settings > label select, .subtitle-refinement-settings > label input { min-width: 0; max-width: 100%; }
+.subtitle-refinement-settings > p { color: var(--text-muted); }
+.subtitle-refinement-settings > details { border-top: 1px solid var(--line); padding-top: 6px; }
+.subtitle-refinement-settings > details > summary { cursor: pointer; }
+.subtitle-refinement-settings [role="alert"] { color: var(--red, #d63f3f); }
 .subtitle-refinement-methods { display: grid; gap: 6px; max-height: 46vh; overflow: auto; }
 .subtitle-refinement-choice { border: 1px solid var(--line); padding: 7px; }
 .subtitle-refinement-choice > label { display: flex; gap: 7px; align-items: start; }

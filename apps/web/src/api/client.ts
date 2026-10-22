@@ -1,5 +1,5 @@
 import { editableWordTimings } from "../domain/editable-word-timing";
-import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult, SubtitleRefinementMethod } from "../domain/subtitle-alignment";
+import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult, SubtitleRefinementMethod, SubtitleAlignmentEngineCatalog, SubtitleEnginePreviewRequest } from "../domain/subtitle-alignment";
 import { lipSyncUrl, type LipSyncSessions, type LipSyncVersionState, type LipSyncDocument, type LipSyncCoverage, type LipSyncPreflight } from "../domain/lipsync";
 import type { LipSyncJob, LipSyncRuntimeReport, FaceGallery, FaceReview, LipSyncRenderPlan } from "../modules/lip-sync/LipSyncProcessing";
 import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
@@ -207,6 +207,11 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
 }
 
 export const api = {
+  subtitleAlignmentEngines: (projectId: string, assetId: string) => request<SubtitleAlignmentEngineCatalog>(
+    `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/engines`),
+  previewSubtitleEngine: (projectId: string, assetId: string, payload: SubtitleEnginePreviewRequest) => request<SubtitleAlignmentProposal>(
+    `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/engine-preview`,
+    { method: "POST", body: JSON.stringify(payload) }),
   previewSubtitleTiming: (projectId: string, assetId: string, methods: SubtitleRefinementMethod[], indexes?: number[]) => request<SubtitleAlignmentProposal>(
     `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/preview`,
     { method: "POST", body: JSON.stringify({ methods, ...(indexes ? { indexes } : {}) }) }),

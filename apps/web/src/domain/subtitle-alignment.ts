@@ -16,6 +16,13 @@ export const SUBTITLE_ALIGNMENT_METHODS: { id: SubtitleAlignmentMode; label: str
   { id: "auto", label: "Tổng hợp thận trọng", description: "Ưu tiên cụm offset ổn định, sau đó mốc CTC được đối chiếu waveform. Đây là các quy tắc ước lượng, chưa phải quy luật đã được học và kiểm chứng cho mọi bản ghi." },
 ];
 
+export type SubtitleAlignmentEngineId = "mfa" | "stable-ts" | "easyaligner";
+export interface SubtitleAlignmentEngineModel { id: string; label: string; language?: "vi" | "en"; license: string; available: boolean; reason: string; }
+export interface SubtitleAlignmentEngine { id: SubtitleAlignmentEngineId; label: string; description: string; license: string; available: boolean; reason: string; models: SubtitleAlignmentEngineModel[]; }
+export interface SubtitleAlignmentEngineCatalog { engines: SubtitleAlignmentEngine[]; }
+export type SubtitleAlignmentEngineSettings = Record<string, string | number | boolean>;
+export interface SubtitleEnginePreviewRequest { engineId: SubtitleAlignmentEngineId; settings: SubtitleAlignmentEngineSettings; maxMoveMs: number; methods?: SubtitleRefinementMethod[]; indexes?: number[]; }
+
 export interface SubtitleDriftSuspect {
   index: number; text: string; start: number | null; end: number | null;
   ctcStart: number | null; ctcEnd: number | null;

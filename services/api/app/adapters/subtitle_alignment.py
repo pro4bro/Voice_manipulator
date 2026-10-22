@@ -18,6 +18,8 @@ from app.domain.subtitle_alignment import propose_alignment
 from app.adapters.word_timing_quality import reconcile_word_timing_quality
 from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.subtitle_waveform_anchors import pcm_vector_landmarks
+from app.adapters.subtitle_alignment_engines import SubtitleAlignmentEngines
+from app.domain.subtitle_engine_refinement import compose_engine_refinement
 
 
 class AlignmentConflict(RuntimeError):
@@ -58,6 +60,7 @@ class SubtitleAlignment:
     def __init__(self, projects, media, runtime_root):
         self.projects, self.media = projects, media
         self.aligner = LocalSubtitleAligner(Path(runtime_root))
+        self.engines = SubtitleAlignmentEngines(Path(runtime_root))
         self.waveforms = AudioWaveformEnvelope()
 
     def _root(self, project_id):
@@ -228,6 +231,57 @@ class SubtitleAlignment:
             self._write(directory / "latest.json", {"id": identity})
             if aligned["status"] == "complete":
                 self._write(directory / "acoustic-latest.json", {"id": identity})
+            return self.get(project_id, asset_id, identity)
+
+    def analyze_engine(self, project_id, asset_id, *, engine, settings, max_move_ms=2000, indexes=None, methods=None):
+        with self.media._lock(project_id):
+            asset, audio, snapshot, _ = self._snapshot(project_id, asset_id)
+            if indexes is not None and (not indexes or len(indexes) != len(set(indexes)) or any(
+                    type(i) is not int or not 0 <= i < len(asset.words) for i in indexes)):
+                raise ValueError("Phạm vi từ không hợp lệ.")
+            scoped = list(range(len(asset.words))) if indexes is None else indexes
+            scoped = [i for i in scoped if not interval(asset.words[i], asset.duration) or not any(
+                asset.words[i]["start"] < r.end and asset.words[i]["end"] > r.start for r in asset.removed_ranges)]
+            if not scoped:
+                raise ValueError("Không có từ trong phạm vi căn chỉnh.")
+            report = self.engines.report(engine, settings)
+            if report["status"] != "available":
+                raise ValueError(report["reason"])
+            directory = self._directory(project_id, asset_id)
+            identity = "proposal-" + uuid4().hex[:24]
+            folder = directory / identity
+            folder.mkdir(parents=True, exist_ok=False)
+        envelope = pcm_envelope(audio)
+        if abs(envelope["duration"] - asset.duration) > .05:
+            raise ValueError("Thời lượng analysis WAV không khớp footage.")
+        if not self._cpu.acquire(blocking=False):
+            raise AlignmentConflict("Đang có tác vụ căn âm học khác. Thử lại sau khi tác vụ đó xong.")
+        try:
+            alignment_identity = self.engines.identity(engine, settings)
+            aligned = self.engines.run(self._root(project_id), audio, asset.words, folder, scoped, engine, settings)
+        finally:
+            self._cpu.release()
+        if aligned.get("status") != "complete":
+            raise ValueError(aligned.get("reason") or "Engine chưa hoàn tất căn chỉnh.")
+        landmarks = pcm_vector_landmarks(self.waveforms, audio, directory / "waveform.json", envelope["duration"])
+        result = compose_engine_refinement(asset.words, aligned.get("words"), asset.duration, engine=engine,
+            max_move_ms=max_move_ms, methods=methods, indexes=scoped, rms=envelope["rms"],
+            frame_seconds=envelope["frameSeconds"], waveform_landmarks=landmarks)
+        result["diagnostics"]["waveform_source"] = "timeline-pcm-peak-vectors"
+        document = {"id": identity, "assetId": asset_id, "createdAt": datetime.now(timezone.utc).isoformat(),
+            "state": "proposed", "inputSignature": fingerprint(snapshot), "input": snapshot,
+            "audioPath": audio.relative_to(self._root(project_id)).as_posix(), "mode": "pipeline",
+            "startOffsetMs": 0, "endOffsetMs": 0, "engineId": engine, "engineSettings": settings,
+            "maxMoveMs": max_move_ms, "methods": methods or [], "alignmentIdentity": alignment_identity,
+            "alignmentIndexes": scoped, "scope": indexes,
+            "aligner": {k: v for k, v in aligned.items() if k not in {"words", "groups"}},
+            "audio": {k: v for k, v in envelope.items() if k != "rms"}, **result}
+        with self.media._lock(project_id):
+            _, _, current, _ = self._snapshot(project_id, asset_id)
+            if fingerprint(current) != fingerprint(snapshot):
+                raise AlignmentConflict("Text, timing hoặc audio đã đổi trong lúc chạy engine. Hãy căn lại.")
+            self._write(directory / f"{identity}.json", document)
+            self._write(directory / "latest.json", {"id": identity})
             return self.get(project_id, asset_id, identity)
 
     def apply_preview(self, project_id, asset_id, identity):
