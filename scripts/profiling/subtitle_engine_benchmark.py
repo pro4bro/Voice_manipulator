@@ -333,6 +333,7 @@ def select(folder):
         words = add_bias(seed, offsets, duration)
         baseline_options.append({"biasMode": mode, "biasSeconds": offsets, "calibration": score(folder, words, "calibration", seed)})
     save(folder / "selection.json", {"engines": selected, "baselineControls": baseline_options,
+          "baselineWinner": min(baseline_options, key=lambda option: rank(option["calibration"])),
           "rule": protocol["selection"], "validationInspected": False})
     print(json.dumps({engine: {"config": value["config"]["id"], "limit": value["postprocess"]["limitMs"],
                               "biasMode": value["postprocess"]["biasMode"], "bias": value["postprocess"]["biasSeconds"]}
