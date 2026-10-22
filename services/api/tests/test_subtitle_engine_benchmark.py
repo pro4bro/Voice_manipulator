@@ -3,6 +3,28 @@ import math
 import pytest
 
 from scripts.profiling.subtitle_engine_metrics import score_alignment
+
+
+def test_selection_refuses_an_incomplete_sweep_before_freezing_winners(tmp_path, monkeypatch):
+    from scripts.profiling import subtitle_engine_benchmark as benchmark
+
+    monkeypatch.setattr(benchmark, "verify", lambda folder: {"configurations": [{"id": "active-run"}]})
+    (tmp_path / "runs/active-run").mkdir(parents=True)
+    with pytest.raises(ValueError, match="Sweep not complete"):
+        benchmark.select(tmp_path)
+    assert not (tmp_path / "selection.json").exists()
+    assert not (tmp_path / "scoring-code").exists()
+
+
+def test_resume_refuses_to_silently_skip_an_interrupted_directory(tmp_path, monkeypatch):
+    from scripts.profiling import subtitle_engine_benchmark as benchmark
+
+    monkeypatch.setattr(benchmark, "verify", lambda folder: {
+        "configurations": [{"id": "interrupted"}], "audio": {"duration": 1}})
+    monkeypatch.setattr(benchmark, "read", lambda path: {"words": []})
+    (tmp_path / "runs/interrupted").mkdir(parents=True)
+    with pytest.raises(ValueError, match="Incomplete run"):
+        benchmark.run(tmp_path)
 from scripts.profiling.subtitle_engine_benchmark import add_bias, effective, fit_bias, rank
 
 

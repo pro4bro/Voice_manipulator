@@ -152,6 +152,8 @@ def run(folder, config_ids=None):
             continue
         output = folder / "runs" / config["id"]
         if output.exists():
+            if not any((output / marker).is_file() for marker in ("run.json", "failure.json")):
+                raise ValueError(f"Incomplete run needs investigation; never silently skip: {output}")
             print(json.dumps({"skipExisting": config["id"]}), flush=True)
             continue
         output.mkdir(parents=True)
@@ -215,24 +217,36 @@ def add_bias(words, offsets, duration):
 
 def select(folder):
     protocol = verify(folder)
+    for config in protocol["configurations"]:
+        output = folder / "runs" / config["id"]
+        if not any((output / marker).is_file() for marker in ("run.json", "failure.json")):
+            raise ValueError(f"Sweep not complete: {config['id']}")
     code_folder = folder / "scoring-code"
     code_folder.mkdir(exist_ok=False)
     code_paths = [Path(__file__), ROOT / "scripts/profiling/subtitle_engine_metrics.py",
                   ROOT / "scripts/profiling/stt_reviewed_timing.py",
+                  ROOT / "scripts/profiling/subtitle_corrected_alignment_probe.py",
+                  ROOT / "scripts/profiling/subtitle_mfa_partial_probe.py",
+                  ROOT / "services/api/app/adapters/subtitle_alignment_engines.py",
+                  ROOT / "services/api/app/adapters/subtitle_alignment_audio.py",
                   ROOT / "services/api/app/domain/subtitle_engine_refinement.py",
                   ROOT / "services/api/app/domain/subtitle_refinement.py",
+                  ROOT / "services/api/app/domain/subtitle_alignment_drift.py",
                   ROOT / "services/api/app/domain/subtitle_alignment.py"]
     for path in code_paths:
         shutil.copyfile(path, code_folder / path.name)
     save(code_folder / "identity.json", {str(path.relative_to(ROOT)): digest(path) for path in code_paths})
     seed = read(folder / "current.json")["words"]
     duration = protocol["audio"]["duration"]
+    baseline_count = score(folder, seed, "calibration")["measuredWords"]
     winners = {}
     for config in protocol["configurations"]:
         output = folder / "runs" / config["id"]
         if not (output / "run.json").is_file():
             continue
         metrics = read(output / "calibration.json")["effective"]
+        if metrics["measuredWords"] != baseline_count:
+            raise ValueError("Effective calibration coverage changed; selection needs investigation")
         engine = config["engine"]
         if engine not in winners or rank(metrics) < rank(winners[engine]["calibration"]):
             winners[engine] = {"config": config, "calibration": metrics}
@@ -248,6 +262,8 @@ def select(folder):
                 shifted = add_bias(aligned, offsets, duration)
                 words, diagnostics = effective(seed, shifted, duration, engine, limit)
                 metrics = score(folder, words, "calibration", seed)
+                if metrics["measuredWords"] != baseline_count:
+                    raise ValueError("Effective postprocessing coverage changed")
                 options.append({"limitMs": limit, "biasMode": mode, "biasSeconds": offsets,
                                 "calibration": metrics, "diagnostics": diagnostics})
         best = min(options, key=lambda option: rank(option["calibration"]))
@@ -297,6 +313,7 @@ def evaluate(folder):
     print(json.dumps({name: {"paired": m["validation"]["measuredWords"], "both100": m["validation"]["bothEdgesWithin100Ms"]["pairedPercent"],
                            "inMAE": m["validation"]["inAbsoluteMs"]["mae"], "outMAE": m["validation"]["outAbsoluteMs"]["mae"],
                            "severe": m["validation"]["severeOver500Ms"]["count"]} for name, m in reports.items()}, indent=2), flush=True)
+    verify(folder)
     save(folder / "closure.json", {"sourceHashesUnchanged": True, "verifiedSources": protocol["sources"],
          "selectionSha256": digest(folder / "selection.json"), "evaluationSha256": digest(folder / "evaluation.json")})
 
