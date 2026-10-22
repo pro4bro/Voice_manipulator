@@ -2357,3 +2357,38 @@ không đổi media, default STT hoặc portable. Dừng82.
 Chốt gate: API full1318 pass/3 warning cũ/629.79s. Mutation đảo điều kiện source
 final bị test bắt đúng; hash file product không đổi. App phục vụ build mới và
 `/api/health` JSON status=ok; không cần restart runtime. Đã dọn tab/server fixture.
+
+## Round83 — Timeline tự fit khi footage dài thêm (2026-10-22)
+
+### Feedback
+
+Khi recording hoặc follow MKV đang ghi, footage tiếp tục dài thêm. Nếu người dùng
+đã zoom out hoàn toàn thì Timeline phải tự co để luôn thấy toàn bộ thời lượng.
+
+### Agent tự kiểm
+
+MKV trước đây ghi số giây hiện tại vào state khi bấm minus/kéo slider hết trái,
+làm mất ý định fit ban đầu. OBS còn chặn viewport ở120s. Đã giữ fit sentinel khi
+zoom out hoàn toàn, mở extent OBS theo duration và giữ manual zoom hữu hạn khi
+zoom vào. Clock vẫn chạy khi source seek giữ playhead; waveform request vẫn tối
+đa120s/600 điểm ở đuôi cửa sổ. Không tạo cache waveform live toàn lịch sử.
+
+Browser app/API thật trên MKV AAC hai track xác nhận2.925625→11.702625s tự fit,
+zoom vào giữ5.8513125s khi source dài thêm, rồi Home trở lại fit và hoàn tất ở
+24.0326667s/slider0 không reload. Final source bằng byte với file kín và file đã
+append; hai PCM24kHz mono16-bit đủ576784 frame. Không ghi project của chủ dự án.
+
+### Kết quả so với ngưỡng
+
+Frontend1209/150file/174.01s, typecheck/build212/397ms và API1318/3 warning cũ/
+629.93s pass. Mutation đảo điều kiện fit bị cả4 case MKV bắt đúng; hash product
+giữ nguyên. Lỗi đỏ ban đầu, tail request và fixture live scrub không hợp lệ được
+giữ lại; fixture cuối dùng source-linked seek thật và vẫn giữ mọi assertion.
+
+Managed API18120 health=ok, controller API/Studio running, busy=false,
+lastError=null và phục vụ build mới; không restart. Probe URL fixture18482 cũ bị
+refuse, không phải port app quản lý. Server fixture18484 đã dọn; thao tác đóng tab/
+reset viewport không thể xác nhận vì Work settings tắt browser ở lúc chốt.
+Ảnh và số đo trước đó nằm ở `docs/gates/timeline-fit83-20261022.md`, ADR0131.
+Không đổi backend/media/engine/default STT, không hạ gate. OBS thiết bị thật và
+nghiệm thu âm học độc lập vẫn mở. Phase03 giữ60%, Phase06 mở; dừng83.

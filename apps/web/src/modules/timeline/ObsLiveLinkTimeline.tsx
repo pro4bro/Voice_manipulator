@@ -311,8 +311,8 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
   }, [projectId, status?.appRecording?.recordingId]);
 
   useEffect(() => subscribeObsLiveLinkWaveforms(projectId,
-    () => ({ startSeconds: windowRef.current.start,
-      endSeconds: Math.min(windowRef.current.end, windowRef.current.start + 120), maxPoints: 600 }),
+    () => ({ startSeconds: Math.max(windowRef.current.start, windowRef.current.end - MAX_LIVE_WINDOW_SECONDS),
+      endSeconds: windowRef.current.end, maxPoints: 600 }),
     (incoming) => {
       if (incoming.recordingId !== recordingIdRef.current) return;
       setError(null);
@@ -376,7 +376,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
   const waveformWidth = layout === "columns"
     ? (columnWidths[visibleLanes[0]?.channelId ?? ""] ?? defaultColumnWidth) * 0.62
     : Math.max(240, viewportWidth - 216);
-  const maximumWindowSpan = isLive ? MAX_LIVE_WINDOW_SECONDS : Math.max(Number.EPSILON, duration);
+  const maximumWindowSpan = isLive ? Math.max(MAX_LIVE_WINDOW_SECONDS, duration) : Math.max(Number.EPSILON, duration);
   const minimumWindowSpan = Math.min(maximumWindowSpan, minimumTimelineSpan(maximumWindowSpan, waveformWidth));
   const visibleSpan = (seconds: number) => Math.max(minimumWindowSpan, Math.min(maximumWindowSpan, seconds));
   const windowSpan = visibleSpan(windowSeconds);
@@ -520,10 +520,10 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    if (!isLive || !followLive) return;
+    if (!isLive) return;
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
-  }, [isLive, followLive]);
+  }, [isLive]);
   useEffect(() => {
     if (!isLive || !followLive) return;
     setCurrentTime(duration);
@@ -727,7 +727,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
     const nextSpan = visibleSpan(next);
     setWindowStart(isLive ? Math.max(0, duration - nextSpan) :
       zoomWindowStart(currentTime, nextSpan, duration));
-    setWindowSeconds(next);
+    setWindowSeconds(nextSpan >= maximumWindowSpan ? Number.POSITIVE_INFINITY : nextSpan);
   }
 
   function changeWindow(direction: -1 | 1) {

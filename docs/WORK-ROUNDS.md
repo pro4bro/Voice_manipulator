@@ -1,5 +1,26 @@
 # Work Rounds
 
+## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
+
+Full zoom-out now retains fit intent while imported MKV or OBS footage grows.
+Slider/minus select the full source extent continuously; zoom-in keeps a finite
+manual window. OBS extent grows past120s while waveform requests remain bounded
+to120s/600 points at the visible tail. The live clock continues during a held
+source-linked playhead. Ordinary recording already fits at zoom factor1 and has
+new growth coverage. No backend, media, engine or persistent-format changes.
+
+Actual browser follows a two-track AAC MKV from2.925625 to24.0326667s without
+reload; full fit stays at slider0 through final import. Manual zoom retains its
+5.8513125s window across another append. Source bytes match; both24kHz mono PCM16
+tracks contain the complete24.0326667s. ADR0131 and the timeline-fit83 gate retain
+evidence and the separate OBS acquisition limit.
+
+Validation: frontend1209/150files/174.01s, typecheck/build212, API1318/3 existing
+warnings/629.93s pass; isolated fit-condition mutation killed. Initial failures
+remain recorded and assertions/thresholds stay intact. Managed app health is ok
+and serves the current build. Phase03 stays60%, Phase06 open; physical OBS/device
+acceptance remains open. Stop83.
+
 ## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
 
 Followed-MKV footage and every displayed track show a pulsing red circle in place

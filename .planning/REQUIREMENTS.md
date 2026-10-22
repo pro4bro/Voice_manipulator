@@ -38,6 +38,7 @@
 - **UI-04**: Keyboard focus, labels, contrast, and reduced-motion behavior meet baseline accessibility expectations.
 - **UI-05**: Light and dark themes use one synchronized surface/token system across Project Hub and every module, including Recorder and Timeline.
 - **UI-06**: Independent workspace reads do not wait on unrelated engine schemas; data reads have a bounded deadline, OBS polling stays single-flight and failed reads expose a retry without terminal restart.
+- **UI-07**: Full zoom-out remains a fit-to-source intent during ordinary recording, OBS LiveLink and growing-MKV import. Updated source duration expands the fitted extent without further input; explicit zoom-in retains manual navigation and maximum density. OBS acquisition stays bounded independently of the viewport extent, including when source-linked seeking suspends playhead following.
 
 ## Speech To Text
 

@@ -6,11 +6,25 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round82 shows recording/final-import indicators on MKV parent and track slots.
-last_activity_desc: MKV-RECORDING-SLOTS-01 adds red pulsing Import circles and moving45-degree stripes until parent final-source publication. All tracks then restore normal controls and saved selections independently of STT. Actual-browser two-track fixture verifies motion and automatic completion without reload; full PCM/source checks pass. ADR0130 and recording-slots82 gate hold test closure/limits. No backend/polling/default STT change; Phase03 stays60%, Phase06 open; stop82.
+last_activity: 2026-10-22 — round83 retains full-fit zoom while recording and imported MKV footage grows.
+last_activity_desc: GROWING-TIMELINE-FIT-01 keeps imported/OBS full zoom-out fitted to growing source extent and preserves finite manual zoom. OBS live display grows beyond120s while acquisition stays bounded; a held playhead no longer freezes extent. Actual browser verifies MKV2.925625→24.0326667s and retained manual span, with full final PCM/source checks. Frontend1209/API1318, typecheck/build and isolated mutation pass. ADR0131 and timeline-fit83 gate retain evidence/limits. Phase03 stays60%, Phase06 open; stop83.
 ---
 
 # Project State
+
+## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
+
+Full zoom-out now follows growing imported/OBS source extent through the existing
+fit sentinel; manual zoom remains finite. OBS viewport grows beyond120s without
+relaxing its120s/600-point waveform acquisition. Live clock progression survives
+source-linked playhead suspension. Ordinary recording fit has new coverage.
+
+Real browser MKV growth2.925625→24.0326667s retains slider0 through final import;
+manual5.8513125s span stays unchanged across an append. Full final two-track PCM
+and source hash checks pass. Frontend1209/150files, typecheck/build212, API1318/3
+existing warnings and isolated mutation pass. ADR0131 and timeline-fit83 gate
+retain initial failures and limitations. Managed app serves the current build;
+no backend/media/default STT change. Phase03 stays60%, Phase06 open; stop83.
 
 ## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
 

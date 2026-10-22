@@ -1,5 +1,19 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
+
+Delivered continuous full fit for growing MKV/OBS footage after slider/minus
+reaches full zoom-out. Explicit zoom-in retains manual span; held OBS playhead
+does not stop extent growth. OBS viewport exceeds120s while acquisition keeps
+its120s/600-point bound. Ordinary recording has growing-fit regression coverage.
+
+Browser actual-app MKV2.925625→24.0326667s full fit and retained5.8513125s manual
+zoom pass, including final two-track PCM/source hashes. Frontend1209/150files,
+typecheck/build212, API1318/3 existing warnings and isolated mutation pass.
+ADR0131 and the timeline-fit83 gate hold evidence/limits. No backend/media/default
+STT change. Phase03 stays60%, Phase06 open; physical OBS/device acceptance remains
+open. Stop83.
+
 ## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
 
 Delivered red pulsing Import circles and45-degree stripes moving left-to-right

@@ -20,6 +20,20 @@ function geometry(container: HTMLElement) {
   return { scroller, canvas, width };
 }
 
+it("keeps the ordinary recording at full fit while its source duration grows", () => {
+  const props = { gain: 0, onGainChange: vi.fn(), take: null };
+  const view = render(<Timeline {...props} recordingPreview={{ active: true, duration: 60, samples: [] }} />);
+  const { scroller, canvas } = geometry(view.container);
+  fireEvent.scroll(scroller);
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to timeline" }));
+  fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
+  view.rerender(<Timeline {...props} recordingPreview={{ active: true, duration: 300, samples: [] }} />);
+  expect(canvas.style.getPropertyValue("--zoom")).toBe("1");
+  expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
+  expect(scroller.scrollLeft).toBe(0);
+  expect(screen.getByRole("button", { name: "Đoạn footage 0.00 đến 300.00" })).toBeInTheDocument();
+});
+
 it("repaints the current endpoint after a delayed canvas resize instead of the position captured at zoom", () => {
   let resize = () => {};
   vi.stubGlobal("ResizeObserver", class {

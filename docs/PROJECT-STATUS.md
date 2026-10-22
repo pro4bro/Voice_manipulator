@@ -1,5 +1,20 @@
 # Project Status — 2026-10-22
 
+## Round83 — GROWING-TIMELINE-FIT-01 (2026-10-22)
+
+Fully zoomed-out imported/OBS Timelines keep fitting the growing source extent;
+explicit zoom-in retains a finite manual window. OBS display extends past120s,
+while acquisition remains bounded to120s/600 points at the visible tail. Source
+seeking can hold the playhead without freezing extent growth. Ordinary recording
+fit has regression coverage. No backend/media/persistence or STT default change.
+
+Browser verifies MKV2.925625→24.0326667s full fit at slider0 through final import,
+with an unchanged5.8513125s manual view between appends. Final two-track PCM and
+source hashes pass. Frontend1209/150files, typecheck/build212, API1318/3 existing
+warnings and isolated mutation pass. ADR0131 and `docs/gates/timeline-fit83-20261022.md`
+record closure and limits. Managed app serves the new build with healthy JSON;
+Phase03 stays60%, Phase06 open. Physical OBS/device acceptance remains open. Stop83.
+
 ## Round82 — MKV-RECORDING-SLOTS-01 (2026-10-22)
 
 Media Pool now shows pulsing red Import circles and moving45-degree stripes on

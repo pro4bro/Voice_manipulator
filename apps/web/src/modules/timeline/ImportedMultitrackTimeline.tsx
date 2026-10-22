@@ -570,7 +570,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
 
   function selectZoom(next: number) {
     const nextSpan = Math.max(minSpan, Math.min(duration, next));
-    setWindowSeconds(nextSpan);
+    // Full fit is an intent, not a snapshot of the current growing duration.
+    setWindowSeconds(nextSpan >= duration ? Number.POSITIVE_INFINITY : nextSpan);
     setWindowStart(Math.max(0, Math.min(duration - nextSpan, currentTime - nextSpan / 2)));
   }
 

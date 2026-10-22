@@ -20,6 +20,24 @@ const tracks = [
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
 
+it.each([["slider", "layers"], ["button", "layers"], ["slider", "columns"], ["button", "columns"]])("keeps full-fit zoom latched as MKV grows after zooming out with %s in %s", (control, layout) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 300, points: [] }) }));
+  const props = { parent, tracks, selectedTrackId: "a", onSelectTrack: vi.fn(), onCutsChange: vi.fn() };
+  const view = render(<ImportedMultitrackTimeline {...props} />);
+  if (layout === "columns") fireEvent.click(screen.getByRole("button", { name: "CỘT" }));
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline" }));
+  expect(screen.getByTitle("Cửa sổ 30s")).toBeInTheDocument();
+  if (control === "slider") fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
+  else fireEvent.click(screen.getByRole("button", { name: "Thu nhỏ Timeline" }));
+  view.rerender(<ImportedMultitrackTimeline {...props} parent={{ ...parent, duration: 100 }} tracks={tracks.map(track => ({ ...track, duration: 120 }))} />);
+  expect(screen.getByTitle("Cửa sổ 120s")).toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
+  expect(screen.getByRole("button", { name: "Thu nhỏ Timeline" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline" }));
+  view.rerender(<ImportedMultitrackTimeline {...props} parent={{ ...parent, duration: 180 }} tracks={tracks.map(track => ({ ...track, duration: 180 }))} />);
+  expect(screen.getByTitle("Cửa sổ 60s")).toBeInTheDocument();
+});
+
 it("toggles imported Timeline playback with Space", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);

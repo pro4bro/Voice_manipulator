@@ -26,6 +26,41 @@ vi.mock("../obs-capture/obs-waveform-feed", () => ({
 
 const ids = ["channel-a", "channel-b"];
 
+it("keeps full-fit OBS zoom latched beyond the live window limit as recording grows", async () => {
+  const started = 1_700_000_000_000;
+  const now = vi.spyOn(Date, "now").mockReturnValue(started + 200_000);
+  mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
+  const view = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
+  const feed = mocks.subscribe.mock.calls[mocks.subscribe.mock.calls.length - 1];
+  const status = { appRecording: { ...recording, endedMonotonicNs: null, startedAtUtc: new Date(started).toISOString() },
+    channels: [{ channelId: ids[0], alias: "Channel 1", slot: 1, appliedForward: true,
+      capture: { recordingId: "recording", durableChunkCount: 0 } }] };
+  await act(async () => feed[4](status));
+  fireEvent.change(screen.getByRole("slider", { name: "Zoom timeline" }), { target: { value: "0" } });
+  expect(screen.getByTitle("Cửa sổ 200s")).toBeInTheDocument();
+  now.mockReturnValue(started + 400_000);
+  await act(async () => feed[4]({ ...status }));
+  // Live clock ticks must be read without resetting the selected recording.
+  await waitFor(() => expect(screen.getByTitle("Cửa sổ 400s")).toBeInTheDocument());
+  expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
+  expect(screen.getByRole("button", { name: "Thu nhỏ Timeline OBS" })).toBeDisabled();
+  const window = feed[1]("recording", ids[0]);
+  expect(window.endSeconds - window.startSeconds).toBe(120);
+  expect(window.startSeconds).toBe(280);
+  expect(window.endSeconds).toBe(400);
+  view.rerender(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null}
+    seekRequest={{ recordingId: "recording", channelId: ids[0], seconds: 100, serial: 83 }} />);
+  expect(screen.getByRole("button", { name: "VỀ LIVE" })).toBeInTheDocument();
+  now.mockReturnValue(started + 500_000);
+  await act(async () => feed[4]({ ...status }));
+  await waitFor(() => expect(screen.getByTitle("Cửa sổ 500s")).toBeInTheDocument());
+  expect(screen.getByText("00:01:40.000")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Phóng to Timeline OBS" }));
+  now.mockReturnValue(started + 600_000);
+  await act(async () => feed[4]({ ...status }));
+  await waitFor(() => expect(screen.getByTitle("Cửa sổ 250s")).toBeInTheDocument());
+});
+
 it("keeps OBS channel mixer compact in the column header", async () => {
   mocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: { ...recording, status: "stopped",
     archiveStatus: "ready", endedMonotonicNs: 11_000_000_000 }, channels: [],
@@ -1535,6 +1570,7 @@ it("gives archived and live OBS timelines density-based zoom across viewport wid
 
   view.unmount();
   mocks.listObsLiveLinkRecordings.mockResolvedValue([]);
+  vi.spyOn(Date, "now").mockReturnValue(1_700_000_200_000);
   const live = render(<ObsLiveLinkTimeline projectId="project" requestedRecordingId={null} />);
   const liveFeed = mocks.subscribe.mock.calls[mocks.subscribe.mock.calls.length - 1];
   await act(async () => liveFeed[4]({ appRecording: { ...recording, endedMonotonicNs: null,
@@ -1545,7 +1581,7 @@ it("gives archived and live OBS timelines density-based zoom across viewport wid
   fireEvent.change(liveZoom, { target: { value: "1000" } });
   expect(liveZoom).toHaveAttribute("aria-valuetext", "0.01s / 10px");
   fireEvent.change(liveZoom, { target: { value: "0" } });
-  expect(screen.getByTitle("Cửa sổ 120s")).toBeInTheDocument();
+  expect(screen.getByTitle("Cửa sổ 200s")).toBeInTheDocument();
   const liveWindow = liveFeed[1]("recording", ids[0]);
   expect(liveWindow.endSeconds - liveWindow.startSeconds).toBeLessThanOrEqual(120);
   live.unmount();
