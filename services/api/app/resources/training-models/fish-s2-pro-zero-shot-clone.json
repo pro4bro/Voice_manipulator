@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "fish-s2-pro-zero-shot-clone",
+  "label": "Fish S2 Pro · tạo voice từ reference",
+  "family": "Fish S2 Pro",
+  "engine": "fish-s2-pro",
+  "mode": "zero-shot-clone",
+  "order": 11,
+  "category": "clone",
+  "description": "Tạo voice reference riêng cho Fish S2 Pro từ audio và transcript mẫu.",
+  "runnable": true,
+  "repository": {
+    "root": "fish-s2-pro",
+    "path": ".",
+    "entrypoint": "fish_speech/inference_engine/__init__.py",
+    "url": "https://github.com/fishaudio/fish-speech",
+    "revision": "541566932abbaebcb0a40e562a1f846738383f38"
+  },
+  "dataFormat": "Audio reference và transcript tương ứng của Speaker Profile.",
+  "notes": ["Reference cần transcript chính xác.", "Reference có thể dài tối đa 30 giây.", "Fish S2 Pro nhận chỉ dẫn giọng điệu ngay trong văn bản Script."] ,
+  "parameters": [
+    {
+      "key": "model_name_or_path",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "choice",
+      "default": "fishaudio/s2-pro",
+      "runField": "base_model",
+      "source": "Fish S2 Pro model card · revision 1de9996b6be38b745688de084d87a5633f714e4e",
+      "options": [{ "value": "fishaudio/s2-pro", "label": "Fish S2 Pro" }]
+    },
+    {
+      "key": "reference_min_seconds",
+      "label": "Đoạn mẫu ngắn nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 3.0,
+      "min": 1,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "PRO4BRO voice reference selection"
+    },
+    {
+      "key": "reference_max_seconds",
+      "label": "Đoạn mẫu dài nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 10.0,
+      "min": 3,
+      "max": 30,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "Fish S2 Pro model card"
+    }
+  ]
+}

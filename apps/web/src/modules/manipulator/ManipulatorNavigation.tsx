@@ -130,7 +130,7 @@ export function ManipulatorService({ mode, voiceGenerators = [], generationEngin
       <span>Engine tạo giọng</span>
       <select aria-label="Engine tạo giọng" value={generationEngine ?? "auto"} onChange={(event) => onGenerationEngineChange(event.target.value === "auto" ? null : event.target.value)}>
         <option value="auto">Tự động · theo voice trong Script</option>
-        {engineChoices.map((choice) => <option disabled={!choice.available} key={choice.engine} value={choice.engine}>{choice.label}{choice.available ? " · Sẵn sàng" : ` · ${choice.status}`}</option>)}
+        {engineChoices.map((choice) => <option key={choice.engine} value={choice.engine}>{choice.label}{choice.available ? " · Sẵn sàng" : ` · ${choice.status}`}</option>)}
       </select>
     </label> : null}
     {!ready && providers.length ? <label className="manipulator-service__engine-choice">

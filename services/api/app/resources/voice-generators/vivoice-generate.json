@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "vivoice-generate",
+  "label": "ViVoice · tạo giọng tiếng Việt",
+  "family": "EasyVoice · F5/ViVoice",
+  "engine": "vivoice",
+  "mode": "generate",
+  "order": 32,
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["vi"],
+    "customVoiceFormat": "ViVoice reference audio and Vietnamese transcript",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
+  "runnable": true,
+  "readinessRequired": true,
+  "repository": {
+    "root": "f5-tts",
+    "path": ".",
+    "entrypoint": "src/f5_tts/api.py",
+    "url": "https://github.com/SWivid/F5-TTS",
+    "revision": "2f866649b779881af8bd644e76b9a6d95053da29"
+  },
+  "description": "Tạo lời đọc tiếng Việt từ ViVoice reference. Cần model và runtime đã sẵn sàng; thời lượng tuyệt đối chưa được hỗ trợ.",
+  "notes": ["Giữ transcript tiếng Việt reference khớp với audio mẫu.", "ViVoice weights có điều kiện sử dụng riêng theo model card."],
+  "parameters": [
+    { "key": "speed", "label": "Tốc độ", "group": "Đọc", "kind": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.05, "source": "F5-TTS infer_gradio.py" },
+    { "key": "nfe_step", "label": "Số bước giải mã", "group": "Chất lượng", "kind": "int", "default": 32, "min": 4, "max": 128, "source": "F5-TTS api.py" },
+    { "key": "cfg_strength", "label": "CFG strength", "group": "Chất lượng", "kind": "float", "default": 2.0, "min": 0, "max": 10, "step": 0.1, "source": "F5-TTS api.py" },
+    { "key": "sway_sampling_coef", "label": "Sway sampling", "group": "Nâng cao", "kind": "float", "default": -1.0, "min": -1, "max": 0, "step": 0.05, "advanced": true, "source": "F5-TTS api.py" },
+    { "key": "cross_fade_duration", "label": "Cross-fade", "group": "Audio", "kind": "float", "default": 0.15, "min": 0, "max": 0.5, "step": 0.01, "unit": "giây", "source": "F5-TTS infer utils" },
+    { "key": "target_rms", "label": "Mức RMS mục tiêu", "group": "Audio", "kind": "float", "default": 0.1, "min": 0.01, "max": 1, "step": 0.01, "source": "F5-TTS infer utils" },
+    { "key": "remove_silence", "label": "Loại bỏ khoảng lặng", "group": "Audio", "kind": "bool", "default": false, "source": "F5-TTS infer_gradio.py" },
+    { "key": "seed", "label": "Seed", "group": "Nâng cao", "kind": "int", "default": 0, "min": 0, "max": 2147483647, "advanced": true, "source": "F5-TTS inference" }
+  ]
+}

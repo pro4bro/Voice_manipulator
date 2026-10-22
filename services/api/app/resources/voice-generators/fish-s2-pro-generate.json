@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "fish-s2-pro-generate",
+  "label": "Fish S2 Pro · tạo giọng",
+  "family": "Fish S2 Pro",
+  "engine": "fish-s2-pro",
+  "mode": "generate",
+  "order": 34,
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["ja", "en", "zh", "ko", "es", "pt", "ar", "ru", "fr", "de", "sv", "it", "tr", "no", "nl", "cy", "eu", "ca", "da", "gl", "ta", "hu", "fi", "pl", "et", "hi", "la", "ur", "th", "vi", "jw", "bn", "yo", "sl", "cs", "sw", "nn", "he", "ms", "uk", "id", "kk", "bg", "lv", "my", "tl", "sk", "ne", "fa", "af", "el", "bo", "hr", "ro", "sn", "mi", "yi", "am", "be", "km", "is", "az", "sd", "br", "sq", "ps", "mn", "ht", "ml", "sr", "sa", "te", "ka", "bs", "pa", "lt", "kn", "si", "hy", "mr", "as", "gu", "fo"],
+    "customVoiceFormat": "Fish S2 Pro reference audio and transcript",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
+  "runnable": true,
+  "readinessRequired": true,
+  "repository": {
+    "root": "fish-s2-pro",
+    "path": ".",
+    "entrypoint": "fish_speech/inference_engine/__init__.py",
+    "url": "https://github.com/fishaudio/fish-speech",
+    "revision": "541566932abbaebcb0a40e562a1f846738383f38"
+  },
+  "description": "Tạo lời đọc từ Fish S2 Pro reference. Script giữ nguyên các chỉ dẫn inline như [whisper] và [shouting].",
+  "notes": ["Giữ inline tags trong Script; model dùng chúng làm chỉ dẫn cho cách đọc.", "Ngôn ngữ được nhận diện từ nội dung, không có tham số chọn ngôn ngữ riêng.", "Fish S2 Pro không cung cấp điều khiển tốc độ hoặc word timing trong lựa chọn này."],
+  "parameters": [
+    { "key": "instruction", "label": "Chỉ dẫn cách đọc", "group": "Đọc", "kind": "text", "default": "", "source": "Fish S2 Pro model card · inline natural-language control" },
+    { "key": "temperature", "label": "Temperature", "group": "Sampling", "kind": "float", "default": 0.7, "min": 0.1, "max": 1.0, "step": 0.05, "source": "Fish S2 Pro inference" },
+    { "key": "top_p", "label": "Top P", "group": "Sampling", "kind": "float", "default": 0.7, "min": 0.1, "max": 1.0, "step": 0.05, "source": "Fish S2 Pro inference" },
+    { "key": "max_new_tokens", "label": "Token tối đa", "group": "Sampling", "kind": "int", "default": 1024, "min": 1, "max": 4096, "source": "Fish S2 Pro inference" },
+    { "key": "chunk_length", "label": "Độ dài chunk", "group": "Audio", "kind": "int", "default": 200, "min": 100, "max": 1000, "source": "Fish S2 Pro inference" },
+    { "key": "seed", "label": "Seed", "group": "Nâng cao", "kind": "int", "default": 0, "min": 0, "max": 2147483647, "advanced": true, "source": "Fish S2 Pro inference" }
+  ]
+}

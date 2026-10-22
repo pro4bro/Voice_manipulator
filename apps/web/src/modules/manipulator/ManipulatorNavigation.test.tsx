@@ -34,7 +34,7 @@ describe("Manipulator function navigation", () => {
       expect(screen.queryByRole("button", { name: /Bắt đầu/ })).not.toBeInTheDocument();
     } finally { catalog.mockRestore(); }
   });
-  it("offers available generation engines and keeps unavailable choices visible with their reason", () => {
+  it("lets users inspect unavailable generation engines and keeps their reason visible", () => {
     const generators = [
       { id: "omni-generate", engine: "omnivoice", family: "OmniVoice", label: "OmniVoice generate", available: true, status: "Sẵn sàng." },
       { id: "cosy-generate", engine: "cosyvoice3", family: "CosyVoice3", label: "CosyVoice3 generate", available: false, status: "Chưa tải engine." },
@@ -42,10 +42,12 @@ describe("Manipulator function navigation", () => {
     const onGenerationEngineChange = vi.fn();
     render(<ManipulatorService mode="voice-over" voiceGenerators={generators} generationEngine={null} onGenerationEngineChange={onGenerationEngineChange} />);
     const selector = screen.getByRole("combobox", { name: "Engine tạo giọng" });
-    expect(within(selector).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ })).toBeDisabled();
+    expect(within(selector).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ })).toBeEnabled();
     expect(screen.getByText("Chưa tải engine.")).toBeInTheDocument();
+    fireEvent.change(selector, { target: { value: "cosyvoice3" } });
+    expect(onGenerationEngineChange).toHaveBeenLastCalledWith("cosyvoice3");
     fireEvent.change(selector, { target: { value: "omnivoice" } });
-    expect(onGenerationEngineChange).toHaveBeenCalledWith("omnivoice");
+    expect(onGenerationEngineChange).toHaveBeenLastCalledWith("omnivoice");
   });
   it("retains a separate provider choice for each planned function without running it", async () => {
     const catalog = vi.spyOn(api, "getEngineCatalog").mockImplementation((task) => Promise.resolve(task === "voice-dub"

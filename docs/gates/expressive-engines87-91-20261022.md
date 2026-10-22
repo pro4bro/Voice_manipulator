@@ -27,3 +27,21 @@ Focused provisioning tests **24 passed**; py_compile/diff check passed. Initial
 Windows cp1252 Git-output decoder exception was fixed by explicit UTF-8 replacement;
 the same provisioning command then completed successfully. No model weights or
 private Python environments were installed; repo presence is not inference readiness.
+
+## Round88 / ED-CATALOG-01
+
+Added four reference-clone choices, four distinct deep-training descriptors and
+four generator descriptors. Deep choices are visible but blocked until their
+trainer is implemented; F5 exposes sourced CLI training parameters, while
+Index/Fish do not invent unsupported training settings. F5/ViVoice have distinct
+IDs so their base/vocab/language and stored parameters cannot be interchanged.
+
+Frontend permits selecting an unavailable engine to inspect its exact controls,
+notes, language coverage and readiness reason; Generate stays disabled. Existing
+Train category separation and per-model saved values are covered by new regressions.
+Fish normalize was removed after source review found its field is not consumed;
+repetition_penalty is also omitted because upstream ignores it. ADR0135 records
+the capability and artifact boundaries.
+
+Focused frontend **31 passed / 3 files**, typecheck passed. Backend catalog groups
+**25 passed**. These are catalog/UI checks; no pretrained engine generated audio.

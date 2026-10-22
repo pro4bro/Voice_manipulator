@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "indextts25-zero-shot-clone",
+  "label": "IndexTTS 2.5 · tạo voice từ reference",
+  "family": "IndexTTS 2.5",
+  "engine": "indextts25",
+  "mode": "zero-shot-clone",
+  "order": 10,
+  "category": "clone",
+  "description": "Tạo voice reference riêng cho IndexTTS 2.5 từ audio và transcript mẫu.",
+  "runnable": true,
+  "repository": {
+    "root": "indextts25",
+    "path": ".",
+    "entrypoint": "indextts/infer_v2_5.py",
+    "url": "https://github.com/index-tts/index-tts",
+    "revision": "d9e41aac89fd00b3d71497fddb287b7f24613712"
+  },
+  "dataFormat": "Audio reference và transcript tương ứng của Speaker Profile.",
+  "notes": ["Reference cần transcript chính xác và nên dùng cùng ngôn ngữ với câu đọc.", "IndexTTS 2.5 hỗ trợ EN, ZH, JA, ES và AR; chưa có tiếng Việt."] ,
+  "parameters": [
+    {
+      "key": "model_name_or_path",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "choice",
+      "default": "IndexTeam/IndexTTS-2.5",
+      "runField": "base_model",
+      "source": "IndexTTS 2.5 model card · model revision c39ce5ba981572cb187443877ff559dfb246ce63",
+      "options": [{ "value": "IndexTeam/IndexTTS-2.5", "label": "IndexTTS-2.5" }]
+    },
+    {
+      "key": "reference_min_seconds",
+      "label": "Đoạn mẫu ngắn nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 3.0,
+      "min": 1,
+      "max": 15,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "PRO4BRO voice reference selection"
+    },
+    {
+      "key": "reference_max_seconds",
+      "label": "Đoạn mẫu dài nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 10.0,
+      "min": 3,
+      "max": 15,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "PRO4BRO voice reference selection"
+    }
+  ]
+}

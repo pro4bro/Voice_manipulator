@@ -90,6 +90,29 @@ describe("Train", () => {
     expect(screen.getByRole("button", { name: "Chưa cài repo cho model này" })).toBeDisabled();
   });
 
+  it("keeps reference and deep-training options separate and retains each option's values", () => {
+    const engines = [
+      model({ id: "f5-reference", label: "F5-TTS · reference", family: "F5-TTS", engine: "f5-tts", category: "clone", mode: "reference-clone", available: true,
+        parameters: [spec({ key: "ref_text", label: "Văn bản mẫu", kind: "text", default: "" }), spec({ key: "language", label: "Ngôn ngữ", kind: "choice", default: "vi", options: [{ value: "vi", label: "Tiếng Việt" }] })] }),
+      model({ id: "fish-s2-pro-lora", label: "Fish S2 Pro · LoRA", family: "Fish S2 Pro", engine: "fish-s2-pro", category: "train", mode: "lora", available: false, installed: true, status: "Trainer chưa kết nối.",
+        parameters: [spec({ key: "rank", label: "Rank", kind: "int", default: 8, min: 1 })] }),
+    ];
+    const onCatalogChange = vi.fn();
+    const f5Settings = { ...catalog.settings, modelId: "f5-reference", modelParameters: { "f5-reference": { language: "vi" }, "fish-s2-pro-lora": { rank: 16 } } };
+    const { rerender } = render(<Train assets={[]} catalog={{ ...catalog, settings: f5Settings }} onCatalogChange={onCatalogChange} trainingModels={engines} />);
+
+    expect(screen.getByLabelText("Văn bản mẫu")).toBeInTheDocument();
+    expect(screen.getByLabelText("Ngôn ngữ")).toHaveValue("vi");
+    fireEvent.change(screen.getByLabelText("Model Training"), { target: { value: "fish-s2-pro-lora" } });
+    rerender(<Train assets={[]} catalog={{ ...catalog, settings: { ...f5Settings, modelId: "fish-s2-pro-lora" } }} onCatalogChange={onCatalogChange} trainingModels={engines} />);
+    expect(screen.getByLabelText("Rank")).toHaveValue("16");
+    expect(screen.getByText("Trainer chưa kết nối.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model này chưa có adapter chạy" })).toBeDisabled();
+    rerender(<Train assets={[]} catalog={{ ...catalog, settings: f5Settings }} onCatalogChange={onCatalogChange} trainingModels={engines} />);
+    expect(screen.getByLabelText("Ngôn ngữ")).toHaveValue("vi");
+    expect(screen.queryByLabelText("Rank")).not.toBeInTheDocument();
+  });
+
   it("stores the chosen model and only the values that differ from its defaults", () => {
     const onCatalogChange = vi.fn();
     render(<Train assets={[]} catalog={catalog} onCatalogChange={onCatalogChange} trainingModels={models} />);

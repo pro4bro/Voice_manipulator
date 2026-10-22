@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "indextts25-finetune",
+  "label": "IndexTTS 2.5 · fine-tune",
+  "family": "IndexTTS 2.5",
+  "engine": "indextts25",
+  "mode": "finetune",
+  "order": 42,
+  "category": "train",
+  "description": "Tùy chọn fine-tune được liệt kê để phân biệt với reference clone; chưa có recipe hoặc trainer xác minh.",
+  "runnable": false,
+  "blockedReason": "Chưa xác minh recipe fine-tune tương thích với IndexTTS 2.5 trong Pro4Bro.",
+  "repository": {
+    "root": "indextts25",
+    "path": ".",
+    "entrypoint": "indextts/infer_v2_5.py",
+    "url": "https://github.com/index-tts/index-tts",
+    "revision": "d9e41aac89fd00b3d71497fddb287b7f24613712"
+  },
+  "notes": ["Chưa có tham số training nào được xác minh cho IndexTTS 2.5."],
+  "parameters": []
+}

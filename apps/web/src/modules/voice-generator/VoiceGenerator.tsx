@@ -31,7 +31,7 @@ interface VoiceGeneratorProps {
 export const OWNED_ELSEWHERE = new Set(["speed"]);
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
-const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3" };
+const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3", "f5-tts": "F5-TTS", vivoice: "ViVoice", indextts25: "IndexTTS 2.5", "fish-s2-pro": "Fish S2 Pro" };
 
 export function voicesForGenerationEngine(voices: ProjectVoice[], engine: string | null): ProjectVoice[] {
   return engine ? voices.filter((voice) => voice.engine === engine) : voices;
@@ -73,6 +73,8 @@ function GeneratorSection({ generator, overrides, onChange }: { generator: Train
     <section aria-label={`Tham số ${generator.label}`} className="train-engine-parameters voice-generator-parameters">
       <div className="train-section-label"><b>{generator.label}</b></div>
       {!generator.available ? <small className="voice-generator-warning">{generator.status}</small> : null}
+      {generator.capabilities?.languages.length ? <small className="train-parameter-note">Ngôn ngữ: {generator.capabilities.languages.join(", ")}</small> : null}
+      {generator.notes.length ? <ul className="train-model-notes">{generator.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
       {form.basic}
       {form.advanced}
       {generator.engine === "cosyvoice3" && mode !== "instruct" ? <small className="train-parameter-note">Ngôn ngữ theo nội dung Script; chế độ này không dùng chỉ dẫn cách đọc.</small> : null}
@@ -98,9 +100,11 @@ export function VoiceGenerator({ projectId, generators, category, onCategoryChan
     entry.rows += 1;
     used.set(voice.id, entry);
   }
-  const engines = [...new Set((used.size ? [...used.values()].map((entry) => entry.voice) : offered).map((voice) => voice.engine))];
+  const engines = generationEngine
+    ? [generationEngine]
+    : [...new Set((used.size ? [...used.values()].map((entry) => entry.voice) : offered).map((voice) => voice.engine))];
   const sections = engines.map((engine) => generatorForEngine(generators, engine)).filter((item): item is TrainingModelOption => Boolean(item));
-  const unavailable = sections.find((generator) => [...used.values()].some((entry) => entry.voice.engine === generator.engine) && !generator.available);
+  const unavailable = sections.find((generator) => !generator.available && (generator.engine === generationEngine || [...used.values()].some((entry) => entry.voice.engine === generator.engine)));
   const invalid = sections.some((generator) => generatorProblems(generator, parameters[generator.id] ?? {}).length);
   const missingEngine = [...used.values()].find((entry) => !generatorForEngine(generators, entry.voice.engine));
 
@@ -108,9 +112,9 @@ export function VoiceGenerator({ projectId, generators, category, onCategoryChan
   const label = busy
     ? job ? `Đang đọc ${Math.min(job.done + 1, job.total)}/${job.total}...` : "Đang gửi..."
     : mismatched ? `Script có voice ${ENGINE_LABELS[allVoices.find((voice) => voice.id === mismatched.voiceId)?.engine ?? ""] ?? "khác"}; chọn Tự động hoặc đổi voice từng dòng`
+      : unavailable ? `${unavailable.label} chưa sẵn sàng`
       : readiness.problem
       ?? (missingEngine ? `Chưa có công cụ đọc voice ${ENGINE_LABELS[missingEngine.voice.engine] ?? missingEngine.voice.engine}` : null)
-      ?? (unavailable ? `${unavailable.label} chưa sẵn sàng` : null)
       ?? (invalid ? "Tham số chưa hợp lệ" : `Đọc Script · ${readiness.rows.length} đoạn`);
 
   return (

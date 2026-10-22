@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "f5-tts-zero-shot-clone",
+  "label": "F5-TTS · tạo voice từ reference",
+  "family": "EasyVoice · F5/ViVoice",
+  "engine": "f5-tts",
+  "mode": "zero-shot-clone",
+  "order": 8,
+  "category": "clone",
+  "description": "Tạo voice reference riêng cho F5-TTS từ audio và transcript mẫu; chưa cần train profile.",
+  "runnable": true,
+  "repository": {
+    "root": "f5-tts",
+    "path": ".",
+    "entrypoint": "src/f5_tts/api.py",
+    "url": "https://github.com/SWivid/F5-TTS",
+    "revision": "2f866649b779881af8bd644e76b9a6d95053da29"
+  },
+  "dataFormat": "Audio reference và transcript tương ứng của Speaker Profile.",
+  "notes": [
+    "EasyVoice giữ mỗi cách đọc thành một voice reference riêng để chọn theo từng đoạn.",
+    "Reference cần transcript chính xác; dùng cùng ngôn ngữ với nội dung đọc.",
+    "F5-TTS hỗ trợ tiếng Anh và Trung trong model gốc."
+  ],
+  "parameters": [
+    {
+      "key": "model_name_or_path",
+      "label": "Base model",
+      "group": "Model",
+      "kind": "choice",
+      "default": "SWivid/F5-TTS",
+      "runField": "base_model",
+      "source": "src/f5_tts/api.py · F5-TTS source 2f866649b779881af8bd644e76b9a6d95053da29",
+      "options": [{ "value": "SWivid/F5-TTS", "label": "F5-TTS" }]
+    },
+    {
+      "key": "reference_min_seconds",
+      "label": "Đoạn mẫu ngắn nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 3.0,
+      "min": 1,
+      "max": 15,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "PRO4BRO voice reference selection"
+    },
+    {
+      "key": "reference_max_seconds",
+      "label": "Đoạn mẫu dài nhất",
+      "group": "Giọng mẫu",
+      "kind": "float",
+      "default": 10.0,
+      "min": 3,
+      "max": 15,
+      "step": 0.5,
+      "unit": "giây",
+      "source": "PRO4BRO voice reference selection"
+    }
+  ]
+}

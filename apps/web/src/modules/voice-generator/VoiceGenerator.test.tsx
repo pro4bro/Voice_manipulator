@@ -104,6 +104,33 @@ describe("VoiceGenerator", () => {
     expect(within(cast).queryByText(/OmniVoice/)).not.toBeInTheDocument();
   });
 
+  it("shows an unavailable selected engine's descriptor parameters without voices or changing Script assignments", () => {
+    const fishVoice = voice({ id: "fish-voice", engine: "fish-s2-pro" });
+    const fish: TrainingModelOption = {
+      ...GENERATOR, id: "fish-s2-pro-generate", engine: "fish-s2-pro", family: "Fish S2 Pro", label: "Fish S2 Pro",
+      available: false, status: "Chưa có model và runtime Fish S2 Pro.",
+      notes: ["Chỉ hỗ trợ một số ngôn ngữ."],
+      parameters: [{ key: "temperature", label: "Temperature", group: "Đọc", kind: "float", default: 0.7, min: 0, max: 1, options: [], nullable: false, editable: true, advanced: false }],
+    };
+    const onGenerate = vi.fn();
+    const generators = [GENERATOR, fish];
+    const fishParameters = { "fish-s2-pro-generate": { temperature: 0.85 } };
+    const { rerender } = render(<VoiceGenerator {...props({ generators, generationEngine: "fish-s2-pro", voices: [], allVoices: [fishVoice], rows: [], parameters: fishParameters, onGenerate })} />);
+
+    expect(screen.getByText("Chưa có model và runtime Fish S2 Pro.")).toBeInTheDocument();
+    expect(screen.getByText("Chỉ hỗ trợ một số ngôn ngữ.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Temperature")).toHaveValue("0.85");
+    expect(screen.getByRole("button", { name: /Fish S2 Pro chưa sẵn sàng/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Fish S2 Pro chưa sẵn sàng/ }));
+    expect(onGenerate).not.toHaveBeenCalled();
+
+    rerender(<VoiceGenerator {...props({ generators, generationEngine: "omnivoice", allVoices: [voice(), fishVoice], voices: [voice()], rows: ROWS, parameters: fishParameters, onGenerate })} />);
+    expect(screen.getByLabelText("Số bước giải mã")).toHaveValue("32");
+    expect(screen.queryByLabelText("Temperature")).not.toBeInTheDocument();
+    rerender(<VoiceGenerator {...props({ generators, generationEngine: "fish-s2-pro", voices: [], allVoices: [fishVoice], rows: [], parameters: fishParameters, onGenerate })} />);
+    expect(screen.getByLabelText("Temperature")).toHaveValue("0.85");
+  });
+
   it("offers CosyVoice language and delivery instructions only in instruct mode", () => {
     const cosyVoice = voice({ engine: "cosyvoice3" });
     const cosy: TrainingModelOption = { ...GENERATOR, id: "cosyvoice3-generate", engine: "cosyvoice3", label: "CosyVoice3",

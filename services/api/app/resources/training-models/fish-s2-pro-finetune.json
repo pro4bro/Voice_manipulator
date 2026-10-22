@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "fish-s2-pro-finetune",
+  "label": "Fish S2 Pro · fine-tune",
+  "family": "Fish S2 Pro",
+  "engine": "fish-s2-pro",
+  "mode": "finetune",
+  "order": 43,
+  "category": "train",
+  "description": "Tùy chọn fine-tune được liệt kê để phân biệt với reference clone; chưa có recipe hoặc trainer xác minh cho S2 Pro.",
+  "runnable": false,
+  "blockedReason": "Chưa xác minh trainer tương thích Fish S2 Pro; recipe lịch sử chỉ dành cho S1-mini.",
+  "repository": {
+    "root": "fish-s2-pro",
+    "path": ".",
+    "entrypoint": "fish_speech/inference_engine/__init__.py",
+    "url": "https://github.com/fishaudio/fish-speech",
+    "revision": "541566932abbaebcb0a40e562a1f846738383f38"
+  },
+  "notes": ["Không dùng hướng dẫn S1-mini như recipe cho Fish S2 Pro.", "Chưa có tham số training nào được xác minh cho Fish S2 Pro."],
+  "parameters": []
+}

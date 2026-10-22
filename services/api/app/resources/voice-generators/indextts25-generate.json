@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "indextts25-generate",
+  "label": "IndexTTS 2.5 · tạo giọng",
+  "family": "IndexTTS 2.5",
+  "engine": "indextts25",
+  "mode": "generate",
+  "order": 33,
+  "tasks": ["voice-over", "voice-patch"],
+  "capabilities": {
+    "languages": ["en", "zh", "ja", "es", "ar"],
+    "customVoiceFormat": "IndexTTS 2.5 speaker reference audio and transcript",
+    "streamingInput": false,
+    "streamingOutput": false,
+    "nativeDuration": false,
+    "wordTiming": "none"
+  },
+  "runnable": true,
+  "readinessRequired": true,
+  "repository": {
+    "root": "indextts25",
+    "path": ".",
+    "entrypoint": "indextts/infer_v2_5.py",
+    "url": "https://github.com/index-tts/index-tts",
+    "revision": "d9e41aac89fd00b3d71497fddb287b7f24613712"
+  },
+  "description": "Tạo giọng từ speaker reference và điều khiển cảm xúc theo cấu hình. Ngôn ngữ được chuẩn hóa trước khi gửi model.",
+  "notes": ["IndexTTS 2.5 hỗ trợ EN, ZH, JA, ES và AR; chưa có tiếng Việt.", "Điều khiển emotion không đặt thời lượng tuyệt đối và không thay đổi identity reference."],
+  "parameters": [
+    { "key": "language", "label": "Ngôn ngữ", "group": "Đọc", "kind": "choice", "default": "EN", "source": "IndexTTS 2.5 inference", "options": [{ "value": "EN", "label": "English" }, { "value": "ZH", "label": "中文" }, { "value": "JA", "label": "日本語" }, { "value": "ES", "label": "Español" }, { "value": "AR", "label": "العربية" }] },
+    { "key": "emotion_mode", "label": "Nguồn cảm xúc", "group": "Cảm xúc", "kind": "choice", "default": "reference", "source": "IndexTTS-2.5 inference", "options": [{ "value": "reference", "label": "Emotion reference" }, { "value": "vector", "label": "Emotion vector" }, { "value": "text", "label": "Text description" }] },
+    { "key": "emo_alpha", "label": "Cường độ cảm xúc", "group": "Cảm xúc", "kind": "float", "default": 1.0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_text", "label": "Mô tả cảm xúc", "group": "Cảm xúc", "kind": "text", "default": "", "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_happy", "label": "Vui", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_angry", "label": "Giận", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_sad", "label": "Buồn", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_afraid", "label": "Sợ", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_disgusted", "label": "Ghê sợ", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_melancholic", "label": "U sầu", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_surprised", "label": "Ngạc nhiên", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "emo_calm", "label": "Bình tĩnh", "group": "Emotion vector", "kind": "float", "default": 0, "min": 0, "max": 1, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "duration_factor", "label": "Hệ số thời lượng", "group": "Đọc", "kind": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.05, "source": "IndexTTS-2.5 inference" },
+    { "key": "use_random", "label": "Dùng random sampling", "group": "Nâng cao", "kind": "bool", "default": false, "advanced": true, "source": "IndexTTS-2.5 inference" },
+    { "key": "seed", "label": "Seed", "group": "Nâng cao", "kind": "int", "default": 0, "min": 0, "max": 2147483647, "advanced": true, "source": "IndexTTS-2.5 inference" }
+  ]
+}
