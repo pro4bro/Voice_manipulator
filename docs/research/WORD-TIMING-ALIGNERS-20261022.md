@@ -53,6 +53,30 @@ Unlike Qwen’s separate aligner, the [current MFA acoustic-model catalog](https
 
 Sources: [MFA alignment workflow and output formats](https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/workflows/alignment.html), [MFA workflows and transcription caveat](https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/workflows/index.html), [MFA software license](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/blob/main/LICENSE), [model catalog license and dialect entries](https://mfa-models.readthedocs.io/en/latest/acoustic/index.html).
 
+## Commercial-license audit — 2026-10-22
+
+The owner asked which shortlisted repositories are MIT and allow commercial use. The checked software-license layer has **three MIT repositories: MFA, stable-ts and easyaligner**. Software permission does not automatically cover separately downloaded weights, dictionaries or optional components.
+
+| Repository | Authoritative software file | Commercial use of that code |
+|---|---|---|
+| Montreal Forced Aligner | [MIT LICENSE](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/blob/main/LICENSE) | Permitted subject to its notice/license conditions |
+| stable-ts | [MIT LICENSE](https://github.com/jianfch/stable-ts/blob/main/LICENSE) | Permitted subject to its notice/license conditions |
+| easyaligner | [MIT LICENSE](https://github.com/kb-labb/easyaligner/blob/main/LICENSE) | Permitted subject to its notice/license conditions |
+| WhisperX | [BSD-2-Clause LICENSE](https://github.com/m-bain/whisperX/blob/main/LICENSE) | Permitted subject to source/binary copyright, conditions and disclaimer notices |
+| Qwen3-ASR / ForcedAligner package | [Apache-2.0 LICENSE](https://github.com/QwenLM/Qwen3-ASR/blob/main/LICENSE) | Permitted subject to applicable license/notice and modified-file requirements |
+| ctc-forced-aligner | [BSD-2-Clause LICENSE](https://github.com/MahmoudAshraf97/ctc-forced-aligner/blob/main/LICENSE), but [pyproject.toml](https://github.com/MahmoudAshraf97/ctc-forced-aligner/blob/main/pyproject.toml) says CC-BY-NC4.0 | Conflicting declarations: do not classify the complete package as commercially cleared at this revision |
+
+### Weights and dictionaries actually checked
+
+- **MFA Vietnamese v3.0.0:** [acoustic model](https://mfa-models.readthedocs.io/en/latest/acoustic/Vietnamese/Vietnamese%20MFA%20acoustic%20model%20v3_0_0.html) and [matching dictionary](https://mfa-models.readthedocs.io/en/latest/dictionary/Vietnamese/Vietnamese%20MFA%20dictionary%20v3_0_0.html) both list **CC BY4.0**. [Creative Commons](https://creativecommons.org/licenses/by/4.0/) expressly permits commercial sharing/adaptation with attribution, a license link and an indication of changes, subject to its other conditions. This is a concrete commercial-use candidate with MIT tool code, rather than an assumption about every MFA model. The separate Vietnamese CV acoustic card says CC0; its dictionary was not audited here.
+- **stable-ts with official Whisper:** OpenAI's [Whisper README](https://github.com/openai/whisper#license) expressly places both code and model weights under **MIT**. This provides an identified MIT-code/MIT-weight configuration. It does not grant permissions for arbitrary third-party Whisper fine-tunes. stable-ts's archived maintenance status remains a separate engineering concern.
+- **easyaligner:** MIT applies to the library. Its selected acoustic/VAD model is an independent choice; no all-MIT Vietnamese model configuration was established in this audit.
+- **WhisperX's current PRO4BRO comparator:** local `subtitle_alignment_audio.py` pins `nguyenvulebinh/wav2vec2-base-vietnamese-250h`. The author's [model card](https://huggingface.co/nguyenvulebinh/wav2vec2-base-vietnamese-250h#model-parameters-license) explicitly says parameters are for noncommercial use only, **CC BY-NC4.0**. WhisperX's BSD code does not remove that restriction. The card is consistent with the local experimental-model label; that checkpoint is not a cleared commercial-shipping configuration.
+- **CTC's default MMS model:** its [model card](https://huggingface.co/MahmoudAshraf/mms-300m-1130-forced-aligner) lists **CC BY-NC4.0**. [The official NC terms](https://creativecommons.org/licenses/by-nc/4.0/) do not permit commercial use. Replacing those weights would not itself resolve the software/package metadata conflict above.
+- **Qwen3-ForcedAligner-0.6B weights:** the official [model card](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B) lists **Apache-2.0**, alongside Apache-2.0 repository code. Commercial use is permitted under those terms. Vietnamese still is not listed among this aligner's supported languages; licensing does not establish language compatibility.
+
+For a commercial Vietnamese alignment experiment, prioritize **MFA + its CC-BY Vietnamese model/dictionary**, then **stable-ts + official MIT Whisper** if maintenance/runtime constraints are acceptable. easyaligner and WhisperX remain commercially usable code frameworks when paired with separately verified compatible models. Keep default NC MMS and the currently pinned NC Vietnamese250h checkpoint out of a commercial configuration unless separately licensed. No complete transitive-dependency, distribution-package or training-data rights audit was performed, and no installed model or app setting was changed.
+
 ## Proposed evaluation and app integration
 
 1. Freeze source PCM, corrected transcript and the owner's heard Conviction word references. Preserve original word IDs, accents, punctuation and manual locks. Evaluate overlapping and clearly spoken regions separately.
