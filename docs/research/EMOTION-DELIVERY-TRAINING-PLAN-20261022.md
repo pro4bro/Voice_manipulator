@@ -2,6 +2,24 @@
 
 ## Cập nhật thực thi theo yêu cầu owner — 2026-10-22
 
+### Đợt tiếp theo: rounds92–96
+
+Owner yêu cầu làm tiếp năm round sau91 trong cùng invocation. Phạm vi này thay
+giới hạn một round/lần cho đợt tiếp tục; các gate acoustic không bị hạ xuống.
+
+| Round | Lát triển khai | Acceptance |
+|---|---|---|
+| 92 / ED-RUNTIME-01 | Provisioner private embedded Python và dependencies riêng cho F5/ViVoice, Index, Fish | Pin nguồn/dependencies, paths tương đối, failure không nhận ready, probe import thật, không sửa upstream/global Python |
+| 93 / ED-F5-REAL-01 | Tải và xác minh F5/ViVoice/Vocos; chạy worker trên reference kỹ thuật rõ nguồn | WAV thật đọc lại được, hash/config/log/metrics, offline, lease/cleanup; lỗi tương thích được sửa tại adapter sản phẩm |
+| 94 / ED-INDEX-REAL-01 | Model chính/phụ Index2.5; inference và emotion modes thật | Đúng language/native controls, WAV thật và provenance; không tự nhận VI hoặc acoustic identity/emotion đã nghiệm thu |
+| 95 / ED-FISH-REAL-01 | S2/codec/runtime; inference instruction/tags thật | Không dùng Drama/S1 trainer, WAV thật và metrics; model thiếu/quá tài nguyên báo thất bại rõ |
+| 96 / ED-VARIANT-PREP-01 | Chuẩn bị training nhiều trạng thái dựa trên dữ liệu/lineage thật | Tách emotion, vocal effort và gain; kế hoạch các variant độc lập từ cùng base/anchor; thiếu coverage phải chặn, không xuất bản adapter giả |
+
+Thử kỹ thuật dùng nguồn reference công khai của engine hoặc fixture được ghi rõ;
+không tự lấy footage owner làm training corpus. Smoke inference chứng minh đường
+model→artifact, không thay benchmark72 câu hay blind listening của owner. Không
+tự mở trainer chưa tương thích chỉ để đủ danh sách engine có thể train.
+
 Owner đã chọn OmniVoice, EasyVoice/F5-TTS/ViVoice, IndexTTS-2.5 và Fish S2 Pro,
 yêu cầu clone/kết nối và chạy **5 round đầu trong cùng invocation**. Yêu cầu này
 thay giới hạn một round/lần riêng cho đợt này. Thứ tự tích hợp dưới đây thay

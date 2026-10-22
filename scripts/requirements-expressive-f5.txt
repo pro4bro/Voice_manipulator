@@ -1,0 +1,23 @@
+# Targeted inference dependencies for F5-TTS v1 and ViVoice; no trainer or Gradio stack.
+torch @ https://download-r2.pytorch.org/whl/cu128/torch-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl#sha256=34c55443aafd31046a7963b63d30bc3b628ee4a704f826796c865fdfd05bb596
+torchaudio @ https://download-r2.pytorch.org/whl/cu128/torchaudio-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl#sha256=7a1eb6154e05b8056b34c7a41495e09d57f79eb0180eb4e7f3bb2a61845ca8ea
+numpy==1.26.4
+transformers==4.52.1
+tokenizers==0.21.0
+accelerate==1.8.1
+datasets==4.4.1
+ema_pytorch==0.7.7
+# 1.6.7 caps huggingface-hub below Transformers 4.52.1's required version.
+cached_path==1.8.0
+hydra-core==1.3.2
+librosa==0.10.2
+matplotlib==3.7.5
+pydub==0.25.1
+pypinyin==0.53.0
+rjieba==0.1.11
+safetensors==0.5.3
+soundfile==0.13.1
+torchdiffeq==0.2.5
+vocos==0.1.0
+wandb==0.21.0
+x_transformers==2.11.24
