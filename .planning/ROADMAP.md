@@ -15,6 +15,40 @@ passes). No gate was weakened. See `docs/gates/subtitle-engines-01-20261023.md`,
 no portable release or accuracy benchmark is claimed. This named bounded round
 is independent of expressive rounds92–96; their status/phase progress is retained.
 
+## Rounds92–96 — EXPRESSIVE-RUNTIME-AND-VARIANT-PREVIEW (2026-10-23)
+
+Owner requested five further rounds in one invocation; stop96. Implementation
+and real-artifact verification for the bounded slices are complete:
+
+| Round | Delivered evidence |
+|---|---|
+|92|Three private embedded Python profiles, pinned requirements/sources/models, isolated imports and successful installation receipts.|
+|93|Real F5 EN3.605s and ViVoice VI2.475s through product workers.|
+|94|Real Index2.5 sad vector4.191s and happy text3.193s; native logs confirm both emotion paths.|
+|95|Real Fish S2 Pro EN whisper3.065s with pinned codec; Vietnamese Fish remains untested.|
+|96|Read-only multi-variant API preview with reviewed effort labels, shared neutral anchor/config and train/dev leakage blockers.|
+
+Real WAV review also exposed and fixed direct Voice Output publication: retain
+native audio/provenance, create mono PCM16/24k editable audio and derive actual
+metadata. Five retained real-media fixtures pass edit/render HTTP200 with source
+hashes unchanged. Truncated/inconsistent WAV and failure/cancellation regressions
+are covered. ADR0138 complements preview ADR0136.
+
+Final frontend1230/151files, typecheck/build214 pass. Final related API175/2
+existing warnings/22.74s pass. Full API snapshot1411 pass/1 pre-existing VibeVoice
+60s import timeout remains non-green. No timeout/test gate was weakened.
+
+Managed controller/API/Studio are healthy and live preview passes. Resolved
+catalog snapshot has F5/ViVoice/Index available; Fish import still exceeds45s on
+this HDD despite its real worker WAV. Cold readiness reliability remains open
+(F5 also timed out in an earlier snapshot). Browser UAT is blocked by disabled
+local browser access. Index samples hit full scale; listening,72-sentence quality
+benchmark and Fish VI remain open. New deep trainers/scheduler are not enabled;
+preview is always non-executable. No portable release or owner training.
+Gate: `docs/gates/expressive-engines92-96-20261022.md`. Phase03 stays60%, Phase06
+open. Next: cold-readiness diagnosis, acoustic acceptance, persistent reviewed
+effort/base lineage, then verified multi-LoRA scheduling and native trainers.
+
 ## Rounds87–91 — EXPRESSIVE-ENGINE-CONNECTIONS (2026-10-22)
 
 Owner explicitly requested the first five integration rounds in one invocation.

@@ -20,6 +20,36 @@ không tự lấy footage owner làm training corpus. Smoke inference chứng mi
 model→artifact, không thay benchmark72 câu hay blind listening của owner. Không
 tự mở trainer chưa tương thích chỉ để đủ danh sách engine có thể train.
 
+### Kết quả kỹ thuật rounds92–96 — cập nhật 2026-10-23
+
+- Ba runtime private đã cài và import thật: F5/ViVoice dùng chung một profile,
+  Index và Fish có profile riêng. Receipts xác minh pin nguồn, requirements,
+  inventory thực tế và probe; Python user-site bị loại khỏi các profile mới.
+- F5 EN sinh3,605s; ViVoice VI sinh2,475s; Index vector buồn sinh4,191s và text
+  `Speak happily.` sinh3,193s; Fish EN `[whispering]` sinh3,065s. Đây là WAV thật
+  qua worker sản phẩm, không phải kết quả training hoặc nghiệm thu acoustic.
+- Index xác nhận cả hai đường điều khiển cảm xúc trong log nhưng cả hai mẫu
+  có chạm đỉnh. Giữ nguyên WAV/metrics; cần nghe chấm và điều tra chất lượng.
+- Preview nhiều variant đã có API read-only: emotion và vocal effort được gán
+  riêng, cùng neutral anchor/config, kiểm tra train/dev leakage. Luôn
+  `executable=false`; base fingerprint do caller khai chưa được xác minh.
+- Review WAV thật phát hiện direct Voice Output cần chuyển bản editable sang
+  mono PCM16/24kHz, giữ bản native/provenance. Đã sửa theo ADR0138; cả năm mẫu
+  thật đi qua editor/render HTTP200, giữ nguyên hash nguồn. Có regression cho
+  WAV thiếu dữ liệu/sai header và dọn toàn bộ kết quả khi lỗi hoặc hủy.
+- Đã kết thúc phạm vi triển khai92–96. Frontend1230 test, typecheck/build và
+  API liên quan175 test pass. Full API vẫn có lỗi timeout import VibeVoice đã
+  ghi nhận. Catalog làm mới xác nhận F5/ViVoice/Index available; Fish vẫn có
+  timeout import45s trên HDD dù đã sinh được WAV thật. Chưa nghiệm thu độ ổn
+  định cold start; không tăng timeout để đổi trạng thái thành ready.
+
+Gate chi tiết: [rounds92–96](../gates/expressive-engines92-96-20261022.md).
+Phần kết nối rounds87–91 bên dưới giữ nguyên bối cảnh lịch sử tại thời điểm91.
+Các việc tiếp theo sau96: xử lý cold-readiness, benchmark72 câu và nghe chấm identity/emotion/effort,
+thử Fish tiếng Việt; lưu reviewed effort labels và xác minh base lineage;
+sau đó scheduler OmniVoice nhiều LoRA và trainer/exporter riêng có nghiệm thu
+thực tế. Preview hiện chưa tạo Training Run, chưa có UI và chưa publish Model Set.
+
 Owner đã chọn OmniVoice, EasyVoice/F5-TTS/ViVoice, IndexTTS-2.5 và Fish S2 Pro,
 yêu cầu clone/kết nối và chạy **5 round đầu trong cùng invocation**. Yêu cầu này
 thay giới hạn một round/lần riêng cho đợt này. Thứ tự tích hợp dưới đây thay
