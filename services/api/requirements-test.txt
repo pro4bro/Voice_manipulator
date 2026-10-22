@@ -1,0 +1,3 @@
+-r requirements.txt
+# Worker protocol tests decode actual FLOAT WAVs without installing an engine.
+soundfile>=0.13,<1

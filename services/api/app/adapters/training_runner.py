@@ -117,6 +117,10 @@ SUPPORTED_MODES: dict[str, set[str]] = {
     "omnivoice": {"lora-finetune", "full-finetune", "zero-shot-clone"},
     "vibevoice": {"tts-lora", "asr-lora", "zero-shot-clone"},
     "cosyvoice3": {"zero-shot-clone"},
+    "f5-tts": {"zero-shot-clone"},
+    "vivoice": {"zero-shot-clone"},
+    "indextts25": {"zero-shot-clone"},
+    "fish-s2-pro": {"zero-shot-clone"},
     "rvc": {"vc-train"},
 }
 
@@ -1055,7 +1059,9 @@ class TrainingRunner:
             "write-jsonl" if kind == "clone" else "publish",
             f"Giọng mẫu: {reference.duration:.1f}s · \u201c{reference.text.strip()}\u201d",
         )
-        engine_label = {"vibevoice": "VibeVoice ", "cosyvoice3": "CosyVoice3 ", "rvc": "RVC "}.get(run.config.engine, "")
+        engine_label = {"vibevoice": "VibeVoice ", "cosyvoice3": "CosyVoice3 ", "rvc": "RVC ",
+                        "f5-tts": "F5-TTS ", "vivoice": "ViVoice ", "indextts25": "IndexTTS-2.5 ",
+                        "fish-s2-pro": "Fish S2 Pro "}.get(run.config.engine, "")
         kind_label = {"clone": "nhái giọng", "lora": "LoRA", "full": "full fine-tune", "vc": "đổi giọng"}.get(kind, kind)
         model_set_id = f"set-{uuid4().hex[:12]}" if kind != "vc" and self.model_sets is not None else None
         voice = self.voices.publish(

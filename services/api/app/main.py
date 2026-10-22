@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from app.adapters.media_asset_paths import asset_id_from_directory, media_asset_directory, media_asset_file
 from app.adapters import activity_center
 from app.adapters.cosyvoice import CosyVoicePaths, CosyVoiceSpeech
+from app.adapters.expressive_engines import ExpressiveSpeech, expressive_paths
 from app.adapters.sokuji_bridge import SokujiBridge, make_sokuji_router
 from app.adapters.vibevoice_streaming import VibeVoiceStreamingAsr, make_vibevoice_streaming_router
 from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
@@ -331,6 +332,9 @@ def create_app(
         settings.cosyvoice_root or settings.research_engines_root / "CosyVoice",
         settings.cosyvoice_runtime_root or settings.project_root / ".runtime" / "cosyvoice" / ".venv",
     )
+    expressive = {key: paths for key, paths in expressive_paths(
+        settings.research_engines_root, settings.project_root / ".runtime" / "python",
+    ).items() if key in {"f5-tts", "vivoice"}}
     sokuji_bridge = SokujiBridge(settings.research_engines_root / "sokuji", settings.project_root / ".runtime/sokuji")
     engine_roots = {
         "omnivoice": settings.omnivoice_root,
@@ -339,6 +343,7 @@ def create_app(
         "hub": settings.model_hub_cache,
         "research": settings.research_engines_root,
         "cosyvoice": cosyvoice_paths.repo,
+        **{key: paths.repo for key, paths in expressive.items()},
     }
     rvc_paths = RvcPaths(settings.applio_root, settings.rvc_runtime_root)
 
@@ -392,13 +397,18 @@ def create_app(
         settings.voice_generators_root,
         engine_roots,
         settings.local_voice_generators_root,
-        readiness={"vibevoice": vibevoice_readiness, "cosyvoice3": cosyvoice_paths.unavailable_reason},
+        readiness={"vibevoice": vibevoice_readiness, "cosyvoice3": cosyvoice_paths.unavailable_reason,
+                   **{key: paths.unavailable_reason for key, paths in expressive.items()}},
     )
     generation_worker = omnivoice_worker(training_runtime.python, engine_env)
     vibevoice_speech_worker = vibevoice_worker(vibevoice_paths) if vibevoice_paths else None
     cosyvoice_speech_worker = cosyvoice_paths.worker()
+    expressive_workers = {key: paths.worker() for key, paths in expressive.items()}
 
     def release_other_speech_workers(engine: str) -> None:
+        for key, worker in expressive_workers.items():
+            if key != engine:
+                worker.shutdown()
         if engine != "omnivoice":
             generation_worker.shutdown()
         if engine != "vibevoice" and vibevoice_speech_worker is not None:
@@ -409,6 +419,8 @@ def create_app(
 
     def free_gpu() -> None:
         """Stop every warm speech worker before something needs the whole GPU."""
+        for worker in expressive_workers.values():
+            worker.shutdown()
         generation_worker.shutdown()
         cosyvoice_speech_worker.shutdown()
         if vibevoice_speech_worker is not None:
@@ -452,6 +464,7 @@ def create_app(
         voice_generators,
         engines={
             "cosyvoice3": CosyVoiceSpeech(cosyvoice_speech_worker, cosyvoice_paths),
+            **{key: ExpressiveSpeech(expressive_workers[key], paths) for key, paths in expressive.items()},
             **({"vibevoice": VibeVoiceSpeech(vibevoice_speech_worker, vibevoice_paths, settings.data_root / "runtime" / "vibevoice-processors")}
                if vibevoice_paths and vibevoice_speech_worker else {}),
         },
@@ -908,6 +921,8 @@ def create_app(
             await asyncio.to_thread(trained_media_patch_processor.close)
             await asyncio.to_thread(output_timing_repair.close)
             await asyncio.to_thread(cosyvoice_speech_worker.shutdown)
+            for worker in expressive_workers.values():
+                await asyncio.to_thread(worker.shutdown)
             await asyncio.to_thread(sokuji_bridge.stop)
             await asyncio.to_thread(streaming_asr.close)
 

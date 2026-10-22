@@ -27,6 +27,7 @@ from app.domain.training_parameters import resolve_parameters
 WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "omnivoice_worker.py"
 VIBEVOICE_WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "vibevoice_tts_worker.py"
 COSYVOICE_WORKER_SCRIPT = Path(__file__).resolve().parents[1] / "workers" / "cosyvoice_worker.py"
+EXPRESSIVE_WORKER_SCRIPT = WORKER_SCRIPT.with_name("expressive_worker.py")
 
 
 class VoiceGenerationError(RuntimeError):
@@ -138,7 +139,8 @@ def file_digest(path: Path) -> str:
 def speech_artifact_fingerprint(voice: ProjectVoice, reference: Path, adapter: Path | None, model: Path | None) -> str:
     """Content identity independent of a project's absolute location. Hash once per plan."""
     files = {"reference": file_digest(reference), "worker": file_digest(
-        {"vibevoice": VIBEVOICE_WORKER_SCRIPT, "cosyvoice3": COSYVOICE_WORKER_SCRIPT}.get(voice.engine, WORKER_SCRIPT),
+        {"vibevoice": VIBEVOICE_WORKER_SCRIPT, "cosyvoice3": COSYVOICE_WORKER_SCRIPT,
+         **dict.fromkeys(("f5-tts", "vivoice", "indextts25", "fish-s2-pro"), EXPRESSIVE_WORKER_SCRIPT)}.get(voice.engine, WORKER_SCRIPT),
     )}
     for label, folder in (("adapter", adapter), ("model", model)):
         if folder is not None:

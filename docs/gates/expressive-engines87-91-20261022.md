@@ -45,3 +45,24 @@ the capability and artifact boundaries.
 
 Focused frontend **31 passed / 3 files**, typecheck passed. Backend catalog groups
 **25 passed**. These are catalog/UI checks; no pretrained engine generated audio.
+
+## Round89 / ED-F5-01
+
+Connected F5 v1 and ViVoice with separate model architectures, exact checkpoint
+and vocabulary paths and shared local Vocos. Their reference voices use the
+existing immutable project publication path. Shared private worker protocol
+retains Stop/GPU lease, fingerprinting, offline network refusal and real decoded
+artifact checks. Model receipts/stats are checked for catalog readiness; full
+file digests are recomputed before loading weights. Cache keys reset after a
+failed load so an earlier engine can recover.
+
+Focused related API groups **85 passed / 53.11s**, two existing dependency
+deprecation warnings. The worker subprocess test uses a deliberately fake F5
+class with real 24k FLOAT WAV I/O; it proves protocol/artifact/error recovery,
+not pretrained inference quality. Initial fixture lacked soundfile; the new
+`services/api/requirements-test.txt` declares it and development installation
+succeeded. A fixture missing production's UTF-8 pipe environment was corrected;
+EngineWorkerProcess already configures UTF-8 in production.
+
+Full frontend **1223 passed / 150 files / 172.90s**, typecheck/build passed
+(213 modules, build779ms). No new model weights/private engine runtime installed.
