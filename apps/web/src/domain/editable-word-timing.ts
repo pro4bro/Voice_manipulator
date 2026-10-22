@@ -35,6 +35,11 @@ export function editableWordTimings(source: StudioWord[], duration: number): Stu
     const step = span / count;
     for (let offset = 0; offset < count; offset += 1) set(first + offset, low + offset * step, low + (offset + 1) * step - gap);
   }
+  // A reviewed Ghost Apply deliberately retains overlap. Keep its valid source
+  // coordinates (including unchanged neighbors) for the red conflict overlay.
+  if (result.some((word) => word.subtitleTimingConflict) && result.every(valid)) {
+    return result.every((word, index) => word === source[index]) ? source : result;
+  }
   // Clip genuine overlap at a distinct next onset; do not stretch valid gaps.
   for (let index = 0; index + 1 < result.length; index += 1) {
     const current = result[index], next = result[index + 1];

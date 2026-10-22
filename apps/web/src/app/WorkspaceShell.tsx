@@ -1,3 +1,4 @@
+import { SubtitleTimingProvider } from "../modules/script/SubtitleTimingPreview";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
 import { api } from "../api/client";
@@ -151,19 +152,21 @@ function isBackgroundTranscribing(asset: ProjectMediaAsset) {
 }
 
 export function WorkspaceShell(props: WorkspaceShellProps) {
-  return <PreviewMixerProvider key={props.project.id}><WorkspaceSession {...props} /></PreviewMixerProvider>;
+  return <SubtitleTimingProvider key={props.project.id}><PreviewMixerProvider><WorkspaceSession {...props} /></PreviewMixerProvider></SubtitleTimingProvider>;
 }
 
 function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRuntimeAction, theme, onToggleTheme }: WorkspaceShellProps) {
   const processingChoice = useProcessingChoice();
+  const [captureSource, setCaptureSource] = useState<StudioContext["captureSource"]>("microphone");
+  const obsCaptureEnabled = captureSource === "obs-livelink";
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
   const [manipulatorMode, setManipulatorMode] = useState<ManipulatorMode>("voice-over");
   const [voiceScriptSettingsHost, setVoiceScriptSettingsHost] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // The workspace, not the OBS panel, owns the project target. A second tab
-    // cannot take it until this owner leaves or its short lease expires.
-    if (typeof api.claimObsLiveLinkTarget !== "function") return;
+    // Selecting OBS capture owns its target lease; merely viewing an archive
+    // or recording a microphone must not start a background OBS session.
+    if (!obsCaptureEnabled || typeof api.claimObsLiveLinkTarget !== "function") return;
     const ownerId = crypto.randomUUID();
     let active = true;
     const renew = () => {
@@ -176,7 +179,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
       window.clearInterval(timer);
       void api.releaseObsLiveLinkTarget(ownerId).catch(() => {});
     };
-  }, [project.id]);
+  }, [project.id, obsCaptureEnabled]);
   const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(340);
   const [selectedVoice, setSelectedVoice] = useState("");
@@ -277,6 +280,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   }, [project.id, pendingObsImportIds]);
   const [recordingPreview, setRecordingPreview] = useState<RecordingWaveformPreview | null>(null);
   const [obsTimelineActive, setObsTimelineActive] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [obsTimelineRecordingId, setObsTimelineRecordingId] = useState<string | null>(null);
   const [obsPlayheadSeconds, setObsPlayheadSeconds] = useState(0);
   const [obsSeekRequest, setObsSeekRequest] = useState<ObsTimelineSeekRequest | null>(null);
@@ -531,19 +535,17 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Media Pool");
     }).finally(() => { if (!cancelled) { setMediaBusy(false); setMediaLoaded(true); } });
-    void Promise.all([
-      api.getTrainingCatalog(project.id),
-      api.getOmniVoiceProfileSchema(),
-      api.getPreferences(),
-    ]).then(([catalog, schema, savedPreferences]) => {
+    void api.getTrainingCatalog(project.id).then((catalog) => {
       if (cancelled) return;
       setTrainingCatalog(catalog);
-      setProfileSchema(schema);
-      setPreferences(savedPreferences);
       if (catalog.speakers[0]) setSelectedVoice((current) => current || catalog.speakers[0].id);
     }).catch((error: unknown) => {
       if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được dữ liệu workspace");
     });
+    void api.getOmniVoiceProfileSchema().then((schema) => { if (!cancelled) setProfileSchema(schema); })
+      .catch(() => { if (!cancelled) setProfileSchema(null); });
+    void api.getPreferences().then((saved) => { if (!cancelled) setPreferences(saved); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : "Không đọc được Preferences"); });
 
     api.listReadingPacks()
       .then((packs) => { if (!cancelled) setReadingPacks(packs); })
@@ -585,7 +587,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     if (typeof api.listVoiceOutputs !== "function") setOutputsLoaded(true);
     void refreshTrainingRun();
     return () => { cancelled = true; };
-  }, [project.id]);
+  }, [project.id, loadAttempt]);
 
   useEffect(() => {
     if (resumeRestored.current || !mediaLoaded || !outputsLoaded) return;
@@ -635,8 +637,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const hasBackgroundTranscription = mediaAssets.some(isBackgroundTranscribing);
   const hasBackgroundDiarization = mediaAssets.some((asset) => ["queued", "processing"].includes(asset.diarizationStatus ?? "idle"));
   const followedMkvIds = mediaAssets.filter((asset) => asset.growingMkvFollow && !asset.deletedAt
-    && (!asset.sourcePath.endsWith("source-final.mkv") || mediaAssets.some((child) => child.sourceArchiveAssetId === asset.id
-      && child.transcriptionSelected && child.transcriptionStatus !== "complete"))).map((asset) => asset.id).join(",");
+    && !asset.sourcePath.endsWith("source-final.mkv")).map((asset) => asset.id).join(",");
 
   useEffect(() => {
     if (!followedMkvIds) return;
@@ -2030,7 +2031,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   }
 
   async function queueSelectedTranscriptions(model = "large-v3") {
-    const followedParents = new Set(mediaAssets.filter((asset) => asset.growingMkvFollow).map((asset) => asset.id));
+    const followedParents = new Set(mediaAssets.filter((asset) => asset.growingMkvFollow && !asset.sourcePath.endsWith("source-final.mkv")).map((asset) => asset.id));
     const targets = mediaAssets.filter((asset) => asset.transcriptionSelected && asset.importSelected !== false && asset.status !== "no-audio"
       && !asset.deletedAt && !asset.disabled && !mediaAssets.some((child) => child.sourceArchiveAssetId === asset.id)
       && !followedParents.has(asset.sourceArchiveAssetId ?? "")
@@ -2739,6 +2740,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     mediaBusy,
     recordingPreview,
     obsTimelineActive,
+    obsCaptureEnabled,
+    captureSource,
     obsTimelineRecordingId,
     obsTranscriptRows,
     obsTranscriptError,
@@ -2774,6 +2777,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onObsPlayheadChange: (seconds) => setObsPlayheadSeconds(seconds),
     onObsTimelineCutsChange: (assetIds, ranges) => blockedByRecycleBin() ? Promise.resolve(false) : updateObsTimelineCuts(assetIds, ranges),
     onObsTimelineSourceChange: (source) => {
+      setCaptureSource(source);
       setObsTimelineActive(source === "obs-livelink");
       if (source !== "obs-livelink") setObsOverlapSelection(null);
     },
@@ -3019,7 +3023,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [manipulatorMode, generationEngine, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [manipulatorMode, generationEngine, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, captureSource, obsCaptureEnabled, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => {
     if (activePage === "voice-manipulator" && ((id === "voice-generator" && manipulatorMode !== "voice-over")
@@ -3064,7 +3068,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         </section>
       </div>
       <WorkspaceStatusBar metrics={systemMetrics} tasks={activityTasks} />
-      {notice ? <div className="studio-notice" role="status"><i />{notice}</div> : null}
+      {notice ? <div className="studio-notice" role="status"><i />{notice}<button type="button" onClick={() => { setNotice(null); setLoadAttempt((value) => value + 1); }}>Tải lại dữ liệu</button></div> : null}
       {job ? <div className="studio-job" role="status"><span><i /><i /><i /></span><b>{job}</b><small>Không đóng app trong khi model đang xử lý.</small></div> : null}
       {preferencesOpen ? <PreferencesDialog preferences={preferences} saving={preferencesSaving} onClose={() => setPreferencesOpen(false)} onSave={(next) => void savePreferences(next)} /> : null}
       {processingChoice.dialog}

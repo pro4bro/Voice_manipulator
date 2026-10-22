@@ -1,4 +1,5 @@
 import type { ScrubPreviewPosition } from "../../domain/types";
+import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
@@ -1780,6 +1781,9 @@ function AudioTimeline({
               const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
               openSpeakerMenu(target ? Number(target.dataset.timelineWordIndex) : -1, event.clientX, event.clientY, sourceTimeAt(event.clientX));
             }} onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("input")) return; const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]"); const index = target ? Number(target.dataset.timelineWordIndex) : wordIndexAtTimelinePoint(event.clientX, event.clientY); if (target && beginDuplicateDrag(event, index)) return; if (event.button === 0 && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.stopPropagation(); if (!beginRangeSelection(event, true)) beginTextInsertion(sourceTimeAt(event.clientX)); return; } if (event.button === 0 && !target) { onWordSelectionChange?.(EMPTY_SELECTION); return; } if (index < 0) return; if (event.button === 1) { event.preventDefault(); event.stopPropagation(); pendingPromotionRef.current = index; beginWordDrag(event, index, "move"); } else beginWordSelection(event, index); }} onPointerMove={(event) => { if (moveDuplicateDrag(event)) return; if (moveRangeSelection(event)) return; if (wordDragRef.current) { dragWord(event); return; } extendWordSelectionAtPoint(event.clientX, event.clientY, modifiersOf(event)); }} onPointerCancel={(event) => { if (endDuplicateDrag(event, true)) return; if (!endRangeSelection(event, true)) endWordDrag(event, true); }} onPointerUp={(event) => { if (endDuplicateDrag(event)) return; if (endRangeSelection(event)) return; wordSelectionDraggingRef.current = false; if (wordDragRef.current) endWordDrag(event); }} ref={wordTrackRef}>
+              {!isRecording ? <SubtitleTimingGhosts assetId={resumeSource?.kind === "asset" ? resumeSource.id : take?.id}
+                words={rawWords} start={timelineViewport.left / wordTrackCanvasWidth * duration} span={wordTrackViewportWidth / wordTrackCanvasWidth * duration}
+                style={{ left: timelineViewport.left, width: wordTrackViewportWidth }} /> : null}
               {displayWords.length && !isRecording && timingIsTrusted ? wordTrackLayout.map((layout) => { const index = layout.sourceIndex; const word = displayWords[index];
                 const start = Math.min(duration, Math.max(0, word.start));
                 const end = Math.min(duration, Math.max(start, word.end));
@@ -1794,7 +1798,7 @@ function AudioTimeline({
                     aria-label={`Subtitle word ${word.text}`}
                     aria-pressed={selectedWordIndexes.has(index)}
                     onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setWordEditor({ index, time: word.start, text: word.text }); }}
-                    className={`timeline-word ${manual ? "timeline-word--manual" : ""} ${layout.isCompact ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${collisionIndexes.includes(index) ? "is-timing-collision" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
+                    className={`timeline-word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${manual ? "timeline-word--manual" : ""} ${layout.isCompact ? "is-compact" : ""} ${promotedIndex === index ? "is-promoted" : ""} ${collisionIndexes.includes(index) ? "is-timing-collision" : ""} ${word.timingTrusted === false ? "timeline-word--untrusted" : ""} ${word.timingSource === "manual" ? "timeline-word--edited" : ""} ${index === activeWordIndex ? "is-active" : currentTime >= end ? "is-past" : ""} ${selectedWordIndexes.has(index) ? "is-selected" : ""}`}
                     onPointerEnter={showPromotionNote}
                     onPointerLeave={hidePromotionNote}
                     data-collision-note={collisionIndexes.includes(index) ? "Đang lấn timing · giữ lại ít nhất 10% từ này" : undefined}

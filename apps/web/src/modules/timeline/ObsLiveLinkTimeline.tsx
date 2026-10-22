@@ -1,3 +1,4 @@
+import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import type { ScrubPreviewPosition } from "../../domain/types";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
@@ -1157,6 +1158,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                 })}
                 {excludedRanges.map((range) => { const position = intervalPosition(range.start, range.end, windowStart, windowSpan);
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
+                <SubtitleTimingGhosts assetId={archivedAsset.id} words={archivedAsset.words ?? []} start={windowStart} span={windowSpan} />
                 {visibleSubtitleWordLayout(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth,
                   [subtitleIndexAtTime(archivedAsset.words ?? [], currentTime)]).map((layout) => {
                   const wordIndex = layout.sourceIndex;
@@ -1165,7 +1167,7 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                   return position ? <button key={wordIndex} type="button" style={position}
                     aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

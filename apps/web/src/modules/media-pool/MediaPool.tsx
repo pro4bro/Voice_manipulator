@@ -757,7 +757,7 @@ export function MediaPool({
   const [expandedAssets, setExpandedAssets] = useState<string[]>([]);
   // Derived from the footage itself rather than polled: the assets already carry
   // their own status, so there is nothing extra to keep in step.
-  const isGrowingMkvTrack = (asset: ProjectMediaAsset) => assets.some((parent) => parent.id === asset.sourceArchiveAssetId && parent.growingMkvFollow);
+  const isGrowingMkvTrack = (asset: ProjectMediaAsset) => assets.some((parent) => parent.id === asset.sourceArchiveAssetId && parent.growingMkvFollow && !parent.sourcePath.endsWith("source-final.mkv"));
   const running = assets.filter((asset) => !isGrowingMkvTrack(asset) && (asset.transcriptionStatus === "queued" || asset.transcriptionStatus === "processing"));
   const heldBack = assets.filter((asset) => !isGrowingMkvTrack(asset) && asset.transcriptionStatus === "paused");
   const queueBusy = running.length > 0;
@@ -769,7 +769,7 @@ export function MediaPool({
   };
   const historyAsset = assets.find((asset) => asset.id === historyAssetId) ?? null;
   const trainingCount = liveAssets.filter((asset) => (childrenOf(asset).length ? childrenOf(asset) : [asset]).some((item) => item.importSelected !== false && item.trainingSelected)).length;
-  const transcriptionCount = liveAssets.filter((asset) => !asset.growingMkvFollow
+  const transcriptionCount = liveAssets.filter((asset) => (!asset.growingMkvFollow || asset.sourcePath.endsWith("source-final.mkv"))
     && (childrenOf(asset).length ? childrenOf(asset) : [asset]).some((item) => item.importSelected !== false && item.transcriptionSelected && item.status !== "no-audio" && !["processing", "reviewing", "queued"].includes(item.transcriptionStatus))).length;
   const growingMkvCandidates = liveAssets.filter((asset) => asset.growingMkvFollow
     && !asset.sourcePath.endsWith("source-final.mkv")
@@ -1241,7 +1241,7 @@ export function MediaPool({
       {mkvSttDialogOpen && (pendingLocalMedia || mkvSttTargetId) ? <div className="media-import-backdrop">
         <section aria-label="Thiết lập STT MKV" aria-modal="true" className="media-import-dialog" role="dialog">
           <header><span>MKV STT KỸ</span><strong>{mkvSttTargetId ? assets.find((asset) => asset.id === mkvSttTargetId)?.name : pendingLocalMedia?.name}</strong></header>
-          <p>Lượt đầu xử lý toàn bộ audio đã đọc tại lúc bấm bắt đầu trên từng track đã chọn. Sau đó tự chạy lần lượt khi đủ một block mới (mặc định 1 phút). Mỗi block lấy thêm 10 giây trước đó làm ngữ cảnh và thay transcript từ 5 giây trước ranh giới, tránh lặp chữ. Sau Finish, xử lý nốt đoạn cuối và ghép SRT theo thời gian gốc.</p>
+          <p>Lượt đầu xử lý toàn bộ audio đã đọc tại lúc bấm bắt đầu trên từng track đã chọn. Sau đó tự chạy lần lượt khi đủ một block mới (mặc định 1 phút). Mỗi block lấy thêm 10 giây trước đó làm ngữ cảnh và thay transcript từ 5 giây trước ranh giới, tránh lặp chữ. Khi OBS dừng, app tự nhập hoàn chỉnh MKV ở nền và giữ bản nháp này. Sau đó bấm Speech to text để nhận diện lại toàn bộ track, không chia block.</p>
           <div className="mkv-stt-segment-field"><span>Độ dài mỗi đoạn STT kỹ</span><div className="mkv-stt-segment-field__inputs">
             <label>Phút<input aria-label="Số phút STT kỹ" max={10} min={0} onChange={(event) => setMkvSttSegmentSeconds(Number(event.target.value) * 60 + mkvSttSegmentSeconds % 60)} type="number" value={Math.floor(mkvSttSegmentSeconds / 60)} /></label>
             <label>Giây<input aria-label="Số giây STT kỹ" max={59} min={0} onChange={(event) => setMkvSttSegmentSeconds(Math.floor(mkvSttSegmentSeconds / 60) * 60 + Number(event.target.value))} type="number" value={mkvSttSegmentSeconds % 60} /></label>

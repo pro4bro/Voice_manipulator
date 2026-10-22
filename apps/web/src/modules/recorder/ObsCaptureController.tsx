@@ -85,7 +85,10 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
 
   useEffect(() => {
     let active = true;
+    let inFlight = false;
     const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
       const revision = actionRevision.current;
       try {
         const [next, records] = await Promise.all([
@@ -113,7 +116,7 @@ export function ObsCaptureController({ projectId, onOpenAsset, onOpenRecording, 
       } catch (reason) {
         if (active && !actionInFlight.current && revision === actionRevision.current)
           setError(reason instanceof Error ? reason.message : "Không đọc được trạng thái OBS LiveLink.");
-      }
+      } finally { inFlight = false; }
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 1_000);

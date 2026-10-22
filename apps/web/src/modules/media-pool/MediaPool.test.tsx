@@ -644,6 +644,18 @@ describe("MediaPool", () => {
     expect(onStartGrowingMkvDetailedStt).toHaveBeenCalledWith("parent", 125);
   });
 
+  it("uses the normal full-file STT action after a followed MKV finishes", () => {
+    const parent = { ...asset, id: "parent", name: "finished.mkv", growingMkvFollow: true, sourcePath: "assets/media/parent/source-final.mkv" };
+    const child = { ...asset, id: "mic", sourceArchiveAssetId: "parent", transcriptionSelected: true, transcriptionStatus: "skipped" as const };
+    const onQueueTranscriptions = vi.fn();
+    const onStartGrowingMkvDetailedStt = vi.fn();
+    render(<MediaPool {...props({ assets: [parent, child], onQueueTranscriptions, onStartGrowingMkvDetailedStt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Speech to text/ }));
+    expect(onQueueTranscriptions).toHaveBeenCalledOnce();
+    expect(onStartGrowingMkvDetailedStt).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Thiết lập STT MKV" })).not.toBeInTheDocument();
+  });
+
   it("opens detailed STT for the selected growing footage when more than one is present", () => {
     const first = { ...asset, id: "first", name: "first.mkv", growingMkvFollow: true };
     const second = { ...asset, id: "second", name: "second.mkv", growingMkvFollow: true };

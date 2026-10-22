@@ -17,7 +17,7 @@ import { selectedTrainingModel } from "../train/trainingModels";
 import { Recorder } from "../recorder/Recorder";
 import { ObsCapture } from "../obs-capture/ObsCapture";
 import type { ObsOverlapSelection, ObsTimelineSeekRequest } from "../obs-capture/obs-overlap";
-import type { CapturedAudio, ReadingSessionView, RecordingSlotState } from "../recorder/Recorder";
+import type { CapturedAudio, CaptureSource, ReadingSessionView, RecordingSlotState } from "../recorder/Recorder";
 import type { PendingObsRecordingSlot } from "../recorder/ObsCaptureController";
 import type { ScriptDocumentChange } from "../script/script-document-actions";
 import { SubtitleRefinementPanel } from "../script/SubtitleRefinementPanel";
@@ -86,6 +86,8 @@ export interface StudioContext {
   onOpenObsTrack: (recordingId: string, channelId: string) => void;
   onObsArchiveReady: (recordingId: string) => Promise<void>;
   liveTranscriptActive: boolean;
+  obsCaptureEnabled: boolean;
+  captureSource: CaptureSource;
   liveTranscriptText: string | null;
   emotionStyle: EmotionStylePreferences;
   clippingHighlightAutoHide?: boolean;
@@ -397,8 +399,9 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
     case "control-rack":
       return <ControlRack gain={context.gain} onGainChange={context.onGainChange} onSpeedChange={context.onSpeedChange} speed={context.speed} environmentProfiles={context.trainingCatalog.environmentProfiles} environmentProfileId={context.trainingCatalog.settings.environmentProfileId} onEnvironmentProfileChange={(environmentProfileId) => context.onCatalogChange({ ...context.trainingCatalog, settings: { ...context.trainingCatalog.settings, environmentProfileId } })} />;
     case "recorder":
-      return <Recorder onRecordingSlotChange={context.onRecordingSlotChange} onObsRecordingSlotChange={context.onObsRecordingSlotChange} readingSpeakers={context.trainingCatalog.speakers} readingPending={context.readingPending} onRetryReadingTake={context.onRetryReadingTake} onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
+      return <Recorder captureSource={context.captureSource} onRecordingSlotChange={context.onRecordingSlotChange} onObsRecordingSlotChange={context.onObsRecordingSlotChange} readingSpeakers={context.trainingCatalog.speakers} readingPending={context.readingPending} onRetryReadingTake={context.onRetryReadingTake} onEndReadingSession={context.onEndReadingSession} onSkipCard={context.onSkipCard} onStartReadingSession={context.onStartReadingSession} readingBusy={context.readingBusy} readingPacks={context.readingPacks} readingSession={context.readingSession} projectLanguage={context.projectLanguage} projectName={context.projectName} projectId={context.projectId} onOpenObsAsset={context.onOpenObsAsset} onOpenObsRecording={context.onOpenObsRecording} onObsArchiveReady={context.onObsArchiveReady} onCaptureSourceChange={context.onObsTimelineSourceChange} onLiveTranscript={context.onLiveTranscript} onRecordingPreview={context.onRecordingPreview} onRecordingReady={context.onTakeChange} />;
     case "obs-capture":
+      if (!context.obsCaptureEnabled) return null;
       return <ObsCapture onImportSlotChange={context.onObsImportSlotChange} onImportSlotRemoved={context.onObsImportSlotRemoved} onImportReady={context.onObsImportReady} onOpenAsset={context.onOpenObsAsset} projectId={context.projectId} />;
     case "timeline": {
       if (context.workflow === "speech-to-text" && context.obsTimelineActive) {

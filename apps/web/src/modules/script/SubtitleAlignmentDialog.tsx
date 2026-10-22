@@ -69,7 +69,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
   const offsetInputsValid = mode !== "offset" || (startOffset.trim() !== "" && endOffset.trim() !== "" && Number.isFinite(Number(startOffset)) && Number.isFinite(Number(endOffset)));
   const stale = Boolean(proposal && (proposal.stale || proposalSignature !== currentSignature));
   const focusedRow = rows.find((row) => row.index === focusedIndex) ?? rows[0];
-  const readOnly = proposal?.mode === "diagnose";
+  const readOnly = proposal?.mode === "diagnose" || proposal?.mode === "pipeline";
   const drift = proposal?.diagnostics.drift;
   const focusedEvidence = drift?.suspects.find((row) => row.index === focusedRow?.index);
   const applyable = rows.filter((row) => row.checked && row.status !== "locked");
@@ -100,7 +100,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
     const target = latestAsset.current;
     if (target) void api.getSubtitleAlignment(projectId, target.id).then((value) => {
       if (serial.current !== version || !latestAsset.current || latestSignature.current !== signature(target)) return;
-      if (value) { setMode(value.mode); setStartOffset(String(value.startOffsetMs)); setEndOffset(String(value.endOffsetMs)); setProposal(value); setProposalSignature(signature(target)); setRows(value.rows.map((row) => ({ ...row, start: String(shownBounds(row).start ?? ""), end: String(shownBounds(row).end ?? ""), checked: row.status === "ready", heard: false }))); setFocusedIndex(value.rows[0]?.index ?? null); }
+      if (value) { setMode(value.mode === "pipeline" ? "auto" : value.mode); setStartOffset(String(value.startOffsetMs)); setEndOffset(String(value.endOffsetMs)); setProposal(value); setProposalSignature(signature(target)); setRows(value.rows.map((row) => ({ ...row, start: String(shownBounds(row).start ?? ""), end: String(shownBounds(row).end ?? ""), checked: row.status === "ready", heard: false }))); setFocusedIndex(value.rows[0]?.index ?? null); }
     }).catch((reason) => { if (serial.current === version) setError(errorText(reason)); });
     return () => { document.removeEventListener("keydown", keydown); serial.current += 1; stopAudio(); };
     // Opening initializes the latest persisted proposal for the selected asset.
@@ -223,7 +223,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
         {stale ? <p className="subtitle-alignment-warning" role="alert">Script, text hoặc điểm cắt đã đổi. Đề xuất cũ đã bị khóa; hãy tạo đề xuất mới.</p> : null}
         {proposal && (proposal.aligner.status === "unavailable" || proposal.aligner.status === "failed") ? <p className="subtitle-alignment-warning" role="status">{proposal.aligner.reason ?? alignerLabel(proposal.aligner.status)}</p> : null}
         {notice ? <p role="status">{notice}</p> : null}{error ? <p role="alert">{error}</p> : null}
-        {proposal ? <><div className="subtitle-alignment-summary" role="status">Phương pháp: {SUBTITLE_ALIGNMENT_METHODS.find((item) => item.id === proposal.mode)?.label} · Đề xuất: {proposal.summary.ready} sẵn sàng · {proposal.summary.review} cần nghe lại · {proposal.summary.locked} khóa · {proposal.summary.unchanged} không đổi. Bộ căn chỉnh: {alignerLabel(proposal.aligner.status)}{proposal.aligner.model ? ` · ${proposal.aligner.model}` : ""}{proposal.aligner.license ? ` · ${proposal.aligner.license}` : ""}</div><div className="subtitle-alignment-workspace">
+        {proposal ? <><div className="subtitle-alignment-summary" role="status">Phương pháp: {SUBTITLE_ALIGNMENT_METHODS.find((item) => item.id === proposal.mode)?.label ?? "Ghost Preview từ Input"} · Đề xuất: {proposal.summary.ready} sẵn sàng · {proposal.summary.review} cần nghe lại · {proposal.summary.locked} khóa · {proposal.summary.unchanged} không đổi. Bộ căn chỉnh: {alignerLabel(proposal.aligner.status)}{proposal.aligner.model ? ` · ${proposal.aligner.model}` : ""}{proposal.aligner.license ? ` · ${proposal.aligner.license}` : ""}</div><div className="subtitle-alignment-workspace">
           <section className="subtitle-alignment-list" aria-label="Các từ trong đề xuất">
             <table><thead><tr><th><span className="sr-only">Áp dụng</span></th><th>Từ</th><th>Trạng thái</th><th>IN / OUT (s)</th></tr></thead><tbody>{rows.map((row) => <tr key={row.index} className={focusedIndex === row.index ? "is-focused" : ""}>
               <td><input type="checkbox" aria-label={`Chọn từ ${row.text} ${row.index + 1}`} checked={row.checked} disabled={readOnly || busy || stale || proposal.stale || proposal.state !== "proposed" || row.status === "locked" || (needsHeardConfirmation(row) && !row.heard)} onChange={(event) => { setRow(row.index, { checked: event.target.checked }); setFocusedIndex(row.index); }} /></td>
@@ -248,7 +248,7 @@ export function SubtitleAlignmentControl({ projectId, assets, selection, prepare
           </aside>
         </div></> : null}
         </div>
-        <footer>{readOnly ? <span>Kiểm tra chỉ đọc · chọn phương pháp khác để tạo đề xuất chỉnh sửa.</span> : null}{proposal?.state === "applied" ? <button type="button" disabled={busy || stale} onClick={() => void restore()}>Khôi phục bản đã áp dụng</button> : null}<button type="button" disabled={!validApply} onClick={() => void apply()}>Áp dụng {selectedForApply.length} từ đã chọn</button><button type="button" onClick={close}>Đóng</button></footer>
+        <footer>{readOnly ? <span>Đề xuất chỉ đọc ở đây · chọn phương pháp để tính lại hoặc dùng Ghost Preview ở Input.</span> : null}{proposal?.state === "applied" ? <button type="button" disabled={busy || stale} onClick={() => void restore()}>Khôi phục bản đã áp dụng</button> : null}<button type="button" disabled={!validApply} onClick={() => void apply()}>Áp dụng {selectedForApply.length} từ đã chọn</button><button type="button" onClick={close}>Đóng</button></footer>
         <audio ref={audioRef} className="subtitle-alignment-audio" preload="none" onTimeUpdate={(event) => { const audio = event.currentTarget; if (audio.currentTime >= Number(audio.dataset.stopAt)) stopAudio(); }} onEnded={stopAudio} />
       </div>
     </div>, document.body) : null}

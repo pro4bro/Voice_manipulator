@@ -1,6 +1,10 @@
 import type { ProjectMediaAsset } from "./types";
 
-export type SubtitleAlignmentMode = "auto" | "offset" | "common-offset" | "edge-offset" | "group-offset" | "ctc" | "waveform" | "diagnose";
+export type SubtitleAlignmentMode = "auto" | "offset" | "common-offset" | "edge-offset" | "group-offset" | "ctc" | "waveform" | "diagnose" | "pipeline";
+export interface SubtitleRefinementMethod {
+  mode: Exclude<SubtitleAlignmentMode, "pipeline">;
+  startOffsetMs: number; endOffsetMs: number; strength: number; maxMoveMs: number;
+}
 export const SUBTITLE_ALIGNMENT_METHODS: { id: SubtitleAlignmentMode; label: string; description: string }[] = [
   { id: "diagnose", label: "Kiểm tra độ lệch chữ / voice", description: "Chỉ đối chiếu: đánh dấu mốc lệch từ 250 ms, lệch lớn từ 500 ms và từ nằm trong vùng âm rất nhỏ. Thiếu mốc âm học sẽ được báo chưa đủ bằng chứng." },
   { id: "common-offset", label: "Bù offset chung từ mốc âm học", description: "Ước lượng một mức dịch chung từ ít nhất ba mốc CTC, giữ nguyên độ dài từ. Cần nghe kiểm tra vì từng đoạn có thể lệch khác nhau." },
@@ -47,7 +51,7 @@ export interface SubtitleAlignmentProposal {
   endOffsetMs: number;
   rows: SubtitleAlignmentRow[];
   summary: Record<SubtitleAlignmentRow["status"], number>;
-  diagnostics: Record<string, unknown> & { drift?: SubtitleDriftReport };
+  diagnostics: Record<string, unknown> & { drift?: SubtitleDriftReport; conflictIndexes?: number[]; changedWords?: number };
   aligner: { status: string; model?: string; license?: string; reason?: string };
 }
 export interface SubtitleAlignmentRequest {

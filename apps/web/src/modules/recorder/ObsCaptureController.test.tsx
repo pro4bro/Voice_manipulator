@@ -58,6 +58,18 @@ it("scopes retry and export to the stopped recording and never reports retry as 
   expect(await screen.findByText(/dữ liệu gốc vẫn trong outbox/)).toBeInTheDocument();
 });
 
+it("does not pile up status requests while one poll is still pending", async () => {
+  apiMocks.getObsLiveLinkStatus.mockReturnValue(new Promise(() => {}));
+  const ticks: Array<() => void> = [];
+  const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+    ticks.push(handler as () => void); return 999;
+  });
+  const view = render(<ObsCaptureController projectId="project" />);
+  await act(async () => { for (let i = 0; i < 20; i += 1) ticks.forEach((tick) => tick()); });
+  expect(apiMocks.getObsLiveLinkStatus).toHaveBeenCalledTimes(1);
+  view.unmount(); interval.mockRestore();
+});
+
 it("retains recovery errors while normal status polling succeeds", async () => {
   apiMocks.listObsLiveLinkRecordings.mockResolvedValue([{ recording: {
     recordingId: "stopped-rec", projectId: "project", status: "stopped", archiveStatus: "ready", videoSpanIds: [],

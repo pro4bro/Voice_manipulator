@@ -459,6 +459,27 @@ describe("WorkspaceShell STT synchronization", () => {
       choice === "all" ? ["asset-1", "asset-2"] : ["asset-2"], "large-v3"));
   });
 
+  it("queues finalized followed MKV tracks through ordinary full-file STT", async () => {
+    const child = { ...mediaAsset("skipped", "Live draft", "2026-10-08T00:00:01Z"), sourceArchiveAssetId: "parent" };
+    const parent = { ...child, id: "parent", sourceArchiveAssetId: null, growingMkvFollow: true,
+      sourcePath: "assets/media/parent/source-final.mkv", transcriptionSelected: false };
+    apiMocks.listProjectMedia.mockResolvedValue([parent, child]);
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()}
+      project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(screen.getByTestId("media-ids")).toHaveTextContent("parent"));
+    fireEvent.click(screen.getByRole("button", { name: "queue selected STT" }));
+    await waitFor(() => expect(apiMocks.enqueueMediaTranscriptions).toHaveBeenCalledWith(project.id, [child.id], "large-v3"));
+  });
+
+  it("loads the project catalog when an unrelated engine schema request stalls", async () => {
+    const catalog = await apiMocks.getTrainingCatalog(project.id);
+    apiMocks.getOmniVoiceProfileSchema.mockReturnValue(new Promise(() => {}));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn()} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current?.trainingCatalog).toEqual(catalog));
+  });
+
   it("shows media without waiting for unrelated catalog loading", async () => {
     const catalog = deferred<unknown>();
     apiMocks.getTrainingCatalog.mockReturnValue(catalog.promise);
@@ -1016,7 +1037,7 @@ describe("WorkspaceShell STT synchronization", () => {
     await waitFor(() => expect(apiMocks.importLocalProjectMedia).toHaveBeenCalledWith(project.id, path, false, [1, 2], []));
   });
 
-  it("claims the OBS target while a project is open and releases the same owner on leave", async () => {
+  it("claims the OBS target only for the selected capture source and releases its owner on source change", async () => {
     apiMocks.listProjectMedia.mockResolvedValue([]);
     apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
     const view = render(<WorkspaceShell
@@ -1029,10 +1050,16 @@ describe("WorkspaceShell STT synchronization", () => {
       runtime={null}
       theme="dark"
     />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+    expect(apiMocks.claimObsLiveLinkTarget).not.toHaveBeenCalled();
+    act(() => collectionContext.current?.onObsTimelineSourceChange("obs-livelink"));
+    expect(collectionContext.current?.captureSource).toBe("obs-livelink");
     await waitFor(() => expect(apiMocks.claimObsLiveLinkTarget).toHaveBeenCalledWith(project.id, expect.any(String)));
     const owner = apiMocks.claimObsLiveLinkTarget.mock.calls[0][1];
-    view.unmount();
+    act(() => collectionContext.current?.onObsTimelineSourceChange("microphone"));
+    expect(collectionContext.current?.captureSource).toBe("microphone");
     expect(apiMocks.releaseObsLiveLinkTarget).toHaveBeenCalledWith(owner);
+    view.unmount();
   });
 
   it("opens an OBS footage on its recording-wide Timeline and Script feed", async () => {

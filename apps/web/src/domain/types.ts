@@ -117,6 +117,7 @@ export interface SystemPaths {
 }
 
 export interface StudioWord {
+  subtitleTimingConflict?: boolean;
   text: string;
   start: number;
   end: number;

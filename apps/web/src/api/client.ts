@@ -1,5 +1,5 @@
 import { editableWordTimings } from "../domain/editable-word-timing";
-import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult } from "../domain/subtitle-alignment";
+import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult, SubtitleRefinementMethod } from "../domain/subtitle-alignment";
 import { lipSyncUrl, type LipSyncSessions, type LipSyncVersionState, type LipSyncDocument, type LipSyncCoverage, type LipSyncPreflight } from "../domain/lipsync";
 import type { LipSyncJob, LipSyncRuntimeReport, FaceGallery, FaceReview, LipSyncRenderPlan } from "../modules/lip-sync/LipSyncProcessing";
 import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
@@ -93,8 +93,17 @@ export interface SokujiTranslateCatalog extends SokujiRuntimeStatus {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isForm = init?.body instanceof FormData;
+  const read = !init?.method || init.method.toUpperCase() === "GET";
+  const controller = read ? new AbortController() : null;
+  let timedOut = false;
+  const cancel = () => controller?.abort();
+  if (init?.signal?.aborted) cancel();
+  init?.signal?.addEventListener("abort", cancel, { once: true });
+  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, 15000) : null;
+  try {
   const response = await fetch(path, {
     ...init,
+    ...(controller ? { signal: controller.signal } : {}),
     headers: {
       ...(isForm ? {} : { "Content-Type": "application/json" }),
       ...init?.headers,
@@ -109,7 +118,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // the row stayed on screen until the app was restarted, and trying again got
   // "not found" for something genuinely gone.
   if (response.status === 204 || response.status === 205) return undefined as T;
-  return response.json() as Promise<T>;
+  return await response.json() as T;
+  } catch (error) {
+    if (timedOut) throw new Error("Không tải được dữ liệu sau 15 giây. Bấm Tải lại dữ liệu để thử lại.");
+    throw error;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+    init?.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 
@@ -191,6 +207,13 @@ function normalizeMediaAsset(asset: ProjectMediaAsset): ProjectMediaAsset {
 }
 
 export const api = {
+  previewSubtitleTiming: (projectId: string, assetId: string, methods: SubtitleRefinementMethod[], indexes?: number[]) => request<SubtitleAlignmentProposal>(
+    `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/preview`,
+    { method: "POST", body: JSON.stringify({ methods, ...(indexes ? { indexes } : {}) }) }),
+  applySubtitleTimingPreview: async (projectId: string, assetId: string, id: string) => {
+    const result = await request<SubtitleAlignmentResult>(`/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/${encodeURIComponent(id)}/apply-preview`, { method: "POST" });
+    return { ...result, asset: normalizeMediaAsset(result.asset) };
+  },
   getSubtitleAlignment: (projectId: string, assetId: string) => request<SubtitleAlignmentProposal | null>(
     `/api/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(assetId)}/subtitle-alignment/latest`),
   analyzeSubtitleAlignment: (projectId: string, assetId: string, payload: SubtitleAlignmentRequest) => request<SubtitleAlignmentProposal>(

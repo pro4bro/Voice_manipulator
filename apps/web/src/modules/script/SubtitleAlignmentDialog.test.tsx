@@ -40,6 +40,15 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("SubtitleAlignmentControl", () => {
+  it("opens an Input ghost as read-only with a valid legacy method control", async () => {
+    vi.mocked(api.getSubtitleAlignment).mockResolvedValue({ ...proposal(rows), mode: "pipeline" });
+    render(<SubtitleAlignmentControl {...props()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Căn chỉnh subtitle" }));
+    await screen.findByText(/Ghost Preview từ Input/);
+    expect(screen.getByLabelText("Phương pháp tinh chỉnh")).toHaveValue("auto");
+    expect(screen.getByLabelText("IN từ 1")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Áp dụng 1 từ đã chọn" })).toBeDisabled();
+  });
   it("restores the saved method and offsets before making another proposal", async () => {
     vi.mocked(api.getSubtitleAlignment).mockResolvedValue({ ...proposal(rows), mode: "offset", startOffsetMs: 80, endOffsetMs: 110 });
     render(<SubtitleAlignmentControl {...props({ selection: undefined })} />);

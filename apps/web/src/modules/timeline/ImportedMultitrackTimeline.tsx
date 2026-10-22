@@ -1,3 +1,4 @@
+import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import type { ScrubPreviewPosition } from "../../domain/types";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
@@ -699,6 +700,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
                   if (event.ctrlKey || event.metaKey) focusTrack(track, { insertTime: time });
                   else { onWordSelectionChange?.(EMPTY_SELECTION); seek(time); }
                 }}>
+                <SubtitleTimingGhosts assetId={track.id} words={track.words} start={windowStart} span={span} />
                 {track.words.length ? visibleSubtitleWordLayout(track.words, windowStart, span, subtitleLaneWidth,
                   [subtitleIndexAtTime(track.words, currentTime)]).map((layout) => {
                   const wordIndex = layout.sourceIndex;
@@ -707,7 +709,7 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
                   return style ? <button key={wordIndex} type="button" style={style}
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${selectedWordIndexes.has(wordIndex) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${selectedWordIndexes.has(wordIndex) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

@@ -61,6 +61,7 @@ interface RecorderProps {
   onOpenObsRecording?: (recordingId: string) => void;
   onObsArchiveReady?: (recordingId: string) => Promise<void>;
   onCaptureSourceChange?: (source: "microphone" | "display" | "obs-livelink") => void;
+  captureSource?: CaptureSource;
   onRecordingPreview?: (preview: RecordingWaveformPreview) => void;
   onLiveTranscript?: (text: string, active: boolean) => void;
   /** The project's language code, so live passes need not guess it. */
@@ -98,7 +99,7 @@ interface SpeechRecognitionEventLike {
 type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 type SinkAudioElement = HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
 type RecorderStatus = "idle" | "recording" | "finalizing" | "error";
-type CaptureSource = "microphone" | "display" | "obs-livelink";
+export type CaptureSource = "microphone" | "display" | "obs-livelink";
 
 function friendlyDeviceName(device: MediaDeviceInfo, index: number, kind: "input" | "output") {
   return device.label || `${kind === "input" ? "Microphone" : "Audio output"} ${index + 1}`;
@@ -129,6 +130,7 @@ export function Recorder({
   onOpenObsRecording,
   onObsArchiveReady,
   onCaptureSourceChange,
+  captureSource: controlledCaptureSource,
   onRecordingPreview,
   onLiveTranscript,
   projectLanguage = null,
@@ -153,7 +155,8 @@ export function Recorder({
   const [message, setMessage] = useState("Chọn thiết bị và bắt đầu thu");
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
-  const [captureSource, setCaptureSource] = useState<CaptureSource>("microphone");
+  const [localCaptureSource, setCaptureSource] = useState<CaptureSource>("microphone");
+  const captureSource = controlledCaptureSource ?? localCaptureSource;
   function chooseCaptureSource(source: CaptureSource) {
     setCaptureSource(source);
     onCaptureSourceChange?.(source);

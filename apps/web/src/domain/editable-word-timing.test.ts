@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { editableWordTimings } from "./editable-word-timing";
 
 describe("editable word timing", () => {
+  it("keeps explicitly previewed overlap coordinates and the unchanged neighbor for visible conflict review", () => {
+    const words = [{ text: "moved", start: .55, end: .75, subtitleTimingConflict: true },
+      { text: "manual", start: .6, end: .8, timingSource: "manual" }];
+    expect(editableWordTimings(words, 2)).toBe(words);
+  });
   it("preserves safe source words and real silence exactly", () => {
     const words = [{ text: "a", start: 0, end: .01 }, { text: "b", start: 1, end: 2 }];
     expect(editableWordTimings(words, 3)).toBe(words);

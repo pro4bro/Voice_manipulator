@@ -45,6 +45,19 @@ describe("Recorder", () => {
     expect(screen.getByRole("checkbox", { name: "Nghe tiếng đang thu" })).not.toBeChecked();
   });
 
+  it("keeps the workspace capture source through a Recorder remount", () => {
+    const changed = vi.fn();
+    const first = render(<Recorder captureSource="display" onCaptureSourceChange={changed} onRecordingReady={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Nguồn thu âm" })).toHaveValue("display");
+    first.unmount();
+    const second = render(<Recorder captureSource="display" onCaptureSourceChange={changed} onRecordingReady={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Nguồn thu âm" })).toHaveValue("display");
+    fireEvent.change(screen.getByRole("combobox", { name: "Nguồn thu âm" }), { target: { value: "microphone" } });
+    expect(changed).toHaveBeenCalledWith("microphone");
+    second.rerender(<Recorder captureSource="microphone" onCaptureSourceChange={changed} onRecordingReady={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Nguồn thu âm" })).toHaveValue("microphone");
+  });
+
   const PACK = {
     packId: "vi-core-v1",
     language: "vi",

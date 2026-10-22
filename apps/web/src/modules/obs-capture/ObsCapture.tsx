@@ -50,8 +50,10 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady, onImportSlot
   useEffect(() => {
     let cancelled = false;
     let unavailable = false;
+    let inFlight = false;
     const refresh = async () => {
-      if (unavailable) return;
+      if (unavailable || inFlight) return;
+      inFlight = true;
       try {
         const [next, live] = await Promise.all([
           api.listObsSessions(projectId), api.listObsLiveSessions(projectId),
@@ -89,7 +91,7 @@ export function ObsCapture({ projectId, onOpenAsset, onImportReady, onImportSlot
       } catch (reason) {
         if (reason instanceof SyntaxError) unavailable = true;
         if (!cancelled) setError(messageFrom(reason, "Không tải được phiên OBS."));
-      }
+      } finally { inFlight = false; }
     };
     void refresh();
     void api.getObsLivePairing(projectId).then((value) => {

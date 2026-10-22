@@ -1,0 +1,18 @@
+.subtitle-timing-ghosts { position: absolute; z-index: 6; top: -26px; left: 0; width: 100%; height: 24px; pointer-events: none; }
+.subtitle-timing-ghosts.has-conflict, .timeline-word.has-refinement-conflict, .imported-timeline__word.has-refinement-conflict { animation: subtitle-timing-conflict 1.6s ease-in-out 3; }
+.timeline-word.has-refinement-conflict, .imported-timeline__word.has-refinement-conflict { border-color: var(--red, #d63f3f) !important; color: var(--red, #d63f3f) !important; box-shadow: inset 0 2px 0 var(--red, #d63f3f) !important; }
+@keyframes subtitle-timing-conflict { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .subtitle-timing-ghosts.has-conflict, .has-refinement-conflict { animation: none !important; } }
+.subtitle-refinement-settings { display: grid; gap: 8px; margin-top: 10px; }
+.subtitle-refinement-settings > label { display: grid; gap: 4px; }
+.subtitle-refinement-methods { display: grid; gap: 6px; max-height: 46vh; overflow: auto; }
+.subtitle-refinement-choice { border: 1px solid var(--line); padding: 7px; }
+.subtitle-refinement-choice > label { display: flex; gap: 7px; align-items: start; }
+.subtitle-refinement-choice details { margin-top: 6px; }
+.subtitle-refinement-choice summary { cursor: pointer; color: var(--text-muted); }
+.subtitle-refinement-choice details p { font-size: .82rem; margin: 7px 0; }
+.subtitle-refinement-parameters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.subtitle-refinement-parameters label { display: grid; font-size: .8rem; gap: 3px; }
+.subtitle-refinement-parameters input { min-width: 0; width: 100%; }
+.subtitle-refinement-actions { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; bottom: 0; background: var(--surface); padding-block: 6px; z-index: 1; }
+.subtitle-refinement-conflicts { color: var(--red, #d63f3f); }
