@@ -6,11 +6,31 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-22 — round85 restores standard Import review with extra MKV options.
-last_activity_desc: MKV-IMPORT-REVIEW-01 opens cache/link, per-track Import/STT and normal Import together, with MKV follow as an extra section. Explicit confirmation/cancellation, focus and processing guards remain. Local faster-whisper tiny live configuration is confirmed; no model change. Frontend1219, focused135/latest69+2, typecheck/build213, related API32 and mutation pass. Browser/device and Round84 full-API containment gaps stay open; runtime ports stopped at closure, build ready for normal launch. ADR0133/mkv-import85 gate record evidence. Phase03 stays60%, Phase06 open; stop85.
+last_activity: 2026-10-22 — round86 readable new-import storage, Windows Reveal and right Input STT dock.
+last_activity_desc: MEDIA-STORAGE-INPUT-01 names only new imports and their caches; legacy footage is unchanged. Native Shell Reveal and STT dock below Recorder preserve original routing and queue state. Frontend1221, focused91, typecheck/build213; related API136/55/latest51 plus track7, native item round-trip and mutation pass. Running idle stack restarted through controller, healthy/current build. Browser/Explorer UAT and prior full-API containment remain open. ADR0134/media-storage86 gate hold evidence. Phase03 stays60%, Phase06 open; stop86.
 ---
 
 # Project State
+
+## Round86 — MEDIA-STORAGE-INPUT-01 (2026-10-22)
+
+New imports/followed MKV use footage-named unique folders and prefixed source,
+analysis, final audio and waveform/STT caches. Existing footage is not renamed,
+as explicitly selected by the owner. Shared lookup preserves legacy directories,
+relative paths, transcript/diarization/Patch evidence and checkpoint recovery.
+Windows Reveal uses native Shell item selection with explicit failures and balanced
+COM cleanup. Input STT/model/queue controls sit immediately below Recorder and
+remain available across Library tab switches through the existing controller.
+
+Frontend1221/150files, focused91, typecheck/build213 pass. Related API groups136,
+55 and latest51, plus final track7, pass (groups overlap). Native Unicode Shell
+item round-trip, real media/cache/move/final-tail and isolated mutation pass.
+ADR0134 and `docs/gates/media-storage86-20261022.md` retain evidence/earlier failures.
+The already-running idle stack was restarted through its controller; health JSON
+and final served build pass. Browser/visible Explorer UAT and Round84 full-API
+containment remain open. No existing-owner-footage rename, STT/model or portable
+release change. Phase03 stays60%, Phase06 open; stop86.
+
 
 ## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
 

@@ -1,5 +1,13 @@
 # Portability Contract
 
+## Imported footage storage
+
+New imports use `assets/media/<footage-stem>--<asset-id>/` with footage-prefixed
+source/analysis files and caches. IDs remain stable and stored paths remain relative
+to the project folder. Duplicate footage names have different IDs. Existing
+`assets/media/<asset-id>/` folders retain their filenames and remain supported;
+there is no automatic rename. See ADR0134.
+
 ## Release storage
 
 Owner request, 2026-10-18: keep delivered portable folders, ZIPs, checksums and

@@ -41,6 +41,9 @@
 - **UI-07**: Full zoom-out remains a fit-to-source intent during ordinary recording, OBS LiveLink and growing-MKV import. Updated source duration expands the fitted extent without further input; explicit zoom-in retains manual navigation and maximum density. OBS acquisition stays bounded independently of the viewport extent, including when source-linked seeking suspends playhead following.
 - **UI-08**: Growing-MKV refresh preserves an active scrub and its released playhead. Paused/stale audio events cannot overwrite that coordinate; published PCM revisions reload audio and restore position before the playback clock resumes. Scrubbing cancels obsolete pending Play activation.
 - **UI-09**: Native MKV selection opens the ordinary Import review with cache/link choice, per-track Import/STT controls and an additional MKV follow action. No work starts before confirmation; cancellation is available by button, backdrop or Escape, and keyboard focus stays in the review. Ordinary multitrack media keeps the same review without MKV-only actions.
+- **UI-10**: Input places Speech to text immediately below Recorder in the right column, preserving one selection/model/queue controller and Pause/Resume/Stop controls across Library tab switches.
+- **MEDIA-01**: New native/upload imports and growing MKV follows use footage-named folders and footage-prefixed source, analysis and audio/waveform cache files with unique stable IDs and project-relative paths, including child tracks. Existing footage folders/files are not renamed.
+- **MEDIA-02**: Reveal in Explorer selects the original native footage through its machine-local locator, including from child tracks; explicit project reveal selects the cached source. Unicode, spaces and commas arrive unchanged at Windows Shell, and missing-source/Shell failures remain visible.
 
 ## Speech To Text
 

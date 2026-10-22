@@ -1,5 +1,24 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## Round86 — MEDIA-STORAGE-INPUT-01 (2026-10-22)
+
+New imports/followed MKV use footage-named unique folders and prefixed source,
+analysis, final audio and waveform/STT caches. Existing footage is not renamed,
+as explicitly selected by the owner. Shared lookup preserves legacy directories,
+relative paths, transcript/diarization/Patch evidence and checkpoint recovery.
+Windows Reveal uses native Shell item selection with explicit failures and balanced
+COM cleanup. Input STT/model/queue controls sit immediately below Recorder and
+remain available across Library tab switches through the existing controller.
+
+Frontend1221/150files, focused91, typecheck/build213 pass. Related API groups136,
+55 and latest51, plus final track7, pass (groups overlap). Native Unicode Shell
+item round-trip, real media/cache/move/final-tail and isolated mutation pass.
+ADR0134 and `docs/gates/media-storage86-20261022.md` retain evidence/earlier failures.
+The already-running idle stack was restarted through its controller; health JSON
+and final served build pass. Browser/visible Explorer UAT and Round84 full-API
+containment remain open. No existing-owner-footage rename, STT/model or portable
+release change. Phase03 stays60%, Phase06 open; stop86.
+
 ## Round85 — MKV-IMPORT-REVIEW-01 (2026-10-22)
 
 Delivered the ordinary native Import review with cache/link and per-track Import/
