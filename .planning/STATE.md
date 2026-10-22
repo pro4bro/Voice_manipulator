@@ -12,6 +12,21 @@ last_activity_desc: Five owner-requested connection rounds complete through91. F
 
 # Project State
 
+## SUBTITLE-ENGINES-01 — selectable subtitle alignment (2026-10-23)
+
+Input now offers MFA, stable-ts and EasyAligner with separate parameters and
+explicit Start → Ghost Preview → Apply/Restore. Manual timing stays locked;
+unknown/over-limit boundaries stay put and collisions remain visible. All three
+CPU workers aligned25/25 words in a real8s Vietnamese fixture; all three also
+produced real UI ghosts. Apply/Restore preserved the source audio and restored
+exact text/words. Final related API103 and frontend9 pass; typecheck/build pass.
+Full snapshots remain non-green:API1454 pass/6 timing failures (isolated5 pass,
+VibeVoice60s import still fails); frontend1229 pass/1 CSS5s timeout (focused case
+passes). No gate was weakened. See `docs/gates/subtitle-engines-01-20261023.md`,
+`docs/SUBTITLE-ALIGNMENT-ENGINES.md` and ADR0137. Private runtimes/models are local;
+no portable release or accuracy benchmark is claimed. This named bounded round
+is independent of expressive rounds92–96; their status/phase progress is retained.
+
 ## Rounds87–91 — EXPRESSIVE-ENGINE-CONNECTIONS (2026-10-22)
 
 Owner explicitly requested the first five integration rounds in one invocation.
