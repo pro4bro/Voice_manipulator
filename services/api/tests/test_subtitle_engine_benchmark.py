@@ -32,6 +32,21 @@ def word(text, start, end):
     return {"text": text, "start": start, "end": end}
 
 
+def test_recommendation_gate_rejects_a_better_median_with_new_tail_and_conflicts():
+    from copy import deepcopy
+    from scripts.profiling.subtitle_engine_benchmark import qualification_failures
+
+    baseline = score_alignment([word("a", 0, .2)], [word("a", .01, .21)], [(0, 0)])
+    assert qualification_failures(deepcopy(baseline), baseline) == []
+    candidate = deepcopy(baseline)
+    candidate["inAbsoluteMs"]["median"] = 0
+    candidate["outAbsoluteMs"]["p95"] = 1000
+    candidate["severeOver500Ms"]["count"] = 1
+    candidate["candidateOverlapPairs"] = [[0, 1]]
+    assert set(qualification_failures(candidate, baseline)) == {
+        "outAbsoluteMs-p95-increased", "severe-count-increased", "whole-output-overlaps-increased"}
+
+
 def test_known_bias_reports_signed_and_absolute_errors_in_milliseconds():
     reference = [word("Alpha", 1.0, 1.4), word("two!", 2.0, 2.5), word("thrée", 3.0, 3.2)]
     candidate = [word("alpha", .95, 1.35), word("TWO", 1.95, 2.45), word("tree", 3.0, 3.2)]

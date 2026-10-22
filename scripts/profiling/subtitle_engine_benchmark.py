@@ -188,6 +188,23 @@ def rank(metrics):
     return (-metrics["bothEdgesWithin100Ms"]["count"], metrics["severeOver500Ms"]["count"], mae)
 
 
+def qualification_failures(metrics, baseline):
+    """Protocol's recommendation gates, distinct from the tuning objective."""
+    failures = []
+    if metrics["measuredWords"] < baseline["measuredWords"]:
+        failures.append("coverage-decreased")
+    if metrics["severeOver500Ms"]["count"] > baseline["severeOver500Ms"]["count"]:
+        failures.append("severe-count-increased")
+    for edge in ("inAbsoluteMs", "outAbsoluteMs"):
+        if metrics[edge]["p95"] is None or metrics[edge]["p95"] > baseline[edge]["p95"]:
+            failures.append(edge + "-p95-increased")
+    if len(metrics["candidateOverlapPairs"]) > len(baseline["candidateOverlapPairs"]):
+        failures.append("whole-output-overlaps-increased")
+    if metrics["invalidCandidateWords"] + metrics["outOfBoundsCandidateWords"] > baseline["invalidCandidateWords"] + baseline["outOfBoundsCandidateWords"]:
+        failures.append("invalid-intervals-increased")
+    return failures
+
+
 def fit_bias(metrics, mode):
     if mode == "none":
         return [0., 0.]
@@ -276,7 +293,8 @@ def select(folder):
     save(code_folder / "identity.json", {str(path.relative_to(ROOT)): digest(path) for path in code_paths})
     seed = read(folder / "current.json")["words"]
     duration = protocol["audio"]["duration"]
-    baseline_count = score(folder, seed, "calibration")["measuredWords"]
+    baseline_metrics = score(folder, seed, "calibration")
+    baseline_count = baseline_metrics["measuredWords"]
     winners = {}
     for config in protocol["configurations"]:
         output = folder / "runs" / config["id"]
@@ -303,10 +321,12 @@ def select(folder):
                 if metrics["measuredWords"] != baseline_count:
                     raise ValueError("Effective postprocessing coverage changed")
                 options.append({"limitMs": limit, "biasMode": mode, "biasSeconds": offsets,
-                                "calibration": metrics, "diagnostics": diagnostics})
+                                "calibration": metrics, "diagnostics": diagnostics,
+                                "qualificationFailures": qualification_failures(metrics, baseline_metrics)})
         best = min(options, key=lambda option: rank(option["calibration"]))
-        selected[engine] = {"config": config, "postprocess": best, "options": options}
-    baseline_metrics = score(folder, seed, "calibration")
+        qualified = [option for option in options if not option["qualificationFailures"]]
+        selected[engine] = {"config": config, "postprocess": best, "options": options,
+                            "qualifiedPostprocess": min(qualified, key=lambda option: rank(option["calibration"])) if qualified else None}
     baseline_options = []
     for mode in ("none", "scalar", "separate"):
         offsets = fit_bias(baseline_metrics, mode)
@@ -337,6 +357,9 @@ def evaluate(folder):
         entries[engine + "-effective-default"], _ = effective(seed, aligned, duration, engine, 2000)
         post = selected["postprocess"]
         entries[engine + "-calibrated"], _ = effective(seed, add_bias(aligned, post["biasSeconds"], duration), duration, engine, post["limitMs"])
+        qualified = selected.get("qualifiedPostprocess")
+        if qualified:
+            entries[engine + "-qualified"], _ = effective(seed, add_bias(aligned, qualified["biasSeconds"], duration), duration, engine, qualified["limitMs"])
     reports = {name: {split: score(folder, words, split, seed) for split in ("calibration", "validation", "full")}
                for name, words in entries.items()}
     save(folder / "evaluation.json", {"selectionSha256": digest(folder / "selection.json"), "entries": reports})
