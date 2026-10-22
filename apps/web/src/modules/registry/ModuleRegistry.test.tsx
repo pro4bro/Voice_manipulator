@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { expect, it, vi } from "vitest";
 
 import { EMPTY_SELECTION } from "../../domain/word-selection";
@@ -15,6 +16,24 @@ function importContext(values: Record<string, unknown>) {
     ...values,
   } as unknown as StudioContext;
 }
+
+it("keeps STT in its right dock while switching the Input library tab", () => {
+  function InputModules() {
+    const [host, setHost] = useState<HTMLDivElement | null>(null);
+    const context = importContext({ speechToTextHost: host, onSpeechToTextHostChange: setHost });
+    return <><ModuleRegistry id="library-panel" context={context} /><ModuleRegistry id="speech-to-text-controls" context={context} /></>;
+  }
+  const view = render(<InputModules />);
+  const dock = view.container.querySelector(".speech-to-text-dock") as HTMLElement;
+  const library = view.container.querySelector(".library-panel") as HTMLElement;
+  expect(within(library).queryByRole("button", { name: /^Speech to text/ })).toBeNull();
+  expect(within(dock).getByRole("button", { name: /^Speech to text/ })).toBeDisabled();
+  fireEvent.change(within(dock).getByLabelText("Model Speech to Text"), { target: { value: "small" } });
+  fireEvent.click(screen.getByRole("tab", { name: /Sound Library/ }));
+  expect(within(dock).getByLabelText("Model Speech to Text")).toHaveValue("small");
+  fireEvent.click(screen.getByRole("tab", { name: /Media Pool/ }));
+  expect(within(dock).getByLabelText("Model Speech to Text")).toHaveValue("small");
+});
 
 it.each(["media-pool", "library-panel"] as const)("%s shows the picked host file and dispatches the cache choice", async (id) => {
   const onConfirmNativeMediaImport = vi.fn();

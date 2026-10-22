@@ -1397,6 +1397,11 @@
 .media-stt-action .button { border-right: 0; }
 .media-stt-action select { min-width: 0; padding: 0; color: var(--text); border: 1px solid var(--accent); background: var(--surface-raised); font-family: var(--mono); font-size: 0; cursor: pointer; }
 .media-stt-action select option { font-size: calc(10px * var(--font-scale)); }
+.speech-to-text-dock .media-stt-action { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.speech-to-text-dock .media-stt-action .button { border-right: 1px solid var(--accent); }
+.speech-to-text-dock .media-stt-action select { width: 100%; padding: 8px; font-size: calc(11px * var(--font-scale)); }
+.library-panel-media { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.library-panel-media[hidden] { display: none; }
 
 /* Teleprompter: the reading surface Script becomes during a guided session */
 .script-module--reading .module-frame__body { display: grid; align-content: start; gap: 10px; padding: 12px 14px; overflow: hidden; }

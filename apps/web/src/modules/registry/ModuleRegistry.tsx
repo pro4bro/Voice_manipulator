@@ -130,6 +130,8 @@ export interface StudioContext {
   onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void;
   voiceScriptDocument?: import("../../domain/types").VoiceScriptDocument;
   manipulatorMode?: import("../../domain/types").ManipulatorMode;
+  speechToTextHost?: HTMLElement | null;
+  onSpeechToTextHostChange?: (host: HTMLDivElement | null) => void;
   voiceScriptSettingsHost?: HTMLElement | null;
   onVoiceScriptSettingsHostChange?: (host: HTMLDivElement | null) => void;
   voiceEdits?: import("../../domain/voice-edits").VoiceEditController;
@@ -313,6 +315,7 @@ function mediaPoolProps(context: StudioContext) {
     onToggleDiarization: context.onToggleDiarization,
     selectedAssetId: context.selectedAssetId,
     workflow: context.workflow,
+    speechToTextHost: context.speechToTextHost,
     sttEngines: context.sttEngines,
     asrAdapters: context.asrAdapters,
     speakers: context.trainingCatalog.speakers,
@@ -367,6 +370,8 @@ export function ModuleRegistry({ id, context }: ModuleRegistryProps) {
       return <MediaPool {...mediaPoolProps(context)} />;
     case "voice-vault":
       return <VoiceVault projectId={context.projectId} onCollectionImported={context.onCollectionImported} onPrepareCollectionExport={context.onPrepareCollectionExport} onDeleteEnvironment={context.onDeleteEnvironment} onDeleteEnvironments={context.onDeleteEnvironments} onDeleteSpeaker={context.onDeleteSpeaker} onDeleteSpeakers={context.onDeleteSpeakers} onDeleteVoice={context.onDeleteVoice} onDeleteVoices={context.onDeleteVoices} voices={context.projectVoices} assets={workingAssets} catalog={context.trainingCatalog} onCatalogChange={context.onCatalogChange} onSelectVoice={context.onVoiceChange} profileSchema={context.profileSchema} selectedVoice={context.selectedVoice} />;
+    case "speech-to-text-controls":
+      return <ModuleFrame title="Speech to text" eyebrow="TRANSCRIBE" className="speech-to-text-dock"><div ref={context.onSpeechToTextHostChange} /></ModuleFrame>;
     case "subtitle-refinement":
       if (!context.onPrepareSubtitleAlignment || !context.onSubtitleAlignmentApplied) return <ModuleFrame title="Tinh chỉnh subtitle"><p>Workspace chưa sẵn sàng để lưu căn chỉnh.</p></ModuleFrame>;
       return <SubtitleRefinementPanel projectId={context.projectId} assets={selectedTracks}

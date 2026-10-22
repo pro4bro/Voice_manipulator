@@ -23,6 +23,25 @@ function props(overrides = {}) {
 }
 
 describe("MediaPool", () => {
+  it("docks the same STT selection, model and queue controls outside the Media Pool", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const onQueueTranscriptions = vi.fn();
+    const onControlTranscriptions = vi.fn();
+    const selected = { ...asset, transcriptionSelected: true, transcriptionStatus: "skipped" as const };
+    const view = render(<MediaPool {...props({ assets: [selected], speechToTextHost: host, onQueueTranscriptions, onControlTranscriptions })} />);
+    expect(within(view.container).queryByRole("button", { name: /^Speech to text/ })).toBeNull();
+    fireEvent.change(within(host).getByRole("combobox", { name: "Model Speech to Text" }), { target: { value: "small" } });
+    fireEvent.click(within(host).getByRole("button", { name: /^Speech to text/ }));
+    expect(onQueueTranscriptions).toHaveBeenCalledWith("small");
+    view.rerender(<MediaPool {...props({ assets: [{ ...selected, transcriptionStatus: "processing" }], speechToTextHost: host, onControlTranscriptions })} />);
+    fireEvent.click(within(host).getByRole("button", { name: /^Pause/ }));
+    expect(onControlTranscriptions).toHaveBeenCalledWith("pause");
+    view.unmount();
+    expect(host).toBeEmptyDOMElement();
+    host.remove();
+  });
+
   it("shows the growing MKV recording marker on its footage and tracks until final import, independently of STT", () => {
     const parent = { ...asset, id: "parent", name: "Live take.mkv", growingMkvFollow: true,
       sourcePath: "assets/media/parent/source.mkv" };

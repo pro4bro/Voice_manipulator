@@ -141,6 +141,7 @@ interface MediaPoolProps {
   selectedScriptAssetIds?: string[] | null;
   busy: boolean;
   workflow: WorkspacePage;
+  speechToTextHost?: HTMLElement | null;
   /** Speech-to-text engines from their descriptors; the select is built from these. */
   sttEngines?: TrainingModelOption[];
   /** Speech-recognition adapters this project trained. */
@@ -552,6 +553,7 @@ export function MediaPool({
   selectedScriptAssetIds,
   busy,
   workflow,
+  speechToTextHost,
   sttEngines = [],
   asrAdapters = [],
   speakers,
@@ -1143,6 +1145,29 @@ export function MediaPool({
     </section>;
   }
 
+  const speechToTextControls = (
+    <div className="media-stt-action">
+      {queueBusy || heldBack.length ? <>
+        <button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">
+          {queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})
+        </button>
+        <TaskStop scope="STT" onStop={(mode) => onControlTranscriptions(mode === "all" ? "stop-all" : "stop")} />
+      </> : <button className="button button--accent media-send-training"
+        disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)}
+        onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}
+      <select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>
+        {choiceGroups.map((group) => <optgroup key={group} label={group}>
+          {choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} title={choice.status} value={choice.value}>
+            {choice.label}{choice.available ? "" : " · chưa sẵn sàng"}
+          </option>)}
+        </optgroup>)}
+      </select>
+      {chosen?.engine && chosen.engine.id !== "faster-whisper"
+        ? <small className="media-stt-engine-note">{chosen.engine.description}{chosen.available ? "" : ` · ${chosen.status}`}</small>
+        : !chosen?.available && chosen?.status ? <small className="media-stt-engine-note">{chosen.status}</small> : null}
+    </div>
+  );
+
   return (
     <ModuleFrame
       className="media-pool-module"
@@ -1221,7 +1246,7 @@ export function MediaPool({
         </section> : null}
       </div>
       <div className="media-pool-footer">
-        {workflow === "speech-to-text" ? <div className="media-stt-action">{queueBusy || heldBack.length ? <><button className="button button--quiet" onClick={() => onControlTranscriptions(queueBusy ? "pause" : "resume")} type="button">{queueBusy ? "Pause" : "Chạy tiếp"} ({queueBusy ? running.length : heldBack.length})</button><TaskStop scope="STT" onStop={(mode) => onControlTranscriptions(mode === "all" ? "stop-all" : "stop")} /></> : <button className="button button--accent media-send-training" disabled={(!transcriptionCount && !selectedGrowingMkv) || (chosen !== null && !chosen.available && !selectedGrowingMkv)} onClick={startSpeechToText} type="button">Speech to text {transcriptionCount ? `(${transcriptionCount})` : ""}</button>}<select aria-label="Model Speech to Text" onChange={(event) => setSttModel(event.target.value)} value={sttModel}>{choiceGroups.map((group) => <optgroup key={group} label={group}>{choices.filter((choice) => choice.group === group).map((choice) => <option disabled={!choice.available} key={choice.value} title={choice.status} value={choice.value}>{choice.label}{choice.available ? "" : " · chưa sẵn sàng"}</option>)}</optgroup>)}</select>{chosen?.engine && chosen.engine.id !== "faster-whisper" ? <small className="media-stt-engine-note">{chosen.engine.description}{chosen.available ? "" : ` · ${chosen.status}`}</small> : !chosen?.available && chosen?.status ? <small className="media-stt-engine-note">{chosen.status}</small> : null}</div> : null}
+        {workflow === "speech-to-text" ? (speechToTextHost ? createPortal(speechToTextControls, speechToTextHost) : speechToTextControls) : null}
         {workflow === "speech-to-text" && trainingCount > 0 ? <button className="button button--lime button--full media-send-training" onClick={onSendToTraining} type="button">Gửi {trainingCount} footage sang Voice Training</button> : null}
         <p className="media-pool-note"><i /> STT chạy lần lượt theo thứ tự footage được thêm vào, ngay cả khi bạn đổi page.</p>
       </div>

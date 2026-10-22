@@ -77,6 +77,7 @@ export type ModuleId =
   | "changer-timeline"
   | "training-job"
   | "project-overview"
+  | "speech-to-text-controls"
   | "subtitle-refinement"
   | "speaker-isolation"
   | "speaker-emotion"

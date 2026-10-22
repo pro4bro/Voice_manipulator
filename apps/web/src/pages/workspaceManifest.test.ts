@@ -11,7 +11,7 @@ describe("workspaceManifest", () => {
     expect(manifest.modules).not.toContain("voice-vault");
     expect(manifest.modules).not.toContain("control-rack");
     expect(manifest.columns.left).toEqual(["library-panel"]);
-    expect(manifest.columns.right).toEqual(["obs-capture", "recorder", "subtitle-refinement", "speaker-emotion", "speaker-isolation"]);
+    expect(manifest.columns.right).toEqual(["obs-capture", "recorder", "speech-to-text-controls", "subtitle-refinement", "speaker-emotion", "speaker-isolation"]);
   });
 
   it("keeps editing modules in source workflows and training controls in Train", () => {

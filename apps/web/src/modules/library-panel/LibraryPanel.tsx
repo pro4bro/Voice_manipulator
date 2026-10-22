@@ -17,6 +17,7 @@ interface LibraryPanelProps {
   selectedImportedTrackId?: string | null;
   busy: boolean;
   workflow: WorkspacePage;
+  speechToTextHost?: HTMLElement | null;
   speakers: SpeakerProfile[];
   environments: EnvironmentNoiseProfile[];
   catalog: TrainingCatalog;
@@ -70,7 +71,8 @@ export function LibraryPanel(props: LibraryPanelProps) {
         <button aria-selected={tab === "media"} className={tab === "media" ? "is-active" : ""} onClick={() => setTab("media")} role="tab" type="button"><Icon name="folder" />Media Pool <b>{props.assets.length}</b></button>
         <button aria-selected={tab === "sound"} className={tab === "sound" ? "is-active" : ""} onClick={() => setTab("sound")} role="tab" type="button"><Icon name="waveform" />Sound Library <b>{props.speakers.length + props.environments.length}</b></button>
       </div>
-      {tab === "media" ? <MediaPool {...props} /> : <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} />}
+      <div className="library-panel-media" hidden={tab !== "media"}><MediaPool {...props} /></div>
+      {tab === "sound" ? <VoiceVault projectId={props.projectId} onCollectionImported={props.onCollectionImported} onPrepareCollectionExport={props.onPrepareCollectionExport} assets={props.assets} catalog={props.catalog} onCatalogChange={props.onCatalogChange} onDeleteEnvironment={props.onDeleteEnvironment} onDeleteEnvironments={props.onDeleteEnvironments} onDeleteSpeaker={props.onDeleteSpeaker} onDeleteSpeakers={props.onDeleteSpeakers} onDeleteVoice={props.onDeleteVoice} onDeleteVoices={props.onDeleteVoices} onSelectVoice={props.onSelectVoice} profileSchema={props.profileSchema} selectedVoice={props.selectedVoice} voices={props.voices} /> : null}
     </section>
   );
 }

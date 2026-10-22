@@ -161,6 +161,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const obsCaptureEnabled = captureSource === "obs-livelink";
   const [activePage, setActivePage] = useState<WorkspacePage>(project.lastPage);
   const [manipulatorMode, setManipulatorMode] = useState<ManipulatorMode>("voice-over");
+  const [speechToTextHost, setSpeechToTextHost] = useState<HTMLDivElement | null>(null);
   const [voiceScriptSettingsHost, setVoiceScriptSettingsHost] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -2840,7 +2841,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }));
     },
     voiceScriptDocument: voiceScript.document,
-    manipulatorMode, voiceScriptSettingsHost,
+    manipulatorMode, speechToTextHost,
+    onSpeechToTextHostChange: setSpeechToTextHost,
+    voiceScriptSettingsHost,
     onVoiceScriptSettingsHostChange: setVoiceScriptSettingsHost,
     onVoiceScriptDocumentChange: voiceScript.update,
     voiceScriptSaveError: voiceScript.error,
@@ -3023,7 +3026,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [manipulatorMode, generationEngine, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, captureSource, obsCaptureEnabled, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [manipulatorMode, generationEngine, speechToTextHost, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, captureSource, obsCaptureEnabled, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => {
     if (activePage === "voice-manipulator" && ((id === "voice-generator" && manipulatorMode !== "voice-over")
