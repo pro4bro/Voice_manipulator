@@ -1,0 +1,48 @@
+# Expressive training next slice — 2026-10-22
+
+## Recommendation
+
+The smallest useful next slice is a **dry-run expressive training plan**: from one selected Dataset Manifest and one speaker, let the user choose emotion × vocal-effort variants, then produce a reviewable matrix of per-variant segment membership, fixed neutral-anchor membership, training settings, and estimates. It must not start a trainer or create model artifacts. This is implementable without claiming that any current engine has an emotion/effort trainer.
+
+The actual data model is not ready to execute this plan. `TrainingBatch` is not a domain type: `TrainingRunner.start_batch` currently means a sequential set of runs for different speakers. Each `TrainingRun` stores one `emotion`, but there is no vocal-effort label, variant plan, anchor-segment list, or variant lineage. `VoiceModelSet` carries anchor voice/segment, members, and shared manifest/config lineage, but no variant effort or fixed anchor slice. Do not repurpose the speaker batch concept as an emotion/effort batch.
+
+## Existing app facts
+
+- `DatasetSegment` has `speaker_profile_id`, `emotion`, derived `instruct`, and train/dev split (`services/api/app/domain/models.py:1053-1071`). It has no vocal-effort field. The manifest is a snapshot of selected, attributed clips.
+- Media annotations include speaker and emotion, while `ProjectMediaAsset` has a separate project/edit `gainDb` field (`apps/web/src/domain/types.ts:196`; its annotation types at `:249-257`, `:704-707`). `gainDb` is playback/edit gain, not evidence that a recording was spoken loudly or softly. Do not treat the two as synonyms.
+- `TrainingRunConfig` stores generic engine/model parameters (`services/api/app/domain/models.py:1201-1216`). `TrainingRunStart` accepts a manifest plus a list of speaker IDs (`:1219-1227`). `TrainingRun` records speaker, batch ID/index/size, one emotion, and config (`:1618-1648`).
+- `TrainingRunner.start_batch` validates each speaker has train and dev segments, creates a shared `batch_id`, then serially schedules one run per speaker; `_target_manifest` filters by speaker only (`services/api/app/adapters/training_runner.py:334-375`, `:923-937`). This is not a matrix scheduler and it does not filter by emotion.
+- `VoiceModelSetMember` currently has role/emotion/source run; lineage has manifest ID/hash, engine revision, model/base/config, segment count and source runs. The set has a speaker, generation family, anchor voice/segment and members (`services/api/app/domain/models.py:1321-1402`). Creation currently uses all manifest segments for that speaker to establish lineage, and classifies `normal` as neutral (`services/api/app/adapters/file_voice_model_sets.py:61-90`). It does not persist a byte-identical neutral anchor subset shared among models.
+- The older approved plan specifies one adapter per emotion plus the same fixed neutral segment slice for every variant, captured by IDs; it treats one Voice Model Set as the anchored publication unit (`.planning/phases/03-voice-training/03-04-PLAN.md:145-209`). This is an existing product decision to preserve. Vocal effort is an additional axis and needs explicit design before implementation.
+- Existing per-word/asset labels describe emotion and speaker; a generic `delivery` annotation (`apps/web/src/domain/types.ts:1260-1263`) includes `neutral | whisper | shout`, but it is reference-footage metadata. It is not yet part of the trainable dataset segment contract. Effort should be a categorical production label (at minimum neutral/soft/strong, or a product-approved equivalent), separate from measured loudness and gain.
+
+## Trainer capability and limit
+
+The checked-out upstream F5-TTS source is pinned at `2f866649b779881af8bd644e76b9a6d95053da29` (`.runtime/engines/research/F5-TTS`). Its official `finetune_cli.py` exposes a single `dataset_name`, model experiment, learning rate, batch size/type, epochs, warmup, checkpoint cadence, pretrained checkpoint, and tokenizer options (`src/f5_tts/train/finetune_cli.py:26-73`). It loads one dataset and calls `trainer.train(...)` (`:183-210`). The companion `prepare_csv_wavs.py` expects `audio_file|text` pairs and makes a processed dataset (`src/f5_tts/train/datasets/prepare_csv_wavs.py:1-12`). There are no first-class emotion/effort variant or neutral-anchor controls. Separate runs over prepared subsets could be orchestrated in product code once supported, but this is not an F5-native trainer feature, and the current app adapter must not be represented as runnable without its runtime gate.
+
+The current OmniVoice path is explicitly LoRA capable, but its existing run field is one emotion label and the Voice Model Set path does not establish a fixed shared neutral subset. Round work should reuse the existing per-run/LoRA machinery only after constructing independently validated train manifests for each speaker/emotion/effort variant, all against the same pinned base. Do not infer trainer support from a label or from the older plan's mention of LoRA.
+
+## Smallest execution-ready follow-up after dry-run
+
+1. Formalize a categorical `vocal_effort` annotation on source segments, persist it through Dataset Manifest compilation, and leave playback `gainDb` unchanged.
+2. Add a project-owned variant-plan shape keyed by `(speaker_profile_id, emotion, vocal_effort)` with explicit `base_model` identity/hash and the same ordered neutral-anchor segment IDs per variant. The primary key must distinguish effort; otherwise e.g. neutral emotion at low/high effort collides.
+3. Preview each variant's usable train/dev membership and durations. Require real speaker attribution, selected segment IDs, minimum nonempty train/dev membership, one base checkpoint hash, one engine revision/config family, and anchor membership in every training manifest. Never silently relabel untagged segments.
+4. Only when all plan invariants pass, allow an explicit schedule action that creates one independent run per variant, serially on the available GPU. Persist every run's `(speaker, emotion, effort)`, base fingerprint, source manifest hash, variant segment IDs, and anchor segment IDs so outputs can be compared and audited.
+5. Keep model publication behind the current Voice Model Set identity gate. A plan, queued job, or completed process is not a successful model; success requires the expected checkpoint/model artifact and real gate evidence.
+
+This staging makes the matrix inspectable before any persistent-format/API decision or expensive training. The Lead should choose whether to implement preview-only now, or first prioritize the needed effort-label contract; execution scheduling is a later slice because it crosses domain schema, compiler, API, UI and model lineage.
+
+## Vietnamese benchmark source and license notes
+
+The current `hynt/F5-TTS-Vietnamese-ViVoice` Hugging Face card is Vietnamese F5-TTS with model card example reference text **“cả hai bên hãy cố gắng hiểu cho nhau”** and generated text in its CLI example. The card lists files `README.md`, `config.json`, `model_last.pt`, and `qr.jpg`; it does not provide a reference WAV. Therefore, the card alone supplies a transcript example but not a playable, verified benchmark pair. The separate upstream Vietnamese fine-tuning GitHub repository has `ref.wav`/`ref2.wav`, and its `infer.sh` pairs `ref.wav` with the same reference transcript. That is a possible public engineering fixture only after checking the WAV's rights/provenance; the code repository's MIT license does not establish a separate media file's license.
+
+The Hugging Face ViVoice model card marks the model `cc-by-nc-sa-4.0` and states non-commercial research use; this is a factual restriction to record, **not legal approval** for product use. Do not bundle its 5.39 GB checkpoint or use it as an implied commercial base. A separate 2026 `anonymous-vivoice34/ViVoice34` preview card says CC-BY-4.0 and exposes playable audio plus transcript metadata, but it is a different dataset/corpus and should not be conflated with the F5 ViVoice checkpoint's training sources. No dataset audio was downloaded or copied in this research.
+
+## Primary sources
+
+- Local product domain: [`models.py`](../../services/api/app/domain/models.py#L1053), [`training_runner.py`](../../services/api/app/adapters/training_runner.py#L334), [`file_voice_model_sets.py`](../../services/api/app/adapters/file_voice_model_sets.py#L61), [`types.ts`](../../apps/web/src/domain/types.ts#L196).
+- Existing expressive set decision: [`03-04-PLAN.md`](../../.planning/phases/03-voice-training/03-04-PLAN.md#L145).
+- Pinned upstream F5-TTS: [`finetune_cli.py` at local checkout](../../.runtime/engines/research/F5-TTS/src/f5_tts/train/finetune_cli.py#L26), [`prepare_csv_wavs.py`](../../.runtime/engines/research/F5-TTS/src/f5_tts/train/datasets/prepare_csv_wavs.py#L1). The same revision is browseable at [upstream F5-TTS source](https://github.com/SWivid/F5-TTS/blob/2f866649b779881af8bd644e76b9a6d95053da29/src/f5_tts/train/finetune_cli.py).
+- [ViVoice F5-TTS model card](https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice) and [files at the pinned revision `5c14cdd4e3f62b69e75140558bea2b2e293ee8f1`](https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice/tree/5c14cdd4e3f62b69e75140558bea2b2e293ee8f1).
+- [Vietnamese F5-TTS fine-tuning repo](https://github.com/nguyenthienhy/F5-TTS-Vietnamese) and [its `infer.sh`](https://github.com/nguyenthienhy/F5-TTS-Vietnamese/blob/main/infer.sh) for the `ref.wav` / transcript example; audio rights remain unverified.
+- [ViVoice34 preview dataset card](https://huggingface.co/datasets/anonymous-vivoice34/ViVoice34) for the distinct CC-BY-4.0 playable preview source.

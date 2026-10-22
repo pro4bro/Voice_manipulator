@@ -25,6 +25,8 @@
 - **Reading Session**: A project-owned guided capture run pairing one Speaker Profile with selected passages, holding its takes, quality results, and per-emotion coverage. It snapshots the cards it recorded, so a moved Project keeps its own ground truth.
 - **Dataset Manifest**: A deterministic, portable snapshot of selected audio segments, verified text, timing, speaker, and emotion attribution that a Training Run consumes.
 - **Training Run**: One job that may fine-tune multiple Speaker Profiles and emits periodic checkpoint backups.
+- **Vocal Effort**: A reviewed performance label describing ordinary, soft, whispered, loud or shouted speech. It is separate from emotion and measured or rendered audio level.
+- **Training Variant Preview**: A reviewable draft of emotion and Vocal Effort subsets for one speaker, with a shared ordered neutral anchor and base/config lineage. It reports coverage and blockers before any Training Run can be scheduled.
 - **Workflow Step**: One named transformation stage that consumes Assets and may produce new Assets.
 - **Workspace Page**: Dashboard, Input (Speech to Text), Voice Training, Voice Manipulator, Voice Changer, or LipSync.
 - **LipSync Alignment Draft**: Session-only placement of one Media Pool video and one generated Voice Output on a shared preview clock; source IN points and timeline starts do not modify either Asset or imply a rendered derivative.

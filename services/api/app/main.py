@@ -89,6 +89,7 @@ from app.adapters.speaker_embedders import default_speaker_embedders
 from app.adapters.speaker_similarity_gate import SpeakerSimilarityGate
 from app.adapters.gpu_lease import GpuBusy, GpuLease
 from app.adapters.project_dataset_compiler import DatasetCompilationError, ProjectDatasetCompiler
+from app.adapters.training_variant_preview import preview_training_variants
 from app.adapters.reading_audience import audience_vocabulary
 from app.adapters.file_training_catalog import FileTrainingCatalog
 from app.adapters.legacy_studio_gateway import LegacyStudioGateway
@@ -230,6 +231,7 @@ from app.domain.models import (
     VoiceCollectionImportResult,
     WorkspacePage,
 )
+from app.domain.training_variants import TrainingVariantPlan, TrainingVariantPreviewRequest
 from app.domain.media_organization import MediaPoolOrganization
 from app.domain.ports import FolderPicker, ProjectRepository, SpeakerEmbedder, VoiceEngine
 from app.settings import Settings
@@ -2050,6 +2052,59 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except DatasetCompilationError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/projects/{project_id}/training-variants/preview",
+        response_model=TrainingVariantPlan,
+    )
+    def preview_training_variant_plan(
+        project_id: str, payload: TrainingVariantPreviewRequest
+    ) -> TrainingVariantPlan:
+        try:
+            project = projects.get(project_id)
+            manifest_path = (
+                Path(project.project_path)
+                / "assets"
+                / "training"
+                / "datasets"
+                / f"{payload.manifest_id}.json"
+            )
+            # Parse and fingerprint the same bytes even if a manifest is replaced
+            # concurrently. The preview must retain the identity of its input.
+            manifest_bytes = manifest_path.read_bytes()
+            manifest = DatasetManifest.model_validate_json(manifest_bytes)
+            if manifest.id != payload.manifest_id:
+                raise ValueError("Dataset manifest id không khớp với tên file.")
+            # All reads are explicit; do not use FileTrainingCatalog.get here because
+            # its path helper creates the catalog directory when it is absent.
+            catalog_path = Path(project.project_path) / "assets" / "training" / "catalog.json"
+            catalog = (
+                TrainingCatalog.model_validate_json(catalog_path.read_text(encoding="utf-8"))
+                if catalog_path.is_file()
+                else TrainingCatalog()
+            )
+            # Preview only reads descriptor/capability facts; avoid readiness probes
+            # that may import packages or inspect machine-local runtimes.
+            model = next(
+                item
+                for item in training_models.options(check_readiness=False)
+                if item.id == payload.training_model_id
+            )
+            return preview_training_variants(
+                payload,
+                manifest,
+                hashlib.sha256(manifest_bytes).hexdigest(),
+                {speaker.id for speaker in catalog.speakers},
+                model,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project, Dataset Manifest, or training model not found") from exc
+        except StopIteration as exc:
+            raise HTTPException(status_code=404, detail="Project, Dataset Manifest, or training model not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Project Dataset Manifest not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post(
         "/api/projects/{project_id}/training-runs",
