@@ -70,3 +70,13 @@ fallback parameters agree. Other engines remain selectable, and missing EasyAlig
 components still block Start rather than silently switching providers. This is a
 preferred preview configuration; the measured conflicts and limited reference
 do not justify automatic Apply or a universal accuracy claim.
+
+## Action discoverability correction — 2026-10-23
+
+The owner could not find Ghost Preview or Apply Aligner. The implementation had
+renamed them to `Bắt đầu tinh chỉnh` / `Apply New Timing`, placed them below all
+parameters and omitted them entirely without an eligible selected track.
+Show `Ghost Preview` and `Apply Aligner` together immediately below the panel
+heading, above the settings. Keep both visible in the empty state with an
+explanation; unavailable actions remain disabled. The same explicit preview,
+source binding, manual locks, Apply and Restore behavior is retained.

@@ -14,15 +14,15 @@ it("opens all refinement methods from the Input right-column module on any final
     selectedImportedTrackId: null, wordSelection: { indexes: [0], anchor: 0 }, onPrepareSubtitleAlignment: vi.fn(async () => {}),
     onSubtitleAlignmentApplied: vi.fn() } as unknown as StudioContext;
   vi.mocked(api.previewSubtitleTiming).mockResolvedValue({ id: "p", assetId: asset.id, state: "proposed", stale: false, mode: "pipeline", inputSignature: "x", startOffsetMs: 0, endOffsetMs: 0, rows: [], summary: { ready: 0, review: 0, locked: 0, unchanged: 0 }, diagnostics: {}, aligner: { status: "unavailable" } });
-  vi.mocked(api.subtitleAlignmentEngines).mockResolvedValue({ engines: [{ id: "mfa", label: "MFA", description: "align", license: "MIT", available: true, reason: "", models: [{ id: "mfa:vi", label: "Vietnamese", language: "vi", license: "MIT", available: true, reason: "" }] }] });
+  vi.mocked(api.subtitleAlignmentEngines).mockResolvedValue({ engines: [{ id: "easyaligner", label: "EasyAligner", description: "align", license: "MIT", available: true, reason: "", models: [{ id: "easy:vi", label: "Vietnamese", language: "vi", license: "MIT", available: true, reason: "" }] }] });
   render(<SubtitleTimingProvider><ModuleRegistry id="subtitle-refinement" context={context} /></SubtitleTimingProvider>);
   expect(screen.getByRole("heading", { name: "Tinh chỉnh subtitle" })).toBeInTheDocument();
   await screen.findByLabelText("Engine căn chỉnh subtitle");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeEnabled());
   fireEvent.click(screen.getByText("Tùy chọn nâng cao: phương pháp bổ sung"));
   for (const method of SUBTITLE_ALIGNMENT_METHODS) expect(screen.getByRole("checkbox", { name: method.label })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: "Nhập offset thủ công" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Kiểm tra độ lệch chữ / voice" }));
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
-  await waitFor(() => expect(api.previewSubtitleEngine).toHaveBeenCalledWith("not-conviction", "arbitrary", expect.objectContaining({ engineId: "mfa", methods: expect.arrayContaining([expect.objectContaining({ mode: "diagnose" })]) })));
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
+  await waitFor(() => expect(api.previewSubtitleEngine).toHaveBeenCalledWith("not-conviction", "arbitrary", expect.objectContaining({ engineId: "easyaligner", methods: expect.arrayContaining([expect.objectContaining({ mode: "diagnose" })]) })));
 });

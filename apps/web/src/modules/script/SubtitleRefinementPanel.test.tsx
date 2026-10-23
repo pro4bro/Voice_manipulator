@@ -44,6 +44,22 @@ function view(input = asset, onApplied = vi.fn()) {
     <SubtitleTimingGhosts assetId={input.id} words={input.words} start={0} span={10} /></SubtitleTimingProvider>;
 }
 
+it("keeps named preview and apply actions visible even before a track has finished STT", async () => {
+  const current = render(<SubtitleTimingProvider><SubtitleRefinementPanel projectId="project" assets={[]}
+    prepare={vi.fn(async () => {})} onApplied={vi.fn()} /></SubtitleTimingProvider>);
+  expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
+  expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
+  current.rerender(view({ ...asset, transcriptionStatus: "processing" }));
+  expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeDisabled();
+  current.rerender(view());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeEnabled());
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
+  expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
+});
+
 it("shows editable offsets, contextual ghost coordinates and one bulk Apply without word checklists", async () => {
   const applied = vi.fn(); render(view(asset, applied));
   await screen.findByRole("option", { name: "MFA" });
@@ -53,7 +69,8 @@ it("shows editable offsets, contextual ghost coordinates and one bulk Apply with
   expect(screen.queryByLabelText("Nhập offset thủ thủ công: Offset IN (ms)")).not.toBeInTheDocument();
   expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
   expect(api.applySubtitleTimingPreview).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  expect(screen.getByRole("button", { name: "Ghost Preview" }).compareDocumentPosition(screen.getByLabelText("Engine căn chỉnh subtitle")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   expect(await screen.findByRole("img", { name: "Ghost Preview · 1 từ · 1 từ xung đột" })).toBeInTheDocument();
   expect(api.previewSubtitleEngine).toHaveBeenCalledWith("project", "track", {
     engineId: "easyaligner", settings: { language: "vi", windowSeconds: 30, paddingSeconds: 1 }, maxMoveMs: 2000,
@@ -61,7 +78,7 @@ it("shows editable offsets, contextual ghost coordinates and one bulk Apply with
   expect(paint).toHaveBeenCalledWith(150, 1, 100, 21);
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.getByText(/2 từ xung đột timing/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Apply New Timing" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply Aligner" }));
   await waitFor(() => expect(api.applySubtitleTimingPreview).toHaveBeenCalledWith("project", "track", "p"));
   expect(applied).toHaveBeenCalledWith(expect.objectContaining({ words: [expect.objectContaining({ start: 1.5 }), asset.words[1]] }));
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
@@ -72,16 +89,16 @@ it("shows editable offsets, contextual ghost coordinates and one bulk Apply with
 it("invalidates Ghost and Apply after parameters or source change", async () => {
   const current = render(view());
   await screen.findByRole("option", { name: "MFA" });
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   await screen.findByRole("img");
   fireEvent.change(screen.getByLabelText("Padding (s)"), { target: { value: "1.5" } });
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Apply New Timing" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   await screen.findByRole("img");
   current.rerender(view({ ...asset, words: [{ ...asset.words[0], text: "changed" }, asset.words[1]] }));
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Apply New Timing" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
 });
 
 it("uses source-clock positions, excludes unchanged words and rejects a different track or source revision", () => {
@@ -99,12 +116,12 @@ it("clears a selection-only preview when the selected words change", async () =>
   const current = render(renderSelection([0]));
   await screen.findByRole("option", { name: "MFA" });
   fireEvent.click(screen.getByRole("checkbox", { name: "Chỉ các từ đang chọn" }));
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   await screen.findByRole("img");
   expect(api.previewSubtitleEngine).toHaveBeenCalledWith("project", "track", expect.objectContaining({ indexes: [0] }));
   current.rerender(renderSelection([1]));
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Apply New Timing" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
 });
 
 it("shows engine-specific settings without inferring until explicit start and sends the chosen settings", async () => {
@@ -117,7 +134,7 @@ it("shows engine-specific settings without inferring until explicit start and se
   expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Ngôn ngữ MFA"), { target: { value: "en" } });
   expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   await waitFor(() => expect(api.previewSubtitleEngine).toHaveBeenCalledWith("project", "track", expect.objectContaining({
     engineId: "mfa", settings: { language: "en", beam: 10, retryBeam: 40 }, maxMoveMs: 2000,
   })));
@@ -129,13 +146,13 @@ it("rejects an engine result that resolves after the engine selection changes", 
   vi.mocked(api.previewSubtitleEngine).mockReturnValueOnce(new Promise((resolve) => { resolvePreview = resolve; }));
   render(view());
   await screen.findByRole("option", { name: "MFA" });
-  fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
   await waitFor(() => expect(api.previewSubtitleEngine).toHaveBeenCalled());
   fireEvent.change(screen.getByLabelText("Engine căn chỉnh subtitle"), { target: { value: "stable-ts" } });
   resolvePreview(proposal);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeEnabled());
   expect(screen.queryByRole("img", { name: /Ghost Preview/ })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Apply New Timing" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Apply Aligner" })).toBeDisabled();
 });
 
 it("keeps per-engine settings, clears an existing ghost on engine changes and blocks unavailable engines", async () => {
@@ -156,7 +173,7 @@ it("keeps per-engine settings, clears an existing ghost on engine changes and bl
   expect(screen.getByLabelText("Model stable-ts")).toHaveValue("small");
   fireEvent.change(screen.getByLabelText("Engine căn chỉnh subtitle"), { target: { value: "easyaligner" } });
   expect(screen.getByText(/Missing runtime/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Ghost Preview" })).toBeDisabled();
   expect(screen.queryByRole("img", { name: /Ghost Preview/ })).not.toBeInTheDocument();
 });
 

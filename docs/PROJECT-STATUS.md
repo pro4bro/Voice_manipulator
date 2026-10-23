@@ -1,5 +1,16 @@
 # Project Status — 2026-10-23
 
+## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
+
+Ghost Preview and Apply Aligner are now named explicitly and placed above the
+refinement settings in Input's right column. Both stay visible without an eligible
+track, with disabled-state guidance; Apply requires a changed current preview.
+EasyAligner defaults/manual locks and preview/apply/restore endpoints are retained.
+Focused frontend16, backend42 and typecheck/build214 pass. Isolated browser
+verification covers the two actions, Restore, empty selection and 280/400px columns;
+no live Project/model run. Gate: `docs/gates/subtitle-actions-01-20261023.md`.
+Phase03 stays60%, Phase06 open. Stop this bounded correction.
+
 ### Configuration follow-up — EasyAligner default (2026-10-23)
 
 At the owner's explicit request, subtitle refinement now opens with EasyAligner

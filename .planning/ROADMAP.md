@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
+
+Completed the owner's missing-action feedback: Ghost Preview and Apply Aligner
+stay visible above settings, including disabled empty-selection states. Existing
+engine defaults and timing protections remain. Focused frontend16/backend42,
+typecheck/build214 and isolated browser interaction checks pass. No owner Project
+or inference changes. See `docs/gates/subtitle-actions-01-20261023.md`.
+Stop this bounded correction; Phase03 stays60%, Phase06 remains open.
+
 ### Configuration follow-up — EasyAligner default (2026-10-23)
 
 At the owner's explicit request, subtitle refinement now opens with EasyAligner

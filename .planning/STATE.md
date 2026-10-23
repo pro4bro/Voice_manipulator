@@ -6,11 +6,20 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-23 — SUBTITLE-BENCHMARK-02 completed with engine, offset and conflict evidence.
-last_activity_desc: Seventeen CPU settings and three corrected-text replays verified on frozen Conviction. EasyAligner strongest for review; common offset helps; separate-edge expansion adds conflicts. Focused59 pass, owner/model hashes unchanged. No default or training changes. Stop named benchmark round; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-23 — SUBTITLE-ACTIONS-01 completed missing-action feedback.
+last_activity_desc: Ghost Preview and Apply Aligner now visible above settings and in empty selection with guidance. Frontend16/backend42, typecheck/build and isolated browser checks pass. EasyAligner defaults and manual locks retained. Stop bounded correction; Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
+
+The previous labels and placement obscured the expected actions, and no eligible
+track hid them entirely. Ghost Preview and Apply Aligner now stay visible above
+the parameters with disabled-state guidance. Frontend16/backend42, typecheck,
+build214 and isolated browser preview/apply/restore checks pass; no owner Project
+or model run. Gate: `docs/gates/subtitle-actions-01-20261023.md`.
+Stop this bounded correction; Phase03 stays60%, Phase06 remains open.
 
 ### Configuration follow-up — EasyAligner default (2026-10-23)
 

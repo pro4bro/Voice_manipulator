@@ -19,5 +19,6 @@
 .subtitle-refinement-parameters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .subtitle-refinement-parameters label { display: grid; font-size: .8rem; gap: 3px; }
 .subtitle-refinement-parameters input { min-width: 0; width: 100%; }
-.subtitle-refinement-actions { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; bottom: 0; background: var(--surface); padding-block: 6px; z-index: 1; }
+.subtitle-refinement-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
+.subtitle-refinement-actions button { min-width: 0; white-space: normal; }
 .subtitle-refinement-conflicts { color: var(--red, #d63f3f); }

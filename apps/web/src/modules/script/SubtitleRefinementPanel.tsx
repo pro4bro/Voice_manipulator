@@ -109,7 +109,7 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
       const value = await api.previewSubtitleEngine(projectId, target.id, { engineId, settings: settingsByEngine[engineId], maxMoveMs, ...(plan.length ? { methods: plan } : {}), ...(indexes ? { indexes } : {}) });
       if (mounted.current && version === generation.current && latestKey.current === key) {
         setProposal(value);
-        if (value.stale) { setNotice("Nguồn đã đổi. Bấm Bắt đầu tinh chỉnh để tính lại."); return; }
+        if (value.stale) { setNotice("Nguồn đã đổi. Bấm Ghost Preview để tính lại."); return; }
         setPreview({ assetId: target.id, sourceWordsKey: JSON.stringify(target.words), rows: value.rows, conflictIndexes: value.diagnostics.conflictIndexes ?? [] });
         setNotice(value.aligner.status === "unavailable" || value.aligner.status === "failed" ? value.aligner.reason ?? "Engine chưa tạo được mốc căn chỉnh." : "Ghost đang hiện trên Timeline. Phát audio để nghe và kiểm tra trước khi áp dụng.");
       }
@@ -136,7 +136,13 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
   const languageSetting = <label>Ngôn ngữ<select aria-label={`Ngôn ngữ ${engineId === "stable-ts" ? "stable-ts" : engine?.label ?? engineId}`} disabled={busy || catalogLoading} value={language} onChange={(event) => setEngineSetting("language", event.target.value)}><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>;
 
   return <ModuleFrame title="Tinh chỉnh subtitle" className="subtitle-refinement-module">
-    {!choices.length ? <small>Chọn track đã STT để căn chỉnh.</small> : <div className="subtitle-refinement-settings">
+    <div className="subtitle-refinement-actions" role="group" aria-label="Thao tác căn chỉnh subtitle">
+      <button type="button" className="button button--accent" disabled={busy || !timing || !ready || !validEngineSettings || !validMethods || !Number.isFinite(maxMoveMs) || maxMoveMs < 0 || maxMoveMs > 2000 || (selectedOnly && !selectionMatches)} onClick={() => void preview()}>{busy ? "Đang xử lý…" : "Ghost Preview"}</button>
+      <button type="button" className="button button--quiet" disabled={busy || !timing?.preview || proposal?.state !== "proposed" || proposal.stale || !changed || (selectedOnly && !selectionMatches)} onClick={() => void apply()}>Apply Aligner</button>
+      {proposal?.state === "applied" ? <button type="button" className="button button--quiet" disabled={busy || proposal.stale} onClick={() => void apply(true)}>Khôi phục timing</button> : null}
+    </div>
+    <small>Ghost Preview chạy engine và hiện timing mới mờ trên Timeline. Apply Aligner lưu các thay đổi sau khi kiểm tra.</small>
+    {!choices.length ? <p role="status">Chọn footage hoặc track trong Media Pool đã STT xong và có timing từng từ để bật Ghost Preview.</p> : <div className="subtitle-refinement-settings">
       <label>Track<select aria-label="Track tinh chỉnh" disabled={busy} value={assetId} onChange={(event) => { invalidate(); setAssetId(event.target.value); }}>{choices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label>Engine<select aria-label="Engine căn chỉnh subtitle" disabled={busy || catalogLoading} value={engineId} onChange={(event) => { invalidate(); setEngineId(event.target.value as SubtitleAlignmentEngineId); }}>{engines.map((item) => <option value={item.id} key={item.id}>{item.label}{item.available ? "" : " · chưa sẵn sàng"}</option>)}</select></label>
       {catalogLoading ? <small role="status">Đang kiểm tra engine và model…</small> : null}
@@ -154,10 +160,9 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
         const input = (field: keyof Omit<SubtitleRefinementMethod, "mode">, label: string, min: number, max: number) => <label>{label}<input type="number" aria-label={`${method.label}: ${label}`} value={Number.isFinite(values[field]) ? values[field] : ""} min={min} max={max} disabled={busy} onChange={(event) => parameter(mode, field, event.target.value)} /></label>;
         return <section key={mode} className="subtitle-refinement-choice"><label><input type="checkbox" checked={active} disabled={busy} onChange={(event) => { invalidate(); setEnabled((current) => event.target.checked ? [...current, mode] : current.filter((value) => value !== mode)); }} />{method.label}</label>{active ? <details><summary>Thông số</summary><p>{mode === "offset" ? "Số dương dịch muộn hơn; số âm dịch sớm hơn." : method.description}</p><div className="subtitle-refinement-parameters">{mode === "offset" ? <>{input("startOffsetMs", "Offset IN (ms)", -2000, 2000)}{input("endOffsetMs", "Offset OUT (ms)", -2000, 2000)}</> : null}{mode !== "diagnose" ? <>{input("strength", "Mức áp dụng (%)", 0, 100)}{input("maxMoveMs", "Dịch tối đa (ms)", 0, 2000)}</> : null}</div></details> : null}</section>;
       })}</div></details>
-      <div className="subtitle-refinement-actions"><button type="button" disabled={busy || !timing || !ready || !validEngineSettings || !validMethods || !Number.isFinite(maxMoveMs) || maxMoveMs < 0 || maxMoveMs > 2000 || (selectedOnly && !selectionMatches)} onClick={() => void preview()}>{busy ? "Đang tính…" : "Bắt đầu tinh chỉnh"}</button>
-        <button type="button" disabled={busy || !timing?.preview || proposal?.state !== "proposed" || proposal.stale || !changed || (selectedOnly && !selectionMatches)} onClick={() => void apply()}>Apply New Timing</button>
-        {proposal?.state === "applied" ? <button type="button" disabled={busy || proposal.stale} onClick={() => void apply(true)}>Khôi phục timing</button> : null}</div>
       <small>Ghost mờ nằm phía trên subtitle gốc; đỏ là xung đột. Dùng nút Phát của Timeline để nghe và so với waveform.</small>
+      {!busy && (!proposal || proposal.state !== "proposed") ? <small>Apply Aligner sẽ bật khi Ghost Preview có timing mới để áp dụng.</small> : null}
+      {proposal?.state === "proposed" && !changed ? <small>Không có timing thay đổi để áp dụng. Các từ đã chỉnh tay được giữ nguyên.</small> : null}
       {proposal ? <p role="status">{changed} từ thay đổi · {proposal.summary.locked} từ khóa{proposal.diagnostics.conflictIndexes?.length ? <strong className="subtitle-refinement-conflicts"> · {proposal.diagnostics.conflictIndexes.length} từ xung đột timing</strong> : null}</p> : null}
       {proposal?.diagnostics.drift ? <details><summary>Kiểm tra độ lệch chữ / voice</summary><p>Đối chiếu được {proposal.diagnostics.drift.comparedWords}/{proposal.diagnostics.drift.scopeWords} từ trên timing đầu vào. {proposal.diagnostics.drift.largeCount} từ nghi lệch từ 250 ms, {proposal.diagnostics.drift.severeCount} từ từ 500 ms. Đây là dấu hiệu để nghe lại, CTC có thể sai.</p></details> : null}
       {notice ? <p role="status">{notice}</p> : null}

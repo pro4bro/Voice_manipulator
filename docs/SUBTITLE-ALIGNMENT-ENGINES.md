@@ -8,13 +8,21 @@
 3. Choose the language/model and parameters. **Giới hạn dịch tối đa (ms)** bounds
    each edge's total movement from the current word interval (0 keeps it still).
    Optionally restrict the scope to selected Script/Timeline words.
-4. Press **Bắt đầu tinh chỉnh**. The engine runs against existing text. Ghosts
+4. Press **Ghost Preview** immediately below the **Tinh chỉnh subtitle** heading.
+   The engine runs against existing text. Ghosts
    appear above original subtitles; play the Timeline against its waveform.
-5. Change parameters and run again, or choose **Apply New Timing**. Only changed
+5. Change parameters and run again, or choose **Apply Aligner** beside Preview. Only changed
    words are written. Manually edited words remain locked. Red ghosts/conflicts
    indicate overlaps, including overlaps with words that stay still.
 6. **Khôi phục timing** restores the source-bound state before that Apply. Later
    text/timing/audio changes require another preview and can invalidate Restore.
+
+Both actions stay visible above the parameter form, including when no eligible
+track is selected. Ghost Preview is disabled until a selected track has completed
+STT with word timings and its engine/model is ready. Apply Aligner is disabled
+until a current preview contains changed words. An empty preview explains that
+manual timing is kept. The earlier labels were `Bắt đầu tinh chỉnh` and
+`Apply New Timing`; the actions still use the same preview/apply endpoints.
 
 Changing the selector or a parameter clears a pending ghost. It does not run a
 model or edit the script. Extra offset/waveform rules are available in collapsed
@@ -29,8 +37,8 @@ and maximum movement 2000ms. Additional methods, including offsets, start disabl
 The API and standalone neural worker use the same window/padding defaults when
 those EasyAligner fields are omitted. MFA and stable-ts remain selectable.
 
-The preferred default is a preview choice; inference starts only after **Bắt đầu
-tinh chỉnh**, and saving timing still requires **Apply New Timing**. Existing
+The preferred default is a preview choice; inference starts only after **Ghost
+Preview**, and saving timing still requires **Apply Aligner**. Existing
 manual timing remains protected. See the
 [Conviction report](research/CONVICTION-ALIGNMENT-BENCHMARK-20261023.md) for observed
 accuracy, runtime and the remaining conflict/unknown-word limitations.

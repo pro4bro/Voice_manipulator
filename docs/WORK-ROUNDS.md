@@ -1,5 +1,16 @@
 # Work Rounds
 
+## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
+
+Owner could not find Ghost Preview/Apply Aligner: the previous labels differed,
+actions were below all settings and disappeared without an eligible track.
+Both now stay visible immediately below the refinement heading, with disabled
+state guidance and the existing preview/apply/restore protections. EasyAligner
+defaults remain. Focused frontend16 and backend42 pass, typecheck/build214 pass;
+isolated browser checks preview/apply/restore, empty selection and narrow columns.
+No owner media or model run. Gate: `docs/gates/subtitle-actions-01-20261023.md`.
+Stop this bounded correction; Phase03 stays60%, Phase06 remains open.
+
 ### Configuration follow-up — EasyAligner default (2026-10-23)
 
 At the owner's explicit request, subtitle refinement now opens with EasyAligner
