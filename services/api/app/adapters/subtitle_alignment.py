@@ -20,6 +20,7 @@ from app.adapters.audio_waveform_envelope import AudioWaveformEnvelope
 from app.adapters.subtitle_waveform_anchors import pcm_vector_landmarks
 from app.adapters.subtitle_alignment_engines import SubtitleAlignmentEngines
 from app.domain.subtitle_engine_refinement import compose_engine_refinement
+from app.adapters.activity_center import CENTER
 
 
 class AlignmentConflict(RuntimeError):
@@ -146,6 +147,31 @@ class SubtitleAlignment:
                 "modelConfigSha256": fingerprint({p.name: sha256(p) for p in self.aligner.model.glob("*.json")}),
                 "runtimeSha256": fingerprint({p.relative_to(packages).as_posix(): sha256(p) for p in dependencies})}
 
+    def _start_activity(self, project_id, asset_id, engine="alignment"):
+        asset = self.media.get(project_id, asset_id)
+        footage_id = asset.source_archive_asset_id or asset_id
+        try:
+            footage = self.media.get(project_id, footage_id)
+            group_label = footage.name
+        except (KeyError, FileNotFoundError):
+            group_label = asset.name
+        task_id = f"alignment-{uuid4().hex}"
+        CENTER.start_task("alignment", f"Subtitle alignment · {engine}", task_id=task_id,
+            detail="Preparing alignment preview", project_id=project_id,
+            asset_id=asset_id, footage_id=footage_id, group_label=group_label, status="running")
+        return task_id
+
+    @staticmethod
+    def _activity_failed(task_id, error):
+        CENTER.finish_task(task_id, status="failed", detail=str(error), error=str(error))
+
+    def _update_progress(self, task_id, progress):
+        if not isinstance(progress, dict):
+            return
+        detail = progress.get("detail") or progress.get("stage") or "Aligning subtitles"
+        fraction = progress.get("fraction")
+        CENTER.update_task(task_id, detail=detail, fraction=fraction if isinstance(fraction, (int, float)) else None)
+
     def _reuse_alignment(self, project_id, asset_id, directory, folder, snapshot, indexes, identity):
         if identity is None:
             return None
@@ -170,12 +196,29 @@ class SubtitleAlignment:
             return None
 
     def analyze(self, project_id, asset_id, *, mode="auto", start_offset_ms=0, end_offset_ms=0, indexes=None, methods=None):
+        task_id = self._start_activity(project_id, asset_id, "diagnosis" if mode == "diagnose" else "preview")
+        try:
+            result = self._analyze(project_id, asset_id, mode=mode, start_offset_ms=start_offset_ms,
+                end_offset_ms=end_offset_ms, indexes=indexes, methods=methods, task_id=task_id)
+        except Exception as exc:
+            self._activity_failed(task_id, exc)
+            raise
+        aligner_status = result.get("aligner", {}).get("status")
+        if aligner_status in {"unavailable", "failed"}:
+            reason = result.get("aligner", {}).get("reason") or "Alignment engine did not produce a usable result"
+            CENTER.finish_task(task_id, status="failed", detail=reason, error=reason)
+        else:
+            CENTER.finish_task(task_id, status="complete", detail="Alignment proposal is ready")
+        return result
+
+    def _analyze(self, project_id, asset_id, *, mode="auto", start_offset_ms=0, end_offset_ms=0, indexes=None, methods=None, task_id=None):
         with self.media._lock(project_id):
             asset, audio, snapshot, _ = self._snapshot(project_id, asset_id)
             directory = self._directory(project_id, asset_id)
             identity = "proposal-" + uuid4().hex[:24]
             folder = directory / identity
             folder.mkdir(parents=True, exist_ok=False)
+        self._update_progress(task_id, {"stage": "Measuring source audio"})
         envelope = pcm_envelope(audio)
         if abs(envelope["duration"] - asset.duration) > .05:
             raise ValueError("Thời lượng analysis WAV không khớp footage; hãy kiểm tra nguồn.")
@@ -234,6 +277,17 @@ class SubtitleAlignment:
             return self.get(project_id, asset_id, identity)
 
     def analyze_engine(self, project_id, asset_id, *, engine, settings, max_move_ms=2000, indexes=None, methods=None):
+        task_id = self._start_activity(project_id, asset_id, engine)
+        try:
+            result = self._analyze_engine(project_id, asset_id, engine=engine, settings=settings,
+                max_move_ms=max_move_ms, indexes=indexes, methods=methods, task_id=task_id)
+        except Exception as exc:
+            self._activity_failed(task_id, exc)
+            raise
+        CENTER.finish_task(task_id, status="complete", detail="Alignment proposal is ready")
+        return result
+
+    def _analyze_engine(self, project_id, asset_id, *, engine, settings, max_move_ms=2000, indexes=None, methods=None, task_id=None):
         with self.media._lock(project_id):
             asset, audio, snapshot, _ = self._snapshot(project_id, asset_id)
             if indexes is not None and (not indexes or len(indexes) != len(set(indexes)) or any(
@@ -258,12 +312,14 @@ class SubtitleAlignment:
             raise AlignmentConflict("Đang có tác vụ căn âm học khác. Thử lại sau khi tác vụ đó xong.")
         try:
             alignment_identity = self.engines.identity(engine, settings)
-            aligned = self.engines.run(self._root(project_id), audio, asset.words, folder, scoped, engine, settings)
+            aligned = self.engines.run(self._root(project_id), audio, asset.words, folder, scoped, engine, settings,
+                progress=lambda value: self._update_progress(task_id, value))
         finally:
             self._cpu.release()
         if aligned.get("status") != "complete":
             raise ValueError(aligned.get("reason") or "Engine chưa hoàn tất căn chỉnh.")
         landmarks = pcm_vector_landmarks(self.waveforms, audio, directory / "waveform.json", envelope["duration"])
+        self._update_progress(task_id, {"stage": "Validating proposal"})
         result = compose_engine_refinement(asset.words, aligned.get("words"), asset.duration, engine=engine,
             max_move_ms=max_move_ms, methods=methods, indexes=scoped, rms=envelope["rms"],
             frame_seconds=envelope["frameSeconds"], waveform_landmarks=landmarks)

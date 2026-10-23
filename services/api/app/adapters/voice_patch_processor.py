@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
 from app.adapters.voice_patch_history import VoicePatchHistory
@@ -345,6 +346,27 @@ class VoicePatchProcessor:
             latest_path = path.parent / "latest.json"
             FileProjectRepository._atomic_write(latest_path, json.dumps({"version": 1, "jobId": job.id}, indent=2))
 
+    @staticmethod
+    def _activity_id(job: VoicePatchJob) -> str:
+        return f"tts:{job.id}"
+
+    def _start_activity(self, job: VoicePatchJob, output_name: str) -> None:
+        label = f"{output_name} — Voice Patch"
+        CENTER.start_task("tts", label, task_id=self._activity_id(job), detail="Queued Voice Patch",
+            fraction=0.0, project_id=job.project_id, group_label=label, status="queued")
+
+    def _sync_activity(self, job: VoicePatchJob, detail: str | None = None) -> None:
+        task_id = self._activity_id(job)
+        if job.status in {"complete", "stopped", "cancelled", "failed", "stale"}:
+            status = "complete" if job.status == "complete" else "cancelled" if job.status in {"stopped", "cancelled"} else "failed"
+            CENTER.finish_task(task_id, status=status, detail=detail or job.error or "Voice Patch preview artifacts published",
+                error=None if status == "complete" else job.error or job.status)
+            return
+        task = next((item for item in CENTER.tasks() if item.id == task_id), None)
+        if task is not None and task.status == "queued":
+            CENTER.claim_queued_task(task_id, job.project_id, "tts", detail=detail or "Voice Patch worker started")
+        CENTER.update_task(task_id, detail=detail or "Generating and validating Voice Patch preview", fraction=None)
+
     def _load_job(self, project_id: str, job_id: str) -> VoicePatchJob:
         path = self.job_path(project_id, job_id)
         if not path.is_file():
@@ -402,6 +424,7 @@ class VoicePatchProcessor:
             job = job.model_copy(update={"status": "stopped", "error": "Patch worker stopped; validated speech clips remain reusable.",
                 "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._save_job(job)
+            self._sync_activity(job)
         if job.status == "complete":
             try:
                 self._verify_current_job(job)
@@ -410,10 +433,12 @@ class VoicePatchProcessor:
                 job = job.model_copy(update={"status": "stale", "error": str(exc),
                     "audio_url": None, "replacement_audio_url": None, "updated_at": datetime.now(timezone.utc)}, deep=True)
                 self._save_job(job)
+                self._sync_activity(job)
             except (OSError, ValueError, wave.Error):
                 job = job.model_copy(update={"status": "failed", "error": "Voice Patch preview artifact is missing or corrupt.",
                     "audio_url": None, "replacement_audio_url": None, "updated_at": datetime.now(timezone.utc)}, deep=True)
                 self._save_job(job)
+                self._sync_activity(job)
         return job
 
     def preview_path(self, project_id: str, job_id: str, kind: str) -> Path:
@@ -449,11 +474,16 @@ class VoicePatchProcessor:
             context_record = VoiceScriptJob(id=job.id, project_id=project_id, total=1)
             state = _Running(job, SpeakerJobContext(context_record))
             self._save_job(job)
+            self._start_activity(job, snapshot["output"].name)
             self._running[job.id] = state
             thread = threading.Thread(target=self._run, args=(snapshot, state), daemon=True,
                 name=f"voice-patch-{job.id}")
             self._threads[job.id] = thread
-            thread.start()
+            try:
+                thread.start()
+            except Exception as exc:
+                self._finish(state, "failed", f"Could not start Voice Patch worker: {exc}")
+                raise
             return job
 
     def _cancelled(self, state: _Running) -> bool:
@@ -510,6 +540,7 @@ class VoicePatchProcessor:
 
     def _run(self, snapshot: dict[str, Any], state: _Running) -> None:
         job, context = state.job, state.context
+        self._sync_activity(job, "Voice Patch worker started")
         lease = None
         try:
             if not self._fresh(job.project_id, snapshot):
@@ -530,6 +561,7 @@ class VoicePatchProcessor:
             running_job = job.model_copy(update={"status": "running", "updated_at": datetime.now(timezone.utc)})
             state.job = running_job
             self._save_job(running_job)
+            self._sync_activity(running_job)
             cancellation_id = f"{job.id}-{uuid4().hex}"
             with context.lock:
                 context.active_request_id = cancellation_id
@@ -607,6 +639,7 @@ class VoicePatchProcessor:
                 "report": report, "error": None, "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._save_job(complete)
             state.job = complete
+            self._sync_activity(complete)
             with context.lock:
                 context.record = context.record.model_copy(update={"status": "complete", "done": 1})
         except ScriptRevisionConflict as exc:
@@ -637,6 +670,7 @@ class VoicePatchProcessor:
             state.job = state.job.model_copy(update={"status": status, "error": error,
                 "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._save_job(state.job)
+            self._sync_activity(state.job)
             with state.context.lock:
                 state.context.record = state.context.record.model_copy(update={"status": status, "error": error,
                     "finished_at": datetime.now(timezone.utc)})

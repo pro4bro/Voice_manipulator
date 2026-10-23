@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.adapters.activity_center import ActivityCenter
 from app.adapters.file_growing_mkv_follower import FileGrowingMkvFollower
 from app.adapters.growing_mkv_transcription import GrowingMkvTranscription
 from app.adapters.file_media_library import FileMediaLibrary
@@ -24,9 +25,28 @@ from app.main import create_app
 from app.settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def isolated_follow_activity(monkeypatch):
+    center = ActivityCenter()
+    monkeypatch.setattr("app.adapters.file_growing_mkv_follower.CENTER", center)
+    return center
+
+
+def test_follow_retry_after_failure_starts_a_new_receipt_once(tmp_path, isolated_follow_activity):
+    projects = FileProjectRepository(tmp_path)
+    project = projects.create(ProjectCreate(name="Follow retry"))
+    isolated_follow_activity.configure_history(projects)
+    follower = FileGrowingMkvFollower(FileMediaLibrary(projects), LocalMediaSourceRegistry(tmp_path / "machine"), None, None)
+    task = follower._ensure_follow_task(project, "asset-abc", "recording.mkv")
+    isolated_follow_activity.finish_task(task, status="failed", error="temporary source read failure")
+    assert follower._ensure_follow_task(project, "asset-abc", "recording.mkv") == task
+    follower._ensure_follow_task(project, "asset-abc", "recording.mkv")
+    assert [item.status for item in isolated_follow_activity.project_tasks(project.id)] == ["failed", "running"]
+
+
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("close_signal", ["sealed-segment", "obs-stop"])
-def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path, two_track_mkv, monkeypatch, close_signal, legacy):
+def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path, two_track_mkv, monkeypatch, close_signal, legacy, isolated_follow_activity):
     if legacy:
         def create_legacy(root, asset_id, _filename):
             directory = root / "assets" / "media" / asset_id
@@ -54,7 +74,14 @@ def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path,
     follower = FileGrowingMkvFollower(library, LocalMediaSourceRegistry(tmp_path / "machine"), ffmpeg,
         str(Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix else "ffprobe")))
     imported = follower.start(project, str(source), [0, 1], [0], 10)
+    task_id = f"import-follow:{project.id}:{imported.asset.id}"
+    task = next(task for task in isolated_follow_activity.tasks() if task.id == task_id)
+    assert task.status == "running" and task.fraction is None
+    assert task.project_id == project.id and task.asset_id == imported.asset.id
+    assert task.footage_id == imported.asset.id and task.group_label == "growing.mkv"
     assert not follower.advance(project, imported.asset.id)["finished"]
+    task = next(task for task in isolated_follow_activity.tasks() if task.id == task_id)
+    assert task.status == "running" and task.fraction is None
     child_id = imported.track_asset_ids[0]
     library.update_live_transcript(project.id, child_id, "Retained live draft", [], .4)
     before = library.get(project.id, child_id)
@@ -65,6 +92,8 @@ def test_closed_mkv_auto_imports_full_tail_without_replacing_live_text(tmp_path,
         assert follower.request_finish(project, str(source)) == [imported.asset.id]
     final = follower.advance(project, imported.asset.id)
     assert final["finished"]
+    task = next(task for task in isolated_follow_activity.tasks() if task.id == task_id)
+    assert task.status == "complete" and task.fraction == 1
     directory = media_asset_directory(Path(project.project_path), imported.asset.id)
     assert directory.name == (imported.asset.id if legacy else f"growing--{imported.asset.id}")
     assert (media_asset_file(directory, "source-final.mkv")).read_bytes() == payload
@@ -833,7 +862,7 @@ def test_reads_a_file_while_a_real_mkv_writer_is_still_running(tmp_path, two_tra
             writer.wait(timeout=5)
 
 
-def test_rejects_source_truncation(tmp_path, two_track_mkv):
+def test_rejects_source_truncation(tmp_path, two_track_mkv, isolated_follow_activity):
     ffmpeg, closed = two_track_mkv
     original = closed.read_bytes()
     clusters = scan_committed(closed).clusters
@@ -849,6 +878,9 @@ def test_rejects_source_truncation(tmp_path, two_track_mkv):
     growing.write_bytes(original[:clusters[0].start])
     with pytest.raises(ValueError, match="truncated"):
         follower.poll(project, result.asset.id)
+    task = next(task for task in isolated_follow_activity.tasks()
+                if task.id == f"import-follow:{project.id}:{result.asset.id}")
+    assert task.status == "failed" and "truncated" in (task.error or "")
 
 
 def test_unknown_size_cluster_waits_for_next_element(tmp_path, two_track_mkv):

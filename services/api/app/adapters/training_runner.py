@@ -293,6 +293,8 @@ class TrainingRunner:
                 project_id,
                 run.model_copy(update={"status": "running", "process_id": os.getpid()}),
             )
+        CENTER.queue_task("training", f"Training · {self._speaker_name(run)}",
+            task_id=f"training:{run.id}", project_id=project_id, detail="Chuẩn bị training")
         spawn_in_thread(lambda: self._execute(run))
         return self.runs.get(project_id, run.id)
 
@@ -372,6 +374,8 @@ class TrainingRunner:
                 # second worker while the old batch loop still owns it.
                 self._execution_owners.add(run.id)
                 runs.append(self.runs.update(project_id, run.model_copy(update={"process_id": os.getpid()})))
+                CENTER.queue_task("training", f"Training · {self._speaker_name(run)}",
+                    task_id=f"training:{run.id}", project_id=project_id, detail="Chờ lượt training")
         spawn_in_thread(lambda: self._execute_batch(runs))
         return self.runs.get(project_id, runs[0].id)
 
@@ -463,6 +467,8 @@ class TrainingRunner:
         with self._lock:
             for run in self.runs.list(project_id):
                 if run.status == "pending" or include_active and run.status == "running":
+                    if run.status == "pending":
+                        CENTER.finish_task(f"training:{run.id}", status="cancelled", detail="Đã bỏ khỏi hàng chờ")
                     self.runs.update(
                         project_id,
                         run.model_copy(update={"status": "cancelled", "process_id": None}),

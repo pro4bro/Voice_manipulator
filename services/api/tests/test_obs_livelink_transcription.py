@@ -16,6 +16,46 @@ from app.adapters.obs_livelink_transcription import ObsLiveLinkTranscription
 from app.domain.models import ProjectCreate
 
 
+@pytest.mark.parametrize("fails", [False, True])
+def test_live_queue_receipt_is_active_during_inference_and_terminal_after_events(tmp_path, fails):
+    from app.adapters.activity_center import CENTER
+    CENTER.reset()
+    projects = FileProjectRepository(tmp_path)
+    project = projects.create(ProjectCreate(name="Live Queue"))
+    CENTER.configure_history(projects)
+    recording_id, channel_id, source_uuid = str(uuid4()), str(uuid4()), str(uuid4())
+    folder = Path(project.project_path) / "assets/obs-livelink" / recording_id
+    folder.mkdir(parents=True)
+    (folder / "recording.json").write_text("{}")
+
+    async def run():
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def recognize(_session, wav, _language):
+            if wav:
+                entered.set()
+                await release.wait()
+                if fails:
+                    raise RuntimeError("inference failed")
+            return {"text": "xin chào", "pending": ""}
+        stt = ObsLiveLinkTranscription(projects, "unused", lambda: False, recognize, window_seconds=.01)
+        stt.offer(project_id=project.id, recording_id=recording_id, channel_id=channel_id,
+            source_uuid=source_uuid, alias="Mic", sequence=0, first_sample=0, sample_rate=48000, channels=1,
+            plugin_monotonic_ns=1_000_000_000, recording_started_ns=1_000_000_000, pcm=b"\xd0\x07" * 480)
+        await asyncio.wait_for(entered.wait(), 3)
+        task = CENTER.project_tasks(project.id)[0]
+        assert task.status == "running" and task.fraction is None
+        assert task.footage_id == f"obs-recording:{recording_id}"
+        release.set()
+        stt.finish(recording_id)
+        await asyncio.wait_for(asyncio.gather(*list(stt._tasks.values())), 3)
+        assert CENTER.project_tasks(project.id)[0].status == ("failed" if fails else "complete")
+        assert stt.snapshot(project.id, recording_id)["events"][-1]["status"] == ("error" if fails else "final")
+    try:
+        asyncio.run(run())
+    finally:
+        CENTER.reset()
+
+
 def test_full_live_queue_replays_committed_pcm_in_order_on_both_tracks(tmp_path):
     projects = FileProjectRepository(tmp_path / "projects")
     project = projects.create(ProjectCreate(name="Live STT catch-up"))

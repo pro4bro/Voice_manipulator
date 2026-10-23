@@ -265,6 +265,28 @@ def test_a_script_is_read_row_by_row_into_one_output_with_words_on_its_timeline(
     assert outputs.list(project.id) == [output]
 
 
+def test_queue_tracks_script_children_and_cancels_unstarted_rows_after_failure(tmp_path):
+    from app.adapters.activity_center import CENTER
+    CENTER.reset()
+    project, an, _binh, outputs, _lease, speaker, _ = speaker_fixture(tmp_path, FakeEngine(fail_on="hỏng"))
+    CENTER.configure_history(speaker.projects)
+    CLIP_TEXT[:] = ["tốt"]
+    job = speaker.start(project.id, VoiceScriptRequest(rows=[
+        VoiceScriptRow(id="a", voice_id=an.id, text="tốt"),
+        VoiceScriptRow(id="b", voice_id=an.id, text="hỏng"),
+        VoiceScriptRow(id="c", voice_id=an.id, text="chờ"),
+    ]), background=False)
+    tasks = CENTER.project_tasks(project.id)
+    root = next(task for task in tasks if not task.parent_task_id)
+    children = [task for task in tasks if task.parent_task_id == root.id]
+    assert job.status == root.status == "failed"
+    assert {task.id.removeprefix(root.id): task.status for task in children} == {
+        ":row:0": "complete", ":row:1": "failed", ":row:2": "cancelled", ":assemble": "cancelled",
+    }
+    assert outputs.list(project.id) == []
+    CENTER.reset()
+
+
 def test_terminal_generation_status_waits_until_gpu_lease_is_released(tmp_path, monkeypatch):
     project, an, _binh, _outputs, lease, speaker, _recognizer = speaker_fixture(tmp_path, FakeEngine())
     speaker.recognizer = None
@@ -420,7 +442,8 @@ def test_queue_stop_at_row_boundary_publishes_the_completed_prefix(tmp_path, mon
 
     def block_after_first_row(task_id, **changes):
         original_update(task_id, **changes)
-        if changes.get("fraction") == 0.5:
+        # Two row artifacts plus final assembly are now three real steps.
+        if changes.get("fraction") == 1 / 3:
             boundary.set()
             release_boundary.wait(timeout=5)
 

@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import shutil
@@ -10,11 +11,69 @@ from pathlib import Path
 from fastapi import UploadFile
 import pytest
 
+from app.adapters.activity_center import ActivityCenter
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
 from app.adapters.media_import_processor import MediaImportProcessor, STT_CHUNK_SECONDS, TranscriptionChunk
 from app.domain.models import ProjectCreate
+
+
+@pytest.fixture(autouse=True)
+def isolated_import_activity(monkeypatch):
+    center = ActivityCenter()
+    monkeypatch.setattr("app.adapters.media_import_processor.CENTER", center)
+    return center
+
+
+def test_upload_import_reports_measured_copy_progress_before_publication(tmp_path, monkeypatch, isolated_import_activity):
+    projects = FileProjectRepository(tmp_path / "registry")
+    project = projects.create(ProjectCreate(name="Progress import"))
+    library = FileMediaLibrary(projects)
+    processor = MediaImportProcessor("http://studio", library, "ffmpeg")
+    processor.ffprobe_path = "ffprobe"
+    monkeypatch.setattr(processor, "_probe", lambda _path: {
+        "streams": [{"codec_type": "audio", "codec_name": "pcm_s16le", "sample_rate": "48000"}],
+        "format": {"duration": "1"},
+    })
+    monkeypatch.setattr(processor, "_extract_audio", lambda _source, destination: destination.write_bytes(b"wav"))
+
+    class HeldUpload:
+        filename = "held.wav"
+        size = 8
+
+        def __init__(self):
+            self.reads = 0
+            self.at_second_chunk = __import__("threading").Event()
+            self.release = __import__("threading").Event()
+
+        async def read(self, _size):
+            self.reads += 1
+            if self.reads == 1:
+                return b"1234"
+            if self.reads == 2:
+                self.at_second_chunk.set()
+                assert self.release.wait(timeout=5)
+                return b"5678"
+            return b""
+
+    upload = HeldUpload()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(asyncio.run, processor.process(project, upload, "import", transcribe=False))
+        assert upload.at_second_chunk.wait(timeout=5)
+        task, = isolated_import_activity.tasks()
+        assert task.kind == "import"
+        assert task.status == "running"
+        assert task.project_id == project.id
+        assert task.asset_id and task.footage_id == task.asset_id
+        assert task.group_label == "held.wav"
+        assert task.fraction == pytest.approx(0.5)
+        assert "4/8 bytes" in task.detail
+        upload.release.set()
+        result = pending.result(timeout=10)
+
+    assert (Path(project.project_path) / result.asset.source_path).read_bytes() == b"12345678"
+    assert isolated_import_activity.tasks()[0].status == "complete"
 
 
 def test_media_kind_uses_real_streams_before_container_extension():

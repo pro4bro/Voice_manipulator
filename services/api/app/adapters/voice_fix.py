@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
 from app.adapters.voice_script_speaker import _Job as SpeakerJobContext
@@ -82,6 +83,37 @@ class VoiceFixService:
     def _write_job(path: Path, job: VoiceFixJob) -> None:
         with VoiceFixService._lock:
             FileProjectRepository._atomic_write(path, job.model_dump_json(by_alias=True, indent=2))
+
+    @staticmethod
+    def _activity_id(job: VoiceFixJob) -> str:
+        return f"tts:{job.id}"
+
+    @staticmethod
+    def _activity_label(output_name: str) -> str:
+        return f"{output_name} — Voice Fix"
+
+    def _start_activity(self, job: VoiceFixJob, output_name: str) -> None:
+        label = self._activity_label(output_name)
+        CENTER.start_task("tts", label, task_id=self._activity_id(job), detail="Queued Voice Fix",
+            fraction=0.0, project_id=job.project_id, group_label=label, status="queued")
+
+    def _sync_activity(self, job: VoiceFixJob) -> None:
+        task_id = self._activity_id(job)
+        detail = f"Voice Fix {job.done}/{job.total} clips"
+        if job.status in {"complete", "stopped", "cancelled", "failed", "stale"}:
+            status = "complete" if job.status == "complete" else "cancelled" if job.status in {"stopped", "cancelled"} else "failed"
+            CENTER.finish_task(task_id, status=status, detail=detail if status == "complete" else job.error or detail,
+                error=None if status == "complete" else job.error or job.status)
+            return
+        tasks = {task.id: task for task in CENTER.tasks()}
+        task = tasks.get(task_id)
+        if task is not None and task.status == "queued":
+            CENTER.claim_queued_task(task_id, job.project_id, "tts", detail="Voice Fix worker started")
+        denominator = max(1, job.total)
+        fraction = job.done / denominator if job.done < job.total else None
+        if fraction is None:
+            detail = "Validating Voice Fix clips"
+        CENTER.update_task(task_id, detail=detail, fraction=fraction)
 
     @staticmethod
     def _load_job(path: Path) -> VoiceFixJob:
@@ -383,22 +415,31 @@ class VoiceFixService:
             if not dirty:
                 path = self.job_path(project_id, job.id)
                 self._write_job(path, job)
+                self._start_activity(job, snapshot.output.name)
+                CENTER.finish_task(self._activity_id(job), status="complete",
+                    detail="All Voice Fix clips already validated and reusable")
                 return job
             context = SpeakerJobContext(VoiceScriptJob(id=job.id, project_id=project_id, total=len(dirty)))
             state = _Running(job=job, context=context)
             path = self.job_path(project_id, job.id)
             self._write_job(path, job)
+            self._start_activity(job, snapshot.output.name)
             self._running[job.id] = state
             thread = threading.Thread(target=self._run, args=(snapshot, dirty, state), daemon=True,
                 name=f"voice-fix-{job.id}")
             self._threads[job.id] = thread
-            thread.start()
+            try:
+                thread.start()
+            except Exception as exc:
+                self._persist(state, status="failed", error=f"Could not start Voice Fix worker: {exc}")
+                raise
             return job
 
     def _persist(self, state: _Running, **changes) -> VoiceFixJob:
         with state.lock:
             state.job = self._with_update(state.job, **changes)
             self._write_job(self.job_path(state.job.project_id, state.job.id), state.job)
+            self._sync_activity(state.job)
             return state.job.model_copy(deep=True)
 
     def _is_cancelled(self, state: _Running) -> bool:
@@ -429,6 +470,7 @@ class VoiceFixService:
     def _run(self, snapshot: _Snapshot, dirty, state: _Running) -> None:
         job = state.job
         context = state.context
+        self._sync_activity(job)
         lease = None
         try:
             if not self._fresh(snapshot):
@@ -512,6 +554,7 @@ class VoiceFixService:
             job = self._with_update(job, status="stopped", error="Fix worker stopped; completed clips remain reusable.",
                 units=[unit.model_copy(update={"status": "pending"}) if unit.status == "running" else unit for unit in job.units])
             self._write_job(self.job_path(project_id, job_id), job)
+            self._sync_activity(job)
         return job
 
     def stop(self, project_id: str, output_id: str, job_id: str, *, include_active: bool = False) -> VoiceFixJob:

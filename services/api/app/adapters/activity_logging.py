@@ -53,6 +53,12 @@ def task_id_for(kind: str, project_id: str, asset_id: str) -> str:
     return f"{kind}:{project_id}:{asset_id}"
 
 
+def job_queued(kind, project_id, asset_id, *, name, footage_id=None):
+    CENTER.queue_task(kind, name, task_id=task_id_for(kind, project_id, asset_id),
+        project_id=project_id, asset_id=asset_id, footage_id=footage_id or asset_id,
+        group_label=name, detail="Đang chờ")
+
+
 def job_started(kind: str, project_id: str, asset_id: str, **detail: Any) -> None:
     activity.info("%s START  %s/%s%s", kind.upper(), project_id, asset_id, _suffix(detail))
     CENTER.start_task(
@@ -62,6 +68,9 @@ def job_started(kind: str, project_id: str, asset_id: str, **detail: Any) -> Non
         detail=_suffix(detail).strip(),
         fraction=0.0,
         project_id=project_id,
+        asset_id=asset_id,
+        footage_id=detail.get("footage_id") or asset_id,
+        group_label=detail.get("name") or asset_id,
     )
 
 

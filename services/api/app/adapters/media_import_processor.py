@@ -13,6 +13,7 @@ from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID, uuid4
+from app.adapters.activity_center import CENTER, request_task_id
 
 TranscriptionProgressCallback = Callable[[float], Awaitable[None]]
 
@@ -75,8 +76,71 @@ class MediaImportProcessor:
         self.local_sources = local_sources
         self._track_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
+    @staticmethod
+    def _begin_import_task(project: ProjectRecord, label: str, *, asset_id: str | None = None,
+                           footage_id: str | None = None):
+        task_id = request_task_id("import")
+        owned = task_id is None
+        if owned:
+            task_id = f"import-{uuid4().hex}"
+            CENTER.start_task("import", label, task_id=task_id, detail="Preparing media import",
+                project_id=project.id, asset_id=asset_id, footage_id=footage_id or asset_id,
+                group_label=label, status="running")
+        else:
+            CENTER.update_task(task_id, label=label, detail="Preparing media import", fraction=None,
+                asset_id=asset_id, footage_id=footage_id or asset_id, group_label=label)
+        return task_id, owned
+
+    @staticmethod
+    def _import_progress(activity, detail: str, *, fraction: float | None = None,
+                         asset_id: str | None = None, footage_id: str | None = None,
+                         group_label: str | None = None) -> None:
+        if activity is None:
+            return
+        task_id, _ = activity
+        CENTER.update_task(task_id, detail=detail, fraction=fraction, asset_id=asset_id,
+            footage_id=footage_id, group_label=group_label)
+
+    @staticmethod
+    def _end_import_task(activity, *, error: Exception | None = None) -> None:
+        if activity is None:
+            return
+        task_id, owned = activity
+        detail = str(error) if error else "Media import artifacts published"
+        if not owned:
+            if error:
+                CENTER.update_task(task_id, detail=f"Import failed: {error}", fraction=None)
+            return
+        CENTER.finish_task(task_id, status="failed" if error else "complete", detail=detail,
+            error=str(error) if error else None)
+
+    @staticmethod
+    def _copy_file(source: Path, destination: Path, progress=None) -> None:
+        total = source.stat().st_size
+        copied = 0
+        with source.open("rb") as input_file, destination.open("wb") as output:
+            while chunk := input_file.read(1024 * 1024):
+                output.write(chunk)
+                copied += len(chunk)
+                if progress is not None and total > 0:
+                    progress(copied, total)
+            output.flush()
+        shutil.copystat(source, destination)
+
     async def materialize_audio_track(self, project: ProjectRecord, parent_id: str,
                                       stream_index: int) -> ProjectMediaAsset:
+        parent = self.library.get(project.id, parent_id)
+        activity = self._begin_import_task(project, parent.name, asset_id=parent_id, footage_id=parent_id)
+        try:
+            result = await self._materialize_audio_track(project, parent_id, stream_index, activity=activity)
+        except Exception as exc:
+            self._end_import_task(activity, error=exc)
+            raise
+        self._end_import_task(activity)
+        return result
+
+    async def _materialize_audio_track(self, project: ProjectRecord, parent_id: str,
+                                      stream_index: int, *, activity=None) -> ProjectMediaAsset:
         """Add an omitted completed-container stream without replacing the source."""
         key = project.id, parent_id
         async with self._track_locks.setdefault(key, asyncio.Lock()):
@@ -114,6 +178,8 @@ class MediaImportProcessor:
                        for stream in probe.get("streams", [])):
                 raise ValueError("Nguồn hiện tại không còn track audio đã chọn.")
             child_id = f"asset-{uuid4().hex[:12]}"
+            self._import_progress(activity, "Extracting selected audio track",
+                asset_id=child_id, footage_id=parent_id, group_label=parent.name)
             folder = create_media_asset_directory(root, child_id, f"{safe_media_stem(parent.name)[:40]} - Track {stream_index} - {choice.title}.wav")
             analysis = media_asset_file(folder, "analysis.wav")
             # A failed decode leaves only an unpublished derivative; retry gets a
@@ -147,6 +213,36 @@ class MediaImportProcessor:
         reading_speaker_profile_id: str | None = None,
         reading_emotion: str | None = None,
     ) -> MediaImportResult:
+        filename = Path(upload.filename or "media.wav").name
+        activity = self._begin_import_task(project, filename)
+        try:
+            result = await self._process(project, upload, origin, realtime_text, transcribe,
+                queue_for_transcription, capture_tier, reading_session_id, reading_card_id,
+                capture_id, source_content_hash, reading_speaker_profile_id, reading_emotion,
+                activity=activity)
+        except Exception as exc:
+            self._end_import_task(activity, error=exc)
+            raise
+        self._end_import_task(activity)
+        return result
+
+    async def _process(
+        self,
+        project: ProjectRecord,
+        upload: UploadFile,
+        origin: str,
+        realtime_text: str = "",
+        transcribe: bool = True,
+        queue_for_transcription: bool = False,
+        capture_tier: str | None = None,
+        reading_session_id: str | None = None,
+        reading_card_id: str | None = None,
+        capture_id: str | None = None,
+        source_content_hash: str | None = None,
+        reading_speaker_profile_id: str | None = None,
+        reading_emotion: str | None = None,
+        *, activity=None,
+    ) -> MediaImportResult:
         started = time.perf_counter()
         filename = Path(upload.filename or "media.wav").name
         extension = Path(filename).suffix.lower()
@@ -176,15 +272,22 @@ class MediaImportProcessor:
             raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
 
         asset_id = f"asset-{uuid4().hex[:12]}"
+        self._import_progress(activity, "Saving uploaded source",
+            asset_id=asset_id, footage_id=asset_id, group_label=filename)
         asset_dir = create_media_asset_directory(Path(project.project_path), asset_id, filename)
         source_path = media_asset_file(asset_dir, f"source{extension}")
-        await self._save_upload(upload, source_path)
+        await self._save_upload(upload, source_path,
+            on_progress=lambda copied, total: self._import_progress(activity,
+                f"Copied source {copied}/{total} bytes", fraction=copied / total,
+                asset_id=asset_id, footage_id=asset_id, group_label=filename) if total else None)
         if source_content_hash is not None:
             actual_hash = await asyncio.to_thread(self._sha256_file, source_path)
             if actual_hash != source_content_hash:
                 raise ValueError("Guided capture bytes do not match the declared source hash.")
         portable_source_path = source_path.relative_to(Path(project.project_path)).as_posix()
 
+        self._import_progress(activity, "Inspecting uploaded media", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         probe = await asyncio.to_thread(self._probe, source_path)
         audio_stream = next(
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
@@ -208,9 +311,12 @@ class MediaImportProcessor:
                 origin=origin, capture_tier=capture_tier or origin,
                 transcribe=transcribe, queue_for_transcription=queue_for_transcription,
                 started=started,
+                activity=activity,
             )
 
         if not audio_stream:
+            self._import_progress(activity, "Publishing media without audio", asset_id=asset_id,
+                footage_id=asset_id, group_label=filename)
             asset = self.library.create(
                 project.id,
                 MediaAssetCreate(
@@ -230,6 +336,8 @@ class MediaImportProcessor:
             return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
         analysis_path = media_asset_file(asset_dir, "analysis.wav")
+        self._import_progress(activity, "Extracting project analysis audio", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         await asyncio.to_thread(self._extract_audio, source_path, analysis_path)
         portable_analysis_path = analysis_path.relative_to(Path(project.project_path)).as_posix()
         common = {
@@ -257,6 +365,8 @@ class MediaImportProcessor:
                 "emotion": reading_emotion,
             })
         if not transcribe:
+            self._import_progress(activity, "Publishing imported footage", asset_id=asset_id,
+                footage_id=asset_id, group_label=filename)
             asset = self.library.create(
                 project.id,
                 MediaAssetCreate(
@@ -270,6 +380,8 @@ class MediaImportProcessor:
             )
             return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
+        self._import_progress(activity, "Running transcript recognition", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         item, studio_elapsed = await self._run_studio_import(analysis_path, origin, realtime_text)
         item = self._attach_timing_quality(item, duration)
         asset = self.library.create(
@@ -287,6 +399,8 @@ class MediaImportProcessor:
             ),
             asset_id,
         )
+        self._import_progress(activity, "Publishing imported footage", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         return MediaImportResult(asset=asset, item=item, elapsed=studio_elapsed)
 
     async def process_local_path(
@@ -297,6 +411,28 @@ class MediaImportProcessor:
         cache_local: bool,
         stream_indexes: list[int] | None = None,
         transcribe_stream_indexes: list[int] | None = None,
+    ) -> MediaImportResult:
+        filename = Path(source_value).name
+        activity = self._begin_import_task(project, filename)
+        try:
+            result = await self._process_local_path(project, source_value, cache_local=cache_local,
+                stream_indexes=stream_indexes, transcribe_stream_indexes=transcribe_stream_indexes,
+                activity=activity)
+        except Exception as exc:
+            self._end_import_task(activity, error=exc)
+            raise
+        self._end_import_task(activity)
+        return result
+
+    async def _process_local_path(
+        self,
+        project: ProjectRecord,
+        source_value: str,
+        *,
+        cache_local: bool,
+        stream_indexes: list[int] | None = None,
+        transcribe_stream_indexes: list[int] | None = None,
+        activity=None,
     ) -> MediaImportResult:
         """Import a native file while retaining its absolute locator only in app-local state."""
         started = time.perf_counter()
@@ -310,16 +446,25 @@ class MediaImportProcessor:
             raise RuntimeError("Không tìm thấy FFmpeg/FFprobe để phân tích media.")
 
         asset_id = f"asset-{uuid4().hex[:12]}"
+        self._import_progress(activity, "Preparing local media import", asset_id=asset_id,
+            footage_id=asset_id, group_label=original_path.name)
         project_root = Path(project.project_path)
         asset_dir = create_media_asset_directory(project_root, asset_id, original_path.name)
         cache_path = media_asset_file(asset_dir, f"source{extension}")
         working_source = original_path
         cached_at: datetime | None = None
         if cache_local:
-            await asyncio.to_thread(shutil.copy2, original_path, cache_path)
+            self._import_progress(activity, "Copying source into project cache", asset_id=asset_id,
+                footage_id=asset_id, group_label=original_path.name)
+            await asyncio.to_thread(self._copy_file, original_path, cache_path,
+                lambda copied, total: self._import_progress(activity,
+                    f"Copied source {copied}/{total} bytes", fraction=copied / total,
+                    asset_id=asset_id, footage_id=asset_id, group_label=original_path.name) if total else None)
             working_source = cache_path
             cached_at = datetime.now(timezone.utc)
 
+        self._import_progress(activity, "Inspecting local media", asset_id=asset_id,
+            footage_id=asset_id, group_label=original_path.name)
         probe = await asyncio.to_thread(self._probe, working_source)
         audio_stream = next(
             (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
@@ -352,12 +497,15 @@ class MediaImportProcessor:
                 cached_at=cached_at,
                 selected_stream_indexes=selected,
                 selected_stt_stream_indexes=selected_stt,
+                activity=activity,
             )
             return result
 
         analysis_path: Path | None = None
         if audio_stream:
             analysis_path = media_asset_file(asset_dir, "analysis.wav")
+            self._import_progress(activity, "Extracting project analysis audio", asset_id=asset_id,
+                footage_id=asset_id, group_label=original_path.name)
             await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
 
         asset = self.library.create(
@@ -390,6 +538,8 @@ class MediaImportProcessor:
         )
         if self.local_sources:
             self.local_sources.set(project.id, asset_id, original_path)
+        self._import_progress(activity, "Publishing imported local footage", asset_id=asset_id,
+            footage_id=asset_id, group_label=original_path.name)
         return MediaImportResult(asset=asset, elapsed=round(time.perf_counter() - started, 2))
 
     async def set_local_file_cache(
@@ -398,6 +548,24 @@ class MediaImportProcessor:
         asset: ProjectMediaAsset,
         enabled: bool,
     ) -> ProjectMediaAsset:
+        footage_id = asset.source_archive_asset_id or asset.id
+        activity = self._begin_import_task(project, asset.name, asset_id=asset.id, footage_id=footage_id)
+        try:
+            result = await self._set_local_file_cache(project, asset, enabled, activity=activity)
+        except Exception as exc:
+            self._end_import_task(activity, error=exc)
+            raise
+        self._end_import_task(activity)
+        return result
+
+    async def _set_local_file_cache(
+        self,
+        project: ProjectRecord,
+        asset: ProjectMediaAsset,
+        enabled: bool,
+        *, activity=None,
+    ) -> ProjectMediaAsset:
+        footage_id = asset.source_archive_asset_id or asset.id
         if not asset.has_external_source:
             raise ValueError("Footage này được import bằng browser hoặc recorder nên đã là bản project-local.")
         if not self.local_sources:
@@ -417,20 +585,31 @@ class MediaImportProcessor:
         working_source = original_path
         cached_at: datetime | None = None
         if enabled:
-            await asyncio.to_thread(shutil.copy2, original_path, cache_path)
+            self._import_progress(activity, "Copying source into project cache", asset_id=asset.id,
+                footage_id=footage_id, group_label=asset.name)
+            await asyncio.to_thread(self._copy_file, original_path, cache_path,
+                lambda copied, total: self._import_progress(activity,
+                    f"Copied source {copied}/{total} bytes", fraction=copied / total,
+                    asset_id=asset.id, footage_id=footage_id, group_label=asset.name) if total else None)
             working_source = cache_path
             cached_at = datetime.now(timezone.utc)
 
         tracks = [item for item in self.library.list(project.id)
                   if item.source_archive_asset_id == asset.id and item.source_archive_stream_index is not None]
         if asset.analysis_path and not tracks:
+            self._import_progress(activity, "Rebuilding analysis audio", asset_id=asset.id,
+                footage_id=footage_id, group_label=asset.name)
             analysis_path = project_root / asset.analysis_path
             await asyncio.to_thread(self._extract_audio, working_source, analysis_path)
         if tracks:
+            self._import_progress(activity, "Rebuilding imported audio tracks", asset_id=asset.id,
+                footage_id=footage_id, group_label=asset.name)
             await asyncio.to_thread(self._extract_audio_streams, working_source, [
                 (project_root / track.analysis_path, track.source_archive_stream_index)
                 for track in tracks if track.analysis_path
             ])
+        self._import_progress(activity, "Publishing cache state", asset_id=asset.id,
+            footage_id=footage_id, group_label=asset.name)
         return self.library.update_local_cache(project.id, asset.id, enabled, cached_at)
 
     async def _import_multitrack(
@@ -442,6 +621,7 @@ class MediaImportProcessor:
         external_source: Path | None = None, cached_at: datetime | None = None,
         selected_stream_indexes: set[int] | None = None,
         selected_stt_stream_indexes: set[int] | None = None,
+        activity=None,
     ) -> MediaImportResult:
         """Keep one original footage and one independently addressable analysis WAV per track."""
         root = Path(project.project_path)
@@ -462,13 +642,17 @@ class MediaImportProcessor:
             analysis = media_asset_file(child_dir, "analysis.wav")
             title = str((stream.get("tags") or {}).get("title") or f"Track {ordinal}").strip()[:160]
             prepared.append((child_id, analysis, stream, title))
+        self._import_progress(activity, "Extracting selected audio tracks", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         await asyncio.to_thread(self._extract_audio_streams, source, [
             (analysis, stream["index"]) for _, analysis, stream, _ in prepared
         ])
         complete = []
-        for child_id, analysis, stream, title in prepared:
+        for ordinal, (child_id, analysis, stream, title) in enumerate(prepared, 1):
             item = None
             if transcribe:
+                self._import_progress(activity, f"Recognizing imported track {ordinal}/{len(prepared)}",
+                    asset_id=child_id, footage_id=asset_id, group_label=filename)
                 item, _ = await self._run_studio_import(analysis, origin, "")
                 item = self._attach_timing_quality(item, duration)
             complete.append((child_id, analysis, stream, title, item))
@@ -494,6 +678,8 @@ class MediaImportProcessor:
             local_cache_enabled=cached_at is not None,
             local_cache_updated_at=cached_at,
         ), asset_id)
+        self._import_progress(activity, "Publishing imported footage and tracks", asset_id=asset_id,
+            footage_id=asset_id, group_label=filename)
         if external_source and self.local_sources:
             self.local_sources.set(project.id, asset_id, external_source)
         track_manifest = []
@@ -773,14 +959,17 @@ class MediaImportProcessor:
         restored["duration"] = max(0.0, original_duration)
         return restored
 
-    async def _save_upload(self, upload: UploadFile, destination: Path) -> None:
+    async def _save_upload(self, upload: UploadFile, destination: Path, *, on_progress=None) -> None:
         size = 0
+        total = upload.size if isinstance(upload.size, int) and upload.size > 0 else None
         with destination.open("wb") as output:
             while chunk := await upload.read(8 * 1024 * 1024):
                 size += len(chunk)
                 if size > 1_500_000_000:
                     raise ValueError("File media lớn hơn giới hạn 1,5 GB.")
                 output.write(chunk)
+                if on_progress is not None:
+                    on_progress(size, total)
 
     @staticmethod
     def _sha256_file(path: Path) -> str:

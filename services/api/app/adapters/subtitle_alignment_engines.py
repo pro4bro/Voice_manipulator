@@ -5,6 +5,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import threading
+import time
+from types import SimpleNamespace
 from functools import lru_cache
 
 from app.adapters.subtitle_alignment_audio import sha256
@@ -119,7 +122,7 @@ class SubtitleAlignmentEngines:
                 "workerSha256": sha256(self.workers[engine]),
                 "modelFiles": {p.relative_to(self.runtime).as_posix(): sha256(p) for p in paths}}
 
-    def run(self, project_root, audio, words, folder, indexes, engine, settings):
+    def run(self, project_root, audio, words, folder, indexes, engine, settings, progress=None):
         report = self.report(engine, settings)
         if report["status"] != "available":
             raise ValueError(report["reason"])
@@ -132,11 +135,35 @@ class SubtitleAlignmentEngines:
         if engine == "mfa":
             prefix = self.runtime / "mfa"
             env["PATH"] = os.pathsep.join(str(p) for p in (prefix, prefix / "Library/bin", prefix / "Scripts")) + os.pathsep + env.get("PATH", "")
+        progress_path = folder / "alignment-progress.json"
         command = [str(self._python(engine)), str(self.workers[engine]), str(input_path), str(output_path),
-                   str(project_root.resolve()), str(self.runtime / "mfa" if engine == "mfa" else self.runtime)]
+                   str(project_root.resolve()), str(self.runtime / "mfa" if engine == "mfa" else self.runtime),
+                   str(progress_path)]
         try:
-            result = subprocess.run(command, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=1800, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            output = {"stdout": "", "stderr": ""}
+            def collect():
+                output["stdout"], output["stderr"] = process.communicate()
+            reader = threading.Thread(target=collect, daemon=True)
+            reader.start()
+            started = time.monotonic()
+            while process.poll() is None:
+                if progress is not None:
+                    try:
+                        value = json.loads(progress_path.read_text(encoding="utf-8"))
+                        progress(value)
+                    except (OSError, ValueError):
+                        pass
+                if time.monotonic() - started > 1800:
+                    process.kill()
+                    reader.join()
+                    raise subprocess.TimeoutExpired(command, 1800)
+                time.sleep(.2)
+            reader.join()
+            result = SimpleNamespace(returncode=process.returncode, stdout=output["stdout"], stderr=output["stderr"])
+            if progress is not None:
+                progress({"stage": "Worker completed", "fraction": None})
         except subprocess.TimeoutExpired as exc:
             (folder / "alignment.log").write_text("Engine exceeded 1800s timeout.", encoding="utf-8")
             raise ValueError("Engine đã quá thời gian căn chỉnh. Thử phạm vi từ ngắn hơn.") from exc

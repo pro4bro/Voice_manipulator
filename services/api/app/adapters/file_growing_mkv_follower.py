@@ -20,6 +20,7 @@ import wave
 from pathlib import Path
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.growing_mkv import assert_same_source, has_closed_segment, scan_committed, source_identity
 from app.adapters.local_media_source_registry import LocalMediaSourceRegistry
@@ -102,6 +103,27 @@ class FileGrowingMkvFollower:
     def _lock(self, parent_id: str) -> threading.RLock:
         with self._locks_guard:
             return self._locks.setdefault(parent_id, threading.RLock())
+
+    @staticmethod
+    def _follow_task_id(project: ProjectRecord, parent_id: str) -> str:
+        return f"import-follow:{project.id}:{parent_id}"
+
+    def _ensure_follow_task(self, project: ProjectRecord, parent_id: str, label: str,
+                            detail: str = "Following growing MKV source") -> str:
+        task_id = self._follow_task_id(project, parent_id)
+        existing = next((task for task in CENTER.tasks() if task.id == task_id), None)
+        if existing is None or existing.status not in {"running", "queued"}:
+            CENTER.start_task("import", label, task_id=task_id, detail=detail, fraction=None,
+                project_id=project.id, asset_id=parent_id, footage_id=parent_id,
+                group_label=label, status="running")
+        elif existing.status in {"running", "queued"}:
+            CENTER.update_task(task_id, detail=detail, fraction=None, asset_id=parent_id,
+                footage_id=parent_id, group_label=label)
+        return task_id
+
+    def _fail_follow(self, project: ProjectRecord, parent_id: str, error: Exception) -> None:
+        CENTER.finish_task(self._follow_task_id(project, parent_id), status="failed",
+            detail=f"MKV import failed: {error}", error=str(error))
 
     @staticmethod
     def _paths(project: ProjectRecord, parent_id: str) -> tuple[Path, Path]:
@@ -193,6 +215,22 @@ class FileGrowingMkvFollower:
               stream_indexes: list[int] | None = None,
               transcribe_stream_indexes: list[int] | None = None,
               stt_segment_seconds: int = 60) -> MediaImportResult:
+        reserved = {}
+        def on_reserved(parent_id: str, label: str) -> None:
+            reserved["parent_id"] = parent_id
+            self._ensure_follow_task(project, parent_id, label, "Preparing growing MKV import")
+        try:
+            return self._start(project, source_value, stream_indexes, transcribe_stream_indexes,
+                stt_segment_seconds, on_reserved=on_reserved)
+        except Exception as exc:
+            if reserved.get("parent_id"):
+                self._fail_follow(project, reserved["parent_id"], exc)
+            raise
+
+    def _start(self, project: ProjectRecord, source_value: str,
+              stream_indexes: list[int] | None = None,
+              transcribe_stream_indexes: list[int] | None = None,
+              stt_segment_seconds: int = 60, *, on_reserved=None) -> MediaImportResult:
         if not self.ffmpeg or not self.ffprobe:
             raise RuntimeError("FFmpeg và FFprobe cần có để theo dõi MKV")
         source = Path(source_value).expanduser().resolve()
@@ -214,6 +252,10 @@ class FileGrowingMkvFollower:
         if not 10 <= stt_segment_seconds <= 600:
             raise ValueError("Độ dài đoạn STT phải từ 10 đến 600 giây")
         parent_id = f"asset-{uuid4().hex[:12]}"
+        if on_reserved is not None:
+            on_reserved(parent_id, source.name)
+        CENTER.update_task(self._follow_task_id(project, parent_id), detail="Copying initial MKV header",
+            fraction=None, asset_id=parent_id, footage_id=parent_id, group_label=source.name)
         directory = create_media_asset_directory(Path(project.project_path), parent_id, source.name)
         state_path = directory / "follow-state.json"
         root = Path(project.project_path)
@@ -290,6 +332,8 @@ class FileGrowingMkvFollower:
         _atomic_json(directory / "audio-tracks.json", {
             "version": 2, "tracks": manifest, "availableTracks": available_manifest,
         })
+        CENTER.update_task(self._follow_task_id(project, parent_id), detail="Following growing MKV source",
+            fraction=None, asset_id=parent_id, footage_id=parent_id, group_label=source.name)
         return MediaImportResult(asset=self.library.get(project.id, parent_id), elapsed=0,
                                  track_asset_ids=[track["assetId"] for track in track_states])
 
@@ -364,10 +408,21 @@ class FileGrowingMkvFollower:
 
     def poll(self, project: ProjectRecord, parent_id: str, *, final: bool = False,
              max_clusters: int | None = None) -> dict:
+        try:
+            return self._poll(project, parent_id, final=final, max_clusters=max_clusters)
+        except Exception as exc:
+            self._fail_follow(project, parent_id, exc)
+            raise
+
+    def _poll(self, project: ProjectRecord, parent_id: str, *, final: bool = False,
+              max_clusters: int | None = None) -> dict:
         with self._lock(parent_id):
             directory, state_path, state, source = self._load(project, parent_id)
             if state["finished"]:
                 return self.status(project, parent_id)
+            parent = self.library.get(project.id, parent_id)
+            self._ensure_follow_task(project, parent_id, parent.name,
+                f"Reading committed MKV clusters ({state['snapshotBytes']} project bytes; source remains open)")
             assert_same_source(source, state["identity"], state["cursor"],
                                state["lastCluster"], allow_header_change=final)
             self._recover(project, directory, state)
@@ -420,6 +475,9 @@ class FileGrowingMkvFollower:
                 state["sequence"] = sequence
                 _atomic_json(state_path, state)
             self._publish(project, state)
+            CENTER.update_task(self._follow_task_id(project, parent_id),
+                detail=f"Reading committed MKV clusters ({state['snapshotBytes']} project bytes; source remains open)",
+                fraction=None, asset_id=parent_id, footage_id=parent_id, group_label=parent.name)
             return self._status(state, scan.visible_size)
 
     @staticmethod
@@ -460,6 +518,13 @@ class FileGrowingMkvFollower:
 
     def advance(self, project: ProjectRecord, parent_id: str, *, max_clusters: int = 8) -> dict:
         """Follow live clusters, or import the complete closed source in the worker."""
+        try:
+            return self._advance(project, parent_id, max_clusters=max_clusters)
+        except Exception as exc:
+            self._fail_follow(project, parent_id, exc)
+            raise
+
+    def _advance(self, project: ProjectRecord, parent_id: str, *, max_clusters: int = 8) -> dict:
         with self._lock(parent_id):
             _, _, state, source = self._load(project, parent_id)
             if state["finished"]:
@@ -516,10 +581,19 @@ class FileGrowingMkvFollower:
                     "selectedTrackCount": len(selected), "finished": bool(state["finished"])}
 
     def finish(self, project: ProjectRecord, parent_id: str, *, explicit_final_stt: bool = False) -> dict:
+        try:
+            return self._finish(project, parent_id, explicit_final_stt=explicit_final_stt)
+        except Exception as exc:
+            self._fail_follow(project, parent_id, exc)
+            raise
+
+    def _finish(self, project: ProjectRecord, parent_id: str, *, explicit_final_stt: bool = False) -> dict:
         with self._lock(parent_id):
             directory, state_path, state, source = self._load(project, parent_id)
             if state["finished"]:
                 return self.status(project, parent_id)
+            parent = self.library.get(project.id, parent_id)
+            self._ensure_follow_task(project, parent_id, parent.name, "Waiting for stable source before final import")
             first = source.stat()
             time.sleep(0.3)
             second = source.stat()
@@ -537,8 +611,18 @@ class FileGrowingMkvFollower:
             assert_same_source(source, state["identity"], state["cursor"],
                                state["lastCluster"], allow_header_change=True)
             final_source = media_asset_file(directory, "source-final.mkv")
+            self._ensure_follow_task(project, parent_id, parent.name,
+                f"Copying final source 0/{second.st_size} bytes")
             with source.open("rb") as original, final_source.open("wb") as output:
-                shutil.copyfileobj(original, output, 1024 * 1024)
+                copied = 0
+                while chunk := original.read(1024 * 1024):
+                    output.write(chunk)
+                    copied += len(chunk)
+                    if second.st_size > 0:
+                        CENTER.update_task(self._follow_task_id(project, parent_id),
+                            detail=f"Copying final source {copied}/{second.st_size} bytes",
+                            fraction=copied / second.st_size, asset_id=parent_id,
+                            footage_id=parent_id, group_label=parent.name)
                 output.flush()
                 os.fsync(output.fileno())
             final_stat = source.stat()
@@ -548,6 +632,9 @@ class FileGrowingMkvFollower:
             final_dir = directory / "final"
             final_dir.mkdir(exist_ok=True)
             for track in state["tracks"]:
+                CENTER.update_task(self._follow_task_id(project, parent_id),
+                    detail=f"Decoding final audio track {track['streamIndex']}", fraction=None,
+                    asset_id=parent_id, footage_id=parent_id, group_label=parent.name)
                 destination = final_dir / media_asset_file(directory, f"{track['streamIndex']}.wav").name
                 self._decode_to_wav(final_source, track["streamIndex"], destination)
                 with wave.open(str(destination), "rb") as audio:
@@ -558,4 +645,6 @@ class FileGrowingMkvFollower:
             state["finalizedAtNs"] = time.time_ns()
             self._publish(project, state, final=True)
             _atomic_json(state_path, state)
+            CENTER.finish_task(self._follow_task_id(project, parent_id), status="complete",
+                detail="Final MKV source and audio tracks published")
             return self._status(state, final_stat.st_size)

@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime, timezone
 from threading import RLock, Thread
 from uuid import uuid4
+from app.adapters.activity_center import CENTER
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
 from app.adapters.file_lipsync_faces import FileLipSyncFaces, analysis_inputs
@@ -132,12 +133,15 @@ class LipSyncJobs:
             lease = self.gpu_lease.acquire(f"LipSync:{identifier}") if kind == "render" and self.gpu_lease else None
             state = {"id": identifier, "kind": kind, "status": "queued", "ownerPid": os.getpid(), "revision": revision,
                      "analysisId": analysis_id, "analysisRevision": analysis_revision, "createdAt": now(), "updatedAt": now(), "error": None}
+            CENTER.queue_task("lipsync", "Lip Sync · " + ("Phân tích khuôn mặt" if kind == "analysis" else "Dựng video"),
+                task_id=f"lipsync:{identifier}", project_id=project_id)
             try:
                 self._write(directory, "request.json", request)
                 self._write(directory, "status.json", state)
                 self.active[identifier] = {"cancel": False, "process": None}
                 Thread(target=self._run, args=(project_id, directory, state, lease), daemon=True).start()
-            except Exception:
+            except Exception as exc:
+                CENTER.finish_task(f"lipsync:{identifier}", status="failed", error=str(exc))
                 if lease:
                     self.gpu_lease.release(lease.token)
                 raise
@@ -161,6 +165,8 @@ class LipSyncJobs:
 
     def _run(self, project_id, directory, state, lease):
         active = self.active[state["id"]]
+        task_id = CENTER.start_task("lipsync", "Lip Sync · " + ("Phân tích khuôn mặt" if state["kind"] == "analysis" else "Dựng video"),
+            task_id=f"lipsync:{state['id']}", project_id=project_id, detail="Kiểm tra model và nguồn")
         try:
             request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
             if not self.runtime.report(analysis=state["kind"] == "analysis", verify=True)["ready"]:
@@ -169,6 +175,7 @@ class LipSyncJobs:
                 if active["cancel"]:
                     raise InterruptedError("Đã hủy")
                 state.update(status="running", updatedAt=now())
+                CENTER.update_task(task_id, detail="Đang xử lý video", fraction=None)
                 self._write(directory, "status.json", state)
                 with (directory / "worker.log").open("w", encoding="utf-8") as log:
                     process = subprocess.Popen([str(self.runtime.python), str(self.runtime.worker), "--root", str(self.runtime.root),
@@ -186,6 +193,7 @@ class LipSyncJobs:
                 if digest_file(self.store.root(project_id) / source["path"])["sha256"] != source["sha256"]:
                     raise ValueError("Nguồn đổi trong lúc xử lý; không chấp nhận kết quả")
             result = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+            CENTER.update_task(task_id, detail="Kiểm tra kết quả và artifact", fraction=None)
             if state["kind"] == "render":
                 from app.adapters.lipsync_video_qc import verify_render
                 result["qc"] = verify_render(self.runtime, self.store.root(project_id), result)
@@ -200,6 +208,10 @@ class LipSyncJobs:
         finally:
             try:
                 self._write(directory, "status.json", state)
+                CENTER.finish_task(task_id, status="complete" if state["status"] == "completed" else state["status"], error=state.get("error"))
+            except Exception as exc:
+                CENTER.finish_task(task_id, status="failed", error=str(exc))
+                raise
             finally:
                 with self._lock:
                     self.active.pop(state["id"], None)

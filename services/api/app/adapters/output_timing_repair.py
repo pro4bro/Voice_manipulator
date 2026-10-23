@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.adapters.activity_center import CENTER
 from app.domain.output_timing_repair import (
     OutputTimingRepairApplyRequest,
     OutputTimingRepairJob,
@@ -212,6 +213,30 @@ class OutputTimingRepair:
             blockers.append("GPU is busy; retry Timing Repair when the current job finishes.")
         return blockers
 
+    @staticmethod
+    def _activity_id(job: OutputTimingRepairJob) -> str:
+        return f"alignment:{job.id}"
+
+    def _start_activity(self, job: OutputTimingRepairJob, output_name: str) -> None:
+        label = f"{output_name} — Output Timing Repair"
+        CENTER.start_task("alignment", label, task_id=self._activity_id(job), detail="Queued output timing repair",
+            fraction=0.0, project_id=job.project_id, group_label=label, status="queued")
+
+    def _sync_activity(self, job: OutputTimingRepairJob) -> None:
+        task_id = self._activity_id(job)
+        if job.status in {"complete", "cancelled", "failed", "stale"}:
+            status = "complete" if job.status == "complete" else "cancelled" if job.status == "cancelled" else "failed"
+            detail = "Timing proposal published and validated" if status == "complete" else job.error or job.stale_reason or job.status
+            CENTER.finish_task(task_id, status=status, detail=detail,
+                error=None if status == "complete" else job.error or job.stale_reason or job.status)
+            return
+        task = next((item for item in CENTER.tasks() if item.id == task_id), None)
+        if task is not None and task.status == "queued":
+            CENTER.claim_queued_task(task_id, job.project_id, "alignment", detail="Timing repair worker started")
+        fraction = job.done / max(1, job.total) if job.done < job.total else None
+        detail = f"Measuring output timing segments {job.done}/{job.total}" if fraction is not None else "Validating timing proposal"
+        CENTER.update_task(task_id, detail=detail, fraction=fraction)
+
     def plan(self, project_id: str, output_id: str) -> dict[str, Any]:
         capture = self._capture(project_id, output_id)
         blockers = self._availability_blockers(capture)
@@ -307,12 +332,17 @@ class OutputTimingRepair:
             job = OutputTimingRepairJob(project_id=project_id, output_id=output_id, key=capture.key,
                 status="queued", done=0, total=len(capture.segments))
             self._write_job(job)
+            self._start_activity(job, capture.output.name)
             state = _Running(job)
             self._running[job.id] = state
             thread = threading.Thread(target=self._run, args=(capture, state), daemon=True,
                 name=f"output-timing-repair-{job.id}")
             self._threads[job.id] = thread
-            thread.start()
+            try:
+                thread.start()
+            except Exception as exc:
+                self._persist(state, status="failed", error=f"Could not start timing repair worker: {exc}")
+                raise
             return job.model_copy(deep=True)
 
     def _is_cancelled(self, state: _Running) -> bool:
@@ -322,6 +352,7 @@ class OutputTimingRepair:
         with state.lock:
             state.job = state.job.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)}, deep=True)
             self._write_job(state.job)
+            self._sync_activity(state.job)
             return state.job.model_copy(deep=True)
 
     @staticmethod
@@ -358,6 +389,7 @@ class OutputTimingRepair:
 
     def _run(self, capture: _Capture, state: _Running) -> None:
         job = state.job
+        self._sync_activity(job)
         lease = None
         terminal: tuple[str, dict[str, Any]] | None = None
         try:
@@ -489,6 +521,7 @@ class OutputTimingRepair:
                 job = job.model_copy(update={"status": "stale", "stale_reason": reason, "error": str(exc),
                     "updated_at": datetime.now(timezone.utc)}, deep=True)
                 self._write_job(job)
+        self._sync_activity(job)
         return job
 
     def _stale_reason(self, job: OutputTimingRepairJob, capture: _Capture) -> str | None:

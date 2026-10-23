@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 import wave
 from pathlib import Path
@@ -10,11 +11,19 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.adapters.activity_center import ActivityCenter
 from app.adapters.output_timing_repair_routes import make_output_timing_repair_router
 from app.adapters.output_timing_repair import OutputTimingRepair
 from app.adapters.output_timing_repair import OutputTimingRepairConflict
 from app.domain.output_timing_repair import OutputTimingRepairJob
 from test_voice_fix import setup_fix
+
+
+@pytest.fixture(autouse=True)
+def isolated_timing_activity(monkeypatch):
+    center = ActivityCenter()
+    monkeypatch.setattr("app.adapters.output_timing_repair.CENTER", center)
+    return center
 
 
 class FakeRecognizer:
@@ -102,15 +111,45 @@ def test_timing_repair_plan_key_pins_recognizer_model_and_timing_policy(tmp_path
     assert large["wordTimingVersion"] == 2
 
 
-def test_timing_repair_zero_trusted_matches_fails_without_applicable_proposal(tmp_path):
+def test_timing_repair_zero_trusted_matches_fails_without_applicable_proposal(tmp_path, isolated_timing_activity):
     project, outputs, lease, source, _recognizer, service = setup_repair(tmp_path, FakeRecognizer(fail=True))
     started = service.start(project.id, source.id, request_for(service, project.id, source.id)["expectedKey"])
     job = wait_job(service, project.id, source.id, started.id)
     assert job.status == "failed" and job.proposal_sha256 is None
+    task, = isolated_timing_activity.tasks()
+    assert task.status == "failed" and "trusted" in (task.error or "").lower()
     assert "trusted" in (job.error or "").lower()
     with pytest.raises((ValueError, RuntimeError)):
         service.apply(project.id, source.id, {"jobId": job.id, "expectedKey": job.key})
     assert len(outputs.list(project.id)) == 1 and lease.holder() is None
+
+
+def test_timing_repair_reports_live_segment_progress_and_published_proposal(tmp_path, isolated_timing_activity):
+    class HeldRecognizer(FakeRecognizer):
+        def __init__(self):
+            super().__init__()
+            self.entered = threading.Event()
+            self.release = threading.Event()
+
+        def recognize(self, audio, language, cancellation_id=None):
+            self.entered.set()
+            assert self.release.wait(timeout=5)
+            return super().recognize(audio, language, cancellation_id)
+
+    recognizer = HeldRecognizer()
+    project, _outputs, _lease, source, _recognizer, service = setup_repair(tmp_path, recognizer)
+    started = service.start(project.id, source.id, request_for(service, project.id, source.id)["expectedKey"])
+    assert recognizer.entered.wait(timeout=3)
+    task, = isolated_timing_activity.tasks()
+    assert task.id == f"alignment:{started.id}" and task.status == "running"
+    assert task.kind == "alignment" and task.project_id == project.id
+    assert task.asset_id is None and task.footage_id is None
+    assert "Output Timing Repair" in task.label and task.fraction == 0
+    recognizer.release.set()
+    job = wait_job(service, project.id, source.id, started.id)
+    assert job.status == "complete" and service.proposal_path(project.id, job.id).is_file()
+    task, = isolated_timing_activity.tasks()
+    assert task.status == "complete" and task.fraction == 1
 
 
 def test_timing_repair_rejects_stale_source_and_tampered_proposal(tmp_path):

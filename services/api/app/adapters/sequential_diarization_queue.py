@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.adapters.media_asset_paths import media_asset_directory
-from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick
+from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick, job_queued
 from app.adapters.file_app_preferences import FileAppPreferences
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.processing_cancellation import ProcessingCancellation, ProcessingStopError, ProcessingStopped
@@ -247,6 +247,8 @@ class SequentialDiarizationQueue:
         async with self._lock:
             if key in self._scheduled:
                 return
+            job_queued("diarization", project_id, asset_id, name=asset.name,
+                       footage_id=asset.source_archive_asset_id or asset.id)
             self.media.set_diarization_state(project_id, asset_id, "queued", progress=0, error=None)
             self._pending.append(DiarizationTask(project_id, asset_id, expected_speakers, ProcessingCancellation()))
             self._scheduled.add(key)
@@ -320,6 +322,8 @@ class SequentialDiarizationQueue:
                     dropped.append(active.asset_id)
             for asset_id in dropped:
                 if self._active is None or (self._active.project_id, self._active.asset_id) != (project_id, asset_id):
+                    job_cancelled("diarization", project_id, asset_id, "Đã bỏ khỏi hàng chờ")
+                if self._active is None or (self._active.project_id, self._active.asset_id) != (project_id, asset_id):
                     self._scheduled.discard((project_id, asset_id))
                 try:
                     state = "cancelled" if include_active else "idle"
@@ -373,7 +377,6 @@ class SequentialDiarizationQueue:
             pass
 
     async def _process(self, task: DiarizationTask) -> None:
-        activity_started = False
         try:
             cancellation = task.cancellation
             if cancellation:
@@ -388,9 +391,9 @@ class SequentialDiarizationQueue:
             job_started(
                 "diarization", task.project_id, task.asset_id,
                 model=settings.model, words=len(asset.words),
+                name=asset.name, footage_id=asset.source_archive_asset_id or asset.id,
                 expected_speakers=task.expected_speakers,
             )
-            activity_started = True
             milestone = 25.0
 
             async def report(value: float) -> None:
@@ -458,11 +461,10 @@ class SequentialDiarizationQueue:
                     "diarization", task.project_id, task.asset_id,
                     ProcessingStopError(cancellation.cancel_error or "Cancellation could not be confirmed."),
                 )
-            elif activity_started:
+            else:
                 job_cancelled("diarization", task.project_id, task.asset_id, "Diarization cancelled")
         except KeyError:
-            if activity_started:
-                job_cancelled("diarization", task.project_id, task.asset_id, "Footage removed")
+            job_cancelled("diarization", task.project_id, task.asset_id, "Footage removed")
         except Exception as exc:
             if task.cancellation and task.cancellation.cancelled:
                 state = "error" if task.cancellation.cancel_error else "cancelled"
@@ -478,7 +480,7 @@ class SequentialDiarizationQueue:
                         "diarization", task.project_id, task.asset_id,
                         ProcessingStopError(task.cancellation.cancel_error or "Cancellation could not be confirmed."),
                     )
-                elif activity_started:
+                else:
                     job_cancelled("diarization", task.project_id, task.asset_id, "Diarization cancelled")
                 return
             job_failed("diarization", task.project_id, task.asset_id, exc)

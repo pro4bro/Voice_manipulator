@@ -1,10 +1,12 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import threading
 
 import pytest
 
 from test_subtitle_alignment import setup, url
+from app.adapters.activity_center import CENTER
 
 
 class Engines:
@@ -18,7 +20,7 @@ class Engines:
     def identity(self, engine, settings):
         return {"engine": engine, "settings": settings}
 
-    def run(self, root, audio, words, folder, indexes, engine, settings):
+    def run(self, root, audio, words, folder, indexes, engine, settings, **kwargs):
         return {"status": "complete", "engine": engine, "model": "test", "words": [
             {"text": word["text"], "start": word["start"] + .1, "end": word["end"] + .15, "score": None}
             for word in words]}
@@ -51,6 +53,51 @@ def test_catalog_and_engine_preview_are_source_bound_ghosts_with_manual_locks(tm
     assert restored.json()["asset"]["words"] == before
 
 
+def test_alignment_activity_is_visible_during_inference_and_completes_after_proposal(tmp_path):
+    _, project, _, asset, _, store, _ = setup(tmp_path)
+    store.engines = Engines()
+    entered, release = threading.Event(), threading.Event()
+    original_run = store.engines.run
+
+    def held_run(*args, **kwargs):
+        progress = kwargs.get("progress")
+        if progress:
+            progress({"detail": "Aligned context groups 1/2", "fraction": .5})
+        entered.set()
+        assert release.wait(5)
+        return original_run(*args)
+
+    store.engines.run = held_run
+    CENTER.reset()
+    result = {}
+    failure = []
+    thread = threading.Thread(target=lambda: _capture(result, failure, store, project.id, asset.id))
+    thread.start()
+    try:
+        assert entered.wait(2)
+        task = next(task for task in CENTER.tasks() if task.kind == "alignment")
+        assert task.status == "running"
+        assert task.project_id == project.id
+        assert task.asset_id == asset.id
+        assert task.footage_id == asset.id
+        assert task.fraction == .5
+    finally:
+        release.set()
+        thread.join(5)
+    assert not thread.is_alive()
+    assert not failure
+    assert result["value"]["state"] == "proposed"
+    assert next(task for task in CENTER.tasks() if task.kind == "alignment").status == "complete"
+
+
+def _capture(result, failure, store, project_id, asset_id):
+    try:
+        result["value"] = store.analyze_engine(project_id, asset_id, engine="easyaligner",
+            settings={"language": "vi", "windowSeconds": 30, "paddingSeconds": 1})
+    except Exception as exc:  # make thread errors visible to the test
+        failure.append(exc)
+
+
 @pytest.mark.parametrize("engine, settings", [
     ("unknown", {}), ("mfa", {"beam": 40, "retryBeam": 10}),
     ("mfa", {"language": "vi", "dictionary": "../../outside"}),
@@ -66,13 +113,15 @@ def test_engine_settings_fail_before_dispatch(tmp_path, engine, settings):
 
 def test_failed_or_mismatched_engine_cannot_publish_successful_preview(tmp_path):
     _, project, media, asset, _, store, client = setup(tmp_path)
+    CENTER.reset()
     engines = Engines()
     store.engines = engines
-    engines.run = lambda *_args: {"status": "complete", "words": [{"text": "wrong", "start": 0, "end": .1}]}
+    engines.run = lambda *_args, **_kwargs: {"status": "complete", "words": [{"text": "wrong", "start": 0, "end": .1}]}
     result = client.post(url(project, asset) + "/engine-preview", json={"engineId": "mfa", "settings": {}})
     assert result.status_code == 422
     assert not (Path(project.project_path) / "jobs/subtitle-alignment" / asset.id / "latest.json").exists()
     assert media.get(project.id, asset.id).words == asset.words
+    assert next(task for task in CENTER.tasks() if task.kind == "alignment").status == "failed"
 
 
 def test_engine_catalog_never_reports_missing_runtime_as_ready(tmp_path):
@@ -87,7 +136,7 @@ def test_source_change_during_inference_cannot_publish_or_apply(tmp_path):
     _, project, media, asset, _, store, client = setup(tmp_path)
     engines = Engines()
     original_run = engines.run
-    def run(*args):
+    def run(*args, **kwargs):
         words = deepcopy(asset.words)
         words[0]["start"] = .25
         media.update_script(project.id, asset.id, asset.text, "user", words)

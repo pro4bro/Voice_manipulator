@@ -6,12 +6,20 @@ from pathlib import Path
 
 import pytest
 
+from app.adapters.activity_center import ActivityCenter
 from app.adapters.file_voice_edits import FileVoiceEdits
 from app.adapters.voice_fix import VoiceFixService
 from app.domain.models import VoiceScriptRequest, VoiceScriptRow
 from app.domain.voice_edits import StretchOperation, VoiceEditCommand
 from app.domain.voice_script_document import VoiceScriptDocument
 from test_voice_script import BlockingEngine, FakeEngine, speaker_fixture
+
+
+@pytest.fixture(autouse=True)
+def isolated_fix_activity(monkeypatch):
+    center = ActivityCenter()
+    monkeypatch.setattr("app.adapters.voice_fix.CENTER", center)
+    return center
 
 
 def setup_fix(tmp_path, engine=None, row_count=2):
@@ -177,7 +185,7 @@ def test_fix_failure_keeps_successful_clip_checkpoint_for_retry(tmp_path):
     assert retry.units[0].row_id == "r2" and retry.units[0].status == "complete"
 
 
-def test_fix_does_not_mark_a_clip_complete_after_script_changes_during_inference(tmp_path):
+def test_fix_does_not_mark_a_clip_complete_after_script_changes_during_inference(tmp_path, isolated_fix_activity):
     engine = BlockingEngine()
     project, outputs, lease, speaker, scripts, edits, output, _ = setup_fix(tmp_path, engine)
     script = scripts.get(project.id)
@@ -187,15 +195,41 @@ def test_fix_does_not_mark_a_clip_complete_after_script_changes_during_inference
     plan = service.plan(project.id, output.id)
     started = service.start(project.id, output.id, script.revision, 0, plan.key)
     assert engine.entered.wait(3)
+    task, = isolated_fix_activity.tasks()
+    assert task.id == f"tts:{started.id}" and task.status == "running"
+    assert task.project_id == project.id and "Voice Fix" in task.label
     current = scripts.get(project.id)
     current.rows[0].text = "Sửa mới hơn"
     scripts.save(project.id, current)
     engine.release.set()
     job = wait_job(service, project.id, output.id, started.id)
     assert job.status == "stale" and job.done == 0
+    task, = isolated_fix_activity.tasks()
+    assert task.status == "failed" and task.fraction == 0 and task.error
     assert not any(unit.status == "complete" for unit in job.units)
     assert lease.holder() is None
     assert len(outputs.list(project.id)) == 1
+
+
+def test_fix_thread_start_failure_marks_reserved_job_and_activity_failed(tmp_path, monkeypatch, isolated_fix_activity):
+    project, _outputs, _lease, speaker, scripts, edits, output, _engine = setup_fix(tmp_path)
+    script = scripts.get(project.id)
+    script.rows[0].text = "Câu thay đổi"
+    script = scripts.save(project.id, script)
+    service = VoiceFixService(speaker, edits)
+    plan = service.plan(project.id, output.id)
+
+    def fail_start(_thread):
+        raise RuntimeError("thread start denied")
+
+    monkeypatch.setattr("app.adapters.voice_fix.threading.Thread.start", fail_start)
+    with pytest.raises(RuntimeError, match="thread start denied"):
+        service.start(project.id, output.id, script.revision, 0, plan.key)
+
+    task, = isolated_fix_activity.tasks()
+    assert task.status == "failed" and "thread start denied" in (task.error or "")
+    job = service._read_job(project.id, output.id, task.id.removeprefix("tts:"))
+    assert job.status == "failed"
 
 
 def test_fix_queue_stop_finishes_current_unit_and_leaves_next_dirty(tmp_path):

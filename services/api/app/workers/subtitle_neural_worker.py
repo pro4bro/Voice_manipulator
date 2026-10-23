@@ -202,7 +202,7 @@ def _set_cpu_threads(torch) -> None:
         pass
 
 
-def _stable_align(payload: dict, samples, groups: list[dict], runtime_root: Path) -> tuple[list[dict], list[dict], str]:
+def _stable_align(payload: dict, samples, groups: list[dict], runtime_root: Path, progress=None) -> tuple[list[dict], list[dict], str]:
     import numpy as np
     import torch
     import stable_whisper
@@ -221,13 +221,17 @@ def _stable_align(payload: dict, samples, groups: list[dict], runtime_root: Path
     configure_alignment_heads(model, model_name, whisper._ALIGNMENT_HEADS)
     output = [{"text": word["text"], "start": None, "end": None, "score": None} for word in payload["words"]]
     diagnostics = []
-    for group in _groups_for_selection(groups, payload["indexes"]):
+    selected_groups = _groups_for_selection(groups, payload["indexes"])
+    for completed, group in enumerate(selected_groups, 1):
         selected_indexes = group["indexes"]
         start_sample = max(0, round(group["start"] * SAMPLE_RATE))
         end_sample = min(len(samples), round(group["end"] * SAMPLE_RATE))
         audio_slice = np.asarray(samples[start_sample:end_sample], dtype=np.float32)
         if end_sample <= start_sample or not audio_slice.size:
             diagnostics.append({**group, "status": "empty-window"})
+            if progress is not None:
+                progress({"stage": f"Aligned context groups {completed}/{len(selected_groups)}",
+                          "fraction": completed / len(selected_groups), "completed": completed, "total": len(selected_groups)})
             continue
         text = " ".join(payload["words"][index]["text"] for index in selected_indexes)
         result = model.align(audio_slice, text, language=language, original_split=True,
@@ -244,10 +248,13 @@ def _stable_align(payload: dict, samples, groups: list[dict], runtime_root: Path
             for index, row in zip(selected_indexes, mapped):
                 output[index].update(row)
         diagnostics.append({**group, "status": status})
+        if progress is not None:
+            progress({"stage": f"Aligned context groups {completed}/{len(selected_groups)}",
+                      "fraction": completed / len(selected_groups), "completed": completed, "total": len(selected_groups)})
     return output, diagnostics, model_name
 
 
-def _easyaligner_align(payload: dict, samples, groups: list[dict], runtime_root: Path) -> tuple[list[dict], list[dict], str]:
+def _easyaligner_align(payload: dict, samples, groups: list[dict], runtime_root: Path, progress=None) -> tuple[list[dict], list[dict], str]:
     import numpy as np
     import torch
     from transformers import AutoModelForCTC, Wav2Vec2Processor
@@ -270,7 +277,8 @@ def _easyaligner_align(payload: dict, samples, groups: list[dict], runtime_root:
     unk = processor.tokenizer.unk_token_id
     output = [{"text": word["text"], "start": None, "end": None, "score": None} for word in payload["words"]]
     diagnostics = []
-    for group in _groups_for_selection(groups, payload["indexes"]):
+    selected_groups = _groups_for_selection(groups, payload["indexes"])
+    for completed, group in enumerate(selected_groups, 1):
         # Unsupported vocabulary tokens break correspondence, so leave those words null and
         # align only contiguous supported runs. This cannot shift later word indexes.
         runs, unknown_indexes = split_supported_runs(group["indexes"], payload["words"], set(vocab), case)
@@ -325,11 +333,14 @@ def _easyaligner_align(payload: dict, samples, groups: list[dict], runtime_root:
                 diagnostics.append({"indexes": indexes, "start": window_start, "end": window_end, "status": status})
             except (AssertionError, RuntimeError, ValueError, IndexError) as exc:
                 diagnostics.append({"indexes": indexes, "status": "alignment-failed", "reason": str(exc)[:300]})
+        if progress is not None:
+            progress({"stage": f"Aligned context groups {completed}/{len(selected_groups)}",
+                      "fraction": completed / len(selected_groups), "completed": completed, "total": len(selected_groups)})
     del model
     return output, diagnostics, language
 
 
-def run_worker(payload: dict, project_root: Path, runtime_root: Path) -> dict:
+def run_worker(payload: dict, project_root: Path, runtime_root: Path, progress=None) -> dict:
     if payload.get("engineId") not in {"stable-ts", "easyaligner"}:
         raise ValueError("Neural worker accepts only stable-ts or easyaligner")
     settings = payload.get("settings")
@@ -371,11 +382,13 @@ def run_worker(payload: dict, project_root: Path, runtime_root: Path) -> dict:
             or not math.isfinite(float(padding)) or not 0 <= float(padding) <= 2):
         raise ValueError("Invalid alignment window settings")
     groups = make_groups(words, duration, float(window), float(padding))
+    if progress is not None:
+        progress({"stage": "Loading alignment model", "fraction": None})
     started = time.perf_counter()
     if engine == "stable-ts":
-        output, diagnostics, model_name = _stable_align(payload, samples, _groups_for_selection(groups, indexes), runtime_root)
+        output, diagnostics, model_name = _stable_align(payload, samples, _groups_for_selection(groups, indexes), runtime_root, progress)
     else:
-        output, diagnostics, model_name = _easyaligner_align(payload, samples, _groups_for_selection(groups, indexes), runtime_root)
+        output, diagnostics, model_name = _easyaligner_align(payload, samples, _groups_for_selection(groups, indexes), runtime_root, progress)
     requested = set(indexes if indexes is not None else range(len(output)))
     if not any(output[index]["start"] is not None for index in requested):
         raise RuntimeError("Neural aligner did not produce a measured timing for any requested word")
@@ -400,13 +413,20 @@ def _version(name: str) -> str | None:
 
 
 def main() -> None:
-    if len(sys.argv) != 5:
+    if len(sys.argv) not in {5, 6}:
         raise ValueError("Usage: worker INPUT_JSON OUTPUT_JSON PROJECT_ROOT RUNTIME_ROOT")
-    input_path, output_path, project_root, runtime_root = map(Path, sys.argv[1:])
+    input_path, output_path, project_root, runtime_root = map(Path, sys.argv[1:5])
+    progress_path = Path(sys.argv[5]) if len(sys.argv) == 6 else None
     if output_path.exists():
         raise FileExistsError("Alignment output already exists")
     payload = json.loads(input_path.read_text(encoding="utf-8"))
-    result = run_worker(payload, project_root, runtime_root)
+    def progress(value):
+        if progress_path is None:
+            return
+        temporary = progress_path.with_suffix(progress_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+        os.replace(temporary, progress_path)
+    result = run_worker(payload, project_root, runtime_root, progress)
     serialized = json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

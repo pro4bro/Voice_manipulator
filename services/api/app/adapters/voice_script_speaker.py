@@ -442,6 +442,13 @@ class VoiceScriptSpeaker:
         task = CENTER.start_task(
             "tts", f"Đọc Script · {len(steps)} đoạn", detail="Chuẩn bị", fraction=0.0, project_id=project_id,
         )
+        child_ids = [f"{task}:row:{index}" for index in range(len(steps))]
+        assemble_id = f"{task}:assemble"
+        for index, step in enumerate(steps):
+            CENTER.queue_task("tts", f"Đoạn {index + 1} · {step.plan.voice.name}", task_id=child_ids[index],
+                project_id=project_id, parent_task_id=task)
+        CENTER.queue_task("tts", "Ghép audio", task_id=assemble_id, project_id=project_id, parent_task_id=task)
+        active_child = None
         began = time.perf_counter()
         logger.info("Đọc Script: %s đoạn", len(steps))
         try:
@@ -472,8 +479,11 @@ class VoiceScriptSpeaker:
                         register(cancellation_id)
                 CENTER.update_task(
                     task, detail=f"Đoạn {index + 1}/{len(steps)} · {step.plan.voice.name}",
-                    fraction=index / max(1, len(steps)),
+                    fraction=index / (len(steps) + 1),
                 )
+                active_child = CENTER.start_task("tts", f"Đoạn {index + 1} · {step.plan.voice.name}",
+                    task_id=child_ids[index], project_id=project_id, parent_task_id=task,
+                    detail="Tạo audio và xác định word timing")
                 clip = self._clip(
                     project_id, step, cancellation_id,
                     job=job,
@@ -491,6 +501,8 @@ class VoiceScriptSpeaker:
                     job.active_worker = None
                 reused += int(clip.reused)
                 clips.append((step, clip))
+                CENTER.finish_task(active_child, detail="Dùng lại clip" if clip.reused else "Đã tạo clip")
+                active_child = None
                 with job.lock:
                     if job.record.status == "running":
                         job.record = job.record.model_copy(update={
@@ -498,7 +510,7 @@ class VoiceScriptSpeaker:
                         })
                 spent = time.perf_counter() - began
                 CENTER.update_task(
-                    task, fraction=(index + 1) / max(1, len(steps)),
+                    task, fraction=(index + 1) / (len(steps) + 1),
                     eta_seconds=spent / (index + 1) * (len(steps) - index - 1),
                 )
                 with job.lock:
@@ -513,9 +525,11 @@ class VoiceScriptSpeaker:
                         "status": "stopped", "finished_at": datetime.now(timezone.utc),
                     })
                     return
-            CENTER.update_task(task, detail="Ghép các đoạn thành một file", fraction=1.0)
+            CENTER.update_task(task, detail="Ghép các đoạn thành một file", fraction=None)
             if self._cancel_requested(job):
                 return
+            active_child = CENTER.start_task("tts", "Ghép audio", task_id=assemble_id,
+                project_id=project_id, parent_task_id=task, detail="Ghép và lưu Voice Output")
             output = self._assemble(
                 project_id, clips, gap_seconds,
                 publish=lambda candidate: self._publish_script_output(job, project_id, candidate, should_stop),
@@ -523,6 +537,8 @@ class VoiceScriptSpeaker:
             spent = time.perf_counter() - began
             with job.lock:
                 final_status = job.record.status
+            CENTER.finish_task(active_child)
+            active_child = None
             CENTER.finish_task(task, status="cancelled" if final_status == "stopped" else "complete", detail=f"{len(clips)} đoạn · {reused} dùng lại")
             logger.info("Đọc Script xong: %s đoạn, %s dùng lại, %.1f giây", len(steps), reused, spent)
         except Exception as exc:  # the job reports it; nothing above this thread would
@@ -534,6 +550,8 @@ class VoiceScriptSpeaker:
                         "current_row_id": None, "finished_at": datetime.now(timezone.utc),
                     })
             CENTER.finish_task(task, status="cancelled" if cancelled else "failed", error=None if cancelled else str(exc) or type(exc).__name__)
+            if active_child:
+                CENTER.finish_task(active_child, status="cancelled" if cancelled else "failed", error=None if cancelled else str(exc))
             if not cancelled:
                 logger.error("Đọc Script thất bại: %s", exc)
         finally:
@@ -544,6 +562,8 @@ class VoiceScriptSpeaker:
                 job.active_request_id = None
                 job.active_worker = None
             try:
+                for child_id in [*child_ids, assemble_id]:
+                    CENTER.finish_task(child_id, status="cancelled", detail="Không thực hiện")
                 abandon = getattr(active_worker, "abandon_request", None)
                 if active_request_id is not None and callable(abandon):
                     abandon(active_request_id)

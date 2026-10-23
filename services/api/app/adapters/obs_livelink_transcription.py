@@ -19,6 +19,7 @@ from uuid import uuid4
 import httpx
 
 from app.adapters.obs_livelink_connection import LiveLinkError
+from app.adapters.activity_center import CENTER
 from app.domain.ports import ProjectRepository
 
 
@@ -107,6 +108,8 @@ class ObsLiveLinkTranscription:
         self._finished: set[str] = set()
         self._failed: set[tuple[str, str, str]] = set()
         self._process_epoch = uuid4().hex
+        self._activity_tasks = {}
+        self._activity_errors = {}
 
     def _path(self, project_id: str, recording_id: str) -> Path:
         root = Path(self.projects.get(project_id).project_path).resolve()
@@ -378,10 +381,21 @@ class ObsLiveLinkTranscription:
     async def _append_event(self, item: _Audio, utterance: _Utterance | None, **fields) -> None:
         try:
             await self._append(item, utterance, **fields)
+            key = (item.project_id, item.recording_id, item.channel_id)
+            if fields.get("status") == "error":
+                self._activity_errors[key] = fields.get("error") or "Live STT error"
+            if key in self._activity_tasks:
+                await asyncio.to_thread(CENTER.update_task, self._activity_tasks[key],
+                    label=f"Live STT · {item.alias}", group_label=f"OBS LiveLink · {item.recording_id[:8]}",
+                    detail=f"{fields.get('status', 'listening')} · {item.alias}", fraction=None)
         except (OSError, KeyError, ValueError) as exc:
             raise _EventPersistenceError("Live STT event could not be saved.") from exc
 
     async def _run(self, key: tuple[str, str, str], queue: asyncio.Queue[_Audio | None]) -> None:
+        task = CENTER.start_task("stt", f"OBS Live STT · {key[2]}", project_id=key[0],
+            asset_id=f"obs-channel:{key[1]}:{key[2]}", footage_id=f"obs-recording:{key[1]}",
+            group_label=f"OBS LiveLink · {key[1][:8]}", detail="Đang nhận audio trực tiếp; chưa có tổng thời lượng")
+        self._activity_tasks[key] = task
         utterance: _Utterance | None = None
         last: _Audio | None = None
         try:
@@ -480,6 +494,7 @@ class ObsLiveLinkTranscription:
                             if deferred.next_sequence > deferred.highest_sequence:
                                 self._deferred.pop(key, None)
         except Exception as exc:
+            self._activity_errors[key] = str(exc)
             self._failed.add(key)
             logging.getLogger(__name__).exception("LiveLink STT worker stopped for %s", key)
             if last is not None:
@@ -489,6 +504,9 @@ class ObsLiveLinkTranscription:
                 except _EventPersistenceError:
                     pass
         finally:
+            error = self._activity_errors.pop(key, None)
+            CENTER.finish_task(task, status="failed" if error else "complete" if key[1] in self._finished else "cancelled", error=error)
+            self._activity_tasks.pop(key, None)
             self._queues.pop(key, None)
             self._queued_bytes.pop(key, None)
             self._deferred.pop(key, None)
@@ -505,6 +523,9 @@ class ObsLiveLinkTranscription:
         return output.getvalue()
 
     async def _partial(self, item: _Audio, utterance: _Utterance) -> None:
+        task = self._activity_tasks.get((item.project_id, item.recording_id, item.channel_id))
+        if task:
+            CENTER.update_task(task, detail=f"Live STT · đang nhận dạng {item.alias}", fraction=None)
         if self.batch_running():
             raise RuntimeError("Batch STT is using the model; durable audio is intact.")
         async with self._model:

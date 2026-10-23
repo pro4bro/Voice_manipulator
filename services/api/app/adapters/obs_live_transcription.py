@@ -12,6 +12,7 @@ from typing import Callable, Literal
 import httpx
 
 from app.adapters.obs_live_sessions import FileObsLiveSessions
+from app.adapters.activity_center import CENTER
 from app.domain.models import ObsLiveSession
 
 
@@ -119,6 +120,20 @@ class ObsLiveTranscriber:
         await self._transcribe(stream, message.queued_at)
 
     async def _transcribe(self, stream: _Stream, queued_at: float) -> None:
+        session = self.sessions.get(stream.project_id, stream.session_id)
+        task = CENTER.start_task("stt", f"Live STT · {session.source_label}", project_id=stream.project_id,
+            asset_id=session.asset_id or f"obs-session:{session.id}",
+            footage_id=session.source_archive_asset_id or session.asset_id or f"obs-session:{session.id}",
+            group_label=session.source_label, detail="Đang nhận dạng audio trực tiếp")
+        try:
+            await self._transcribe_audio(stream, queued_at)
+        except BaseException as exc:
+            CENTER.finish_task(task, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "failed", error=str(exc))
+            raise
+        else:
+            CENTER.finish_task(task, detail="Đã lưu Live STT")
+
+    async def _transcribe_audio(self, stream: _Stream, queued_at: float) -> None:
         pcm = bytes(stream.pcm)
         stream.pcm.clear()
         wav = io.BytesIO()

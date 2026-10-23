@@ -126,7 +126,7 @@ def read_manifest(runtime_root: Path) -> dict:
     return manifest
 
 
-def _run_alignment(payload: dict, audio_path: Path, output_path: Path, project_root: Path, runtime_root: Path):
+def _run_alignment(payload: dict, audio_path: Path, output_path: Path, project_root: Path, runtime_root: Path, progress=None):
     language = payload["settings"].get("language")
     if language not in LANGUAGE_MODELS:
         raise ValueError("Unsupported MFA language")
@@ -165,6 +165,8 @@ def _run_alignment(payload: dict, audio_path: Path, output_path: Path, project_r
         child_env["PATH"] = os.pathsep.join((str(runtime_root / "Library" / "bin"),
                                               str(runtime_root / "Scripts"),
                                               str(runtime_root), child_env.get("PATH", "")))
+        if progress is not None:
+            progress({"stage": "Preparing MFA audio", "fraction": None})
         subprocess.run([str(ffmpeg_exe), "-nostdin", "-v", "error", "-y", "-i", str(audio_path),
                         "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(pcm_path)],
                        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=child_env)
@@ -188,6 +190,8 @@ def _run_alignment(payload: dict, audio_path: Path, output_path: Path, project_r
                    str(dictionary), str(acoustic), str(aligned_path),
                    "--output_format", "json", "--clean", "--beam", str(beam),
                    "--retry_beam", str(retry_beam)]
+        if progress is not None:
+            progress({"stage": "Running Montreal Forced Aligner", "fraction": None})
         started = time.perf_counter()
         result = subprocess.run(command, check=False, capture_output=True, text=True,
                                 encoding="utf-8", errors="replace", env=child_env)
@@ -225,6 +229,7 @@ def _run_alignment(payload: dict, audio_path: Path, output_path: Path, project_r
 
 def main() -> None:
     input_path, output_path, project_root, runtime_root = map(Path, sys.argv[1:5])
+    progress_path = Path(sys.argv[5]) if len(sys.argv) == 6 else None
     if output_path.exists():
         raise FileExistsError("Alignment output already exists")
     payload = json.loads(input_path.read_text(encoding="utf-8"))
@@ -243,7 +248,13 @@ def main() -> None:
     audio_path = resolve_project_audio(project_root, payload["audioPath"])
     actual_hash = payload.get("audioSha256")
     verify_source_hash(audio_path, actual_hash)
-    result = _run_alignment(payload, audio_path, output_path, project_root.resolve(), runtime_root.resolve())
+    def progress(value):
+        if progress_path is None:
+            return
+        temporary = progress_path.with_suffix(progress_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+        os.replace(temporary, progress_path)
+    result = _run_alignment(payload, audio_path, output_path, project_root.resolve(), runtime_root.resolve(), progress)
     verify_source_hash(audio_path, actual_hash)
     serialized = json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)

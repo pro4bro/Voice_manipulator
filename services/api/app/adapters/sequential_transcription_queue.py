@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick
+from app.adapters.activity_logging import job_cancelled, job_failed, job_finished, job_progress, job_started, job_tick, job_queued
 from app.adapters.file_media_library import FileMediaLibrary
 from app.adapters.media_import_processor import MediaImportProcessor
 from app.adapters.openai_compatible_transcript_reviewer import OpenAICompatibleTranscriptReviewer
@@ -65,6 +65,8 @@ class SequentialTranscriptionQueue:
                 self.media.set_transcription_selected(project_id, asset.id, True)
                 if key in self._scheduled:
                     continue
+                job_queued("stt", project_id, asset.id, name=asset.name,
+                           footage_id=asset.source_archive_asset_id or asset.id)
                 self.media.set_transcription_state(
                     project_id,
                     asset.id,
@@ -228,6 +230,8 @@ class SequentialTranscriptionQueue:
                 self._paused_projects.discard(project_id)
             for asset_id in dropped:
                 if (project_id, asset_id) != self._active:
+                    job_cancelled("stt", project_id, asset_id, "Đã bỏ khỏi hàng chờ")
+                if (project_id, asset_id) != self._active:
                     self._scheduled.discard((project_id, asset_id))
                 self._paused.discard((project_id, asset_id))
                 if (project_id, asset_id) == self._active:
@@ -281,7 +285,6 @@ class SequentialTranscriptionQueue:
         }
 
     async def _process(self, task: TranscriptionTask) -> None:
-        activity_started = False
         try:
             cancellation = task.cancellation
             if cancellation:
@@ -295,8 +298,8 @@ class SequentialTranscriptionQueue:
             job_started(
                 "stt", task.project_id, task.asset_id,
                 model=task.model, name=asset.name, duration=round(asset.duration, 1),
+                footage_id=asset.source_archive_asset_id or asset.id,
             )
-            activity_started = True
             milestone = 25.0
 
             async def report_progress(value: float) -> None:
@@ -343,12 +346,11 @@ class SequentialTranscriptionQueue:
                 pass
             if state == "error":
                 job_failed("stt", task.project_id, task.asset_id, ProcessingStopError(cancellation.cancel_error))
-            elif activity_started:
+            else:
                 job_cancelled("stt", task.project_id, task.asset_id, "Recognition cancelled")
         except KeyError:
             # A user may remove queued footage before its turn without making the queue fail.
-            if activity_started:
-                job_cancelled("stt", task.project_id, task.asset_id, "Footage removed")
+            job_cancelled("stt", task.project_id, task.asset_id, "Footage removed")
         except Exception as exc:
             if task.cancellation and task.cancellation.cancelled:
                 state = "error" if task.cancellation.cancel_error else "cancelled"
@@ -363,7 +365,7 @@ class SequentialTranscriptionQueue:
                     pass
                 if state == "error":
                     job_failed("stt", task.project_id, task.asset_id, ProcessingStopError(task.cancellation.cancel_error))
-                elif activity_started:
+                else:
                     job_cancelled("stt", task.project_id, task.asset_id, "Recognition cancelled")
                 return
             job_failed("stt", task.project_id, task.asset_id, exc)

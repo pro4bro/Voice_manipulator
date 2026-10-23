@@ -10,12 +10,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.adapters.activity_center import ActivityCenter
 from app.adapters.file_voice_patch import FileVoicePatch
 from app.adapters.voice_patch_processor import VoicePatchProcessor
 from app.adapters.voice_patch_job_routes import make_voice_patch_job_router
 from app.domain.voice_patch import VoicePatchTransferRequest
 from app.domain.voice_patch_jobs import VoicePatchApplyRequest, VoicePatchJobRequest
 from test_voice_fix import setup_fix
+
+
+@pytest.fixture(autouse=True)
+def isolated_patch_activity(monkeypatch):
+    center = ActivityCenter()
+    monkeypatch.setattr("app.adapters.voice_patch_processor.CENTER", center)
+    return center
 
 
 def _trained_voice(project, speaker, source_voice_id):
@@ -70,7 +78,7 @@ def request(draft, revision, script_revision, edit_revision, voice_id, text="ƒê√
         expectedEditRevision=edit_revision, replacementText=text, voiceId=voice_id)
 
 
-def test_patch_processor_uses_trained_matching_profile_and_keeps_output_hidden_until_apply(tmp_path):
+def test_patch_processor_uses_trained_matching_profile_and_keeps_output_hidden_until_apply(tmp_path, isolated_patch_activity):
     project, outputs, lease, speaker, scripts, edits, source, engine, trained, _store, draft, processor = setup_patch(tmp_path)
     source_path = outputs.audio_path(project.id, source.id)
     source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
@@ -82,6 +90,9 @@ def test_patch_processor_uses_trained_matching_profile_and_keeps_output_hidden_u
     job = wait_job(processor, project.id, started.id)
 
     assert job.status == "complete" and job.done == 1, job.error
+    task, = isolated_patch_activity.tasks()
+    assert task.id == f"tts:{job.id}" and task.status == "complete" and task.fraction == 1
+    assert task.project_id == project.id and "Voice Patch" in task.label
     assert job.replacement_audio_url.endswith("/audio?kind=replacement")
     assert job.audio_url.endswith("/audio?kind=composite")
     assert len(outputs.list(project.id)) == 1
@@ -171,7 +182,7 @@ def test_patch_job_becomes_stale_when_script_changes_before_apply(tmp_path):
     assert len(outputs.list(project.id)) == 1
 
 
-def test_patch_cancel_releases_lease_and_retry_reuses_durable_draft(tmp_path):
+def test_patch_cancel_releases_lease_and_retry_reuses_durable_draft(tmp_path, isolated_patch_activity):
     from test_voice_script import BlockingEngine
     project, outputs, lease, speaker, scripts, _edits, source, engine, trained, store, draft, processor = setup_patch(tmp_path)
     blocker = BlockingEngine(cancelable=True)
@@ -179,9 +190,13 @@ def test_patch_cancel_releases_lease_and_retry_reuses_durable_draft(tmp_path):
     script = scripts.get(project.id)
     started = processor.start(project.id, request(draft.draft, draft.revision, script.revision, 0, trained.id))
     assert blocker.entered.wait(timeout=2)
+    task, = isolated_patch_activity.tasks()
+    assert task.id == f"tts:{started.id}" and task.status == "running" and task.fraction is None
     processor.stop(project.id, started.id, include_active=True)
     stopped = wait_job(processor, project.id, started.id)
     assert stopped.status == "cancelled"
+    task, = isolated_patch_activity.tasks()
+    assert task.status == "cancelled"
     assert lease.holder() is None
     assert len(outputs.list(project.id)) == 1
 
