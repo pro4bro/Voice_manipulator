@@ -6,11 +6,20 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-23 — PROJECT-QUEUE-01 implemented approved persistent Queue.
-last_activity_desc: Footage grouping, real progress, Status and portable task receipts implemented. Full frontend1262 passes; backend1535 passes/1 existing timeout, isolated case passes. Focused delta checks and real media/engine proof pass. Stop bounded round; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-24 — VM-OUTPUT-SESSIONS-01 added Voice Output Sessions and Versions.
+last_activity_desc: Independent WAV/edit-journal version copies, empty Sessions and theme-colored engine options. Full frontend1263/backend1545 pass; final focused22 frontend and3 backend pass. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
+
+Project-owned Session/Version grouping adopts existing Voice Outputs and copies
+selected WAV/edit history into independent Version artifacts. New Session waits
+for the next generated output. Engine dropdown uses themed, viewport-aware
+options. Full frontend1263, backend1545, final focused22/3, typecheck/build217
+pass. Script remains project-wide; browser/audio UAT remains open. ADR0140 and
+the round gate record evidence. Phase03 stays60%, Phase06 open; stop round.
 
 ## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
 

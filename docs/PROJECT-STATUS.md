@@ -1,4 +1,17 @@
-# Project Status — 2026-10-23
+# Project Status — 2026-10-24
+
+## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
+
+Voice Output supports project-owned Session/Version selection. New Session
+creates an empty Version; New Version copies the selected validated WAV,
+metadata and edit journal to an independent output with source lineage. Existing
+outputs are adopted without audio changes. Engine choices render in the app's
+dark/light theme with viewport-aware placement and retain the existing
+availability and generation guards. Full frontend1263, focused22, typecheck/
+build217 and backend1545 pass; three final new backend cases pass separately.
+Script editing remains project-wide, and live browser/audio UAT was not run.
+ADR0140 and `docs/gates/vm-output-sessions-01-20261024.md` hold the contract and
+evidence. Phase03 remains60%, Phase06 open; stop this bounded round.
 
 ## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
 

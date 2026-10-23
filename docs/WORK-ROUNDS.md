@@ -1,5 +1,21 @@
 # Work Rounds
 
+## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
+
+Voice Output now has icon-only New Session and New Version actions. Sessions
+and Versions persist beside the project; legacy outputs become individual
+Sessions. New Version copies the selected WAV and edit journal to an independent
+output ID with source lineage; New Session creates an empty slot for the next
+output. The native generation-engine select was replaced with a theme-colored,
+viewport-aware option list so dark and light modes remain readable.
+
+Full frontend1263/154 files, final focused22, typecheck/build217 pass. Full
+backend1545/3 existing warnings passes; final new adapter/API/invalid-WAV cases3
+pass after the full run. No source media or owner project changed. Script remains
+project-wide; no live browser audition. See ADR0140 and
+`docs/gates/vm-output-sessions-01-20261024.md`. Phase03 stays60%, Phase06 open.
+Stop this bounded round.
+
 ## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
 
 Implemented the approved footage mockup: Import/STT/alignment/diarization share
