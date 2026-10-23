@@ -47,11 +47,17 @@ function view(input = asset, onApplied = vi.fn()) {
 it("shows editable offsets, contextual ghost coordinates and one bulk Apply without word checklists", async () => {
   const applied = vi.fn(); render(view(asset, applied));
   await screen.findByRole("option", { name: "MFA" });
+  expect(screen.getByLabelText("Engine căn chỉnh subtitle")).toHaveValue("easyaligner");
+  expect(screen.getByLabelText("Window (s)")).toHaveValue(30);
+  expect(screen.getByLabelText("Padding (s)")).toHaveValue(1);
   expect(screen.queryByLabelText("Nhập offset thủ thủ công: Offset IN (ms)")).not.toBeInTheDocument();
   expect(api.previewSubtitleEngine).not.toHaveBeenCalled();
   expect(api.applySubtitleTimingPreview).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
   expect(await screen.findByRole("img", { name: "Ghost Preview · 1 từ · 1 từ xung đột" })).toBeInTheDocument();
+  expect(api.previewSubtitleEngine).toHaveBeenCalledWith("project", "track", {
+    engineId: "easyaligner", settings: { language: "vi", windowSeconds: 30, paddingSeconds: 1 }, maxMoveMs: 2000,
+  });
   expect(paint).toHaveBeenCalledWith(150, 1, 100, 21);
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.getByText(/2 từ xung đột timing/)).toBeInTheDocument();
@@ -68,7 +74,7 @@ it("invalidates Ghost and Apply after parameters or source change", async () => 
   await screen.findByRole("option", { name: "MFA" });
   fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
   await screen.findByRole("img");
-  fireEvent.change(screen.getByLabelText("Beam"), { target: { value: "12" } });
+  fireEvent.change(screen.getByLabelText("Padding (s)"), { target: { value: "1.5" } });
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Apply New Timing" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Bắt đầu tinh chỉnh" }));
@@ -104,7 +110,8 @@ it("clears a selection-only preview when the selected words change", async () =>
 it("shows engine-specific settings without inferring until explicit start and sends the chosen settings", async () => {
   render(view());
   await screen.findByRole("option", { name: "MFA" });
-  expect(screen.getByLabelText("Engine căn chỉnh subtitle")).toHaveValue("mfa");
+  expect(screen.getByLabelText("Engine căn chỉnh subtitle")).toHaveValue("easyaligner");
+  fireEvent.change(screen.getByLabelText("Engine căn chỉnh subtitle"), { target: { value: "mfa" } });
   expect(screen.getByLabelText("Ngôn ngữ MFA")).toHaveValue("vi");
   expect(screen.queryByLabelText("Model stable-ts")).not.toBeInTheDocument();
   expect(api.previewSubtitleEngine).not.toHaveBeenCalled();

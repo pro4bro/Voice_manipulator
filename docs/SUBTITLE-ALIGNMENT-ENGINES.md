@@ -21,6 +21,20 @@ model or edit the script. Extra offset/waveform rules are available in collapsed
 advanced settings and initially disabled. A preview is an estimate to listen to;
 neither a high CTC score nor a waveform corner proves a correct word boundary.
 
+### Default configuration
+
+EasyAligner is selected by default at the owner's request following the Conviction
+comparison. Its initial settings are Vietnamese, Window 30 seconds, Padding 1 second
+and maximum movement 2000ms. Additional methods, including offsets, start disabled.
+The API and standalone neural worker use the same window/padding defaults when
+those EasyAligner fields are omitted. MFA and stable-ts remain selectable.
+
+The preferred default is a preview choice; inference starts only after **Bắt đầu
+tinh chỉnh**, and saving timing still requires **Apply New Timing**. Existing
+manual timing remains protected. See the
+[Conviction report](research/CONVICTION-ALIGNMENT-BENCHMARK-20261023.md) for observed
+accuracy, runtime and the remaining conflict/unknown-word limitations.
+
 ## Parameters
 
 | Engine | Parameters | Meaning |

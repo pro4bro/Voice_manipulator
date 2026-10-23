@@ -13,7 +13,7 @@ type SettingsByEngine = Record<SubtitleAlignmentEngineId, SubtitleAlignmentEngin
 const initialSettings: SettingsByEngine = {
   mfa: { language: "vi", beam: 10, retryBeam: 40 },
   "stable-ts": { language: "vi", model: "base", refine: true, precision: 0.1, maxWordDuration: 3, windowSeconds: 20 },
-  easyaligner: { language: "vi", windowSeconds: 20, paddingSeconds: 0.5 },
+  easyaligner: { language: "vi", windowSeconds: 30, paddingSeconds: 1 },
 };
 
 export function SubtitleRefinementPanel({ projectId, assets, selection, prepare, onApplied }: ComponentProps<typeof SubtitleAlignmentControl>) {
@@ -23,7 +23,7 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
   const asset = choices.find((item) => item.id === assetId);
   const [engines, setEngines] = useState<SubtitleAlignmentEngine[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [engineId, setEngineId] = useState<SubtitleAlignmentEngineId>("mfa");
+  const [engineId, setEngineId] = useState<SubtitleAlignmentEngineId>("easyaligner");
   const [settingsByEngine, setSettingsByEngine] = useState<SettingsByEngine>(initialSettings);
   const [maxMoveMs, setMaxMoveMs] = useState(2000);
   const [enabled, setEnabled] = useState<SubtitleRefinementMethod["mode"][]>([]);
@@ -67,7 +67,7 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
     void api.subtitleAlignmentEngines(projectId, asset.id).then((catalog) => {
       if (mounted.current && version === catalogGeneration.current && latestKey.current === key) {
         setEngines(catalog.engines);
-        if (!catalog.engines.some((item) => item.id === engineId)) setEngineId("mfa");
+        if (!catalog.engines.some((item) => item.id === engineId)) setEngineId("easyaligner");
       }
     }).catch((error) => { if (mounted.current && version === catalogGeneration.current) setNotice(message(error)); })
       .finally(() => { if (mounted.current && version === catalogGeneration.current) setCatalogLoading(false); });

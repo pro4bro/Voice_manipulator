@@ -33,11 +33,12 @@ def test_catalog_and_engine_preview_are_source_bound_ghosts_with_manual_locks(tm
     assert [row["id"] for row in response.json()["engines"]] == ["mfa", "stable-ts", "easyaligner"]
     before = deepcopy(media.get(project.id, asset.id).words)
     original_bytes = audio.read_bytes()
-    result = client.post(base + "/engine-preview", json={"engineId": "mfa", "settings": {"language": "vi", "beam": 10, "retryBeam": 40}, "maxMoveMs": 2000})
+    result = client.post(base + "/engine-preview", json={"engineId": "easyaligner"})
     assert result.status_code == 200, result.text
     proposal = result.json()
     assert proposal["mode"] == "pipeline"
-    assert proposal["aligner"]["engine"] == "mfa"
+    assert proposal["aligner"]["engine"] == "easyaligner"
+    assert proposal["engineSettings"] == {"language": "vi", "windowSeconds": 30, "paddingSeconds": 1}
     assert proposal["rows"][0]["after"] == {"start": .3, "end": .55}
     assert proposal["rows"][1]["status"] == "locked"
     assert media.get(project.id, asset.id).words == before

@@ -1,5 +1,14 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+### Configuration follow-up — EasyAligner default (2026-10-23)
+
+At the owner's explicit request, subtitle refinement now opens with EasyAligner
+selected: Vietnamese, Window 30 s, Padding 1 s, maximum movement 2000 ms and no
+extra methods. UI/API/worker defaults agree; MFA and stable-ts remain selectable.
+Focused frontend 8 and backend 42 checks pass, typecheck/build pass, and an isolated
+browser rendering confirms the default controls. This configuration update does
+not advance a product round or phase; manual locks and explicit Preview/Apply remain.
+
 ## SUBTITLE-BENCHMARK-02 — Conviction timing comparison (2026-10-23)
 
 Completed 17 CPU parameter configurations plus 3 corrected-text replays against

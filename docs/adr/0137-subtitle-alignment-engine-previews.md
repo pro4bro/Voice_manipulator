@@ -59,3 +59,14 @@ with the owner's corrected word reference. stable-ts and EasyAligner crop around
 the current timings, so large pre-existing displacement can lie outside a crop.
 MFA's dictionary coverage and transcript normalization can reject ambiguous words.
 Missing runtime/model components block Start with a reason.
+
+## Default preference update — 2026-10-23
+
+After the [Conviction comparison](../research/CONVICTION-ALIGNMENT-BENCHMARK-20261023.md),
+the owner explicitly requested EasyAligner as the default alignment engine.
+Use Vietnamese, Window 30 seconds, Padding 1 second, maximum movement 2000ms and
+no extra offset/waveform methods initially. UI, API normalization and worker
+fallback parameters agree. Other engines remain selectable, and missing EasyAligner
+components still block Start rather than silently switching providers. This is a
+preferred preview configuration; the measured conflicts and limited reference
+do not justify automatic Apply or a universal accuracy claim.

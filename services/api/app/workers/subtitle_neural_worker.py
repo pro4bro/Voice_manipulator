@@ -277,7 +277,7 @@ def _easyaligner_align(payload: dict, samples, groups: list[dict], runtime_root:
         normal_by_index = {index: alignment_token(payload["words"][index]["text"], case) for run in runs for index in run}
         diagnostics.extend({"indexes": [index], "status": "unknown-token"} for index in unknown_indexes)
         for indexes in runs:
-            padding = float(settings.get("paddingSeconds", 0.5))
+            padding = float(settings.get("paddingSeconds", 1.0))
             window_start, window_end = run_window(group, indexes, payload["words"], padding)
             start_sample = max(0, round(window_start * SAMPLE_RATE))
             end_sample = min(len(samples), round(window_end * SAMPLE_RATE))
@@ -364,8 +364,8 @@ def run_worker(payload: dict, project_root: Path, runtime_root: Path) -> dict:
     runtime_root = runtime_root.resolve(strict=True)
     samples, duration, source_rate = read_pcm16_mono(audio)
     engine = payload["engineId"]
-    window = settings.get("windowSeconds", 20)
-    padding = settings.get("paddingSeconds", 0.5 if engine == "easyaligner" else 1.0)
+    window = settings.get("windowSeconds", 30 if engine == "easyaligner" else 20)
+    padding = settings.get("paddingSeconds", 1.0)
     if (not isinstance(window, (int, float)) or isinstance(window, bool) or not math.isfinite(float(window))
             or not 2 <= float(window) <= 30 or not isinstance(padding, (int, float)) or isinstance(padding, bool)
             or not math.isfinite(float(padding)) or not 0 <= float(padding) <= 2):

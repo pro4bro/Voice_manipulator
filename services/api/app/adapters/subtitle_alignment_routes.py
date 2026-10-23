@@ -70,8 +70,8 @@ class StableSettings(EngineSettings):
 
 
 class EasySettings(EngineSettings):
-    windowSeconds: StrictFloat = Field(default=20, ge=2, le=30)
-    paddingSeconds: StrictFloat = Field(default=.5, ge=0, le=2)
+    windowSeconds: StrictFloat = Field(default=30, ge=2, le=30)
+    paddingSeconds: StrictFloat = Field(default=1, ge=0, le=2)
 
 
 class EnginePreviewRequest(BaseModel):
