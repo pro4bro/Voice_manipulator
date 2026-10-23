@@ -24,6 +24,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from contextvars import ContextVar
 
 from app.domain.models import ActivityEvent, ActivitySnapshot, ActivityTask
 
@@ -54,6 +55,13 @@ LEVELS = {
 # How long a finished task stays visible, so the end of a job is seen and not
 # just its disappearance.
 KEEP_FINISHED_SECONDS = 25.0
+_UNSET = object()
+REQUEST_ACTIVITY = ContextVar("request_activity", default=None)
+
+
+def request_task_id(kind):
+    scope = REQUEST_ACTIVITY.get()
+    return scope.get("primary_task_id") if scope is not None and scope.get("kind") == kind else None
 
 
 def source_for(logger_name: str) -> str:
@@ -69,8 +77,53 @@ class ActivityCenter:
     def __init__(self, capacity: int = 3000) -> None:
         self._events: deque[ActivityEvent] = deque(maxlen=capacity)
         self._tasks: dict[str, ActivityTask] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._seq = 0
+        self._history = None
+
+    def configure_history(self, projects) -> None:
+        from app.adapters.project_task_history import ProjectTaskHistory
+        self._history = ProjectTaskHistory(projects)
+
+    def _record(self, task, *, force=False):
+        if self._history is not None and task.project_id:
+            try:
+                self._history.record(task, force=force)
+            except KeyError:
+                # A removed/detached project cannot receive new receipts. Its
+                # worker may still be unwinding cancellation in this process.
+                pass
+
+    def project_tasks(self, project_id):
+        if self._history is not None:
+            return self._history.tasks(project_id)
+        with self._lock:
+            return [task for task in self._tasks.values() if task.project_id == project_id]
+
+    def queue_task(self, kind, label, **kwargs):
+        return self.start_task(kind, label, status="queued", fraction=0.0, **kwargs)
+
+    def claim_queued_task(self, task_id, project_id, kind, **kwargs):
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.project_id != project_id or task.kind != kind or task.status != "queued":
+                return None
+            return self.start_task(kind, task.label, task_id=task.id, project_id=project_id,
+                                   group_label=task.group_label, **kwargs)
+
+    def queue_batch(self, kind, items, project_id, *, detail=""):
+        tasks = [ActivityTask(id=item["id"], kind=kind, label=item["label"], group_label=item["label"],
+            project_id=project_id, status="queued", fraction=0, detail=detail) for item in items]
+        if not tasks:
+            return []
+        with self._lock:
+            ids = [task.id for task in tasks]
+            if len(set(ids)) != len(ids) or any(task_id in self._tasks for task_id in ids):
+                raise ValueError("Task attempt already exists")
+            if self._history is not None:
+                self._history.reserve(tasks)
+            self._tasks.update({task.id: task for task in tasks})
+        return tasks
 
     # ---------- log ----------
 
@@ -109,13 +162,23 @@ class ActivityCenter:
         detail: str = "",
         fraction: float | None = None,
         project_id: str | None = None,
+        asset_id: str | None = None,
+        footage_id: str | None = None,
+        parent_task_id: str | None = None,
+        group_label: str | None = None,
+        status: str = "running",
     ) -> str:
         task_id = task_id or f"{kind}-{uuid4().hex[:8]}"
+        scope = REQUEST_ACTIVITY.get()
+        if scope is not None and scope["project_id"] == project_id:
+            scope["task_ids"].add(task_id)
         with self._lock:
             self._tasks[task_id] = ActivityTask(
                 id=task_id, kind=kind, label=label, detail=detail, fraction=fraction,
-                status="running", project_id=project_id,
+                status=status, project_id=project_id, asset_id=asset_id, footage_id=footage_id,
+                parent_task_id=parent_task_id, group_label=group_label,
             )
+            self._record(self._tasks[task_id], force=True)
         return task_id
 
     def update_task(
@@ -123,29 +186,38 @@ class ActivityCenter:
         task_id: str,
         *,
         detail: str | None = None,
-        fraction: float | None = None,
+        fraction=_UNSET,
         label: str | None = None,
         eta_seconds: float | None = None,
+        asset_id: str | None = None,
+        footage_id: str | None = None,
+        parent_task_id: str | None = None,
+        group_label: str | None = None,
     ) -> None:
         with self._lock:
             task = self._tasks.get(task_id)
-            if task is None or task.status != "running":
+            if task is None or task.status not in {"queued", "running"}:
                 return
             updates: dict[str, object] = {"updated_at": datetime.now(timezone.utc)}
             if detail is not None:
                 updates["detail"] = detail
-            if fraction is not None:
-                updates["fraction"] = max(0.0, min(1.0, fraction))
+            if fraction is not _UNSET:
+                updates["fraction"] = None if fraction is None else max(0.0, min(1.0, fraction))
             if label is not None:
                 updates["label"] = label
             if eta_seconds is not None:
                 updates["eta_seconds"] = max(0.0, eta_seconds)
+            for field, value in (("asset_id", asset_id), ("footage_id", footage_id),
+                                 ("parent_task_id", parent_task_id), ("group_label", group_label)):
+                if value is not None:
+                    updates[field] = value
             self._tasks[task_id] = task.model_copy(update=updates)
+            self._record(self._tasks[task_id])
 
     def finish_task(self, task_id: str, status: str = "complete", detail: str | None = None, error: str | None = None) -> None:
         with self._lock:
             task = self._tasks.get(task_id)
-            if task is None:
+            if task is None or task.status not in {"queued", "running"}:
                 return
             now = datetime.now(timezone.utc)
             self._tasks[task_id] = task.model_copy(update={
@@ -158,6 +230,7 @@ class ActivityCenter:
                 "finished_at": now,
                 "seconds": (now - task.started_at).total_seconds(),
             })
+            self._record(self._tasks[task_id], force=True)
 
     def tasks(self) -> list[ActivityTask]:
         """Everything running, plus what just finished, newest last."""

@@ -1703,10 +1703,14 @@ class ActivityTask(DomainModel):
     kind: str
     label: str
     detail: str = ""
-    status: Literal["running", "complete", "failed", "cancelled"] = "running"
+    status: Literal["queued", "running", "complete", "failed", "cancelled", "interrupted"] = "running"
     fraction: float | None = None
     eta_seconds: float | None = None
     project_id: str | None = None
+    asset_id: str | None = None
+    footage_id: str | None = None
+    parent_task_id: str | None = None
+    group_label: str | None = None
     error: str | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

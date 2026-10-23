@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.adapters.media_asset_paths import asset_id_from_directory, media_asset_directory, media_asset_file
 from app.adapters import activity_center
+from app.adapters.project_operation_activity import ProjectOperationActivity
 from app.adapters.cosyvoice import CosyVoicePaths, CosyVoiceSpeech
 from app.adapters.expressive_engines import ExpressiveSpeech, expressive_paths
 from app.adapters.sokuji_bridge import SokujiBridge, make_sokuji_router
@@ -237,7 +238,16 @@ from app.domain.ports import FolderPicker, ProjectRepository, SpeakerEmbedder, V
 from app.settings import Settings
 from app.runtime_layout import python_executable
 from app.domain.obs_livelink_state import ObsTriggerPolicy
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class QueuedMediaImport(BaseModel):
+    id: str = Field(pattern=r"^import-[A-Za-z0-9-]{1,100}$")
+    label: str = Field(min_length=1, max_length=500)
+
+
+class QueuedMediaImports(BaseModel):
+    tasks: list[QueuedMediaImport] = Field(min_length=1, max_length=2000)
 
 
 class ObsPluginActionRequest(BaseModel):
@@ -315,6 +325,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     projects = project_repository or FileProjectRepository(settings.data_root / "projects")
+    activity_center.CENTER.configure_history(projects)
     media = FileMediaLibrary(projects)
     local_media_sources = LocalMediaSourceRegistry(settings.data_root)
     subtitle_exporter = SubtitleExporter()
@@ -617,6 +628,27 @@ def create_app(
     obs_detailed_errors: dict[tuple[str, str], str] = {}
 
     async def transcribe_obs_detail(project_id: str, recording_id: str) -> None:
+        task = activity_center.CENTER.start_task("stt", f"OBS detailed STT · {recording_id[:8]}",
+            project_id=project_id, asset_id=f"obs-detail:{recording_id}", footage_id=f"obs-recording:{recording_id}",
+            detail="Đang nhận dạng các đoạn đã ghi; tổng thời lượng còn thay đổi")
+        try:
+            await run_obs_detail(project_id, recording_id)
+            project = await asyncio.to_thread(projects.get, project_id)
+            state = await asyncio.to_thread(obs_livelink_detailed_stt.status, project, recording_id)
+            journal = json.loads((Path(project.project_path) / "assets/obs-livelink" / recording_id / "recording.json").read_text(encoding="utf-8"))
+            parent = (journal["recording"].get("sourceArchive") or {}).get("parentAssetId")
+            if parent:
+                activity_center.CENTER.update_task(task, footage_id=parent, group_label=media.get(project_id, parent).name)
+            error = obs_detailed_errors.get((project_id, recording_id))
+            activity_center.CENTER.finish_task(task, status="failed" if error else "cancelled" if state.get("stopMode") else "complete", error=error)
+        except asyncio.CancelledError:
+            activity_center.CENTER.finish_task(task, status="cancelled", detail="Đã dừng worker STT")
+            raise
+        except Exception as exc:
+            activity_center.CENTER.finish_task(task, status="failed", error=str(exc))
+            raise
+
+    async def run_obs_detail(project_id: str, recording_id: str) -> None:
         key = (project_id, recording_id)
         while True:
             try:
@@ -675,6 +707,23 @@ def create_app(
             mkv_watchers[key] = asyncio.create_task(watch_growing_mkv(project_id, asset_id))
 
     async def transcribe_growing_mkv(project_id: str, asset_id: str) -> None:
+        asset = await asyncio.to_thread(media.get, project_id, asset_id)
+        task = activity_center.CENTER.start_task("stt", asset.name, project_id=project_id, asset_id=asset_id,
+            footage_id=asset.source_archive_asset_id or asset_id, group_label=asset.name,
+            detail="STT file đang ghi · chưa có tổng thời lượng cuối")
+        try:
+            await run_growing_mkv_stt(project_id, asset_id)
+            project = await asyncio.to_thread(projects.get, project_id)
+            state = await asyncio.to_thread(growing_mkv_stt.status, project, asset_id)
+            activity_center.CENTER.finish_task(task, status="cancelled" if state.get("stopMode") else "complete")
+        except asyncio.CancelledError:
+            activity_center.CENTER.finish_task(task, status="cancelled", detail="Đã dừng worker STT")
+            raise
+        except Exception as exc:
+            activity_center.CENTER.finish_task(task, status="failed", error=str(exc))
+            raise
+
+    async def run_growing_mkv_stt(project_id: str, asset_id: str) -> None:
         key = (project_id, asset_id)
         while True:
             try:
@@ -930,6 +979,7 @@ def create_app(
             await asyncio.to_thread(streaming_asr.close)
 
     app = FastAPI(title="Pro4Bro Voice Manipulator", version="0.2.0", lifespan=lifespan)
+    app.add_middleware(ProjectOperationActivity, projects=projects, media=media)
     app.include_router(subtitle_alignment_router(SubtitleAlignment(projects, media, settings.project_root)))
     app.include_router(lipsync_router(planned_providers, projects, media, voice_outputs, runtime_root=settings.project_root, gpu_lease=gpu_lease))
     app.include_router(make_sokuji_router(sokuji_bridge))
@@ -3586,6 +3636,12 @@ def create_app(
         return {"recordingId": recording_id, "artifactReady": False, "status": "finalizing"}
 
     async def finalize_obs_recording(recording_id: str, payload: dict, authorization: str) -> dict:
+        state = obs_livelink_runtime._state
+        recording = next((item for item in ([state.recording] if state and state.recording else [])
+            + (state.completed_recordings if state else []) if item.recording_id == recording_id), None)
+        activity = activity_center.CENTER.start_task("import", f"OBS LiveLink · {recording_id[:8]}",
+            project_id=recording.project_id, asset_id=f"obs-archive:{recording_id}",
+            footage_id=f"obs-recording:{recording_id}", detail="Đang xác minh và import bản ghi hoàn chỉnh") if recording else None
         try:
             result = await asyncio.to_thread(
                 obs_livelink_audio.finalize,
@@ -3593,8 +3649,17 @@ def create_app(
                 install_id=payload.get("installId", ""),
                 connection_id=payload.get("connectionId", ""),
                 epoch=payload.get("connectionEpoch", ""), recording_id=recording_id)
+            archive = result.get("sourceArchive") or {}
+            if archive.get("parentAssetId"):
+                activity_center.CENTER.update_task(activity, asset_id=archive["parentAssetId"], footage_id=archive["parentAssetId"])
+            activity_center.CENTER.finish_task(activity, status="complete" if result.get("artifactReady") else "failed",
+                error=None if result.get("artifactReady") else "OBS archive artifact is not ready")
             return result
+        except asyncio.CancelledError:
+            activity_center.CENTER.finish_task(activity, status="cancelled")
+            raise
         except Exception as exc:
+            activity_center.CENTER.finish_task(activity, status="failed", error=str(exc))
             logging.getLogger(__name__).exception("OBS archive failed for %s", recording_id)
             return {"recordingId": recording_id, "artifactReady": False, "error": str(exc)}
         finally:
@@ -3762,6 +3827,28 @@ def create_app(
     def activity(after: int = 0, limit: int = 400) -> ActivitySnapshot:
         """What the app is doing now, and the log lines since `after`."""
         return activity_center.CENTER.snapshot(after=max(0, after), limit=max(1, min(limit, 2000)))
+
+    @app.get("/api/projects/{project_id}/queue")
+    def project_queue(project_id: str):
+        try:
+            projects.get(project_id)
+            return {"tasks": [task.model_dump(mode="json", by_alias=True)
+                              for task in activity_center.CENTER.project_tasks(project_id)]}
+        except KeyError as exc:
+            raise HTTPException(404, "Project not found") from exc
+
+    @app.post("/api/projects/{project_id}/queue/imports")
+    def reserve_media_imports(project_id: str, payload: QueuedMediaImports):
+        try:
+            projects.get(project_id)
+            tasks = activity_center.CENTER.queue_batch("import", [task.model_dump() for task in payload.tasks],
+                project_id, detail="Chờ import")
+            return {"tasks": [task.model_dump(mode="json", by_alias=True)
+                              for task in tasks]}
+        except KeyError as exc:
+            raise HTTPException(404, "Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/system/logs", response_model=SystemLog)
     def system_logs(lines: int = 240) -> SystemLog:
