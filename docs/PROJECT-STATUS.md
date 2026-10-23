@@ -1,5 +1,22 @@
 # Project Status — 2026-10-23
 
+## SUBTITLE-BENCHMARK-02 — Conviction timing comparison (2026-10-23)
+
+Completed 17 CPU parameter configurations plus 3 corrected-text replays against
+680 eligible manual timings: 587 unique STT anchors, with 427 calibration and
+156 reserved anchors. EasyAligner Vietnamese / window 30 s / padding 1 s /
+move limit 2000 ms is the strongest review preview. Reserved both-edge agreement
+within 100 ms is 65.38% versus 13.46%; severe errors fall from 30 to 7 and duration
+MAE from 171.7 ms to 98.3 ms. A common +133.8 ms shift on original STT gives 47.44%
+with no overlaps. Separate Easy offsets reach 71.79% but create 169 overlaps;
+no engine option passes the no-new-overlap gate. Selected stable-ts has zero raw
+reserved measurements; MFA rejects 86 unknown labels. Corrected Easy diagnostics
+have a documented crop-context confound. No owner edits, defaults or training.
+Focused 59 tests pass; source/model/worker/selection hashes and 5,490 CSV rows verify.
+See `docs/gates/subtitle-benchmark-02-20261023.md` and the research report/JSON.
+Unknown/group abstention, neighbour conflicts and a second recording remain open.
+Stop this named bounded round; Phase03 stays 60% and Phase06 remains open.
+
 ## SUBTITLE-ENGINES-01 — selectable subtitle alignment (2026-10-23)
 
 Input now offers MFA, stable-ts and EasyAligner with separate parameters and
