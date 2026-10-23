@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api } from "./client";
+import { api, queuedDownloadUrl } from "./client";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe("queue download marker", () => {
+  it("adds the marker while preserving query parameters and fragments", () => {
+    expect(queuedDownloadUrl("/api/output.wav")).toBe("/api/output.wav?queue_export=1");
+    expect(queuedDownloadUrl("/api/output.wav?variant=final#download")).toBe("/api/output.wav?variant=final&queue_export=1#download");
+    expect(queuedDownloadUrl("/api/output.wav?queue_export=0&variant=final")).toBe("/api/output.wav?queue_export=1&variant=final");
+  });
+});
 
 describe("Voice Output browser handoff", () => {
   it("returns omissions from the response and names the selected output file", async () => {
@@ -14,7 +22,9 @@ describe("Voice Output browser handoff", () => {
     let filename = "";
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { filename = this.download; });
     const result = await api.exportVoiceOutputSubtitles("project", "selected", "word");
-    expect(fetch).toHaveBeenCalledWith("/api/projects/project/voice-outputs/selected/subtitles?mode=word", undefined);
+    expect(fetch).toHaveBeenCalledWith("/api/projects/project/voice-outputs/selected/subtitles?mode=word", { headers: expect.any(Headers) });
+    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Headers;
+    expect(headers.get("X-Queue-Export")).toBe("1");
     expect(filename).toBe("selected--word.srt");
     expect(result.skippedCues).toBe(2);
     expect(create).toHaveBeenCalledOnce();

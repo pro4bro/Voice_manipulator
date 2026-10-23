@@ -6,7 +6,7 @@ import type { SubtitleAlignmentProposal } from "../../domain/subtitle-alignment"
 import { SubtitleRefinementPanel } from "./SubtitleRefinementPanel";
 import { ghostIntervals, SubtitleTimingGhosts, SubtitleTimingProvider } from "./SubtitleTimingPreview";
 
-vi.mock("../../api/client", () => ({ api: { getSubtitleAlignment: vi.fn(), previewSubtitleTiming: vi.fn(), subtitleAlignmentEngines: vi.fn(), previewSubtitleEngine: vi.fn(), applySubtitleTimingPreview: vi.fn(), restoreSubtitleAlignment: vi.fn() } }));
+vi.mock("../../api/client", () => ({ api: { getSubtitleAlignment: vi.fn(), getProjectQueue: vi.fn(), previewSubtitleTiming: vi.fn(), subtitleAlignmentEngines: vi.fn(), previewSubtitleEngine: vi.fn(), applySubtitleTimingPreview: vi.fn(), restoreSubtitleAlignment: vi.fn() } }));
 const asset = { id: "track", name: "Interview", text: "hello stay", duration: 10, transcriptionStatus: "complete", words: [
   { text: "hello", start: 1, end: 2 }, { text: "stay", start: 2.4, end: 2.8, timingSource: "manual" },
 ] } as ProjectMediaAsset;
@@ -19,6 +19,7 @@ const paint = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getSubtitleAlignment).mockResolvedValue(null);
+  vi.mocked(api.getProjectQueue).mockResolvedValue({ tasks: [] });
   vi.mocked(api.subtitleAlignmentEngines).mockResolvedValue({ engines: [
     { id: "mfa", label: "MFA", description: "Forced alignment", license: "MIT", available: true, reason: "", models: [
       { id: "mfa:vi", label: "Vietnamese", language: "vi", license: "MIT", available: true, reason: "" },
@@ -84,6 +85,24 @@ it("shows editable offsets, contextual ghost coordinates and one bulk Apply with
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Khôi phục timing" }));
   await waitFor(() => expect(api.restoreSubtitleAlignment).toHaveBeenCalledWith("project", "track", "p"));
+});
+
+it("shows the live alignment task and measured progress while inference is held", async () => {
+  let resolvePreview!: (value: SubtitleAlignmentProposal) => void;
+  let previewDone = false;
+  vi.mocked(api.previewSubtitleEngine).mockReturnValueOnce(new Promise((resolve) => { resolvePreview = resolve; }));
+  vi.mocked(api.getProjectQueue).mockImplementation(async () => ({ tasks: [{ id: "alignment-1", kind: "alignment", label: "Subtitle alignment · easyaligner",
+    detail: previewDone ? "Alignment proposal is ready" : "Aligned context groups 2/4", status: previewDone ? "complete" : "running",
+    fraction: previewDone ? 1 : .5, etaSeconds: null, projectId: "project", assetId: "track", footageId: "track",
+    groupLabel: "Interview", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] }));
+  render(view());
+  await screen.findByRole("option", { name: "MFA" });
+  fireEvent.click(screen.getByRole("button", { name: "Ghost Preview" }));
+  expect(await screen.findByText(/Đang căn subtitle · Aligned context groups 2\/4 · 50%/)).toBeInTheDocument();
+  previewDone = true;
+  resolvePreview(proposal);
+  await screen.findByRole("img", { name: /Ghost Preview/ });
+  expect(await screen.findByText(/Đã tạo đề xuất căn subtitle/)).toBeInTheDocument();
 });
 
 it("invalidates Ghost and Apply after parameters or source change", async () => {

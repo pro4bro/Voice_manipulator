@@ -1,4 +1,5 @@
 import type { VoiceRenderController } from "../../app/useVoiceRender";
+import { queuedDownloadUrl } from "../../api/client";
 
 export function VoiceRenderControls({ controller, saved }: { controller: VoiceRenderController; saved: boolean }) {
   const report = controller.packet?.report;
@@ -11,6 +12,6 @@ export function VoiceRenderControls({ controller, saved }: { controller: VoiceRe
     {controller.error ? <p role="alert">{controller.error}</p> : null}
     {report ? <div role="status"><p>Peak: {level(report.source?.peakDbfs)} → {level(report.output?.peakDbfs)} · RMS: {level(report.source?.rmsDbfs)} → {level(report.output?.rmsDbfs)}</p>
       {report.global ? <p>Gain clip: yêu cầu {report.global.requestedGainDb.toFixed(1)} dB · thực tế {report.global.appliedGainDb.toFixed(1)} dB {report.global.headroomLimited ? "· đã giới hạn headroom" : ""}</p> : null}
-      <a href={controller.packet!.audioUrl} download="voice-render.wav">Tải WAV đã render</a></div> : null}
+      <a href={queuedDownloadUrl(controller.packet!.audioUrl)} download="voice-render.wav">Tải WAV đã render</a></div> : null}
   </details>;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { queuedDownloadUrl } from "../../api/client";
 import type { ProjectVoice, VoiceOutput } from "../../domain/types";
 import type { VoicePatchDocument } from "../../domain/voice-patch";
 
@@ -134,7 +135,7 @@ export function PatchProcessing({ projectId, document, currentSource, saved, voi
         {job.audioUrl ? <audio controls aria-label="Nghe bản ghép Patch" src={job.audioUrl} /> : null}</> : null}
     </div> : null}
     {applied ? <div><p>Bản vá đã lưu · {applied.output.duration.toFixed(3)} giây.</p><audio controls aria-label="Nghe bản vá đã lưu" src={applied.audioUrl} />
-      <a href={applied.audioUrl} download="voice-patched.wav">Tải WAV bản vá</a>
+      <a href={queuedDownloadUrl(applied.audioUrl)} download="voice-patched.wav">Tải WAV bản vá</a>
       <button type="button" onClick={() => onOutputReady?.(applied.output)}>Mở bản vá trên Timeline</button></div> : null}
   </div>;
 }

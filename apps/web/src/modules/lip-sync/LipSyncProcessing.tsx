@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { api } from "../../api/client";
+import { api, queuedDownloadUrl } from "../../api/client";
 import { lipSyncUrl, type LipSyncDocument, type LipSyncFaceReview } from "../../domain/lipsync";
 import type { SpeakerProfile } from "../../domain/types";
 
@@ -127,7 +127,7 @@ export function LipSyncProcessing({ projectId, versionId, document, dirty, onAft
     {jobs.slice(0, 15).map((job) => <div className="lipsync-job" key={job.id}><b>{job.kind} · {job.status} · {job.id.slice(0, 8)}</b>{job.error ? <p role="alert">{job.error}</p> : null}{job.summary ? <small>{Object.entries(job.summary).map(([key, value]) => `${key}: ${value}`).join(" · ")}</small> : null}
       {["queued", "running"].includes(job.status) ? <button disabled={busy} type="button" onClick={() => void action(() => api.cancelLipSyncJob(projectId, job.id, versionId), () => undefined)}>Hủy job</button> : null}
       <button type="button" disabled={busy} onClick={() => void action(() => api.getLipSyncJobLog(projectId, job.id, versionId), (value) => setLog(value.text))}>Xem log {job.id.slice(0, 8)}</button>
-      {job.status === "completed" ? job.artifacts?.map((artifact) => <a key={artifact.index} download={`${job.id}-${artifact.index}.mp4`} href={lipSyncUrl(projectId, `/jobs/${job.id}/artifacts/${artifact.index}`, versionId)}>Lưu video · {artifact.label}</a>) : null}
+      {job.status === "completed" ? job.artifacts?.map((artifact) => <a key={artifact.index} download={`${job.id}-${artifact.index}.mp4`} href={queuedDownloadUrl(lipSyncUrl(projectId, `/jobs/${job.id}/artifacts/${artifact.index}`, versionId))}>Lưu video · {artifact.label}</a>) : null}
       {job.kind === "render" && job.status === "completed" ? <button disabled={dirty || job.revision !== document.revision || reviewDirty || job.analysisRevision !== gallery?.review.revision || job.analysisId !== analysisId} onClick={() => onAfter(job.id)} type="button">Xem After · {job.id.slice(0, 8)}</button> : null}
     </div>)}
     {log ? <pre className="lipsync-worker-log">{log}</pre> : null}

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { WorkspaceStatusBar } from "./WorkspaceStatusBar";
@@ -40,5 +40,71 @@ describe("status bar", () => {
 
     expect(screen.getByText("TẠO GIỌNG")).toBeTruthy();
     expect(screen.getByText(/Xong sau 1m 35s/)).toBeTruthy();
+  });
+
+  it("opens only the current project's queue and counts pending work separately from attention", () => {
+    const { rerender } = render(<WorkspaceStatusBar metrics={null} tasks={[
+      task({ id: "foreign", projectId: "other", label: "Other project's task" }),
+      task({ id: "global", projectId: null, label: "Global task" }),
+    ]} projectId="current" queueTasks={[
+      task({ id: "done", projectId: "current", status: "complete", kind: "import", label: "footage.wav", fraction: 1 }),
+      task({ id: "pending", projectId: "current", status: "queued", kind: "stt" }),
+      task({ id: "failed", projectId: "current", status: "failed" }),
+      task({ id: "interrupted", projectId: "current", status: "interrupted" }),
+      task({ id: "cancelled", projectId: "current", status: "cancelled" }),
+      task({ id: "other-project", projectId: "other", label: "Foreign queued task" }),
+    ]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Mở Queue/ }));
+    expect(screen.getByRole("dialog", { name: "Queue" })).toBeTruthy();
+    expect(screen.getAllByText("footage.wav").find((element) => element.closest(".project-queue__slot-name"))?.closest("article")?.className).toContain("is-complete");
+    expect(screen.queryByText("Other project's task")).toBeNull();
+    expect(screen.queryByText("Foreign queued task")).toBeNull();
+    expect(screen.getByText("Global task")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Mở Queue/ }).textContent).toContain("1");
+    expect(screen.getByRole("button", { name: /Mở Queue/ }).textContent).toContain("!2");
+
+    rerender(<WorkspaceStatusBar metrics={null} tasks={[]} projectId="next-project" queueTasks={[]} />);
+    expect(screen.queryByRole("dialog", { name: "Queue" })).toBeNull();
+  });
+
+  it("closes the queue with Escape", () => {
+    render(<WorkspaceStatusBar metrics={null} tasks={[]} projectId="current" queueTasks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mở Queue" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Queue" })).toBeNull();
+  });
+
+  it("shows indeterminate progress when the current status fraction is unknown", () => {
+    render(<WorkspaceStatusBar metrics={null} tasks={[task({ fraction: null })]} />);
+    const progress = screen.getByLabelText("Tiến trình chưa xác định") as HTMLProgressElement;
+    expect(progress.hasAttribute("value")).toBe(false);
+  });
+
+  it("keeps active project activity visible during a queue poll gap and favors running work", () => {
+    render(<WorkspaceStatusBar metrics={null} projectId="current" tasks={[
+      task({ id: "running-stt", projectId: "current", kind: "stt", label: "Current recognition", status: "running" }),
+      task({ id: "foreign", projectId: "other", kind: "training", label: "Foreign training" }),
+    ]} queueTasks={[task({ id: "queued-training", projectId: "current", kind: "training", label: "Queued training", status: "queued" })]} />);
+
+    expect(screen.getByText("Current recognition")).toBeTruthy();
+    expect(screen.queryByText("Queued training")).toBeNull();
+    expect(screen.queryByText("Foreign training")).toBeNull();
+  });
+
+  it("drops finished work from Status after the recent-completion window", () => {
+    render(<WorkspaceStatusBar metrics={null} tasks={[task({
+      status: "failed", label: "Old failure", finishedAt: new Date(Date.now() - 30_000).toISOString(),
+    })]} />);
+    expect(screen.getByText("Không có background task đang chạy")).toBeTruthy();
+  });
+
+  it("keeps dialog focus when current project queue props refresh", () => {
+    const view = render(<WorkspaceStatusBar metrics={null} projectId="current" tasks={[]} queueTasks={[task({ projectId: "current" })]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Mở Queue/ }));
+    const closeButton = screen.getByRole("button", { name: "Đóng Queue" });
+    closeButton.focus();
+    view.rerender(<WorkspaceStatusBar metrics={null} projectId="current" tasks={[]} queueTasks={[task({ id: "t2", projectId: "current" })]} />);
+    expect(screen.getByRole("button", { name: "Đóng Queue" })).toHaveFocus();
   });
 });

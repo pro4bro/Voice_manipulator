@@ -239,7 +239,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const mediaImportQueue = useRef<Promise<void>>(Promise.resolve());
   const failedMediaImports = useRef(new Map<string, {
     name: string;
-    run: () => Promise<ProjectMediaImportResult>;
+    run: (taskId: string) => Promise<ProjectMediaImportResult>;
     transcribe: boolean;
     cacheLocal: boolean;
   }>());
@@ -381,6 +381,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   // What the whole app is doing, and its log: one stream from the API.
   const [activityTasks, setActivityTasks] = useState<ActivityTask[]>([]);
+  const [queueTasks, setQueueTasks] = useState<ActivityTask[]>([]);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const activitySeq = useRef(0);
   const [scriptDirty, setScriptDirty] = useState(false);
@@ -492,6 +493,23 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
     const timer = window.setInterval(read, 1500);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false, inFlight = false;
+    setQueueTasks([]);
+    const read = async () => {
+      if (inFlight || typeof api.getProjectQueue !== "function") return;
+      inFlight = true;
+      try {
+        const snapshot = await api.getProjectQueue(project.id);
+        if (!cancelled) setQueueTasks(snapshot.tasks);
+      } catch { /* Retain last known progress while the runtime reconnects. */ }
+      finally { inFlight = false; }
+    };
+    void read();
+    const timer = window.setInterval(() => void read(), 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [project.id]);
 
   useEffect(() => {
     if (!changerPageOpen && !changerRunning) return;
@@ -1718,18 +1736,38 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
 
   function queueMediaImports(jobs: Array<{
     name: string;
-    run: () => Promise<ProjectMediaImportResult>;
+    run: (taskId: string) => Promise<ProjectMediaImportResult>;
     transcribe: boolean;
     cacheLocal: boolean;
-  }>) {
-    if (!jobs.length) return;
+  }>): string[] {
+    if (!jobs.length) return [];
     const projectId = project.id;
     const queued = jobs.map((job) => ({ id: `import-${Date.now()}-${Math.random().toString(16).slice(2)}`, ...job }));
     queued.forEach(({ id, name, run, transcribe, cacheLocal }) => {
       failedMediaImports.current.set(id, { name, run, transcribe, cacheLocal });
     });
     setPendingMediaImports((current) => [...current, ...queued.map(({ id, name }) => ({ id, name, status: "queued" as const }))]);
+    // Register immediately, even when an earlier upload is holding the serial
+    // executor. Convert rejection to a value here so it cannot go unhandled.
+    const reservationResult = (async () => {
+      try {
+        const reservation = await api.reserveMediaImports(projectId, queued.map(({ id, name }) => ({ id, label: name })));
+        const reservedIds = new Set(reservation.tasks.map((item) => item.id));
+        const missing = queued.filter((job) => !reservedIds.has(job.id));
+        if (missing.length) throw new Error(`Queue did not reserve ${missing.map((job) => job.name).join(", ")}`);
+        return { error: null };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Không đăng ký được hàng chờ import" };
+      }
+    })();
     const task = async () => {
+      const { error: reservationError } = await reservationResult;
+      if (reservationError) {
+        if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.map((row) => queued.some((job) => job.id === row.id)
+          ? { ...row, status: "error", detail: reservationError, retryable: true }
+          : row));
+        return;
+      }
       let imported = 0;
       for (const job of queued) {
         if (activeMediaProjectId.current === projectId) {
@@ -1738,7 +1776,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
             : row));
         }
         try {
-          const result = await job.run();
+          const result = await job.run(job.id);
           const targetIds = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
           if (job.transcribe) await Promise.all(targetIds.map((id) => api.setMediaTranscriptionSelected(projectId, id, true)));
           const assets = await listProjectMediaWithLifecycleFence(projectId);
@@ -1764,12 +1802,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     };
     const next = mediaImportQueue.current.then(task, task);
     mediaImportQueue.current = next.catch(() => undefined);
+    return queued.map(({ id }) => id);
   }
 
   async function importMedia(choices: MediaImportChoice[]) {
     queueMediaImports(choices.map((choice) => ({
       name: choice.file.name,
-      run: () => api.importProjectMedia(project.id, choice.file, "import", "", false, false),
+      run: (taskId) => api.importProjectMedia(project.id, choice.file, "import", "", false, false, null, taskId),
       transcribe: choice.transcribe,
       cacheLocal: false,
     })));
@@ -1820,7 +1859,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     setPendingNativeMediaPaths([]);
     queueMediaImports(paths.map((path) => ({
       name: path.split(/[\\/]/).pop() ?? path,
-      run: () => api.importLocalProjectMedia(project.id, path, cacheLocal),
+      run: (taskId) => api.importLocalProjectMedia(project.id, path, cacheLocal, undefined, undefined, taskId),
       transcribe: false,
       cacheLocal,
     })));
@@ -1831,32 +1870,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     if (captured) { void processCapturedAudio({ ...captured, captureId: id }); return; }
     const job = failedMediaImports.current.get(id);
     if (!job) return;
+    const [newAttemptId] = queueMediaImports([job]);
     setPendingMediaImports((current) => current.map((row) => row.id === id
-      ? { ...row, status: "queued", detail: undefined, retryable: false }
+      ? { ...row, retryable: false, detail: `Đã tạo lần thử mới${newAttemptId ? ` (${newAttemptId})` : ""}.` }
       : row));
-    const projectId = project.id;
-    const task = async () => {
-      setPendingMediaImports((current) => current.map((row) => row.id === id
-        ? { ...row, status: job.cacheLocal ? "caching" : "importing" }
-        : row));
-      try {
-        const result = await job.run();
-        const targets = result.trackAssetIds?.length ? result.trackAssetIds : [result.asset.id];
-        if (job.transcribe) await Promise.all(targets.map((target) => api.setMediaTranscriptionSelected(projectId, target, true)));
-        const assets = await listProjectMediaWithLifecycleFence(projectId);
-        if (activeMediaProjectId.current === projectId) {
-          setMediaAssets(assets);
-          setPendingMediaImports((current) => current.filter((row) => row.id !== id));
-        }
-        failedMediaImports.current.delete(id);
-      } catch (error) {
-        if (activeMediaProjectId.current === projectId) setPendingMediaImports((current) => current.map((row) => row.id === id
-          ? { ...row, status: "error", detail: error instanceof Error ? error.message : "Import media thất bại", retryable: true }
-          : row));
-      }
-    };
-    const next = mediaImportQueue.current.then(task, task);
-    mediaImportQueue.current = next.catch(() => undefined);
   }
 
   function changePendingLocalTrack(streamIndex: number, field: "imported" | "transcribe", selected: boolean) {
@@ -3068,7 +3085,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
           </div>}
         </section>
       </div>
-      <WorkspaceStatusBar metrics={systemMetrics} tasks={activityTasks} />
+      <WorkspaceStatusBar metrics={systemMetrics} tasks={activityTasks} queueTasks={queueTasks} projectId={project.id} projectName={project.name} assets={mediaAssets} />
       {notice ? <div className="studio-notice" role="status"><i />{notice}<button type="button" onClick={() => { setNotice(null); setLoadAttempt((value) => value + 1); }}>Tải lại dữ liệu</button></div> : null}
       {job ? <div className="studio-job" role="status"><span><i /><i /><i /></span><b>{job}</b><small>Không đóng app trong khi model đang xử lý.</small></div> : null}
       {preferencesOpen ? <PreferencesDialog preferences={preferences} saving={preferencesSaving} onClose={() => setPreferencesOpen(false)} onSave={(next) => void savePreferences(next)} /> : null}

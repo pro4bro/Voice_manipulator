@@ -1324,10 +1324,14 @@ export interface ActivityTask {
   kind: string;
   label: string;
   detail: string;
-  status: "running" | "complete" | "failed" | "cancelled";
+  status: "queued" | "running" | "complete" | "failed" | "cancelled" | "interrupted";
   fraction: number | null;
   etaSeconds: number | null;
   projectId?: string | null;
+  assetId?: string | null;
+  footageId?: string | null;
+  parentTaskId?: string | null;
+  groupLabel?: string | null;
   error?: string | null;
   startedAt: string;
   updatedAt: string;

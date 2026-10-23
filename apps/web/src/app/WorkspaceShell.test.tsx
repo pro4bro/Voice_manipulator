@@ -52,6 +52,7 @@ const apiMocks = vi.hoisted(() => ({
   listReadingPacks: vi.fn(),
   listReadingSessions: vi.fn(),
   appendReadingTake: vi.fn(),
+  reserveMediaImports: vi.fn(),
   importProjectMedia: vi.fn(),
   getDatasetReadiness: vi.fn(),
   listTrainingRuns: vi.fn(),
@@ -264,6 +265,10 @@ describe("WorkspaceShell STT synchronization", () => {
     apiMocks.claimObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.releaseObsLiveLinkTarget.mockResolvedValue(undefined);
     apiMocks.getObsLiveLinkTranscriptEvents.mockResolvedValue({ events: [], revision: 0 });
+    apiMocks.reserveMediaImports.mockImplementation(async (_projectId: string, tasks: Array<{ id: string; label: string }>) => ({
+      tasks: tasks.map((item) => ({ ...item, kind: "import", detail: "", status: "queued", fraction: null,
+        etaSeconds: null, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })),
+    }));
   });
 
   it("saves the optional clipping auto-hide preference and forwards it to timeline context", async () => {
@@ -575,6 +580,73 @@ describe("WorkspaceShell STT synchronization", () => {
     fireEvent.click(screen.getByRole("button", { name: "pick native media" }));
     await waitFor(() => expect(screen.getByTestId("pending-imports")).toHaveTextContent("large.mkv:importing"));
     await act(async () => inspection.resolve({ tracks: [] }));
+  });
+
+  it("shows a batch upload error and starts no uploads when queue reservation fails", async () => {
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.reserveMediaImports.mockRejectedValueOnce(new Error("Queue unavailable"));
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+
+    act(() => collectionContext.current!.onImportMedia([{ file: new File(["audio"], "untracked.wav"), transcribe: false }]));
+
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({
+      name: "untracked.wav", status: "error", detail: "Queue unavailable", retryable: true,
+    })));
+    expect(apiMocks.importProjectMedia).not.toHaveBeenCalled();
+  });
+
+  it("reserves each upload before execution and gives a retry a new queue id", async () => {
+    const finished = mediaAsset("skipped", "", "2026-10-20T00:00:00Z");
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.importProjectMedia.mockRejectedValueOnce(new Error("Upload interrupted")).mockResolvedValueOnce({ asset: finished });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+    const file = new File(["audio"], "retry-batch.wav");
+
+    act(() => collectionContext.current!.onImportMedia([{ file, transcribe: false }]));
+    await waitFor(() => expect(apiMocks.importProjectMedia).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({
+      name: file.name, status: "error", retryable: true,
+    })));
+    const firstQueueId = apiMocks.reserveMediaImports.mock.calls[0][1][0].id;
+    expect(apiMocks.importProjectMedia.mock.calls[0][7]).toBe(firstQueueId);
+
+    const failedAttempt = collectionContext.current!.pendingMediaImports.find((row) => row.name === file.name)!;
+    act(() => collectionContext.current!.onRetryPendingImport(failedAttempt.id));
+    await waitFor(() => expect(apiMocks.importProjectMedia).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(collectionContext.current!.pendingMediaImports).toContainEqual(expect.objectContaining({
+      id: failedAttempt.id, status: "error", retryable: false,
+    })));
+    const secondQueueId = apiMocks.reserveMediaImports.mock.calls[1][1][0].id;
+    expect(secondQueueId).not.toBe(firstQueueId);
+    expect(apiMocks.importProjectMedia.mock.calls[1][7]).toBe(secondQueueId);
+    expect(apiMocks.reserveMediaImports.mock.calls.map((call) => call[1][0].label)).toEqual([file.name, file.name]);
+  });
+
+  it("reserves a second batch while the first batch upload is still running", async () => {
+    const firstUpload = deferred<{ asset: ProjectMediaAsset }>();
+    apiMocks.listProjectMedia.mockResolvedValue([]);
+    apiMocks.listProjectMediaTranscriptionStatus.mockResolvedValue([]);
+    apiMocks.importProjectMedia.mockReturnValueOnce(firstUpload.promise).mockResolvedValueOnce({ asset: mediaAsset("skipped", "", "2026-10-20T00:00:00Z") });
+    render(<WorkspaceShell engine={null} onBack={vi.fn()} onPageChange={async () => project}
+      onRuntimeAction={vi.fn().mockResolvedValue(undefined)} onToggleTheme={vi.fn()} project={project} runtime={null} theme="dark" />);
+    await waitFor(() => expect(collectionContext.current).not.toBeNull());
+
+    act(() => collectionContext.current!.onImportMedia([{ file: new File(["one"], "first.wav"), transcribe: false }]));
+    await waitFor(() => expect(apiMocks.importProjectMedia).toHaveBeenCalledTimes(1));
+    act(() => collectionContext.current!.onImportMedia([{ file: new File(["two"], "second.wav"), transcribe: false }]));
+
+    await waitFor(() => expect(apiMocks.reserveMediaImports).toHaveBeenCalledTimes(2));
+    expect(apiMocks.reserveMediaImports.mock.calls.map((call) => call[1][0].label)).toEqual(["first.wav", "second.wav"]);
+    expect(apiMocks.importProjectMedia).toHaveBeenCalledTimes(1);
+
+    await act(async () => firstUpload.resolve({ asset: mediaAsset("skipped", "", "2026-10-20T00:00:00Z") }));
+    await waitFor(() => expect(apiMocks.importProjectMedia).toHaveBeenCalledTimes(2));
   });
 
   it("orders rapid bulk tick changes and prevents an older save from restoring the earlier value", async () => {

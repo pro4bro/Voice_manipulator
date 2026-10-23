@@ -12,20 +12,26 @@ import type { ActivityEvent, ActivityTask } from "./types";
  */
 
 /** Which job a person cares about most when several run at once. */
-const PRIORITY = ["training", "stt", "diarization", "tts", "voice-changer", "model", "engine"];
+const PRIORITY = ["training", "import", "stt", "alignment", "diarization", "tts", "generate", "lipsync", "lip_sync", "export", "voice-changer", "model", "engine"];
 
 export const TASK_STAGES: Record<string, string> = {
   training: "TRAINING",
+  import: "IMPORT",
   stt: "SPEECH TO TEXT",
+  alignment: "ALIGN SUBTITLE",
   diarization: "TÁCH NGƯỜI NÓI",
   tts: "TẠO GIỌNG",
+  generate: "TẠO GIỌNG",
+  lipsync: "LIP SYNC",
+  lip_sync: "LIP SYNC",
+  export: "EXPORT",
   "voice-changer": "VOICE CHANGER",
   model: "NẠP MODEL",
   engine: "ENGINE",
 };
 
 export function isLiveTask(task: ActivityTask): boolean {
-  return task.status === "running";
+  return task.status === "running" || task.status === "queued";
 }
 
 export function sortTasks(tasks: ActivityTask[]): ActivityTask[] {
@@ -38,8 +44,10 @@ export function sortTasks(tasks: ActivityTask[]): ActivityTask[] {
 
 /** The job the status bar leads with, or null when the app is idle. */
 export function primaryTask(tasks: ActivityTask[]): ActivityTask | null {
-  const live = sortTasks(tasks.filter(isLiveTask));
-  if (live.length) return live[0];
+  const running = sortTasks(tasks.filter((task) => task.status === "running"));
+  if (running.length) return running[0];
+  const queued = sortTasks(tasks.filter((task) => task.status === "queued"));
+  if (queued.length) return queued[0];
   const finished = [...tasks].sort((left, right) => (right.finishedAt ?? "").localeCompare(left.finishedAt ?? ""));
   return finished[0] ?? null;
 }
@@ -64,6 +72,8 @@ export function describeTask(task: ActivityTask, now: number = Date.now()): Task
   if (task.status === "running") {
     parts.push(`đã chạy ${formatDuration(elapsed)}`);
     if (task.etaSeconds != null) parts.push(`còn ~${formatDuration(task.etaSeconds)}`);
+  } else if (task.status === "queued") {
+    parts.push("Đang chờ");
   } else {
     const seconds = task.seconds ?? elapsed;
     parts.push(`${statusWord(task)} sau ${formatDuration(seconds)}`);
@@ -81,6 +91,7 @@ export function describeTask(task: ActivityTask, now: number = Date.now()): Task
 function statusWord(task: ActivityTask): string {
   if (task.status === "failed") return "Lỗi";
   if (task.status === "cancelled") return "Đã huỷ";
+  if (task.status === "interrupted") return "Bị gián đoạn";
   return "Xong";
 }
 

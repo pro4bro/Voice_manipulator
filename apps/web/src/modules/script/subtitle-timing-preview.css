@@ -21,4 +21,6 @@
 .subtitle-refinement-parameters input { min-width: 0; width: 100%; }
 .subtitle-refinement-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
 .subtitle-refinement-actions button { min-width: 0; white-space: normal; }
+.subtitle-alignment-activity { display: grid; gap: 5px; font-size: var(--type-meta); }
+.subtitle-alignment-activity progress { width: 100%; height: 5px; accent-color: var(--accent); }
 .subtitle-refinement-conflicts { color: var(--red, #d63f3f); }

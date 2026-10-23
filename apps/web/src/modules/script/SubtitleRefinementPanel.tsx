@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { api } from "../../api/client";
 import { SUBTITLE_ALIGNMENT_METHODS, type SubtitleAlignmentEngine, type SubtitleAlignmentEngineId, type SubtitleAlignmentEngineSettings, type SubtitleAlignmentProposal, type SubtitleRefinementMethod } from "../../domain/subtitle-alignment";
-import type { ProjectMediaAsset } from "../../domain/types";
+import type { ActivityTask, ProjectMediaAsset } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { SubtitleAlignmentControl } from "./SubtitleAlignmentDialog";
 import { useSubtitleTimingPreview } from "./SubtitleTimingPreview";
@@ -31,12 +31,15 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [proposal, setProposal] = useState<SubtitleAlignmentProposal | null>(null);
   const [busy, setBusy] = useState(false);
+  const [trackingAlignment, setTrackingAlignment] = useState(false);
+  const [activityTask, setActivityTask] = useState<ActivityTask | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const generation = useRef(0);
   const catalogGeneration = useRef(0);
   const savedProposalGeneration = useRef(0);
   const acceptedKey = useRef<string | null>(null);
   const mounted = useRef(true);
+  const activityStartedAt = useRef(0);
   const inputKey = asset ? sourceKey(asset) : "";
   const latestKey = useRef(inputKey); latestKey.current = inputKey;
   const selectionMatches = selection?.scope?.kind === "asset" && selection.scope.id === assetId && selection.scope.revision === asset?.updatedAt && selection.indexes.length > 0;
@@ -84,6 +87,28 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
     }).catch((error) => { if (mounted.current && version === savedProposalGeneration.current) setNotice(message(error)); });
   }, [projectId, assetId, inputKey]);
   useEffect(() => {
+    if (!trackingAlignment || !asset) return;
+    let active = true;
+    let inFlight = false;
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const { tasks } = await api.getProjectQueue(projectId);
+        if (!active) return;
+        const match = tasks.filter((task) => task.kind === "alignment" && task.assetId === asset.id &&
+          Date.parse(task.startedAt) >= activityStartedAt.current - 1000)
+          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+        if (match) setActivityTask(match);
+      } catch { /* The preview request still reports its own error. */ }
+      finally { inFlight = false; }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 300);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [projectId, assetId, trackingAlignment]);
+  useEffect(() => { setActivityTask(null); }, [projectId, assetId]);
+  useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; generation.current++; setPreview?.(null); };
   }, [setPreview]);
@@ -103,7 +128,7 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
     if (!asset || busy || !setPreview || !ready || !validEngineSettings || !Number.isFinite(maxMoveMs) || maxMoveMs < 0 || maxMoveMs > 2000 || !validMethods || (selectedOnly && !selectionMatches)) return;
     const version = ++generation.current, target = asset, key = inputKey;
     savedProposalGeneration.current++;
-    setBusy(true); setNotice(null); setPreview(null);
+    setBusy(true); setTrackingAlignment(true); setActivityTask(null); activityStartedAt.current = Date.now(); setNotice(null); setPreview(null);
     try {
       await prepare(target.id);
       const value = await api.previewSubtitleEngine(projectId, target.id, { engineId, settings: settingsByEngine[engineId], maxMoveMs, ...(plan.length ? { methods: plan } : {}), ...(indexes ? { indexes } : {}) });
@@ -114,7 +139,18 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
         setNotice(value.aligner.status === "unavailable" || value.aligner.status === "failed" ? value.aligner.reason ?? "Engine chưa tạo được mốc căn chỉnh." : "Ghost đang hiện trên Timeline. Phát audio để nghe và kiểm tra trước khi áp dụng.");
       }
     } catch (error) { if (mounted.current && version === generation.current) setNotice(message(error)); }
-    finally { if (mounted.current) setBusy(false); }
+    finally {
+      try {
+        const { tasks } = await api.getProjectQueue(projectId);
+        if (mounted.current && latestKey.current === key) {
+          const latest = tasks.filter((task) => task.kind === "alignment" && task.assetId === target.id &&
+            Date.parse(task.startedAt) >= activityStartedAt.current - 1000)
+            .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+          if (latest) setActivityTask(latest);
+        }
+      } catch { /* The preview request still reports its own error. */ }
+      if (mounted.current) { setBusy(false); setTrackingAlignment(false); }
+    }
   }
   async function apply(restore = false) {
     if (!asset || !proposal || busy) return;
@@ -141,6 +177,13 @@ export function SubtitleRefinementPanel({ projectId, assets, selection, prepare,
       <button type="button" className="button button--quiet" disabled={busy || !timing?.preview || proposal?.state !== "proposed" || proposal.stale || !changed || (selectedOnly && !selectionMatches)} onClick={() => void apply()}>Apply Aligner</button>
       {proposal?.state === "applied" ? <button type="button" className="button button--quiet" disabled={busy || proposal.stale} onClick={() => void apply(true)}>Khôi phục timing</button> : null}
     </div>
+    {activityTask ? <div className="subtitle-alignment-activity" role="status" aria-live="polite">
+      {activityTask.status === "running" ? "Đang căn subtitle" : activityTask.status === "complete" ? "Đã tạo đề xuất căn subtitle" : "Căn subtitle thất bại"}
+      {activityTask.detail ? ` · ${activityTask.detail}` : ""}
+      {activityTask.fraction !== null ? ` · ${Math.round(activityTask.fraction * 100)}%` : ""}
+      {activityTask.status === "failed" && activityTask.error ? ` · ${activityTask.error}` : ""}
+      <progress aria-label="Tiến trình căn chỉnh subtitle" max="1" value={activityTask.fraction ?? undefined} />
+    </div> : trackingAlignment ? <progress aria-label="Đang chuẩn bị căn chỉnh subtitle" /> : null}
     <small>Ghost Preview chạy engine và hiện timing mới mờ trên Timeline. Apply Aligner lưu các thay đổi sau khi kiểm tra.</small>
     {!choices.length ? <p role="status">Chọn footage hoặc track trong Media Pool đã STT xong và có timing từng từ để bật Ghost Preview.</p> : <div className="subtitle-refinement-settings">
       <label>Track<select aria-label="Track tinh chỉnh" disabled={busy} value={assetId} onChange={(event) => { invalidate(); setAssetId(event.target.value); }}>{choices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

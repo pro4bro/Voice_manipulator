@@ -5,6 +5,7 @@ import type { LipSyncJob, LipSyncRuntimeReport, FaceGallery, FaceReview, LipSync
 import type { ReferenceAssignment, ReferenceBindingDocument } from "../domain/reference-bindings";
 import type {
   ActivitySnapshot,
+  ActivityTask,
   AppPreferences,
   CaptureTier,
   DatasetManifest,
@@ -70,6 +71,17 @@ import type {
   TrainingRunLog,
   WorkspacePage,
 } from "../domain/types";
+
+export function queuedDownloadUrl(path: string): string {
+  const hashIndex = path.indexOf("#");
+  const resource = hashIndex < 0 ? path : path.slice(0, hashIndex);
+  const hash = hashIndex < 0 ? "" : path.slice(hashIndex);
+  const queryIndex = resource.indexOf("?");
+  const pathname = queryIndex < 0 ? resource : resource.slice(0, queryIndex);
+  const params = new URLSearchParams(queryIndex < 0 ? "" : resource.slice(queryIndex + 1));
+  params.set("queue_export", "1");
+  return `${pathname}?${params.toString()}${hash}`;
+}
 import type { MediaPoolOrganization } from "../modules/media-pool/media-organization";
 
 export interface SokujiRuntimeStatus {
@@ -134,7 +146,10 @@ async function downloadSrt(path: string, fallbackFilename: string): Promise<{ sk
 }
 
 async function downloadFile(path: string, fallbackFilename: string, init?: RequestInit): Promise<{ skippedCues: number }> {
-  const response = await fetch(path, init);
+  const headers = new Headers(init?.headers);
+  headers.set("X-Queue-Export", "1");
+  headers.set("X-Queue-Label", encodeURIComponent(fallbackFilename));
+  const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail ?? `Không thể tải file (${response.status})`);
@@ -235,6 +250,8 @@ export const api = {
   },
   getActivity: (after = 0, limit = 400) =>
     request<ActivitySnapshot>(`/api/activity?after=${after}&limit=${limit}`),
+  getProjectQueue: (projectId: string) =>
+    request<{ tasks: ActivityTask[] }>(`/api/projects/${encodeURIComponent(projectId)}/queue`),
   getRuntimeStatus: () => request<RuntimeWorkloadState>("/api/runtime/status"),
   controlRuntime: (action: RuntimeAction) =>
     request<RuntimeWorkloadState>("/api/runtime/actions", {
@@ -403,11 +420,20 @@ export const api = {
       `/api/projects/${projectId}/media/inspect-local`,
       { method: "POST", body: JSON.stringify({ sourcePath }) },
     ),
+  reserveMediaImports: (projectId: string, tasks: Array<{ id: string; label: string }>) =>
+    request<{ tasks: ActivityTask[] }>(`/api/projects/${encodeURIComponent(projectId)}/queue/imports`, {
+      method: "POST", body: JSON.stringify({ tasks }),
+    }),
   importLocalProjectMedia: async (projectId: string, sourcePath: string, cacheLocal: boolean,
-                                  streamIndexes?: number[], transcribeStreamIndexes?: number[]) => {
+                                  streamIndexes?: number[], transcribeStreamIndexes?: number[], queueTaskId?: string) => {
+    const headers = queueTaskId ? {
+      "X-Queue-Task-Id": queueTaskId,
+      "X-Queue-Label": encodeURIComponent(sourcePath.split(/[\\/]/).pop() ?? sourcePath),
+    } : undefined;
     const result = await request<ProjectMediaImportResult>("/api/projects/" + projectId + "/media/import-local", {
       method: "POST",
       body: JSON.stringify({ sourcePath, cacheLocal, streamIndexes, transcribeStreamIndexes }),
+      headers,
     });
     return { ...result, asset: normalizeMediaAsset(result.asset), item: result.item ? normalizeStudioItem(result.item) : null };
   },
@@ -481,6 +507,7 @@ export const api = {
     transcribe = false,
     queueForTranscription = false,
     captureTier: CaptureTier | null = null,
+    queueTaskId?: string,
   ) => {
     const body = new FormData();
     body.append("file", file);
@@ -489,7 +516,8 @@ export const api = {
     if (captureTier) body.append("capture_tier", captureTier);
     body.append("transcribe", String(transcribe));
     body.append("queue_for_transcription", String(queueForTranscription));
-    const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body });
+    const headers = queueTaskId ? { "X-Queue-Task-Id": queueTaskId, "X-Queue-Label": encodeURIComponent(file.name) } : undefined;
+    const result = await request<ProjectMediaImportResult>(`/api/projects/${projectId}/media/import`, { method: "POST", body, headers });
     return {
       ...result,
       asset: normalizeMediaAsset(result.asset),

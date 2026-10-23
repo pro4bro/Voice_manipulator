@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeTask, mergeEvents, primaryTask, sortTasks } from "./activity";
+import { describeTask, isLiveTask, mergeEvents, primaryTask, sortTasks } from "./activity";
 import type { ActivityEvent, ActivityTask } from "./types";
 
 function task(overrides: Partial<ActivityTask> = {}): ActivityTask {
@@ -23,6 +23,26 @@ describe("what the app is doing", () => {
 
     expect(primaryTask(tasks)?.id).toBe("b");
     expect(sortTasks(tasks).map((item) => item.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("shows queued work ahead of completed work with a waiting status", () => {
+    const queued = task({ kind: "alignment", status: "queued", fraction: null, detail: "Align Subtitle" });
+    expect(primaryTask([task({ status: "complete" }), queued])?.id).toBe("task-1");
+    expect(isLiveTask(queued)).toBe(true);
+    expect(describeTask(queued, NOW).detail).toBe("Align Subtitle · Đang chờ");
+  });
+
+  it("favors running work over queued work before applying kind priority", () => {
+    const queuedTraining = task({ id: "queued-training", kind: "training", status: "queued" });
+    const runningStt = task({ id: "running-stt", kind: "stt", status: "running" });
+    expect(primaryTask([queuedTraining, runningStt])?.id).toBe("running-stt");
+  });
+
+  it("names the new queued task kinds and puts queued import work into the status order", () => {
+    const tasks = [task({ id: "export", kind: "export", status: "queued" }), task({ id: "import", kind: "import", status: "queued" }), task({ id: "lip", kind: "lipsync", status: "queued" })];
+    expect(sortTasks(tasks).map((item) => item.id)).toEqual(["import", "lip", "export"]);
+    expect(describeTask(tasks[0], NOW).stage).toBe("EXPORT");
+    expect(describeTask(tasks[1], NOW).stage).toBe("IMPORT");
   });
 
   it("falls back to the last thing that finished, so the end of a job is seen", () => {
@@ -55,6 +75,12 @@ describe("what the app is doing", () => {
 
     expect(line.detail).toContain("Lỗi sau 12s");
     expect(line.detail).toContain("CUDA out of memory");
+  });
+
+  it("describes interrupted jobs as interrupted", () => {
+    const line = describeTask(task({ status: "interrupted", fraction: null, seconds: 12 }), NOW);
+    expect(line.detail).toContain("Bị gián đoạn sau 12s");
+    expect(line.percent).toBeNull();
   });
 });
 

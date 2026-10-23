@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { queuedDownloadUrl } from "../../api/client";
 import type { VoiceOutput } from "../../domain/types";
 
 interface FixUnit { rowId: string; text: string; desiredKey: string; status: string; reason?: string | null }
@@ -128,7 +129,7 @@ export function VoiceFixControls({ projectId, outputId, scriptRevision, editRevi
     </div> : null}
     {shownApplied ? <div><p>Bản Fix đã kiểm tra · {shownApplied.output.duration?.toFixed(3)} giây. Nguồn vẫn được giữ nguyên.</p>
       <audio controls aria-label="Nghe bản Fix" src={shownApplied.audioUrl} />
-      <a href={shownApplied.audioUrl} download="voice-fixed.wav">Tải WAV bản Fix</a>
+      <a href={queuedDownloadUrl(shownApplied.audioUrl)} download="voice-fixed.wav">Tải WAV bản Fix</a>
       <button type="button" onClick={() => onOutputReady?.(shownApplied.output)}>Mở bản Fix trên Timeline</button>
     </div> : null}
   </details>;

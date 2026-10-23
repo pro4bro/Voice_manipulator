@@ -8,7 +8,7 @@ it("downloads the same verified artifact shown in preview and reports limited ga
     report: { global: { requestedGainDb: 6, appliedGainDb: .6, headroomLimited: true }, output: { rmsDbfs: -12, peakDbfs: -1 } },
   } };
   const view = render(<VoiceRenderControls controller={controller} saved />);
-  expect(screen.getByRole("link", { name: "Tải WAV đã render" })).toHaveAttribute("href", controller.packet!.audioUrl);
+  expect(screen.getByRole("link", { name: "Tải WAV đã render" })).toHaveAttribute("href", `${controller.packet!.audioUrl}?queue_export=1`);
   expect(screen.getByText(/đã giới hạn headroom/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Áp dụng âm lượng" }));
   expect(controller.render).toHaveBeenCalledOnce();
