@@ -6,11 +6,30 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-23 — SUBTITLE-ACTIONS-01 completed missing-action feedback.
-last_activity_desc: Ghost Preview and Apply Aligner now visible above settings and in empty selection with guidance. Frontend16/backend42, typecheck/build and isolated browser checks pass. EasyAligner defaults and manual locks retained. Stop bounded correction; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-23 — PROJECT-QUEUE-01 implemented approved persistent Queue.
+last_activity_desc: Footage grouping, real progress, Status and portable task receipts implemented. Full frontend1262 passes; backend1535 passes/1 existing timeout, isolated case passes. Focused delta checks and real media/engine proof pass. Stop bounded round; Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
+
+Implemented the approved footage mockup: Import/STT/alignment/diarization share
+one footage slot with equal-weight measured progress, unknown propagation and
+track detail. Other task families have separate tabs, expandable children,
+gray Done and explicit attention states. Status opens Queue; project-owned
+atomic history survives reopen/restart, detects reused PIDs and retains attempts.
+Batch import reservations are atomic and visible before upload. Existing workers
+report real stages/counters; alignment still requires explicit Preview/Apply.
+
+Full frontend1262 passes; final changed cases26, typecheck/build217 pass.
+Full backend1535 passes/1 existing VibeVoice60s import timeout; isolated unchanged
+case passes48.39s. Final core23, processors60, OBS33 and recovery34 pass; import/
+MKV46 plus retry1 pass. Real WAV import/export, paced upload/pending/Done, API
+restart and real EasyAligner25/25 progress sidecar verify. No owner edits or gate
+relaxation. See `docs/gates/project-queue-01-20261023.md`, `docs/PROJECT-QUEUE.md`
+and ADR0139. Stop this bounded round; Phase03 stays60%, Phase06 remains open.
+
 
 ## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
 

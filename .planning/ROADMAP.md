@@ -1,5 +1,23 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
+
+Implemented the approved footage mockup: Import/STT/alignment/diarization share
+one footage slot with equal-weight measured progress, unknown propagation and
+track detail. Other task families have separate tabs, expandable children,
+gray Done and explicit attention states. Status opens Queue; project-owned
+atomic history survives reopen/restart, detects reused PIDs and retains attempts.
+Batch import reservations are atomic and visible before upload. Existing workers
+report real stages/counters; alignment still requires explicit Preview/Apply.
+
+Full frontend1262 passes; final changed cases26, typecheck/build217 pass.
+Full backend1535 passes/1 existing VibeVoice60s import timeout; isolated unchanged
+case passes48.39s. Final core23, processors60, OBS33 and recovery34 pass; import/
+MKV46 plus retry1 pass. Real WAV import/export, paced upload/pending/Done, API
+restart and real EasyAligner25/25 progress sidecar verify. No owner edits or gate
+relaxation. See `docs/gates/project-queue-01-20261023.md`, `docs/PROJECT-QUEUE.md`
+and ADR0139. Stop this bounded round; Phase03 stays60%, Phase06 remains open.
+
 ## SUBTITLE-ACTIONS-01 — visible preview/apply controls (2026-10-23)
 
 Completed the owner's missing-action feedback: Ghost Preview and Apply Aligner
