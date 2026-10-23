@@ -45,6 +45,7 @@ from app.adapters.voice_collection_transfer_routes import make_voice_collection_
 from app.adapters.collection_voice_preview import CollectionVoicePreviews, make_collection_preview_router
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
+from app.adapters.file_voice_output_sessions import FileVoiceOutputSessions
 from app.adapters.file_voice_edits import FileVoiceEdits
 from app.adapters.voice_edit_routes import make_voice_edit_router
 from app.adapters.voice_delivery_routes import make_voice_delivery_router
@@ -316,6 +317,18 @@ class ObsLiveLinkDetailedSttStart(BaseModel):
     model: str = "large-v3"
 
 
+class VoiceOutputSessionRequest(BaseModel):
+    revision: int = Field(ge=0)
+
+
+class VoiceOutputVersionSelectRequest(VoiceOutputSessionRequest):
+    version_id: str = Field(alias="versionId", min_length=1)
+
+
+class VoiceOutputVersionCreateRequest(VoiceOutputSessionRequest):
+    source_output_id: str = Field(alias="sourceOutputId", min_length=1)
+
+
 def create_app(
     project_repository: ProjectRepository | None = None,
     voice_engine: VoiceEngine | None = None,
@@ -454,6 +467,7 @@ def create_app(
             pass
 
     voice_outputs = FileVoiceOutputs(projects)
+    voice_output_sessions = FileVoiceOutputSessions(voice_outputs)
     voice_script_documents = FileVoiceScript(projects)
     voice_edits = FileVoiceEdits(voice_outputs, voice_script_documents)
     reference_bindings = FileReferenceBindings(projects, media, voice_outputs, voice_script_documents)
@@ -2432,6 +2446,43 @@ def create_app(
             return voice_outputs.list(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.get("/api/projects/{project_id}/voice-output-sessions")
+    def get_voice_output_sessions(project_id: str) -> dict:
+        try:
+            return voice_output_sessions.get(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions")
+    def create_voice_output_session(project_id: str, payload: VoiceOutputSessionRequest) -> dict:
+        try:
+            return voice_output_sessions.create_session(project_id, payload.revision)
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions/select")
+    def select_voice_output_version(project_id: str, payload: VoiceOutputVersionSelectRequest) -> dict:
+        try:
+            return voice_output_sessions.select(project_id, payload.revision, payload.version_id)
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Version không tồn tại") from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions/versions")
+    def create_voice_output_version(project_id: str, payload: VoiceOutputVersionCreateRequest) -> dict:
+        try:
+            book, output = voice_output_sessions.create_version(project_id, payload.revision, payload.source_output_id)
+            return {"sessions": book, "output": output.model_dump(by_alias=True, mode="json")}
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail="Voice Output nguồn không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/projects/{project_id}/voice-outputs/{output_id}/audio")
     def voice_output_audio(project_id: str, output_id: str) -> Response:

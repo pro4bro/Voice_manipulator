@@ -1142,6 +1142,13 @@ export interface VoiceOutput {
   createdAt: string;
 }
 
+export interface VoiceOutputSessions {
+  revision: number;
+  activeSessionId: string | null;
+  activeVersionId: string | null;
+  sessions: { id: string; name: string; versions: { id: string; name: string; outputId: string | null; parentVersionId: string | null; acceptsNextOutput?: boolean; createdAt: string }[] }[];
+}
+
 export type VoiceOutputSubtitleMode = "line" | "word" | "sentence" | "table";
 export type VoiceOutputExportMode = "audio" | VoiceOutputSubtitleMode;
 

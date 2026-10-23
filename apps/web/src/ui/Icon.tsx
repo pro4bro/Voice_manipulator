@@ -5,6 +5,8 @@ const paths = {
   back: "M15 18l-6-6 6-6",
   chevron: "m9 18 6-6-6-6",
   file: "M7 3h7l4 4v14H7zM14 3v5h5M10 13h5M10 17h5",
+  "file-plus": "M8 3h7l4 4v14H8zM15 3v5h4M2 13h5M4.5 10.5v5",
+  copy: "M8 7h12v14H8zM5 17H4V3h12v2",
   folder: "M3 6h7l2 2h9v11H3z",
   "folder-plus": "M3 6h7l2 2h9v11H3zM12 11v6M9 14h6",
   import: "M4 4h16v6M4 14v6h16v-6M12 8v9m-4-4 4 4 4-4",

@@ -40,6 +40,7 @@ import type {
   SpeakerEmbedderInfo,
   VoiceModelSet,
   VoiceOutput,
+  VoiceOutputSessions,
   VoiceScriptJob,
   VoiceScriptDocument,
   VoiceChangerPreflight,
@@ -774,6 +775,10 @@ export const api = {
   getSokujiTranslateCatalog: () => request<SokujiTranslateCatalog>("/api/open-engines/sokuji/catalog?kind=translate"),
   listAsrAdapters: (projectId: string) => request<ProjectAsrAdapter[]>(`/api/projects/${projectId}/asr-adapters`),
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
+  getVoiceOutputSessions: (projectId: string) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions`),
+  createVoiceOutputSession: (projectId: string, revision: number) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions`, { method: "POST", body: JSON.stringify({ revision }) }),
+  selectVoiceOutputVersion: (projectId: string, revision: number, versionId: string) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions/select`, { method: "POST", body: JSON.stringify({ revision, versionId }) }),
+  createVoiceOutputVersion: (projectId: string, revision: number, sourceOutputId: string) => request<{ sessions: VoiceOutputSessions; output: VoiceOutput }>(`/api/projects/${projectId}/voice-output-sessions/versions`, { method: "POST", body: JSON.stringify({ revision, sourceOutputId }) }),
   deleteVoiceOutput: (projectId: string, outputId: string) =>
     request<void>(`/api/projects/${projectId}/voice-outputs/${outputId}`, { method: "DELETE" }),
   downloadVoiceOutputAudio: (projectId: string, outputId: string) =>

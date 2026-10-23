@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type SokujiRuntimeStatus, type SokujiTranslateModel } from "../../api/client";
 import type { ManipulatorMode, TrainingModelOption } from "../../domain/types";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -15,6 +16,51 @@ const ENGINE_LABELS: Record<string, string> = {
   omnivoice: "OmniVoice", vibevoice: "VibeVoice", cosyvoice3: "CosyVoice3",
   "f5-tts": "F5-TTS", vivoice: "ViVoice", indextts25: "IndexTTS 2.5", "fish-s2-pro": "Fish S2 Pro",
 };
+
+type EngineChoice = { engine: string; label: string; available: boolean; status?: string };
+
+function GenerationEngineChoice({ choices, value, onChange }: { choices: EngineChoice[]; value: string | null; onChange: (engine: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 280 });
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const all = [{ engine: "auto", label: "Tự động · theo voice trong Script", available: true }, ...choices];
+  const selected = all.find((choice) => choice.engine === (value ?? "auto")) ?? all[0];
+  const label = (choice: EngineChoice) => `${choice.label}${choice.engine === "auto" ? "" : choice.available ? " · Sẵn sàng" : ` · ${choice.status ?? "Chưa sẵn sàng"}`}`;
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = trigger.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = window.innerHeight - rect.bottom;
+      const above = rect.top;
+      const height = Math.min(280, Math.max(80, (below >= 180 || below >= above ? below : above) - 8));
+      setPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)), top: below >= 180 || below >= above ? rect.bottom + 2 : Math.max(8, rect.top - height - 2), width: rect.width, maxHeight: height });
+    };
+    const close = (event: PointerEvent) => { if (!trigger.current?.contains(event.target as Node) && !list.current?.contains(event.target as Node)) setOpen(false); };
+    place();
+    document.addEventListener("pointerdown", close);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open]);
+  function choose(engine: string) { onChange(engine === "auto" ? null : engine); setOpen(false); trigger.current?.focus(); }
+  return <div className="manipulator-engine-picker">
+    <button ref={trigger} type="button" role="combobox" aria-label="Engine tạo giọng" aria-controls="generation-engine-options" aria-expanded={open} aria-haspopup="listbox" className="manipulator-engine-picker__trigger" onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
+      if (event.key === "Escape") { setOpen(false); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-engine="${selected.engine}"]`)?.focus()); }
+    }}>{label(selected)}<span aria-hidden="true">⌄</span></button>
+    {open ? createPortal(<div ref={list} id="generation-engine-options" className="manipulator-engine-picker__list" role="listbox" aria-label="Engine tạo giọng" style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }} onKeyDown={(event) => {
+      const options = Array.from(list.current?.querySelectorAll<HTMLElement>("[role='option']") ?? []);
+      const index = options.indexOf(document.activeElement as HTMLElement);
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); trigger.current?.focus(); }
+      else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); options[(index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length]?.focus(); }
+      else if (event.key === "Home" || event.key === "End") { event.preventDefault(); options[event.key === "Home" ? 0 : options.length - 1]?.focus(); }
+    }}>
+      {all.map((choice) => <button key={choice.engine} type="button" role="option" data-engine={choice.engine} aria-selected={selected.engine === choice.engine} className="manipulator-engine-picker__option" onClick={() => choose(choice.engine)}>{label(choice)}</button>)}
+    </div>, document.body) : null}
+  </div>;
+}
 
 export function ManipulatorNavigation({ mode, onChange }: { mode: ManipulatorMode; onChange: (mode: ManipulatorMode) => void }) {
   return <div className="manipulator-navigation" role="tablist" aria-label="Chức năng Voice Manipulator" aria-orientation="vertical">
@@ -131,10 +177,7 @@ export function ManipulatorService({ mode, voiceGenerators = [], generationEngin
       : "Bộ tách giọng sẽ được bổ sung sau khi kiểm tra chất lượng trên audio thực."}</p> : null}
     {mode === "voice-over" && engineChoices.length && onGenerationEngineChange ? <label className="manipulator-service__engine-choice">
       <span>Engine tạo giọng</span>
-      <select aria-label="Engine tạo giọng" value={generationEngine ?? "auto"} onChange={(event) => onGenerationEngineChange(event.target.value === "auto" ? null : event.target.value)}>
-        <option value="auto">Tự động · theo voice trong Script</option>
-        {engineChoices.map((choice) => <option key={choice.engine} value={choice.engine}>{choice.label}{choice.available ? " · Sẵn sàng" : ` · ${choice.status}`}</option>)}
-      </select>
+      <GenerationEngineChoice choices={engineChoices} value={generationEngine} onChange={onGenerationEngineChange} />
     </label> : null}
     {!ready && providers.length ? <label className="manipulator-service__engine-choice">
       <span>Bộ xử lý {item.label}</span>

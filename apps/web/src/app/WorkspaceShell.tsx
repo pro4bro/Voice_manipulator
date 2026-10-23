@@ -2832,6 +2832,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     voiceOutputs,
     activeOutputId: voiceOutputs.some((output) => output.id === outputTake?.id) ? outputTake?.id ?? null : null,
     onOpenVoiceOutput: openVoiceOutput,
+    onVoiceOutputVersionCreated: (output) => setVoiceOutputs((current) => [output, ...current]),
+    onVoiceOutputSessionCreated: () => setOutputTake(null),
     onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
     onDeleteVoiceOutputs: (outputs) => void deleteVoiceOutputs(outputs),
     sttEngines,

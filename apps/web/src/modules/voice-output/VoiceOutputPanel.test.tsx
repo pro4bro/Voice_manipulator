@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { VoiceOutputPanel } from "./VoiceOutputPanel";
 import type { VoiceOutput } from "../../domain/types";
+import { api } from "../../api/client";
 
 function output(overrides: Partial<VoiceOutput> = {}): VoiceOutput {
   return {
@@ -14,6 +15,30 @@ function output(overrides: Partial<VoiceOutput> = {}): VoiceOutput {
 }
 
 describe("VoiceOutputPanel", () => {
+  it("creates an empty session and duplicates the selected output as an independent version", async () => {
+    const source = output();
+    const copy = output({ id: "output-copy", name: "An · Xin chào · bản sao", audioPath: "assets/voice-output/output-copy/audio.wav" });
+    const initial = { revision: 1, activeSessionId: "session-1", activeVersionId: "version-1", sessions: [{ id: "session-1", name: "Session 1", versions: [{ id: "version-1", name: "Version 1", outputId: source.id, parentVersionId: null, createdAt: source.createdAt }] }] };
+    const afterCopy = { revision: 2, activeSessionId: "session-1", activeVersionId: "version-2", sessions: [{ ...initial.sessions[0], versions: [...initial.sessions[0].versions, { id: "version-2", name: "Version 2", outputId: copy.id, parentVersionId: "version-1", createdAt: copy.createdAt }] }] };
+    const afterSession = { revision: 3, activeSessionId: "session-2", activeVersionId: "version-3", sessions: [...afterCopy.sessions, { id: "session-2", name: "Session 2", versions: [{ id: "version-3", name: "Version 1", outputId: null, parentVersionId: null, createdAt: copy.createdAt }] }] };
+    const get = vi.spyOn(api, "getVoiceOutputSessions").mockResolvedValue(initial);
+    const createVersion = vi.spyOn(api, "createVoiceOutputVersion").mockResolvedValue({ sessions: afterCopy, output: copy });
+    const createSession = vi.spyOn(api, "createVoiceOutputSession").mockResolvedValue(afterSession);
+    const onOpen = vi.fn(), onVersionCreated = vi.fn(), onSessionCreated = vi.fn();
+    try {
+      render(<VoiceOutputPanel projectId="project" activeOutputId={source.id} onDelete={vi.fn()} onOpen={onOpen} onVersionCreated={onVersionCreated} onSessionCreated={onSessionCreated} outputs={[source]} speakers={[]} />);
+      fireEvent.click(await screen.findByRole("button", { name: "New Version" }));
+      expect(await screen.findByText("Version 2")).toBeInTheDocument();
+      expect(createVersion).toHaveBeenCalledWith("project", 1, source.id);
+      expect(onVersionCreated).toHaveBeenCalledWith(copy);
+      expect(onOpen).toHaveBeenCalledWith(copy);
+      fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+      expect(await screen.findByText("Session 2")).toBeInTheDocument();
+      expect(createSession).toHaveBeenCalledWith("project", 2);
+      expect(onSessionCreated).toHaveBeenCalledOnce();
+      expect(source.audioPath).toBe("assets/voice-output/output-1/audio.wav");
+    } finally { get.mockRestore(); createVersion.mockRestore(); createSession.mockRestore(); }
+  });
   it("labels results by the producing function while preserving their saved data", () => {
     const source = output();
     const patch = output({ id: "patched", text: "Lời đã sửa", parameters: { voicePatch: { jobId: "job", sourceOutputId: source.id } } });

@@ -44,13 +44,16 @@ describe("Manipulator function navigation", () => {
     const onGenerationEngineChange = vi.fn();
     render(<ManipulatorService mode="voice-over" voiceGenerators={generators} generationEngine={null} onGenerationEngineChange={onGenerationEngineChange} />);
     const selector = screen.getByRole("combobox", { name: "Engine tạo giọng" });
-    expect(within(selector).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ })).toBeEnabled();
+    fireEvent.click(selector);
+    const choices = screen.getByRole("listbox", { name: "Engine tạo giọng" });
+    expect(within(choices).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ })).toBeEnabled();
     expect(screen.getByText("Chưa tải engine.")).toBeInTheDocument();
-    expect(within(selector).getByRole("option", { name: "F5-TTS · Thiếu weights F5." })).toHaveValue("f5-tts");
-    expect(within(selector).getByRole("option", { name: "ViVoice · Thiếu weights VI." })).toHaveValue("vivoice");
-    fireEvent.change(selector, { target: { value: "cosyvoice3" } });
+    expect(within(choices).getByRole("option", { name: "F5-TTS · Thiếu weights F5." })).toBeInTheDocument();
+    expect(within(choices).getByRole("option", { name: "ViVoice · Thiếu weights VI." })).toBeInTheDocument();
+    fireEvent.click(within(choices).getByRole("option", { name: /CosyVoice3.*Chưa tải engine/ }));
     expect(onGenerationEngineChange).toHaveBeenLastCalledWith("cosyvoice3");
-    fireEvent.change(selector, { target: { value: "omnivoice" } });
+    fireEvent.click(selector);
+    fireEvent.click(screen.getByRole("option", { name: "OmniVoice · Sẵn sàng" }));
     expect(onGenerationEngineChange).toHaveBeenLastCalledWith("omnivoice");
   });
   it("retains a separate provider choice for each planned function without running it", async () => {
