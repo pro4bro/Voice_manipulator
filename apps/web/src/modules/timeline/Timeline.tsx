@@ -79,7 +79,22 @@ export interface TimelineLayerViewport {
   duration: number;
 }
 
-interface TimelineProps {
+export interface TimelineClipTools {
+  busy: boolean;
+  selected: boolean;
+  canUncut: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  canCut: (time: number, range: { start: number; end: number } | null) => boolean;
+  onCut: (time: number, range: { start: number; end: number } | null) => void;
+  onUncut: () => void;
+  onDelete: () => void;
+  onReset: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}
+
+export interface TimelineProps {
   alignment?: TimelineAlignmentProps;
   /** A Version keeps its viewport while composition renders receive new output IDs. */
   viewIdentity?: string;
@@ -114,6 +129,7 @@ interface TimelineProps {
   /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
   leadingActions?: ReactNode;
   layerContent?: (playheadSeconds: number, viewport: TimelineLayerViewport) => ReactNode;
+  clipTools?: TimelineClipTools;
   /** Replaces the take name above the waveform while something live is happening. */
   liveCaption?: string | null;
   /** What an empty timeline says; each page fills it with what would fill it. */
@@ -263,6 +279,7 @@ function AudioTimeline({
   onReferenceContext,
   leadingActions = null,
   layerContent,
+  clipTools,
   viewIdentity,
   liveCaption = null,
   emptyNote,
@@ -322,6 +339,7 @@ function AudioTimeline({
   const audioRef = useRef<HTMLAudioElement>(null);
   const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean; metadataUrl: string | null } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const layerScrollRef = useRef<HTMLDivElement>(null);
   const lastCompositionMedia = useRef<{ identity: string; url?: string } | null>(null);
   const timelineNavigatorRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
@@ -1043,6 +1061,26 @@ function AudioTimeline({
     setTimelineViewport((current) => current.left === target.scrollLeft && current.width === target.clientWidth ? current : { left: target.scrollLeft, width: target.clientWidth });
   }
 
+  function panLayerViewport(delta: number) {
+    const scroller = timelineScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, scroller.scrollLeft + delta));
+    setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
+  }
+
+  useEffect(() => {
+    const pane = layerScrollRef.current;
+    if (!pane) return;
+    const wheel = (event: WheelEvent) => {
+      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+      if (!delta) return;
+      event.preventDefault();
+      panLayerViewport(delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? pane.clientWidth : 1));
+    };
+    pane.addEventListener("wheel", wheel, { passive: false });
+    return () => pane.removeEventListener("wheel", wheel);
+  }, [Boolean(layerContent)]);
+
   function seekTimelineNavigator(clientX: number) {
     const scroller = timelineScrollRef.current;
     if (!scroller) return;
@@ -1666,10 +1704,11 @@ function AudioTimeline({
           <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
             <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>
-            <button disabled={isRecording || !take?.url || currentTime <= 0 || currentTime >= duration} onClick={cutMarkedRange} type="button">CUT</button>
-            <button disabled={(!cutPoints.length && !removedRanges.length) || isRecording} onClick={uncut} type="button">UNCUT</button>
-            <button className="is-delete" disabled={!selectedSections.length || isRecording} onClick={deleteStagedCut} type="button">DELETE</button>
-            <button disabled={!removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={resetTimelineEdits} type="button">RESET</button>
+            <button disabled={clipTools ? clipTools.busy || !clipTools.canCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : isRecording || !take?.url || currentTime <= 0 || currentTime >= duration} onClick={clipTools ? () => clipTools.onCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : cutMarkedRange} type="button">CUT</button>
+            <button disabled={clipTools ? clipTools.busy || !clipTools.canUncut : (!cutPoints.length && !removedRanges.length) || isRecording} onClick={clipTools ? clipTools.onUncut : uncut} type="button">UNCUT</button>
+            <button className="is-delete" disabled={clipTools ? clipTools.busy || !clipTools.selected : !selectedSections.length || isRecording} onClick={clipTools ? clipTools.onDelete : deleteStagedCut} type="button">DELETE</button>
+            <button disabled={clipTools ? clipTools.busy : !removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={() => { if (clipTools) clipTools.onReset(); resetTimelineEdits(); }} type="button">RESET</button>
+            {clipTools ? <><button aria-label="Chuyển clip lên layer" disabled={clipTools.busy || !clipTools.canMoveUp} onClick={clipTools.onMoveUp} type="button">MOVE ↑</button><button aria-label="Chuyển clip xuống layer" disabled={clipTools.busy || !clipTools.canMoveDown} onClick={clipTools.onMoveDown} type="button">MOVE ↓</button></> : null}
           </div>
           <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
           <div className="timeline-zoom">
@@ -1904,7 +1943,7 @@ function AudioTimeline({
       </WordContextMenu> : null}
       {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
       {layerContent ? <>
-        <div className="timeline-audio-layers" tabIndex={0} aria-label="Danh sách audio layer">{layerContent(currentTime, { canvasWidth: timelineCanvasWidth, viewportWidth: timelineViewport.width, scrollLeft: timelineViewport.left, duration })}</div>
+        <div ref={layerScrollRef} className="timeline-audio-layers" tabIndex={0} aria-label="Danh sách audio layer" onKeyDown={(event) => { if (!event.altKey && !event.ctrlKey && !event.metaKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); panLayerViewport(event.key === "ArrowLeft" ? -60 : 60); } }}>{layerContent(currentTime, { canvasWidth: timelineCanvasWidth, viewportWidth: timelineViewport.width, scrollLeft: timelineViewport.left, duration })}</div>
         <div ref={timelineNavigatorRef} aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator timeline-layer-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
           <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
         </div>

@@ -52,13 +52,23 @@ describe("Script rows", () => {
     expect(rows.map((row) => row.diarizationLabel)).toEqual(["Khoa Trịnh", "Speaker 2"]);
   });
 
-  it("shows VibeVoice ASR speaker turns without treating labels as project profiles", () => {
+  it("does not split rows on ASR speaker labels before diarization", () => {
     const rows = buildSpeakerScriptRows([
-      word({ text: "Xin", asrSpeakerId: "speaker-1", timingTrusted: false }),
-      word({ text: "chào", asrSpeakerId: "speaker-2", timingTrusted: false }),
+      word({ text: "Xin", asrSpeakerId: "speaker-1", start: 0, end: .2, timingTrusted: false }),
+      word({ text: "chào", asrSpeakerId: "speaker-2", start: 2, end: 2.2, timingTrusted: false }),
     ], [AN]);
-    expect(rows.map((row) => row.diarizationLabel)).toEqual(["Speaker 1", "Speaker 2"]);
-    expect(rows.every((row) => row.profileId === null)).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].words.map(({ word: item }) => item.text)).toEqual(["Xin", "chào"]);
+    expect(rows[0].profileId).toBeNull();
+  });
+
+  it("keeps a diarized speaker continuous across sentences and silence gaps", () => {
+    const rows = buildSpeakerScriptRows([
+      word({ text: "Xin", start: 0, end: .2, diarizationSpeakerId: "speaker-1" }),
+      word({ text: "chào.", start: 1, end: 1.2, diarizationSpeakerId: "speaker-1" }),
+      word({ text: "Bên kia", start: 5, end: 5.4, diarizationSpeakerId: "speaker-2" }),
+    ], [AN]);
+    expect(rows.map((row) => row.words.map(({ word: item }) => item.text))).toEqual([["Xin", "chào."], ["Bên kia"]]);
   });
 
   it("says Speaker 1 when no profile is assigned to the file either", () => {

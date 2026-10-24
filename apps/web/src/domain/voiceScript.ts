@@ -46,52 +46,67 @@ export function newestVoiceOf(speakerProfileId: string, offered: ProjectVoice[])
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
 }
 
-function comparableName(value: string) {
-  return value.normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/giu, "d").trim().toLocaleLowerCase("vi");
-}
-
-/** How a line break inside one row is written in Text Edit, where a new line is a new row. */
-export const ROW_LINE_BREAK = " ↵ ";
-
-/** The Script as plain text: one row per line, `Speaker: lời thoại`. */
+/** The Script as plain text: each existing row starts with an explicit speaker label. */
 export function rowsToText(rows: VoiceScriptRow[], speakers: SpeakerProfile[]): string {
   return rows.map((row) => {
     const speaker = speakers.find((item) => item.id === row.speakerProfileId);
-    const text = row.text.split(/\r?\n/u).map((line) => line.trim()).join(ROW_LINE_BREAK);
-    return speaker ? `${speaker.name}: ${text}` : text;
+    return `${speaker?.name ?? "Chưa gán"}: ${row.text}`;
   }).join("\n");
 }
 
-function speakerRow(speaker: SpeakerProfile | undefined, before: VoiceScriptRow | null, offered: ProjectVoice[], previous: VoiceScriptRow[]) {
-  if (!speaker) return { speakerProfileId: before?.speakerProfileId ?? null, voiceId: before?.voiceId ?? null };
-  const kept = previous.find((row) => row.speakerProfileId === speaker.id && row.voiceId && offered.some((voice) => voice.id === row.voiceId));
-  return { speakerProfileId: speaker.id, voiceId: kept?.voiceId ?? newestVoiceOf(speaker.id, offered)?.id ?? null };
-}
-
 /**
- * Plain text back into rows. A line starting with a Speaker Profile's name and a
- * colon is read by that person; a line without one continues with whoever read
- * the line before. Rows keep their ids by position, so a row whose text did not
- * change still lines up with the audio already made for it.
+ * Applies an edit to the text projection of existing rows. Only old boundaries
+ * that remain outside the edited span survive; typed speaker-like labels never
+ * create turns. New turns come from explicit Add Row or diarization.
  */
-export function textToRows(text: string, speakers: SpeakerProfile[], offered: ProjectVoice[], previous: VoiceScriptRow[]): VoiceScriptRow[] {
-  const byName = new Map(speakers.map((speaker) => [comparableName(speaker.name), speaker]));
-  const rows: VoiceScriptRow[] = [];
-  const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
-  lines.forEach((line, index) => {
-    const match = /^([^:：]{1,60})[:：]\s*(.*)$/u.exec(line);
-    const speaker = match ? byName.get(comparableName(match[1])) : undefined;
-    const before = rows[rows.length - 1] ?? null;
-    const old = previous[index];
-    let speakerProfileId = before?.speakerProfileId ?? old?.speakerProfileId ?? null;
-    let voiceId = before?.voiceId ?? old?.voiceId ?? null;
-    if (speaker) {
-      speakerProfileId = speaker.id;
-      const kept = [old, ...previous].find((row) => row?.speakerProfileId === speaker.id && row.voiceId && offered.some((voice) => voice.id === row.voiceId));
-      voiceId = kept?.voiceId ?? newestVoiceOf(speaker.id, offered)?.id ?? null;
-    }
-    const body = speaker && match ? match[2] : line;
-    rows.push({ ...old, id: old?.id ?? newRowId(), speakerProfileId, voiceId, text: body.split(ROW_LINE_BREAK.trim()).map((part) => part.trim()).join("\n") });
+export function textToRows(text: string, speakers: SpeakerProfile[], _offered: ProjectVoice[], previous: VoiceScriptRow[], previousText = rowsToText(previous, speakers)): VoiceScriptRow[] {
+  if (!text && !previous.length) return [];
+  if (!previous.length || !previousText) {
+    const content = text.replace(/\r\n?/gu, "\n");
+    return content ? [{ ...emptyRow(), text: content }] : [];
+  }
+
+  // Text mode is an editable projection of the current rows. Only row headers
+  // that survive unchanged outside the user's contiguous edit can remain
+  // boundaries. Speaker-like lines inserted in the edit are literal dialogue.
+  const oldText = previousText.replace(/\r\n?/gu, "\n");
+  const nextText = text.replace(/\r\n?/gu, "\n");
+  let prefix = 0;
+  while (prefix < oldText.length && prefix < nextText.length && oldText[prefix] === nextText[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < oldText.length - prefix && suffix < nextText.length - prefix && oldText[oldText.length - suffix - 1] === nextText[nextText.length - suffix - 1]) suffix += 1;
+
+  const positions: Array<{ row: VoiceScriptRow; oldStart: number; header: string }> = [];
+  let cursor = 0;
+  previous.forEach((row, index) => {
+    const speaker = speakers.find((item) => item.id === row.speakerProfileId);
+    const projectedHeader = `${speaker?.name ?? "Chưa gán"}: `;
+    const normalizedBody = row.text.replace(/\r\n?/gu, "\n");
+    const header = oldText.startsWith(`${projectedHeader}${normalizedBody}`, cursor) ? projectedHeader : "";
+    positions.push({ row, oldStart: cursor, header });
+    cursor += header.length + normalizedBody.length + (index < previous.length - 1 ? 1 : 0);
+  });
+
+  const retained = positions.flatMap(({ row, oldStart, header }, index) => {
+    const untouchedPrefix = oldStart < prefix;
+    const untouchedSuffix = oldStart >= oldText.length - suffix;
+    if (index > 0 && !untouchedPrefix && !untouchedSuffix) return [];
+    const newStart = index === 0 ? 0 : untouchedPrefix ? oldStart : nextText.length - (oldText.length - oldStart);
+    if (newStart < 0 || newStart > nextText.length) return [];
+    const headerIsIntact = Boolean(header) && nextText.startsWith(header, newStart);
+    return [{ row, start: newStart, header: headerIsIntact ? header : "" }];
+  });
+
+  if (!retained.length) {
+    const content = nextText;
+    return content ? [{ ...emptyRow(previous[0]), text: content }] : [];
+  }
+  const rows = retained.map(({ row, start, header }, index) => {
+    const hasFollowingRow = index < retained.length - 1;
+    const end = retained[index + 1]?.start ?? nextText.length;
+    const segment = nextText.slice(start, end);
+    const content = hasFollowingRow ? segment.replace(/\n$/u, "") : segment;
+    return { ...row, text: header && content.startsWith(header) ? content.slice(header.length) : content };
   });
   return rows;
 }
@@ -140,63 +155,6 @@ export function parseHtmlTable(html: string): string[][] | null {
     const text = paragraphs.length > 1 ? paragraphs.map((p) => p.textContent ?? "").join("\n") : cell.textContent ?? "";
     return text.replace(/\u00a0/gu, " ").split("\n").map((line) => line.replace(/\s+/gu, " ").trim()).join("\n").trim();
   }));
-}
-
-const SPEAKER_HEADERS = ["speaker", "nguoi noi", "nhan vat", "voice", "giong", "ten"];
-const CONTENT_HEADERS = ["noi dung", "loi thoai", "content", "text", "script", "thoai"];
-
-/**
- * What was copied from a spreadsheet, a table or a document, as Script rows.
- *
- * A table's rows are turns; the column holding a Speaker Profile's name says
- * who reads it, and the longest remaining text is what they say. A document's
- * paragraphs are turns, with `Tên: lời thoại` naming the speaker. A turn
- * without a known name is read by whoever read the turn before it. Returns null
- * for a plain single line, which pastes into the row as ordinary text.
- */
-export function clipboardToRows(plain: string, html: string, speakers: SpeakerProfile[], offered: ProjectVoice[], context: VoiceScriptRow | null, previous: VoiceScriptRow[] = []): VoiceScriptRow[] | null {
-  const byName = new Map(speakers.map((speaker) => [comparableName(speaker.name), speaker]));
-  const table = plain.includes("\t") ? parseDelimited(plain) : parseHtmlTable(html);
-  const rows: VoiceScriptRow[] = [];
-
-  if (table && table.some((cells) => cells.length > 1)) {
-    let records = table.map((cells) => cells.map((cell) => cell.trim())).filter((cells) => cells.some(Boolean));
-    let speakerColumn = -1;
-    let contentColumn = -1;
-    const header = records[0]?.map(comparableName) ?? [];
-    const headerSpeaker = header.findIndex((cell) => SPEAKER_HEADERS.some((name) => cell.startsWith(name)));
-    const headerContent = header.findIndex((cell) => CONTENT_HEADERS.some((name) => cell.startsWith(name)));
-    if (headerContent >= 0) {
-      speakerColumn = headerSpeaker;
-      contentColumn = headerContent;
-      records = records.slice(1);
-    } else {
-      const width = Math.max(...records.map((cells) => cells.length));
-      const hits = Array.from({ length: width }, (_, column) => records.filter((cells) => byName.has(comparableName(cells[column] ?? ""))).length);
-      const best = hits.indexOf(Math.max(...hits));
-      speakerColumn = hits[best] > 0 ? best : -1;
-      const lengths = Array.from({ length: width }, (_, column) => column === speakerColumn ? -1 : records.reduce((total, cells) => total + (cells[column]?.length ?? 0), 0));
-      contentColumn = lengths.indexOf(Math.max(...lengths));
-    }
-    for (const cells of records) {
-      const text = (cells[contentColumn] ?? "").trim();
-      if (!text) continue;
-      const speaker = speakerColumn >= 0 ? byName.get(comparableName(cells[speakerColumn] ?? "")) : undefined;
-      const before = rows[rows.length - 1] ?? context;
-      rows.push({ id: newRowId(), ...speakerRow(speaker, before, offered, previous), text });
-    }
-    return rows.length ? rows : null;
-  }
-
-  const lines = plain.replace(/\r\n?/gu, "\n").split("\n").map((line) => line.trim()).filter(Boolean);
-  if (lines.length < 2) return null;
-  for (const line of lines) {
-    const match = /^([^:：]{1,60})[:：]\s*(.*)$/u.exec(line);
-    const speaker = match ? byName.get(comparableName(match[1])) : undefined;
-    const before = rows[rows.length - 1] ?? context;
-    rows.push({ id: newRowId(), ...speakerRow(speaker, before, offered, previous), text: speaker && match ? match[2] : line });
-  }
-  return rows;
 }
 
 /**

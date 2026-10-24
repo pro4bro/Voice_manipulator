@@ -143,20 +143,38 @@ describe("VoiceScript", () => {
     expect(screen.getByRole("button", { name: "Chọn từ sáng" })).not.toHaveClass("is-script-fixed");
   });
 
-  it("starts a new turn with Enter, read by the same voice, and joins turns with Backspace", () => {
+  it("keeps Enter in the row, creates another row only with Add Row, and joins on Backspace", () => {
     const onRows = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào mọi người" }]} onRows={onRows} />);
 
     const field = screen.getByLabelText("Lời thoại đoạn 1") as HTMLTextAreaElement;
     field.setSelectionRange(8, 8);
     fireEvent.keyDown(field, { key: "Enter" });
-    const split = onRows.mock.lastCall?.[0] as VoiceScriptRow[];
-    expect(split.map((row) => [row.voiceId, row.text])).toEqual([["an-clone", "Xin chào"], ["an-clone", "mọi người"]]);
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.voiceId, row.text])).toEqual([["an-clone", "Xin chào\n mọi người"]]);
+
+    fireEvent.click(screen.getByRole("button", { name: /THÊM ĐOẠN/ }));
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[])).toHaveLength(2);
 
     const second = screen.getByLabelText("Lời thoại đoạn 2") as HTMLTextAreaElement;
     second.setSelectionRange(0, 0);
     fireEvent.keyDown(second, { key: "Backspace" });
-    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => row.text)).toEqual(["Xin chào mọi người"]);
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => row.text)).toEqual(["Xin chào\n mọi người "]);
+  });
+
+  it("keeps Enter and multiline paste inside the current Script row", () => {
+    const onRows = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
+    const field = screen.getByLabelText("Lời thoại đoạn 1") as HTMLTextAreaElement;
+    field.setSelectionRange(3, 3);
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map(({ id, text }) => [id, text])).toEqual([["r1", "Xin\n chào"]]);
+
+    onRows.mockClear();
+    fireEvent.paste(field, { clipboardData: { getData: (type: string) => type === "text/plain" ? "đoạn hai\nđoạn ba" : "" } });
+    expect(onRows).not.toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: "Xin\n chàođoạn hai\nđoạn ba" } });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[])).toHaveLength(1);
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[])[0].text).toBe("Xin\n chàođoạn hai\nđoạn ba");
   });
 
   it("shows words and IN/OUT from the generated audio, and marks a row edited since", () => {
@@ -187,7 +205,7 @@ describe("VoiceScript", () => {
     expect(screen.getByRole("button", { name: "Tạo voice" })).toHaveTextContent("Tạo voice");
   });
 
-  it("breaks a line inside the row with Alt+Enter and pastes a copied sheet as turns", () => {
+  it("keeps Alt+Enter and copied sheet content inside the same row", () => {
     const onRows = vi.fn();
     render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
 
@@ -199,8 +217,11 @@ describe("VoiceScript", () => {
     const second = screen.getByLabelText("Lời thoại đoạn 1") as HTMLTextAreaElement;
     second.setSelectionRange(second.value.length, second.value.length);
     fireEvent.paste(second, { clipboardData: { getData: (type: string) => type === "text/plain" ? "Khoa Trịnh\tĐược không sao\nAnh Vũ\tVậy thì" : "" } });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[])).toHaveLength(1);
+    expect(onRows).toHaveBeenCalledTimes(1);
+    fireEvent.change(second, { target: { value: "Xin\n chào\nKhoa Trịnh\tĐược không sao\nAnh Vũ\tVậy thì" } });
     expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.voiceId, row.text])).toEqual([
-      ["an-clone", "Xin\n chào"], ["khoa-clone", "Được không sao"], ["an-clone", "Vậy thì"],
+      ["an-clone", "Xin\n chào\nKhoa Trịnh\tĐược không sao\nAnh Vũ\tVậy thì"],
     ]);
   });
 
@@ -302,14 +323,16 @@ it("places real generation progress in the right settings host outside Script", 
     unmount(); host.remove();
   });
 
-  it("edits the whole Script as “Tên: lời thoại” text", () => {
+  it("preserves a multiline saved row when text includes pasted speaker labels", () => {
     const onRows = vi.fn();
-    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} onRows={onRows} />);
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào\nKhoa Trịnh: literal quote" }]} onRows={onRows} />);
 
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const text = screen.getByLabelText("Script dạng văn bản");
-    expect(text).toHaveValue("Anh Vũ: Xin chào");
-    fireEvent.change(text, { target: { value: "Anh Vũ: Xin chào\nKhoa Trịnh: Chào anh" } });
-    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.voiceId, row.text])).toEqual([["an-clone", "Xin chào"], ["khoa-clone", "Chào anh"]]);
+    expect(text).toHaveValue("Anh Vũ: Xin chào\nKhoa Trịnh: literal quote");
+    fireEvent.change(text, { target: { value: "Anh Vũ: Xin chào nhé\nKhoa Trịnh: literal quote\nKhoa Trịnh: pasted label is still dialogue" } });
+    expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.id, row.voiceId, row.text])).toEqual([
+      ["r1", "an-clone", "Xin chào nhé\nKhoa Trịnh: literal quote\nKhoa Trịnh: pasted label is still dialogue"],
+    ]);
   });
 });

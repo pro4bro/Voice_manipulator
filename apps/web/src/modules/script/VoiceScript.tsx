@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { describeTask, isLiveTask, sortTasks } from "../../domain/activity";
@@ -6,7 +6,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import { usePlaybackWord } from "../../domain/playback-sync";
 import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceOutputExportMode, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
-import { VOICE_KIND_LABELS, clipboardToRows, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
+import { VOICE_KIND_LABELS, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -233,27 +233,13 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
 
   function handleRowKey(event: ReactKeyboardEvent<HTMLTextAreaElement>, row: VoiceScriptRow) {
     const field = event.currentTarget;
-    if (event.key === "Enter" && event.altKey) {
-      // Alt+Enter breaks the line inside the same turn, as in a spreadsheet cell.
+    if (event.key === "Enter") {
+      // All Enter variants preserve literal newlines inside the existing turn.
       event.preventDefault();
       const start = field.selectionStart;
       const next = `${row.text.slice(0, start)}\n${row.text.slice(field.selectionEnd)}`;
       focusRef.current = { rowId: row.id, start: start + 1, end: start + 1 };
       updateRow(row.id, { text: next });
-      return;
-    }
-    if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey) {
-      // Enter starts the next turn, the way a line break does in a script.
-      event.preventDefault();
-      const before = row.text.slice(0, field.selectionStart);
-      const after = row.text.slice(field.selectionEnd);
-      const base = rows.length ? rows : shownRows.map(withDefaults);
-      const index = base.findIndex((item) => item.id === row.id);
-      const current = { ...(base[index] ?? withDefaults(row)), text: before };
-      const created = emptyRow(current, after.trimStart());
-      focusRef.current = { rowId: created.id, start: 0, end: 0 };
-      setEditingRowId(created.id);
-      commit([...base.slice(0, index), current, created, ...base.slice(index + 1)]);
       return;
     }
     if (event.key === "Backspace" && field.selectionStart === 0 && field.selectionEnd === 0) {
@@ -268,44 +254,6 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       setEditingRowId(previous.id);
       commit(rows.flatMap((item, itemIndex) => itemIndex === index ? [] : itemIndex === index - 1 ? [joined] : [item]));
     }
-  }
-
-  // A table copied from Excel, Google Sheets or Word, or several paragraphs,
-  // arrives as turns: one row each, read by the speaker named in it.
-  function handleRowPaste(event: ReactClipboardEvent<HTMLTextAreaElement>, row: VoiceScriptRow) {
-    const plain = event.clipboardData.getData("text/plain");
-    const html = event.clipboardData.getData("text/html");
-    const base = rows.length ? rows : shownRows.map(withDefaults);
-    const index = base.findIndex((item) => item.id === row.id);
-    const current = base[index] ?? withDefaults(row);
-    const pasted = clipboardToRows(plain, html, speakers, voices, current, base);
-    if (!pasted?.length) return;
-    event.preventDefault();
-    const field = event.currentTarget;
-    const before = current.text.slice(0, field.selectionStart).trimEnd();
-    const after = current.text.slice(field.selectionEnd).trimStart();
-    const leading = before ? [{ ...current, text: before }] : [];
-    // An empty row, or one whose text was all selected, is replaced by what came in.
-    const first = before ? pasted : [{ ...pasted[0], id: current.id }, ...pasted.slice(1)];
-    const trailing = after ? [emptyRow(pasted[pasted.length - 1], after)] : [];
-    const last = first[first.length - 1];
-    focusRef.current = { rowId: last.id, start: last.text.length, end: last.text.length };
-    setEditingRowId(last.id);
-    commit([...base.slice(0, index), ...leading, ...first, ...trailing, ...base.slice(index + 1)]);
-  }
-
-  function handleTextPaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
-    const plain = event.clipboardData.getData("text/plain");
-    const html = event.clipboardData.getData("text/html");
-    if (!plain.includes("\t") && !/<table[\s>]/iu.test(html)) return;
-    const pasted = clipboardToRows(plain, html, speakers, voices, rows[rows.length - 1] ?? null, rows);
-    if (!pasted?.length) return;
-    event.preventDefault();
-    const field = event.currentTarget;
-    const insert = rowsToText(pasted, speakers);
-    const head = textDraft.slice(0, field.selectionStart);
-    const tail = textDraft.slice(field.selectionEnd);
-    changeText(`${head}${head && !head.endsWith("\n") ? "\n" : ""}${insert}${tail && !tail.startsWith("\n") ? "\n" : ""}${tail}`);
   }
 
   useLayoutEffect(() => {
@@ -424,7 +372,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
 
   function changeText(value: string) {
     setTextDraft(value);
-    commit(textToRows(value, speakers, voices, rows));
+    commit(textToRows(value, speakers, voices, rows, textDraft));
   }
 
   function handleRowSelectionKey(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -568,7 +516,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         const first = words[indexes[0]], last = words[indexes.at(-1) ?? -1];
         onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id], textRanges: [{ rowId: row.id, start, end }],
           ranges: first && last ? [{ id: `text-${row.id}-${start}-${end}`, start: first.start, end: last.end }] : [] });
-      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
+      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter/Shift+Enter: xuống dòng · dùng THÊM ĐOẠN để tạo hàng mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
     </div>;
   }
 
@@ -656,7 +604,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn Voice Script" className="script-table-scrollbar" />
       </div>
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
-      <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} onPaste={handleTextPaste} placeholder={"Anh Vũ: Xin chào mọi người\nKhoa Trịnh: Chào anh"} ref={textRef} spellCheck value={textDraft} />
+      <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} placeholder="Nhập lời thoại; xuống dòng hoặc thêm nhãn speaker vẫn nằm trong đoạn hiện tại." ref={textRef} spellCheck value={textDraft} />
     </div>}
 
     {referenceMenu ? <WordContextMenu x={referenceMenu.x} y={referenceMenu.y} className="script-table__word-menu" onClose={() => setReferenceMenu(null)}>

@@ -20,6 +20,12 @@ it("shares Master zoom/scroll/playhead with layers and keeps one top ruler and b
   scroller.scrollLeft = 400;
   fireEvent.scroll(scroller);
   expect(view.container.querySelector(".voice-layer-timeline__canvas")).toHaveStyle({ width: `${width()}px`, transform: "translateX(-400px)" });
+  const pane = screen.getByLabelText("Danh sách audio layer");
+  fireEvent.wheel(pane, { deltaX: 120 });
+  expect(scroller.scrollLeft).toBe(520);
+  expect(view.container.querySelector(".voice-layer-timeline__canvas")).toHaveStyle({ transform: "translateX(-520px)" });
+  fireEvent.keyDown(pane, { key: "ArrowLeft" });
+  expect(scroller.scrollLeft).toBe(460);
   const audio = view.container.querySelector("audio")!;
   audio.currentTime = 2.5; fireEvent.timeUpdate(audio);
   expect(view.container.querySelector(".voice-layer-timeline__playhead")).toHaveStyle({ left: "25%" });

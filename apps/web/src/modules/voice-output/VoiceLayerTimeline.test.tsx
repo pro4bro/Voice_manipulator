@@ -30,29 +30,53 @@ it("aligns repeated layer clips to the same global frame scale and shows the pla
   expect(playheads[1]).toHaveStyle({ left: "25%" });
 });
 
-it("transfers layers with locked timecode and retains trim, split, mute, solo and delete", () => {
+it("transfers layers directly with locked timecode and no bottom form", () => {
   const onCommand = vi.fn();
   render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={1.5} busy={false} onCommand={onCommand} />);
   fireEvent.click(screen.getByRole("button", { name: /Line A · Base/ }));
-  expect(screen.getByRole("textbox", { name: "Start seconds" })).toHaveAttribute("readonly");
-  fireEvent.change(screen.getByRole("combobox", { name: "Move clip to layer" }), { target: { value: "fix" } });
-  fireEvent.click(screen.getByRole("button", { name: "Move clip" }));
+  expect(screen.queryByRole("textbox", { name: "Start seconds" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "Move clip to layer" })).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("button", { name: /Line A · Base/ }), { key: "ArrowDown", altKey: true });
   expect(onCommand).toHaveBeenLastCalledWith({ action: "move-clip", clipId: "a", targetLayerId: "fix", startFrame: 24_000 });
   fireEvent.click(screen.getByRole("button", { name: "Solo Fix" }));
   expect(onCommand).toHaveBeenLastCalledWith({ action: "solo-layer", layerId: "fix", solo: true });
 
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Source IN seconds" }), { target: { value: "0.5" } });
-  fireEvent.click(screen.getByRole("button", { name: "Apply Source IN" }));
-  expect(onCommand).toHaveBeenLastCalledWith({ action: "trim-left", clipId: "a", atFrame: 36_000 });
-
-  fireEvent.click(screen.getByRole("button", { name: "Split at playhead" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: /Line A · Base/ }), { clientX: 80, clientY: 60 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Split at playhead" }));
   expect(onCommand).toHaveBeenLastCalledWith(expect.objectContaining({ action: "split-clip", clipId: "a", atFrame: 36_000, newClipId: expect.any(String) }));
-  fireEvent.click(screen.getByRole("button", { name: "Mute clip" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: /Line A · Base/ }), { clientX: 80, clientY: 60 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mute clip" }));
   expect(onCommand).toHaveBeenLastCalledWith({ action: "toggle-clip", clipId: "a", enabled: false });
   fireEvent.click(screen.getByRole("button", { name: "Mute Fix" }));
   expect(onCommand).toHaveBeenLastCalledWith({ action: "toggle-layer", layerId: "fix", enabled: false });
-  fireEvent.click(screen.getByRole("button", { name: "Delete clip" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: /Line A · Base/ }), { clientX: 80, clientY: 60 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete clip" }));
   expect(onCommand).toHaveBeenLastCalledWith({ action: "delete-clip", clipId: "a" });
+});
+
+it("drops a footage clip on another layer with exact source/timeline coordinates", () => {
+  const onCommand = vi.fn();
+  const view = render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={1} busy={false} onCommand={onCommand} />);
+  const rows = view.container.querySelectorAll("[data-layer-id]");
+  vi.spyOn(rows[0], "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 56 } as DOMRect);
+  vi.spyOn(rows[1], "getBoundingClientRect").mockReturnValue({ top: 60, bottom: 116 } as DOMRect);
+  const clip = screen.getByRole("button", { name: /Line A · Base/ });
+  fireEvent.pointerDown(clip, { pointerId: 7, button: 0, clientX: 25, clientY: 25 });
+  fireEvent.pointerMove(clip, { pointerId: 7, clientX: 900, clientY: 85 });
+  fireEvent.pointerUp(clip, { pointerId: 7, clientX: 900, clientY: 85 });
+  expect(onCommand).toHaveBeenCalledExactlyOnceWith({ action: "move-clip", clipId: "a", targetLayerId: "fix", startFrame: 24000 });
+  expect(composition().layers[0].clips[0]).toMatchObject({ sourceStartFrame: 0, frameCount: 48000 });
+});
+
+it("cancels a footage drag when pointer capture is lost", () => {
+  const onCommand = vi.fn();
+  render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={1} busy={false} onCommand={onCommand} />);
+  const clip = screen.getByRole("button", { name: /Line A · Base/ });
+  fireEvent.pointerDown(clip, { pointerId: 5, button: 0, clientY: 20 });
+  fireEvent.pointerMove(clip, { pointerId: 5, clientY: 80 });
+  fireEvent.lostPointerCapture(clip, { pointerId: 5 });
+  fireEvent.pointerUp(clip, { pointerId: 5, clientY: 80 });
+  expect(onCommand).not.toHaveBeenCalled();
 });
 
 it("mirrors the Master viewport without a second ruler or horizontal drag", () => {
