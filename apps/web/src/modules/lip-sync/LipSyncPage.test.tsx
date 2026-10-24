@@ -12,6 +12,7 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   let book: LipSyncSessions = { version: 1, revision: 0, sessions: [{ id: "s", name: "Session 1", versions: [version("a", "Version 1")] }], activeSessionId: "s", activeVersionId: "a" };
   const states = new Map<string, LipSyncVersionState>([["a", { document: emptyLipSync(), past: [], future: [] }]]);
   vi.spyOn(api, "getLipSyncSessions").mockImplementation(async () => structuredClone(book));
+  const reveal = vi.spyOn(api, "revealProjectFolder").mockResolvedValue(undefined);
   vi.spyOn(api, "getLipSyncState").mockImplementation(async (_, id) => structuredClone(states.get(id)!));
   const save = vi.spyOn(api, "saveLipSyncState").mockImplementation(async (_, id, state) => { const saved = structuredClone({ ...state, document: { ...state.document, revision: state.document.revision + 1 } }); states.set(id, saved); return saved; });
   const clone = vi.spyOn(api, "createLipSyncVersion").mockImplementation(async (_, revision, id, sourceRevision) => {
@@ -34,11 +35,21 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   fireEvent.click(screen.getByRole("tab", { name: /Voice Output/ }));
   fireEvent.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Voice 1/ }));
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
-  fireEvent.click(screen.getByRole("button", { name: "New version" }));
+  let tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
+  fireEvent.contextMenu(tree.getByRole("button", { name: /Version 1/ }), { clientX: 90, clientY: 100 });
+  fireEvent.click(screen.getByRole("menuitem", { name: "New version" }));
   await waitFor(() => expect(screen.getByText("Session 1 / Version 2")).toBeInTheDocument());
+  tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
   expect(clone).toHaveBeenCalledTimes(1);
   expect(save.mock.calls[0][2].past).toHaveLength(2);
   await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled());
+  fireEvent.contextMenu(tree.getByRole("button", { name: /Version 2/ }), { clientX: 90, clientY: 100 });
+  expect(screen.queryByRole("menuitem", { name: /Text History|Remove|Disable/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reveal Project Folder" }));
+  await waitFor(() => expect(reveal).toHaveBeenCalledWith(p));
+  fireEvent.contextMenu(tree.getByText("Session 1", { selector: "summary" }), { clientX: 90, clientY: 100 });
+  expect(screen.getByRole("menuitem", { name: "New version" })).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   fireEvent.click(screen.getByRole("tab", { name: /Voice Output/ }));
   fireEvent.click(screen.getByRole("button", { name: /Voice 2/ }));
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
@@ -50,7 +61,7 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   fireEvent.click(screen.getByRole("tab", { name: /Voice Output/ }));
   expect(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Voice 1/ })).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
-  const tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
+  tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
   fireEvent.click(tree.getByRole("button", { name: /Version 2/ }));
   await screen.findByText("Session 1 / Version 2");
   expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();

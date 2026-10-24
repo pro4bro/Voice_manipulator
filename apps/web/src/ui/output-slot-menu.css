@@ -1,0 +1,10 @@
+.output-slot-menu.word-context-menu { width: 264px; padding: 0; color: var(--text); border: 1px solid var(--line); background: var(--surface-raised); box-shadow: 0 22px 58px rgba(0,0,0,.3); font-size: calc(10px * var(--font-scale)); }
+.output-slot-menu header { display: grid; gap: 3px; padding: 11px 12px; border-bottom: 1px solid var(--line); background: var(--surface-chrome); }
+.output-slot-menu header span { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); letter-spacing: .1em; }
+.output-slot-menu header b { overflow: hidden; font-size: calc(11px * var(--font-scale)); text-overflow: ellipsis; white-space: nowrap; }
+.output-slot-menu footer { display: grid; padding: 4px 0; }
+.output-slot-menu footer button { min-height: 32px; display: flex; align-items: center; gap: 9px; width: 100%; padding: 5px 12px; color: var(--text); border: 0; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.output-slot-menu footer button:hover, .output-slot-menu footer button:focus-visible { background: var(--soft-fill); }
+.output-slot-menu footer button:disabled { opacity: .5; cursor: default; }
+.output-slot-menu footer button svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.output-slot-menu footer .output-slot-menu__destructive { color: var(--red-ink); border-top: 1px solid var(--line); }

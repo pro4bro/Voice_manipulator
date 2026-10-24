@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { api } from "../../api/client";
 import type { LipSyncSendRequest, LipSyncSessions } from "../../domain/lipsync";
+import { OutputSlotMenu, type OutputSlotMenuAction } from "../../ui/OutputSlotMenu";
 import { LipSyncWorkspace, type LipSyncWorkspaceController, type LipSyncWorkspaceProps } from "./LipSyncWorkspace";
 
 interface Props extends Omit<LipSyncWorkspaceProps, "versionId" | "videoOutputPanel" | "controllerRef"> {
@@ -14,6 +15,7 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
   const [book, setBook] = useState<LipSyncSessions | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slotMenu, setSlotMenu] = useState<{ x: number; y: number; sessionId: string; versionId?: string } | null>(null);
   const controller = useRef<LipSyncWorkspaceController | null>(null);
   const epoch = useRef(0);
   useEffect(() => {
@@ -46,6 +48,10 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
     } catch (reason) { if (serial === epoch.current) setError(String(reason)); }
     finally { if (serial === epoch.current) setBusy(false); }
   }
+  async function revealProjectFolder() {
+    try { await api.revealProjectFolder(props.projectId); }
+    catch (reason) { setError(String(reason)); }
+  }
   const request = incoming?.projectId === props.projectId ? incoming : null;
   const availableIds = request?.ids.filter((id) => request.kind === "voice"
     ? props.outputs.some((item) => item.id === id && item.audioAvailable !== false && item.duration > 0)
@@ -58,9 +64,25 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
     <div className="lipsync-session-actions"><button disabled={!book || busy} onClick={() => void change("session")} type="button">New session</button><button disabled={!book?.activeVersionId || busy} onClick={() => void change("version")} type="button">New version</button></div>
     {activeSession && activeVersion ? <p className="lipsync-current-version"><b>{activeSession.name} / {activeVersion.name}</b><small>Mỗi version lưu riêng bố cục, thông số, lịch sử và job.</small></p> : <p>Tạo session để bắt đầu một sản phẩm video.</p>}
     {book?.sessions.map((session) => <details key={session.id} open={session.id === book.activeSessionId || undefined} className="lipsync-session">
-      <summary>{session.name}<small>{session.versions.length} version</small></summary>
-      <div>{session.versions.map((version) => <button type="button" key={version.id} aria-pressed={version.id === book.activeVersionId} disabled={busy || version.id === book.activeVersionId} onClick={() => void change("select", version.id)}><b>{version.name}</b><small>{new Date(version.createdAt).toLocaleString("vi-VN")}</small></button>)}</div>
+      <summary onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id }); }}>{session.name}<small>{session.versions.length} version</small></summary>
+      <div>{session.versions.map((version) => <button type="button" key={version.id} aria-pressed={version.id === book.activeVersionId} disabled={busy} onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id, versionId: version.id }); }} onClick={() => { if (version.id !== book.activeVersionId) void change("select", version.id); }}><b>{version.name}</b><small>{new Date(version.createdAt).toLocaleString("vi-VN")}</small></button>)}</div>
     </details>)}
+    {slotMenu && book ? (() => {
+      const session = book.sessions.find((item) => item.id === slotMenu.sessionId);
+      const version = session?.versions.find((item) => item.id === slotMenu.versionId);
+      const actions: OutputSlotMenuAction[] = [];
+      if (version) {
+        if (version.id === book.activeVersionId) actions.push({ id: "new-version", label: "New version", onSelect: () => void change("version") });
+        else actions.push({ id: "open-version", label: "Open version", onSelect: () => void change("select", version.id) });
+      } else if (session?.versions.length) {
+        const latest = session.versions[session.versions.length - 1];
+        if (latest.id !== book.activeVersionId) actions.push({ id: "open-latest", label: "Open latest version", onSelect: () => void change("select", latest.id) });
+        if (session.id === book.activeSessionId && book.activeVersionId) actions.push({ id: "new-version", label: "New version", onSelect: () => void change("version") });
+      }
+      actions.push({ id: "reveal-project", label: "Reveal Project Folder", onSelect: () => void revealProjectFolder() });
+      return <OutputSlotMenu x={slotMenu.x} y={slotMenu.y} label={version ? `${session?.name} / ${version.name}` : session?.name ?? "Session"}
+        onClose={() => setSlotMenu(null)} actions={actions} />;
+    })() : null}
     {request ? <div className="lipsync-incoming" role="group" aria-label="Nguồn được gửi tới LipSync"><b>Send to · {request.kind === "media" ? `${availableIds.length} video` : "Voice Output"}</b>
       <p>Đích: {activeSession ? `${activeSession.name} / ${activeVersion?.name}` : "Chọn hoặc tạo session"}</p>
       {request.kind === "voice" ? <label>Voice Output cần nhập / thay<select value={selectedVoiceId ?? ""} onChange={(event) => setVoiceId(event.target.value)}>{availableIds.map((id) => <option key={id} value={id}>{props.outputs.find((item) => item.id === id)?.name}</option>)}</select></label> : null}
