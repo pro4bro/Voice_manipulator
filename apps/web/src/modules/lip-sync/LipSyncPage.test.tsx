@@ -6,10 +6,11 @@ import type { ProjectMediaAsset, VoiceOutput } from "../../domain/types";
 import { LipSyncPage } from "./LipSyncPage";
 
 afterEach(() => vi.restoreAllMocks());
+function versionButton(query: ReturnType<typeof within>, name: string) { return query.getAllByRole("button").find((button: HTMLElement) => button.hasAttribute("aria-pressed") && button.textContent?.includes(name))!; }
 it("clones a saved version, replaces shared voice and restores each version's own Undo/Redo", async () => {
   const p = crypto.randomUUID();
   const version = (id: string, name: string) => ({ id, name, createdAt: "2026-10-21T00:00:00Z", parentVersionId: null });
-  let book: LipSyncSessions = { version: 1, revision: 0, sessions: [{ id: "s", name: "Session 1", versions: [version("a", "Version 1")] }], activeSessionId: "s", activeVersionId: "a" };
+  let book: LipSyncSessions = { version: 1, revision: 0, sessions: [{ id: "s", name: "Session 1", versions: [version("a", "Version 1")] }], activeSessionId: "s", activeVersionId: "a", recycle: [] };
   const states = new Map<string, LipSyncVersionState>([["a", { document: emptyLipSync(), past: [], future: [] }]]);
   vi.spyOn(api, "getLipSyncSessions").mockImplementation(async () => structuredClone(book));
   const reveal = vi.spyOn(api, "revealProjectFolder").mockResolvedValue(undefined);
@@ -36,14 +37,14 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   fireEvent.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Voice 1/ }));
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
   let tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
-  fireEvent.contextMenu(tree.getByRole("button", { name: /Version 1/ }), { clientX: 90, clientY: 100 });
+  fireEvent.contextMenu(versionButton(tree, "Version 1"), { clientX: 90, clientY: 100 });
   fireEvent.click(screen.getByRole("menuitem", { name: "New version" }));
   await waitFor(() => expect(screen.getByText("Session 1 / Version 2")).toBeInTheDocument());
   tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
   expect(clone).toHaveBeenCalledTimes(1);
   expect(save.mock.calls[0][2].past).toHaveLength(2);
   await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled());
-  fireEvent.contextMenu(tree.getByRole("button", { name: /Version 2/ }), { clientX: 90, clientY: 100 });
+  fireEvent.contextMenu(versionButton(tree, "Version 2"), { clientX: 90, clientY: 100 });
   expect(screen.queryByRole("menuitem", { name: /Text History|Remove|Disable/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("menuitem", { name: "Reveal Project Folder" }));
   await waitFor(() => expect(reveal).toHaveBeenCalledWith(p));
@@ -53,7 +54,8 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   fireEvent.click(screen.getByRole("tab", { name: /Voice Output/ }));
   fireEvent.click(screen.getByRole("button", { name: /Voice 2/ }));
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
-  fireEvent.click(screen.getByRole("button", { name: /Version 1/ }));
+  tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
+  fireEvent.click(versionButton(tree, "Version 1"));
   await screen.findByText("Session 1 / Version 1");
   expect(states.get("b")!.document.audio?.outputId).toBe("voice-1");
   expect(states.get("a")!.document.audio?.outputId).toBe("voice-0");
@@ -62,7 +64,7 @@ it("clones a saved version, replaces shared voice and restores each version's ow
   expect(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Voice 1/ })).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(screen.getByRole("tab", { name: "Video Output" }));
   tree = within(screen.getByRole("region", { name: "Sessions và Versions" }));
-  fireEvent.click(tree.getByRole("button", { name: /Version 2/ }));
+  fireEvent.click(versionButton(tree, "Version 2"));
   await screen.findByText("Session 1 / Version 2");
   expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));

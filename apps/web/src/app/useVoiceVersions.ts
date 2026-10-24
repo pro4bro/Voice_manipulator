@@ -1,3 +1,4 @@
+import type { OutputRecycleEntry, OutputSlotAction } from "../domain/output-lifecycle";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { VoiceOutput, VoiceScriptDocument } from "../domain/types";
 import type { VoiceComposition, VoiceLayerTimelineCommand } from "../modules/voice-output/VoiceLayerTimeline";
@@ -31,11 +32,14 @@ export interface VoiceOutputSession {
   versions: VoiceOutputSessionVersion[];
 }
 
+export type VoiceOutputRecycleEntry = OutputRecycleEntry;
+
 export interface VoiceOutputSessionBook {
   revision: number;
   activeSessionId: string | null;
   activeVersionId: string | null;
   sessions: VoiceOutputSession[];
+  recycle: VoiceOutputRecycleEntry[];
 }
 
 export interface VoiceScriptBinding {
@@ -59,7 +63,7 @@ export interface VoiceVersionsController {
   change: (kind: "session" | "version" | "select", versionId?: string) => Promise<VoiceOutputSessionBook | null>;
   editLayer: (command: VoiceLayerTimelineCommand | Record<string, unknown>) => Promise<VoiceOutputSessionBook | null>;
   adoptOutput: (output: VoiceOutput) => Promise<VoiceOutputSessionBook | null>;
-  slotAction: (id: string, kind: "rename" | "disable" | "remove", name?: string) => Promise<VoiceOutputSessionBook | null>;
+  slotAction: (id: string, kind: OutputSlotAction, name?: string) => Promise<VoiceOutputSessionBook | null>;
   refreshAfterGeneration: () => Promise<void>;
 }
 
@@ -278,15 +282,24 @@ export function useVoiceVersions({ projectId, script, config, onRestoreConfig, o
     return result.sessions;
   }), [enqueue, setOutputsValue]);
 
-  const slotAction = useCallback((id: string, kind: "rename" | "disable" | "remove", name?: string) => enqueue(async (token, project) => {
-    await flushState(token, project, true);
-    const currentBook = bookRef.current;
-    if (!currentBook) throw new Error("Voice Output Sessions chưa tải xong.");
-    const next = await requestJson<VoiceOutputSessionBook>(`${projectUrl(project)}/slots`, "POST", { revision: currentBook.revision, id, kind, ...(name ? { name } : {}) });
-    if (next.activeVersionId !== currentBook.activeVersionId) applyCheckout(next, token, project);
-    else updateBookOnly(next, token, project);
-    return next;
-  }), [enqueue]);
+  const slotAction = useCallback((id: string, kind: OutputSlotAction, name?: string) => {
+    setTransitioning(true);
+    return enqueue(async (token, project) => {
+      await flushState(token, project, true);
+      const currentBook = bookRef.current;
+      if (!currentBook) throw new Error("Voice Output Sessions chưa tải xong.");
+      const next = await requestJson<VoiceOutputSessionBook>(`${projectUrl(project)}/slots`, "POST", { revision: currentBook.revision, id, kind, ...(name ? { name } : {}) });
+      if (!next.activeVersionId && currentBook.activeVersionId) {
+        const projection = await requestJson<VoiceScriptDocument>(`/api/projects/${encodeURIComponent(project)}/voice-script`);
+        if (!mounted.current || token !== generation.current || props.current.projectId !== project) return null;
+        props.current.script.adoptSaved(projection);
+        props.current.onRestoreConfig({});
+      }
+      if (next.activeVersionId !== currentBook.activeVersionId) applyCheckout(next, token, project);
+      else updateBookOnly(next, token, project);
+      return next;
+    }).finally(() => setTransitioning(false));
+  }, [enqueue]);
 
   const refreshAfterGeneration = useCallback(async () => {
     await enqueue(async (token, project) => {

@@ -1,3 +1,4 @@
+import type { OutputRecycleAction } from "../domain/output-lifecycle";
 import { editableWordTimings } from "../domain/editable-word-timing";
 import type { SubtitleAlignmentRequest, SubtitleAlignmentProposal, SubtitleAlignmentEdit, SubtitleAlignmentResult, SubtitleRefinementMethod, SubtitleAlignmentEngineCatalog, SubtitleEnginePreviewRequest } from "../domain/subtitle-alignment";
 import { lipSyncUrl, type LipSyncSessions, type LipSyncVersionState, type LipSyncDocument, type LipSyncCoverage, type LipSyncPreflight } from "../domain/lipsync";
@@ -756,6 +757,8 @@ export const api = {
   createLipSyncSession: (projectId: string, revision: number, name?: string) => request<LipSyncSessions>(lipSyncUrl(projectId, "/sessions"), { method: "POST", body: JSON.stringify({ revision, name }) }),
   createLipSyncVersion: (projectId: string, revision: number, sourceId: string, sourceRevision: number) => request<LipSyncSessions>(lipSyncUrl(projectId, "/versions"), { method: "POST", body: JSON.stringify({ revision, sourceId, sourceRevision }) }),
   selectLipSyncVersion: (projectId: string, revision: number, versionId: string) => request<LipSyncSessions>(lipSyncUrl(projectId, "/selection"), { method: "PUT", body: JSON.stringify({ revision, versionId }) }),
+  mutateLipSyncSlot: (projectId: string, revision: number, id: string, kind: OutputRecycleAction) => request<LipSyncSessions>(lipSyncUrl(projectId, "/sessions/slots"), { method: "POST", body: JSON.stringify({ revision, id, kind }) }),
+  exportLipSyncSlot: (projectId: string, id: string, kind: "session" | "version") => downloadFile(`${lipSyncUrl(projectId, "/sessions/export")}?kind=${kind}&id=${encodeURIComponent(id)}`, `lipsync-${kind}-${id}.zip`),
   getLipSyncState: (projectId: string, versionId: string) => request<LipSyncVersionState>(lipSyncUrl(projectId, "/state", versionId)),
   saveLipSyncState: (projectId: string, versionId: string, state: LipSyncVersionState) => request<LipSyncVersionState>(lipSyncUrl(projectId, "/state", versionId), { method: "PUT", body: JSON.stringify(state) }),
   getLipSyncRuntime: () => request<LipSyncRuntimeReport>("/api/lipsync/runtime"),
@@ -776,6 +779,7 @@ export const api = {
   listAsrAdapters: (projectId: string) => request<ProjectAsrAdapter[]>(`/api/projects/${projectId}/asr-adapters`),
   listVoiceOutputs: (projectId: string) => request<VoiceOutput[]>(`/api/projects/${projectId}/voice-outputs`),
   getVoiceOutputSessions: (projectId: string) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions`),
+  exportVoiceOutputSlot: (projectId: string, id: string, kind: "session" | "version") => downloadFile(`/api/projects/${encodeURIComponent(projectId)}/voice-output-sessions/export?kind=${kind}&id=${encodeURIComponent(id)}`, `voice-output-${kind}-${id}.zip`),
   createVoiceOutputSession: (projectId: string, revision: number) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions`, { method: "POST", body: JSON.stringify({ revision }) }),
   selectVoiceOutputVersion: (projectId: string, revision: number, versionId: string) => request<VoiceOutputSessions>(`/api/projects/${projectId}/voice-output-sessions/select`, { method: "POST", body: JSON.stringify({ revision, versionId }) }),
   createVoiceOutputVersion: (projectId: string, revision: number, sourceOutputId: string) => request<{ sessions: VoiceOutputSessions; output: VoiceOutput }>(`/api/projects/${projectId}/voice-output-sessions/versions`, { method: "POST", body: JSON.stringify({ revision, sourceOutputId }) }),

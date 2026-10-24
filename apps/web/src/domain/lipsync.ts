@@ -1,3 +1,4 @@
+import type { OutputRecycleEntry } from "./output-lifecycle";
 import type { TrainingParameterValue } from "./types";
 export interface LipSyncRange { start: number; end: number }
 export interface LipSyncScope { mode: "visible" | "placed" | "source"; allLayers?: boolean | null; layerIds: string[]; range: LipSyncRange | null }
@@ -23,7 +24,8 @@ export interface LipSyncHistoryDocument extends LipSyncDocument { faceReviews?: 
 export interface LipSyncVersionState { document: LipSyncDocument; faceReviews?: Record<string, LipSyncFaceReview>; past: LipSyncHistoryDocument[]; future: LipSyncHistoryDocument[] }
 export interface LipSyncVersion { id: string; name: string; createdAt: string; parentVersionId: string | null }
 export interface LipSyncSession { id: string; name: string; versions: LipSyncVersion[] }
-export interface LipSyncSessions { version: 1; revision: number; sessions: LipSyncSession[]; activeSessionId: string | null; activeVersionId: string | null }
+export type LipSyncRecycleEntry = OutputRecycleEntry;
+export interface LipSyncSessions { version: 1; revision: number; sessions: LipSyncSession[]; activeSessionId: string | null; activeVersionId: string | null; recycle: LipSyncRecycleEntry[] }
 export interface LipSyncSendRequest { id: string; projectId: string; kind: "media" | "voice"; ids: string[] }
 export function lipSyncUrl(projectId: string, suffix = "", versionId?: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/lipsync${suffix}${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`;

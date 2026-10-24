@@ -6,6 +6,7 @@ import { api } from "../../api/client";
 import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { OutputSlotMenu, type OutputSlotMenuAction } from "../../ui/OutputSlotMenu";
+import { OutputRecycleBin, OutputSlotActions } from "../../ui/OutputSlotLifecycle";
 import type { SendTarget } from "../../ui/SendToMenu";
 import "./managed-voice-output-panel.css";
 
@@ -145,11 +146,37 @@ export function ManagedVoiceOutputPanel({ controller, projectId, outputs, speake
     onSendTo(target, [output]);
   }
 
+  async function exportSlot(id: string, kind: "session" | "version") {
+    if (busy) return;
+    if (!await controller.flush()) throw new Error("Chưa lưu được Version; kiểm tra lỗi trước khi Export.");
+    await api.exportVoiceOutputSlot(projectId, id, kind);
+  }
+
+  async function removeSlot(id: string) {
+    if (busy) return;
+    await controller.slotAction(id, "remove");
+  }
+
+  function exportActionsFor(id: string, kind: "session" | "version", output: VoiceOutput | null): OutputSlotMenuAction[] {
+    const actions: OutputSlotMenuAction[] = [{ id: "package", label: `Export ${kind === "session" ? "Session" : "Version"} package (ZIP)`, disabled: busy,
+      onSelect: () => { void exportSlot(id, kind).catch((reason) => setInteractionError(String(reason))); } }];
+    if (kind === "version" && output && onExport) {
+      const formats: Array<[VoiceOutputExportMode, string, boolean]> = [
+        ["audio", "WAV", output.audioAvailable !== false], ["line", "SRT lines", !!output.segments?.length],
+        ["word", "SRT words", !!output.words?.some((word) => word.timingTrusted !== false)],
+        ["sentence", "SRT sentences", !!output.segments?.length], ["table", "Timing table", !!output.segments?.length],
+      ];
+      for (const [mode, label, available] of formats) if (available) actions.push({ id: `export-${mode}`, label: `Export ${label}`, disabled: busy, onSelect: () => onExport(output, mode) });
+    }
+    return actions;
+  }
+
   function actionsFor(slot: VoiceOutputSession | VoiceOutputSessionVersion): OutputSlotMenuAction[] {
     const version = "state" in slot ? slot : versionForSession(slot, book?.activeVersionId ?? null);
     const session = "state" in slot ? book?.sessions.find((item) => item.versions.some((itemVersion) => itemVersion.id === slot.id)) : slot;
     const output = version ? outputFor(version, outputs) : null;
     const actions: OutputSlotMenuAction[] = [];
+    actions.push(...exportActionsFor(slot.id, "state" in slot ? "version" : "session", output));
     if (version) actions.push({ id: "open", label: version.id === book?.activeVersionId ? "Selected" : "Open / Select", disabled: busy || version.disabled || !!session?.disabled, onSelect: () => { if (version.id !== book?.activeVersionId) void controller.change("select", version.id); } });
     if (version) actions.push({ id: "new-version", label: "New Version", disabled: busy || version.disabled || !!session?.disabled, onSelect: () => void createVersionFrom(version) });
     actions.push({ id: "rename", label: "Rename…", disabled: busy, onSelect: () => setDialog({ kind: "rename", id: slot.id, value: slot.name }) });
@@ -207,6 +234,7 @@ export function ManagedVoiceOutputPanel({ controller, projectId, outputs, speake
               <span className="managed-voice-output__session-copy"><strong>{session.name}</strong><small>{session.versions.length} {session.versions.length === 1 ? "Version" : "Versions"} · {status}</small></span>
               <span className="managed-voice-output__session-preview">{sessionOutput ? <><b>{sessionOutput.text || "(empty text)"}</b><small><i style={{ backgroundColor: speaker?.color ?? "var(--text-subtle)" }} />{sessionOutput.voiceName} · {clock(sessionOutput.duration)}</small></> : <small>No generated audio yet</small>}</span>
             </button>
+            <OutputSlotActions label={session.name} exportActions={exportActionsFor(session.id, "session", sessionOutput)} disabled={busy} onExport={() => exportSlot(session.id, "session")} onDelete={() => removeSlot(session.id)} />
             <button aria-label={`${expandedSession ? "Collapse" : "Expand"} ${session.name} Versions`} aria-expanded={expandedSession} className="managed-voice-output__expand" onClick={() => toggleExpanded(session.id)} type="button"><Icon name="chevron" /></button>
           </div>
           {expandedSession ? <div aria-label={`${session.name} Versions`} className="managed-voice-output__versions">
@@ -214,20 +242,21 @@ export function ManagedVoiceOutputPanel({ controller, projectId, outputs, speake
               const output = outputFor(version, outputs);
               const profile = output ? speakers.find((item) => item.id === output.speakerProfileId) : null;
               const isSelected = version.id === book.activeVersionId;
-              return <button aria-pressed={isSelected} className={`managed-voice-output__version ${isSelected ? "is-active" : ""} ${version.disabled ? "is-disabled" : ""}`} disabled={busy || version.disabled || session.disabled} key={version.id} onClick={() => { if (!isSelected) void controller.change("select", version.id); }} onContextMenu={(event) => showMenu(event, session.id, version.id)} onKeyDown={(event) => showKeyboardMenu(event, session.id, version.id)} type="button">
+              return <div className="managed-voice-output__version-row" key={version.id}><button aria-pressed={isSelected} className={`managed-voice-output__version ${isSelected ? "is-active" : ""} ${version.disabled ? "is-disabled" : ""}`} disabled={busy || version.disabled || session.disabled} onClick={() => { if (!isSelected) void controller.change("select", version.id); }} onContextMenu={(event) => showMenu(event, session.id, version.id)} onKeyDown={(event) => showKeyboardMenu(event, session.id, version.id)} type="button">
                 <span className="managed-voice-output__version-mark" aria-hidden="true" style={profile?.color ? { backgroundColor: profile.color } : undefined} />
                 <span className="managed-voice-output__version-copy"><strong>{version.name}{isSelected ? <em>ACTIVE</em> : null}</strong><small>{version.disabled ? "Disabled" : output ? `${output.voiceName} · ${clock(output.duration)} · ${new Date(output.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Waiting for generated audio"}</small><span>{output?.text || (version.state.script.rows.length ? scriptText(version.state.script).replaceAll("\n", " · ") : "No Script text yet")}</span></span>
-                {onExport && output ? <span aria-label={`Export ${version.name}`} className="managed-voice-output__exports" onClick={(event) => event.stopPropagation()}><span>Export</span><select aria-label={`Export ${version.name}`} disabled={busy || output.audioAvailable === false} onChange={(event) => { if (event.target.value) onExport(output, event.target.value as VoiceOutputExportMode); event.target.value = ""; }} value=""><option value="">…</option><option value="audio">WAV</option>{output.segments?.length ? <option value="line">SRT lines</option> : null}{output.words?.some((word) => word.timingTrusted !== false) ? <option value="word">SRT words</option> : null}{output.segments?.length ? <option value="sentence">SRT sentences</option> : null}{output.segments?.length ? <option value="table">Timing table</option> : null}</select></span> : null}
-              </button>;
+
+              </button><OutputSlotActions label={version.name} exportActions={exportActionsFor(version.id, "version", output)} disabled={busy} onExport={() => exportSlot(version.id, "version")} onDelete={() => removeSlot(version.id)} /></div>;
             })}
             {activeSession?.id === session.id && pendingOutput ? <div aria-label="Pending Voice Output" className={`managed-voice-output__pending is-${pendingOutput.status}`} role="status"><i /><span><strong>{pendingOutput.name || "Generating Voice Output"}</strong><small>{pendingOutput.detail || pendingOutput.text || (pendingOutput.totalRows ? `${pendingOutput.completedRows ?? 0}/${pendingOutput.totalRows} rows` : pendingOutput.status)}</small></span>{pendingOutput.totalRows ? <b>{pendingOutput.completedRows ?? 0}/{pendingOutput.totalRows}</b> : null}</div> : null}
           </div> : null}
         </article>;
       })}
     </div> : controller.ready ? <div className="managed-voice-output__empty"><Icon name="waveform" /><b>No Voice Output Sessions yet</b><span>Create a Session, then generate speech. New output stays in the selected Version.</span><button disabled={busy} onClick={() => void controller.change("session")} type="button">New Session</button>{pendingOutput ? <small role="status">{pendingOutput.name}: {pendingOutput.detail || pendingOutput.status}</small> : null}</div> : null}
+    {book?.recycle?.length ? <OutputRecycleBin entries={book.recycle} busy={busy} onRestore={(entry) => controller.slotAction(entry.id, "restore")} onPurge={(entry) => controller.slotAction(entry.id, "purge")} onEmpty={() => controller.slotAction("all", "empty-bin")} /> : null}
     {slotMenu && menuSlot ? <OutputSlotMenu x={slotMenu.x} y={slotMenu.y} label={menuSlot.name} onClose={() => setSlotMenu(null)} actions={actionsFor(menuSlot)} /> : null}
     {dialog?.kind === "rename" ? createPortal(<div className="managed-voice-output__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null); }}><form aria-label={`Rename ${dialog.value}`} aria-modal="true" className="managed-voice-output__dialog" onSubmit={runRename} role="dialog"><label>Rename slot<input autoFocus onChange={(event) => setDialog({ ...dialog, value: event.target.value })} value={dialog.value} /></label><footer><button onClick={() => setDialog(null)} type="button">Cancel</button><button disabled={busy || !dialog.value.trim()} type="submit">Save name</button></footer></form></div>, document.body) : null}
-    {dialog?.kind === "remove" ? createPortal(<div className="managed-voice-output__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null); }}><section aria-label={`Remove ${dialog.label}`} aria-modal="true" className="managed-voice-output__dialog" role="dialog"><strong>Remove {dialog.label}?</strong><p>This removes the slot from the Session list. Its audio is not deleted.</p><footer><button onClick={() => setDialog(null)} type="button">Cancel</button><button className="is-danger" disabled={busy} onClick={runRemove} type="button">Remove slot</button></footer></section></div>, document.body) : null}
+    {dialog?.kind === "remove" ? createPortal(<div className="managed-voice-output__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null); }}><section aria-label={`Remove ${dialog.label}`} aria-modal="true" className="managed-voice-output__dialog" role="dialog"><strong>Move {dialog.label} to Recycle Bin?</strong><p>Its Script, settings, subtitles and generated audio stay together in Recycle Bin. You can restore them later.</p><footer><button onClick={() => setDialog(null)} type="button">Cancel</button><button className="is-danger" disabled={busy} onClick={runRemove} type="button">Move to Recycle Bin</button></footer></section></div>, document.body) : null}
     {dialog?.kind === "history" ? (() => { const version = book?.sessions.flatMap((session) => session.versions).find((item) => item.id === dialog.versionId); return version ? <HistoryDialog version={version} onClose={() => setDialog(null)} /> : null; })() : null}
   </ModuleFrame>;
 }

@@ -2729,8 +2729,9 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       setGain(typeof config.gain === "number" ? config.gain : 0);
     },
     onOpenOutput: (output) => {
-      if (output) { setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]); openVoiceOutput(output, false); void api.listVoiceOutputs(project.id).then((items) => { if (activeMediaProjectId.current === project.id) setVoiceOutputs(items); }).catch(() => undefined); }
+      if (output) { setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]); openVoiceOutput(output, false); }
       else setOutputTake(null);
+      void api.listVoiceOutputs(project.id).then((items) => { if (activeMediaProjectId.current === project.id) setVoiceOutputs(items); }).catch(() => undefined);
     },
   });
   const canRunAiReview = Boolean(scriptMediaAsset?.text.trim() && scriptMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);

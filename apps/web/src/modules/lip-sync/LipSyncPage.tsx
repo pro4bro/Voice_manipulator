@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { api } from "../../api/client";
 import type { LipSyncSendRequest, LipSyncSessions } from "../../domain/lipsync";
 import { OutputSlotMenu, type OutputSlotMenuAction } from "../../ui/OutputSlotMenu";
+import { OutputRecycleBin, OutputSlotActions } from "../../ui/OutputSlotLifecycle";
 import { LipSyncWorkspace, type LipSyncWorkspaceController, type LipSyncWorkspaceProps } from "./LipSyncWorkspace";
 
 interface Props extends Omit<LipSyncWorkspaceProps, "versionId" | "videoOutputPanel" | "controllerRef"> {
@@ -52,6 +53,25 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
     try { await api.revealProjectFolder(props.projectId); }
     catch (reason) { setError(String(reason)); }
   }
+  async function exportSlot(id: string, kind: "session" | "version") {
+    if (busy) return;
+    await flush();
+    await api.exportLipSyncSlot(props.projectId, id, kind);
+  }
+  async function slotAction(id: string, kind: "remove" | "restore" | "purge" | "empty-bin") {
+    if (!book || busy) return;
+    setBusy(true); setError(null);
+    const serial = epoch.current;
+    try {
+      await flush();
+      const next = await api.mutateLipSyncSlot(props.projectId, book.revision, id, kind);
+      if (serial === epoch.current) {
+        if (next.activeVersionId !== book.activeVersionId) controller.current = null;
+        setBook(next);
+      }
+    } catch (reason) { if (serial === epoch.current) setError(String(reason)); }
+    finally { if (serial === epoch.current) setBusy(false); }
+  }
   const request = incoming?.projectId === props.projectId ? incoming : null;
   const availableIds = request?.ids.filter((id) => request.kind === "voice"
     ? props.outputs.some((item) => item.id === id && item.audioAvailable !== false && item.duration > 0)
@@ -64,9 +84,10 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
     <div className="lipsync-session-actions"><button disabled={!book || busy} onClick={() => void change("session")} type="button">New session</button><button disabled={!book?.activeVersionId || busy} onClick={() => void change("version")} type="button">New version</button></div>
     {activeSession && activeVersion ? <p className="lipsync-current-version"><b>{activeSession.name} / {activeVersion.name}</b><small>Mỗi version lưu riêng bố cục, thông số, lịch sử và job.</small></p> : <p>Tạo session để bắt đầu một sản phẩm video.</p>}
     {book?.sessions.map((session) => <details key={session.id} open={session.id === book.activeSessionId || undefined} className="lipsync-session">
-      <summary onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id }); }}>{session.name}<small>{session.versions.length} version</small></summary>
-      <div>{session.versions.map((version) => <button type="button" key={version.id} aria-pressed={version.id === book.activeVersionId} disabled={busy} onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id, versionId: version.id }); }} onClick={() => { if (version.id !== book.activeVersionId) void change("select", version.id); }}><b>{version.name}</b><small>{new Date(version.createdAt).toLocaleString("vi-VN")}</small></button>)}</div>
+      <summary onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id }); }}>{session.name}<small>{session.versions.length} version</small><OutputSlotActions label={session.name} disabled={busy} onExport={() => exportSlot(session.id, "session")} onDelete={() => slotAction(session.id, "remove")} /></summary>
+      <div>{session.versions.map((version) => <div className="lipsync-output-slot-row" key={version.id}><button type="button" aria-pressed={version.id === book.activeVersionId} disabled={busy} onContextMenu={(event) => { event.preventDefault(); setSlotMenu({ x: event.clientX, y: event.clientY, sessionId: session.id, versionId: version.id }); }} onClick={() => { if (version.id !== book.activeVersionId) void change("select", version.id); }}><b>{version.name}</b><small>{new Date(version.createdAt).toLocaleString("vi-VN")}</small></button><OutputSlotActions label={version.name} disabled={busy} onExport={() => exportSlot(version.id, "version")} onDelete={() => slotAction(version.id, "remove")} /></div>)}</div>
     </details>)}
+    {book?.recycle?.length ? <OutputRecycleBin entries={book.recycle} busy={busy} onRestore={(entry) => slotAction(entry.id, "restore")} onPurge={(entry) => slotAction(entry.id, "purge")} onEmpty={() => slotAction("all", "empty-bin")} /> : null}
     {slotMenu && book ? (() => {
       const session = book.sessions.find((item) => item.id === slotMenu.sessionId);
       const version = session?.versions.find((item) => item.id === slotMenu.versionId);
@@ -74,10 +95,14 @@ export function LipSyncPage({ incoming, onIncomingConsumed, navigationRef, ...pr
       if (version) {
         if (version.id === book.activeVersionId) actions.push({ id: "new-version", label: "New version", onSelect: () => void change("version") });
         else actions.push({ id: "open-version", label: "Open version", onSelect: () => void change("select", version.id) });
-      } else if (session?.versions.length) {
-        const latest = session.versions[session.versions.length - 1];
-        if (latest.id !== book.activeVersionId) actions.push({ id: "open-latest", label: "Open latest version", onSelect: () => void change("select", latest.id) });
+        actions.push({ id: "export-version", label: "Export Version package", disabled: busy, onSelect: () => void exportSlot(version.id, "version").catch((reason) => setError(String(reason))) });
+        actions.push({ id: "remove-version", label: "Move to Recycle Bin", destructive: true, disabled: busy, onSelect: () => void slotAction(version.id, "remove") });
+      } else if (session) {
+        const latest = session.versions.at(-1);
+        if (latest && latest.id !== book.activeVersionId) actions.push({ id: "open-latest", label: "Open latest version", onSelect: () => void change("select", latest.id) });
         if (session.id === book.activeSessionId && book.activeVersionId) actions.push({ id: "new-version", label: "New version", onSelect: () => void change("version") });
+        actions.push({ id: "export-session", label: "Export Session package", disabled: busy, onSelect: () => void exportSlot(session.id, "session").catch((reason) => setError(String(reason))) });
+        actions.push({ id: "remove-session", label: "Move to Recycle Bin", destructive: true, disabled: busy, onSelect: () => void slotAction(session.id, "remove") });
       }
       actions.push({ id: "reveal-project", label: "Reveal Project Folder", onSelect: () => void revealProjectFolder() });
       return <OutputSlotMenu x={slotMenu.x} y={slotMenu.y} label={version ? `${session?.name} / ${version.name}` : session?.name ?? "Session"}

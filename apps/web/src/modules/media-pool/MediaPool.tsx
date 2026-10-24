@@ -1,3 +1,4 @@
+import { RecycleBinPanel } from "../../ui/OutputSlotLifecycle";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -438,16 +439,15 @@ function PendingObsFootage({ projectId, assets, showEmpty, startingRecording, on
     </div>;
   })}{showEmpty && !pending.length && !visibleStarting ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
     {recycleError ? <small role="alert">{recycleError}</small> : null}
-    {recycled.length ? <section className={`media-recycle-bin ${recycledOpen ? "is-open" : ""}`}>
-      <div className="media-recycle-bin__header"><button aria-expanded={recycledOpen} className="media-recycle-bin__toggle" onClick={() => setRecycledOpen((open) => !open)} type="button"><Icon name="trash" /><b>OBS RECYCLE BIN</b><span>{recycled.length}</span><i aria-hidden="true">{recycledOpen ? "▾" : "▸"}</i></button></div>
-      {recycledOpen ? <div aria-label="OBS Recycle Bin" className="media-recycle-bin__list media-recycle-bin__list--obs">
+    <RecycleBinPanel count={recycled.length} title="OBS RECYCLE BIN" open={recycledOpen} onToggle={() => setRecycledOpen((open) => !open)}>
+      <div aria-label="OBS Recycle Bin" className="media-recycle-bin__list--obs">
         {recycled.map(({ recording }) => <div className="media-pool-item media-pool-item--obs-pending is-recycled" key={recording.recordingId}>
           <span aria-hidden="true" className="media-pool-item__expand">·</span>
           <span className="media-pool-item__main"><span className="media-kind media-kind--audio"><Icon name="waveform" /></span><span className="media-item-copy"><strong>{recording.displayName || `OBS LiveLink · ${recording.recordingId.slice(0, 8)}`}</strong><small>OBS LIVELINK · RECYCLE BIN</small><em>PCM vẫn được giữ trong project</em></span></span>
           <div className="media-pool-item__obs-actions"><button className="media-pool-item__obs-retry" onClick={() => void restore(recording.recordingId)} type="button">Restore</button><button className="media-pool-item__obs-retry media-obs-recording-menu__danger" onClick={() => void permanentlyDelete(recording.recordingId)} type="button">Delete permanently</button></div>
         </div>)}
-      </div> : null}
-    </section> : null}
+      </div>
+    </RecycleBinPanel>
     {recordingMenu ? createPortal(<div aria-label="Thao tác footage OBS đang chờ" className="media-context-menu media-obs-recording-menu" role="menu" style={{ left: recordingMenu.left, top: recordingMenu.top }}>
       {(() => {
         const journal = pending.find(({ recording }) => recording.recordingId === recordingMenu.recordingId);
@@ -1228,22 +1228,11 @@ export function MediaPool({
         {!projectId && !pendingLocalMedia && !pendingMediaImports.length && !visibleLocalImportPlaceholders.length && !liveAssets.length && !recycledAssets.length ? <div className="media-pool-empty"><Icon name="folder" /><b>Chưa có footage</b><span>Import video/audio hoặc thu một take mới.</span></div> : null}
         {/* Rendered after the list rather than inside it, so no amount of
             importing can push the bin out of last place. */}
-        {recycledAssets.length ? <section className={`media-recycle-bin ${binOpen ? "is-open" : ""}`}>
-          <div className="media-recycle-bin__header">
-          <button aria-expanded={binOpen} className="media-recycle-bin__toggle" onClick={() => setBinOpen((open) => !open)} type="button">
-            <Icon name="trash" />
-            <b>RECYCLE BIN</b>
-            <span>{recycledAssets.length}</span>
-            <i aria-hidden="true">{binOpen ? "▾" : "▸"}</i>
-          </button>
-          <button aria-label="Empty Recycle Bin" className="media-recycle-bin__empty" onClick={() => onBatchAction({ kind: "delete", assetIds: recycledIds })} title={`Xóa hẳn ${recycledAssets.length} footage trong Recycle Bin`} type="button"><Icon name="trash" /></button>
-          </div>
-          {binOpen ? <div className="media-recycle-bin__list">
-            <p>Chỉ xem: play, script, subtitle và zoom vẫn dùng được; muốn sửa thì Restore trước.</p>
-            {selectedBinIds.length > 1 ? <div className="media-recycle-bin__bulk"><span>{selectedBinIds.length} footage đã chọn</span><button onClick={() => onBatchAction({ kind: "restore", assetIds: selectedBinIds })} type="button">Restore đã chọn</button><button className="is-danger" onClick={() => onBatchAction({ kind: "delete", assetIds: selectedBinIds })} type="button">Delete đã chọn</button></div> : null}
-            {recycledAssets.map((asset) => renderAsset(asset))}
-          </div> : null}
-        </section> : null}
+        <RecycleBinPanel count={recycledAssets.length} open={binOpen} onToggle={() => setBinOpen((open) => !open)} onEmpty={() => onBatchAction({ kind: "delete", assetIds: recycledIds })}>
+          <p>Chỉ xem: play, script, subtitle và zoom vẫn dùng được; muốn sửa thì Restore trước.</p>
+          {selectedBinIds.length > 1 ? <div className="media-recycle-bin__bulk"><span>{selectedBinIds.length} footage đã chọn</span><button onClick={() => onBatchAction({ kind: "restore", assetIds: selectedBinIds })} type="button">Restore đã chọn</button><button className="is-danger" onClick={() => onBatchAction({ kind: "delete", assetIds: selectedBinIds })} type="button">Delete đã chọn</button></div> : null}
+          {recycledAssets.map((asset) => renderAsset(asset))}
+        </RecycleBinPanel>
       </div>
       <div className="media-pool-footer">
         {workflow === "speech-to-text" ? (speechToTextHost ? createPortal(speechToTextControls, speechToTextHost) : speechToTextControls) : null}

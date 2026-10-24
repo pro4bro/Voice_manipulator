@@ -6,9 +6,10 @@ import { useVoiceVersions, type VoiceOutputSessionBook, type VoiceOutputVersionS
 const scriptDoc = (text = "Hello", revision = 2) => ({ version: 1, revision, settings: {}, segments: [], rows: [{ id: "r", text, speakerProfileId: "speaker", voiceId: "voice" }] }) as VoiceScriptDocument;
 const output = { id: "out-1", name: "Output 1" } as VoiceOutput;
 const state = (overrides: Partial<VoiceOutputVersionState> = {}): VoiceOutputVersionState => ({ revision: 5, script: scriptDoc(), config: { rate: 1 }, generatedScript: null, generatedConfig: {}, composition: { revision: 0, durationFrames: 1, layers: [{ id: "base", name: "Base", clips: [] }] }, ownedOutputIds: ["out-1"], history: [], outputId: "out-1", ...overrides });
-const book = (overrides: Partial<VoiceOutputSessionBook> = {}): VoiceOutputSessionBook => ({ revision: 7, activeSessionId: "s1", activeVersionId: "v1", sessions: [{ id: "s1", name: "Session 1", versions: [{ id: "v1", name: "Version 1", outputId: "out-1", state: state() }] }], ...overrides });
+const book = (overrides: Partial<VoiceOutputSessionBook> = {}): VoiceOutputSessionBook => ({ revision: 7, activeSessionId: "s1", activeVersionId: "v1", sessions: [{ id: "s1", name: "Session 1", versions: [{ id: "v1", name: "Version 1", outputId: "out-1", state: state() }] }], recycle: [], ...overrides });
 
-let fetchMock: ReturnType<typeof vi.fn>;
+type FixtureFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+let fetchMock: ReturnType<typeof vi.fn<FixtureFetch>>;
 beforeEach(() => {
   let current = book();
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -138,4 +139,24 @@ it("compares persisted JSON by value and does not autosave forever when server k
   expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/state"))).toHaveLength(0);
   await act(async () => { await hook.result.current.flush(); });
   expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/state"))).toHaveLength(1);
+});
+
+it("clears the deleted checkout and adopts the saved empty Script projection", async () => {
+  const initial = props();
+  const hook = renderHook(() => useVoiceVersions(initial));
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  const originalFetch = fetchMock.getMockImplementation()!;
+  const removed = book({ activeSessionId: null, activeVersionId: null, sessions: [], recycle: [{ id: "s1", kind: "session", name: "Session 1", deletedAt: "2026-10-24" }] });
+  const empty = { ...scriptDoc("", 3), rows: [] };
+  fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/slots")) return { ok: true, status: 200, json: async () => removed };
+    if (String(input).endsWith("/voice-script")) return { ok: true, status: 200, json: async () => empty };
+    return originalFetch(input, init);
+  });
+  await act(async () => { await hook.result.current.slotAction("s1", "remove"); });
+  expect(hook.result.current.activeVersion).toBeNull();
+  expect(hook.result.current.transitioning).toBe(false);
+  expect(initial.script.adoptSaved).toHaveBeenLastCalledWith(empty);
+  expect(initial.onOpenOutput).toHaveBeenLastCalledWith(null);
+  expect(hook.result.current.book?.recycle).toHaveLength(1);
 });

@@ -1,3 +1,4 @@
+import type { OutputRecycleEntry } from "./output-lifecycle";
 export type WorkspacePage = "dashboard" | "speech-to-text" | "voice-training" | "voice-manipulator" | "voice-changer" | "lip-sync";
 export type ThemeMode = "light" | "dark";
 export type RuntimeAction = "start" | "stop" | "restart";
@@ -1147,6 +1148,7 @@ export interface VoiceOutputSessions {
   activeSessionId: string | null;
   activeVersionId: string | null;
   sessions: { id: string; name: string; versions: { id: string; name: string; outputId: string | null; parentVersionId: string | null; acceptsNextOutput?: boolean; createdAt: string }[] }[];
+  recycle?: OutputRecycleEntry[];
 }
 
 export type VoiceOutputSubtitleMode = "line" | "word" | "sentence" | "table";

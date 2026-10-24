@@ -107,13 +107,16 @@
 .lipsync-page { display: contents; }
 .lipsync-video-output { display: grid; gap: 10px; padding: 10px; }
 .lipsync-session-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.lipsync-video-output button { min-height: 30px; }
+:where(.lipsync-video-output) button { min-height: 30px; }
 .lipsync-current-version { display: grid; gap: 6px; margin: 0; }
 .lipsync-session { border: 1px solid var(--line); }
-.lipsync-session summary { cursor: pointer; padding: 10px; }
+.lipsync-session summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; padding: 10px; }
+.lipsync-session summary::-webkit-details-marker { display: none; }
+.lipsync-session summary::before { content: "▸"; }
+.lipsync-session[open] summary::before { content: "▾"; }
 .lipsync-session summary small { margin-left: 8px; opacity: .7; }
 .lipsync-session > div { display: grid; gap: 4px; padding: 0 8px 8px; }
-.lipsync-session > div button { display: grid; gap: 4px; padding: 8px; text-align: left; }
+:where(.lipsync-session > div) button { display: grid; gap: 4px; padding: 8px; text-align: left; }
 .lipsync-session button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-raised); opacity: 1; }
 .lipsync-incoming { display: grid; gap: 8px; border: 1px solid var(--accent); padding: 10px; }
 .lipsync-session-empty { padding: 20px; max-width: 560px; }
@@ -121,9 +124,13 @@
 
 .lipsync-sources [role="tabpanel"] { min-height: 0; overflow-y: auto; }
 
-.lipsync-video-output button { color: var(--text); background: var(--soft-fill); border: 1px solid var(--line); cursor: pointer; font: inherit; padding: 7px 9px; }
-.lipsync-video-output button:disabled { cursor: default; opacity: .55; }
+:where(.lipsync-video-output) button { color: var(--text); background: var(--soft-fill); border: 1px solid var(--line); cursor: pointer; font: inherit; padding: 7px 9px; }
+:where(.lipsync-video-output) button:disabled { cursor: default; opacity: .55; }
 .lipsync-video-output button[aria-pressed="true"] { border-color: var(--accent); background: var(--strong-fill); opacity: 1; }
 .lipsync-video-output small { color: var(--text-muted); font-family: var(--mono); font-size: 9px; line-height: 1.5; }
 .lipsync-video-output p { font-size: 11px; line-height: 1.5; }
 .lipsync-session-actions button:hover { border-color: var(--accent); }
+.lipsync-output-slot-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.lipsync-output-slot-row > button:first-child { display: grid; flex: 1; min-width: 0; text-align: left; }
+.lipsync-output-slot-row [aria-label$="actions"] { flex: 0 0 auto; }
+.lipsync-session summary [aria-label$="actions"] { margin-left: auto; }
