@@ -6,11 +6,28 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-24 — OUTPUT-LIFECYCLE-01 unified output recovery and corrected Training Queue state.
-last_activity_desc: Shared Session/Version Export/Delete/Recycle Bin and real Training progress. Frontend1286/final167, backend1606/final28, build226 and isolated HTTP artifacts pass. Live browser disabled. Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-24 — VM-SCRIPT-LAYER-UX-01 implemented approved Script and layered Timeline UI.
+last_activity_desc: Pending/fixed Script feedback, synchronized PCM layers, locked transfers and Solo. Frontend1307, API55, build228 pass; full API1607 plus known import timeout with isolated retry pass. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## VM-SCRIPT-LAYER-UX-01 — Script Fix feedback and synchronized layers (2026-10-24)
+
+Implemented the approved UI: progress in the right column; direct Speaker switch/
+unassign; checkbox-only bulk actions; persistent pending/fixed highlights and safe
+Fix publication with concurrent edits. Master, subtitles and upper-half clip
+waveforms share zoom/scroll/playhead, with one top ruler and bottom navigation.
+Layer Mute/Solo drive the actual compositor; transfers preserve locked timecodes.
+
+Final frontend1307/typecheck/build228 and focused API55 pass. Full API1607 pass /
+one existing VibeVoice60s import timeout; the exact test alone passes20.36s.
+Browser dark/light and isolated monoPCM16/24kHz artifacts verify disjoint Fixes,
+Solo, preserved source hashes and Full+Fix export. Legacy Fix marks require the
+new saved Full baseline; uncertain timing retains row fallback. ADR0143 and
+`docs/gates/vm-script-layer-ux-01-20261024.md` hold evidence. Phase03 stays60%,
+Phase06 open. Stop this bounded round.
+
 
 ## OUTPUT-LIFECYCLE-01 — Shared output recovery and Training Queue (2026-10-24)
 

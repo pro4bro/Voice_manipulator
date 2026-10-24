@@ -67,10 +67,31 @@ synthesis settings within existing rows whose generated source timing is known.
   bounded fades where enough audio is available. Subtitle/timing export follows
   the audible composition: hidden or cropped source cues are omitted, and source
   timing geometry remains explicit where a fade affects a boundary.
-- Trim, split, move, mute/enable, and delete edit clips or layers in the current
-  Version only. They do not rewrite any referenced source Voice Output.
+- Trim, split, transfer between layers, mute/enable, Solo and delete edit the
+  current Version only. Clip timecodes are locked: transfer preserves timeline
+  start, source IN and duration; a different start is rejected. These operations
+  do not rewrite any referenced source Voice Output.
 - Version output IDs and source paths remain project-relative and portable with
   the folder containing `project.json`.
+
+## Script and Timeline feedback
+
+- Before the first generation, Script edits have no blue highlight. After a
+  successful generation, differences from `generatedScript` are strong blue;
+  synthesized differences from `fullGeneratedScript` are faded blue. Full success
+  resets both snapshots and the old Fix layers. Fix completion preserves newer
+  text edits as pending; failed/cancelled jobs cannot fade them.
+- Legacy Versions without a saved Full snapshot use their last generated text as
+  the initial baseline. Pre-upgrade Fix highlights cannot be reconstructed.
+- A row Speaker Profile selector changes that row directly, including clearing
+  its Voice Model on unassignment. Only explicit checkboxes open bulk row actions.
+  Generation activity appears in the right Script settings column.
+- Master waveform, subtitles and audio layers share one zoom/viewport/playhead.
+  The ruler is at the top only; navigation and playback remain below the layers.
+  Each clip draws its actual source waveform's upper half. No placeholder audio
+  signal is drawn when the source waveform is unavailable.
+- Layer Mute takes precedence over Solo. When any Solo is on, enabled solo layers
+  alone contribute to the same composition used by playback and export.
 
 ## Output slot actions
 
