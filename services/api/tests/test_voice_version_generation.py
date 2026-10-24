@@ -145,6 +145,13 @@ def test_clone_copies_version_script_config_composition_and_audio_independently(
     fix = generation.start_fix(project.id, version_id, state.revision, background=False)
     assert fix.status == "complete"
 
+    generated_baseline = sessions.state(project.id, version_id).generated_composition
+    generated_fix_clip = generated_baseline["layers"][1]["clips"][0]
+    state = sessions.state(project.id, version_id)
+    sessions.edit_composition(project.id, version_id, state.revision, {
+        "action": "delete-clip", "clipId": generated_fix_clip["id"],
+    })
+
     source = sessions.state(project.id, version_id)
     source_ids = set(source.owned_output_ids)
     source_hashes = {item: hashlib.sha256(outputs.audio_path(project.id, item).read_bytes()).hexdigest() for item in source_ids}
@@ -156,6 +163,7 @@ def test_clone_copies_version_script_config_composition_and_audio_independently(
     assert len(sessions.get(project.id)["sessions"]) == 1
     assert clone.script.model_copy(update={"revision": source.script.revision}) == source.script
     assert clone.generated_script == source.generated_script
+    assert clone.generated_composition is not None and source.generated_composition is not None
     assert clone.config == source.config and clone.generated_config == source.generated_config
     assert clone.composition is not None and source.composition is not None
     source_clip_ids = {clip["outputId"] for layer in source.composition["layers"] for clip in layer["clips"]}
@@ -165,12 +173,56 @@ def test_clone_copies_version_script_config_composition_and_audio_independently(
         for output in outputs.list(project.id) if output.parameters.get("voiceOutputVersion", {}).get("versionId") == clone_id}
     assert {mapping[item] for item in source_clip_ids} == clone_clip_ids
     assert mapping[source.output_id] == clone.output_id
+    source_baseline_ids = {clip["outputId"] for layer in source.generated_composition["layers"] for clip in layer["clips"]}
+    clone_baseline_ids = {clip["outputId"] for layer in clone.generated_composition["layers"] for clip in layer["clips"]}
+    assert source_baseline_ids.isdisjoint(clone_baseline_ids)
+    assert clone.generated_composition["layers"][1]["clips"][0]["outputId"] != generated_fix_clip["outputId"]
     for source_id, digest in source_hashes.items():
         assert hashlib.sha256(outputs.audio_path(project.id, source_id).read_bytes()).hexdigest() == digest
     for cloned_id in clone_clip_ids:
         _read_pcm(outputs.audio_path(project.id, cloned_id))
     assert changed.rows[0].text == "alpha fixed charlie delta"
     assert full.output.id != source.output_id
+
+
+def test_reset_restores_persisted_last_successful_full_and_fix_composition(tmp_path):
+    project, an, outputs, speaker, sessions, version_id, script, generation = _setup(tmp_path)
+    _full(project, an, speaker, sessions, version_id, script, generation)
+    changed = _edit_script(speaker, project, script, "alpha changed charlie delta")
+    state = sessions.state(project.id, version_id)
+    fixed = generation.start_fix(project.id, version_id, state.revision, background=False)
+    assert fixed.status == "complete" and fixed.output is not None
+    state = sessions.state(project.id, version_id)
+    baseline = state.generated_composition
+    assert baseline is not None and len(baseline["layers"]) == 2
+    with wave.open(str(outputs.audio_path(project.id, fixed.output.id)), "rb") as audio:
+        expected_pcm = audio.readframes(audio.getnframes())
+    fix_clip = baseline["layers"][1]["clips"][0]
+    cut = sessions.edit_composition(project.id, version_id, state.revision, {
+        "action": "cut-clip", "clipId": fix_clip["id"],
+        "atFrames": [fix_clip["startFrame"] + fix_clip["frameCount"] // 3,
+                     fix_clip["startFrame"] + (fix_clip["frameCount"] * 2) // 3],
+    })
+    cut_book, cut_output = cut
+    cut_state = sessions.state(project.id, version_id)
+    with wave.open(str(outputs.audio_path(project.id, cut_output.id)), "rb") as audio:
+        assert audio.readframes(audio.getnframes()) == expected_pcm
+    sessions.edit_composition(project.id, version_id, cut_state.revision, {
+        "action": "delete-clip", "clipId": fix_clip["id"],
+    })
+    deleted_state = sessions.state(project.id, version_id)
+    reset_book, reset_output = sessions.edit_composition(project.id, version_id, deleted_state.revision, {
+        "action": "reset-composition",
+    })
+    reset_state = FileVoiceOutputSessions(outputs, speaker.scripts).state(project.id, version_id)
+    expected_composition = {**baseline, "revision": reset_state.composition["revision"]}
+    assert reset_state.composition == expected_composition
+    assert reset_state.generated_composition == baseline
+    assert reset_state.output_id == reset_output.id
+    with wave.open(str(outputs.audio_path(project.id, reset_output.id)), "rb") as audio:
+        assert audio.readframes(audio.getnframes()) == expected_pcm
+    assert reset_book["activeVersionId"] == version_id and cut_book["activeVersionId"] == version_id
+    assert changed.rows[0].text == reset_state.script.rows[0].text
 
 
 @pytest.mark.parametrize("stale_change", ["version", "script"])

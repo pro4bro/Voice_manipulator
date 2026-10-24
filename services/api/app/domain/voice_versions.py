@@ -1,3 +1,4 @@
+import copy
 from typing import Any
 from pydantic import Field, model_validator
 from app.domain.models import DomainModel
@@ -14,6 +15,7 @@ class VoiceVersionState(DomainModel):
     full_generated_script: VoiceScriptDocument | None = None
     generated_config: dict[str, Any] = Field(default_factory=dict)
     composition: dict[str, Any] | None = None
+    generated_composition: dict[str, Any] | None = None
     output_id: str | None = None
     owned_output_ids: list[str] = Field(default_factory=list)
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
@@ -25,6 +27,8 @@ class VoiceVersionState(DomainModel):
         # as their best available Full baseline without rewriting their format.
         if self.full_generated_script is None and self.generated_script is not None:
             self.full_generated_script = self.generated_script.model_copy(deep=True)
+        if self.generated_composition is None and self.composition is not None:
+            self.generated_composition = copy.deepcopy(self.composition)
         return self
 
 

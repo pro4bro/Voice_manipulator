@@ -118,7 +118,8 @@ class FileVoiceOutputSessions:
             except (OSError, ValueError, wave.Error, EOFError):
                 composition = None
             state = VoiceVersionState(script=script, generated_script=script, full_generated_script=script, config=config,
-                generated_config=config, composition=composition, output_id=output_id, owned_output_ids=list(dict.fromkeys([original_id, output_id])))
+                generated_config=config, composition=composition, generated_composition=composition,
+                output_id=output_id, owned_output_ids=list(dict.fromkeys([original_id, output_id])))
         return state.model_dump(by_alias=True, mode="json")
 
     def _sync(self, project_id):
@@ -153,6 +154,10 @@ class FileVoiceOutputSessions:
                         version["outputId"] = version["state"]["outputId"]
                     except KeyError:
                         version["state"] = self._initial_state(project_id, None)
+                    changed = True
+                elif "generatedComposition" not in version["state"]:
+                    state = VoiceVersionState.model_validate(version["state"])
+                    version["state"] = state.model_dump(by_alias=True, mode="json")
                     changed = True
         if migrating and book.get("activeVersionId"):
             _, active = self.find(book, book["activeVersionId"])
@@ -356,6 +361,8 @@ class FileVoiceOutputSessions:
             version = self._version(None, index, source["id"])
             state = copy.deepcopy(source["state"])
             ids = {c["outputId"] for layer in (state.get("composition") or {}).get("layers", []) for c in layer["clips"]}
+            ids.update(c["outputId"] for layer in (state.get("generatedComposition") or {}).get("layers", [])
+                       for c in layer["clips"])
             if state.get("outputId"):
                 ids.add(state["outputId"])
             copied, mapping = [], {}
@@ -383,7 +390,8 @@ class FileVoiceOutputSessions:
             return VoiceVersionState.model_validate(self.find(self._sync(project_id), version_id)[1]["state"])
 
     def publish(self, project_id, version_id, expected_revision, output, script, config, composition=None, full=False,
-                expected_script=None, allow_script_edits=False, expected_composition=None, expected_output_id=None):
+                expected_script=None, allow_script_edits=False, expected_composition=None, expected_output_id=None,
+                successful_generation=False):
         with self._lock:
             book = self._sync(project_id)
             session, version = self.find(book, version_id)
@@ -404,6 +412,8 @@ class FileVoiceOutputSessions:
             state.output_id, state.generated_script, state.generated_config = output.id, VoiceScriptDocument.model_validate(script), copy.deepcopy(config)
             if full:
                 state.full_generated_script = VoiceScriptDocument.model_validate(script)
+            if full or successful_generation:
+                state.generated_composition = copy.deepcopy(state.composition)
             state.owned_output_ids = list(dict.fromkeys([*state.owned_output_ids, output.id,
                 *[c["outputId"] for layer in (state.composition or {}).get("layers", []) for c in layer["clips"]]]))
             state.revision += 1
@@ -417,7 +427,15 @@ class FileVoiceOutputSessions:
             state = self.state(project_id, version_id)
             if state.revision != expected_revision or not state.composition or not state.output_id:
                 raise ScriptRevisionConflict("Layer đã đổi; tải lại Version.")
-            composition = apply_voice_composition_command(VoiceComposition.model_validate(state.composition), VoiceCompositionCommand.model_validate(command))
+            current = VoiceComposition.model_validate(state.composition)
+            action = VoiceCompositionCommand.model_validate(command)
+            if action.action == "reset-composition":
+                if state.generated_composition is None:
+                    raise ValueError("Version chưa có composition từ lần Generate thành công nào để Reset.")
+                baseline = VoiceComposition.model_validate(state.generated_composition)
+                composition = baseline.model_copy(update={"revision": current.revision + 1})
+            else:
+                composition = apply_voice_composition_command(current, action)
             output = VoiceLayerCompositor(self.outputs).render(project_id, composition, state.output_id)
             output = output.model_copy(update={"name": f"{self.find(self._sync(project_id), version_id)[1]['name']} · audio"})
             self.outputs.save(project_id, output)

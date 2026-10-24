@@ -112,6 +112,86 @@ def test_command_edits_preserve_source_offsets_and_are_immutable():
     assert not toggled_layer.layers[1].enabled
 
 
+def test_cut_uncut_keep_selected_id_on_middle_and_preserve_source_clock():
+    original = _composition([VoiceCompositionLayer(id="base", name="Base", clips=[
+        VoiceCompositionClip(id="selected", output_id="source", start_frame=2, source_start_frame=7, frame_count=10),
+    ])], frames=20)
+    cut = apply_voice_composition_command(original, VoiceCompositionCommand(
+        action="cut-clip", clip_id="selected", at_frames=[9, 6]))
+    pieces = cut.layers[0].clips
+    assert len(pieces) == 3
+    assert pieces[1].id == "selected"
+    assert [(piece.start_frame, piece.source_start_frame, piece.frame_count) for piece in pieces] == [
+        (2, 7, 4), (6, 11, 3), (9, 14, 3)]
+    assert original.layers[0].clips[0].id == "selected"
+    restored = apply_voice_composition_command(cut, VoiceCompositionCommand(
+        action="uncut-clip", clip_id="selected"))
+    assert restored.layers[0].clips == [original.layers[0].clips[0]]
+    assert restored.layers[0].clips[0].id == "selected"
+
+
+def test_uncut_leaves_noncontiguous_or_incompatible_neighbor_clips_separate():
+    composition = _composition([VoiceCompositionLayer(id="base", name="Base", clips=[
+        VoiceCompositionClip(id="left", output_id="source", start_frame=0, source_start_frame=0, frame_count=4),
+        VoiceCompositionClip(id="selected", output_id="source", start_frame=4, source_start_frame=8, frame_count=4),
+        VoiceCompositionClip(id="right", output_id="other", start_frame=8, source_start_frame=12, frame_count=4),
+    ])], frames=20)
+    uncut = apply_voice_composition_command(composition, VoiceCompositionCommand(
+        action="uncut-clip", clip_id="selected"))
+    assert uncut.layers[0].clips == composition.layers[0].clips
+
+
+def test_uncut_does_not_merge_across_intervening_clip_and_change_layer_priority(tmp_path):
+    project, outputs = _outputs(tmp_path)
+    source = _source(outputs, project.id, "A", _tone(1000, 12))
+    overlay = _source(outputs, project.id, "B", _tone(2000, 2))
+    composition = _composition([VoiceCompositionLayer(id="base", name="Base", clips=[
+        VoiceCompositionClip(id="left", output_id=source.id, start_frame=0, source_start_frame=0, frame_count=6),
+        VoiceCompositionClip(id="overlay", output_id=overlay.id, start_frame=4, source_start_frame=0, frame_count=2),
+        VoiceCompositionClip(id="right", output_id=source.id, start_frame=6, source_start_frame=6, frame_count=6),
+    ])], frames=12)
+    uncut = apply_voice_composition_command(composition, VoiceCompositionCommand(
+        action="uncut-clip", clip_id="right"))
+    assert uncut.layers[0].clips == composition.layers[0].clips
+    compositor = VoiceLayerCompositor(outputs, crossfade_frames=0)
+    rendered = [compositor.render(project.id, candidate, source.id) for candidate in (composition, uncut)]
+    pcm = []
+    for output in rendered:
+        with wave.open(str(outputs.audio_path(project.id, output.id)), "rb") as audio:
+            pcm.append(audio.readframes(audio.getnframes()))
+    assert pcm[0] == pcm[1]
+    assert struct.unpack_from("<2h", pcm[0], 4 * 2) == (2000, 2000)
+
+
+@pytest.mark.parametrize("at_frames", [[], [4, 4], [0], [10, 11, 12]])
+def test_cut_rejects_empty_duplicate_outside_and_too_many_frames_atomically(at_frames):
+    original = _composition([VoiceCompositionLayer(id="base", name="Base", clips=[
+        VoiceCompositionClip(id="clip", output_id="source", start_frame=2, source_start_frame=0, frame_count=8),
+    ])], frames=20)
+    with pytest.raises(ValueError):
+        apply_voice_composition_command(original, VoiceCompositionCommand(
+            action="cut-clip", clip_id="clip", at_frames=at_frames))
+    assert original.layers[0].clips[0].frame_count == 8
+
+
+def test_cut_and_uncut_render_exact_original_pcm(tmp_path):
+    project, outputs = _outputs(tmp_path)
+    source = _source(outputs, project.id, "Source", _tone(1234, 20))
+    original = _composition([VoiceCompositionLayer(id="base", name="Base", clips=[
+        VoiceCompositionClip(id="clip", output_id=source.id, start_frame=0, source_start_frame=0, frame_count=20),
+    ])], frames=20)
+    cut = apply_voice_composition_command(original, VoiceCompositionCommand(
+        action="cut-clip", clip_id="clip", at_frames=[7, 13]))
+    uncut = apply_voice_composition_command(cut, VoiceCompositionCommand(action="uncut-clip", clip_id="clip"))
+    compositor = VoiceLayerCompositor(outputs)
+    rendered = [compositor.render(project.id, composition, source.id) for composition in (original, cut, uncut)]
+    payloads = []
+    for output in rendered:
+        with wave.open(str(outputs.audio_path(project.id, output.id)), "rb") as audio:
+            payloads.append(audio.readframes(audio.getnframes()))
+    assert payloads == [_tone(1234, 20)] * 3
+
+
 def test_solo_composes_only_soloed_layers_and_mute_still_wins(tmp_path):
     project, outputs = _outputs(tmp_path)
     base = _source(outputs, project.id, "Base", _tone(1000, 8))

@@ -121,7 +121,12 @@ class VoiceLayerCompositor:
         for left, right in zip(intervals, intervals[1:]):
             seam = left.end
             fade_frames = 0
-            if left.end == right.start and self.crossfade_frames:
+            same_contiguous_source = (
+                left.clip.output_id == right.clip.output_id and
+                left.clip.source_start_frame + seam - left.clip.start_frame ==
+                right.clip.source_start_frame + seam - right.clip.start_frame
+            )
+            if left.end == right.start and self.crossfade_frames and not same_contiguous_source:
                 common_start = max(left.clip.start_frame, right.clip.start_frame)
                 common_end = min(left.clip.end_frame, right.clip.end_frame)
                 if common_start < seam < common_end:

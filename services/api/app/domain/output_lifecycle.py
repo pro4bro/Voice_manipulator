@@ -83,6 +83,8 @@ def output_ids(slot):
         if state.get("outputId") or version.get("outputId"):
             ids.add(state.get("outputId") or version["outputId"])
         ids.update(clip["outputId"] for layer in (state.get("composition") or {}).get("layers", []) for clip in layer["clips"])
+        ids.update(clip["outputId"] for layer in (state.get("generatedComposition") or {}).get("layers", [])
+                   for clip in layer["clips"])
     return ids
 
 

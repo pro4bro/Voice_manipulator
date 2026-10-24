@@ -205,7 +205,7 @@ class VoiceVersionGeneration:
             self.sessions.publish(project_id, ticket["versionId"], ticket["revision"], rendered, ticket["script"], ticket["config"],
                 composition.model_dump(by_alias=True, mode="json"), expected_script=ticket["script"],
                 allow_script_edits=True, expected_composition=ticket["composition"],
-                expected_output_id=ticket["sourceOutputId"])
+                expected_output_id=ticket["sourceOutputId"], successful_generation=True)
             if candidate:
                 self.outputs.discard(project_id, candidate.id)
             return rendered

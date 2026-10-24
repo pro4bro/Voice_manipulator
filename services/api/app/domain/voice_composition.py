@@ -79,8 +79,8 @@ class VoiceComposition(DomainModel):
 
 
 class VoiceCompositionCommand(DomainModel):
-    action: Literal["delete-clip", "split-clip", "trim-left", "trim-right", "move-clip",
-                    "toggle-layer", "solo-layer", "toggle-clip"]
+    action: Literal["cut-clip", "uncut-clip", "reset-composition", "delete-clip", "split-clip",
+                    "trim-left", "trim-right", "move-clip", "toggle-layer", "solo-layer", "toggle-clip"]
     clip_id: str | None = None
     layer_id: str | None = None
     target_layer_id: str | None = None
@@ -89,6 +89,15 @@ class VoiceCompositionCommand(DomainModel):
     new_clip_id: str | None = Field(default=None, min_length=1, max_length=120)
     enabled: bool | None = None
     solo: bool | None = None
+    at_frames: list[int] | None = Field(default=None, min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def validate_cut_frames(self):
+        if self.action == "cut-clip" and self.at_frames is None:
+            raise ValueError("Cutting a clip requires one or two at_frames.")
+        if self.at_frames is not None and len(set(self.at_frames)) != len(self.at_frames):
+            raise ValueError("Cut frames must be unique.")
+        return self
 
 
 def apply_voice_composition_command(
@@ -104,7 +113,9 @@ def apply_voice_composition_command(
                     return layer_index, clip_index, clip
         raise ValueError(f"Voice composition clip not found: {command.clip_id}")
 
-    if command.action == "toggle-layer":
+    if command.action == "reset-composition":
+        raise ValueError("Reset requires the Version's saved generation composition.")
+    elif command.action == "toggle-layer":
         if command.layer_id is None or command.enabled is None:
             raise ValueError("Toggling a layer requires layer_id and enabled.")
         layer = next((item for item in layers if item.id == command.layer_id), None)
@@ -121,6 +132,67 @@ def apply_voice_composition_command(
     elif command.action == "delete-clip":
         layer_index, clip_index, _ = find_clip()
         del layers[layer_index].clips[clip_index]
+    elif command.action == "cut-clip":
+        layer_index, clip_index, clip = find_clip()
+        cuts = sorted(command.at_frames or [])
+        if len(cuts) not in (1, 2) or any(not clip.start_frame < frame < clip.end_frame for frame in cuts):
+            raise ValueError("Cut frames must be one or two unique frames strictly inside the clip.")
+        bounds = [clip.start_frame, *cuts, clip.end_frame]
+        new_ids = {piece.id for layer in layers for piece in layer.clips if piece.id != clip.id}
+        piece_ids = []
+        for _ in range(len(bounds) - 2):
+            identifier = uuid4().hex
+            while identifier in new_ids or identifier in piece_ids or identifier == clip.id:
+                identifier = uuid4().hex
+            piece_ids.append(identifier)
+        # The selected identity follows the first cut, preserving selection on
+        # the middle piece when there are two cuts.
+        ids = [piece_ids[0], *([clip.id] if len(cuts) == 2 else []),
+               *([piece_ids[1]] if len(cuts) == 2 else [clip.id])]
+        pieces = [clip.model_copy(update={
+            "id": ids[index],
+            "start_frame": bounds[index],
+            "source_start_frame": clip.source_start_frame + bounds[index] - clip.start_frame,
+            "frame_count": bounds[index + 1] - bounds[index],
+        }) for index in range(len(bounds) - 1)]
+        layers[layer_index].clips[clip_index:clip_index + 1] = pieces
+    elif command.action == "uncut-clip":
+        layer_index, clip_index, selected = find_clip()
+        layer = layers[layer_index]
+        merged = selected.model_copy(deep=True)
+        while True:
+            source_end = merged.source_start_frame + merged.frame_count
+            left_index = clip_index - 1 if clip_index > 0 else None
+            if left_index is not None:
+                item = layer.clips[left_index]
+                if (item.output_id != merged.output_id or item.enabled != merged.enabled or
+                        item.end_frame != merged.start_frame or
+                        item.source_start_frame + item.frame_count != merged.source_start_frame):
+                    left_index = None
+            if left_index is not None:
+                left = layer.clips[left_index]
+                merged = merged.model_copy(update={"start_frame": left.start_frame,
+                    "source_start_frame": left.source_start_frame,
+                    "frame_count": left.frame_count + merged.frame_count})
+                del layer.clips[left_index]
+                if left_index < clip_index:
+                    clip_index -= 1
+                layer.clips[clip_index] = merged
+                continue
+            right_index = clip_index + 1 if clip_index + 1 < len(layer.clips) else None
+            if right_index is not None:
+                item = layer.clips[right_index]
+                if (item.output_id != merged.output_id or item.enabled != merged.enabled or
+                        item.start_frame != merged.end_frame or item.source_start_frame != source_end):
+                    right_index = None
+            if right_index is None:
+                break
+            right = layer.clips[right_index]
+            merged = merged.model_copy(update={"frame_count": merged.frame_count + right.frame_count})
+            del layer.clips[right_index]
+            if right_index < clip_index:
+                clip_index -= 1
+            layer.clips[clip_index] = merged
     elif command.action == "toggle-clip":
         layer_index, clip_index, _ = find_clip()
         if command.enabled is None:
