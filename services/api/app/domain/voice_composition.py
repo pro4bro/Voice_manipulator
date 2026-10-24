@@ -50,6 +50,7 @@ class VoiceCompositionLayer(DomainModel):
     id: str = Field(min_length=1, max_length=120)
     name: str = Field(min_length=1, max_length=120)
     enabled: bool = True
+    solo: bool = False
     clips: list[VoiceCompositionClip] = Field(default_factory=list, max_length=2000)
 
     @model_validator(mode="after")
@@ -79,7 +80,7 @@ class VoiceComposition(DomainModel):
 
 class VoiceCompositionCommand(DomainModel):
     action: Literal["delete-clip", "split-clip", "trim-left", "trim-right", "move-clip",
-                    "toggle-layer", "toggle-clip"]
+                    "toggle-layer", "solo-layer", "toggle-clip"]
     clip_id: str | None = None
     layer_id: str | None = None
     target_layer_id: str | None = None
@@ -87,6 +88,7 @@ class VoiceCompositionCommand(DomainModel):
     at_frame: int | None = Field(default=None, ge=0, le=MAX_COMPOSITION_FRAMES)
     new_clip_id: str | None = Field(default=None, min_length=1, max_length=120)
     enabled: bool | None = None
+    solo: bool | None = None
 
 
 def apply_voice_composition_command(
@@ -109,6 +111,13 @@ def apply_voice_composition_command(
         if layer is None:
             raise ValueError(f"Voice composition layer not found: {command.layer_id}")
         layer.enabled = command.enabled
+    elif command.action == "solo-layer":
+        if command.layer_id is None or command.solo is None:
+            raise ValueError("Soloing a layer requires layer_id and solo.")
+        layer = next((item for item in layers if item.id == command.layer_id), None)
+        if layer is None:
+            raise ValueError(f"Voice composition layer not found: {command.layer_id}")
+        layer.solo = command.solo
     elif command.action == "delete-clip":
         layer_index, clip_index, _ = find_clip()
         del layers[layer_index].clips[clip_index]
@@ -154,9 +163,11 @@ def apply_voice_composition_command(
     elif command.action == "move-clip":
         layer_index, clip_index, clip = find_clip()
         target = next((item for item in layers if item.id == command.target_layer_id), None)
-        if target is None or command.start_frame is None:
-            raise ValueError("Moving a clip requires an existing target layer and start_frame.")
-        moved = clip.model_copy(update={"start_frame": command.start_frame})
+        if target is None:
+            raise ValueError("Moving a clip requires an existing target layer.")
+        if command.start_frame is not None and command.start_frame != clip.start_frame:
+            raise ValueError("Clip timecode is locked; transfer layers without changing start_frame.")
+        moved = clip.model_copy(deep=True)
         del layers[layer_index].clips[clip_index]
         target.clips.append(moved)
 

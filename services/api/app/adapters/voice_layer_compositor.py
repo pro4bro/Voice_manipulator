@@ -70,8 +70,10 @@ class VoiceLayerCompositor:
     @staticmethod
     def _visible_intervals(composition: VoiceComposition) -> list[_Interval]:
         events: dict[int, list[tuple[bool, int, int, VoiceCompositionClip]]] = {}
+        solo_active = any(layer.solo for layer in composition.layers)
         for layer_index, layer in enumerate(composition.layers):
-            if not layer.enabled:
+            # Disabled (muted) layers never contribute, including when soloed.
+            if not layer.enabled or (solo_active and not layer.solo):
                 continue
             for clip_index, clip in enumerate(layer.clips):
                 if not clip.enabled:
@@ -237,8 +239,10 @@ class VoiceLayerCompositor:
 
     def render(self, project_id: str, composition: VoiceComposition, template_output_id: str) -> VoiceOutput:
         template = self.outputs.get(project_id, template_output_id)
+        solo_active = any(layer.solo for layer in composition.layers)
         required_ids = {template_output_id}
-        required_ids.update(clip.output_id for layer in composition.layers for clip in layer.clips if layer.enabled and clip.enabled)
+        required_ids.update(clip.output_id for layer in composition.layers for clip in layer.clips
+                            if layer.enabled and (not solo_active or layer.solo) and clip.enabled)
         sources = {output_id: self._read_source(self.outputs, project_id, output_id) for output_id in required_ids}
         intervals = self._visible_intervals(composition)
         for interval in intervals:

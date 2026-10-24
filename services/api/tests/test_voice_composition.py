@@ -97,15 +97,51 @@ def test_command_edits_preserve_source_offsets_and_are_immutable():
     deleted = apply_voice_composition_command(trimmed, VoiceCompositionCommand(action="delete-clip", clip_id="clip"))
     assert [clip.id for clip in deleted.layers[0].clips] == ["clip-right"]
     moved = apply_voice_composition_command(split, VoiceCompositionCommand(
-        action="move-clip", clip_id="clip-right", target_layer_id="lower", start_frame=9))
+        action="move-clip", clip_id="clip-right", target_layer_id="lower", start_frame=6))
     assert moved.layers[0].clips[0].id == "clip"
-    assert moved.layers[1].clips[0].start_frame == 9
+    assert moved.layers[1].clips[0].start_frame == 6
+    assert moved.layers[1].clips[0].source_start_frame == 11
+    with pytest.raises(ValueError, match="timecode is locked"):
+        apply_voice_composition_command(split, VoiceCompositionCommand(
+            action="move-clip", clip_id="clip-right", target_layer_id="lower", start_frame=9))
     toggled = apply_voice_composition_command(moved, VoiceCompositionCommand(
         action="toggle-clip", clip_id="clip-right", enabled=False))
     assert not toggled.layers[1].clips[0].enabled
     toggled_layer = apply_voice_composition_command(toggled, VoiceCompositionCommand(
         action="toggle-layer", layer_id="lower", enabled=False))
     assert not toggled_layer.layers[1].enabled
+
+
+def test_solo_composes_only_soloed_layers_and_mute_still_wins(tmp_path):
+    project, outputs = _outputs(tmp_path)
+    base = _source(outputs, project.id, "Base", _tone(1000, 8))
+    fix = _source(outputs, project.id, "Fix", _tone(2000, 8))
+    muted_solo = _source(outputs, project.id, "Muted solo", _tone(3000, 8))
+    source_hashes = {item.id: hashlib.sha256(outputs.audio_path(project.id, item.id).read_bytes()).hexdigest()
+                     for item in (base, fix, muted_solo)}
+    composition = _composition([
+        VoiceCompositionLayer(id="base", name="Base", clips=[VoiceCompositionClip(
+            id="base-clip", output_id=base.id, start_frame=0, source_start_frame=0, frame_count=8)]),
+        VoiceCompositionLayer(id="fix", name="Fix", clips=[VoiceCompositionClip(
+            id="fix-clip", output_id=fix.id, start_frame=0, source_start_frame=0, frame_count=8)]),
+        VoiceCompositionLayer(id="muted", name="Muted solo", enabled=False, solo=True, clips=[VoiceCompositionClip(
+            id="muted-clip", output_id=muted_solo.id, start_frame=0, source_start_frame=0, frame_count=8)]),
+    ], frames=8)
+    solo = apply_voice_composition_command(composition, VoiceCompositionCommand(
+        action="solo-layer", layer_id="fix", solo=True))
+    rendered = VoiceLayerCompositor(outputs, crossfade_frames=0).render(project.id, solo, base.id)
+    with wave.open(str(outputs.audio_path(project.id, rendered.id)), "rb") as audio:
+        samples = struct.unpack("<8h", audio.readframes(8))
+    assert samples == (2000,) * 8
+    muted = apply_voice_composition_command(solo, VoiceCompositionCommand(
+        action="toggle-layer", layer_id="fix", enabled=False))
+    rendered_muted = VoiceLayerCompositor(outputs, crossfade_frames=0).render(project.id, muted, base.id)
+    with wave.open(str(outputs.audio_path(project.id, rendered_muted.id)), "rb") as audio:
+        assert audio.readframes(8) == b"\0" * 16
+    assert source_hashes == {
+        item.id: hashlib.sha256(outputs.audio_path(project.id, item.id).read_bytes()).hexdigest()
+        for item in (base, fix, muted_solo)
+    }
 
 
 def test_add_fix_clip_uses_first_free_layer_then_allocates_lower_layers():

@@ -117,7 +117,7 @@ class FileVoiceOutputSessions:
                 composition = self.base_composition(project_id, output_id)
             except (OSError, ValueError, wave.Error, EOFError):
                 composition = None
-            state = VoiceVersionState(script=script, generated_script=script, config=config,
+            state = VoiceVersionState(script=script, generated_script=script, full_generated_script=script, config=config,
                 generated_config=config, composition=composition, output_id=output_id, owned_output_ids=list(dict.fromkeys([original_id, output_id])))
         return state.model_dump(by_alias=True, mode="json")
 
@@ -382,20 +382,28 @@ class FileVoiceOutputSessions:
         with self._lock:
             return VoiceVersionState.model_validate(self.find(self._sync(project_id), version_id)[1]["state"])
 
-    def publish(self, project_id, version_id, expected_revision, output, script, config, composition=None, full=False, expected_script=None):
+    def publish(self, project_id, version_id, expected_revision, output, script, config, composition=None, full=False,
+                expected_script=None, allow_script_edits=False, expected_composition=None, expected_output_id=None):
         with self._lock:
             book = self._sync(project_id)
             session, version = self.find(book, version_id)
             if session.get("disabled") or version.get("disabled"):
                 raise ScriptRevisionConflict("Slot đã bị Disable; không thay audio hiện tại.")
             state = VoiceVersionState.model_validate(version["state"])
-            if state.revision != expected_revision:
+            if state.revision != expected_revision and not allow_script_edits:
                 raise ScriptRevisionConflict("Version đã đổi trong lúc tạo audio; kết quả chưa được áp dụng.")
-            if expected_script is not None and ({**state.script.model_dump(by_alias=True, mode="json"), "revision": 0}
+            if allow_script_edits:
+                if expected_output_id is None or state.output_id != expected_output_id:
+                    raise ScriptRevisionConflict("Audio nền đã đổi trong lúc Generate Fix; kết quả chưa được áp dụng.")
+                if expected_composition is None or state.composition != expected_composition:
+                    raise ScriptRevisionConflict("Layer đã đổi trong lúc Generate Fix; kết quả chưa được áp dụng.")
+            if expected_script is not None and not allow_script_edits and ({**state.script.model_dump(by_alias=True, mode="json"), "revision": 0}
                     != {**VoiceScriptDocument.model_validate(expected_script).model_dump(by_alias=True, mode="json"), "revision": 0}):
                 raise ScriptRevisionConflict("Script đã đổi trong lúc tạo audio; kết quả chưa được áp dụng.")
             state.composition = self.base_composition(project_id, output.id) if full else composition
             state.output_id, state.generated_script, state.generated_config = output.id, VoiceScriptDocument.model_validate(script), copy.deepcopy(config)
+            if full:
+                state.full_generated_script = VoiceScriptDocument.model_validate(script)
             state.owned_output_ids = list(dict.fromkeys([*state.owned_output_ids, output.id,
                 *[c["outputId"] for layer in (state.composition or {}).get("layers", []) for c in layer["clips"]]]))
             state.revision += 1

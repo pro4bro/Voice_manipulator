@@ -75,7 +75,9 @@ def test_full_and_repeated_fix_publish_bottom_wins_in_current_version(tmp_path):
     first = _full(project, an, speaker, sessions, version_id, script, generation)
     assert first.status == "complete" and first.output is not None
     base = first.output
-    assert sessions.state(project.id, version_id).output_id == base.id
+    initial_state = sessions.state(project.id, version_id)
+    assert initial_state.output_id == base.id
+    assert initial_state.full_generated_script == script
     assert len(sessions.get(project.id)["sessions"]) == 1
     assert len(sessions.find(sessions.get(project.id), version_id)[1]["state"]["composition"]["layers"]) == 1
     _read_pcm(outputs.audio_path(project.id, base.id))
@@ -85,6 +87,8 @@ def test_full_and_repeated_fix_publish_bottom_wins_in_current_version(tmp_path):
     first_fix = generation.start_fix(project.id, version_id, state.revision, background=False)
     assert first_fix.status == "complete" and first_fix.output is not None
     first_composition = sessions.state(project.id, version_id).composition
+    assert sessions.state(project.id, version_id).full_generated_script == script
+    assert sessions.state(project.id, version_id).generated_script.rows[0].text == changed.rows[0].text
     assert first_composition is not None and len(first_composition["layers"]) == 2
     first_fix_clip = first_composition["layers"][1]["clips"][0]
     assert first_fix_clip["outputId"] != base.id
@@ -127,6 +131,7 @@ def test_full_rerun_resets_fix_layers_without_creating_a_session(tmp_path):
     assert rerun.status == "complete" and rerun.output is not None
     state = sessions.state(project.id, version_id)
     assert state.output_id == rerun.output.id != initial.output.id
+    assert state.full_generated_script == state.generated_script == state.script
     assert len(state.composition["layers"]) == 1
     assert state.composition["layers"][0]["clips"][0]["outputId"] == rerun.output.id
     assert len(sessions.get(project.id)["sessions"]) == 1
@@ -169,7 +174,7 @@ def test_clone_copies_version_script_config_composition_and_audio_independently(
 
 
 @pytest.mark.parametrize("stale_change", ["version", "script"])
-def test_generation_refuses_commit_when_version_or_script_changes_midflight(tmp_path, stale_change):
+def test_fix_publishes_captured_audio_and_preserves_concurrent_script_or_config_edits(tmp_path, stale_change):
     class MutatingEngine(FakeEngine):
         callback = None
 
@@ -199,13 +204,16 @@ def test_generation_refuses_commit_when_version_or_script_changes_midflight(tmp_
     engine.callback = stale_version if stale_change == "version" else stale_script
     state = sessions.state(project.id, version_id)
     failed = generation.start_fix(project.id, version_id, state.revision, background=False)
-    assert failed.status == "failed"
-    assert failed.error and ("Version" in failed.error or "Script" in failed.error or "đổi" in failed.error)
+    assert failed.status == "complete"
+    assert failed.output is not None
     current = sessions.state(project.id, version_id)
-    assert current.output_id == previous_output
-    assert current.composition is not None and len(current.composition["layers"]) == 1
+    assert current.output_id == failed.output.id != previous_output
+    assert current.composition is not None and len(current.composition["layers"]) == 2
+    assert current.generated_script.rows[0].text == changed.rows[0].text
+    assert current.full_generated_script == script
+    assert current.script.rows[0].text == "alpha concurrent charlie delta" if stale_change == "script" else current.script.rows[0].text == changed.rows[0].text
     assert before.output.id == previous_output
-    assert {output.id for output in outputs.list(project.id)} == output_ids_before
+    assert {output.id for output in outputs.list(project.id)} > output_ids_before
     if stale_change == "script":
         assert current.script.rows[0].text == "alpha concurrent charlie delta"
     else:
@@ -247,7 +255,7 @@ def test_full_generation_refuses_commit_when_version_or_script_changes_midflight
     assert len(sessions.get(project.id)["sessions"]) == 1
 
 
-def test_script_change_during_fix_composition_cannot_publish_stale_audio(tmp_path, monkeypatch):
+def test_script_change_during_fix_composition_keeps_new_text_pending(tmp_path, monkeypatch):
     from app.adapters.voice_layer_compositor import VoiceLayerCompositor
 
     project, _an, outputs, speaker, sessions, version_id, script, generation = _setup(tmp_path)
@@ -267,13 +275,38 @@ def test_script_change_during_fix_composition_cannot_publish_stale_audio(tmp_pat
 
     monkeypatch.setattr(VoiceLayerCompositor, "render", save_new_script_before_publish)
     failed = generation.start_fix(project.id, version_id, state.revision, background=False)
-    assert failed.status == "failed" and failed.output is None
+    assert failed.status == "complete" and failed.output is not None
     current = sessions.state(project.id, version_id)
-    assert current.output_id == full.output.id
+    assert current.output_id == failed.output.id
     assert current.script.rows[0].text == "alpha concurrent charlie delta"
-    assert len(current.composition["layers"]) == 1
-    assert {item.id for item in outputs.list(project.id)} == before_ids
+    assert current.generated_script.rows[0].text == changed.rows[0].text
+    assert len(current.composition["layers"]) == 2
+    assert {item.id for item in outputs.list(project.id)} > before_ids
     assert changed.rows[0].text == "alpha changed charlie delta"
+
+
+def test_one_fix_job_publishes_separate_same_row_clips_for_disjoint_edits(tmp_path):
+    project, an, outputs, speaker, sessions, version_id, script, generation = _setup(tmp_path)
+    full = _full(project, an, speaker, sessions, version_id, script, generation)
+    generated_base = outputs.get(project.id, full.output.id)
+    words = [{"text": token, "start": index * .25, "end": .2 + index * .25,
+              "timingTrusted": True, "timingSource": "reviewed", "segmentIndex": 0}
+             for index, token in enumerate(("alpha", "bravo", "charlie", "delta"))]
+    outputs.save(project.id, generated_base.model_copy(update={"words": words, "word_timing_quality": "source"}))
+    original = script.rows[0].text
+    changed = _edit_script(speaker, project, script, "alpha bright charlie shiny")
+    state = sessions.state(project.id, version_id)
+    fixed = generation.start_fix(project.id, version_id, state.revision, background=False)
+    assert fixed.status == "complete" and fixed.output is not None
+    state = sessions.state(project.id, version_id)
+    clips = [clip for layer in state.composition["layers"] for clip in layer["clips"]]
+    fixes = [clip for clip in clips if clip["outputId"] != full.output.id]
+    assert len(fixes) == 2
+    assert fixes[0]["startFrame"] + fixes[0]["frameCount"] < fixes[1]["startFrame"]
+    assert state.generated_script.rows[0].text == changed.rows[0].text
+    assert state.full_generated_script.rows[0].text == original
+    frames, pcm = _read_pcm(outputs.audio_path(project.id, fixed.output.id))
+    assert frames == state.composition["durationFrames"] and len(pcm) == frames * 2
 
 
 def test_script_change_at_full_publish_boundary_cannot_commit_candidate(tmp_path, monkeypatch):
