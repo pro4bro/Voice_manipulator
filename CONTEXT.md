@@ -11,6 +11,7 @@
 - **Voice Output Version**: One independently editable voice-production snapshot containing its Script, generation configuration, reference/timing sidecars, subtitle state, and audio composition. New Versions copy their referenced audio so later edits remain independent.
 - **Voice Composition**: An ordered arrangement of Voice Output clips and audio layers on one frame clock; it determines the audible/exported result without rewriting source audio.
 - **Output Slot Menu**: The shared context menu for finished-product Session and Version slots; its actions depend on the slot's supported capabilities and state.
+- **Output Recycle Entry**: A recoverable Session or Version snapshot, retaining its identity, hierarchy, complete editing state and owned generated artifacts until explicit permanent deletion. Shared immutable inputs remain with their source module.
 - **Capture Tier**: How an Asset's audio and transcript came to exist — `guided`, `record`, or `import`. It is provenance, not a quality score, and an Asset written before the field existed derives it from its origin.
 - **Capture Check**: The pre-flight measurement of one recording chain — peak headroom, noise floor, clipping — stored with the Reading Session that measured it.
 - **Speaker Profile**: A human identity in one Project, described by name, language, region, age, and gender. Footage and Script words may reference it before any model exists.

@@ -71,3 +71,11 @@ return to indeterminate between measured copy/alignment stages and validation.
 Queue shows task history; start/retry/stop controls stay with their existing
 features. Global runtime operations without a project use Status; Queue history
 begins when this version starts recording operations.
+
+## OUTPUT-LIFECYCLE-01 correction (2026-10-24)
+
+Training Run state and measured progress now reconcile the receipt projection on
+each Queue read. Stale Done cannot override running, interrupted, failed or
+cancelled Training Runs. Train400/400 remains96% until checkpoint/publication
+finish. Resumed attempts appear under the same operation's History. See ADR0142
+and `docs/gates/output-lifecycle-01-20261024.md`.

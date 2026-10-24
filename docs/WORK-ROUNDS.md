@@ -1,5 +1,22 @@
 # Work Rounds
 
+## OUTPUT-LIFECYCLE-01 — Shared output recovery and Training Queue (2026-10-24)
+
+Training Queue now reconciles real Run state/progress instead of trusting stale
+Done receipts, with resumed attempts grouped under History. Voice Output and
+LipSync have Session/Version Export/Delete symbols, complete recoverable slot
+snapshots, Restore/permanent delete/Empty Bin and owned-artifact ZIP exports.
+Shared action/bin UI also serves Media Pool; lifecycle and artifact policies are
+reusable while format adapters guard jobs, references and immutable sources.
+
+Full frontend1286 and final integration167 pass; typecheck/build226 pass. Full backend
+1606 passes/3 existing warnings; final backend28 passes. Isolated HTTP/PCM/ZIP checks prove active progress,
+Script/WAV recovery, output-picker exclusion and LipSync restoration. Live browser
+UAT is unavailable because local browser use is disabled in Work settings. No owner
+project/media/model/runtime was changed. ADR0142, `docs/OUTPUT-LIFECYCLE.md` and
+`docs/gates/output-lifecycle-01-20261024.md` hold the contract/evidence. Phase03
+stays60%, Phase06 open. Stop this bounded round.
+
 ## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
 
 Completed the owner's approved correction: expandable footage-style Sessions,

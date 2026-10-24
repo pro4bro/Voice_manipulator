@@ -6,11 +6,28 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-24 — VM-VERSION-LAYERS-01 added per-Version state and editable local audio layers.
-last_activity_desc: Full replaces current arrangement; Fix Only adds bottom-priority layers; explicit copies and output menus. Frontend1277/final173, backend1590 plus isolated retry2/final53 pass. Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-24 — OUTPUT-LIFECYCLE-01 unified output recovery and corrected Training Queue state.
+last_activity_desc: Shared Session/Version Export/Delete/Recycle Bin and real Training progress. Frontend1286/final167, backend1606/final28, build226 and isolated HTTP artifacts pass. Live browser disabled. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## OUTPUT-LIFECYCLE-01 — Shared output recovery and Training Queue (2026-10-24)
+
+Training Queue now reconciles real Run state/progress instead of trusting stale
+Done receipts, with resumed attempts grouped under History. Voice Output and
+LipSync have Session/Version Export/Delete symbols, complete recoverable slot
+snapshots, Restore/permanent delete/Empty Bin and owned-artifact ZIP exports.
+Shared action/bin UI also serves Media Pool; lifecycle and artifact policies are
+reusable while format adapters guard jobs, references and immutable sources.
+
+Full frontend1286 and final integration167 pass; typecheck/build226 pass. Full backend
+1606 passes/3 existing warnings; final backend28 passes. Isolated HTTP/PCM/ZIP checks prove active progress,
+Script/WAV recovery, output-picker exclusion and LipSync restoration. Live browser
+UAT is unavailable because local browser use is disabled in Work settings. No owner
+project/media/model/runtime was changed. ADR0142, `docs/OUTPUT-LIFECYCLE.md` and
+`docs/gates/output-lifecycle-01-20261024.md` hold the contract/evidence. Phase03
+stays60%, Phase06 open. Stop this bounded round.
 
 ## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
 
