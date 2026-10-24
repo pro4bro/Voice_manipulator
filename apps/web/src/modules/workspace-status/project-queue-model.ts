@@ -59,10 +59,19 @@ function average(tasks: QueueTask[]): number | null {
   return tasks.reduce((sum, task) => sum + task.fraction!, 0) / tasks.length;
 }
 
+function operationKey(task: QueueTask): string {
+  // Training resumes reuse a run ID. ProjectTaskHistory archives the previous
+  // receipt as `<task-id>@<started-at>`, so strip that attempt suffix to keep
+  // older runs under the current run's History instead of a second Queue slot.
+  const identity = task.kind.toLowerCase() === "training" && task.id.startsWith("training:")
+    ? task.id.split("@")[0] : task.assetId || task.id;
+  return task.kind + "\0" + identity;
+}
+
 function latestAttempts(tasks: QueueTask[]): { current: QueueTask[]; history: QueueTask[] } {
   const byOperation = new Map<string, QueueTask[]>();
   for (const task of tasks) {
-    const key = task.kind + "\0" + (task.assetId || task.id);
+    const key = operationKey(task);
     byOperation.set(key, [...(byOperation.get(key) ?? []), task]);
   }
   const current: QueueTask[] = [];
@@ -110,7 +119,8 @@ export function buildQueueSlots(tasks: ActivityTask[], category: QueueCategory, 
       const tree = buildTree(root);
       const all = flattenTasks([tree]);
       const leaves = leafTasks([tree]);
-      const rootHistory = latest.history.filter((task) => task.parentTaskId === root.id || task.id === root.id);
+      const rootHistory = latest.history.filter((task) => task.parentTaskId === root.id
+        || task.id === root.id || operationKey(task) === operationKey(root));
       const activeChildren = all.filter((task) => task.id !== tree.id);
       const currentOperation = activeChildren.find((task) => task.status === "running") ?? activeChildren.find((task) => task.status === "queued") ?? tree;
       return { id: `task:${root.id}`, label: root.groupLabel ?? root.label, tasks: [tree], history: rootHistory, status: statusOf(all), fraction: average(leaves), currentOperation };

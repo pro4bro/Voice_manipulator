@@ -65,6 +65,24 @@ describe("project queue model", () => {
     expect(slots[0].fraction).toBeNull();
   });
 
+  it("keeps resumed training attempts in one slot and preserves the prior attempt as history", () => {
+    const slots = buildQueueSlots([
+      task("training:run-1@2026-01-01T00:00:00+00:00", {
+        kind: "training", label: "Training · speaker", status: "failed", fraction: 0.96,
+        startedAt: "2026-01-01T00:00:00+00:00", finishedAt: "2026-01-01T00:10:00+00:00",
+      }),
+      task("training:run-1", {
+        kind: "training", label: "Training · speaker", status: "running", fraction: 0.4,
+        startedAt: "2026-01-02T00:00:00+00:00",
+      }),
+    ], "training");
+
+    expect(slots).toHaveLength(1);
+    expect(slots[0].status).toBe("running");
+    expect(slots[0].tasks.map((item) => item.id)).toEqual(["training:run-1"]);
+    expect(slots[0].history.map((item) => item.id)).toEqual(["training:run-1@2026-01-01T00:00:00+00:00"]);
+  });
+
   it("leaves unknown progress unknown and maps generation aliases", () => {
     const slots = buildQueueSlots([task("x", { kind: "tts", fraction: null })], "generate");
     expect(slots[0].fraction).toBeNull();

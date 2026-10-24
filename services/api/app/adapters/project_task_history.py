@@ -121,5 +121,53 @@ class ProjectTaskHistory:
     def tasks(self, project_id):
         with self._lock:
             _, document = self._load(project_id)
+            from app.adapters.file_training_runs import FileTrainingRuns
+
+            runs = FileTrainingRuns(self.projects)
+            # TrainingRun is the durable execution record. Activity receipts are
+            # a projection and can lag after a reconnect or an interrupted API
+            # write, so reconcile the owning process and restore that projection
+            # before returning the project queue.
+            runs.reconcile(project_id)
+            for run in runs.list(project_id):
+                previous = document["tasks"].get(f"training:{run.id}")
+                task = self._training_task(run, previous, runs)
+                if previous is None or previous["task"] != task.model_dump(mode="json", by_alias=True):
+                    self.record(task, force=task.status not in {"queued", "running"})
             return sorted((ActivityTask.model_validate(record["task"]) for record in document["tasks"].values()),
                           key=lambda task: (task.started_at, task.id))
+
+    @staticmethod
+    def _training_task(run, existing_record, runs):
+        from app.adapters.training_runner import STEP_LABELS, run_fraction
+
+        previous = ActivityTask.model_validate(existing_record["task"]) if existing_record else None
+        progress = runs.progress(run.project_id, run.id, limit=1)
+        line = progress[-1] if progress else None
+        step_id = line.step_id if line else run.step_id
+        step = line.global_step if line and line.global_step is not None else run.global_step
+        steps = max(1, run.config.steps or 1)
+        fraction = run_fraction(step_id, step, steps, line.done if line else None, line.total if line else None)
+        if run.status == "complete":
+            fraction = 1.0
+
+        status = {"pending": "queued", "running": "running", "interrupted": "interrupted",
+            "cancelled": "cancelled", "failed": "failed", "complete": "complete"}[run.status]
+        if line and line.step_id == "train":
+            detail = f"step {step}/{steps}"
+        elif line and line.total:
+            detail = f"{STEP_LABELS.get(step_id, step_id)} · {line.done or 0}/{line.total}"
+        else:
+            detail = STEP_LABELS.get(step_id, step_id)
+
+        started_at = previous.started_at if previous else run.created_at
+        finished_at = None if status in {"queued", "running"} else (previous.finished_at if previous and previous.status == status else run.updated_at)
+        seconds = max(0.0, (finished_at - started_at).total_seconds()) if finished_at else None
+        return ActivityTask(
+            id=f"training:{run.id}", kind="training",
+            label=previous.label if previous else f"Training · {run.speaker_profile_id or 'Toàn bộ dataset'}",
+            detail=detail, status=status, fraction=fraction,
+            eta_seconds=(max(0, steps - step) / line.steps_per_second if line and line.steps_per_second and step_id == "train" else None),
+            project_id=run.project_id, error=run.error, started_at=started_at,
+            updated_at=run.updated_at, finished_at=finished_at, seconds=seconds,
+        )
