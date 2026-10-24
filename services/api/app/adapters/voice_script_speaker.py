@@ -257,6 +257,10 @@ class VoiceScriptSpeaker:
             self._jobs[record.id] = job
         return record.id
 
+    def is_running(self, project_id: str) -> bool:
+        with self._lock:
+            return any(job.record.project_id == project_id and job.record.status == "running" for job in self._jobs.values())
+
     def bind_publisher(self, project_id: str, job_id: str, publisher) -> None:
         with self._lock:
             job = self._jobs.get(job_id)

@@ -54,12 +54,20 @@ class FileVoiceOutputs:
         temporary.replace(folder / "output.json")
         return output
 
-    def list(self, project_id: str) -> list[VoiceOutput]:
+    def list(self, project_id: str, *, include_recycled: bool = False) -> list[VoiceOutput]:
         root = self.root(project_id)
         if not root.is_dir():
             return []
+        hidden = set()
+        book_path = Path(self.projects.get(project_id).project_path) / "scripts/voice-output-sessions.json"
+        if not include_recycled and book_path.is_file():
+            import json
+            from app.domain.output_lifecycle import recycled_output_ids
+            hidden = recycled_output_ids(json.loads(book_path.read_text(encoding="utf-8")))
         outputs: list[VoiceOutput] = []
         for record in root.glob("*/output.json"):
+            if record.parent.name in hidden:
+                continue
             try:
                 output = VoiceOutput.model_validate_json(record.read_text(encoding="utf-8"))
                 audio = record.parent / "audio.wav"
@@ -96,7 +104,7 @@ class FileVoiceOutputs:
         clips = self.clips_root(project_id)
         if not clips.is_dir():
             return 0
-        used = {segment.clip for output in self.list(project_id) for segment in output.segments if segment.clip}
+        used = {segment.clip for output in self.list(project_id, include_recycled=True) for segment in output.segments if segment.clip}
         for provider in self.clip_reference_providers:
             used.update(provider(project_id))
         now = time.time()

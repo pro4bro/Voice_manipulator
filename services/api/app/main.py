@@ -521,6 +521,7 @@ def create_app(
         scripts=voice_script_documents, timing_plans=timing_plans,
     )
     voice_version_generation = VoiceVersionGeneration(voice_output_sessions, voice_script_speaker)
+    voice_output_sessions.is_busy = voice_script_speaker.is_running
     reference_schedules = FileReferenceSchedules(reference_bindings, voice_script_documents)
     voice_fixes = VoiceFixService(voice_script_speaker, voice_edits, reference_bindings, reference_schedules)
     voice_patch_source = FileVoicePatch(voice_edits)
@@ -2553,6 +2554,18 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(404, "Slot không tồn tại") from exc
         except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(409, "Không thể thay đổi thành phẩm; đóng file đang được ứng dụng khác sử dụng rồi thử lại.") from exc
+
+    @app.get("/api/projects/{project_id}/voice-output-sessions/export")
+    async def export_voice_slot(project_id: str, kind: Literal["session", "version"], id: str):
+        try:
+            path = await asyncio.to_thread(voice_output_sessions.export_slot, project_id, kind, id)
+            return FileResponse(path, media_type="application/zip", filename=path.name)
+        except KeyError as exc:
+            raise HTTPException(404, "Slot không tồn tại") from exc
+        except (ValueError, OSError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/voice-outputs/{output_id}/reveal", status_code=204)

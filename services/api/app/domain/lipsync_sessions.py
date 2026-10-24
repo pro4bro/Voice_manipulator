@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any, Literal
 from pydantic import Field, model_validator
 from app.domain.lipsync_faces import FaceReview
 from app.domain.lipsync import LipSyncModel, LipSyncDocument, Id
@@ -31,13 +32,25 @@ class LipSyncVersion(LipSyncModel):
 class LipSyncSession(LipSyncModel):
     id: Id
     name: str = Field(min_length=1, max_length=120)
-    versions: list[LipSyncVersion] = Field(min_length=1, max_length=200)
+    versions: list[LipSyncVersion] = Field(default_factory=list, max_length=200)
+
+
+class LipSyncRecycleEntry(LipSyncModel):
+    id: Id
+    kind: Literal["session", "version"]
+    name: str
+    deleted_at: str
+    snapshot: dict[str, Any]
+    index: int = 0
+    parent_session_id: Id | None = None
+    parent_session_name: str | None = None
 
 
 class LipSyncSessions(LipSyncModel):
     version: int = Field(default=1, ge=1, le=1)
     revision: int = Field(default=0, ge=0)
     sessions: list[LipSyncSession] = Field(default_factory=list, max_length=200)
+    recycle: list[LipSyncRecycleEntry] = Field(default_factory=list)
     active_session_id: Id | None = None
     active_version_id: Id | None = None
 
@@ -47,10 +60,10 @@ class LipSyncSessions(LipSyncModel):
         version_ids = [v.id for s in self.sessions for v in s.versions]
         if len(set(session_ids)) != len(session_ids) or len(set(version_ids)) != len(version_ids):
             raise ValueError("ID Session/Version bị trùng")
-        if self.sessions:
+        if self.sessions and (self.active_session_id or self.active_version_id):
             selected = next((s for s in self.sessions if s.id == self.active_session_id), None)
             if not selected or self.active_version_id not in {v.id for v in selected.versions}:
                 raise ValueError("Version không thuộc Session đang chọn")
-        elif self.active_session_id or self.active_version_id:
+        elif not self.sessions and (self.active_session_id or self.active_version_id):
             raise ValueError("Chưa có Session")
         return self

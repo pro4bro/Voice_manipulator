@@ -16,6 +16,9 @@ from app.domain.models import VoiceOutput
 from app.domain.voice_edits import VoiceEditDocument
 from app.domain.voice_script_document import VoiceScriptDocument
 from app.domain.voice_versions import VoiceVersionState
+from app.domain.output_lifecycle import (normalize_recycle, find_slot, recycle_slot, restore_slot,
+    recycled_entry, output_ids, slot_versions)
+from app.adapters.output_artifacts import checked_path, purge_owned, export_owned
 
 _SIDECARS = ("reference-bindings.json", "timing-plans.json")
 
@@ -31,6 +34,7 @@ class FileVoiceOutputSessions:
         self.outputs = outputs
         self.scripts = scripts or FileVoiceScript(outputs.projects)
         self._checking_out = False
+        self.is_busy = lambda _project_id: False
 
     def root(self, project_id):
         return Path(self.outputs.projects.get(project_id).project_path)
@@ -122,7 +126,9 @@ class FileVoiceOutputSessions:
         exists = path.is_file()
         book = json.loads(path.read_text(encoding="utf-8")) if exists else {
             "schemaVersion": 2, "revision": 0, "activeSessionId": None, "activeVersionId": None, "sessions": [], "recycle": []}
-        changed = False
+        prior_recycle = encode(book.get("recycle", []))
+        normalize_recycle(book)
+        changed = prior_recycle != encode(book["recycle"])
         migrating = not exists or book.get("schemaVersion", 1) < 2
         # Migrate once. Later generated artifacts are explicitly committed to a
         # captured Version, never assigned by timestamp/list order.
@@ -418,21 +424,77 @@ class FileVoiceOutputSessions:
     def slot_action(self, project_id, revision, slot_id, kind, name=None):
         with self._lock:
             book = self._current(project_id, revision)
-            target = next((s for s in book["sessions"] if s["id"] == slot_id), None)
-            parent = None
-            if target is None:
-                parent, target = self.find(book, slot_id)
+            if kind in {"remove", "restore", "purge", "empty-bin"}:
+                if self.is_busy(project_id):
+                    raise ScriptRevisionConflict("Đợi Generate kết thúc trước khi thay đổi Recycle Bin.")
+                if kind == "restore":
+                    restore_slot(book, slot_id)
+                elif kind in {"purge", "empty-bin"}:
+                    entries = list(book["recycle"]) if kind == "empty-bin" else [recycled_entry(book, slot_id)]
+                    if any(entry is None for entry in entries):
+                        raise KeyError(slot_id)
+                    deleting = set().union(*(output_ids(e["snapshot"]) for e in entries)) if entries else set()
+                    remaining = [e for e in book["recycle"] if e not in entries]
+                    retained = set().union(*(output_ids(s) for s in book["sessions"]), *(output_ids(e["snapshot"]) for e in remaining))
+                    if deleting & (retained | self._lipsync_output_references(project_id)):
+                        raise ScriptRevisionConflict("Thành phẩm đang được Version khác sử dụng. Xóa Version liên quan trước khi xóa hẳn.")
+                    paths = [checked_path(self.outputs.root(project_id), self.outputs.root(project_id) / oid) for oid in deleting]
+                    book["recycle"] = remaining
+                    result = purge_owned(self.root(project_id), paths, lambda: self._write(project_id, book))
+                    self.outputs.prune_clips(project_id, keep_recent_seconds=0)
+                    return result
+                else:
+                    previous = book.get("activeVersionId")
+                    recycle_slot(book, slot_id)
+                    if previous and not book.get("activeVersionId"):
+                        self._checkout(project_id, {"state": VoiceVersionState().model_dump(by_alias=True, mode="json")})
+                return self._write(project_id, book)
+            _, target = find_slot(book, slot_id)
             if kind == "rename" and name and name.strip():
                 target["name"] = name.strip()
             elif kind == "disable":
                 target["disabled"] = not target.get("disabled", False)
                 if target["disabled"] and (slot_id == book["activeVersionId"] or slot_id == book["activeSessionId"]):
                     book["activeVersionId"], book["activeSessionId"] = None, None
-            elif kind == "remove":
-                book.setdefault("recycle", []).append(copy.deepcopy(target))
-                (parent["versions"] if parent else book["sessions"]).remove(target)
-                if book["activeVersionId"] not in {v["id"] for s in book["sessions"] for v in s["versions"]}:
-                    book["activeVersionId"], book["activeSessionId"] = None, None
             else:
                 raise ValueError("Thao tác slot không hợp lệ.")
             return self._write(project_id, book)
+
+    def _lipsync_output_references(self, project_id):
+        references = set()
+        root = self.root(project_id)
+        # Recycled LipSync Versions retain their state files until permanent
+        # deletion, so they protect referenced Voice Outputs too.
+        paths = [root / "scripts/lipsync-composition.json", *(root / "scripts/lipsync/versions").glob("*.json")]
+        for path in paths:
+            if not path.is_file():
+                continue
+            state = json.loads(path.read_text(encoding="utf-8"))
+            for document in [state.get("document", state), *state.get("past", []), *state.get("future", [])]:
+                if document.get("audio"):
+                    references.add(document["audio"]["outputId"])
+        return references
+
+    def export_slot(self, project_id, kind, slot_id):
+        with self._lock:
+            book = self._sync(project_id)
+            parent, slot = find_slot(book, slot_id)
+            if kind != ("version" if parent else "session"):
+                raise ValueError("Loại slot không khớp.")
+            paths = []
+            for oid in output_ids(slot):
+                self.base_composition(project_id, oid)
+                paths.append(checked_path(self.outputs.root(project_id), self.outputs.root(project_id) / oid))
+                output = self.outputs.get(project_id, oid)
+                for segment in output.segments:
+                    if segment.clip:
+                        clip = checked_path(self.outputs.clips_root(project_id), self.outputs.clips_root(project_id) / segment.clip)
+                        if clip.is_dir():
+                            paths.append(clip)
+                if output.segments:
+                    from app.adapters.subtitle_exporter import SubtitleExporter
+                    paths.append(SubtitleExporter().export_voice_output_lines(self.outputs.projects.get(project_id), output))
+            session = slot if parent is None else {**parent, "versions": [slot]}
+            manifest = {"format": "pro4bro-output-slot", "version": 1, "module": "voice", "kind": kind,
+                "sessions": [session]}
+            return export_owned(self.root(project_id), kind, slot["name"], manifest, paths)

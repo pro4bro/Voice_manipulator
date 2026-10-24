@@ -45,6 +45,12 @@ class SelectionRequest(BaseModel):
     version_id: str = Field(alias="versionId")
 
 
+class SlotActionRequest(BaseModel):
+    revision: int = Field(ge=0)
+    id: str = Field(min_length=1, max_length=120)
+    kind: Literal["remove", "restore", "purge", "empty-bin"]
+
+
 def lipsync_router(catalog, projects, media, outputs, *, runtime_root=None, gpu_lease=None):
     router = APIRouter()
     store = FileLipSync(projects, media, outputs, catalog)
@@ -62,6 +68,8 @@ def lipsync_router(catalog, projects, media, outputs, *, runtime_root=None, gpu_
             raise HTTPException(404, "Không có project/job/khuôn mặt")
         except (ValueError, TypeError) as exc:
             raise HTTPException(422, str(exc))
+        except OSError as exc:
+            raise HTTPException(409, "Không xử lý được file thành phẩm; đóng chương trình đang dùng file rồi thử lại.") from exc
 
     def context(project_id: str, version_id: str | None = Query(default=None, alias="versionId")):
         if version_id is None:
@@ -81,6 +89,15 @@ def lipsync_router(catalog, projects, media, outputs, *, runtime_root=None, gpu_
     @router.get("/api/projects/{project_id}/lipsync/sessions")
     def get_sessions(project_id: str):
         return checked(lambda: sessions.get(project_id))
+
+    @router.post("/api/projects/{project_id}/lipsync/sessions/slots")
+    def mutate_slot(project_id: str, request: SlotActionRequest):
+        return checked(lambda: sessions.slot_action(project_id, request.revision, request.id, request.kind))
+
+    @router.get("/api/projects/{project_id}/lipsync/sessions/export")
+    def export_slot(project_id: str, kind: Literal["session", "version"], id: str):
+        path = checked(lambda: sessions.export_slot(project_id, kind, id))
+        return FileResponse(path, media_type="application/zip", filename=path.name)
 
     @router.post("/api/projects/{project_id}/lipsync/sessions")
     def create_session(project_id: str, request: SessionRequest):

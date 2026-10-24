@@ -5,6 +5,9 @@ from app.adapters.file_lipsync import FileLipSync
 from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import ScriptRevisionConflict
 from app.domain.lipsync_sessions import LipSyncSessions, LipSyncSession, LipSyncVersion, LipSyncVersionState
+from app.domain.output_lifecycle import find_slot, recycle_slot, restore_slot, recycled_entry, slot_versions
+from app.adapters.output_artifacts import checked_path, purge_owned, export_owned
+from app.adapters.listening_ports import process_is_alive
 
 
 class FileLipSyncSessions:
@@ -96,3 +99,67 @@ class FileLipSyncSessions:
             session.versions.append(version)
             book.active_session_id, book.active_version_id = session.id, version.id
             return self._write(project_id, book)
+
+    def _version_paths(self, project_id, version_id):
+        scoped = FileLipSync(self.store.projects, self.store.media, self.store.outputs, self.store.catalog, version_id)
+        root = self.store.root(project_id)
+        paths = []
+        if scoped.state_path(project_id).is_file():
+            paths.append(scoped.state_path(project_id))
+        if version_id == "legacy":
+            if (root / "scripts/lipsync-composition.json").is_file():
+                paths.append(root / "scripts/lipsync-composition.json")
+            paths.extend(status.parent for status in scoped.jobs_root(project_id).glob("*/status.json") if status.parent.name != "versions")
+        elif scoped.jobs_root(project_id).exists():
+            paths.append(scoped.jobs_root(project_id))
+        return paths
+
+    def _assert_idle(self, project_id, versions):
+        for version in versions:
+            scoped = FileLipSync(self.store.projects, self.store.media, self.store.outputs, self.store.catalog, version["id"])
+            for status in scoped.jobs_root(project_id).glob("*/status.json"):
+                job = json.loads(status.read_text(encoding="utf-8"))
+                if job.get("status") in {"queued", "running"} and process_is_alive(job.get("ownerPid", 0)):
+                    raise ScriptRevisionConflict("Đợi job LipSync kết thúc trước khi thay đổi slot.")
+
+    def slot_action(self, project_id, revision, slot_id, kind):
+        with self.store._lock:
+            typed = self._current(project_id, revision)
+            book = typed.model_dump(by_alias=True, mode="json")
+            if kind == "remove":
+                _, target = find_slot(book, slot_id)
+                self._assert_idle(project_id, slot_versions(target))
+                recycle_slot(book, slot_id)
+            elif kind == "restore":
+                restore_slot(book, slot_id)
+            elif kind in {"purge", "empty-bin"}:
+                entries = list(book["recycle"]) if kind == "empty-bin" else [recycled_entry(book, slot_id)]
+                if any(entry is None for entry in entries):
+                    raise KeyError(slot_id)
+                versions = [v for e in entries for v in slot_versions(e["snapshot"])]
+                self._assert_idle(project_id, versions)
+                paths = [path for v in versions for path in self._version_paths(project_id, v["id"])]
+                book["recycle"] = [entry for entry in book["recycle"] if entry not in entries]
+                updated = LipSyncSessions.model_validate(book)
+                return purge_owned(self.store.root(project_id), paths, lambda: self._write(project_id, updated))
+            else:
+                raise ValueError("Thao tác slot không hợp lệ.")
+            return self._write(project_id, LipSyncSessions.model_validate(book))
+
+    def export_slot(self, project_id, kind, slot_id):
+        with self.store._lock:
+            book = self.get(project_id).model_dump(by_alias=True, mode="json")
+            parent, slot = find_slot(book, slot_id)
+            if kind != ("version" if parent else "session"):
+                raise ValueError("Loại slot không khớp.")
+            versions = slot_versions(slot)
+            self._assert_idle(project_id, versions)
+            paths, states = [], {}
+            for version in versions:
+                scoped = self.scoped(project_id, version["id"])
+                states[version["id"]] = scoped.get_state(project_id).model_dump(by_alias=True, mode="json")
+                paths.extend(self._version_paths(project_id, version["id"]))
+            session = slot if parent is None else {**parent, "versions": [slot]}
+            return export_owned(self.store.root(project_id), kind, slot["name"],
+                {"format": "pro4bro-output-slot", "version": 1, "module": "lipsync", "kind": kind,
+                    "sessions": [session], "states": states}, paths)
