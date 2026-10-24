@@ -208,6 +208,7 @@ class _Job:
     commit_lock: threading.Lock = field(default_factory=threading.Lock)
     active_request_id: str | None = None
     active_worker: Any | None = None
+    publisher: Callable[[VoiceOutput, bool], VoiceOutput] | None = None
 
 
 class VoiceScriptSpeaker:
@@ -255,6 +256,19 @@ class VoiceScriptSpeaker:
                 raise VoiceScriptBusy("Đang đọc một Script khác của project này.")
             self._jobs[record.id] = job
         return record.id
+
+    def bind_publisher(self, project_id: str, job_id: str, publisher) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is None or job.record.project_id != project_id or job.start_claimed:
+            raise ValueError("Generate reservation is unavailable.")
+        job.publisher = publisher
+
+    def discard_reservation(self, project_id: str, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job and job.record.project_id == project_id and not job.start_claimed:
+                self._jobs.pop(job_id, None)
 
     def start(
         self, project_id: str, request: VoiceScriptRequest, *, background: bool = True,
@@ -593,7 +607,7 @@ class VoiceScriptSpeaker:
                 should_stop = should_stop or (
                     job.stop_after_current and job.record.done < job.record.total
                 ) or job.record.status == "stopped"
-                saved = self.outputs.save(project_id, candidate)
+                saved = job.publisher(candidate, should_stop) if job.publisher else self.outputs.save(project_id, candidate)
                 job.record = job.record.model_copy(update={
                     "status": "stopped" if should_stop else "complete", "output": saved,
                     "current_row_id": None, "message": None, "finished_at": datetime.now(timezone.utc),

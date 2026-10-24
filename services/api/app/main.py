@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import time
+import wave
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,6 +47,8 @@ from app.adapters.collection_voice_preview import CollectionVoicePreviews, make_
 from app.adapters.file_voice_model_sets import FileVoiceModelSets
 from app.adapters.file_voice_outputs import FileVoiceOutputs
 from app.adapters.file_voice_output_sessions import FileVoiceOutputSessions
+from app.adapters.voice_version_generation import VoiceVersionGeneration
+from app.domain.voice_versions import VoiceVersionSave, VoiceVersionSlotAction
 from app.adapters.file_voice_edits import FileVoiceEdits
 from app.adapters.voice_edit_routes import make_voice_edit_router
 from app.adapters.voice_delivery_routes import make_voice_delivery_router
@@ -326,7 +329,16 @@ class VoiceOutputVersionSelectRequest(VoiceOutputSessionRequest):
 
 
 class VoiceOutputVersionCreateRequest(VoiceOutputSessionRequest):
-    source_output_id: str = Field(alias="sourceOutputId", min_length=1)
+    source_output_id: str | None = Field(default=None, alias="sourceOutputId", min_length=1)
+    source_version_id: str | None = Field(default=None, alias="sourceVersionId", min_length=1)
+
+
+class VoiceOutputAdoptRequest(VoiceOutputSessionRequest):
+    output_id: str = Field(alias="outputId", pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$")
+
+
+class VoiceOutputLayerRequest(VoiceOutputSessionRequest):
+    command: dict
 
 
 def create_app(
@@ -467,8 +479,9 @@ def create_app(
             pass
 
     voice_outputs = FileVoiceOutputs(projects)
-    voice_output_sessions = FileVoiceOutputSessions(voice_outputs)
     voice_script_documents = FileVoiceScript(projects)
+    voice_output_sessions = FileVoiceOutputSessions(voice_outputs, voice_script_documents)
+    voice_script_documents.after_save = voice_output_sessions.capture_active_script
     voice_edits = FileVoiceEdits(voice_outputs, voice_script_documents)
     reference_bindings = FileReferenceBindings(projects, media, voice_outputs, voice_script_documents)
     reference_resolver = ReferenceResolver(reference_bindings, settings.ffmpeg_path)
@@ -507,6 +520,7 @@ def create_app(
         ffmpeg_path=settings.ffmpeg_path,
         scripts=voice_script_documents, timing_plans=timing_plans,
     )
+    voice_version_generation = VoiceVersionGeneration(voice_output_sessions, voice_script_speaker)
     reference_schedules = FileReferenceSchedules(reference_bindings, voice_script_documents)
     voice_fixes = VoiceFixService(voice_script_speaker, voice_edits, reference_bindings, reference_schedules)
     voice_patch_source = FileVoicePatch(voice_edits)
@@ -2463,6 +2477,22 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
 
+    @app.post("/api/projects/{project_id}/voice-output-sessions/adopt")
+    def adopt_voice_output(project_id: str, payload: VoiceOutputAdoptRequest) -> dict:
+        try:
+            book, output = voice_output_sessions.adopt_output(project_id, payload.revision, payload.output_id)
+            return {"sessions": book, "output": output.model_dump(by_alias=True, mode="json")}
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Voice Output/Project not found") from exc
+        except ValueError as exc:
+            if "Bật lại slot" in str(exc):
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (OSError, wave.Error, EOFError) as exc:
+            raise HTTPException(status_code=400, detail="Voice Output cần WAV PCM16 mono 24 kHz hợp lệ.") from exc
+
     @app.post("/api/projects/{project_id}/voice-output-sessions/select")
     def select_voice_output_version(project_id: str, payload: VoiceOutputVersionSelectRequest) -> dict:
         try:
@@ -2471,18 +2501,72 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Version không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/voice-output-sessions/versions")
     def create_voice_output_version(project_id: str, payload: VoiceOutputVersionCreateRequest) -> dict:
         try:
-            book, output = voice_output_sessions.create_version(project_id, payload.revision, payload.source_output_id)
-            return {"sessions": book, "output": output.model_dump(by_alias=True, mode="json")}
+            book, output = voice_output_sessions.create_version(project_id, payload.revision, payload.source_output_id, payload.source_version_id)
+            return {"sessions": book, "output": output.model_dump(by_alias=True, mode="json") if output else None}
         except ScriptRevisionConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (KeyError, FileNotFoundError) as exc:
             raise HTTPException(status_code=404, detail="Voice Output nguồn không tồn tại") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/projects/{project_id}/voice-output-sessions/versions/{version_id}/state")
+    def save_voice_version_state(project_id: str, version_id: str, payload: VoiceVersionSave):
+        try:
+            return voice_output_sessions.save_state(project_id, version_id, payload.revision, payload.script, payload.config)
+        except KeyError as exc:
+            raise HTTPException(404, "Version không tồn tại") from exc
+        except (ScriptRevisionConflict, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions/versions/{version_id}/layers")
+    async def edit_voice_version_layers(project_id: str, version_id: str, payload: VoiceOutputLayerRequest):
+        try:
+            book, output = await asyncio.to_thread(voice_output_sessions.edit_composition, project_id, version_id, payload.revision, payload.command)
+            return {"sessions": book, "output": output.model_dump(by_alias=True, mode="json")}
+        except KeyError as exc:
+            raise HTTPException(404, "Version/audio không tồn tại") from exc
+        except ScriptRevisionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions/versions/{version_id}/fix", response_model=VoiceScriptJob)
+    async def generate_voice_version_fix(project_id: str, version_id: str, payload: VoiceOutputSessionRequest):
+        try:
+            return await asyncio.to_thread(voice_version_generation.start_fix, project_id, version_id, payload.revision)
+        except KeyError as exc:
+            raise HTTPException(404, "Version/audio/voice không tồn tại") from exc
+        except (ValueError, GpuBusy, TrainingModelUnavailable, VoiceScriptBusy) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-output-sessions/slots")
+    def change_voice_version_slot(project_id: str, payload: VoiceVersionSlotAction):
+        try:
+            return voice_output_sessions.slot_action(project_id, payload.revision, payload.id, payload.kind, payload.name)
+        except KeyError as exc:
+            raise HTTPException(404, "Slot không tồn tại") from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/projects/{project_id}/voice-outputs/{output_id}/reveal", status_code=204)
+    def reveal_voice_output_file(project_id: str, output_id: str):
+        try:
+            target = voice_outputs.audio_path(project_id, output_id)
+            if not target.is_file():
+                raise FileNotFoundError(target)
+            reveal(target)
+            return Response(status_code=204)
+        except (KeyError, FileNotFoundError) as exc:
+            raise HTTPException(404, "Audio không tồn tại") from exc
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @app.get("/api/projects/{project_id}/voice-outputs/{output_id}/audio")
     def voice_output_audio(project_id: str, output_id: str) -> Response:
@@ -2693,6 +2777,11 @@ def create_app(
             # Planning checks every row's voice and generator before the GPU is
             # taken; the rows are then read in the background and polled.
             reserved_job_id = voice_script_speaker.reserve(project_id, payload)
+            try:
+                voice_version_generation.bind_full(project_id, payload, reserved_job_id)
+            except Exception:
+                voice_script_speaker.discard_reservation(project_id, reserved_job_id)
+                raise
             return await asyncio.to_thread(voice_script_speaker.start, project_id, payload, reserved_job_id=reserved_job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project không tồn tại") from exc

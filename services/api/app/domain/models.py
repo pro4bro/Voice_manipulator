@@ -1569,6 +1569,8 @@ class VoiceScriptRow(DomainModel):
 
 
 class VoiceScriptRequest(DomainModel):
+    version_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")
+    version_revision: int | None = Field(default=None, ge=0)
     script_revision: int | None = Field(default=None, ge=0)
     timing_revision: int | None = Field(default=None, ge=0)
     reference_revision: int | None = Field(default=None, ge=0)

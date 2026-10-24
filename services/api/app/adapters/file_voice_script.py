@@ -36,4 +36,7 @@ class FileVoiceScript:
             path = self._path(project_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             FileProjectRepository._atomic_write(path, saved.model_dump_json(by_alias=True, indent=2))
-            return saved
+        after_save = getattr(self, "after_save", None)
+        if after_save:
+            after_save(project_id, saved)
+        return saved
