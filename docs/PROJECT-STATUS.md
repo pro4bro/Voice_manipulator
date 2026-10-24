@@ -1,5 +1,24 @@
 # Project Status — 2026-10-24
 
+## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
+
+Voice Output now uses expandable footage-style Sessions and shared output menus.
+Each Version persists its Script/config/reference/timing/subtitles and ordered
+audio layers. New Version makes independent artifact copies; Full regenerates
+and replaces the same Version's arrangement. Fix Only detects newly changed
+regions, fits clips to source timing and puts newer overlaps below older clips.
+Playback/export uses the same bottom-wins mix. Layer trim/split/move/mute/delete,
+disabled-slot guards and explicit adoption of other processor results are wired.
+
+Full frontend1277, final focused173, final Patch callback70, typecheck/build224
+pass. Full backend1590 pass/1 unchanged VibeVoice import timeout; isolated runtime/
+cancellation2 pass24.57s; final backend53 pass. Isolated browser/PCM checks verify
+clone independence, Script/config restore, layer edits, theme menus, restart and
+matching downloaded WAV. Real-model perceptual listening remains open. Missing
+word timing falls back to an affected row; structural row changes require Full.
+Contract/ADR0141 and `docs/gates/vm-version-layers-01-20261024.md` hold evidence.
+Phase03 remains60%, Phase06 open; stop this bounded round.
+
 ## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
 
 Voice Output supports project-owned Session/Version selection. New Session

@@ -1,5 +1,17 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
+
+Owner-approved correction implements per-Version Script/config/subtitles/audio,
+expandable Sessions, shared output menus, Full replacement and local Fix layers
+with bottom-wins playback/export. New Version makes independent artifact copies;
+layer trim/split/move/mute/delete update the selected Version. Full frontend1277,
+final173/Patch70, typecheck/build224 and final backend53 pass. Full backend1590
+pass/1 existing VibeVoice import timeout; isolated import/cancellation2 pass.
+Browser/PCM checks verify both themes, clone/restore, layer edits, restart and
+matching WAV export. Real-model listening remains open. ADR0141 and the round
+gate record the contract/evidence. Phase03 stays60%, Phase06 open; stop round.
+
 ## PROJECT-QUEUE-01 — persistent project Queue (2026-10-23)
 
 Implemented the approved footage mockup: Import/STT/alignment/diarization share

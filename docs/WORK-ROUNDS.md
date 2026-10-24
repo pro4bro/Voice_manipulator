@@ -1,5 +1,24 @@
 # Work Rounds
 
+## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
+
+Completed the owner's approved correction: expandable footage-style Sessions,
+shared output context menus, per-Version Script/config/subtitles and independent
+copies. Generate Full replaces the current Version's Full/Fix arrangement;
+Generate Fix Only places local clips with newer overlaps below older layers.
+Bottom-wins rendering drives playback/export; trim/split/move/mute/delete stay
+in the selected Version. Other completed processor outputs explicitly adopt a
+slot without exposing internal artifacts. Disabled slots reject publication.
+
+Full frontend1277 passes; final focused173 and Patch regression70, typecheck/
+build224 pass. Full backend1590 pass/1 unchanged VibeVoice60s import timeout;
+isolated import/cancellation2 pass24.57s. Final backend53 pass. Browser checks
+both themes, menu, clone, restore, mute, trim, reload/API restart and matching WAV
+download on isolated synthetic PCM. No owner project/media/model changed.
+Real-model listening remains open; timing-less structural edits require Full.
+See ADR0141, `docs/VOICE-VERSION-LAYERS.md` and the round gate. Phase03 stays60%,
+Phase06 open. Stop this bounded round.
+
 ## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
 
 Voice Output now has icon-only New Session and New Version actions. Sessions

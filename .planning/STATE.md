@@ -6,11 +6,23 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-24 — VM-OUTPUT-SESSIONS-01 added Voice Output Sessions and Versions.
-last_activity_desc: Independent WAV/edit-journal version copies, empty Sessions and theme-colored engine options. Full frontend1263/backend1545 pass; final focused22 frontend and3 backend pass. Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-24 — VM-VERSION-LAYERS-01 added per-Version state and editable local audio layers.
+last_activity_desc: Full replaces current arrangement; Fix Only adds bottom-priority layers; explicit copies and output menus. Frontend1277/final173, backend1590 plus isolated retry2/final53 pass. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## VM-VERSION-LAYERS-01 — Version state and local audio layers (2026-10-24)
+
+Approved Version ownership, Full replacement and local Fix layering are wired.
+Sessions expand into Version tracks; New Version copies Script/config/subtitles
+and audio independently. Layer edits and bottom-wins playback/export persist;
+existing external processors explicitly adopt finished outputs. Browser fixture
+proves restore, mute/trim, both themes, restart and exact exported WAV. Full
+frontend1277, final173/Patch70 and build224 pass. Backend1590 pass/1 existing
+VibeVoice import timeout; isolated retry2 passes, final focused53 passes. The
+real-model listening gate remains open; structural Script changes require Full.
+See ADR0141 and the round gate. Phase03 stays60%, Phase06 open; stop round.
 
 ## VM-OUTPUT-SESSIONS-01 — Voice Output Sessions and themed engine picker (2026-10-24)
 
