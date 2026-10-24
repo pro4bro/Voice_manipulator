@@ -1,4 +1,24 @@
-# Project Status — 2026-10-24
+# Project Status — 2026-10-25
+
+## VM-TIMELINE-DIRECT-EDIT-01 — Direct clip editing and literal Script rows (2026-10-25)
+
+Removed the bottom clip form; the top Timeline toolbar now cuts/uncuts/deletes,
+resets to the latest successful Full/Fix arrangement and transfers clips between
+layers. Native vertical drag has capture/cancellation and edge scrolling;
+timeline/source geometry remains locked. Taller Master, visible vertical layer
+scroll and shared horizontal navigation use the existing synchronized viewport.
+Script Enter/paste/speaker-looking labels stay literal in the current row.
+Automatic transcript rows follow diarized/manual/Profile speaker turns.
+
+Full frontend1315/164 files, final focused53, typecheck/build229 pass. Focused
+API56 pass. Full API1615 pass/one unchanged VibeVoice60s import timeout; isolated
+retry also fails, so that gate remains open. Real synthetic PCM proves Cut/Uncut
+equality, Delete/Reset behavior, locked transfers and unchanged source hashes.
+Browser dark/light, native paste/Enter and10-layer scrolling verified. ADR0144,
+`docs/VM-TIMELINE-DIRECT-EDIT-PLAN.md` and
+`docs/gates/vm-timeline-direct-edit-01-20261025.md` record scope/evidence.
+Real-model listening remains open. Phase03 stays60%, Phase06 open. Stop this
+bounded round.
 
 ## VM-SCRIPT-LAYER-UX-01 — Script Fix feedback and synchronized layers (2026-10-24)
 

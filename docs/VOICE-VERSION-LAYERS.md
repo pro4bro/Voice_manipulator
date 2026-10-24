@@ -74,6 +74,24 @@ synthesis settings within existing rows whose generated source timing is known.
 - Version output IDs and source paths remain project-relative and portable with
   the folder containing `project.json`.
 
+### Direct Timeline editing
+
+- Select footage in its lane. The top toolbar owns CUT, UNCUT, DELETE, RESET and
+  MOVE up/down; there is no selected-clip form below the lanes. CUT uses the
+  playhead or valid marked IN/OUT boundaries inside the selected clip. DELETE
+  removes only the selected piece. UNCUT rejoins compatible contiguous source
+  pieces only when they are immediate neighbors in the same layer's clip order.
+- Drag vertically to another existing layer, or use MOVE/Alt+Arrow up/down.
+  Edge scrolling reveals offscreen layers during drag. Timeline/source coordinates
+  remain locked. Cancelling pointer capture must not commit a transfer.
+- RESET restores `generatedComposition`, saved after the latest successful Full
+  or Fix, including all its Full/Fix clips. It rerenders playback/export without
+  modifying source media or resetting pending Script edits. Clone and lifecycle
+  operations retain every source referenced by that baseline. Older manifests
+  initialize it from their current arrangement.
+- Adjacent pieces from the same continuous source receive no synthetic seam fade;
+  CUT/UNCUT alone preserve PCM. Other source transitions retain bounded fades.
+
 ## Script and Timeline feedback
 
 - Before the first generation, Script edits have no blue highlight. After a
@@ -92,6 +110,14 @@ synthesis settings within existing rows whose generated source timing is known.
   signal is drawn when the source waveform is unavailable.
 - Layer Mute takes precedence over Solo. When any Solo is on, enabled solo layers
   alone contribute to the same composition used by playback and export.
+- Master uses the spare stage height. The layer list has vertical scrolling;
+  horizontal wheel/Shift+wheel, arrow keys and the bottom navigator pan the same
+  viewport used by Master and subtitles. Time marks appear only above Master.
+- Enter and paste preserve literal text inside the current Script row, including
+  paragraphs, tabs and speaker-looking labels. Text mode preserves existing row
+  boundaries without creating new rows from labels. Explicit Add Row remains.
+  Automatic transcript rows require diarization/manual identity or Profile changes:
+  one continuous speaker turn per row, independent of pauses or punctuation.
 
 ## Output slot actions
 
