@@ -18,10 +18,10 @@ function voice(id: string, speakerProfileId: string, kind: ProjectVoice["kind"] 
 
 const VOICES = [voice("an-clone", "speaker-an"), voice("khoa-clone", "speaker-khoa")];
 
-function Harness({ initial, output = null, onRead = vi.fn(), onRows, onReferenceContext }: { initial: VoiceScriptRow[]; output?: VoiceOutput | null; onRead?: () => void; onRows?: (rows: VoiceScriptRow[]) => void; onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void }) {
+function Harness({ initial, output = null, generatedScript = null, fullGeneratedScript = null, onRead = vi.fn(), onRows, onReferenceContext }: { initial: VoiceScriptRow[]; output?: VoiceOutput | null; generatedScript?: VoiceScriptRow[] | null; fullGeneratedScript?: VoiceScriptRow[] | null; onRead?: () => void; onRows?: (rows: VoiceScriptRow[]) => void; onReferenceContext?: (request: import("../../domain/reference-bindings").ReferenceContextRequest) => void }) {
   const [rows, setRows] = useState(initial);
   const [selection, setSelection] = useState<WordSelection>({ indexes: [], anchor: null });
-  return <VoiceScript category="clone" onRead={onRead} onReferenceContext={onReferenceContext} onRowsChange={(next) => { setRows(next); onRows?.(next); }} onWordSelectionChange={setSelection} output={output} playbackId={output?.id ?? null} rows={rows} speakers={[AN, KHOA]} voices={VOICES} wordSelection={selection} />;
+  return <VoiceScript category="clone" generatedScript={generatedScript} fullGeneratedScript={fullGeneratedScript} onRead={onRead} onReferenceContext={onReferenceContext} onRowsChange={(next) => { setRows(next); onRows?.(next); }} onWordSelectionChange={setSelection} output={output} playbackId={output?.id ?? null} rows={rows} speakers={[AN, KHOA]} voices={VOICES} wordSelection={selection} />;
 }
 
 describe("VoiceScript", () => {
@@ -90,6 +90,57 @@ describe("VoiceScript", () => {
 
     expect(onRows).toHaveBeenLastCalledWith([{ id: "r1", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Được không sao" }]);
     expect(screen.getByRole("combobox", { name: "Speaker Profile của đoạn 1" })).toHaveValue("speaker-khoa");
+  });
+
+  it("changes or clears one row's Speaker without selecting the row or flashing bulk actions", () => {
+    const onRows = vi.fn();
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Được không sao" }, { id: "r2", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Dòng hai" }]} onRows={onRows} />);
+    const speaker = screen.getByRole("combobox", { name: "Speaker Profile của đoạn 1" });
+    fireEvent.focus(speaker);
+    expect(screen.queryByLabelText("Thao tác dòng đã chọn")).not.toBeInTheDocument();
+    fireEvent.change(speaker, { target: { value: "speaker-khoa" } });
+    expect(onRows).toHaveBeenLastCalledWith([
+      { id: "r1", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "Được không sao" },
+      { id: "r2", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Dòng hai" },
+    ]);
+    fireEvent.change(speaker, { target: { value: "" } });
+    expect(onRows).toHaveBeenLastCalledWith([
+      { id: "r1", speakerProfileId: null, voiceId: null, text: "Được không sao" },
+      { id: "r2", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Dòng hai" },
+    ]);
+    expect(screen.queryByLabelText("Thao tác dòng đã chọn")).not.toBeInTheDocument();
+  });
+
+  it("shows fixed and pending text separately, but no marks before a generation snapshot", () => {
+    const row = { id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Một câu tối mai" };
+    const { rerender } = render(<Harness initial={[row]} />);
+    expect(document.querySelector(".voice-script__highlight-overlay")).not.toBeInTheDocument();
+    const generated = { ...row, text: "Một câu sáng mai" };
+    const full = { ...row, text: "Một câu sáng sớm" };
+    rerender(<Harness initial={[row]} generatedScript={[generated]} fullGeneratedScript={[full]} />);
+    const overlay = document.querySelector(".voice-script__highlight-overlay") as HTMLElement;
+    expect(overlay.querySelector(".is-pending")).toHaveTextContent("tối");
+    expect(overlay.querySelector(".is-fixed")).toHaveTextContent("mai");
+    rerender(<Harness initial={[row]} />);
+    expect(document.querySelector(".voice-script__highlight-overlay")).not.toBeInTheDocument();
+  });
+
+  it("does not show bulk row actions when a user selects a timed word", () => {
+    const output = { id: "out", name: "Script", duration: .5, words: [{ text: "Xin", start: 0, end: .5, segmentIndex: 0 }], segments: [{ rowId: "r1", text: "Xin", voiceId: "an-clone", speakerProfileId: "speaker-an", start: 0, end: .5 }] } as unknown as VoiceOutput;
+    render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin" }]} output={output} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn từ Xin" }));
+    expect(screen.queryByLabelText("Thao tác dòng đã chọn")).not.toBeInTheDocument();
+  });
+
+  it("keeps completed-fix marks visible on word-timed rows", () => {
+    const row = { id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Một câu sáng mai" };
+    const output = { id: "out", name: "Script", duration: 1, words: [
+      { text: "Một", start: 0, end: .2, segmentIndex: 0 }, { text: "câu", start: .2, end: .4, segmentIndex: 0 },
+      { text: "sáng", start: .4, end: .7, segmentIndex: 0 }, { text: "mai", start: .7, end: 1, segmentIndex: 0 },
+    ], segments: [{ rowId: "r1", text: row.text, voiceId: "an-clone", speakerProfileId: "speaker-an", start: 0, end: 1 }] } as unknown as VoiceOutput;
+    render(<Harness initial={[row]} output={output} generatedScript={[row]} fullGeneratedScript={[{ ...row, text: "Một câu sáng sớm" }]} />);
+    expect(screen.getByRole("button", { name: "Chọn từ mai" })).toHaveClass("is-script-fixed");
+    expect(screen.getByRole("button", { name: "Chọn từ sáng" })).not.toHaveClass("is-script-fixed");
   });
 
   it("starts a new turn with Enter, read by the same voice, and joins turns with Backspace", () => {
@@ -218,7 +269,7 @@ describe("VoiceScript", () => {
     confirm.mockRestore();
   });
 
-it("shows what the app is making under the Script, whatever started it", () => {
+it("places real generation progress in the right settings host outside Script", () => {
     const now = new Date().toISOString();
     const tasks = [
       { id: "m1", kind: "model", label: "Nạp OmniVoice", detail: "Khởi động runtime", status: "running" as const, fraction: null, etaSeconds: null, startedAt: now, updatedAt: now, finishedAt: null, seconds: null },
@@ -226,12 +277,16 @@ it("shows what the app is making under the Script, whatever started it", () => {
       { id: "s1", kind: "stt", label: "Speech to Text", detail: "", status: "running" as const, fraction: 0.5, etaSeconds: null, startedAt: now, updatedAt: now, finishedAt: null, seconds: null },
     ];
 
-    const { rerender } = render(
-      <VoiceScript activityTasks={tasks} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
+    const host = document.createElement("aside");
+    document.body.append(host);
+    const { rerender, container, unmount } = render(
+      <VoiceScript settingsHost={host} activityTasks={tasks} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
         rows={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} speakers={[AN, KHOA]} voices={VOICES} />,
     );
 
     const strip = screen.getByLabelText("Tiến trình tạo giọng");
+    expect(host).toContainElement(strip);
+    expect(container).not.toContainElement(strip);
     expect(within(strip).getByText("Đọc Script · 12 đoạn")).toBeInTheDocument();
     expect(within(strip).getByText("Nạp OmniVoice")).toBeInTheDocument();
     expect(within(strip).getByText(/Đoạn 3\/12/)).toBeInTheDocument();
@@ -240,10 +295,11 @@ it("shows what the app is making under the Script, whatever started it", () => {
     expect(within(strip).queryByText("Speech to Text")).not.toBeInTheDocument();
 
     rerender(
-      <VoiceScript activityTasks={[]} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
+      <VoiceScript settingsHost={host} activityTasks={[]} category="clone" onRead={vi.fn()} onRowsChange={vi.fn()} output={null} playbackId={null}
         rows={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào" }]} speakers={[AN, KHOA]} voices={VOICES} />,
     );
     expect(screen.queryByLabelText("Tiến trình tạo giọng")).not.toBeInTheDocument();
+    unmount(); host.remove();
   });
 
   it("edits the whole Script as “Tên: lời thoại” text", () => {

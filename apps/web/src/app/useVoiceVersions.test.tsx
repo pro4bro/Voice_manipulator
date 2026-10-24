@@ -160,3 +160,32 @@ it("clears the deleted checkout and adopts the saved empty Script projection", a
   expect(initial.onOpenOutput).toHaveBeenLastCalledWith(null);
   expect(hook.result.current.book?.recycle).toHaveLength(1);
 });
+
+it("refreshes a completed Fix before saving newer config and preserves the live Script editor", async () => {
+  const initial = props();
+  const hook = renderHook((value: UseVoiceVersionsProps) => useVoiceVersions(value), { initialProps: initial });
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  const pending = scriptDoc("New edit during Fix", 4);
+  const completed = book();
+  completed.sessions[0].versions[0].state = state({ revision: 9, script: pending, generatedScript: scriptDoc("Captured Fix", 3), outputId: "out-fixed" });
+  completed.sessions[0].versions[0].outputId = "out-fixed";
+  const writes: number[] = [];
+  fetchMock.mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/state")) {
+      const body = JSON.parse(String(init?.body)); writes.push(body.revision);
+      if (body.revision !== 9) return { ok: false, status: 409, json: async () => ({ detail: "Version changed" }) };
+      completed.sessions[0].versions[0].state.config = body.config;
+    }
+    return { ok: true, status: 200, json: async () => structuredClone(url.endsWith("/voice-outputs") ? [{ ...output, id: "out-fixed" }] : completed) };
+  });
+  const updated = { ...initial, script: { ...initial.script, document: pending, flush: vi.fn(async () => pending) }, config: { rate: 1.3 } };
+  hook.rerender(updated);
+  vi.mocked(initial.script.adoptSaved).mockClear();
+  await act(async () => { await hook.result.current.refreshAfterGeneration(); });
+  expect(hook.result.current.error).toBeNull();
+  expect(writes).toEqual([9]);
+  expect(initial.script.adoptSaved).not.toHaveBeenCalled();
+  expect(hook.result.current.state?.generatedScript?.rows[0].text).toBe("Captured Fix");
+  expect(initial.onOpenOutput).toHaveBeenLastCalledWith(expect.objectContaining({ id: "out-fixed" }));
+});

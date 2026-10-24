@@ -30,14 +30,16 @@ it("aligns repeated layer clips to the same global frame scale and shows the pla
   expect(playheads[1]).toHaveStyle({ left: "25%" });
 });
 
-it("emits layer, move, trim, split, mute, and delete commands with backend fields", () => {
+it("transfers layers with locked timecode and retains trim, split, mute, solo and delete", () => {
   const onCommand = vi.fn();
   render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={1.5} busy={false} onCommand={onCommand} />);
   fireEvent.click(screen.getByRole("button", { name: /Line A · Base/ }));
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Start seconds" }), { target: { value: "4" } });
+  expect(screen.getByRole("textbox", { name: "Start seconds" })).toHaveAttribute("readonly");
   fireEvent.change(screen.getByRole("combobox", { name: "Move clip to layer" }), { target: { value: "fix" } });
   fireEvent.click(screen.getByRole("button", { name: "Move clip" }));
-  expect(onCommand).toHaveBeenLastCalledWith({ action: "move-clip", clipId: "a", targetLayerId: "fix", startFrame: 96_000 });
+  expect(onCommand).toHaveBeenLastCalledWith({ action: "move-clip", clipId: "a", targetLayerId: "fix", startFrame: 24_000 });
+  fireEvent.click(screen.getByRole("button", { name: "Solo Fix" }));
+  expect(onCommand).toHaveBeenLastCalledWith({ action: "solo-layer", layerId: "fix", solo: true });
 
   fireEvent.change(screen.getByRole("spinbutton", { name: "Source IN seconds" }), { target: { value: "0.5" } });
   fireEvent.click(screen.getByRole("button", { name: "Apply Source IN" }));
@@ -51,6 +53,18 @@ it("emits layer, move, trim, split, mute, and delete commands with backend field
   expect(onCommand).toHaveBeenLastCalledWith({ action: "toggle-layer", layerId: "fix", enabled: false });
   fireEvent.click(screen.getByRole("button", { name: "Delete clip" }));
   expect(onCommand).toHaveBeenLastCalledWith({ action: "delete-clip", clipId: "a" });
+});
+
+it("mirrors the Master viewport without a second ruler or horizontal drag", () => {
+  const onCommand = vi.fn();
+  const view = render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={2.5} busy={false} onCommand={onCommand}
+    viewport={{ canvasWidth: 2000, viewportWidth: 1000, scrollLeft: 400, duration: 10 }} />);
+  expect(view.container.querySelector(".voice-layer-timeline__canvas")).toHaveStyle({ width: "2000px", transform: "translateX(-400px)" });
+  expect(view.container.querySelector(".voice-layer-timeline__ruler")).toBeNull();
+  const clip = screen.getByRole("button", { name: /Line A · Base/ });
+  fireEvent.pointerDown(clip, { button: 0, pointerId: 1, clientX: 10 });
+  fireEvent.pointerUp(clip, { pointerId: 1, clientX: 500 });
+  expect(onCommand).not.toHaveBeenCalled();
 });
 
 it("exposes split, mute, and delete from the clip right-click menu", () => {

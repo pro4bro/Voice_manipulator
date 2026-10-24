@@ -8,6 +8,7 @@ export interface VoiceOutputVersionState {
   script: VoiceScriptDocument;
   config: Record<string, unknown>;
   generatedScript: VoiceScriptDocument | null;
+  fullGeneratedScript?: VoiceScriptDocument | null;
   generatedConfig: Record<string, unknown>;
   composition: VoiceComposition | null;
   ownedOutputIds: string[];
@@ -303,10 +304,22 @@ export function useVoiceVersions({ projectId, script, config, onRestoreConfig, o
 
   const refreshAfterGeneration = useCallback(async () => {
     await enqueue(async (token, project) => {
-      await flushState(token, project);
+      // Publication advances the server revision. Save the live text projection
+      // first, then read that revision before persisting newer configuration.
+      // Checking out the captured job Script here would erase edits made in flight.
+      await props.current.script.flush();
       const [nextBook, nextOutputs] = await Promise.all([requestJson<VoiceOutputSessionBook>(projectUrl(project)), requestJson<VoiceOutput[]>(`/api/projects/${encodeURIComponent(project)}/voice-outputs`)]);
+      if (!mounted.current || token !== generation.current || props.current.projectId !== project) return;
       setOutputsValue(nextOutputs);
-      applyCheckout(nextBook, token, project);
+      if (nextBook.activeVersionId !== bookRef.current?.activeVersionId) {
+        applyCheckout(nextBook, token, project);
+        return;
+      }
+      updateBookOnly(nextBook, token, project);
+      const updated = await flushState(token, project);
+      if (!mounted.current || token !== generation.current || props.current.projectId !== project) return;
+      const outputId = activeVersion(updated ?? nextBook)?.state.outputId;
+      props.current.onOpenOutput(nextOutputs.find((item) => item.id === outputId) ?? null);
       return undefined;
     });
   }, [enqueue, setOutputsValue]);

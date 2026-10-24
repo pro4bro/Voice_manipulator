@@ -11,6 +11,15 @@
 .voice-script-module > .module-frame__body > [role="alert"],
 .voice-script-module .script-progress,
 .voice-script-module .script-module__footer { flex: 0 0 auto; min-width: 0; }
+.voice-script__edit.has-script-highlight { position: relative; }
+.voice-script__highlight-overlay { position: absolute; z-index: 0; inset: 10px 12px auto; min-height: 44px; overflow: hidden; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; pointer-events: none; }
+.voice-script__highlight-overlay .is-pending { color: var(--accent-ink); background: color-mix(in srgb, #2684ff 42%, transparent); border-radius: 2px; }
+.voice-script__highlight-overlay .is-pending:empty { display: inline-block; width: .7em; min-height: 1em; vertical-align: text-bottom; }
+.voice-script__highlight-overlay .is-fixed { color: color-mix(in srgb, var(--accent-ink) 68%, var(--text-muted)); background: color-mix(in srgb, #2684ff 17%, transparent); border-radius: 2px; }
+.voice-script__words .script-table__word.is-script-pending { color: var(--accent-ink); background: color-mix(in srgb, #2684ff 42%, transparent); }
+.voice-script__words .script-table__word.is-script-fixed { color: color-mix(in srgb, var(--accent-ink) 68%, var(--text-muted)); background: color-mix(in srgb, #2684ff 17%, transparent); }
+.voice-script__edit.has-script-highlight .voice-script__input,
+.voice-script__edit.has-script-highlight .voice-script__input:focus { position: relative; z-index: 1; background: transparent; }
 .voice-script-settings summary { cursor: pointer; font-weight: 600; }
 .voice-script-settings p, .voice-script-settings small { color: var(--muted); }
 .voice-script-settings__tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

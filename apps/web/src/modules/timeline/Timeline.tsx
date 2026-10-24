@@ -72,8 +72,17 @@ interface DetailWaveformRequest {
   points: number;
 }
 
+export interface TimelineLayerViewport {
+  canvasWidth: number;
+  viewportWidth: number;
+  scrollLeft: number;
+  duration: number;
+}
+
 interface TimelineProps {
   alignment?: TimelineAlignmentProps;
+  /** A Version keeps its viewport while composition renders receive new output IDs. */
+  viewIdentity?: string;
   resumeProjectId?: string;
   resumeSource?: ResumeSource;
   onPlayheadChange?: (seconds: number) => void;
@@ -104,7 +113,7 @@ interface TimelineProps {
   onWordSelectionChange?: (selection: WordSelection) => void;
   /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
   leadingActions?: ReactNode;
-  layerContent?: (playheadSeconds: number) => ReactNode;
+  layerContent?: (playheadSeconds: number, viewport: TimelineLayerViewport) => ReactNode;
   /** Replaces the take name above the waveform while something live is happening. */
   liveCaption?: string | null;
   /** What an empty timeline says; each page fills it with what would fill it. */
@@ -254,6 +263,7 @@ function AudioTimeline({
   onReferenceContext,
   leadingActions = null,
   layerContent,
+  viewIdentity,
   liveCaption = null,
   emptyNote,
 }: TimelineProps) {
@@ -261,6 +271,7 @@ function AudioTimeline({
   const [currentTime, setCurrentTime] = useState(0);
   const currentTimeRef = useRef(currentTime); currentTimeRef.current = currentTime;
   const resumeIdentity = JSON.stringify([resumeProjectId, resumeSource]);
+  const viewKey = viewIdentity ?? JSON.stringify([take?.id, resumeIdentity]);
   const resumeHydration = useRef<{ key: string; time: number } | null>(null);
   const pendingResume = useRef<number | null>(null);
   const lastResumeCursor = useRef<{ projectId: string; source: ResumeSource; seconds: number } | null>(null);
@@ -311,6 +322,8 @@ function AudioTimeline({
   const audioRef = useRef<HTMLAudioElement>(null);
   const stretchTransportRef = useRef<{ sourceTime: number; wasPlaying: boolean; time: number; url: string; complete: boolean; metadataUrl: string | null } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const lastCompositionMedia = useRef<{ identity: string; url?: string } | null>(null);
+  const timelineNavigatorRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLDivElement>(null);
   const wordTrackRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
@@ -611,7 +624,21 @@ function AudioTimeline({
     setMarkOut(workingRange?.end ?? null);
     setStagedCut(null);
     setSelectedSections([]);
-  }, [take?.id, resumeIdentity]);
+  }, [viewKey]);
+
+  useEffect(() => {
+    if (!viewIdentity) { lastCompositionMedia.current = null; return; }
+    const previous = lastCompositionMedia.current;
+    lastCompositionMedia.current = { identity: viewIdentity, url: take?.url };
+    if (!previous || previous.identity !== viewIdentity || previous.url === take?.url) return;
+    // Solo/Mute and layer transfers replace PCM, keeping the Version clock and
+    // viewport. The new media element restores this cursor after metadata loads.
+    pendingResume.current = Math.min(take?.duration ?? 0, currentTimeRef.current);
+    resumeHydration.current = null;
+    audioRef.current?.pause();
+    stopPlaybackClock(); setPlaying(false);
+    setDecodedDuration(0); setMediaDuration(0); setDetailEnvelope(null);
+  }, [viewIdentity, take?.url]);
 
   useEffect(() => {
     if (isRecording) return;
@@ -1019,7 +1046,7 @@ function AudioTimeline({
   function seekTimelineNavigator(clientX: number) {
     const scroller = timelineScrollRef.current;
     if (!scroller) return;
-    const track = scroller.parentElement?.querySelector<HTMLElement>(".timeline-navigator");
+    const track = timelineNavigatorRef.current;
     if (!track || scroller.scrollWidth <= scroller.clientWidth) return;
     const bounds = track.getBoundingClientRect();
     const visibleRatio = scroller.clientWidth / scroller.scrollWidth;
@@ -1763,6 +1790,7 @@ function AudioTimeline({
               {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
               {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
               {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
+              {layerContent ? <small className="timeline-master-label">MASTER</small> : null}
             </div>
             <div className="word-track" onKeyDown={(event) => {
               if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
@@ -1853,9 +1881,9 @@ function AudioTimeline({
             scroller.scrollLeft = Math.max(0, Math.min(scroller.scrollWidth - scroller.clientWidth, (range.start + range.end) / 2 / Math.max(duration, .001) * scroller.scrollWidth - scroller.clientWidth / 2));
             setTimelineViewport({ left: scroller.scrollLeft, width: scroller.clientWidth });
           }} /> : null}
-          <div aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
+          {!layerContent ? <div ref={timelineNavigatorRef} aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
             <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
-          </div>
+          </div> : null}
         </div>
       </div>
       {speakerMenu ? <WordContextMenu className="timeline-speaker-menu" x={speakerMenu.x} y={speakerMenu.y} onClose={() => setSpeakerMenu(null)}>
@@ -1875,6 +1903,12 @@ function AudioTimeline({
         <WordNoteItem module="subtitle" />
       </WordContextMenu> : null}
       {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
+      {layerContent ? <>
+        <div className="timeline-audio-layers" tabIndex={0} aria-label="Danh sách audio layer">{layerContent(currentTime, { canvasWidth: timelineCanvasWidth, viewportWidth: timelineViewport.width, scrollLeft: timelineViewport.left, duration })}</div>
+        <div ref={timelineNavigatorRef} aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator timeline-layer-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
+          <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
+        </div>
+      </> : null}
       <div className="transport-bar">
         <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
@@ -1902,7 +1936,6 @@ function AudioTimeline({
         <span className={`gain-badge ${isGainPreviewing ? "is-preview" : ""}`}>{isGainPreviewing ? "PREVIEW 3/12 · " : ""}{draftGain > 0 ? "+" : ""}{draftGain.toFixed(1)} dB</span>
         {gainOverflows.length ? <span className={`gain-warning ${autoCalibrate ? "is-calibrated" : ""}`}>{autoCalibrate ? "AUTO CAL" : "CLIP"} · {gainOverflows.length} vùng</span> : null}
       </div>
-      {layerContent ? <div className="timeline-audio-layers">{layerContent(currentTime)}</div> : null}
       {take?.url ? (
         <audio
           onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}

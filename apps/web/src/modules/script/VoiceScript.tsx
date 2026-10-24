@@ -22,6 +22,7 @@ import { VoiceFixControls } from "./VoiceFixControls";
 import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
+import { scriptHighlightTokens } from "./script-highlight-diff";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -52,6 +53,10 @@ interface VoiceScriptProps {
   category: VoiceCategory;
   /** The Voice Output open on the Timeline, when it came from this Script. */
   output: VoiceOutput | null;
+  /** Text captured by the latest successful generation, if this Version has one. */
+  generatedScript?: VoiceScriptRow[] | null;
+  /** Full-generation baseline; differences from it stay visible as completed fixes. */
+  fullGeneratedScript?: VoiceScriptRow[] | null;
   playbackId: string | null;
   defaultSpeakerId?: string | null;
   wordSelection?: WordSelection;
@@ -110,7 +115,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, readDisabledReason, onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, readDisabledReason, onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, generatedScript = null, fullGeneratedScript = null, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? EMPTY_OUTPUT_WORDS;
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -153,13 +158,6 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     window.addEventListener("pointercancel", end);
     return () => { window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end); };
   }, []);
-  useEffect(() => {
-    const ids = rows.filter((row) => {
-      const timing = timings.get(row.id);
-      return wordSelection.rowIds?.includes(row.id) || Boolean(timing?.fresh && wordSelection.indexes.some((index) => index >= timing.firstWord && index < timing.lastWord));
-    }).map((row) => row.id);
-    setRowSelection((current) => current.ids.join("\0") === ids.join("\0") ? current : { ids, anchorId: ids.at(-1) ?? null });
-  }, [wordSelection, rows, timings]);
   const selectionMarkers = useMemo(() => {
     const ranges = productionRanges(wordSelection, words);
     if (ranges.length) return ranges.map((range) => {
@@ -491,6 +489,11 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     commit(rows.map((row) => selected.has(row.id) ? { ...row, speakerProfileId: assignedId, voiceId: assignedId ? voice?.id ?? null : null } : row));
   }
 
+  function assignSpeakerToRow(rowId: string, speakerId: string | null) {
+    const voice = speakerId ? voices.find((item) => item.speakerProfileId === speakerId) : undefined;
+    commit(rows.map((row) => row.id === rowId ? { ...row, speakerProfileId: speakerId, voiceId: voice?.id ?? null } : row));
+  }
+
   function clearScript() {
     if (!rows.length || busy) return;
     if (!window.confirm("Clear toàn bộ Script? Các đoạn và lựa chọn voice trong Script sẽ bị xóa. Voice Output đã tạo vẫn được giữ lại.")) return;
@@ -516,12 +519,12 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
 
   function renderSpeaker(row: VoiceScriptRow, number: number) {
     const voice = resolveRowVoice(row, voices);
-    const speaker = speakerOf(voice?.speakerProfileId ?? row.speakerProfileId);
+    const speaker = speakerOf(row.speakerProfileId);
     const detail = voice ? `${VOICE_KIND_LABELS[voice.kind]} · ${ENGINE_LABELS[voice.engine] ?? voice.engine}` : "Chọn model voice";
     const checked = selectedRowIds.includes(row.id);
     return <ScriptRowSpeaker selection={<ScriptRowSelection number={number} label={`Chọn đoạn ${number}`} selected={checked} onSelect={(event) => selectRow(event, row.id)} />}
-      label={`Speaker Profile của đoạn ${number}`} profileId={speaker?.id ?? null} profiles={speakers} onActivate={() => { if (!selectedRowIds.length) setRowSelection({ ids: [row.id], anchorId: row.id }); }}
-      onProfileChange={(id) => { if (selectedRowIds.length) assignSpeakerToSelected(id ?? "__none__"); }}
+      label={`Speaker Profile của đoạn ${number}`} profileId={speaker?.id ?? null} profiles={speakers}
+      onProfileChange={(id) => assignSpeakerToRow(row.id, id)}
       extra={<button aria-expanded={voiceMenu?.rowId === row.id} aria-haspopup="menu" aria-label={`Voice đọc đoạn ${number}`} className="script-row-model" onClick={(event) => openVoiceMenu(event, row.id)} type="button">{detail} ▾</button>} />;
   }
 
@@ -530,16 +533,20 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     const audibleWords = timing ? words.slice(timing.firstWord, timing.lastWord) : [];
     const sameText = audibleWords.map((word) => word.text).join(" ").replace(/\s+/gu, " ").trim() === row.text.replace(/\s+/gu, " ").trim();
     const showWords = Boolean(timing?.fresh && sameText && timing.lastWord > timing.firstWord && editingRowId !== row.id);
+    const currentHighlight = scriptHighlightTokens(row.text, generatedScript, fullGeneratedScript, row.id);
     if (showWords && timing) {
+      const highlightTokens = currentHighlight.filter((token) => token.text);
+      const editableWords = row.text.match(/\S+/gu) ?? [];
       return <div className="script-table__content voice-script__words" onDoubleClick={() => { focusRef.current = { rowId: row.id, start: row.text.length, end: row.text.length }; setEditingRowId(row.id); }} role="gridcell" style={textStyle} title="Bấm để chọn từ · Ctrl/Shift để chọn nhiều · double-click để sửa lời thoại">
         {(() => {
           // Alt+Enter line breaks inside the turn stay visible once it is read.
           const breaks = lineBreakWords(row.text);
           return words.slice(timing.firstWord, timing.lastWord).map((word, offset) => {
             const index = timing.firstWord + offset;
+            const highlightState = editableWords[offset] === word.text ? highlightTokens[offset]?.state : null;
             return <Fragment key={`${index}-${word.start}`}>
               <span className="script-table__word-wrap">
-                <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""}`} data-script-word-index={index}
+                <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""} ${highlightState === "pending" ? "is-script-pending" : highlightState === "fixed" ? "is-script-fixed" : ""}`} data-script-word-index={index}
                   onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); wordSweep.current = { base: wordSelection, origin: index }; onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
                   onPointerEnter={(event) => { const sweep = wordSweep.current; if (sweep && event.buttons === 1) onWordSelectionChange?.(sweepProductionWords(sweep.base, sweep.origin, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
                   onClick={(event) => { if (event.detail === 0) onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }} type="button">{word.text}</button>{" "}
@@ -550,8 +557,9 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         })()}
       </div>;
     }
-    return <div className="script-table__content voice-script__edit" role="gridcell" style={textStyle}>
-      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => { onWordSelectionChange?.(EMPTY_SELECTION); updateRow(row.id, { text: event.target.value }); }} onSelect={(event) => {
+    return <div className={`script-table__content voice-script__edit ${currentHighlight.length ? "has-script-highlight" : ""}`} role="gridcell" style={textStyle}>
+      {currentHighlight.length ? <div aria-hidden="true" className="voice-script__highlight-overlay">{currentHighlight.map((token, index) => <Fragment key={`${index}-${token.text}`}><span className={token.state === "pending" ? "is-pending" : token.state === "fixed" ? "is-fixed" : undefined}>{token.text}</span>{token.whitespace}</Fragment>)}</div> : null}
+      <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onScroll={(event) => { const overlay = event.currentTarget.previousElementSibling as HTMLElement | null; if (overlay) { overlay.scrollTop = event.currentTarget.scrollTop; overlay.scrollLeft = event.currentTarget.scrollLeft; } }} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => { onWordSelectionChange?.(EMPTY_SELECTION); updateRow(row.id, { text: event.target.value }); }} onSelect={(event) => {
         const { selectionStart: start, selectionEnd: end } = event.currentTarget;
         if (end <= start) return;
         const tokens = [...row.text.matchAll(/\S+/gu)];
@@ -560,7 +568,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         const first = words[indexes[0]], last = words[indexes.at(-1) ?? -1];
         onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id], textRanges: [{ rowId: row.id, start, end }],
           ranges: first && last ? [{ id: `text-${row.id}-${start}-${end}`, start: first.start, end: last.end }] : [] });
-      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} />
+      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} onPaste={(event) => handleRowPaste(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter: lượt nói mới · Alt+Enter: xuống dòng · dán được từ Excel, Sheets, Word" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
     </div>;
   }
 
@@ -590,6 +598,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     : onGenerateFixOnly ? "Generate Full" : readDisabledReason ?? readiness.problem ?? (freshOutput ? "Đọc lại Script" : "Tạo voice");
 
   const settings = <div aria-label="Hướng dẫn giọng và timing" className="voice-script__settings-stack" role="region">
+    <ScriptProgress tasks={activityTasks} />
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
     <DeliveryCapabilities document={scriptDocument ?? migrateScript(rows)} />
     {output && voiceRender ? <VoiceRenderControls controller={voiceRender} saved={timingContext?.saved ?? false} /> : null}
@@ -622,7 +631,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       {selectedRowIds.length ? <div aria-label="Thao tác dòng đã chọn" className="voice-script__bulk-actions"><b>{selectedRowIds.length} dòng đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho các dòng đã chọn" onChange={(event) => assignSpeakerToSelected(event.target.value)} value="__choose__"><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button className="button button--quiet is-danger" onClick={deleteSelectedRows} type="button">Xoá dòng đã chọn</button><button className="button button--quiet" onClick={() => setRowSelection({ ids: [], anchorId: null })} type="button">Bỏ chọn</button></div> : null}
       <div className="script-table-scroll-region"><div className="script-table-scroll" onPointerDown={(event) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        if ((event.target as HTMLElement).closest("[data-script-word-index]")) return;
+        if ((event.target as HTMLElement).closest("[data-script-word-index], select, input, button, textarea, [role='menu']")) return;
         if (wordSelection.indexes.length) onWordSelectionChange?.(EMPTY_SELECTION);
       }} ref={scrollRef}>
         <div aria-label="Bảng Script theo lượt nói" className="script-table voice-script__table" role="grid" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
@@ -664,8 +673,6 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       {!voices.length ? <div className="voice-script__menu-empty"><span>Chưa có voice dạng {CATEGORY_LABELS[category].toLowerCase()}. Tạo ở Voice Training: chọn dạng, tick Speaker Profile rồi bấm Bắt đầu.</span>{onOpenTraining ? <button onClick={() => { setVoiceMenu(null); onOpenTraining(); }} type="button">Mở Voice Training</button> : null}</div> : null}
       <button className="voice-script__menu-close" onClick={() => setVoiceMenu(null)} type="button">Đóng</button>
     </div> : null}
-
-    <ScriptProgress tasks={activityTasks} />
 
     <div className="script-module__footer">
       <div className="script-stats"><span><b>{rows.filter((row) => normalizedRowText(row.text)).length}</b> đoạn</span><span><b>{usedVoices.size}</b> voice</span><span><b>{wordCount}</b> từ</span></div>

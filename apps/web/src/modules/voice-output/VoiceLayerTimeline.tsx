@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { VoiceOutput } from "../../domain/types";
 import { OutputSlotMenu, type OutputSlotMenuAction } from "../../ui/OutputSlotMenu";
+import type { TimelineLayerViewport } from "../timeline/Timeline";
+import { VoiceClipWaveform } from "./VoiceClipWaveform";
 import "./voice-layer-timeline.css";
 
 const FRAME_RATE = 24_000;
@@ -18,6 +20,7 @@ export interface VoiceLayer {
   id: string;
   name: string;
   enabled?: boolean;
+  solo?: boolean;
   clips: VoiceLayerClip[];
 }
 
@@ -33,10 +36,13 @@ export type VoiceLayerTimelineCommand =
   | { action: "trim-left" | "trim-right"; clipId: string; atFrame: number }
   | { action: "move-clip"; clipId: string; targetLayerId: string; startFrame: number }
   | { action: "toggle-clip"; clipId: string; enabled: boolean }
-  | { action: "toggle-layer"; layerId: string; enabled: boolean };
+  | { action: "toggle-layer"; layerId: string; enabled: boolean }
+  | { action: "solo-layer"; layerId: string; solo: boolean };
 
 export interface VoiceLayerTimelineProps {
   composition: VoiceComposition | null;
+  projectId?: string;
+  viewport?: TimelineLayerViewport;
   outputs: VoiceOutput[];
   playheadSeconds: number;
   busy: boolean;
@@ -50,11 +56,10 @@ function framesFromSeconds(value: string) {
 }
 function clipEnd(clip: VoiceLayerClip) { return clip.startFrame + clip.frameCount; }
 
-export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy, onCommand }: VoiceLayerTimelineProps) {
+export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy, onCommand, projectId, viewport }: VoiceLayerTimelineProps) {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; clipId: string } | null>(null);
   const [draft, setDraft] = useState({ start: "0.000", sourceIn: "0.000", sourceOut: "0.000", targetLayerId: "" });
-  const drag = useRef<{ pointerId: number; x: number; startFrame: number; clipId: string; layerId: string } | null>(null);
   const selected = useMemo(() => {
     if (!composition || !selectedClipId) return null;
     for (const layer of composition.layers) {
@@ -63,7 +68,6 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
     }
     return null;
   }, [composition, selectedClipId]);
-  const allClips = composition?.layers.flatMap((layer) => layer.clips) ?? [];
   const playheadFrame = composition ? Math.max(0, Math.min(composition.durationFrames, Math.round(playheadSeconds * FRAME_RATE))) : 0;
 
   useEffect(() => {
@@ -91,10 +95,9 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
 
   function applyMove() {
     if (!composition || !selected || busy) return;
-    const startFrame = framesFromSeconds(draft.start);
-    if (startFrame === null || !draft.targetLayerId) return;
+    if (!draft.targetLayerId) return;
     onCommand({ action: "move-clip", clipId: selected.clip.id, targetLayerId: draft.targetLayerId,
-      startFrame: Math.max(0, Math.min(composition.durationFrames - selected.clip.frameCount, startFrame)) });
+      startFrame: selected.clip.startFrame });
   }
 
   function applyTrim(side: "left" | "right") {
@@ -109,57 +112,42 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
     if (side === "right" && sourceFrame < endFrame && sourceFrame > selected.clip.sourceStartFrame) onCommand({ action: "trim-right", clipId: selected.clip.id, atFrame });
   }
 
-  function beginDrag(event: PointerEvent<HTMLButtonElement>, clip: VoiceLayerClip, layer: VoiceLayer) {
-    if (busy || event.button !== 0) return;
-    const track = event.currentTarget.parentElement;
-    if (!track) return;
-    drag.current = { pointerId: event.pointerId, x: event.clientX, startFrame: clip.startFrame, clipId: clip.id, layerId: layer.id };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function finishDrag(event: PointerEvent<HTMLButtonElement>) {
-    const current = drag.current;
-    drag.current = null;
-    if (!current || current.pointerId !== event.pointerId || !composition) return;
-    const width = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 0;
-    const dx = event.clientX - current.x;
-    if (width <= 0 || Math.abs(dx) < 3) return;
-    const delta = Math.round(dx / width * composition.durationFrames);
-    const clip = allClips.find((item) => item.id === current.clipId);
-    if (!clip) return;
-    onCommand({ action: "move-clip", clipId: current.clipId, targetLayerId: current.layerId,
-      startFrame: Math.max(0, Math.min(composition.durationFrames - clip.frameCount, current.startFrame + delta)) });
-  }
-
   if (!composition) return <section className="voice-layer-timeline" aria-label="Voice Output timeline"><p className="voice-layer-timeline__empty">Tạo hoặc chọn Session Version để chỉnh các layer audio.</p></section>;
   const duration = Math.max(1, composition.durationFrames);
   const playheadPercent = playheadFrame / duration * 100;
+  const canvasWidth = Math.max(viewport?.canvasWidth ?? 0, viewport?.viewportWidth ?? 0);
+  const visibleStart = canvasWidth ? (viewport?.scrollLeft ?? 0) / canvasWidth * duration / FRAME_RATE : 0;
+  const visibleEnd = canvasWidth ? visibleStart + (viewport?.viewportWidth ?? canvasWidth) / canvasWidth * duration / FRAME_RATE : duration / FRAME_RATE;
+  const hasSolo = composition.layers.some((layer) => layer.solo);
+  const canvasStyle: CSSProperties = canvasWidth ? { width: canvasWidth, transform: `translateX(-${viewport?.scrollLeft ?? 0}px)` } : { width: "100%" };
   return <section className="voice-layer-timeline" aria-label="Voice Output timeline" aria-busy={busy || undefined}>
-    <header className="voice-layer-timeline__header"><strong>Audio layers</strong><small>{seconds(composition.durationFrames)} s · Layer phía sau có ưu tiên phát cao hơn</small></header>
+    <header className="voice-layer-timeline__header"><strong>Audio layers · Timecode khóa</strong><small>Layer phía sau có ưu tiên phát cao hơn</small></header>
     <div className="voice-layer-timeline__viewport">
       <div className="voice-layer-timeline__tracks" style={{ "--layer-count": composition.layers.length } as CSSProperties}>
         {composition.layers.map((layer, layerIndex) => <div className="voice-layer-timeline__row" key={layer.id} aria-label={`${layer.name}, layer ${layerIndex + 1}`}>
-          <div className="voice-layer-timeline__layer-label"><b>{layer.name}</b><small>Layer {layerIndex + 1}</small><button aria-label={`${layer.enabled === false ? "Enable" : "Mute"} ${layer.name}`} disabled={busy} type="button" onClick={() => onCommand({ action: "toggle-layer", layerId: layer.id, enabled: layer.enabled === false })}>{layer.enabled === false ? "Enable" : "Mute"}</button></div>
+          <div className="voice-layer-timeline__layer-label"><b title={layer.name}>{layerIndex + 1}. {layer.name}</b><div><button aria-pressed={layer.enabled === false} aria-label={`${layer.enabled === false ? "Enable" : "Mute"} ${layer.name}`} disabled={busy} type="button" onClick={() => onCommand({ action: "toggle-layer", layerId: layer.id, enabled: layer.enabled === false })}>M</button><button aria-label={`Solo ${layer.name}`} aria-pressed={Boolean(layer.solo)} disabled={busy} type="button" onClick={() => onCommand({ action: "solo-layer", layerId: layer.id, solo: !layer.solo })}>S</button></div></div>
           <div className="voice-layer-timeline__track" role="group" aria-label={`${layer.name} clips`}>
+            <div className="voice-layer-timeline__canvas" style={canvasStyle}>
             <i className="voice-layer-timeline__playhead" aria-hidden="true" style={{ left: `${playheadPercent}%` }} />
             {layer.clips.map((clip) => {
               const output = outputs.find((item) => item.id === clip.outputId);
               const style = { left: `${clip.startFrame / duration * 100}%`, width: `${clip.frameCount / duration * 100}%` } as CSSProperties;
-              return <button key={clip.id} className={`voice-layer-timeline__clip ${clip.enabled ? "" : "is-muted"} ${selectedClipId === clip.id ? "is-selected" : ""}`}
+              return <button key={clip.id} className={`voice-layer-timeline__clip ${clip.enabled && layer.enabled !== false && (!hasSolo || layer.solo) ? "" : "is-muted"} ${selectedClipId === clip.id ? "is-selected" : ""}`}
                 type="button" disabled={busy} aria-pressed={selectedClipId === clip.id} aria-label={`${output?.name ?? clip.outputId} · ${layer.name} · ${seconds(clip.startFrame)}–${seconds(clipEnd(clip))} seconds`}
-                style={style} onClick={() => setSelectedClipId(clip.id)} onPointerDown={(event) => beginDrag(event, clip, layer)} onPointerUp={finishDrag}
+                style={style} onClick={() => setSelectedClipId(clip.id)}
                 onContextMenu={(event) => { event.preventDefault(); setSelectedClipId(clip.id); setMenu({ x: event.clientX, y: event.clientY, clipId: clip.id }); }}>
-                <b>{output?.name ?? clip.outputId}</b><small>{seconds(clip.frameCount)} s</small>
+                <b>{output?.name ?? clip.outputId}</b>
+                <VoiceClipWaveform projectId={projectId} clip={clip} visibleStart={visibleStart} visibleEnd={visibleEnd} pixelsPerSecond={canvasWidth ? canvasWidth / (duration / FRAME_RATE) : 100} />
               </button>;
             })}
+            </div>
           </div>
         </div>)}
       </div>
-      <div className="voice-layer-timeline__ruler" aria-label={`Playhead ${seconds(playheadFrame)} seconds`}><span>0.000</span><span>{seconds(composition.durationFrames / 2)} s</span><span>{seconds(composition.durationFrames)} s</span></div>
     </div>
     {selected ? <fieldset className="voice-layer-timeline__edit" disabled={busy}>
       <legend>Selected clip · {outputs.find((item) => item.id === selected.clip.outputId)?.name ?? selected.clip.outputId}</legend>
-      <label>Start (s)<input aria-label="Start seconds" inputMode="decimal" type="number" min="0" max={seconds(composition.durationFrames)} step="0.001" value={draft.start} onChange={(event) => setDraft((value) => ({ ...value, start: event.target.value }))} /></label>
+      <label>Timecode khóa (s)<input aria-label="Start seconds" readOnly value={draft.start} /></label>
       <label>Source IN (s)<input aria-label="Source IN seconds" inputMode="decimal" type="number" min={seconds(selected.clip.sourceStartFrame)} max={seconds(selected.clip.sourceStartFrame + selected.clip.frameCount)} step="0.001" value={draft.sourceIn} onChange={(event) => setDraft((value) => ({ ...value, sourceIn: event.target.value }))} /></label>
       <label>Source OUT (s)<input aria-label="Source OUT seconds" inputMode="decimal" type="number" min={seconds(selected.clip.sourceStartFrame)} max={seconds(selected.clip.sourceStartFrame + selected.clip.frameCount)} step="0.001" value={draft.sourceOut} onChange={(event) => setDraft((value) => ({ ...value, sourceOut: event.target.value }))} /></label>
       <label>Move to layer<select aria-label="Move clip to layer" value={draft.targetLayerId} onChange={(event) => setDraft((value) => ({ ...value, targetLayerId: event.target.value }))}>{composition.layers.map((layer) => <option value={layer.id} key={layer.id}>{layer.name}</option>)}</select></label>
@@ -171,8 +159,8 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
         <button type="button" onClick={() => onCommand({ action: "toggle-clip", clipId: selected.clip.id, enabled: !selected.clip.enabled })}>{selected.clip.enabled ? "Mute clip" : "Enable clip"}</button>
         <button className="is-destructive" type="button" onClick={() => { onCommand({ action: "delete-clip", clipId: selected.clip.id }); setSelectedClipId(null); }}>Delete clip</button>
       </div>
-      <small className="voice-layer-timeline__hint">Drag the clip to move it. Source trim can shorten the selected audio range.</small>
-    </fieldset> : <p className="voice-layer-timeline__hint">Select an audio clip to edit its position, source range, layer, and playback state.</p>}
+      <small className="voice-layer-timeline__hint">Chuyển layer giữ nguyên timecode và Source IN/OUT. Trim/Split chỉ chỉnh vùng âm thanh được chọn.</small>
+    </fieldset> : null}
     {menu ? <OutputSlotMenu x={menu.x} y={menu.y} label={outputs.find((item) => item.id === menu.clipId)?.name ?? "Audio clip"} onClose={() => setMenu(null)} actions={menuActions} /> : null}
   </section>;
 }
