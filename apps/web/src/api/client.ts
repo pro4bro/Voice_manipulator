@@ -799,7 +799,7 @@ export const api = {
   assignReferences: (projectId: string, assignment: ReferenceAssignment) => request<ReferenceBindingDocument>(`/api/projects/${projectId}/reference-bindings`, { method: "POST", body: JSON.stringify(assignment) }),
   saveVoiceScript: (projectId: string, document: VoiceScriptDocument) => request<VoiceScriptDocument>(`/api/projects/${projectId}/voice-script`, { method: "PUT", body: JSON.stringify(document) }),
   previewScriptDuration: (projectId: string, payload: { rows: Array<{id: string; voiceId: string; text: string}>; scriptRevision: number; timingRevision: number }) => request<import("../domain/reference-bindings").DurationAllocation>(`/api/projects/${projectId}/voice-script/duration-plan`, { method: "POST", body: JSON.stringify(payload) }),
-  readVoiceScript: (projectId: string, payload: { scriptRevision?: number; timingRevision?: number; referenceRevision?: number; rows: Array<{ id: string; voiceId: string; text: string; settings?: import("../domain/types").ScriptSettings }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
+  readVoiceScript: (projectId: string, payload: { versionId?: string; versionRevision?: number; scriptRevision?: number; timingRevision?: number; referenceRevision?: number; rows: Array<{ id: string; voiceId: string; text: string; settings?: import("../domain/types").ScriptSettings }>; parameters: Record<string, Record<string, TrainingParameterValue>>; gapSeconds?: number; forceRegenerate?: boolean }) =>
     request<VoiceScriptJob>(`/api/projects/${projectId}/voice-script/read`, {
       method: "POST",
       body: JSON.stringify(payload),

@@ -10,6 +10,8 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import "../../ui/list-canvas.css";
 import "./voice-output.css";
+import { ManagedVoiceOutputPanel } from "./ManagedVoiceOutputPanel";
+import type { VoiceVersionsController } from "../../app/useVoiceVersions";
 
 export interface PendingVoiceOutput {
   id: string;
@@ -22,6 +24,8 @@ export interface PendingVoiceOutput {
 }
 
 interface VoiceOutputPanelProps {
+  controller?: VoiceVersionsController;
+  generationBusy?: boolean;
   projectId?: string;
   outputs: VoiceOutput[];
   speakers: SpeakerProfile[];
@@ -46,7 +50,11 @@ function clock(seconds: number) {
  * Speech made in Voice Manipulator. Kept out of Media Pool on purpose: Media
  * Pool is source material for STT and training, this is what came out.
  */
-export function VoiceOutputPanel({ projectId, outputs, speakers, activeOutputId, onOpen, onSendTo, onExport, onDelete, onDeleteMany, pendingOutput, onDismissPendingOutput, onVersionCreated, onSessionCreated }: VoiceOutputPanelProps) {
+export function VoiceOutputPanel(props: VoiceOutputPanelProps) {
+  return props.controller && props.projectId ? <ManagedVoiceOutputPanel controller={props.controller} projectId={props.projectId} outputs={props.outputs} speakers={props.speakers} pendingOutput={props.pendingOutput} onSendTo={props.onSendTo} onExport={props.onExport} generationBusy={props.generationBusy} /> : <LegacyVoiceOutputPanel {...props} />;
+}
+
+function LegacyVoiceOutputPanel({ projectId, outputs, speakers, activeOutputId, onOpen, onSendTo, onExport, onDelete, onDeleteMany, pendingOutput, onDismissPendingOutput, onVersionCreated, onSessionCreated }: VoiceOutputPanelProps) {
   const [book, setBook] = useState<VoiceOutputSessions | null>(null);
   const [sessionBusy, setSessionBusy] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);

@@ -76,5 +76,10 @@ export function useVoiceScriptDocument(projectId: string) {
 
   const setRows = useCallback((rows: VoiceScriptRow[] | ((rows: VoiceScriptRow[]) => VoiceScriptRow[])) => setDocument((current) => migrateScript(typeof rows === "function" ? rows(current.rows) : rows, current)), []);
   const update = useCallback((next: VoiceScriptDocument) => setDocument(migrateScript(next.rows, next)), []);
-  return { document, setRows, update, ready, error, flush, isSaved: ready && !error && content(document) === persisted.current, reload: () => setRetry((value) => value + 1) };
+  const adoptSaved = useCallback((saved: VoiceScriptDocument) => {
+    const next = migrateScript(saved.rows, saved);
+    latest.current = next; revision.current = saved.revision; persisted.current = content(next);
+    setDocument(next); setReady(true); setError(null);
+  }, []);
+  return { document, setRows, update, adoptSaved, ready, error, flush, isSaved: ready && !error && content(document) === persisted.current, reload: () => setRetry((value) => value + 1) };
 }

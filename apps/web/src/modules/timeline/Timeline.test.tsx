@@ -249,12 +249,12 @@ describe("Timeline", () => {
     expect(screen.getByRole("slider", { name: "Zoom timeline" })).toHaveValue("0");
   });
 
-  it("keeps a settled PCM window when the server groups peaks below the requested point count", async () => {
+  it.each([10, 10 - 0.5 / 24000])("keeps a settled PCM window across grouped peaks and fractional-frame viewport edges: %s", async (end) => {
     const fetchWaveform = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         start: 0,
-        end: 10,
+        end,
         resolution: 0.001,
         points: Array.from({ length: 650 }, () => ({ min: -0.25, max: 0.25 })),
       }),

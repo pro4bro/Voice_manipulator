@@ -25,6 +25,14 @@ function Harness({ initial, output = null, onRead = vi.fn(), onRows, onReference
 }
 
 describe("VoiceScript", () => {
+  it("preserves editable Script text when muting a layer reveals different audible words", () => {
+    const output = { id: "out", name: "Composition", duration: 1,
+      words: [{ text: "Xin", start: 0, end: .4, segmentIndex: 0 }, { text: "chào", start: .4, end: 1, segmentIndex: 0 }],
+      segments: [{ rowId: "r1", text: "Xin nhé", voiceId: "an-clone", start: 0, end: 1 }] } as unknown as VoiceOutput;
+    render(<Harness initial={[{ id: "r1", voiceId: "an-clone", speakerProfileId: "speaker-an", text: "Xin nhé" }]} output={output} />);
+    expect(screen.getByRole("textbox", { name: "Lời thoại đoạn 1" })).toHaveValue("Xin nhé");
+    expect(screen.queryByRole("button", { name: "Chọn từ chào" })).not.toBeInTheDocument();
+  });
   it("shows Note beside the explicit Script reference action without applying a reference early", () => {
     const onReferenceContext = vi.fn();
     const output = { id: "output-1", name: "Script", duration: 1, words: [{ text: "Xin", start: 0, end: 0.4, segmentIndex: 0 }], segments: [{ rowId: "r1", text: "Xin", voiceId: "an-clone", speakerProfileId: "speaker-an", start: 0, end: 0.4 }] } as unknown as VoiceOutput;

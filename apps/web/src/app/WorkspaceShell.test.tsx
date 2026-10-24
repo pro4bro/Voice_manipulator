@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Profiler } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Project, ProjectMediaAsset, ProjectVoice, ReadingSession, SpeakerProfile, TrainingCatalog, TrainingModelOption, VoiceScriptJob } from "../domain/types";
+import type { Project, ProjectMediaAsset, ProjectVoice, ReadingSession, SpeakerProfile, TrainingCatalog, TrainingModelOption, VoiceOutput, VoiceScriptDocument, VoiceScriptJob } from "../domain/types";
 import type { LipSyncVersionState } from "../domain/lipsync";
 import { voicesInCategory } from "../domain/voiceScript";
 import { VoiceScript } from "../modules/script/VoiceScript";
@@ -13,6 +13,7 @@ import { WorkspaceShell } from "./WorkspaceShell";
 import { loadResumeSource, saveResumeSource } from "../domain/workspace-resume";
 const collectionContext = vi.hoisted(() => ({ current: null as StudioContext | null }));
 const voiceScriptHarness = vi.hoisted(() => ({ enabled: false }));
+const voiceVersionsHarness = vi.hoisted(() => ({ versionId: "shell-version", stateRevision: 7, flush: vi.fn(), adoptOutput: vi.fn() }));
 
 const apiMocks = vi.hoisted(() => ({
   listProjectVoices: vi.fn(),
@@ -77,6 +78,23 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/client", () => ({ api: apiMocks }));
+vi.mock("./useVoiceVersions", () => ({
+  useVoiceVersions: (props: { script: { document: VoiceScriptDocument; flush: () => Promise<VoiceScriptDocument> }; onOpenOutput: (output: VoiceOutput | null) => void }) => {
+    const state = { revision: voiceVersionsHarness.stateRevision, script: props.script.document, config: {}, generatedScript: null,
+      generatedConfig: {}, composition: null, ownedOutputIds: [], history: [], outputId: null };
+    const version = { id: voiceVersionsHarness.versionId, name: "Version 1", outputId: null, state };
+    const makeBook = (script: VoiceScriptDocument) => ({ revision: 12, activeSessionId: "shell-session", activeVersionId: version.id,
+      sessions: [{ id: "shell-session", name: "Session 1", versions: [{ ...version, state: { ...state, script } }] }] });
+    return {
+      book: makeBook(props.script.document), state, activeVersion: version, ready: true, busy: false, transitioning: false, error: null,
+      flush: async () => { const savedScript = await props.script.flush(); voiceVersionsHarness.flush(savedScript); return makeBook(savedScript); },
+      adoptOutput: async (output: VoiceOutput) => { await voiceVersionsHarness.adoptOutput(output); props.onOpenOutput(output); return makeBook(props.script.document); },
+      reload: async () => makeBook(props.script.document), change: vi.fn(async () => makeBook(props.script.document)),
+      editLayer: vi.fn(async () => makeBook(props.script.document)), slotAction: vi.fn(async () => makeBook(props.script.document)),
+      refreshAfterGeneration: vi.fn(async () => undefined),
+    };
+  },
+}));
 vi.mock("../modules/registry/ModuleRegistry", () => ({
   ModuleRegistry: ({ id, context }: { id: string; context: { script: string; onScriptSelectionChange?: (ids: string[]) => void; selectedScriptAssetIds?: string[]; pendingMediaImports?: Array<{ name: string; status: string }>; take: { name: string } | null; mediaAssets: ProjectMediaAsset[]; selectedImportedTrackId: string | null; onSelectImportedTrack: (id: string) => void; onSelectAsset: (id: string) => void; onToggleImport: (id: string, selected: boolean, streamIndex?: number) => void; onScriptChange: (value: string) => void; obsTimelineActive: boolean; obsTimelineRecordingId: string | null; obsSeekRequest: { channelId: string; selectOnly?: boolean } | null; onOpenObsRecording: (id: string) => void; onOpenObsTrack: (id: string, channelId: string) => void; onOpenVoiceOutput: (output: unknown) => void; onBatchMediaAction: (action: unknown) => void; onRemoveAsset: (asset: ProjectMediaAsset) => void; onOpenObsAsset: (id: string) => void; onImportLocalMedia: () => void; pendingLocalMedia: { tracks: Array<{ streamIndex: number; imported: boolean; transcribe: boolean }> } | null; onPendingLocalTrackChange: (streamIndex: number, field: "imported" | "transcribe", selected: boolean) => void; onConfirmPendingLocalMedia: (mode: "import" | "follow") => void } }) => {
     collectionContext.current = context as unknown as StudioContext;
@@ -218,6 +236,9 @@ describe("WorkspaceShell STT synchronization", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    voiceVersionsHarness.adoptOutput.mockReset();
+    voiceVersionsHarness.versionId = "shell-version";
+    voiceVersionsHarness.stateRevision = 7;
     apiMocks.saveLipSyncState.mockImplementation(async (_projectId: string, _versionId: string, state: LipSyncVersionState) => ({ ...state, document: { ...state.document, revision: state.document.revision + 1 } }));
     apiMocks.getVoiceScript.mockResolvedValue({ version: 1, revision: 0, settings: {}, segments: [], rows: [] });
     apiMocks.saveVoiceScript.mockImplementation(async (_id, doc) => ({ ...doc, revision: doc.revision + 1 }));
@@ -785,6 +806,8 @@ describe("WorkspaceShell STT synchronization", () => {
 
   it("replaces a running Voice Output placeholder only when the generation job has an output", async () => {
     const start = deferred<VoiceScriptJob>();
+    const adoption = deferred<void>();
+    voiceVersionsHarness.adoptOutput.mockReturnValue(adoption.promise);
     apiMocks.readVoiceScript.mockReturnValue(start.promise);
     apiMocks.getVoiceScriptJob.mockResolvedValue({ ...generationJob("complete"), output: GENERATED });
     prepareGeneration();
@@ -797,6 +820,45 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(collectionContext.current!.voiceOutputs).toHaveLength(0);
     await waitFor(() => expect(collectionContext.current!.voiceOutputs).toContainEqual(GENERATED), { timeout: 2000 });
     expect(collectionContext.current!.pendingVoiceOutput).toBeNull();
+    await waitFor(() => expect(voiceVersionsHarness.adoptOutput).toHaveBeenCalledWith(GENERATED));
+    expect(collectionContext.current?.take?.id).not.toBe(GENERATED.id);
+    await act(async () => { adoption.resolve(); await adoption.promise; });
+    await waitFor(() => expect(collectionContext.current?.take?.id).toBe(GENERATED.id));
+    expect(voiceVersionsHarness.adoptOutput).toHaveBeenCalledTimes(1);
+  });
+
+  it("adopts a derived Voice Output before opening its playback pointer", async () => {
+    const adoption = deferred<void>();
+    voiceVersionsHarness.adoptOutput.mockReturnValue(adoption.promise);
+    prepareGeneration();
+    await waitFor(() => expect(collectionContext.current?.voiceScriptDocument?.revision).toBe(1));
+
+    act(() => collectionContext.current?.onDerivedVoiceOutput?.(GENERATED));
+    expect(voiceVersionsHarness.adoptOutput).toHaveBeenCalledWith(GENERATED);
+    expect(collectionContext.current?.take?.id).not.toBe(GENERATED.id);
+
+    await act(async () => { adoption.resolve(); await adoption.promise; });
+    await waitFor(() => expect(collectionContext.current?.take?.id).toBe(GENERATED.id));
+  });
+
+  it("adopts a patched Voice Output without replacing the checked-out Script rows", async () => {
+    const adoption = deferred<void>();
+    voiceVersionsHarness.adoptOutput.mockReturnValue(adoption.promise);
+    const patched = { ...GENERATED, id: "patched-output", segments: [{ rowId: "patch-row", text: "Different patch text", voiceId: "voice-1",
+      voiceName: "Test voice", speakerProfileId: "speaker-1", engine: "omnivoice", generatorId: "omnivoice-generate", start: 0, end: 1,
+      scriptRow: { id: "patch-row", text: "Different patch text", voiceId: "voice-1", speakerProfileId: "speaker-1" } }] } as VoiceOutput;
+    prepareGeneration();
+    await waitFor(() => expect(collectionContext.current?.voiceScriptRows[0]?.text).toBe("xin chào"));
+    const savedRows = collectionContext.current!.voiceScriptRows;
+
+    act(() => collectionContext.current?.onPatchedVoiceOutput?.(patched));
+    expect(voiceVersionsHarness.adoptOutput).toHaveBeenCalledWith(patched);
+    expect(collectionContext.current?.voiceScriptRows).toEqual(savedRows);
+    expect(collectionContext.current?.take?.id).not.toBe(patched.id);
+
+    await act(async () => { adoption.resolve(); await adoption.promise; });
+    await waitFor(() => expect(collectionContext.current?.take?.id).toBe(patched.id));
+    expect(collectionContext.current?.voiceScriptRows).toEqual(savedRows);
   });
 
   it("keeps an OBS file slot across page changes until the ready session's asset really exists", async () => {
@@ -818,19 +880,19 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(collectionContext.current!.mediaAssets).toContainEqual(finished);
   });
 
-  it.each([true, false])("chooses Generate Voice rows before dispatch and requests true regeneration for all: %s", async (all) => {
+  it("uses Generate Full for the whole nonempty Script and fences the request to the active Version", async () => {
     apiMocks.listVoiceOutputs.mockResolvedValue([{ ...GENERATED, segments: [{ rowId: "row-1", voiceId: "voice-1", generatorId: "gen", text: "xin chào" }] }]);
     apiMocks.readVoiceScript.mockResolvedValue(generationJob("cancelled"));
     prepareGeneration([{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" },
       { id: "row-2", text: "từ mới", voiceId: "voice-1", speakerProfileId: "speaker-1" }]);
     await waitFor(() => expect(screen.getByTestId("generation-voices")).toHaveTextContent("1"));
     fireEvent.click(screen.getByRole("button", { name: "read test script" }));
-    expect(apiMocks.readVoiceScript).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: all ? "Chạy toàn bộ (2)" : "Chỉ phần chưa có kết quả (1)" }));
     await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
     const request = apiMocks.readVoiceScript.mock.calls[0][1];
-    expect(request.rows.map((row: { id: string }) => row.id)).toEqual(all ? ["row-1", "row-2"] : ["row-2"]);
-    expect(request.forceRegenerate).toBe(all);
+    expect(request.rows.map((row: { id: string }) => row.id)).toEqual(["row-1", "row-2"]);
+    expect(request.forceRegenerate).toBe(true);
+    expect(request).toMatchObject({ versionId: "shell-version", versionRevision: 7 });
+    expect(voiceVersionsHarness.flush).toHaveBeenCalled();
   });
 
   it("offers an imported full OmniVoice collection voice in Script and sends that voice to generation", async () => {
@@ -893,7 +955,7 @@ describe("WorkspaceShell STT synchronization", () => {
       expect(request.rows).toEqual([expect.objectContaining({
         text: "Xin chào từ OBS9", voiceId: importedVoice.id,
       })]);
-      expect(request.forceRegenerate).toBe(false);
+      expect(request.forceRegenerate).toBe(true);
       expect(request.parameters).toHaveProperty("omnivoice-generate");
 
       act(() => collectionContext.current!.onVoiceCategoryChange!("clone"));

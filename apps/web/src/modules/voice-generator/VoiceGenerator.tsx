@@ -125,7 +125,7 @@ export function VoiceGenerator({ projectId, generators, category, onCategoryChan
       : unavailable ? `${unavailable.label} chưa sẵn sàng`
       : readiness.problem
       ?? (missingEngine ? `Chưa có công cụ đọc voice ${ENGINE_LABELS[missingEngine.voice.engine] ?? missingEngine.voice.engine}` : null)
-      ?? (invalid ? "Tham số chưa hợp lệ" : `Đọc Script · ${readiness.rows.length} đoạn`);
+      ?? (invalid ? "Tham số chưa hợp lệ" : `Generate Full · ${readiness.rows.length} đoạn`);
 
   return (
     <ModuleFrame className="voice-generator-module" eyebrow="VOICE GENERATOR" index="01" title="Tạo giọng">

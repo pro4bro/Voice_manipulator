@@ -104,6 +104,7 @@ interface TimelineProps {
   onWordSelectionChange?: (selection: WordSelection) => void;
   /** Page-specific controls ahead of the edit tools, such as recording in Voice Changer. */
   leadingActions?: ReactNode;
+  layerContent?: (playheadSeconds: number) => ReactNode;
   /** Replaces the take name above the waveform while something live is happening. */
   liveCaption?: string | null;
   /** What an empty timeline says; each page fills it with what would fill it. */
@@ -252,6 +253,7 @@ function AudioTimeline({
   clippingHighlightAutoHide = false, scrubPreviewPosition = "center",
   onReferenceContext,
   leadingActions = null,
+  layerContent,
   liveCaption = null,
   emptyNote,
 }: TimelineProps) {
@@ -793,8 +795,10 @@ function AudioTimeline({
     }
     const requiredDensity = detailRequest.points / Math.max(0.001, detailRequest.end - detailRequest.start);
     const cacheCoversViewport = detailEnvelope
-      && detailEnvelope.start <= detailRequest.viewportStart
-      && detailEnvelope.end >= detailRequest.viewportEnd
+      // API bounds are quantized to PCM frames; viewport math can also differ
+      // by a fraction of a frame. Do not refetch an already covered edge.
+      && detailEnvelope.start <= detailRequest.viewportStart + 1 / 24000
+      && detailEnvelope.end + 1 / 24000 >= detailRequest.viewportEnd
       // The API groups source peaks in whole blocks, so it can return fewer
       // points than requested even at its highest available resolution.
       && detailEnvelope.requestedDensity >= requiredDensity * 0.75;
@@ -1623,7 +1627,7 @@ function AudioTimeline({
       title="Timeline"
       index="A1"
       tone="dark"
-      className="timeline-module"
+      className={`timeline-module ${layerContent ? "has-audio-layers" : ""}`}
       action={
         <div className="timeline-header-actions">
           {leadingActions}
@@ -1898,6 +1902,7 @@ function AudioTimeline({
         <span className={`gain-badge ${isGainPreviewing ? "is-preview" : ""}`}>{isGainPreviewing ? "PREVIEW 3/12 · " : ""}{draftGain > 0 ? "+" : ""}{draftGain.toFixed(1)} dB</span>
         {gainOverflows.length ? <span className={`gain-warning ${autoCalibrate ? "is-calibrated" : ""}`}>{autoCalibrate ? "AUTO CAL" : "CLIP"} · {gainOverflows.length} vùng</span> : null}
       </div>
+      {layerContent ? <div className="timeline-audio-layers">{layerContent(currentTime)}</div> : null}
       {take?.url ? (
         <audio
           onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}

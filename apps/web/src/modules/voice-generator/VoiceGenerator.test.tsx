@@ -58,7 +58,7 @@ describe("VoiceGenerator", () => {
     const cast = screen.getByRole("list", { name: "Voice trong Script" });
     expect(within(cast).getByText("An").closest("li")).toHaveTextContent("Nhái giọng · OmniVoice · 2 đoạn");
     expect(screen.getByLabelText("Nghe giọng mẫu Bình")).toHaveAttribute("src", "/api/projects/p1/voices/voice-2/reference");
-    fireEvent.click(screen.getByRole("button", { name: /Đọc Script · 3 đoạn/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Generate Full · 3 đoạn/ }));
     expect(onGenerate).toHaveBeenCalled();
   });
 

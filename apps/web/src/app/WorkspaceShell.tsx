@@ -15,6 +15,7 @@ import { mediaPatchSpan } from "../domain/patch-selection";
 import { coverageFor } from "../domain/reading-plan";
 import { useReadingSession } from "./useReadingSession";
 import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
+import { useVoiceVersions } from "./useVoiceVersions";
 import { useVoiceEdits } from "./useVoiceEdits";
 import { useVoiceRender } from "./useVoiceRender";
 import { effectiveScriptSettings } from "../domain/voice-script-document";
@@ -350,6 +351,7 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
   const voiceScriptJobRef = useRef<VoiceScriptJob | null>(null);
   const [pendingVoiceOutput, setPendingVoiceOutput] = useState<PendingVoiceOutput | null>(null);
   const generationStartInFlight = useRef(false);
+  const completedVersionJobs = useRef(new Set<string>());
   const [voiceChangers, setVoiceChangers] = useState<TrainingModelOption[]>([]);
   const [changerPreflight, setChangerPreflight] = useState<VoiceChangerPreflight | null>(null);
   const [changerStatus, setChangerStatus] = useState<VoiceChangerStatus | null>(null);
@@ -1422,7 +1424,14 @@ function WorkspaceSession({ project, engine, onBack, onPageChange, runtime, onRu
       const output = job.output;
       setPendingVoiceOutput(null);
       setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
-      openVoiceOutput(output, false);
+      if (output.parameters.voiceVersion) {
+        openVoiceOutput(output, false);
+      }
+      if (!completedVersionJobs.current.has(job.id)) {
+        completedVersionJobs.current.add(job.id);
+        if (output.parameters.voiceVersion) void voiceVersions.refreshAfterGeneration();
+        else void voiceVersions.adoptOutput(output);
+      }
       setNotice(`${job.status === "stopped" ? "Đã dừng sau khi đọc" : "Đã đọc"} ${job.done} đoạn${job.reused ? ` (${job.reused} đoạn dùng lại)` : ""} · ${output.duration.toFixed(1)} giây; file nằm trong Voice Output.`);
     } else {
       setPendingVoiceOutput((current) => current ? {
@@ -2436,7 +2445,10 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       if (JSON.stringify({ ...savedScript, revision: 0 }) !== JSON.stringify({ ...voiceScript.document, revision: 0 })) throw new Error("Script đã đổi trong lúc lưu. Bấm Tạo voice lại với nội dung hiện tại.");
       const [timingSnapshot, bindingSnapshot] = await Promise.all([api.getTimingPlans(project.id), api.getReferenceBindings(project.id)]);
       const hasDuration = voiceScript.document.settings.duration != null || voiceScript.document.segments.some((segment) => segment.settings.duration != null) || voiceScriptRows.some((row) => row.settings?.duration != null || row.settings?.locked?.includes("duration")) || timingSnapshot.plans.length > 0 || bindingSnapshot.bindings.some((binding) => binding.sources.some((source) => source.properties.includes("timing") && source.strength > 0));
-      const choice = await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
+      const versionBook = activePage === "voice-manipulator" ? await voiceVersions.flush({ generatorParameters, generationEngine, generationCategory: voiceCategory, speed, gain }) : null;
+      const version = versionBook?.sessions.flatMap((session) => session.versions).find((item) => item.id === versionBook.activeVersionId);
+      if (activePage === "voice-manipulator" && !version) throw new Error("Tạo New Session hoặc chọn Version trước khi Generate Full.");
+      const choice = activePage === "voice-manipulator" ? { ids: readiness.rows.map((row) => row.id), rerunAll: true } : await processingChoice.choose("Generate Voice", readiness.rows.map((row) => row.id),
         hasDuration ? new Set<string>() : completedGenerationRows(readiness.rows, voiceOutputs, parameters, rowParameters));
       if (!choice) {
         setPendingVoiceOutput(null);
@@ -2445,7 +2457,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
       }
       const selectedRows = readiness.rows.filter((row) => choice.ids.includes(row.id));
       setPendingVoiceOutput((current) => current ? { ...current, text: selectedRows.map((row) => row.text).join("\n"), totalRows: selectedRows.length } : current);
-      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { scriptRevision: savedScript.revision, timingRevision: timingSnapshot.revision, referenceRevision: bindingSnapshot.revision, rows: selectedRows.map((row) => {
+      acceptVoiceScriptJob(await api.readVoiceScript(project.id, { ...(version ? { versionId: version.id, versionRevision: version.state.revision } : {}), scriptRevision: savedScript.revision, timingRevision: timingSnapshot.revision, referenceRevision: bindingSnapshot.revision, rows: selectedRows.map((row) => {
         const settings = effectiveScriptSettings(voiceScript.document, voiceScriptRows.find((item) => item.id === row.id)!);
         const hasSettings = Object.entries(settings).some(([key, value]) => key !== "locked" && value != null);
         return { ...row, ...(hasSettings ? { settings } : {}) };
@@ -2458,6 +2470,33 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     } finally {
       generationStartInFlight.current = false;
     }
+  }
+
+  async function generateFixOnly() {
+    if (generationStartInFlight.current || generating) return;
+    generationStartInFlight.current = true;
+    const pendingId = `generation-fix-${crypto.randomUUID()}`;
+    try {
+      const book = await voiceVersions.flush({ generatorParameters, generationEngine, generationCategory: voiceCategory, speed, gain });
+      const version = book?.sessions.flatMap((session) => session.versions).find((item) => item.id === book.activeVersionId);
+      if (!version) throw new Error("Chọn Version đã Generate Full trước khi tạo Fix.");
+      setPendingVoiceOutput({ id: pendingId, name: "Generate Fix Only", text: "Các đoạn vừa sửa trong Version hiện tại", status: "starting", totalRows: 0 });
+      setGenerating(true);
+      voiceScriptJobRef.current = null;
+      setVoiceScriptJob(null);
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/voice-output-sessions/versions/${version.id}/fix`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: version.state.revision }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail ?? "Không tạo được đoạn Fix.");
+      acceptVoiceScriptJob(result as VoiceScriptJob);
+    } catch (error) {
+      setGenerating(false);
+      const detail = error instanceof Error ? error.message : String(error);
+      setPendingVoiceOutput((current) => current?.id === pendingId ? { ...current, status: "error", detail } : current);
+      setNotice(detail);
+    }
+    finally { generationStartInFlight.current = false; }
   }
 
   function openVoiceOutput(output: VoiceOutput, loadScript = true) {
@@ -2680,6 +2719,20 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
   // Voice Manipulator follows Voice Training until the user or an imported
   // Collection voice chooses a generation category of its own.
   const voiceCategory = generationCategoryOverride ?? categoryOf(selectedTrainingModel(trainingModels, trainingCatalog.settings));
+  const voiceVersions = useVoiceVersions({ projectId: project.id, script: voiceScript,
+    config: { generatorParameters, generationEngine, generationCategory: voiceCategory, speed, gain },
+    onRestoreConfig: (config) => {
+      setGeneratorParameters((config.generatorParameters ?? {}) as Record<string, Record<string, TrainingParameterValue>>);
+      setGenerationEngine(typeof config.generationEngine === "string" ? config.generationEngine : null);
+      setGenerationCategoryOverride(config.generationCategory === "train" || config.generationCategory === "clone" ? config.generationCategory : null);
+      setSpeed(typeof config.speed === "number" ? config.speed : 1);
+      setGain(typeof config.gain === "number" ? config.gain : 0);
+    },
+    onOpenOutput: (output) => {
+      if (output) { setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]); openVoiceOutput(output, false); void api.listVoiceOutputs(project.id).then((items) => { if (activeMediaProjectId.current === project.id) setVoiceOutputs(items); }).catch(() => undefined); }
+      else setOutputTake(null);
+    },
+  });
   const canRunAiReview = Boolean(scriptMediaAsset?.text.trim() && scriptMediaAsset.transcriptionStatus === "complete" && !liveTranscriptActive);
   function scopeVoiceSelection(selection: WordSelection): WordSelection {
     if (activePage !== "voice-manipulator" || (!selection.indexes.length && !selection.ranges?.length && !selection.rowIds?.length)) return selection;
@@ -2716,13 +2769,13 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     onPatchedVoiceOutput: (output: VoiceOutput) => {
       setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
       setWordSelection(EMPTY_SELECTION);
-      openVoiceOutput(output, true);
-      setNotice("Đã mở bản vá và lời đọc mới; nguồn vẫn nằm trong Voice Output.");
+      void voiceVersions.adoptOutput(output);
+      setNotice("Đã lưu bản vá vào Voice Output; Script của Version hiện tại được giữ nguyên.");
     },
     onDerivedVoiceOutput: (output: VoiceOutput) => {
       setVoiceOutputs((current) => [output, ...current.filter((item) => item.id !== output.id)]);
       setWordSelection(EMPTY_SELECTION);
-      openVoiceOutput(output, false);
+      void voiceVersions.adoptOutput(output);
       setNotice("Đã mở bản Fix mới; nguồn vẫn nằm trong Voice Output.");
     },
     onNavigateVoiceOutput: (id: string, loadScript = false) => {
@@ -2832,6 +2885,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     voiceOutputs,
     activeOutputId: voiceOutputs.some((output) => output.id === outputTake?.id) ? outputTake?.id ?? null : null,
     onOpenVoiceOutput: openVoiceOutput,
+    voiceVersions,
+    onGenerateFixOnly: () => void generateFixOnly(),
     onVoiceOutputVersionCreated: (output) => setVoiceOutputs((current) => [output, ...current]),
     onVoiceOutputSessionCreated: () => setOutputTake(null),
     onDeleteVoiceOutput: (output) => void deleteVoiceOutput(output),
@@ -3043,7 +3098,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     },
     onRunAiReview: (assetIds) => { if (!blockedByRecycleBin()) void runAiReview(assetIds); },
     onRunDiarization: () => { if (!blockedByRecycleBin()) void runDiarization(); },
-  }), [manipulatorMode, generationEngine, speechToTextHost, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, captureSource, obsCaptureEnabled, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
+  }), [voiceVersions, manipulatorMode, generationEngine, speechToTextHost, voiceScriptSettingsHost, voiceRender, voiceEdits, editedOutput, referenceDocument, referenceError, productionNavigation, activePage, aiReviewBusy, datasetBusy, datasetReadiness, trainingBatch, trainingModels, trainingProgressByRun, trainingRuns, projectVoices, voiceOutputs, sttEngines, asrAdapters, voiceGenerators, generatorParameters, generating, voiceScriptRows, voiceScript.document, voiceScript.error, voiceScript.ready, voiceScript.isSaved, voiceCategory, voiceScriptJob, pendingVoiceOutput, pendingObsRecording, voiceChangers, changerPreflight, changerSettings, changerStatus, changerBusy, changerRecordings, gain, captureSource, obsCaptureEnabled, liveTranscriptActive, mediaAssets, mediaBusy, pendingLocalMedia, pendingNativeMediaPaths, pendingMediaImports, preferences.emotionStyle, preferences.timeline, previewingRecycled, profileSchema, readingBusy, readingPacks, readingSession, reading.pendingTake, recordingPreview, obsTimelineActive, obsTimelineRecordingId, obsTranscriptRows, obsTranscriptError, obsPlayheadSeconds, obsSeekRequest, obsOverlapSelection, script, selectedAssetId, selectedImportedTrackId, selectedScriptAssetIds, selectedVoice, speed, pageTake, outputTake, trainingCatalog, trainingRuntime, wordSelection, patchSourceSelection]);
 
   const renderModule = (id: ModuleId) => {
     if (activePage === "voice-manipulator" && ((id === "voice-generator" && manipulatorMode !== "voice-over")
@@ -3077,7 +3132,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
         <aside className={`project-rail ${activePage === "voice-manipulator" ? "project-rail--manipulator" : ""}`}><button aria-label="Về danh sách project" onClick={() => void backToProjects()} type="button"><Icon name="back" /></button><div className="rail-project"><span>{project.name.slice(0, 2).toUpperCase()}</span><b>{project.name}</b><small>{project.accent}</small></div>{activePage === "voice-manipulator" ? <ManipulatorNavigation mode={manipulatorMode} onChange={setManipulatorMode} /> : null}<div className="rail-spine">PRO4BRO / LOCAL SESSION / {project.id.slice(0, 6).toUpperCase()}</div><button aria-label="Project files" type="button"><Icon name="folder" /></button></aside>
         <section id={activePage === "voice-manipulator" ? "manipulator-workspace" : undefined} role={activePage === "voice-manipulator" ? "tabpanel" : undefined} aria-labelledby={activePage === "voice-manipulator" ? `manipulator-tab-${manipulatorMode}` : undefined} className={`workspace-stage ${COMPACT_PAGES.has(activePage) ? "is-compact-heading" : ""}`}>
           {!COMPACT_PAGES.has(activePage) ? <header className="stage-heading"><div><span>{manifest.eyebrow}</span><h1>{manifest.label}</h1></div><div className="stage-lineage"><span>PROJECT</span><b>{project.name}</b><i /><span>TAKE</span><b>{pageTake?.name ?? "Chưa chọn"}</b></div></header> : null}
-          {activePage === "lip-sync" ? <LipSyncPage key={project.id} navigationRef={lipSyncNavigation} incoming={lipSyncIncoming} onIncomingConsumed={(id) => setLipSyncIncoming((current) => current?.id === id ? null : current)} projectId={project.id} assets={mediaAssets} outputs={voiceOutputs} leftWidth={leftWidth} rightWidth={rightWidth} onResizeStart={beginResize} onResizeKeyDown={resizeWithKeyboard} /> : <div className={`studio-board studio-board--${activePage} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
+          {activePage === "lip-sync" ? <LipSyncPage key={project.id} navigationRef={lipSyncNavigation} incoming={lipSyncIncoming} onIncomingConsumed={(id) => setLipSyncIncoming((current) => current?.id === id ? null : current)} projectId={project.id} assets={mediaAssets} outputs={voiceOutputs} leftWidth={leftWidth} rightWidth={rightWidth} onResizeStart={beginResize} onResizeKeyDown={resizeWithKeyboard} /> : <div inert={activePage === "voice-manipulator" && (voiceVersions.transitioning || !voiceVersions.ready && !voiceVersions.error) || undefined} className={`studio-board studio-board--${activePage} ${activePage === "voice-manipulator" && voiceVersions.state?.composition ? "has-voice-layers" : ""} ${manifest.columns.left.length ? "" : "is-two-column"} ${manifest.columns.bottom.length ? "" : "is-no-bottom"} ${activePage === "speech-to-text" && obsTimelineActive ? "has-obs-timeline" : ""}`} style={{ "--left-column": `${leftWidth}px`, "--right-column": `${rightWidth}px` } as CSSProperties}>
             <div className="module-column module-column--left">{manifest.columns.left.map(renderModule)}</div>
             <div aria-label="Co kéo cột trái" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("left", event)} onPointerDown={(event) => beginResize("left", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--center">{manifest.columns.center.map(renderModule)}</div>

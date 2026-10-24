@@ -29,6 +29,8 @@ const EMPTY_OUTPUT_WORDS: NonNullable<VoiceOutput["words"]> = [];
 import { ScriptRowSelection, ScriptRowSpeaker, ScriptTranscriptHeader, ScriptTranscriptRow, useScriptTableLayout } from "./script-transcript-layout";
 
 interface VoiceScriptProps {
+  onGenerateFixOnly?: () => void;
+  versionReady?: boolean;
   /** Undefined keeps the standalone editor inline; null waits for the workspace dock. */
   settingsHost?: HTMLElement | null;
   readDisabledReason?: string;
@@ -108,7 +110,7 @@ function clock(seconds: number) {
  * Once read, a row shows its words on the generated audio's timing - the same
  * table, selection and playback highlight footage gets in Speech to Text.
  */
-export function VoiceScript({ settingsHost, readDisabledReason, onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
+export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, readDisabledReason, onFixedOutput, onNavigateOutput, voiceRender, timingContext, navigation, onReferenceContext, document: scriptDocument, onDocumentChange, saveError, onReload, rows, onRowsChange, speakers, voices, category, output, playbackId, defaultSpeakerId = null, wordSelection = EMPTY_SELECTION, onWordSelectionChange, job = null, activityTasks = [], busy = false, onRead, onExport, onOpenTraining }: VoiceScriptProps) {
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? EMPTY_OUTPUT_WORDS;
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
@@ -525,7 +527,9 @@ export function VoiceScript({ settingsHost, readDisabledReason, onFixedOutput, o
 
   function renderContent(row: VoiceScriptRow, number: number) {
     const timing = timings.get(row.id);
-    const showWords = Boolean(timing?.fresh && timing.lastWord > timing.firstWord && editingRowId !== row.id);
+    const audibleWords = timing ? words.slice(timing.firstWord, timing.lastWord) : [];
+    const sameText = audibleWords.map((word) => word.text).join(" ").replace(/\s+/gu, " ").trim() === row.text.replace(/\s+/gu, " ").trim();
+    const showWords = Boolean(timing?.fresh && sameText && timing.lastWord > timing.firstWord && editingRowId !== row.id);
     if (showWords && timing) {
       return <div className="script-table__content voice-script__words" onDoubleClick={() => { focusRef.current = { rowId: row.id, start: row.text.length, end: row.text.length }; setEditingRowId(row.id); }} role="gridcell" style={textStyle} title="Bấm để chọn từ · Ctrl/Shift để chọn nhiều · double-click để sửa lời thoại">
         {(() => {
@@ -583,13 +587,13 @@ export function VoiceScript({ settingsHost, readDisabledReason, onFixedOutput, o
   const hasTrustedWords = words.some((word) => word.timingTrusted !== false);
   const readLabel = busy
     ? job ? `Đang đọc ${Math.min(job.done + 1, job.total)}/${job.total}` : "Đang gửi…"
-    : readDisabledReason ?? readiness.problem ?? (freshOutput ? "Đọc lại Script" : "Tạo voice");
+    : onGenerateFixOnly ? "Generate Full" : readDisabledReason ?? readiness.problem ?? (freshOutput ? "Đọc lại Script" : "Tạo voice");
 
   const settings = <div aria-label="Hướng dẫn giọng và timing" className="voice-script__settings-stack" role="region">
     <VoiceScriptSettings document={scriptDocument ?? migrateScript(rows)} onChange={onDocumentChange} onRowsChange={onRowsChange} selectedIds={selectedRowIds} />
     <DeliveryCapabilities document={scriptDocument ?? migrateScript(rows)} />
     {output && voiceRender ? <VoiceRenderControls controller={voiceRender} saved={timingContext?.saved ?? false} /> : null}
-    {output && timingContext && scriptDocument ? <VoiceFixControls projectId={timingContext.projectId} outputId={output.id} output={output} onOutputReady={onFixedOutput} onNavigateOutput={onNavigateOutput} scriptRevision={scriptDocument.revision} editRevision={timingContext.editRevision ?? 0} saved={timingContext.saved} /> : null}
+    {!onGenerateFixOnly && output && timingContext && scriptDocument ? <VoiceFixControls projectId={timingContext.projectId} outputId={output.id} output={output} onOutputReady={onFixedOutput} onNavigateOutput={onNavigateOutput} scriptRevision={scriptDocument.revision} editRevision={timingContext.editRevision ?? 0} saved={timingContext.saved} /> : null}
     {timingContext && scriptDocument ? <DurationPlanPanel projectId={timingContext.projectId} document={scriptDocument} saved={timingContext.saved} output={output} refreshKey={durationRefresh} /> : null}
     {timingContext && scriptDocument ? <TimingPlanEditor {...timingContext} document={scriptDocument} onChange={() => setDurationRefresh((current) => current + 1)} /> : null}
   </div>;
@@ -668,7 +672,8 @@ export function VoiceScript({ settingsHost, readDisabledReason, onFixedOutput, o
       <div className="script-actions">
         {output && onExport ? <span className="script-export"><button aria-expanded={exportOpen} className="button button--quiet" onClick={() => setExportOpen((open) => !open)} type="button">EXPORT ▾</button>{exportOpen ? <div className="script-export__menu" role="menu"><button onClick={() => { setExportOpen(false); onExport("audio"); }} role="menuitem" type="button"><b>Âm thanh WAV</b><small>File giọng đã tạo</small></button><button disabled={!output.segments?.length} onClick={() => { setExportOpen(false); onExport("line"); }} role="menuitem" title={!output.segments?.length ? "Output này chưa có mốc thời gian từng dòng Script" : undefined} type="button"><b>SRT từng dòng</b><small>Mỗi dòng Script một cue</small></button><button disabled={!hasTrustedWords} onClick={() => { setExportOpen(false); onExport("word"); }} role="menuitem" title={!hasTrustedWords ? "Chưa có thời gian từng từ đáng tin" : undefined} type="button"><b>SRT từng từ</b><small>Timestamp theo giọng đã tạo</small></button><button disabled={!hasTrustedWords} onClick={() => { setExportOpen(false); onExport("sentence"); }} role="menuitem" type="button"><b>SRT theo câu</b><small>Dễ đọc · tối đa 2 dòng</small></button><button disabled={!words.length} onClick={() => { setExportOpen(false); onExport("table"); }} role="menuitem" type="button"><b>Bảng Script CSV</b><small>Speaker · nội dung · start · end</small></button></div> : null}</span> : null}
         <button className="button button--quiet is-danger" disabled={busy || !rows.length} onClick={clearScript} type="button">Clear Script</button>
-        <button aria-label="Tạo voice" className="button button--accent" disabled={busy || Boolean(readiness.problem) || Boolean(readDisabledReason)} onClick={onRead} type="button"><span><b>{readLabel}</b><small>{readiness.rows.length} đoạn · {usedVoices.size} voice · {CATEGORY_LABELS[category]}</small></span><Icon name="arrow" /></button>
+        {onGenerateFixOnly ? <button className="button button--quiet" disabled={busy || !output || !versionReady || Boolean(readDisabledReason)} onClick={onGenerateFixOnly} type="button">Generate Fix Only</button> : null}
+        <button aria-label={onGenerateFixOnly ? "Generate Full" : "Tạo voice"} className="button button--accent" disabled={busy || versionReady === false || Boolean(readiness.problem) || Boolean(readDisabledReason)} onClick={onRead} type="button"><span><b>{readLabel}</b><small>{readiness.rows.length} đoạn · {usedVoices.size} voice · {CATEGORY_LABELS[category]}</small></span><Icon name="arrow" /></button>
       </div>
     </div>
   </ModuleFrame>;
