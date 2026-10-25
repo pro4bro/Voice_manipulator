@@ -6,11 +6,27 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-25 — VM-TIMELINE-DIRECT-EDIT-01 implemented toolbar/drag clip editing and literal Script rows.
-last_activity_desc: Taller Master and layer scroll verified with real PCM and browser. Frontend1315, focused53, API56, build229 pass; full API1615 plus unchanged VibeVoice timeout, isolated retry also fails. Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-25 — VM-LEGACY-SCRIPT-TURNS-01 grouped legacy rows with portable source aliases.
+last_activity_desc: Frontend1324/typecheck/build229 and API26 pass; full API1625 plus existing VibeVoice timeout. Browser verifies multiline turns and unchanged source hashes. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## VM-LEGACY-SCRIPT-TURNS-01 — Legacy rows become multiline speaker turns (2026-10-25)
+
+Old projects group adjacent rows with matching explicit speaker/voice/settings
+once, preserving original text as lines inside a cell. Alt+Enter stays in that
+cell; later manually added rows survive reopen. Stable source aliases preserve
+current/generated/Full snapshots and repeated Fix timing. Backups retain old
+Script/book documents; immutable audio/output sources are unchanged.
+
+Frontend164 files/1324 tests, typecheck/build229 and focused API26 pass. Full API
+1625 pass/one unchanged VibeVoice60s import timeout (three existing warnings),
+so that gate remains open. Browser dark/light verifies migration, Alt+Enter,
+manual row persistence and preserved Fix feedback;22 WAV and22 output JSON
+hashes unchanged. ADR0145, `docs/VM-LEGACY-SCRIPT-TURNS-PLAN.md` and
+`docs/gates/vm-legacy-script-turns-01-20261025.md` record guarded boundaries and
+evidence. Phase03 stays60%, Phase06 open; real-model listening remains open.
 
 ## VM-TIMELINE-DIRECT-EDIT-01 — Direct clip editing and literal Script rows (2026-10-25)
 

@@ -1,5 +1,21 @@
 # Work Rounds
 
+## VM-LEGACY-SCRIPT-TURNS-01 — Legacy rows become multiline speaker turns (2026-10-25)
+
+Old projects group adjacent rows with matching explicit speaker/voice/settings
+once, preserving original text as lines inside a cell. Alt+Enter stays in that
+cell; later manually added rows survive reopen. Stable source aliases preserve
+current/generated/Full snapshots and repeated Fix timing. Backups retain old
+Script/book documents; immutable audio/output sources are unchanged.
+
+Frontend164 files/1324 tests, typecheck/build229 and focused API26 pass. Full API
+1625 pass/one unchanged VibeVoice60s import timeout (three existing warnings),
+so that gate remains open. Browser dark/light verifies migration, Alt+Enter,
+manual row persistence and preserved Fix feedback;22 WAV and22 output JSON
+hashes unchanged. ADR0145, `docs/VM-LEGACY-SCRIPT-TURNS-PLAN.md` and
+`docs/gates/vm-legacy-script-turns-01-20261025.md` record guarded boundaries and
+evidence. Phase03 stays60%, Phase06 open; real-model listening remains open.
+
 ## VM-TIMELINE-DIRECT-EDIT-01 — Direct clip editing and literal Script rows (2026-10-25)
 
 Removed the bottom clip form; the top Timeline toolbar now cuts/uncuts/deletes,

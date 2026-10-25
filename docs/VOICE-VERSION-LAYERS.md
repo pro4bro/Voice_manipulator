@@ -119,6 +119,27 @@ synthesis settings within existing rows whose generated source timing is known.
   Automatic transcript rows require diarization/manual identity or Profile changes:
   one continuous speaker turn per row, independent of pauses or punctuation.
 
+### Old-project speaker turns
+
+Legacy Script documents are grouped once on opening and saved with
+`turnGroupingVersion: 1`. Consecutive rows of the same explicit speaker and voice
+become one cell; each original row remains a literal line within it. A/B/A stays
+three turns. Alt+Enter inserts a new line inside the cell. Cell height and timed
+word rendering retain blank lines as well as normal wrapping.
+
+Grouping preserves production intent: unknown speakers, different models or
+effective settings, duration budgets, row-specific timing/reference bindings and
+the existing row length limit keep their boundaries. Common boundaries across
+current/generated/Full snapshots preserve highlights and local Fix eligibility.
+The retained row ID and `legacyRowIds` resolve original output segments without
+rewriting their WAVs or metadata. New Full/Fix publications carry the marker and
+aliases, including when later layer edits expose older source audio.
+
+The project Script and Session book retain `.pre-turn-grouping` JSON backups.
+Once migrated, subsequent manual Add Row boundaries survive reopening. Older
+browser-only drafts also migrate once; the cache now retains the complete marked
+document. ADR0145 supersedes the previous decision to leave all old rows separate.
+
 ## Output slot actions
 
 Finished-product slots use the shared `OutputSlotMenu` interaction and visual
