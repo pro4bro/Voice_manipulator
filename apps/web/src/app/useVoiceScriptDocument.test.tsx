@@ -25,6 +25,33 @@ it("migrates browser-only rows once and opens the project document on a fresh br
   expect(mocks.saveVoiceScript).toHaveBeenCalledTimes(1);
 });
 
+it("groups an old same-speaker cache once and preserves a later same-speaker row across reopen", async () => {
+  const legacyRows = [
+    { id: "old-1", text: "first", voiceId: "v", speakerProfileId: "s", segmentId: "seg-1" },
+    { id: "old-2", text: "second", voiceId: "v", speakerProfileId: "s", segmentId: "seg-2" },
+  ];
+  localStorage.setItem("pro4bro:p:voice-script", JSON.stringify(legacyRows));
+  const first = renderHook(() => useVoiceScriptDocument("p"));
+  await waitFor(() => expect(first.result.current.ready).toBe(true));
+  expect(first.result.current.document).toMatchObject({ turnGroupingVersion: 1, rows: [
+    { id: "old-1", text: "first\nsecond", segmentId: "seg-1", legacyRowIds: ["old-1", "old-2"] },
+  ] });
+
+  act(() => first.result.current.setRows((rows) => [...rows, { id: "manual", text: "intentional row", voiceId: "v", speakerProfileId: "s" }]));
+  await waitFor(() => {
+    const saved = JSON.parse(localStorage.getItem("pro4bro:p:voice-script") ?? "null");
+    expect(saved).toMatchObject({ turnGroupingVersion: 1, rows: [{ id: "old-1" }, { id: "manual" }] });
+  });
+  first.unmount();
+
+  const reopened = renderHook(() => useVoiceScriptDocument("p"));
+  await waitFor(() => expect(reopened.result.current.ready).toBe(true));
+  expect(reopened.result.current.document.rows.map((row) => [row.id, row.text])).toEqual([
+    ["old-1", "first\nsecond"], ["manual", "intentional row"],
+  ]);
+  expect(reopened.result.current.document.turnGroupingVersion).toBe(1);
+});
+
 it("serializes saves, retains edits during a pending write and does not overwrite on conflict", async () => {
   let resolve!: (doc: unknown) => void;
   mocks.saveVoiceScript.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));

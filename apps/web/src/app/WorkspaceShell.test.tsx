@@ -880,7 +880,7 @@ describe("WorkspaceShell STT synchronization", () => {
     expect(collectionContext.current!.mediaAssets).toContainEqual(finished);
   });
 
-  it("uses Generate Full for the whole nonempty Script and fences the request to the active Version", async () => {
+  it("uses Generate Full for the whole grouped legacy Script and fences the request to the active Version", async () => {
     apiMocks.listVoiceOutputs.mockResolvedValue([{ ...GENERATED, segments: [{ rowId: "row-1", voiceId: "voice-1", generatorId: "gen", text: "xin chào" }] }]);
     apiMocks.readVoiceScript.mockResolvedValue(generationJob("cancelled"));
     prepareGeneration([{ id: "row-1", text: "xin chào", voiceId: "voice-1", speakerProfileId: "speaker-1" },
@@ -889,7 +889,8 @@ describe("WorkspaceShell STT synchronization", () => {
     fireEvent.click(screen.getByRole("button", { name: "read test script" }));
     await waitFor(() => expect(apiMocks.readVoiceScript).toHaveBeenCalled());
     const request = apiMocks.readVoiceScript.mock.calls[0][1];
-    expect(request.rows.map((row: { id: string }) => row.id)).toEqual(["row-1", "row-2"]);
+    expect(request.rows.map((row: { id: string; text: string }) => [row.id, row.text])).toEqual([["row-1", "xin chào từ mới"]]);
+    expect(collectionContext.current!.voiceScriptRows[0]).toMatchObject({ text: "xin chào\ntừ mới", legacyRowIds: ["row-1", "row-2"] });
     expect(request.forceRegenerate).toBe(true);
     expect(request).toMatchObject({ versionId: "shell-version", versionRevision: 7 });
     expect(voiceVersionsHarness.flush).toHaveBeenCalled();

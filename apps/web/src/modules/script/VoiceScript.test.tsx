@@ -25,6 +25,33 @@ function Harness({ initial, output = null, generatedScript = null, fullGenerated
 }
 
 describe("VoiceScript", () => {
+  it("shows grouped legacy lines with their original timed words and edits them with Alt+Enter", () => {
+    const row: VoiceScriptRow = { id: "r1", text: "Xin\nchào", speakerProfileId: "speaker-an", voiceId: "an-clone", legacyRowIds: ["r1", "r2"] };
+    const output = { id: "out", duration: 3, words: [
+      { text: "Xin", start: .1, end: .6, segmentIndex: 0 }, { text: "chào", start: 1.2, end: 2, segmentIndex: 1 },
+    ], segments: [
+      { rowId: "r1", voiceId: "an-clone", text: "Xin", start: 0, end: .8 },
+      { rowId: "r2", voiceId: "an-clone", text: "chào", start: 1, end: 2.2 },
+    ] } as unknown as VoiceOutput;
+    const onRows = vi.fn();
+    render(<Harness initial={[row]} generatedScript={[row]} fullGeneratedScript={[row]} output={output} onRows={onRows} />);
+    expect(screen.getAllByRole("combobox", { name: /Speaker Profile của đoạn/ })).toHaveLength(1);
+    const words = document.querySelector(".voice-script__words") as HTMLElement;
+    expect(within(words).getByRole("button", { name: "Chọn từ chào" })).toBeInTheDocument();
+    expect(words.querySelectorAll("br")).toHaveLength(1);
+    expect(document.querySelector(".is-script-pending")).not.toBeInTheDocument();
+    expect(screen.getByText(/OUT.*00:02\.200/u)).toBeInTheDocument();
+    fireEvent.doubleClick(words);
+    const field = screen.getByRole("textbox", { name: "Lời thoại đoạn 1" }) as HTMLTextAreaElement;
+    field.setSelectionRange(3, 3);
+    fireEvent.keyDown(field, { key: "Enter", altKey: true });
+    expect(field).toHaveValue("Xin\n\nchào");
+    expect(screen.getAllByRole("combobox", { name: /Speaker Profile của đoạn/ })).toHaveLength(1);
+    expect(onRows.mock.lastCall?.[0][0]).toMatchObject({ id: "r1", legacyRowIds: ["r1", "r2"], text: "Xin\n\nchào" });
+    fireEvent.blur(field);
+    expect(document.querySelector(".voice-script__words")?.querySelectorAll("br")).toHaveLength(2);
+  });
+
   it("preserves editable Script text when muting a layer reveals different audible words", () => {
     const output = { id: "out", name: "Composition", duration: 1,
       words: [{ text: "Xin", start: 0, end: .4, segmentIndex: 0 }, { text: "chào", start: .4, end: 1, segmentIndex: 0 }],

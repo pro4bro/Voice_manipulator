@@ -1261,6 +1261,8 @@ export interface VoiceScriptRow {
   settings?: ScriptSettings;
   originIds?: string[];
   tags?: string[];
+  /** Original generated row identities retained when old adjacent turns are grouped. */
+  legacyRowIds?: string[];
 }
 
 export interface ScriptSettings {
@@ -1276,6 +1278,8 @@ export interface ScriptSettings {
 
 export interface VoiceScriptDocument {
   version: 1;
+  /** Missing/zero is a legacy document; one preserves intentional row boundaries. */
+  turnGroupingVersion?: 0 | 1;
   revision: number;
   settings: ScriptSettings;
   segments: Array<{ id: string; name: string; settings: ScriptSettings }>;

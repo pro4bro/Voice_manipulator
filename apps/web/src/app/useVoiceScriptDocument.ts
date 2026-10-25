@@ -1,16 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { VoiceScriptDocument, VoiceScriptRow } from "../domain/types";
-import { migrateScript } from "../domain/voice-script-document";
+import { groupLegacyScript, migrateScript } from "../domain/voice-script-document";
 
 const content = (document: VoiceScriptDocument) => JSON.stringify({ ...document, revision: 0 });
+
+function isScriptRow(value: unknown): value is VoiceScriptRow {
+  return Boolean(value && typeof value === "object" && "id" in value && typeof value.id === "string" &&
+    "text" in value && typeof value.text === "string");
+}
+
+function cachedScript(value: unknown): VoiceScriptDocument {
+  const rawRows = Array.isArray(value) ? value
+    : value && typeof value === "object" && Array.isArray((value as { rows?: unknown }).rows)
+      ? (value as { rows: unknown[] }).rows
+      : [];
+  const rows = rawRows.filter(isScriptRow);
+  if (!Array.isArray(value) && (!value || typeof value !== "object" || !Array.isArray((value as { rows?: unknown }).rows))) return migrateScript([]);
+
+  const saved = !Array.isArray(value) ? value as Partial<VoiceScriptDocument> : null;
+  const previous: VoiceScriptDocument = {
+    version: 1,
+    revision: typeof saved?.revision === "number" ? saved.revision : 0,
+    settings: saved?.settings ?? {},
+    segments: Array.isArray(saved?.segments) ? saved.segments : [],
+    rows,
+    ...(saved?.turnGroupingVersion === undefined ? { turnGroupingVersion: 0 as const } : { turnGroupingVersion: saved.turnGroupingVersion }),
+  };
+  return groupLegacyScript(migrateScript(rows, previous));
+}
 
 export function useVoiceScriptDocument(projectId: string) {
   const key = `pro4bro:${projectId}:voice-script`;
   const [document, setDocument] = useState<VoiceScriptDocument>(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(key) ?? "[]");
-      return migrateScript(Array.isArray(saved) ? saved.filter((row) => row && typeof row.id === "string" && typeof row.text === "string") : []);
+      const saved = JSON.parse(localStorage.getItem(key) ?? "null");
+      return saved === null ? migrateScript([]) : cachedScript(saved);
     } catch { return migrateScript([]); }
   });
   const [ready, setReady] = useState(false);
@@ -69,7 +94,7 @@ export function useVoiceScriptDocument(projectId: string) {
   }, [projectId]);
 
   useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(document.rows)); } catch { /* project file remains authoritative */ }
+    try { localStorage.setItem(key, JSON.stringify(document)); } catch { /* project file remains authoritative */ }
     if (!ready || error) return;
     void flush().catch(() => { /* explicit conflict remains visible, no automatic retry */ });
   }, [document, key, ready, error, flush]);

@@ -4,6 +4,13 @@ import { DurationPlanPanel } from "./DurationPlanPanel";
 import { api } from "../../api/client";
 import { migrateScript } from "../../domain/voice-script-document";
 
+it("shows the complete source span for a grouped legacy turn", () => {
+  const document = migrateScript([{ id: "r1", text: "Xin\nchào", voiceId: "v", speakerProfileId: "s", legacyRowIds: ["r1", "r2"] }]);
+  const output = { duration: 4, segments: [{ rowId: "r1", start: .5, end: 1.2 }, { rowId: "r2", start: 2, end: 3.5 }] } as never;
+  render(<DurationPlanPanel projectId="p" document={document} saved output={output} refreshKey={0} />);
+  expect(screen.getByText(/lần tạo gần nhất: 3.000s/)).toBeInTheDocument();
+});
+
 it("previews canonical budgets and shows requested/actual without claiming listening or anchor success", async () => {
   const document = migrateScript([{ id: "r", text: "Xin chào", voiceId: "v", speakerProfileId: "s", settings: { duration: 2 } }]);
   document.revision = 5; document.settings.duration = 2;

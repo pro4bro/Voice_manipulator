@@ -18,7 +18,7 @@ import { useVoiceScriptDocument } from "./useVoiceScriptDocument";
 import { useVoiceVersions } from "./useVoiceVersions";
 import { useVoiceEdits } from "./useVoiceEdits";
 import { useVoiceRender } from "./useVoiceRender";
-import { effectiveScriptSettings } from "../domain/voice-script-document";
+import { effectiveScriptSettings, groupLegacyScript, migrateScript } from "../domain/voice-script-document";
 import { captureReferenceTargets, referenceSelection, referenceInheritedSettings, type ReferenceBinding, type ReferenceBindingDocument, type ProductionNavigation, type ReferenceContextRequest, type ReferenceSession } from "../domain/reference-bindings";
 import { ReferenceAssignmentEditor } from "../modules/library-panel/ReferenceAssignmentEditor";
 import type {
@@ -2507,7 +2507,8 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
     // that Script back with it, so rows, timestamps and subtitles all describe
     // the audio being played.
     setOutputTake({ id: output.id, name: output.name, url: `/api/projects/${project.id}/voice-outputs/${output.id}/audio`, duration: output.duration, text: output.text, words: output.words ?? [], wordTimingQuality: output.wordTimingQuality ?? undefined, wordTimingNote: output.wordTimingNote ?? null });
-    if (loadScript && output.segments?.length) setVoiceScriptRows(rowsFromOutput(output));
+    if (loadScript && output.segments?.length) setVoiceScriptRows(groupLegacyScript({ ...migrateScript(rowsFromOutput(output)),
+      turnGroupingVersion: output.parameters.turnGroupingVersion === 1 ? 1 : 0 }).rows);
   }
 
   async function refreshChanger() {

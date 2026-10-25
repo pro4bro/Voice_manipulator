@@ -162,14 +162,14 @@ export function parseHtmlTable(html: string): string[][] | null {
  * way the generated words are: whitespace-separated, a bare punctuation mark
  * belonging to the word before it.
  */
-export function lineBreakWords(text: string): Set<number> {
-  const breaks = new Set<number>();
+export function lineBreakWords(text: string): Map<number, number> {
+  const breaks = new Map<number, number>();
   let count = 0;
   text.split("\n").forEach((line, lineIndex, lines) => {
     for (const piece of line.split(/\s+/u).filter(Boolean)) {
       if (count === 0 || /[\p{L}\p{N}]/u.test(piece)) count += 1;
     }
-    if (lineIndex < lines.length - 1 && count > 0) breaks.add(count - 1);
+    if (lineIndex < lines.length - 1) breaks.set(count - 1, (breaks.get(count - 1) ?? 0) + 1);
   });
   return breaks;
 }
@@ -193,23 +193,27 @@ export function rowTimings(rows: VoiceScriptRow[], output: VoiceOutput | null, o
   const timings = new Map<string, RowTiming>();
   if (!output?.segments?.length) return timings;
   const words = output.words ?? [];
-  output.segments.forEach((segment, index) => {
-    const row = rows.find((item) => item.id === segment.rowId);
-    if (!row) return;
+  rows.forEach((row) => {
+    const ids = new Set([row.id, ...(row.legacyRowIds ?? [])]);
+    const segments = output.segments!.flatMap((segment, index) => ids.has(segment.rowId) ? [{ segment, index }] : []);
+    if (!segments.length || segments.some((entry, index) => index > 0 && entry.index !== segments[index - 1].index + 1)) return;
+    const indices = new Set(segments.map((entry) => entry.index));
     let firstWord = -1;
     let lastWord = -1;
     words.forEach((word, wordIndex) => {
-      if (word.segmentIndex !== index) return;
+      if (word.segmentIndex == null || !indices.has(word.segmentIndex)) return;
       if (firstWord < 0) firstWord = wordIndex;
       lastWord = wordIndex + 1;
     });
     const voice = resolveRowVoice(row, offered);
     timings.set(row.id, {
-      start: segment.start,
-      end: segment.end,
+      start: Math.min(...segments.map(({ segment }) => segment.start)),
+      end: Math.max(...segments.map(({ segment }) => segment.end)),
       firstWord: Math.max(0, firstWord),
       lastWord: Math.max(0, lastWord),
-      fresh: normalizedRowText(row.text) === normalizedRowText(segment.text) && voice?.id === segment.voiceId,
+      fresh: normalizedRowText(row.text) === normalizedRowText(segments.map(({ segment }) => segment.text).join("\n")) &&
+        segments.every(({ segment }) => voice?.id === segment.voiceId) &&
+        words.slice(Math.max(0, firstWord), Math.max(0, lastWord)).every((word) => word.segmentIndex != null && indices.has(word.segmentIndex)),
     });
   });
   return timings;

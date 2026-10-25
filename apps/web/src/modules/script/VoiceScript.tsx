@@ -179,7 +179,8 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     if (view !== "table") { setView("table"); return; }
     consumedNavigation.current = navigation;
     const timedRow = navigation.start === null ? null : (output?.segments?.find((segment) => segment.end > navigation.start!) ?? output?.segments?.at(-1));
-    const rowId = navigation.rowIds[0] ?? timedRow?.rowId;
+    const sourceRowId = navigation.rowIds[0] ?? timedRow?.rowId;
+    const rowId = rows.find((row) => row.id === sourceRowId || row.legacyRowIds?.includes(sourceRowId ?? ""))?.id ?? sourceRowId;
     const target = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-script-row-id]") ?? []).find((node) => node.dataset.scriptRowId === rowId);
     const viewport = scrollRef.current;
     if (target && viewport) {
@@ -493,13 +494,14 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
             const index = timing.firstWord + offset;
             const highlightState = editableWords[offset] === word.text ? highlightTokens[offset]?.state : null;
             return <Fragment key={`${index}-${word.start}`}>
+              {offset === 0 ? Array.from({ length: breaks.get(-1) ?? 0 }, (_, line) => <br key={`before-${line}`} />) : null}
               <span className="script-table__word-wrap">
                 <button aria-label={`Chọn từ ${word.text}`} aria-pressed={held.has(index)} className={`script-table__word ${index === activeWordIndex ? "is-active" : ""} ${word.timingTrusted === false ? "is-estimated" : ""} ${highlightState === "pending" ? "is-script-pending" : highlightState === "fixed" ? "is-script-fixed" : ""}`} data-script-word-index={index}
                   onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); wordSweep.current = { base: wordSelection, origin: index }; onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
                   onPointerEnter={(event) => { const sweep = wordSweep.current; if (sweep && event.buttons === 1) onWordSelectionChange?.(sweepProductionWords(sweep.base, sweep.origin, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }}
                   onClick={(event) => { if (event.detail === 0) onWordSelectionChange?.(selectProductionWord(wordSelection, index, words, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey })); }} type="button">{word.text}</button>{" "}
               </span>
-              {breaks.has(offset) ? <br /> : null}
+              {Array.from({ length: breaks.get(offset) ?? 0 }, (_, line) => <br key={`after-${line}`} />)}
             </Fragment>;
           });
         })()}
@@ -516,7 +518,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         const first = words[indexes[0]], last = words[indexes.at(-1) ?? -1];
         onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id], textRanges: [{ rowId: row.id, start, end }],
           ranges: first && last ? [{ id: `text-${row.id}-${start}-${end}`, start: first.start, end: last.end }] : [] });
-      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Enter/Shift+Enter: xuống dòng · dùng THÊM ĐOẠN để tạo hàng mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
+      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Alt+Enter: xuống dòng trong ô · dùng THÊM ĐOẠN để tạo hàng mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
     </div>;
   }
 
@@ -560,7 +562,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       <div className="script-review-strip">
         <strong>VOICE SCRIPT</strong>
         <span className={`voice-script__category is-${category}`} title="Theo lựa chọn ở Voice Training">{CATEGORY_LABELS[category]}</span>
-        <span className="review-status"><i />{busy && job?.message ? ` ${job.message}` : freshOutput ? " Sub chạy theo giọng đã tạo" : " Mỗi dòng một lượt nói · chọn voice ở cột Speaker"}</span>
+        <span className="review-status"><i />{busy && job?.message ? ` ${job.message}` : freshOutput ? " Sub chạy theo giọng đã tạo · Alt+Enter xuống dòng trong ô" : " Mỗi hàng một lượt nói · Alt+Enter xuống dòng trong ô"}</span>
       </div>
       <div aria-label="Công cụ văn bản" className="script-edit-toolbar">
         <button aria-expanded={findOpen} className={findOpen ? "is-active" : ""} onClick={() => setFindOpen((open) => !open)} type="button">FIND / REPLACE</button>

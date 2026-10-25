@@ -135,7 +135,8 @@ describe("voice script", () => {
     const text = rowsToText(rows, [AN]);
     expect(text).toBe("Anh Vũ: Dòng một ,\ndòng hai");
     expect(textToRows(text, [AN], offered, rows, text)[0].text).toBe("Dòng một ,\ndòng hai");
-    expect([...lineBreakWords("Dòng một ,\ndòng hai")]).toEqual([1]);
+    expect([...lineBreakWords("Dòng một ,\ndòng hai").keys()]).toEqual([1]);
+    expect([...lineBreakWords("\nDòng một\n\ndòng hai\n")]).toEqual([[-1, 1], [1, 2], [3, 1]]);
   });
 
   it("says which row stops the Script from being read", () => {
@@ -168,5 +169,28 @@ describe("voice script", () => {
     const edited = rowTimings([{ ...rows[0], text: "Xin chào nhé" }, { ...rows[1], voiceId: "an-clone", speakerProfileId: "speaker-an" }], output, offered);
     expect(edited.get("r1")?.fresh).toBe(false);
     expect(edited.get("r2")?.fresh).toBe(false);
+  });
+
+  it("keeps exact timing and original word indexes across grouped legacy rows", () => {
+    const output = { id: "o", duration: 6, words: [
+      { text: "Xin", start: .2, end: .7, segmentIndex: 0 },
+      { text: "chào", start: 1.4, end: 2.2, segmentIndex: 1 },
+      { text: "vâng", start: 3, end: 3.5, segmentIndex: 2 },
+    ], segments: [
+      { rowId: "r1", voiceId: "an-clone", text: "Xin", start: .1, end: .8 },
+      { rowId: "r2", voiceId: "an-clone", text: "chào", start: 1.3, end: 2.4 },
+      { rowId: "r3", voiceId: "khoa-clone", text: "vâng", start: 2.8, end: 3.8 },
+    ] } as unknown as VoiceOutput;
+    const grouped: VoiceScriptRow = { id: "r1", voiceId: "an-clone", speakerProfileId: "speaker-an", text: "Xin\nchào", legacyRowIds: ["r1", "r2"] };
+    const before = JSON.stringify(output);
+    const timings = rowTimings([grouped], output, VOICES);
+    expect(timings.get("r1")).toEqual({ start: .1, end: 2.4, firstWord: 0, lastWord: 2, fresh: true });
+    expect(rowTimings([{ ...grouped, text: "Xin\nchào nhé" }], output, VOICES).get("r1")?.fresh).toBe(false);
+    expect(JSON.stringify(output)).toBe(before);
+    // A later Full already has one generated segment under the group's retained ID.
+    const full = { ...output, segments: [{ ...output.segments![0], text: "Xin chào", end: 2.4 }], words: output.words!.slice(0, 2).map(word => ({ ...word, segmentIndex: 0 })) };
+    expect(rowTimings([grouped], full, VOICES).get("r1")?.fresh).toBe(true);
+    // Aliases must never collect nonadjacent source turns across another speaker.
+    expect(rowTimings([{ ...grouped, legacyRowIds: ["r1", "r3"], text: "Xin\nvâng" }], output, VOICES).has("r1")).toBe(false);
   });
 });
