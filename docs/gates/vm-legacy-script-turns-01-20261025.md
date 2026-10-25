@@ -14,6 +14,12 @@ Frontend implementation: `85122db`. Backend implementation: `66f8e72`.
 
 ## Automated evidence
 
+- Completion rerun (2026-10-25): **1626 API tests passed**, three existing
+  warnings,892.83s. The embedded VibeVoice import test passes in the full suite
+  without a timeout/assertion/runtime change. This supersedes the failed full
+  gate below for the latest run; its intermittent cause remains unproven.
+  See `vm-script-two-round-closure-20261025.md` and its full-run log.
+
 - Final standard `npm test` from `apps/web`: **164 files / 1324 tests passed**,
   190.50s. Log: `.scratch/vm-legacy-script-verified-frontend.log`.
 - Final `npm run typecheck` and `npm run build` pass; **229 modules** transformed.

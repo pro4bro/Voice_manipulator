@@ -1,5 +1,25 @@
 # Project Status — 2026-10-25
 
+## Closure check — legacy turns and Script/Timeline UI (2026-10-25)
+
+Verified the two latest rounds without advancing product scope. The full API
+rerun passes1626 tests (three existing warnings,892.83s), including embedded
+VibeVoice checkout import under its unchanged60s deadline. Four isolated runs
+also pass. No speculative source/runtime fix, timeout increase or skipped case;
+the earlier intermittent import delay has not been root-caused.
+
+Native browser acceptance is still blocked. The owner confirmed enabling Browser
+and supplied Settings screenshots. The tool still reports Local browser disabled
+in Work settings before opening a URL, including after a CUA kernel reset and
+fresh inventory. The enabled screenshot and effective tool permission disagree;
+no native selection/clipboard/IME/undo/sticky-geometry result is claimed. An
+isolated4-turn/12-layer fixture is ready;22 WAV and22 output JSON hashes unchanged,
+mono PCM16/24kHz. The owned server was stopped. A client restart is the next
+recovery step to try. See `docs/gates/vm-script-two-round-closure-20261025.md`.
+Frontend's existing1341/167 files and typecheck/build233 remain valid on unchanged
+source. Phase03 stays60%, Phase06 open; the two rounds are not both fully accepted
+until actual browser verification succeeds.
+
 ## VM-SCRIPT-TEXT-FREEZE-01 — Text columns and common Timeline scrolling (2026-10-25)
 
 Script text view separates speaker names and dialogue into aligned columns.

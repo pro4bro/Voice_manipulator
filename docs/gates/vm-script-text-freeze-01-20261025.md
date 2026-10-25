@@ -37,6 +37,12 @@ See `docs/VM-SCRIPT-TEXT-FREEZE-PLAN.md` and ADR0146 for the contract.
 
 ## Browser gate
 
+Completion follow-up: the owner provided Settings screenshots with Browser on.
+The tool still refused access, including after a kernel reset and fresh browser
+inventory. No native UAT was performed. The full backend follow-up now passes
+all1626 tests. See `vm-script-two-round-closure-20261025.md` for exact evidence;
+the native browser checklist remains open.
+
 Native browser verification was attempted through CUA on the isolated local
 fixture at port18130. Creation of a browser tab was refused immediately:
 **Local browser use is disabled in Work settings**. No alternative browser or
