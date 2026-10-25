@@ -16,6 +16,7 @@
 .voice-script__highlight-overlay .is-pending { color: var(--accent-ink); background: color-mix(in srgb, #2684ff 42%, transparent); border-radius: 2px; }
 .voice-script__highlight-overlay .is-pending:empty { display: inline-block; width: .7em; min-height: 1em; vertical-align: text-bottom; }
 .voice-script__highlight-overlay .is-fixed { color: color-mix(in srgb, var(--accent-ink) 68%, var(--text-muted)); background: color-mix(in srgb, #2684ff 17%, transparent); border-radius: 2px; }
+.voice-script__highlight-overlay .voice-script__playback-word.is-active { color: var(--contrast-active-foreground); background: var(--contrast-active-background); outline: 1px solid #6baee2; }
 .voice-script__words .script-table__word.is-script-pending { color: var(--accent-ink); background: color-mix(in srgb, #2684ff 42%, transparent); }
 .voice-script__words .script-table__word.is-script-fixed { color: color-mix(in srgb, var(--accent-ink) 68%, var(--text-muted)); background: color-mix(in srgb, #2684ff 17%, transparent); }
 .voice-script__edit.has-script-highlight .voice-script__input,

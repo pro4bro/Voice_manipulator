@@ -7,6 +7,7 @@ import type { ProjectMediaAsset } from "../../domain/types";
 import { loadResumePosition, saveResumePosition } from "../../domain/workspace-resume";
 import { ImportedMultitrackTimeline } from "./ImportedMultitrackTimeline";
 import { ChannelScript } from "../script/ChannelScript";
+import { ScriptEditor } from "../script/ScriptEditor";
 
 const parent: ProjectMediaAsset = {
   id: "parent", name: "interview.mkv", sourceExtension: ".mkv", mediaKind: "video", sourcePath: "assets/interview.mkv",
@@ -19,6 +20,45 @@ const tracks = [
   { ...parent, id: "a", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 1, name: "Desk", url: "/api/projects/p/media/a/audio", text: "Desk transcript", removedRanges: [] },
   { ...parent, id: "b", sourceArchiveAssetId: "parent", sourceArchiveStreamIndex: 2, name: "Mic", url: "/api/projects/p/media/b/audio", text: "Mic transcript", removedRanges: [] },
 ];
+
+it("shares one highlighted source word with Script across overlaps, boundaries and silence", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const words = [{ text: "one", start: 0, end: 8 }, { text: "two", start: 2, end: 3 }, { text: "three", start: 2, end: 4 }];
+  const track = { ...tracks[0], words, text: "one two three" };
+  const view = render(<><ChannelScript tracks={[track]} onSelectTrack={vi.fn()} />
+    <ImportedMultitrackTimeline parent={parent} tracks={[track]} selectedTrackId={null} onSelectTrack={vi.fn()} onCutsChange={vi.fn()} /></>);
+  const progress = screen.getByLabelText("Thanh tiến trình Timeline — bấm hoặc kéo để tua");
+  vi.spyOn(progress, "getBoundingClientRect").mockReturnValue({ left: 0, width: 600 } as DOMRect);
+  fireEvent.pointerDown(progress, { button: 0, pointerId: 24, clientX: 10 });
+  for (const [seconds, index] of [[1, 0], [2, 2], [3, 2], [4, 0], [9, -1], [2.2, 2], [1, 0]]) {
+    fireEvent.pointerMove(progress, { pointerId: 24, clientX: seconds * 10 });
+    const subtitle = view.container.querySelectorAll(".imported-timeline__word.is-active");
+    const script = view.container.querySelectorAll(".script-table__word.is-active");
+    expect(subtitle).toHaveLength(index < 0 ? 0 : 1);
+    expect(script).toHaveLength(index < 0 ? 0 : 1);
+    if (index >= 0) { expect(subtitle[0]).toHaveTextContent(words[index].text); expect(script[0]).toHaveTextContent(words[index].text); }
+  }
+  fireEvent.pointerUp(progress, { pointerId: 24, clientX: 10 });
+});
+
+it("lets only the focused Timeline publish repaired word timing while its parent reports the playhead", () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 60, points: [] }) }));
+  const words = [{ text: "one", start: 1, end: 4 }, { text: "two", start: 1, end: 4 }, { text: "three", start: 5, end: 6 }];
+  const view = render(<><ScriptEditor workflow="speech-to-text" value="one two three" words={words} playbackAssetId="a" onChange={vi.fn()} />
+    <ImportedMultitrackTimeline parent={parent} tracks={[{ ...tracks[0], words, text: "one two three" }]} selectedTrackId="a" singleTrackView
+      resumeProjectId="focus-clock-regression" onSelectTrack={vi.fn()} onCutsChange={vi.fn()} onAssetWordsChange={vi.fn()} onAssetTimelineStateChange={vi.fn()} /></>);
+  fireEvent.doubleClick(screen.getByRole("button", { name: "three · 00:05–00:06" }));
+  const canvas = view.container.querySelector(".timeline-canvas")!;
+  vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  const head = screen.getByLabelText("Playhead indicator");
+  fireEvent.pointerDown(head, { button: 0, pointerId: 21, clientX: 20 });
+  fireEvent.pointerMove(head, { pointerId: 21, clientX: 20 });
+  expect(view.container.querySelector('.timeline-word.is-active[data-timeline-word-index="0"]')).toBeInTheDocument();
+  expect(view.container.querySelector('.script-table__word.is-active[data-script-word-index="0"]')).toBeInTheDocument();
+  fireEvent.pointerMove(head, { pointerId: 21, clientX: 50 });
+  expect(view.container.querySelector('.script-table__word.is-active[data-script-word-index="1"]')).toBeInTheDocument();
+  fireEvent.pointerUp(head, { pointerId: 21, clientX: 50 });
+});
 
 it.each([["slider", "layers"], ["button", "layers"], ["slider", "columns"], ["button", "columns"]])("keeps full-fit zoom latched as MKV grows after zooming out with %s in %s", (control, layout) => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ duration: 300, points: [] }) }));

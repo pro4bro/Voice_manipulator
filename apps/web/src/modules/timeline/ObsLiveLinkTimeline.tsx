@@ -6,7 +6,7 @@ import { useAudioScrubber } from "./audio-scrubbing";
 import { usePreviewMixer } from "./preview-mixer";
 
 import { api } from "../../api/client";
-import { notifyPlaybackInteraction, publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { activePlaybackWordAt, notifyPlaybackInteraction, usePlaybackPublisher, subscribePlaybackSeek } from "../../domain/playback-sync";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
 import { productionRanges } from "../../domain/production-selection";
 import type { ObsLiveLinkRecording, ObsLiveLinkRecordingJournal, ObsLiveLinkStatus, ObsLiveLinkTranscriptRow, ObsLiveLinkWaveform, ObsLiveLinkWaveformPoint, ProjectMediaAsset, SpeakerProfile, TimelineEditRange } from "../../domain/types";
@@ -457,18 +457,13 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
     if (resumeProjectId && !isLive && (!resumeReady || hydratedResumeIdentity !== resumeIdentity)) return;
     onPlayheadChange?.(currentTime);
   }, [currentTime, onPlayheadChange, resumeProjectId, isLive, resumeReady, hydratedResumeIdentity, resumeIdentity]);
-  useEffect(() => {
-    // The focused standard Timeline owns the clock while editing a track.
-    if (editFocus) return;
-    publishPlaybackWords(Object.fromEntries(visibleLanes.flatMap((lane) => {
-      if (!lane.assetId) return [];
-      const words = assets.find((asset) => asset.id === lane.assetId)?.words ?? [];
-      const index = subtitleIndexAtTime(words, currentTime);
-      const word = words[index];
-      return [[lane.assetId, !isLive && word && word.start <= currentTime && currentTime < word.end ? index : -1]];
-    })));
-  }, [visibleLaneIds, assets, currentTime, isLive, editFocus]);
-  useEffect(() => () => publishPlaybackWords({}), []);
+  const activeWords = Object.fromEntries(visibleLanes.flatMap((lane) => {
+    if (!lane.assetId) return [];
+    const words = assets.find((asset) => asset.id === lane.assetId)?.words ?? [];
+    return [[lane.assetId, !isLive ? activePlaybackWordAt(words, currentTime) : -1]];
+  }));
+  // The focused standard Timeline owns the clock while editing a track.
+  usePlaybackPublisher(editFocus ? null : activeWords);
   useLayoutEffect(() => subscribePlaybackSeek((assetId, seconds) => {
     if (isLive || !visibleLanes.some((lane) => lane.assetId === assetId)) return;
     setEditFocus(null);
@@ -1160,14 +1155,14 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
                   return position ? <i aria-hidden="true" className="obs-timeline__removed-range" key={range.id} style={position} /> : null; })}
                 <SubtitleTimingGhosts assetId={archivedAsset.id} words={archivedAsset.words ?? []} start={windowStart} span={windowSpan} />
                 {visibleSubtitleWordLayout(archivedAsset.words ?? [], windowStart, windowSpan, subtitleLaneWidth,
-                  [subtitleIndexAtTime(archivedAsset.words ?? [], currentTime)]).map((layout) => {
+                  [activeWords[archivedAsset.id] ?? -1]).map((layout) => {
                   const wordIndex = layout.sourceIndex;
                   const word = archivedAsset.words[wordIndex];
                   const position = { left: `${(layout.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(layout.widthPixels / subtitleLaneWidth) * 100}%` };
                   return position ? <button key={wordIndex} type="button" style={position}
                     aria-label={`${word.text} · ${timecode(word.start)}–${timecode(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${wordIndex === activeWords[archivedAsset.id] ? "is-active" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

@@ -10,7 +10,7 @@ import { Icon } from "../../ui/Icon";
 import { ModuleFrame } from "../../ui/ModuleFrame";
 import { useScriptShortcuts } from "../script/script-shortcuts";
 import { TimelineLaneLabel } from "./TimelineLaneLabel";
-import { notifyPlaybackInteraction, publishPlaybackWords, subscribePlaybackSeek } from "../../domain/playback-sync";
+import { activePlaybackWordAt, notifyPlaybackInteraction, usePlaybackPublisher, subscribePlaybackSeek } from "../../domain/playback-sync";
 import { TIMESTAMP_PROMOTION_EVENT, type TimestampPromotion } from "../../domain/timestamp-promotion";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections } from "../../domain/timeline-editing";
 import type { WordSelection } from "../../domain/word-selection";
@@ -190,11 +190,8 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
   const audioScrubber = useAudioScrubber(playbackIdentity, scrubPreviewPosition);
   const ids = orderedTracks.map((track) => track.id);
 
-  useEffect(() => {
-    publishPlaybackWords(Object.fromEntries(visibleTracks.map((track) => [track.id,
-      track.words.findIndex((word) => word.start <= currentTime && word.end > currentTime)])));
-  }, [trackSources, currentTime]);
-  useEffect(() => () => publishPlaybackWords({}), []);
+  const activeWords = Object.fromEntries(visibleTracks.map((track) => [track.id, activePlaybackWordAt(track.words, currentTime)]));
+  usePlaybackPublisher(editFocus ? null : activeWords);
   useEffect(() => subscribePlaybackSeek((assetId, seconds) => {
     if (ids.includes(assetId)) seek(seconds);
   }));
@@ -713,14 +710,14 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
                 }}>
                 <SubtitleTimingGhosts assetId={track.id} words={track.words} start={windowStart} span={span} />
                 {track.words.length ? visibleSubtitleWordLayout(track.words, windowStart, span, subtitleLaneWidth,
-                  [subtitleIndexAtTime(track.words, currentTime)]).map((layout) => {
+                  [activeWords[track.id]]).map((layout) => {
                   const wordIndex = layout.sourceIndex;
                   const word = track.words[wordIndex];
                   const style = { left: `${(layout.leftPixels / subtitleLaneWidth) * 100}%`, width: `${(layout.widthPixels / subtitleLaneWidth) * 100}%` };
                   return style ? <button key={wordIndex} type="button" style={style}
                     aria-label={`${word.text} · ${clock(word.start)}–${clock(word.end)}`}
                     title={`${word.text} · ${word.start.toFixed(3)}–${word.end.toFixed(3)}s${word.timingTrusted === false ? " · cần căn chỉnh" : ""}`}
-                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${word.start <= currentTime && word.end > currentTime ? "is-active" : ""} ${selectedWordIndexes.has(wordIndex) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
+                    className={`imported-timeline__word ${word.subtitleTimingConflict ? "has-refinement-conflict" : ""} ${layout.isCompact ? "is-compact" : ""} ${wordIndex === activeWords[track.id] ? "is-active" : ""} ${selectedWordIndexes.has(wordIndex) ? "is-selected" : ""} ${word.timingTrusted === false ? "is-untrusted" : ""}`}
                     onClick={(event) => {
                       if (event.ctrlKey || event.metaKey) {
                         event.preventDefault(); event.stopPropagation();

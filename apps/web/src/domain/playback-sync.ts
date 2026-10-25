@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 type PlaybackWordSnapshot = {
   assetId: string | null;
@@ -9,6 +9,7 @@ let snapshot: PlaybackWordSnapshot = { assetId: null, wordIndex: -1 };
 let channelWords: Record<string, number> = {};
 let playbackWords: Readonly<Record<string, number>> = {};
 const listeners = new Set<() => void>();
+let publisher: symbol | null = null;
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -20,6 +21,7 @@ function getServerSnapshot() {
 }
 
 export function publishPlaybackWord(assetId: string | null | undefined, wordIndex: number) {
+  publisher = null;
   const next: PlaybackWordSnapshot = { assetId: assetId ?? null, wordIndex };
   if (snapshot.assetId === next.assetId && snapshot.wordIndex === next.wordIndex && !Object.keys(channelWords).length) return;
   snapshot = next;
@@ -30,11 +32,42 @@ export function publishPlaybackWord(assetId: string | null | undefined, wordInde
 
 /** All imported channels share one playhead and may speak simultaneously. */
 export function publishPlaybackWords(words: Record<string, number>) {
+  publisher = null;
   if (snapshot.assetId === null && JSON.stringify(channelWords) === JSON.stringify(words)) return;
   channelWords = words;
   playbackWords = words;
   snapshot = { assetId: null, wordIndex: -1 };
   listeners.forEach((listener) => listener());
+}
+
+/** Publish in the subtitle commit. A retiring Timeline cannot clear its successor. */
+export function usePlaybackPublisher(words: Record<string, number> | null) {
+  const owner = useRef(Symbol("timeline"));
+  const latest = useRef(words); latest.current = words;
+  const key = JSON.stringify(words);
+  useLayoutEffect(() => {
+    const words = latest.current;
+    if (words === null) {
+      if (publisher === owner.current) publishPlaybackWords({});
+      return;
+    }
+    publishPlaybackWords(words);
+    publisher = owner.current;
+  }, [key]);
+  useLayoutEffect(() => () => {
+    if (publisher === owner.current) publishPlaybackWords({});
+  }, []);
+}
+
+/** One source word per lane, using original indexes even for reviewed overlaps. */
+export function activePlaybackWordAt(words: readonly { start: number; end: number }[], seconds: number): number {
+  let active = -1;
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index];
+    if (Number.isFinite(word.start) && Number.isFinite(word.end) && word.start <= seconds && seconds < word.end &&
+        (active < 0 || word.start >= words[active].start)) active = index;
+  }
+  return active;
 }
 
 const seekListeners = new Set<(assetId: string, seconds: number) => void>();

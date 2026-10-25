@@ -27,6 +27,7 @@ import { readSelectedScriptText, selectScriptText } from "./ScriptTextView";
 import { mapScriptWordsToText } from "./script-text-reconciliation";
 import { ScriptTextPane } from "./ScriptTextPane";
 import { useScriptTextareaSize } from "./use-script-textarea-size";
+import { scriptPlaybackPieces } from "./script-playback-pieces";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -123,13 +124,22 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? EMPTY_OUTPUT_WORDS;
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
+  const playbackRanges = useMemo(() => new Map(rows.map((row) => {
+    const timing = timings.get(row.id);
+    const ranges = timing ? mapScriptWordsToText(row.text, words.slice(timing.firstWord, timing.lastWord))
+      .map((range) => ({ ...range, index: range.index + timing.firstWord })) : [];
+    return [row.id, ranges];
+  })), [rows, timings, words]);
+  const highlights = useMemo(() => new Map(rows.map((row) => [row.id,
+    scriptHighlightTokens(row.text, generatedScript, fullGeneratedScript, row.id)])), [rows, generatedScript, fullGeneratedScript]);
+  const playbackPieces = useMemo(() => new Map(rows.map((row) => [row.id,
+    scriptPlaybackPieces(row.text, playbackRanges.get(row.id) ?? [], highlights.get(row.id) ?? [])])), [rows, playbackRanges, highlights]);
   const activeText = useMemo(() => {
-    const row = rows.find((item) => { const timing = timings.get(item.id); return timing?.fresh && activeWordIndex >= timing.firstWord && activeWordIndex < timing.lastWord; });
-    const timing = row && timings.get(row.id);
-    if (!row || !timing) return null;
-    const range = mapScriptWordsToText(row.text, words.slice(timing.firstWord, timing.lastWord)).find((item) => item.index === activeWordIndex - timing.firstWord);
+    const row = rows.find((item) => playbackRanges.get(item.id)?.some((range) => range.index === activeWordIndex));
+    if (!row) return null;
+    const range = playbackRanges.get(row.id)?.find((item) => item.index === activeWordIndex);
     return range ? { rowId: row.id, start: range.start, end: range.end, wordIndex: activeWordIndex } : null;
-  }, [rows, timings, words, activeWordIndex]);
+  }, [rows, playbackRanges, activeWordIndex]);
   const readiness = scriptReadiness(rows, voices);
   const [durationRefresh, setDurationRefresh] = useState(0);
   const [view, setView] = useState<"table" | "text">("table");
@@ -513,7 +523,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     const audibleWords = timing ? words.slice(timing.firstWord, timing.lastWord) : [];
     const sameText = audibleWords.map((word) => word.text).join(" ").replace(/\s+/gu, " ").trim() === row.text.replace(/\s+/gu, " ").trim();
     const showWords = Boolean(timing?.fresh && sameText && timing.lastWord > timing.firstWord && editingRowId !== row.id);
-    const currentHighlight = scriptHighlightTokens(row.text, generatedScript, fullGeneratedScript, row.id);
+    const currentHighlight = highlights.get(row.id) ?? [];
     if (showWords && timing) {
       const highlightTokens = currentHighlight.filter((token) => token.text);
       const editableWords = row.text.match(/\S+/gu) ?? [];
@@ -538,8 +548,10 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         })()}
       </div>;
     }
-    return <div className={`script-table__content voice-script__edit ${currentHighlight.length ? "has-script-highlight" : ""}`} role="gridcell" style={textStyle}>
-      {currentHighlight.length ? <div aria-hidden="true" className="voice-script__highlight-overlay">{currentHighlight.map((token, index) => <Fragment key={`${index}-${token.text}`}><span className={token.state === "pending" ? "is-pending" : token.state === "fixed" ? "is-fixed" : undefined}>{token.text}</span>{token.whitespace}</Fragment>)}</div> : null}
+    const hasOverlay = currentHighlight.length > 0 || Boolean(playbackRanges.get(row.id)?.length);
+    return <div className={`script-table__content voice-script__edit ${hasOverlay ? "has-script-highlight" : ""}`} role="gridcell" style={textStyle}>
+      {hasOverlay ? <div aria-hidden="true" className="voice-script__highlight-overlay">{(playbackPieces.get(row.id) ?? []).map((piece, index) => <span key={index}
+        data-script-word-index={piece.wordIndex} className={`${piece.state === "pending" ? "is-pending" : piece.state === "fixed" ? "is-fixed" : ""} ${piece.wordIndex !== undefined ? "voice-script__playback-word" : ""} ${piece.wordIndex === activeWordIndex ? "is-active" : ""}`}>{piece.text}</span>)}</div> : null}
       <textarea aria-label={`Lời thoại đoạn ${number}`} className="voice-script__input" data-row-id={row.id} onScroll={(event) => { const overlay = event.currentTarget.previousElementSibling as HTMLElement | null; if (overlay) { overlay.scrollTop = event.currentTarget.scrollTop; overlay.scrollLeft = event.currentTarget.scrollLeft; } }} onBlur={() => setEditingRowId((current) => current === row.id ? null : current)} onChange={(event) => { onWordSelectionChange?.(EMPTY_SELECTION); updateRow(row.id, { text: event.target.value }); }} onSelect={(event) => {
         const { selectionStart: start, selectionEnd: end } = event.currentTarget;
         if (end <= start) return;
@@ -549,7 +561,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         const first = words[indexes[0]], last = words[indexes.at(-1) ?? -1];
         onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, rowIds: [row.id], textRanges: [{ rowId: row.id, start, end }],
           ranges: first && last ? [{ id: `text-${row.id}-${start}-${end}`, start: first.start, end: last.end }] : [] });
-      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Alt+Enter: xuống dòng trong ô · dùng THÊM ĐOẠN để tạo hàng mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={currentHighlight.length ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
+      }} onFocus={() => setEditingRowId(row.id)} onKeyDown={(event) => handleRowKey(event, row)} placeholder={number === 1 ? "Nhập lời thoại… Alt+Enter: xuống dòng trong ô · dùng THÊM ĐOẠN để tạo hàng mới" : "Nhập lời thoại…"} rows={1} spellCheck value={row.text} style={hasOverlay ? { color: "transparent", caretColor: "var(--text)" } : undefined} />
     </div>;
   }
 
@@ -618,8 +630,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
         <div aria-label="Bảng Script theo lượt nói" className="script-table voice-script__table" role="grid" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
           <ScriptTranscriptHeader layout={layout} />
           {shownRows.map((row, index) => {
-            const timing = timings.get(row.id);
-            const active = Boolean(timing?.fresh && activeWordIndex >= timing.firstWord && activeWordIndex < timing.lastWord);
+            const active = activeText?.rowId === row.id;
             return <ScriptTranscriptRow className={`${active ? "is-active" : ""} ${selectedRowIds.includes(row.id) ? "is-selected" : ""} ${job?.status === "running" && job.currentRowId === row.id ? "is-reading" : ""}`} data-script-row-id={row.id} key={row.id} columns={layout.columns} gridTemplateColumns={layout.gridTemplateColumns}
               cells={{ speaker: renderSpeaker(row, index + 1), content: renderContent(row, index + 1), timestamp: renderTimestamp(row) }}
               selectionFallback={<ScriptRowSelection number={index + 1} label={`Chọn đoạn ${index + 1}`} selected={selectedRowIds.includes(row.id)} onSelect={(event) => selectRow(event, row.id)} />}>

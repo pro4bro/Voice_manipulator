@@ -66,10 +66,65 @@ function sourceWordTokens(text: string, words: readonly { text: string }[], exac
 
 /** Map timed word identities onto the exact current Script text offsets. */
 export function mapScriptWordsToText(text: string, words: StudioWord[]): ScriptSourceWordRange[] {
-  // Offset mapping needs exact tokens only. Avoid allocating normalized getters
-  // for every word; normalize only a genuinely different spelling on lookup.
-  const { tokensByWord } = sourceWordTokens(text, words, true);
-  return [...tokensByWord.entries()].flatMap(([index, tokens]) => tokens.length ? [{ index, start: tokens[0].start, end: tokens[tokens.length - 1].end }] : []);
+  const current = playbackTokens(text);
+  const source = words.flatMap((word, index) => playbackTokens(word.text).map((token) => ({ ...token, index })));
+  const matches = new Map<number, number>();
+  let prefix = 0;
+  while (prefix < source.length && prefix < current.length && source[prefix].normalized === current[prefix].normalized) {
+    matches.set(prefix, prefix); prefix++;
+  }
+  let oldEnd = source.length, newEnd = current.length;
+  while (oldEnd > prefix && newEnd > prefix && source[oldEnd - 1].normalized === current[newEnd - 1].normalized) {
+    matches.set(--oldEnd, --newEnd);
+  }
+  // Exact monotonic alignment prevents a changed repeated word from stealing a
+  // later occurrence and shifting every following highlight. Long wholesale
+  // replacements keep only proven prefix/suffix anchors, never guessed clocks.
+  const oldMiddle = source.slice(prefix, oldEnd), newMiddle = current.slice(prefix, newEnd);
+  if (oldMiddle.length * newMiddle.length <= 16_000_000) {
+    for (const [previous, next] of exactPlaybackMatches(oldMiddle, newMiddle)) matches.set(previous + prefix, next + prefix);
+  }
+  const byWord = new Map<number, number[]>();
+  source.forEach((token, index) => { const indexes = byWord.get(token.index) ?? []; indexes.push(index); byWord.set(token.index, indexes); });
+  return [...byWord].flatMap(([index, tokens]) => {
+    const positions = tokens.map((token) => matches.get(token));
+    const start = positions[0];
+    if (start === undefined || positions.some((position, offset) => position !== start + offset)) return [];
+    return [{ index, start: current[start].start, end: current[start + positions.length - 1].end }];
+  });
+}
+
+function playbackTokens(text: string): Token[] {
+  return [...text.matchAll(/\S+/gu)].flatMap((piece) => {
+    const tokens = tokenize(piece[0]);
+    if (!tokens.length) return [{ text: piece[0], normalized: piece[0], start: piece.index!, end: piece.index! + piece[0].length }];
+    return tokens.map((token) => ({ ...token, start: token.start + piece.index!, end: token.end + piece.index! }));
+  });
+}
+
+/** Rolling scores and direction bits keep long merged turns exact without a quadratic score table. */
+function exactPlaybackMatches(source: Token[], current: Token[]) {
+  const columns = current.length;
+  const directions = new Uint8Array(Math.ceil(source.length * columns / 8));
+  let next = new Uint32Array(columns + 1), scores = new Uint32Array(columns + 1);
+  for (let i = source.length - 1; i >= 0; i--) {
+    for (let j = columns - 1; j >= 0; j--) {
+      if (source[i].normalized === current[j].normalized) scores[j] = next[j + 1] + 1;
+      else if (next[j] >= scores[j + 1]) {
+        scores[j] = next[j];
+        const bit = i * columns + j; directions[Math.floor(bit / 8)] |= 1 << (bit % 8);
+      } else scores[j] = scores[j + 1];
+    }
+    [next, scores] = [scores, next];
+  }
+  const matches = new Map<number, number>();
+  let i = 0, j = 0;
+  while (i < source.length && j < current.length) {
+    if (source[i].normalized === current[j].normalized) { matches.set(i++, j++); }
+    else if (directions[Math.floor((i * columns + j) / 8)] & (1 << ((i * columns + j) % 8))) i++;
+    else j++;
+  }
+  return matches;
 }
 
 function tokenLcsMatches(previous: Token[], next: Token[]): Map<number, number> {

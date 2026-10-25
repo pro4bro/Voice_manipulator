@@ -3,7 +3,7 @@ import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type UIEvent } from "react";
 
-import { notifyPlaybackInteraction, publishPlaybackWord } from "../../domain/playback-sync";
+import { activePlaybackWordAt, notifyPlaybackInteraction, usePlaybackPublisher } from "../../domain/playback-sync";
 import { editableWordTimings } from "../../domain/editable-word-timing";
 import { excludedTimelineRanges, nextPlayableTime, restoreTimelineSections, timelineSections, type TimelineEditState } from "../../domain/timeline-editing";
 import { TIMESTAMP_PROMOTION_EVENT, promoteTimestampWord, type TimestampPromotion } from "../../domain/timestamp-promotion";
@@ -236,20 +236,7 @@ export function normalizeWordTimings(words: StudioWord[], duration: number): Stu
   return editableWordTimings(words, duration);
 }
 
-function activeWordAt(words: StudioWord[], time: number) {
-  if (!words.length) return -1;
-  let low = 0;
-  let high = words.length - 1;
-  let candidate = -1;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    if (words[middle].start <= time) { candidate = middle; low = middle + 1; }
-    else high = middle - 1;
-  }
-  if (candidate < 0) return -1;
-  const word = words[candidate];
-  return time >= word.start && time <= word.end ? candidate : -1;
-}
+const activeWordAt = activePlaybackWordAt;
 
 function AudioTimeline({
   resumeProjectId, resumeSource, onPlayheadChange,
@@ -726,11 +713,7 @@ function AudioTimeline({
     setCurrentTime(recordingPreview?.duration ?? 0);
   }, [isRecording, recordingPreview?.duration]);
 
-  useEffect(() => {
-    publishPlaybackWord(take?.id, activeWordIndex);
-  }, [activeWordIndex, take?.id]);
-
-  useEffect(() => () => publishPlaybackWord(null, -1), []);
+  usePlaybackPublisher(take?.id ? { [take.id]: activeWordIndex } : null);
 
   useEffect(() => {
     scheduleGainAutomation();
