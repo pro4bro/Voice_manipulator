@@ -1,5 +1,33 @@
 # Project Status — 2026-10-25
 
+## VM-SCRIPT-UNIFIED-01 — Shared normal editor, Timeline resizing and scrub ownership (2026-10-25)
+
+Input and Voice Manipulator normal views now share the two-column text editor,
+viewport/custom scrollbar, literal editing, copy scopes and local Undo/Redo.
+Input projects exact text into canonical speaker turns, preserves source clocks
+and timing reconciliation, and retains first-word edits across equivalent parent
+rerenders. Flex height fills the document; specialized comparison/live/tag views
+retain their own presentations.
+
+Playback uses paint-only CSS Highlight ranges. Caret/focus do not become playback
+selection, and Timeline ignores selection seek/pan during held scrub gestures.
+Simultaneous source follow has one owner and manual scroll/typing takes priority.
+A horizontal divider resizes Timeline with keyboard support, bounded per-page
+machine-local persistence and listener/viewport cleanup.
+
+Implementation commits1bb1b4a/989861a. Frontend169 files/1361 tests (196.58s), final
+focused13 files/176 tests, typecheck/build237 pass. No backend, persistent format,
+engine, owner project or media change; previous full API1626 remains the baseline.
+CUA still refuses local browser inventory, so native geometry/selection/IME,
+dark/light and earlier frozen-subtitle UAT remain open. ADR0148 and the round gate
+record test adaptations and limits.
+
+Audio endings, newline pauses and30/60/90% emphasis/gain/shout are NOT implemented
+in this UI round. NEXT is VM-VOICE-ENDINGS-01, followed by persistent inline
+format/pause delivery; see docs/VM-SCRIPT-UNIFICATION-DELIVERY-PLAN.md. Source
+inspection is not a listening acceptance. Phase03 stays60%, Phase06 open.
+Stop this bounded development round as required by AGENTS.md.
+
 ## VM-MERGED-SCRIPT-SAVE-01 — Stable merged-turn highlights and autosave (2026-10-25)
 
 Owner feedback: merged rows were entirely blue, and the unsaved/unchecked-out
