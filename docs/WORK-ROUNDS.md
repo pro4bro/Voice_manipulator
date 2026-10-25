@@ -1,5 +1,32 @@
 # Work Rounds
 
+## VM-PLAYBACK-IDENTITY-01 — One source word for subtitle and Script (2026-10-25)
+
+Repeated owner feedback exposed data/clock failures beyond ADR0149 geometry.
+Imported focused editing kept a parent publisher alive: source intervals and
+repaired child intervals could choose different words at one playhead. Retiring
+Timelines could clear a successor's highlight. Greedy repeated-word mapping and
+whole-row freshness also dropped playback targets after small merged-turn edits.
+
+Implementation232a05c suspends focused parents, protects publisher lifetime,
+and shares active-word lookup/publication across standard/imported/OBS Timeline.
+Subtitle and Script consume the same source index. Monotonic text alignment and
+paint-only overlays retain surviving word clocks in both Voice Script views.
+No invented timing for unmatched edits; silence clears both highlights. ADR0150
+and docs/gates/vm-playback-identity-01-20261025.md record the contract and limits.
+
+Standard frontend174 files/1380 tests (202.61s), final focused4 files/117 tests
+(43.96s), typecheck/build239 pass. New tests reproduce the actual parent/child
+conflict, publisher retirement, repeated words, long edits and exact text ranges.
+An early virtual Input timeout is recorded in the gate; no thresholds weakened.
+Read-only owner-project probe maps all2119 words across two merged rows; inspected
+JSON hashes unchanged. No backend/engine/audio/project-format changes; API1626
+is a carried baseline, not rerun. Build JS index-BeQ6RswV.js/CSS index-CJncqiqd.css.
+
+Native acceptance remains open: Browser inventory still refuses local access
+before opening a tab. Earlier text/history/frozen-subtitle UAT and audio delivery
+work remain open. Phase03 stays60%, Phase06 open. Stop this bounded round.
+
 ## VM-SCRIPT-SCRUB-FOLLOW-01 — Script remains visible during playhead scrubs (2026-10-25)
 
 Owner feedback after the unified-editor round affects Input table and both Voice
