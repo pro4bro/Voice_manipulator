@@ -67,6 +67,25 @@ class RvcPaths:
             "HF_HUB_OFFLINE": "1",
         }
 
+    def ensure_bootstrap(self) -> None:
+        """Embedded Python ignores PYTHONPATH; spawned workers need its startup path too."""
+        for path_file in self.runtime.glob("python*._pth"):
+            original = path_file.read_text(encoding="utf-8-sig")
+            lines = original.splitlines()
+            required = (SITE_DIR, self.applio / "rvc" / "train")
+            registered = {(path_file.parent / line.strip()).resolve() for line in lines
+                          if line.strip() and not line.lstrip().startswith(("#", "import "))}
+            missing = [path for path in required if path.resolve() not in registered]
+            if not missing and "import site" in lines:
+                continue
+            for path in reversed(missing):
+                lines.insert(0, os.path.relpath(path, path_file.parent).replace("\\", "/"))
+            if "import site" not in lines:
+                lines.append("import site")
+            staged = path_file.with_suffix("._pth.tmp")
+            staged.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            staged.replace(path_file)
+
     def ensure_config(self) -> None:
         config = self.applio / "assets" / "config.json"
         template = self.applio / "assets" / "config_template.json"

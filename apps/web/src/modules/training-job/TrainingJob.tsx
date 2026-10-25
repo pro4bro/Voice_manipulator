@@ -174,6 +174,9 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
   const [logRun, setLogRun] = useState<TrainingRun | null>(null);
   const current = activeRun(batch);
   const currentProgress = current ? progressByRun[current.id] ?? [] : [];
+  const failureDetail = current?.status === "failed" && current.error?.endsWith("Traceback (most recent call last):")
+    ? [...currentProgress].reverse().find((line) => line.level === "error" && /^[\w.]+(?:Error|Exception):/.test(line.message ?? ""))?.message ?? current.error
+    : current?.error;
   const nameOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id)?.name ?? (id ? id : "Toàn bộ dataset");
   const colorOf = (id: string | null | undefined) => speakers.find((speaker) => speaker.id === id)?.color;
   const live = batch.find((run) => run.status === "running") ?? batch.find(isLive) ?? null;
@@ -182,6 +185,9 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
     ? batch.map((run) => ({ key: run.id, speakerId: run.speakerProfileId, run, fraction: runFraction(run, progressByRun[run.id]) }))
     : targetSpeakerIds.map((id) => ({ key: id, speakerId: id, run: null as TrainingRun | null, fraction: 0 }));
   const overall = targets.length ? targets.reduce((sum, target) => sum + target.fraction, 0) / targets.length : 0;
+  const overallText = !live && batch.some((run) => run.status !== "complete") ? `Đã dừng ở ${percent(overall)}` : percent(overall);
+  const targetProgressText = (run: TrainingRun | null, fraction: number) => run && !isLive(run) && run.status !== "complete"
+    ? `${STATUS_LABELS[run.status]} · dừng ở ${percent(fraction)}` : percent(fraction);
 
   const lines = useMemo(() => {
     const merged: LogRow[] = batch.flatMap((run) => (progressByRun[run.id] ?? []).map((line) => ({
@@ -315,7 +321,7 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
             })}
           </ul>
         ) : null}
-        {current?.error ? <p className="training-note is-error">{nameOf(current.speakerProfileId)}: {current.error}</p> : null}
+        {failureDetail && current ? <p className="training-note is-error" role="alert">{nameOf(current.speakerProfileId)}: {failureDetail}</p> : null}
         {current?.status === "interrupted" ? <p className="training-note">Tiến trình dừng cùng app. Checkpoint vẫn còn, chạy tiếp được từ mốc cuối.</p> : null}
       </section>
 
@@ -345,11 +351,11 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
       <footer aria-label="Tiến trình tổng" className="training-overall">
         <div className="training-overall__head">
           <span>TỔNG</span>
-          <b>{percent(overall)}</b>
+          <b>{overallText}</b>
           <small>{targets.length ? `${targets.filter((target) => target.run?.status === "complete").length}/${targets.length} voice xong` : "Chưa tick voice target"}</small>
           {live && onStop ? <TaskStop disabled={busy} onStop={onStop} scope="Training" /> : null}
         </div>
-        <div className="training-overall__bar" role="progressbar" aria-label="Tiến trình training tổng" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(overall * 100)}>
+        <div className="training-overall__bar" role="progressbar" aria-label="Tiến trình training tổng" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(overall * 100)} aria-valuetext={overallText}>
           {targets.map((target) => <span key={target.key}><i style={{ width: percent(target.fraction) }} /></span>)}
         </div>
         <div className="training-overall__targets" style={{ gridTemplateColumns: `repeat(${Math.max(1, targets.length)}, minmax(0, 1fr))` }}>
@@ -357,7 +363,7 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
             <div className={`training-target ${target.run ? `is-${target.run.status}` : ""}`} key={target.key}>
               <span><i style={{ background: colorOf(target.speakerId) }} />{nameOf(target.speakerId)}</span>
               <b>{percent(target.fraction)}</b>
-              <div className="training-target__bar" role="progressbar" aria-label={`Tiến trình ${nameOf(target.speakerId)}`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(target.fraction * 100)}><i style={{ width: percent(target.fraction) }} /></div>
+              <div className="training-target__bar" role="progressbar" aria-label={`Tiến trình ${nameOf(target.speakerId)}`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(target.fraction * 100)} aria-valuetext={targetProgressText(target.run, target.fraction)}><i style={{ width: percent(target.fraction) }} /></div>
               <small>{target.run ? STATUS_LABELS[target.run.status] : "Chưa chạy"}</small>
             </div>
           ))}

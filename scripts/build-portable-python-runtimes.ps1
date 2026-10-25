@@ -39,8 +39,8 @@ $definitions = [ordered]@{
     }
     RVC = @{
         Name = "rvc"; Source = ".runtime\rvc\.venv"
-        Imports = @("torch", "numpy", "soundfile", "rvc")
-        Paths = @("../../engines/research/Applio", "../../../services/api")
+        Imports = @("torch", "numpy", "soundfile", "rvc", "sitecustomize")
+        Paths = @("../../../services/api/app/workers/rvc_site", "../../engines/research/Applio", "../../engines/research/Applio/rvc/train", "../../../services/api")
     }
     VoiceChanger = @{
         Name = "voice-changer"; Source = ".runtime\voice-changer\.venv"

@@ -60,6 +60,18 @@ const CURVE = [
 const BATCH = [run(), run({ id: "run-binh", speakerProfileId: "speaker-binh", batchIndex: 1, status: "pending", stepId: "provision", globalStep: 0 })];
 
 describe("TrainingJob", () => {
+  it("labels a failed partial bar as stopped and recovers the concrete engine exception from the journal", () => {
+    const failure = run({ status: "failed", globalStep: 0, error: "RVC train kết thúc nhưng không có model nào được lưu. Traceback (most recent call last):" });
+    render(<TrainingJob batch={[failure]} speakers={[AN]} progressByRun={{ [failure.id]: [
+      line({ level: "error", message: "RuntimeError: makeDeviceForHostname(): unsupported gloo device" }),
+      line({ level: "error", message: "Dừng sau 4 phút 22 giây." }),
+    ] }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("RuntimeError: makeDeviceForHostname(): unsupported gloo device");
+    expect(screen.getByRole("progressbar", { name: "Tiến trình training tổng" })).toHaveAttribute("aria-valuetext", "Đã dừng ở 15%");
+    expect(screen.getByRole("progressbar", { name: "Tiến trình An" })).toHaveAttribute("aria-valuetext", "Lỗi · dừng ở 15%");
+    expect(screen.getByText("Đã dừng ở 15%")).toBeInTheDocument();
+    expect(screen.queryByText(/Đã chạy/)).not.toBeInTheDocument();
+  });
   it("shows the training flow only, not data preparation", () => {
     render(<TrainingJob batch={BATCH} progressByRun={{ "run-an": CURVE }} speakers={[AN, BINH]} />);
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 
 from app.adapters.rvc_training import RvcPaths, finished_model, link_experiment, rvc_commands, rvc_line_parser, unlink_experiment
+from app.adapters.rvc_training import SITE_DIR
 from app.adapters.training_runner import SUPPORTED_MODES
 
 
@@ -86,3 +89,47 @@ def test_the_published_model_is_the_newest_weight_file_not_the_resumable_state(t
 
 def test_rvc_training_is_a_supported_runner_mode():
     assert SUPPORTED_MODES["rvc"] == {"vc-train"}
+
+
+def test_portable_runtime_registers_startup_patch_for_spawned_workers(tmp_path, monkeypatch):
+    site = tmp_path / "services" / "api" / "app" / "workers" / "rvc_site"
+    monkeypatch.setattr("app.adapters.rvc_training.SITE_DIR", site)
+    paths = applio_tree(tmp_path)
+    path_file = paths.runtime / "python311._pth"
+    original = "python311.zip\n.\nsite-packages\nimport site\n"
+    path_file.write_text(original, encoding="utf-8")
+    paths.ensure_bootstrap()
+    entries = path_file.read_text(encoding="utf-8").splitlines()
+    assert sum((paths.runtime / entry).resolve() == site.resolve() for entry in entries if not entry.startswith("import ")) == 1
+    assert any((paths.runtime / entry).resolve() == (paths.applio / "rvc" / "train").resolve() for entry in entries)
+    assert "import site" in entries
+    assert not any(Path(entry).is_absolute() for entry in entries)
+    assert all(line in entries for line in original.splitlines())
+    stamp = path_file.stat().st_mtime_ns
+    paths.ensure_bootstrap()
+    assert path_file.stat().st_mtime_ns == stamp
+
+
+def test_standard_virtualenv_bootstrap_keeps_using_pythonpath_without_creating_pth(tmp_path):
+    paths = applio_tree(tmp_path)
+    paths.ensure_bootstrap()
+    assert not list(paths.runtime.glob("*._pth"))
+
+
+def test_runtime_bootstrap_enables_site_when_portable_distribution_left_it_commented(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.adapters.rvc_training.SITE_DIR", tmp_path / "rvc_site")
+    paths = applio_tree(tmp_path)
+    path_file = paths.runtime / "python311._pth"
+    path_file.write_text("python311.zip\n.\n# import site\n", encoding="utf-8")
+    paths.ensure_bootstrap()
+    assert "import site" in path_file.read_text(encoding="utf-8").splitlines()
+
+
+def test_spawned_isolated_worker_flushes_epoch_output_before_applio_hard_exit():
+    command = [sys.executable, "-I", "-c", "import os,runpy; "
+               f"runpy.run_path({str(SITE_DIR / 'sitecustomize.py')!r}); "
+               "print('experiment | epoch=1 | step=8 | done'); os._exit(0)"]
+    result = subprocess.run(command, env={**os.environ, "PRO4BRO_RVC_SINGLE_GPU_GROUP": "1"},
+                            capture_output=True, text=True, encoding="utf-8", timeout=15)
+    assert result.returncode == 0
+    assert "epoch=1 | step=8" in result.stdout

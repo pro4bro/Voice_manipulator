@@ -1,4 +1,4 @@
-"""Loaded by every Python process of an RVC training run, through PYTHONPATH.
+"""Loaded by RVC Python through PYTHONPATH, or its portable runtime's _pth file.
 
 Applio's trainer always opens a torch process group, even for one GPU. On
 Windows that group is gloo, and gloo builds its network device from the
@@ -51,5 +51,11 @@ class _SingleProcessGroup(importlib.abc.MetaPathFinder):
         return spec
 
 
-if os.name == "nt" and os.environ.get("PRO4BRO_RVC_SINGLE_GPU_GROUP") == "1":
-    sys.meta_path.insert(0, _SingleProcessGroup())
+if os.environ.get("PRO4BRO_RVC_SINGLE_GPU_GROUP") == "1":
+    # Embedded Python and spawned -I workers ignore PYTHONUNBUFFERED. Applio
+    # exits its worker with os._exit, so buffered epoch/status lines are lost.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(line_buffering=True, write_through=True)
+    if os.name == "nt":
+        sys.meta_path.insert(0, _SingleProcessGroup())

@@ -28,7 +28,7 @@ logger = logging.getLogger("app.adapters.training_process")
 # dataloader workers, so the thing to stop is never the process we hold.
 _NEW_PROCESS_GROUP = 0x00000200
 
-_ERROR_LINE = re.compile(r"\w*(Error|Exception)|^error:|CUDA out of memory|Traceback", re.IGNORECASE)
+_ERROR_LINE = re.compile(r"\b\w*(Error|Exception)\b|^error:|CUDA out of memory|Traceback", re.IGNORECASE)
 
 
 class TrainingProcess:

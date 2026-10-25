@@ -25,6 +25,13 @@ def script(tmp_path: Path, body: str) -> list[str]:
     return [sys.executable, str(path)]
 
 
+def test_failure_detail_keeps_terminal_exception_instead_of_traceback_header():
+    process = TrainingProcess(lambda line: None)
+    process.tail.extend(["Traceback (most recent call last):", '  File "train.py", line 309, in run',
+                         "RuntimeError: makeDeviceForHostname(): unsupported gloo device"])
+    assert process.failure_detail() == "RuntimeError: makeDeviceForHostname(): unsupported gloo device"
+
+
 def test_it_reads_real_subprocess_output_into_progress_lines(tmp_path):
     captured: list[TrainingProgressLine] = []
     command = script(

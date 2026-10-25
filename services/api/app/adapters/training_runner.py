@@ -880,6 +880,7 @@ class TrainingRunner:
             count, seconds = export_rvc_dataset(manifest.segments, project_root, run_dir / "data" / "rvc-dataset", self.exporter._slice)
             self._append(run, "write-jsonl", f"Đã xuất {count} đoạn · {seconds / 60:.1f} phút audio cho RVC.")
 
+            paths.ensure_bootstrap()
             paths.ensure_config()
             name = f"pro4bro-{run.id}"
             model_folder = run_dir / "rvc"
