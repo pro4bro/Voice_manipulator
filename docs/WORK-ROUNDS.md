@@ -26,6 +26,12 @@ Audio endings, newline pauses and30/60/90% emphasis/gain/shout are NOT implement
 in this UI round. NEXT is VM-VOICE-ENDINGS-01, followed by persistent inline
 format/pause delivery; see docs/VM-SCRIPT-UNIFICATION-DELIVERY-PLAN.md. Source
 inspection is not a listening acceptance. Phase03 stays60%, Phase06 open.
+Owner clarification (2026-10-25): newlines add pauses between lines;
+uppercase, bold and underline each contribute30%, adding up to90% for all three.
+Audio gain is separate and not yet specified. The delivery plan now records this
+confirmed rule instead of highest-wins/fixed per-format levels. Documentation-only
+clarification; no product round advanced and no synthesis behavior changed.
+
 Stop this bounded development round as required by AGENTS.md.
 
 ## VM-MERGED-SCRIPT-SAVE-01 — Stable merged-turn highlights and autosave (2026-10-25)

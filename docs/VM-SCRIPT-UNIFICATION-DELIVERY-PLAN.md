@@ -13,7 +13,7 @@ Ngày: 2026-10-25. Nhánh: `codex/expressive-engines`.
 | Kéo playhead không bị selection Script kéo về đầu từ | Chặn seek/pan phản hồi trong gesture; highlight text không đổi DOM Selection |
 | Giữ âm cuối đầy đủ | NEXT: VM-VOICE-ENDINGS-01, chưa sửa pipeline âm thanh |
 | Xuống dòng thay đổi nhịp/thời lượng | PLANNED: VM-SCRIPT-DELIVERY-01, chưa áp dụng vào synthesis |
-| HOA 30%, B 60% + to hơn, U 90% + la hét | PLANNED: VM-SCRIPT-DELIVERY-02, chưa áp dụng vào synthesis |
+| HOA/B/U mỗi loại 30%, cộng dồn tối đa 90%; âm lượng riêng | PLANNED: VM-SCRIPT-DELIVERY-02, chưa áp dụng vào synthesis |
 
 AGENTS.md yêu cầu mỗi invocation hoàn thành một round có giới hạn, kiểm tra và
 dừng. Round giao diện này không đổi schema Script hoặc chạy inference/training.
@@ -72,9 +72,9 @@ Các yêu cầu phát âm bên dưới vẫn mở; đây là kế hoạch thi c�
 
 - Hiện `scriptReadiness` chuẩn hóa whitespace trước khi gửi lời đọc; API có
   `sourceText` để giữ văn bản hiển thị. Dấu xuống dòng chưa có nghĩa về pause.
-- Giả định đang đề xuất: xuống dòng thêm pause, bỏ xuống dòng giảm pause; không
-  tạo row mới và không tự giãn mọi từ. Câu hỏi tùy chọn về pause/giãn lời đã gửi
-  trong phiên, chưa có trả lời; chưa coi đây là lựa chọn đã được chủ dự án duyệt.
+- Chủ dự án xác nhận ngày 2026-10-25: "Thêm khoảng nghỉ giữa dòng". Xuống dòng
+  thêm pause, bỏ xuống dòng giảm pause; không tạo row mới và không tự giãn từ.
+  Thời lượng pause mặc định và quy tắc dòng trống sẽ được chốt khi thi công.
 - Giữ raw text/newline qua request, job, cache và snapshot. Biên dịch điểm nghỉ
   độc lập với row/speaker; pause thuộc timeline timecode, duration allocation,
   subtitle và output metadata. Không nhờ model đoán newline đã bị bỏ.
@@ -89,9 +89,19 @@ Các yêu cầu phát âm bên dưới vẫn mở; đây là kế hoạch thi c�
 - Lưu/chỉnh khoảng định dạng qua gõ, IME, paste, replace, Undo/Redo, gộp legacy,
   tách/gộp row, Version checkout và migration. Copy plain text giữ nội dung; export
   Script và snapshot giữ ý định phát âm. Không gửi thẻ HTML như lời thoại.
-- Mức yêu cầu: chữ HOA0.30, đậm0.60, gạch dưới0.90 kèm shout. Khi chồng định dạng,
-  đề xuất lấy mức cao nhất, không cộng dồn; câu hỏi tùy chọn chưa có trả lời.
-  Phần trăm là intensity mong muốn, không phải phần trăm gain hoặc số dB.
+- Chủ dự án sửa quy tắc ngày 2026-10-25: "mỗi thứ sẽ là 30%, nếu có cả 3 thì
+  cộng dồn thành 90%. chưa tính tới mức tăng âm lượng". Quy tắc này thay các
+  mức riêng HOA30/B60/U90 và đề xuất lấy mức cao nhất trước đó.
+- Mỗi loại HOA, đậm, gạch dưới góp0.30 độc lập. Công thức nhấn giọng:
+  `intensity = 0.30 * (uppercase + bold + underline)`, mỗi cờ là0 hoặc1.
+  Một loại =30%, bất kỳ hai loại =60%, cả ba =90%, không có loại nào =0% nhấn
+  thêm so với baseline. Không đếm lặp cùng một loại định dạng.
+- Phần trăm là intensity mong muốn, không phải phần trăm gain hoặc số dB. Mức
+  tăng âm lượng chưa được chốt và là thông số riêng. Gạch dưới đơn lẻ không còn
+  mặc định90%/shout; ý định la hét ở mức cao từ yêu cầu gốc cần mapping engine
+  riêng đã kiểm chứng, không suy ra bằng cách tăng gain.
+- Kiểm tra đủ tám tổ hợp cờ, thay đổi định dạng và cache/Fix tương ứng; không
+  dùng `max()` thay phép cộng hoặc gắn lại mức60%/90% cho từng nút riêng.
 - Phân biệt nhấn giọng/vocal effort và gain hậu kỳ. Tăng gain không tạo la hét.
   Mapping engine phải giữ speaker identity; engine không đáp ứng phải báo rõ
   trước generation, không đánh dấu applied bằng metadata khi audio không có.

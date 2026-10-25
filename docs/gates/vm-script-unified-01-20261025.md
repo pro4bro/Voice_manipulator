@@ -94,3 +94,11 @@ natural output postprocessing, newline normalization and view-only B/U state;
 it does not establish which stage caused the owner's audible ending issue.
 No sentence-tail, pause,30/60/90 intensity, automatic gain or shouting feature is
 represented as implemented. Stop this bounded round; Phase03 stays60%, Phase06 open.
+
+## Owner clarification after the round
+
+The owner confirmed that newlines add pauses. Each of uppercase, bold and
+underline adds30% emphasis; any two give60%, all three give90%. This supersedes
+fixed30/60/90 levels per format and the proposed highest-wins combination rule.
+Audio gain remains separate and unspecified. The companion plan is corrected;
+this documentation update does not implement synthesis or advance a product round.
