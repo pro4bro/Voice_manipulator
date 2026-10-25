@@ -20,6 +20,27 @@ function geometry(container: HTMLElement) {
   return { scroller, canvas, width };
 }
 
+it("does not feed a playback-follow text selection back into a held playhead seek", () => {
+  const prefix = "a".repeat(42001);
+  const words = [{ text: prefix, start: 0, end: 20 }, { text: "target", start: 40, end: 50 }];
+  function Pair() {
+    const [selection, setSelection] = useState<WordSelection>(EMPTY_SELECTION);
+    return <><ScriptEditor onChange={vi.fn()} playbackAssetId="drag" value={`${prefix} target`} words={words} workflow="speech-to-text" wordSelection={selection} onWordSelectionChange={setSelection} />
+      <Timeline gain={0} onGainChange={vi.fn()} wordSelection={selection} onWordSelectionChange={setSelection} take={{ id: "drag", name: "drag.wav", url: "/drag.wav", duration: 100, words }} /></>;
+  }
+  const view = render(<Pair />);
+  fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+  const { scroller } = geometry(view.container);
+  const playhead = screen.getByLabelText("Playhead indicator");
+  fireEvent.pointerDown(playhead, { button: 0, pointerId: 8, clientX: 200 });
+  fireEvent.pointerMove(playhead, { pointerId: 8, clientX: 450 });
+  fireEvent.select(screen.getByRole("textbox", { name: "Script transcript" }));
+  expect(screen.getByText("00:00:45.000")).toBeInTheDocument();
+  expect(playhead.style.transform).toBe("translate3d(450px, 0, 0)");
+  expect(scroller.scrollLeft).toBe(0);
+  fireEvent.pointerUp(playhead, { pointerId: 8, clientX: 450 });
+});
+
 it("keeps the ordinary recording at full fit while its source duration grows", () => {
   const props = { gain: 0, onGainChange: vi.fn(), take: null };
   const view = render(<Timeline {...props} recordingPreview={{ active: true, duration: 60, samples: [] }} />);

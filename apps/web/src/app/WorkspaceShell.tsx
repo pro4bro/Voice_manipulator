@@ -1,4 +1,5 @@
 import { useVoiceGeneratorCatalog } from "../modules/voice-generator/useVoiceGeneratorCatalog";
+import { TimelineResizeHandle } from "../ui/TimelineResizeHandle";
 import { SubtitleTimingProvider } from "../modules/script/SubtitleTimingPreview";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
@@ -3140,6 +3141,7 @@ Footage tham chiếu không bị xoá. Không khôi phục được.`)) return;
             <div className="module-column module-column--center">{manifest.columns.center.map(renderModule)}</div>
             <div aria-label="Co kéo cột phải" aria-orientation="vertical" className="column-resizer" onKeyDown={(event) => resizeWithKeyboard("right", event)} onPointerDown={(event) => beginResize("right", event)} role="separator" tabIndex={0}><i /></div>
             <div className="module-column module-column--right">{manifest.columns.right.map(renderModule)}</div>
+            {manifest.columns.bottom.length ? <TimelineResizeHandle key={activePage} layoutKey={activePage} /> : null}
             <div className="module-column module-column--bottom">{manifest.columns.bottom.map(renderModule)}</div>
           </div>}
         </section>

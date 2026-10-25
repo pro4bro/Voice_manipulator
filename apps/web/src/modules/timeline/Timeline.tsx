@@ -503,7 +503,7 @@ function AudioTimeline({
   // were picked in. Only while paused - moving it mid-playback would fight the
   // person listening.
   useEffect(() => {
-    if (playing || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection) || !wordSelection.indexes.length) return;
+    if (playing || playheadDragRef.current || scrubbingRef.current || transportScrubRef.current || audioScrubber.active || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection) || !wordSelection.indexes.length) return;
     const first = displayWords[wordSelection.indexes[0]];
     if (!first) return;
     setCurrentTime(first.start);
@@ -527,7 +527,7 @@ function AudioTimeline({
   useEffect(() => {
     const scroller = timelineScrollRef.current;
     const anchor = wordSelection.anchor;
-    if (!scroller || anchor === null || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection)) return;
+    if (!scroller || anchor === null || playheadDragRef.current || scrubbingRef.current || transportScrubRef.current || audioScrubber.active || wordDragRef.current || rangeDragRef.current || hasMultipleSelectionRanges(wordSelection)) return;
     const word = displayWords[anchor];
     if (!word) return;
     const width = timelinePixelWidthRef.current || scroller.scrollWidth;

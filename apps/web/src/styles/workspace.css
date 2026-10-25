@@ -47,16 +47,19 @@
 .processor-banner b { color: var(--gold); }
 .processor-banner span { color: rgba(255,255,255,.62); }
 
-.studio-board { min-height: 0; display: grid; grid-template-columns: var(--left-column) 7px minmax(380px,1fr) 7px var(--right-column); grid-template-rows: minmax(0,1fr) minmax(270px,36%); overflow: hidden; background: var(--paper-3); }
-.studio-board.has-obs-timeline { grid-template-rows: minmax(0,1fr) minmax(290px,44%); }
-.studio-board.has-voice-layers { grid-template-rows: minmax(220px,1fr) minmax(360px,48%); }
+.studio-board { min-height: 0; display: grid; grid-template-columns: var(--left-column) 7px minmax(380px,1fr) 7px var(--right-column); grid-template-rows: minmax(0,1fr) 7px var(--bottom-height,minmax(270px,36%)); overflow: hidden; background: var(--paper-3); }
+.studio-board.has-obs-timeline { grid-template-rows: minmax(0,1fr) 7px var(--bottom-height,minmax(290px,44%)); }
+.studio-board.has-voice-layers { grid-template-rows: minmax(180px,1fr) 7px var(--bottom-height,minmax(200px,48%)); }
 .studio-board.is-no-bottom { grid-template-rows: minmax(0,1fr); }
 .studio-board.is-no-bottom .module-column--bottom { display: none; }
 .module-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; padding: 8px; scrollbar-width: thin; scrollbar-color: rgba(24,26,22,.27) transparent; }
 .module-column--left { grid-column: 1; grid-row: 1; }
 .module-column--center { grid-column: 3; grid-row: 1; padding-left: 4px; padding-right: 4px; }
 .module-column--right { grid-column: 5; grid-row: 1; padding-left: 4px; }
-.module-column--bottom { grid-column: 1 / -1; grid-row: 2; overflow: hidden; padding-top: 0; background: var(--surface-panel); }
+.module-column--bottom { grid-column: 1 / -1; grid-row: 3; overflow: hidden; padding-top: 0; background: var(--surface-panel); }
+.timeline-resizer { grid-column: 1 / -1; grid-row: 2; display: grid; place-items: center; cursor: row-resize; touch-action: none; background: var(--paper-3); z-index: 4; }
+.timeline-resizer i { width: 44px; height: 2px; background: var(--text-muted); }
+.timeline-resizer:hover, .timeline-resizer:focus-visible { background: var(--accent); outline: none; }
 .studio-board--speech-to-text .module-column--right { overflow-y: auto; }
 .column-resizer { grid-row: 1; display: grid; place-items: center; z-index: 3; cursor: col-resize; touch-action: none; background: var(--paper-3); }
 .studio-board > .column-resizer:nth-child(2) { grid-column: 2; }
@@ -99,7 +102,7 @@
   .project-rail { visibility: hidden; }
   .stage-lineage { display: none; }
   .studio-board { display: block; overflow-y: auto; }
-  .column-resizer { display: none; }
+  .column-resizer, .timeline-resizer { display: none; }
   .module-column { overflow: visible; }
   .module-column--bottom { min-height: 250px; }
 }
