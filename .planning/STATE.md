@@ -6,11 +6,34 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-26 — TRAIN-PORTABLE-RVC-01 repairs actual portable RVC startup and epoch progress; real GPU model/index verified.
-last_activity_desc: GPU1epoch/8steps verified, full frontend1381 passes, full API1630 pass/1 intermittent VibeVoice import timeout; isolated case passes16.07s. Native UI/full200epoch/listening acceptance open; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-26 — TRAIN-TIMELINE-UI-01 isolates Training journals and unifies Timeline transport layout.
+last_activity_desc: Focused frontend148 passes; typecheck/build241 pass. Full frontend175 files/1385 tests pass204.11s. Native browser blocked; prior API timeout/full200epoch/listening acceptance open. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## TRAIN-TIMELINE-UI-01 — Training log and shared Timeline transport (2026-10-26)
+
+Training log now reads only progress journals of the displayed batch; global
+API/STT/TTS/engine activity cannot enter it, including from legacy callers.
+Commands, metrics, checkpoint, warning and error lines remain, along with full
+run logs/history. Removed decorative page icons from top workflow navigation.
+
+Ordinary, imported multitrack, OBS and LipSync alignment Timeline share a
+presentation component. Current/total clocks stack and align right beside Play;
+rate/gain/CLIP move to the header right after editing/zoom. Scrubber edges derive
+from the visible waveform viewport, including label rails and scrollbars, and
+update on resize/scroll. Full-width column views place clocks above the scrubber
+so they do not overlap it. Existing playback/seek/Script/subtitle handlers stay
+with each Timeline. No engine/backend/project-media/model changes.
+
+Focused frontend148/148 pass (15.93s); full frontend175 files/1385 tests pass
+(204.11s); typecheck/build241 pass. Gate train-timeline-ui-01-20261026 and ADR0152 record
+the shared layout boundary. Native browser inventory still rejects access, so
+actual visual acceptance is open. Prior API gate remains1630 pass/1 intermittent
+VibeVoice import timeout; not rerun for this frontend-only round. Clone workflow
+verified from code and documented in the gate. Phase03 stays60%, Phase06 open.
+Stop after this bounded round; native layout/RVC full-duration acceptance remain.
 
 ## TRAIN-PORTABLE-RVC-01 — Portable training startup and progress (2026-10-25)
 

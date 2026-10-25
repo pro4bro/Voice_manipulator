@@ -1,3 +1,4 @@
+import { TimelineTransport, TimelinePlaybackSettings } from "./TimelineTransport";
 import type { ScrubPreviewPosition } from "../../domain/types";
 import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
@@ -1798,6 +1799,10 @@ function AudioTimeline({
             <span title="Mật độ hiển thị timeline">{zoomResolutionLabel()}</span>
             <button aria-label="Phóng to timeline" onClick={() => changeZoom(Math.min(maxTimelineZoom(), zoom * 2))} type="button">+</button>
           </div>
+          <TimelinePlaybackSettings rate={playbackRate} onRateChange={setPlaybackRate} rates={PLAYBACK_RATES}>
+            <span className={`gain-badge ${isGainPreviewing ? "is-preview" : ""}`}>{isGainPreviewing ? "PREVIEW 3/12 · " : ""}{draftGain > 0 ? "+" : ""}{draftGain.toFixed(1)} dB</span>
+            {gainOverflows.length ? <span className={`gain-warning ${autoCalibrate ? "is-calibrated" : ""}`}>{autoCalibrate ? "AUTO CAL" : "CLIP"} · {gainOverflows.length} vùng</span> : null}
+          </TimelinePlaybackSettings>
         </div>
       }
     >
@@ -1951,11 +1956,9 @@ function AudioTimeline({
           <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
         </div>
       </> : null}
-      <div className="transport-bar">
-        <button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
+      <TimelineTransport current={timecode(currentTime)} duration={timecode(duration)} playButton={<button aria-label={playing ? "Tạm dừng" : "Phát"} className="transport-button" disabled={!take?.url || isRecording} onClick={togglePlay} type="button">
           <Icon name={playing ? "pause" : "play"} />
-        </button>
-        <code>{timecode(currentTime)}</code>
+        </button>}>
         <div
           aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua"
           className="transport-progress"
@@ -1968,16 +1971,7 @@ function AudioTimeline({
           <i style={{ width: `${playheadPercent}%` }} />
           <b aria-hidden="true" style={{ left: `${playheadPercent}%` }} />
         </div>
-        <code>{timecode(duration)}</code>
-        <label className="transport-rate">
-          <span>RATE</span>
-          <select aria-label="Tốc độ phát" onChange={(event) => setPlaybackRate(Number(event.target.value))} value={playbackRate}>
-            {PLAYBACK_RATES.map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
-          </select>
-        </label>
-        <span className={`gain-badge ${isGainPreviewing ? "is-preview" : ""}`}>{isGainPreviewing ? "PREVIEW 3/12 · " : ""}{draftGain > 0 ? "+" : ""}{draftGain.toFixed(1)} dB</span>
-        {gainOverflows.length ? <span className={`gain-warning ${autoCalibrate ? "is-calibrated" : ""}`}>{autoCalibrate ? "AUTO CAL" : "CLIP"} · {gainOverflows.length} vùng</span> : null}
-      </div>
+      </TimelineTransport>
       {take?.url ? (
         <audio
           onEnded={(event) => { if (audioScrubber.active) return; syncPlaybackClock(event.currentTarget); setPlaying(false); stopSignalMeter(); stopPlaybackClock(); }}

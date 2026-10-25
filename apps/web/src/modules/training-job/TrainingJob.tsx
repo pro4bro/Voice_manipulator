@@ -24,7 +24,7 @@ interface TrainingJobProps {
   /** Every run of the project, for the history and its delete. */
   runs?: TrainingRun[];
   adapters?: ProjectAsrAdapter[];
-  /** The app's own log and jobs, so this panel shows the whole app, not just training. */
+  /** Legacy global events are ignored; only the run journal belongs in this log. */
   activityEvents?: ActivityEvent[];
   activityTasks?: ActivityTask[];
   /** Runs, voices or adapters changed on disk; refresh what shows them. */
@@ -167,7 +167,7 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onStop, projectId, runs = [], adapters = [], activityEvents = [], activityTasks = [], onRunsChanged }: TrainingJobProps) {
+export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progressByRun = {}, selectedMode = null, busy = false, onStop, projectId, runs = [], adapters = [], activityTasks = [], onRunsChanged }: TrainingJobProps) {
   const logRef = useRef<HTMLOListElement>(null);
   const [follow, setFollow] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -199,22 +199,8 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
       repeat: 1,
       run,
     })));
-    // Training's own lines are already here through the journal; everything else
-    // the app did - STT, TTS, model loading, the API - comes from the stream.
-    for (const event of activityEvents) {
-      if (event.source === "training") continue;
-      merged.push({
-        key: `event-${event.seq}`,
-        at: event.at,
-        source: event.source.toUpperCase(),
-        level: event.level,
-        text: event.message,
-        repeat: event.repeat,
-        run: null,
-      });
-    }
     return merged.sort((left, right) => left.at.localeCompare(right.at));
-  }, [activityEvents, batch, progressByRun]);
+  }, [batch, progressByRun]);
 
   const { train, dev, latest } = useMemo(() => {
     const trainPoints: Point[] = [];
@@ -327,7 +313,7 @@ export function TrainingJob({ speakers, targetSpeakerIds = [], batch = [], progr
 
       <section aria-label="Log training" className="training-log">
         <header>
-          <span>LOG · {lines.length} dòng{problems.errors ? ` · ${problems.errors} lỗi` : ""}{problems.warnings ? ` · ${problems.warnings} cảnh báo` : ""}</span>
+          <span>LOG TRAINING · {lines.length} dòng{problems.errors ? ` · ${problems.errors} lỗi` : ""}{problems.warnings ? ` · ${problems.warnings} cảnh báo` : ""}</span>
           {projectId && current ? <button className="training-log__full" onClick={() => setLogRun(current)} title="Mọi dòng log và output engine (process.log) của run này" type="button">Log đầy đủ</button> : null}
           <label><input checked={follow} onChange={(event) => setFollow(event.target.checked)} type="checkbox" />Tự cuộn</label>
         </header>

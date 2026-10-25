@@ -1,3 +1,4 @@
+import { TimelineTransport, TimelinePlaybackSettings } from "./TimelineTransport";
 import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import type { ScrubPreviewPosition } from "../../domain/types";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
@@ -636,6 +637,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
         <span title={`Cửa sổ ${span}s`}>{zoomResolution}</span>
         <button aria-label="Phóng to Timeline" disabled={!duration || span <= minSpan} onClick={() => selectZoom(span / 2)} type="button">+</button>
       </div>
+      <TimelinePlaybackSettings rate={rate} onRateChange={setRate}>
+        <div className="obs-timeline__transport-extras"><span>{selected?.name ?? "Chưa có channel"}</span></div>
+      </TimelinePlaybackSettings>
     </div>}>
     <div className="obs-timeline__main">
       {error ? <p className="obs-timeline__error" role="alert">{error}</p> : null}
@@ -754,14 +758,9 @@ export function ImportedMultitrackTimeline({ parent, tracks, selectedTrackId, re
               : [section.id])} style={{ flex: `${Math.max(.001, section.end - section.start)} 1 0` }} type="button" />;
         })}
       </div> : null}
-      <div className="transport-bar obs-timeline__transport">
-        <button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={togglePlayback} type="button"><Icon name={playing ? "pause" : "play"} /></button>
-        <code>{clock(currentTime)}</code>
+      <TimelineTransport current={clock(currentTime)} duration={clock(duration)} layout={layout} playButton={<button aria-label={playing ? "Tạm dừng footage" : "Phát footage"} className="transport-button" disabled={!selected?.url} onClick={togglePlayback} type="button"><Icon name={playing ? "pause" : "play"} /></button>}>
         <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub" onPointerDown={(event) => beginScrub(event, true)} onPointerMove={(event) => { moveScrub(event, true); }} onPointerUp={(event) => endScrub(event, true)} onPointerCancel={cancelScrub}><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /><b style={{ left: `${duration ? currentTime / duration * 100 : 0}%` }} /></div>
-        <code>{clock(duration)}</code>
-        <label className="transport-rate"><span>RATE</span><select aria-label="Tốc độ phát" onChange={(event) => setRate(Number(event.target.value))} value={rate}>{[.5, .75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}</select></label>
-        <div className="obs-timeline__transport-extras"><span>{selected?.name ?? "Chưa có channel"}</span></div>
-      </div>
+      </TimelineTransport>
     </div>
     {visibleTracks.map((track) => track.url ? <audio key={track.id} onEnded={() => {
       if (audioScrubber.active) return;

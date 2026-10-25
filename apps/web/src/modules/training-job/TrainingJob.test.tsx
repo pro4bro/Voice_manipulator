@@ -187,20 +187,24 @@ describe("TrainingJob", () => {
     expect(screen.getByText("2/2 voice xong")).toBeInTheDocument();
   });
 
-it("carries the rest of the app's own log, with a repeated line counted once", () => {
+  it("isolates the training journal from API, STT and engine activity", () => {
     const events = [
       { seq: 1, at: "2026-09-04T01:00:05Z", source: "stt", level: "info" as const, message: "Đang nhận dạng buổi họp", repeat: 1 },
-      { seq: 2, at: "2026-09-04T01:00:06Z", source: "engine", level: "warning" as const, message: "UserWarning: DataLoader", repeat: 129 },
-      { seq: 3, at: "2026-09-04T01:00:07Z", source: "training", level: "info" as const, message: "đã có trong journal", repeat: 1 },
+      { seq: 2, at: "2026-09-04T01:00:06Z", source: "engine", level: "warning" as const, message: "Unrelated engine warning", repeat: 129 },
+      { seq: 3, at: "2026-09-04T01:00:07Z", source: "api", level: "error" as const, message: "GET /api/health 500", repeat: 1 },
+      { seq: 4, at: "2026-09-04T01:00:08Z", source: "training", level: "info" as const, message: "duplicate journal event", repeat: 1 },
     ];
-
-    render(<TrainingJob activityEvents={events} batch={BATCH} speakers={[AN, BINH]} />);
-
-    expect(screen.getByText("Đang nhận dạng buổi họp")).toBeInTheDocument();
-    expect(screen.getByText("…129…")).toBeInTheDocument();
-    expect(screen.getByText(/1 cảnh báo/)).toBeInTheDocument();
-    // Training lines are already in the run's journal; showing them twice is worse than not at all.
-    expect(screen.queryByText("đã có trong journal")).not.toBeInTheDocument();
+    render(<TrainingJob activityEvents={events} batch={BATCH} speakers={[AN, BINH]} progressByRun={{
+      "run-an": [line({ message: "Epoch 2 · step 16/80", globalStep: 16 }), line({ message: "CUDA out of memory", level: "error" })],
+      "other-run": [line({ message: "Another batch" })],
+    }} />);
+    const log = screen.getByRole("region", { name: "Log training" });
+    expect(within(log).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(log).getByText("Epoch 2 · step 16/80")).toBeInTheDocument();
+    expect(within(log).getByText("CUDA out of memory")).toBeInTheDocument();
+    expect(within(log).getByText(/1 lỗi/)).toBeInTheDocument();
+    for (const event of events) expect(within(log).queryByText(event.message)).not.toBeInTheDocument();
+    expect(within(log).queryByText("Another batch")).not.toBeInTheDocument();
   });
 
   it("shows the other jobs of the app under the flow", () => {

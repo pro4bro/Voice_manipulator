@@ -1,0 +1,26 @@
+/* The scrubber spans the visible waveform, including viewport scrollbar changes. */
+.timeline-module .transport-bar.timeline-transport {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: var(--transport-start) minmax(0, 1fr);
+  gap: 0;
+  align-items: center;
+  padding-right: var(--transport-end);
+  min-height: 34px;
+}
+.timeline-transport__left { min-width: 0; display: flex; align-items: center; gap: 5px; padding-right: 9px; }
+.timeline-transport__left .transport-button { flex: 0 0 29px; }
+.timeline-transport__clocks { min-width: 0; flex: 1; display: grid; justify-items: end; gap: 2px; }
+.timeline-module .timeline-transport__clocks code { text-align: right; white-space: nowrap; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.timeline-transport__clocks code:last-child { color: var(--text-muted); }
+.timeline-transport .transport-progress { min-width: 0; }
+.timeline-module .timeline-transport--full-width { grid-template-columns: minmax(0, 1fr); }
+.timeline-transport--full-width .timeline-transport__left { width: 124px; }
+.timeline-transport--full-width .transport-progress { margin-left: var(--transport-start); }
+.timeline-module .timeline-transport--full-width { flex-basis: 54px; }
+.timeline-playback-settings { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-left: auto; }
+.timeline-playback-settings > * { flex: 0 0 auto; white-space: nowrap; }
+.timeline-playback-settings .transport-rate select { width: 55px; min-width: 55px; max-width: 80px; }
+.timeline-playback-settings .obs-timeline__transport-extras { flex: 0 1 auto; max-width: 220px; }
+.timeline-playback-settings .obs-timeline__transport-extras span { color: var(--text-muted); font-family: var(--mono); font-size: calc(8px * var(--font-scale)); }
+.timeline-playback-settings .obs-timeline__transport-extras button { height: 25px; color: var(--text); border: 1px solid var(--line); background: var(--surface-field); }

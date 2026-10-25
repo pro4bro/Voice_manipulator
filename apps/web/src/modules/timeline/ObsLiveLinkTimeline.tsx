@@ -1,3 +1,4 @@
+import { TimelineTransport, TimelinePlaybackSettings } from "./TimelineTransport";
 import { SubtitleTimingGhosts } from "../script/SubtitleTimingPreview";
 import type { ScrubPreviewPosition } from "../../domain/types";
 import { ScrubPreviewOverlay } from "./ScrubPreviewOverlay";
@@ -923,6 +924,16 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
         <span title={`Cửa sổ ${windowSpan}s`}>{timelineZoomResolution(windowSpan, waveformWidth)}</span>
         <button aria-label="Phóng to Timeline OBS" disabled={zoomTarget(-1) === null} onClick={() => changeWindow(-1)} type="button">+</button>
       </div>
+      <TimelinePlaybackSettings rate={playbackRate} onRateChange={setPlaybackRate}>
+        <div className="obs-timeline__transport-extras">
+          <span>{isLive ? "Đang thu" : selectedLane?.assetId ? `TRACK · ${selectedLane.label}` : "Track chưa sẵn sàng"}</span>
+          {isLive && !followLive ? <button onClick={() => { setFollowLive(true); setCurrentTime(duration); }} type="button">VỀ LIVE</button> : null}
+          <button aria-label="Lùi cửa sổ Timeline" disabled={windowStart === 0 || isLive}
+            onClick={() => setWindowStart((value) => Math.max(0, value - windowSpan / 4))} type="button">←</button>
+          <button aria-label="Tiến cửa sổ Timeline" disabled={isLive || windowStart + windowSpan >= duration}
+            onClick={() => setWindowStart((value) => Math.min(Math.max(0, duration - windowSpan), value + windowSpan / 4))} type="button">→</button>
+        </div>
+      </TimelinePlaybackSettings>
     </div>}>
     {!isLive && canMark ? <div aria-label="Các đoạn footage OBS" className="timeline-section-strip">{sections.map((section) => <button
       key={section.id} type="button" disabled={!canEdit} aria-pressed={selectedSections.includes(section.id)}
@@ -1193,32 +1204,18 @@ export function ObsLiveLinkTimeline({ projectId, resumeProjectId, projectName = 
           {!lanes.length ? <p className="obs-timeline__no-channels">{recordingId ? "Bản ghi này chưa có track được forward." : "Chọn OBS LiveLink và bấm Record để xem từng track."}</p> : null}
         </div>
       </div>
-      <div className="transport-bar obs-timeline__transport">
-        <button aria-label={playing ? "Tạm dừng track OBS" : "Phát track OBS"} disabled={!canPlay}
+      <TimelineTransport current={timecode(currentTime)} duration={timecode(duration)} layout={layout} playButton={<button aria-label={playing ? "Tạm dừng track OBS" : "Phát track OBS"} disabled={!canPlay}
           className="transport-button"
           onClick={togglePlayback} type="button">
           <Icon name={playing ? "pause" : "play"} />
-        </button>
-        <code>{timecode(currentTime)}</code>
+        </button>}>
         <div aria-label="Thanh tiến trình Timeline — bấm hoặc kéo để tua" className="transport-progress obs-timeline__scrub"
           onClick={clickSeek}
           onPointerDown={beginScrub} onPointerMove={moveScrub} onPointerUp={endScrub} onPointerCancel={cancelScrub}>
           <i style={{ width: `${Math.max(0, Math.min(100, duration ? currentTime / duration * 100 : 0))}%` }} />
           <b style={{ left: `${Math.max(0, Math.min(100, duration ? currentTime / duration * 100 : 0))}%` }} />
         </div>
-        <code>{timecode(duration)}</code>
-        <label className="transport-rate"><span>RATE</span><select aria-label="Tốc độ phát" onChange={(event) => setPlaybackRate(Number(event.target.value))} value={playbackRate}>
-          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
-        </select></label>
-        <div className="obs-timeline__transport-extras">
-          <span>{isLive ? "Đang thu" : selectedLane?.assetId ? `TRACK · ${selectedLane.label}` : "Track chưa sẵn sàng"}</span>
-          {isLive && !followLive ? <button onClick={() => { setFollowLive(true); setCurrentTime(duration); }} type="button">VỀ LIVE</button> : null}
-          <button aria-label="Lùi cửa sổ Timeline" disabled={windowStart === 0 || isLive}
-            onClick={() => setWindowStart((value) => Math.max(0, value - windowSpan / 4))} type="button">←</button>
-          <button aria-label="Tiến cửa sổ Timeline" disabled={isLive || windowStart + windowSpan >= duration}
-            onClick={() => setWindowStart((value) => Math.min(Math.max(0, duration - windowSpan), value + windowSpan / 4))} type="button">→</button>
-        </div>
-      </div>
+      </TimelineTransport>
     </div>
     {playbackUrl ? <audio key={playbackUrl} onEnded={pausePlayback}
       onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(currentTime,
