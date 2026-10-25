@@ -6,6 +6,32 @@ import { scriptHighlightTokens } from "./script-highlight-diff";
 const row = (id: string, text: string): VoiceScriptRow => ({ id, text, voiceId: null, speakerProfileId: null });
 
 describe("scriptHighlightTokens", () => {
+  it("marks only scattered edits in a long merged speaker turn", () => {
+    const original = Array.from({ length: 1600 }, (_, index) => `w${index}`);
+    const edited = [...original];
+    edited[12] = "changed-first";
+    edited[1580] = "changed-last";
+    const tokens = scriptHighlightTokens(edited.join(" "), [row("r1", original.join(" "))], [row("r1", original.join(" "))], "r1");
+    expect(tokens.filter((token) => token.state === "pending").map((token) => token.text)).toEqual(["changed-first", "changed-last"]);
+  });
+  it("keeps completed fixes faded separately from new edits in a long turn", () => {
+    const original = Array.from({ length: 1600 }, (_, index) => String.fromCodePoint(0x4e00 + index));
+    const generated = [...original];
+    generated[25] = "fixed";
+    const current = [...generated];
+    current[1550] = "pending";
+    const tokens = scriptHighlightTokens(current.join("\n"), [row("r1", generated.join(" "))], [row("r1", original.join(" "))], "r1");
+    expect(tokens.filter((token) => token.state === "pending").map((token) => token.text)).toEqual(["pending"]);
+    expect(tokens.filter((token) => token.state === "fixed").map((token) => token.text)).toEqual(["fixed"]);
+  });
+
+  it("retains a local deletion anchor among repeated words in a long turn", () => {
+    const words = Array.from({ length: 1200 }, () => "là");
+    const baseline = [...words.slice(0, 600), "xóa", ...words.slice(600)].join(" ");
+    const tokens = scriptHighlightTokens(words.join(" "), [row("r1", baseline)], [row("r1", baseline)], "r1");
+    expect(tokens.filter((token) => token.state === "pending")).toHaveLength(1);
+    expect(tokens[600].state).toBe("pending");
+  });
   it("does not highlight until a successful generation snapshot exists", () => {
     expect(scriptHighlightTokens("A sửa", null, [row("r1", "A cũ")], "r1")).toEqual([]);
   });

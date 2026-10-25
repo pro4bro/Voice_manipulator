@@ -57,18 +57,22 @@ export function scriptHighlightTokens(
 /** LCS diff returns current-token indices that were not present in the baseline. */
 function unmatchedCurrentWords(current: string[], baseline: string[]): Set<number> {
   if (current.length === baseline.length && current.every((word, index) => word === baseline[index])) return new Set();
-  // Avoid a quadratic allocation for a pasted paragraph accidentally placed
-  // in one row. A conservative whole-row mark is safer than freezing the UI.
-  if (current.length * baseline.length > 1_000_000) return new Set(current.map((_, index) => index));
-  const rows = current.length + 1;
-  const cols = baseline.length + 1;
-  const lcs = Array.from({ length: rows }, () => new Uint32Array(cols));
+  // Keep exact matching for long merged turns. Rolling scores plus one direction
+  // bit per pair use ~32x less memory than retaining every Uint32 LCS score.
+  const cols = baseline.length;
+  const directions = new Uint8Array(Math.ceil(current.length * cols / 8));
+  let next = new Uint32Array(cols + 1);
+  let scores = new Uint32Array(cols + 1);
   for (let i = current.length - 1; i >= 0; i -= 1) {
     for (let j = baseline.length - 1; j >= 0; j -= 1) {
-      lcs[i][j] = current[i] === baseline[j]
-        ? lcs[i + 1][j + 1] + 1
-        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+      if (current[i] === baseline[j]) scores[j] = next[j + 1] + 1;
+      else if (next[j] >= scores[j + 1]) {
+        scores[j] = next[j];
+        const bit = i * cols + j;
+        directions[Math.floor(bit / 8)] |= 1 << (bit % 8);
+      } else scores[j] = scores[j + 1];
     }
+    [next, scores] = [scores, next];
   }
   const matched = new Set<number>();
   const matchedBaseline = new Set<number>();
@@ -77,7 +81,7 @@ function unmatchedCurrentWords(current: string[], baseline: string[]): Set<numbe
   let j = 0;
   while (i < current.length && j < baseline.length) {
     if (current[i] === baseline[j]) { matched.add(i); matchedBaseline.add(j); baselineToCurrent.set(j, i); i += 1; j += 1; }
-    else if (lcs[i + 1][j] >= lcs[i][j + 1]) i += 1;
+    else if (directions[Math.floor((i * cols + j) / 8)] & (1 << ((i * cols + j) % 8))) i += 1;
     else j += 1;
   }
   const changed = new Set(current.map((_, index) => index).filter((index) => !matched.has(index)));
