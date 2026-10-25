@@ -1,5 +1,35 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## VM-SCRIPT-SCRUB-FOLLOW-01 — Script remains visible during playhead scrubs (2026-10-25)
+
+Owner feedback after the unified-editor round affects Input table and both Voice
+Manipulator views. New red tests expose stale geometry after a word was already
+followed, permanently disabled table follow with disjoint selections, and editable
+long rows collapsing to auto height on every word-clock render.
+
+Layout observations now coalesce into one animation frame and follow the latest
+word after wrapping/virtual measurements settle. Existing word/pending guards
+remain to avoid chasing intermediate spacers. New multiple selections pause follow;
+a Timeline gesture resumes it without clearing them. Auto-height caches actual
+text/width/font/box inputs and restores the viewport after needed measurement.
+
+Implementation e89a2af. Standard frontend172 files/1371 tests (208.61s),
+focused8 files/79 tests (16.00s), typecheck/build238 pass. Tests cover forward/reverse
+held drags, stale media events, all three reported views, delayed geometry,
+1400-word virtual Input, viewport stability, size invalidation and frame cleanup.
+No old tests/gates weakened; an intermediate synchronous follow approach was
+rejected after existing far-reveal tests caught update loops.
+
+Browser inventory still refuses local access before a tab opens. Native project
+acceptance and earlier text/history/frozen-subtitle UAT remain open; JSDOM geometry
+and scroll clamping are models. No backend/engine/media/project-format change,
+no owner project writes; prior full API1626 is carried. ADR0149 and
+`docs/gates/vm-script-scrub-follow-01-20261025.md` record evidence and limits.
+
+Audio endings, newline pauses and additive30% per uppercase/bold/underline remain
+planned separately. Do not invent timings for new text without matching audio.
+Phase03 stays60%, Phase06 open. Stop this bounded correction round.
+
 ## VM-SCRIPT-UNIFIED-01 — Shared normal editor, Timeline resizing and scrub ownership (2026-10-25)
 
 Input and Voice Manipulator normal views now share the two-column text editor,

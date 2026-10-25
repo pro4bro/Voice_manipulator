@@ -20,6 +20,14 @@ dừng. Round giao diện này không đổi schema Script hoặc chạy inferen
 Các yêu cầu phát âm bên dưới vẫn mở; đây là kế hoạch thi công, chưa phải chức năng
 đã hoạt động. Phase03 giữ60%, Phase06 mở.
 
+## Feedback kéo playhead — VM-SCRIPT-SCRUB-FOLLOW-01
+
+Sau khi chủ dự án báo cả Input bảng và Voice Manipulation bảng/text vẫn dừng hoặc
+nhảy, round sửa bổ sung theo dõi lại từ hiện tại khi layout ổn định, cho kéo Timeline
+bật lại follow dù đang giữ nhiều vùng chọn, và không co ô dài theo nhịp playback.
+Frontend1371 test qua; nghiệm thu Browser vẫn mở. Xem ADR0149 và gate tương ứng.
+Các round âm cuối/pause/nhấn giọng bên dưới vẫn chưa triển khai.
+
 ## VM-SCRIPT-UNIFIED-01 — giao diện và đồng bộ thời gian
 
 - `ScriptTextPane` dùng chung viewport, scrollbar, editor hai cột và highlight khi
