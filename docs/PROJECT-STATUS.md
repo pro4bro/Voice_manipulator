@@ -1,5 +1,31 @@
 # Project Status — 2026-10-25
 
+## VM-MERGED-SCRIPT-SAVE-01 — Stable merged-turn highlights and autosave (2026-10-25)
+
+Owner feedback: merged rows were entirely blue, and the unsaved/unchecked-out
+Version warning and Timeline Reset blinked repeatedly. Read-only inspection of
+`conviction-voice-over` found2 rows with120 segment definitions, only2 used.
+The1159-word first row exceeded the old diff cutoff; frontend normalization also
+pruned orphan segments but incorrectly considered that draft already persisted.
+The Version API correctly refused it, and automatic retry cleared the warning/
+toggled busy repeatedly.
+
+Exact long-turn LCS matching now uses rolling scores/packed direction bits.
+Acknowledged server content is compared by value before normalization on load
+and checkout, so normalization saves once before Version persistence. Autosave
+stops on error until an explicit retry; revision fences and Reset's write guard
+remain intact. Real-project read-only evaluation gives2 pending words in row1,
+none in row2 (38.36ms single probe); original Script/book hashes unchanged.
+
+Frontend167 files/1350 tests (213.65s), focused24, typecheck/build233 pass.
+Relevant backend23 pass (two existing warnings); actual API two-turn/120-segment
+probe verifies409 before Script save, then200 Version save and idempotent repeat.
+No backend product source or owner project/media/model was edited. ADR0147 and
+`docs/gates/vm-merged-script-save-01-20261025.md` record evidence. Browser inventory
+still reports Local browser disabled before a tab opens, so post-fix native visual
+acceptance remains open. Earlier literal-text/history UAT also remains open.
+Phase03 stays60%, Phase06 open. Stop this bounded fix round.
+
 ## Closure check — legacy turns and Script/Timeline UI (2026-10-25)
 
 Verified the two latest rounds without advancing product scope. The existing full
