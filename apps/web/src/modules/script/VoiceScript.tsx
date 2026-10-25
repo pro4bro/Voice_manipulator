@@ -23,7 +23,9 @@ import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import { scriptHighlightTokens } from "./script-highlight-diff";
-import { readSelectedScriptText, ScriptTextView, selectScriptText } from "./ScriptTextView";
+import { readSelectedScriptText, selectScriptText } from "./ScriptTextView";
+import { mapScriptWordsToText } from "./script-text-reconciliation";
+import { ScriptTextPane } from "./ScriptTextPane";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -120,6 +122,13 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   const activeWordIndex = usePlaybackWord(playbackId);
   const words = output?.words ?? EMPTY_OUTPUT_WORDS;
   const timings = useMemo(() => rowTimings(rows, output, voices), [output, rows, voices]);
+  const activeText = useMemo(() => {
+    const row = rows.find((item) => { const timing = timings.get(item.id); return timing?.fresh && activeWordIndex >= timing.firstWord && activeWordIndex < timing.lastWord; });
+    const timing = row && timings.get(row.id);
+    if (!row || !timing) return null;
+    const range = mapScriptWordsToText(row.text, words.slice(timing.firstWord, timing.lastWord)).find((item) => item.index === activeWordIndex - timing.firstWord);
+    return range ? { rowId: row.id, start: range.start, end: range.end, wordIndex: activeWordIndex } : null;
+  }, [rows, timings, words, activeWordIndex]);
   const readiness = scriptReadiness(rows, voices);
   const [durationRefresh, setDurationRefresh] = useState(0);
   const [view, setView] = useState<"table" | "text">("table");
@@ -626,9 +635,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       <ScriptSelectionMarkers viewport={scrollRef} markers={selectionMarkers} />
       <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn Voice Script" className="script-table-scrollbar" />
       </div>
-    </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
-      <ScriptTextView onRoot={(element) => { textRef.current = element; }} onTextChange={(rowId, text) => updateRow(rowId, { text })} rows={shownRows} speakers={speakers} />
-    </div>}
+    </div> : <ScriptTextPane playbackId={playbackId} activeText={activeText} style={textStyle} scrollLabel="Thanh cuộn Voice Script" onRoot={(element) => { textRef.current = element; }} onTextChange={(rowId, text) => updateRow(rowId, { text })} rows={shownRows} speakers={speakers} />}
 
     {referenceMenu ? <WordContextMenu x={referenceMenu.x} y={referenceMenu.y} className="script-table__word-menu" onClose={() => setReferenceMenu(null)}>
       <button onClick={applyReferenceMenu} role="menuitem" type="button">Gán reference…</button>

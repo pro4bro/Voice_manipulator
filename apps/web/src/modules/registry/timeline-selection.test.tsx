@@ -1,3 +1,4 @@
+import { selectEditorText } from "../../test/script-text";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { expect, it, vi } from "vitest";
@@ -22,11 +23,11 @@ it("routes ordinary STT Script and subtitle selections to waveform timing overla
   expect(screen.getByRole("button", { name: "Chọn từ một" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
   const text = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-  text.focus(); text.setSelectionRange(4, 7); fireEvent.select(text);
+  selectEditorText(text, 4, 7); fireEvent.select(text);
   expect(screen.getByLabelText("Vùng chọn 4.000 đến 4.500 giây")).toContainElement(screen.getByLabelText("IN 4.000 seconds"));
   expect(screen.getByRole("button", { name: "Subtitle word hai" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Subtitle word một" })).toHaveAttribute("aria-pressed", "false");
-  text.setSelectionRange(7, 7); fireEvent.select(text);
+  selectEditorText(text, 7, 7); fireEvent.select(text);
   expect(screen.queryByLabelText("Vùng chọn 4.000 đến 4.500 giây")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Subtitle word hai" })).toHaveAttribute("aria-pressed", "false");
 });

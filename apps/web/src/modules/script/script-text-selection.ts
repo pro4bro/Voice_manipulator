@@ -30,6 +30,11 @@ export function serializeScriptTextSelection(root: HTMLElement, selection: Selec
   const endSpeaker = closestWithin(root, range.endContainer, SPEAKER_SELECTOR);
   const startDialogue = closestWithin(root, range.startContainer, DIALOGUE_SELECTOR);
   const endDialogue = closestWithin(root, range.endContainer, DIALOGUE_SELECTOR);
+  if (startSpeaker && endSpeaker) {
+    return [...root.querySelectorAll<HTMLElement>(SPEAKER_SELECTOR)]
+      .filter((speaker) => range.intersectsNode(speaker))
+      .map((speaker) => selectedText(range, speaker)).join("\n");
+  }
   const includeSpeakers = !(startDialogue && endDialogue) || Boolean(startSpeaker || endSpeaker);
   const rowElements = [...root.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
   const startRow = closestWithin(root, range.startContainer, ROW_SELECTOR);

@@ -1,14 +1,17 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { SpeakerProfile, VoiceScriptRow } from "../../domain/types";
 import { serializeScriptTextSelection } from "./script-text-selection";
-import { editableText, scriptTextOffset, scriptTextPosition } from "./script-text-dom";
+import { editableText, scriptTextOffset, scriptTextPosition, scriptWordCursor } from "./script-text-dom";
 import "./script-text-view.css";
 
-interface ScriptTextViewProps {
+export interface ScriptTextViewProps {
   rows: VoiceScriptRow[];
   speakers: SpeakerProfile[];
   onTextChange: (rowId: string, text: string) => void;
   onRoot: (element: HTMLDivElement | null) => void;
+  label?: string;
+  speakerLabels?: Readonly<Record<string, string>>;
+  readOnly?: boolean;
 }
 
 interface TextEdit {
@@ -50,7 +53,7 @@ function selectText(root: HTMLElement, rowId: string, start: number, end: number
 }
 
 /** A single editing host keeps native selection continuous across rows and columns. */
-export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptTextViewProps) {
+export function ScriptTextView({ rows, speakers, onTextChange, onRoot, label = "Script dạng văn bản", speakerLabels, readOnly = false }: ScriptTextViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const cells = useRef(new Map<string, HTMLElement>());
   const composing = useRef(false);
@@ -152,6 +155,7 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     const root = rootRef.current;
     if (!root) return undefined;
     const handleBeforeInput = (event: InputEvent) => {
+      if (readOnly) { event.preventDefault(); return; }
       if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
         event.preventDefault();
         if (!composing.current) replayEdit(event.inputType === "historyUndo" ? "undo" : "redo");
@@ -177,9 +181,9 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     };
     root.addEventListener("beforeinput", handleBeforeInput);
     return () => root.removeEventListener("beforeinput", handleBeforeInput);
-  }, [rows, onTextChange]);
+  }, [rows, onTextChange, readOnly]);
 
-  return <div aria-label="Script dạng văn bản" className="script-text-view" data-testid="script-text-view" onCopy={(event) => {
+  return <div aria-label={label} aria-readonly={readOnly || undefined} className="script-text-view" data-testid="script-text-view" onCopy={(event) => {
     const root = rootRef.current;
     if (!root) return;
     const text = serializeScriptTextSelection(root, window.getSelection());
@@ -197,8 +201,26 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     const cell = activeCell(event.target);
     if (cell) commitCell(cell);
   }} onKeyDown={(event) => {
+    if (readOnly) return;
     const key = event.key.toLowerCase();
-    if (!event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y")) {
+    if (!event.nativeEvent.isComposing && event.ctrlKey && !event.altKey && !event.metaKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      const root = rootRef.current;
+      const selected = root && selectedDialogue(root);
+      if (!root || !selected) return;
+      event.preventDefault();
+      const { cell, selection } = selected;
+      const value = editableText(cell);
+      const backward = event.key === "ArrowLeft";
+      const focus = scriptTextOffset(cell, selection.focusNode!, selection.focusOffset);
+      const anchor = scriptTextOffset(cell, selection.anchorNode!, selection.anchorOffset);
+      const at = event.shiftKey ? focus : scriptTextOffset(cell, backward ? selected.range.startContainer : selected.range.endContainer, backward ? selected.range.startOffset : selected.range.endOffset);
+      const next = scriptWordCursor(value, at, backward ? "backward" : "forward");
+      const [node, offset] = scriptTextPosition(cell, next);
+      if (event.shiftKey) {
+        const [anchorNode, anchorOffset] = scriptTextPosition(cell, anchor);
+        selection.setBaseAndExtent(anchorNode, anchorOffset, node, offset);
+      } else selection.collapse(node, offset);
+    } else if (!event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y")) {
       event.preventDefault();
       replayEdit(key === "y" || event.shiftKey ? "redo" : "undo");
     } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -217,21 +239,23 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
       if (event.key === "Backspace" && isAtCellEdge(cell, range, "start") || event.key === "Delete" && isAtCellEdge(cell, range, "end")) event.preventDefault();
     }
   }} onCut={(event) => {
-    if (!activeCell(event.target) || refuseCrossRowEdit(event.nativeEvent)) {
+    if (readOnly || !activeCell(event.target) || refuseCrossRowEdit(event.nativeEvent)) {
       event.preventDefault();
       rootRef.current?.setAttribute("data-edit-guidance", "Chỉ cắt text bên trong một ô lời thoại; cấu trúc lượt nói được giữ nguyên.");
     }
   }} onPaste={(event) => {
     event.preventDefault();
+    if (readOnly) return;
     const cell = activeCell(event.target);
     if (!cell || refuseCrossRowEdit(event.nativeEvent)) return;
     insertText(cell, event.clipboardData.getData("text/plain"));
-  }} onDrop={(event) => { event.preventDefault(); rootRef.current?.setAttribute("data-edit-guidance", "Kéo thả text chưa hỗ trợ; hãy dùng sao chép/dán trong ô lời thoại."); }} ref={(element) => { rootRef.current = element; onRoot(element); }} role="textbox" aria-multiline="true" suppressContentEditableWarning contentEditable spellCheck style={{ whiteSpace: "pre-wrap" }}>
+  }} onDrop={(event) => { event.preventDefault(); rootRef.current?.setAttribute("data-edit-guidance", "Kéo thả text chưa hỗ trợ; hãy dùng sao chép/dán trong ô lời thoại."); }} ref={(element) => { rootRef.current = element; onRoot(element); }} role="textbox" tabIndex={0} aria-multiline="true" suppressContentEditableWarning contentEditable={!readOnly} spellCheck style={{ whiteSpace: "pre-wrap" }}>
     <div className="script-text-view__header" contentEditable={false}><span>Speaker</span><span>Lời thoại</span></div>
     {rows.map((row, index) => {
       const speaker = speakers.find((profile) => profile.id === row.speakerProfileId);
+      const speakerName = speakerLabels?.[row.id] ?? speaker?.name ?? "Chưa gán Profile";
       return <div className="script-text-view__row" data-script-text-row data-script-row-id={row.id} key={row.id}>
-        <div className="script-text-view__speaker" data-script-text-speaker data-script-text-copy-label={speaker?.name ?? "Chưa gán Profile"}>{speaker?.name ?? "Chưa gán Profile"}:</div>
+        <div className="script-text-view__speaker" data-script-text-speaker data-script-text-copy-label={speakerName}>{speakerName}:</div>
         <div aria-label={`Lời thoại đoạn ${index + 1}`} className="script-text-view__dialogue" data-script-text-dialogue data-row-id={row.id} ref={(element) => { if (element) cells.current.set(row.id, element); else cells.current.delete(row.id); }} tabIndex={0} />
       </div>;
     })}

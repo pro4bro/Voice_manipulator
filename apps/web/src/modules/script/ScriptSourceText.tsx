@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import type { ProjectMediaAsset, StudioWord } from "../../domain/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ProjectMediaAsset, SpeakerProfile, StudioWord } from "../../domain/types";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
-import { requestPlaybackSeek, usePlaybackWord } from "../../domain/playback-sync";
+import { usePlaybackWord } from "../../domain/playback-sync";
 import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { deleteScriptWords, insertScriptTextAtWordBoundary, mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptWord } from "./script-text-reconciliation";
 import { buildReviewPieces } from "./review-diff";
+import { TranscriptTextView, type TranscriptTextHandle } from "./TranscriptTextView";
+
+const EMPTY_SPEAKERS: SpeakerProfile[] = [];
 
 /** Each source retains its own editable text and clock in the shared Script. */
-export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
+export function ScriptSourceText({ source, onChange, speakers = EMPTY_SPEAKERS, followPlayback = true, wordSelection = EMPTY_SELECTION, onWordSelectionChange }: {
   source: ProjectMediaAsset;
+  speakers?: SpeakerProfile[];
+  followPlayback?: boolean;
   onChange?: (id: string, words: StudioWord[], text: string) => void;
   wordSelection?: WordSelection;
   onWordSelectionChange?: (selection: WordSelection) => void;
@@ -16,7 +21,7 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
   const [draft, setDraft] = useState(source.text);
   const editing = useRef(false);
   const baseline = useRef(source);
-  const textarea = useRef<HTMLTextAreaElement>(null);
+  const textView = useRef<TranscriptTextHandle>(null);
   const activeIndex = usePlaybackWord(source.id);
   const [isEditing, setIsEditing] = useState(false);
   const ranges = useMemo(() => mapScriptWordsToText(draft, source.words ?? []), [draft, source.words]);
@@ -36,30 +41,17 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
   const review = useMemo(() => candidate?.text && candidate.text !== reviewBase ? buildReviewPieces(reviewBase, candidate.text) : [], [candidate?.text, reviewBase]);
   useEffect(() => { if (!editing.current) setDraft(source.text); }, [source.text]);
   useEffect(() => {
-    const element = textarea.current;
-    if (element) { element.style.height = "auto"; element.style.height = `${Math.max(96, element.scrollHeight)}px`; }
-  }, [draft]);
-  useEffect(() => {
-    const element = textarea.current;
-    if (!element || document.activeElement === element) return;
+    if (editing.current || !textView.current) return;
     const textRanges = scopedSelection.textRanges?.filter((range) => range.rowId === source.id) ?? [];
-    let start: number;
-    let end: number;
-    if (textRanges.length === 1) {
-      start = textRanges[0].start;
-      end = textRanges[0].end;
-    } else {
+    let start: number, end: number;
+    if (textRanges.length === 1) { start = textRanges[0].start; end = textRanges[0].end; }
+    else {
       if (textRanges.length > 1 || !scopedSelection.indexes.length) return;
-      const selectedRanges = ranges.filter((range) => scopedSelection.indexes.includes(range.index));
-      if (selectedRanges.length !== scopedSelection.indexes.length) return;
-      const indexes = selectedRanges.map((range) => range.index);
-      if (indexes.some((index, position) => position > 0 && index !== indexes[position - 1] + 1)) return;
-      start = selectedRanges[0].start;
-      end = selectedRanges[selectedRanges.length - 1].end;
+      const chosen = ranges.filter((range) => scopedSelection.indexes.includes(range.index));
+      if (chosen.length !== scopedSelection.indexes.length || chosen.some((range, index) => index > 0 && range.index !== chosen[index - 1].index + 1)) return;
+      start = chosen[0].start; end = chosen[chosen.length - 1].end;
     }
-    start = Math.max(0, Math.min(draft.length, start));
-    end = Math.max(start, Math.min(draft.length, end));
-    if (element.selectionStart !== start || element.selectionEnd !== end) element.setSelectionRange(start, end);
+    textView.current.select(Math.max(0, Math.min(draft.length, start)), Math.max(0, Math.min(draft.length, end)), false);
   }, [draft, ranges, scopedSelection, source.id]);
   function commit(text: string, base = baseline.current) {
     const result = reconcileScriptTextEdit(base.text, text, base.words ?? []);
@@ -72,29 +64,6 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
     setDraft(text);
     if (text !== source.text) commit(text, source);
     setManual(null);
-  }
-  function publishTextSelection(element: HTMLTextAreaElement) {
-    if (!onWordSelectionChange) return;
-    const start = Math.min(element.selectionStart, element.selectionEnd);
-    const end = Math.max(element.selectionStart, element.selectionEnd);
-    const selectedRanges = ranges.filter((range) => end > start
-      ? range.end > start && range.start < end
-      : range.start <= start && range.end >= start);
-    const indexes = selectedRanges.map((range) => range.index);
-    onWordSelectionChange({ indexes, anchor: indexes.at(-1) ?? null,
-      scope: { kind: "asset", id: source.id, revision: source.updatedAt },
-      textRanges: indexes.length ? [{ rowId: source.id, start, end }] : [] });
-  }
-  function showWordMenu(event: MouseEvent<HTMLTextAreaElement>) {
-    if (!onChange) return;
-    event.preventDefault();
-    const start = Math.min(event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
-    const end = Math.max(event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
-    const hit = ranges.find((range) => (end > start ? range.end > start && range.start < end : range.start <= start && range.end >= start));
-    const target = hit?.index ?? Math.max(0, ranges.find((range) => range.start >= start)?.index ?? source.words.length - 1);
-    const indexes = end > start ? ranges.filter((range) => range.end > start && range.start < end).map((range) => range.index) : hit ? [hit.index] : [];
-    const boundary = hit?.index ?? ranges.find((range) => range.start >= start)?.index ?? source.words.length;
-    setWordMenu({ indexes, target, boundary, revision: source.updatedAt ?? "", left: event.clientX, top: event.clientY });
   }
   function commitWordMenu() {
     if (!wordEditor || wordEditor.revision !== (source.updatedAt ?? "")) { setWordEditor(null); return; }
@@ -113,7 +82,7 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
     onChange?.(source.id, result.words, result.text);
     setWordEditor(null); setWordEditError(null);
   }
-  return <section className="script-source-text" aria-label={`Tài liệu ${source.name}`}>
+  return <section data-script-source-id={source.id} className="script-source-text" aria-label={`Tài liệu ${source.name}`}>
     <strong>{source.name}</strong>
     {review.some((piece) => piece.kind === "change") ? <div className="script-source-review" aria-label={`So sánh STT và AI · ${source.name}`}>
       {review.map((piece) => piece.kind === "same" ? <span key={piece.id}>{piece.text}</span> : piece.id in choices ? <span className="script-review-choice" key={piece.id}>{choices[piece.id]}</span> : <span key={piece.id} className="script-review-change">
@@ -124,17 +93,23 @@ export function ScriptSourceText({ source, onChange, wordSelection = EMPTY_SELEC
       </span>)}
     </div> : null}
     <div className={`script-source-editor-stack ${tracking ? "is-tracking" : ""}`}>
-    {tracking && activeRange ? <div aria-hidden="true" className="script-source-playback-layer">{draft.slice(0, activeRange.start)}<span className="is-active" data-script-word-index={activeIndex} data-script-source-id={source.id}>{draft.slice(activeRange.start, activeRange.end)}</span>{draft.slice(activeRange.end)}</div> : null}
-    <textarea ref={textarea} aria-label={`Script transcript · ${source.name}`} data-script-source-id={source.id} value={draft}
-      onFocus={() => { editing.current = true; setIsEditing(true); baseline.current = source; }}
-      onChange={(event) => setDraft(event.currentTarget.value)}
-      onSelect={(event) => publishTextSelection(event.currentTarget)}
-      onContextMenu={showWordMenu}
-      onBlur={() => { editing.current = false; setIsEditing(false); if (draft !== baseline.current.text) commit(draft); }}
-      onClick={(event) => {
-        const range = ranges.find((word) => word.start <= event.currentTarget.selectionStart && word.end >= event.currentTarget.selectionStart);
-        if (range) requestPlaybackSeek(source.id, source.words[range.index].start);
-      }} />
+    <TranscriptTextView followPlayback={followPlayback} ref={textView} label={`Script transcript · ${source.name}`} value={draft} words={source.words ?? []} speakers={speakers} defaultSpeakerId={source.speakerProfileIds?.[0] ?? null} assetId={source.id} activeWordIndex={activeIndex}
+      onChange={setDraft} onEditingChange={(active) => {
+        if (active) { if (!editing.current) baseline.current = source; editing.current = true; setIsEditing(true); }
+        else { editing.current = false; setIsEditing(false); if (draft !== baseline.current.text) commit(draft); }
+      }} onRangeChange={(range) => {
+        if (!range) return;
+        const { start, end } = range;
+        const indexes = ranges.filter((word) => end > start ? word.end > start && word.start < end : false).map((word) => word.index);
+        onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null, scope: { kind: "asset", id: source.id, revision: source.updatedAt }, textRanges: indexes.length ? [{ rowId: source.id, start, end }] : [] });
+      }} onContextRange={onChange ? (range, x, y) => {
+        if (!range) return;
+        const { start, end } = range;
+        const hit = ranges.find((word) => end > start ? word.end > start && word.start < end : word.start <= start && word.end >= start);
+        const target = hit?.index ?? Math.max(0, ranges.find((word) => word.start >= start)?.index ?? source.words.length - 1);
+        const indexes = end > start ? ranges.filter((word) => word.end > start && word.start < end).map((word) => word.index) : hit ? [hit.index] : [];
+        setWordMenu({ indexes, target, boundary: hit?.index ?? ranges.find((word) => word.start >= start)?.index ?? source.words.length, revision: source.updatedAt ?? "", left: x, top: y });
+      } : undefined} />
       {wordEditor ? <form aria-label={wordEditor.kind === "add" ? "Add text" : "Sửa text"} className="script-source-word-editor" style={{ position: "fixed", left: 12, top: 12, zIndex: 1000 }} onSubmit={(event) => { event.preventDefault(); commitWordMenu(); }}>
         {wordEditError ? <span role="alert">{wordEditError}</span> : null}
         <input autoFocus aria-label={wordEditor.kind === "add" ? "Add text" : "Sửa text"} value={wordEditor.text} onChange={(event) => { setWordEditor({ ...wordEditor, text: event.currentTarget.value }); setWordEditError(null); }} onKeyDown={(event) => { if (event.key === "Escape") { setWordEditor(null); setWordEditError(null); } }} />

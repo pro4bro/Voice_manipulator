@@ -9,21 +9,24 @@ import { ScriptSourceText } from "./ScriptSourceText";
 import { act } from "@testing-library/react";
 import { publishPlaybackWords } from "../../domain/playback-sync";
 
-it("aligns the source playback overlay with native text without changing selection or layout", () => {
+it("shares the two-column text viewport and keeps playback paint separate from editable selection", () => {
   const sheet = document.createElement("style");
-  sheet.textContent = ["./script-transcript-layout.css"].map((path) => readFileSync(new URL(path, import.meta.url), "utf-8")).join("\n");
+  sheet.textContent = ["../../styles/modules.css", "./script-transcript-layout.css", "./script-text-view.css"]
+    .map((path) => readFileSync(new URL(path, import.meta.url), "utf-8")).join("\n");
   document.head.append(sheet);
   try {
     const view = render(<ScriptSourceText source={{ id: "source", name: "Track", text: "Xin chào", words: [{ text: "Xin", start: 1, end: 2 }, { text: "chào", start: 3, end: 4 }] }} />);
     act(() => publishPlaybackWords({ source: 1 }));
     const field = screen.getByRole("textbox");
-    const layer = view.container.querySelector(".script-source-playback-layer");
-    expect(layer).toHaveTextContent("Xin chào");
-    for (const property of ["padding", "borderWidth", "font", "lineHeight"]) expect(getComputedStyle(layer)[property]).toBe(getComputedStyle(field)[property]);
-    expect(getComputedStyle(layer).position).toBe("absolute");
-    expect(getComputedStyle(layer).pointerEvents).toBe("none");
-    fireEvent.focus(field);
+    const row = field.querySelector("[data-script-text-row]");
+    const cell = row.querySelector("[data-script-text-dialogue]");
+    expect(getComputedStyle(row).display).toBe("grid");
+    expect(getComputedStyle(cell).whiteSpace).toBe("pre-wrap");
+    expect(cell).toHaveAttribute("data-playback-active", "true");
     expect(view.container.querySelector(".script-source-playback-layer")).toBeNull();
+    expect(getComputedStyle(view.container.querySelector(".transcript-text-editor")).flexGrow).toBe("1");
+    expect(getComputedStyle(view.container.querySelector(".script-text-scroll")).overflow).toBe("auto");
+    expect(field).toHaveTextContent("Xin chào");
   } finally { act(() => publishPlaybackWords({})); sheet.remove(); }
 });
 

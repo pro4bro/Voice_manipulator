@@ -1,3 +1,4 @@
+import { editorSelection, selectEditorText } from "../../test/script-text";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ProjectMediaAsset } from "../../domain/types";
@@ -23,6 +24,13 @@ function context(kind: InputKind, count = 20): StudioContext {
 function viewport(container: HTMLElement) {
   const view = container.querySelector<HTMLElement>(".script-table-scroll")!;
   Object.defineProperties(view, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 100000 } });
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: function (this: Range) {
+    const index = Number(/word(\d+)/u.exec(this.toString())?.[1] ?? -1);
+    const element = this.startContainer instanceof Element ? this.startContainer : this.startContainer.parentElement;
+    const sourceOffset = element?.closest<HTMLElement>("section[data-script-source-id]")?.dataset.scriptSourceId === "b" ? 700 : 0;
+    const top = 100 + sourceOffset + index * 20 - view.scrollTop;
+    return { top, bottom: top + 20, left: 0, right: 620, width: 620, height: 20 } as DOMRect;
+  } });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     const index = Number(this.dataset.scriptWordIndex ?? -1);
     const spacer = view.querySelector<HTMLElement>(".script-table > [aria-hidden][style]");
@@ -34,7 +42,12 @@ function viewport(container: HTMLElement) {
   return view;
 }
 
-afterEach(() => { cleanup(); publishPlaybackWords({}); vi.restoreAllMocks(); });
+const originalRangeRect = Object.getOwnPropertyDescriptor(Range.prototype, "getBoundingClientRect");
+afterEach(() => {
+  cleanup(); publishPlaybackWords({}); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  if (originalRangeRect) Object.defineProperty(Range.prototype, "getBoundingClientRect", originalRangeRect);
+  else Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+});
 
 it("shares the real imported track clock with Script after STT creates a different sidecar item ID", async () => {
   const ctx = context("import-track");
@@ -84,28 +97,38 @@ it.each(["import", "obs"] as const)("follows plain text in %s and keeps native e
   const { container } = render(<ModuleRegistry id="script" context={context(kind)} />);
   const view = viewport(container);
   fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+  const painted: Range[][] = [];
+  vi.stubGlobal("Highlight", class { constructor(...ranges: Range[]) { painted.push(ranges); } });
+  const highlights = new Map();
+  const css = CSS;
+  vi.stubGlobal("CSS", { escape: css.escape.bind(css), highlights });
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: function (this: Range) {
+    const index = Number(/word(\d+)/u.exec(this.toString())?.[1] ?? -1);
+    const top = 100 + 700 + index * 20 - view.scrollTop;
+    return { top, bottom: top + 20, left: 0, right: 620, width: 620, height: 20 } as DOMRect;
+  } });
   act(() => publishPlaybackWords({ a: -1, b: 18 }));
   expect(view.scrollTop).toBeGreaterThan(0);
-  expect(container.querySelector('.script-source-playback-layer .is-active')).toHaveTextContent("word18");
-  const field = screen.getByRole("textbox", { name: "Script transcript · Track b" }) as HTMLTextAreaElement;
-  fireEvent.focus(field);
-  field.setSelectionRange(2, 7);
+  expect(painted.at(-1)?.map(String)).toEqual(["word18"]);
+  const field = screen.getByRole("textbox", { name: "Script transcript · Track b" });
+  selectEditorText(field, 2, 7);
   act(() => publishPlaybackWords({ a: -1, b: 19 }));
-  expect(field.selectionStart).toBe(2);
-  expect(field.selectionEnd).toBe(7);
-  expect(container.querySelector('.script-source-playback-layer .is-active')).toBeNull();
+  expect(editorSelection(field)).toEqual({ start: 2, end: 7 });
+  expect(painted.at(-1)?.map(String)).toEqual(["word19"]);
+  expect(container.querySelector('.script-source-playback-layer')).toBeNull();
 });
 
-it.each(["import", "obs"] as const)("keeps simultaneous sources stable and honors explicit source selection for %s", (kind) => {
+it.each((["import", "obs"] as const).flatMap((kind) => (["table", "text"] as const).map((mode) => ({ kind, mode }))))("keeps simultaneous sources stable and honors explicit source selection for $kind/$mode", ({ kind, mode }) => {
   const { container } = render(<ModuleRegistry id="script" context={context(kind)} />);
   const view = viewport(container);
+  if (mode === "text") fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
   act(() => publishPlaybackWords({ a: 18, b: 18 }));
   const first = view.scrollTop;
   act(() => publishPlaybackWords({ b: 18, a: 18 }));
   expect(view.scrollTop).toBe(first);
   act(() => requestPlaybackSeek("b", 18));
   expect(view.scrollTop).toBeGreaterThan(first);
-  fireEvent.pointerDown(screen.getByRole("scrollbar"));
+  fireEvent.pointerDown(container.querySelector(".script-transcript-feed > .script-table-scroll-region > [role=scrollbar]")!);
   view.scrollTop = 0;
   act(() => publishPlaybackWords({ a: 19, b: 19 }));
   expect(view.scrollTop).toBe(0);

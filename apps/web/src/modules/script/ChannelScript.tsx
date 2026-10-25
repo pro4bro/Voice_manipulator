@@ -180,8 +180,8 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
   }, [layout.columns]);
   const transcriptWindow = useTranscriptWindow(rows, viewRef, layout.columns.find((column) => column.builtin === "content")?.width ?? 620, headerHeight);
   const activeWords = usePlaybackWords();
-  useScriptPlaybackVisibility(rootRef, viewRef, tracks.map((track) => track.id), activeWords,
-    viewMode === "table" ? (assetId, index) => transcriptWindow.reveal(index, (row) => row.trackId === assetId) : undefined);
+  const playbackFollow = useScriptPlaybackVisibility(rootRef, viewRef, tracks.map((track) => track.id), activeWords,
+    viewMode === "table" ? (assetId, index) => transcriptWindow.reveal(index, (row) => row.trackId === assetId) : undefined, viewMode === "table");
   const rowIds = rows.map((row) => `${row.trackId}:${row.words[0]?.index ?? "untimed"}`);
   const [selection, setSelection] = useState<ListSelection>({ ids: [], anchorId: null });
   const selected = reconcileListSelection(selection, rowIds).ids;
@@ -231,7 +231,7 @@ export function ChannelScript({ tracks, onSelectTrack, recordingId = null, selec
     {onAssignWords && selected.length ? <div className="script-row-bulk-actions" aria-label="Thao tác channel rows đã chọn"><b>{selected.length} row đã chọn</b><label>Gán speaker<select aria-label="Gán speaker cho channel rows" value="__choose__" onChange={(event) => assignSelected(event.target.value === "__none__" ? null : event.target.value)}><option value="__choose__">Chọn speaker…</option><option value="__none__">Bỏ gán</option>{speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}</select></label><button type="button" onClick={() => setSelection({ ids: [], anchorId: null })}>Bỏ chọn</button></div> : null}
     <div className="script-table-scroll-region">
       <div aria-label="Lượt nói theo thời gian" role="grid" className="script-table-scroll" ref={viewRef}>
-        {viewMode === "edit" ? tracks.map((track) => <ScriptSourceText key={track.id} source={track} onChange={onWordsChange} wordSelection={wordSelection} onWordSelectionChange={onWordSelectionChange} />) : <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
+        {viewMode === "edit" ? tracks.map((track) => <ScriptSourceText followPlayback={playbackFollow.followedAssetId === track.id && playbackFollow.canFollow()} key={track.id} source={track} speakers={speakers} onChange={onWordsChange} wordSelection={wordSelection} onWordSelectionChange={onWordSelectionChange} />) : <div className="script-table" style={{ minWidth: layout.columns.reduce((sum, column) => sum + column.width, 60) }}>
         <ScriptTranscriptHeader layout={layout} headerRef={headerRef} />
         {transcriptWindow.top ? <div aria-hidden="true" style={{ height: transcriptWindow.top }} /> : null}
         {transcriptWindow.visibleRows.map(({ row, rowIndex: index, fragments }) => {

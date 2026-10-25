@@ -38,3 +38,16 @@ export function scriptTextPosition(cell: HTMLElement, offset: number): [Node, nu
   }
   return [cell, cell.childNodes.length];
 }
+
+export function scriptWordCursor(value: string, position: number, direction: "backward" | "forward") {
+  let cursor = Math.max(0, Math.min(value.length, position));
+  const isWord = (char: string | undefined) => Boolean(char && /[\p{L}\p{N}]/u.test(char));
+  if (direction === "forward") {
+    while (cursor < value.length && isWord(value[cursor])) cursor += 1;
+    while (cursor < value.length && !isWord(value[cursor])) cursor += 1;
+  } else {
+    while (cursor > 0 && !isWord(value[cursor - 1])) cursor -= 1;
+    while (cursor > 0 && isWord(value[cursor - 1])) cursor -= 1;
+  }
+  return cursor;
+}

@@ -13,7 +13,7 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
     if (!element) return;
     const pause = () => { state.current.paused = true; };
     const pointer = (event: PointerEvent) => {
-      if ((event.target as HTMLElement).closest('[role="scrollbar"]')) pause();
+      if ((event.target as HTMLElement).closest('[role="scrollbar"], [contenteditable="true"]')) pause();
     };
     const key = (event: KeyboardEvent) => {
       if (["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"].includes(event.key)) pause();
@@ -22,6 +22,7 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
     element.addEventListener("touchstart", pause, { passive: true });
     element.addEventListener("pointerdown", pointer, true);
     element.addEventListener("keydown", key, true);
+    element.addEventListener("beforeinput", pause, true);
     const unsubscribe = subscribePlaybackInteraction((assetIds) => {
       if (!assetIds.some((id) => ids.includes(id))) return;
       state.current.paused = false;
@@ -32,6 +33,7 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
     return () => {
       element.removeEventListener("wheel", pause); element.removeEventListener("touchstart", pause);
       element.removeEventListener("pointerdown", pointer, true); element.removeEventListener("keydown", key, true);
+      element.removeEventListener("beforeinput", pause, true);
       unsubscribe();
     };
   }, [root, identityKey, bindingKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -50,7 +52,7 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
 }
 
 /** Use viewport rectangles: word wraps are positioned, so offsetTop is not a scroll offset. */
-export function keepWordInView(view: HTMLElement, target: HTMLElement): number | null {
+export function keepWordInView(view: HTMLElement, target: Pick<Element, "getBoundingClientRect">): number | null {
   const viewRect = view.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
   const top = targetRect.top - viewRect.top + view.scrollTop;
@@ -88,5 +90,5 @@ export function useScriptPlaybackVisibility(
       .find((node) => !node.dataset.scriptSourceId || node.dataset.scriptSourceId === assetId);
     if (target && keepWordInView(view.current, target) !== null) view.current.dispatchEvent(new Event("scroll"));
   });
-  return follow;
+  return { ...follow, followedAssetId: assetId };
 }

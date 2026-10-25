@@ -1,5 +1,14 @@
 .voice-script__text { overflow: auto; }
-.script-text-view { min-width: 560px; min-height: 100%; outline: 0; color: var(--text); background: var(--surface-field); font-family: var(--editorial); font-size: clamp(calc(18px * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1)), calc(1.35vw * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1)), calc(22px * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1))); font-weight: inherit; font-style: inherit; text-decoration: inherit; }
+.script-text-scroll-region { position: relative; display: flex; flex: 1 1 0px; min-width: 0; min-height: 100px; overflow: hidden; }
+.script-text-scroll-region > style { display: none; }
+.script-text-scroll { flex: 1 1 0px; min-width: 0; min-height: 0; padding-right: 22px; overflow: auto; overflow-anchor: none; scrollbar-width: none; }
+.script-text-scroll::-webkit-scrollbar:vertical { display: none; }
+.script-text-scroll::-webkit-scrollbar:horizontal { height: 13px; }
+.script-table-scroll .script-source-text .script-text-scroll-region { display: block; overflow: visible; }
+.script-table-scroll .script-source-text .script-text-scroll { overflow: visible; padding-right: 0; }
+.script-table-scroll .script-source-text .script-text-scroll-region > .script-feed-scrollbar { display: none; }
+.script-table-scroll .script-source-text .script-text-view { min-height: 0; }
+.script-text-view { min-width: 560px; min-height: 100%; outline: 0; color: var(--text); background: var(--surface-field); font-family: var(--editorial); font-size: clamp(calc(18px * var(--font-scale) * var(--script-format-scale, 1)), calc(1.35vw * var(--font-scale) * var(--script-format-scale, 1)), calc(22px * var(--font-scale) * var(--script-format-scale, 1))); font-weight: inherit; font-style: inherit; text-decoration: inherit; }
 .script-text-view__row { display: grid; grid-template-columns: minmax(150px, 24%) minmax(0, 1fr); border-bottom: 1px solid var(--line); }
 .script-text-view__header { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: minmax(150px, 24%) minmax(0, 1fr); border-bottom: 1px solid var(--line-strong, var(--line)); color: var(--text-muted); background: var(--surface-panel); font: 700 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .script-text-view__header > span { padding: 7px 12px; }

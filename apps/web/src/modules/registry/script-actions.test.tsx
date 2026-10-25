@@ -1,3 +1,4 @@
+import { changeEditorText, editorSelection, editorText } from "../../test/script-text";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import type { ProjectMediaAsset, SpeakerProfile } from "../../domain/types";
@@ -111,22 +112,26 @@ it("finding moves to the correct native text selection in each track", async () 
   fireEvent.change(screen.getByLabelText("Tìm text"), { target: { value: "chào" } });
   fireEvent.click(screen.getByRole("button", { name: "↓" }));
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Script transcript · Track a" })).toHaveFocus());
-  expect((document.activeElement as HTMLTextAreaElement).selectionStart).toBe(4);
-  expect((document.activeElement as HTMLTextAreaElement).selectionEnd).toBe(8);
+  expect(editorSelection(document.activeElement as HTMLElement).start).toBe(4);
+  expect(editorSelection(document.activeElement as HTMLElement).end).toBe(8);
   fireEvent.click(screen.getByRole("button", { name: "↓" }));
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Script transcript · Track b" })).toHaveFocus());
 });
 
-it("Ctrl Z commits a source text edit before routing to shared Undo", () => {
+it("keeps source text Undo/Redo local before reconciling timing on blur", () => {
   const ctx = context();
   ctx.onScriptUndo = vi.fn();
   render(<ModuleRegistry id="script" context={ctx} />);
   fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
   const editor = screen.getByRole("textbox", { name: "Script transcript · Track a" });
-  editor.focus();
-  fireEvent.change(editor, { target: { value: "Chúc chào" } });
+  fireEvent.focus(editor);
+  changeEditorText(editor, "Chúc chào");
   fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+  expect(editorText(editor)).toBe("Xin chào");
+  expect(ctx.onScriptUndo).not.toHaveBeenCalled();
+  expect(ctx.onAssetWordsChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(editor, { key: "z", ctrlKey: true, shiftKey: true });
+  expect(editorText(editor)).toBe("Chúc chào");
+  fireEvent.blur(editor);
   expect(ctx.onAssetWordsChange).toHaveBeenCalledWith("a", expect.any(Array), "Chúc chào");
-  expect(ctx.onScriptUndo).toHaveBeenCalledOnce();
-  expect(vi.mocked(ctx.onAssetWordsChange).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(ctx.onScriptUndo!).mock.invocationCallOrder[0]);
 });

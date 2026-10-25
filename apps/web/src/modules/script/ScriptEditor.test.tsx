@@ -1,3 +1,4 @@
+import { changeEditorText, editorSelection, editorText, selectEditorText } from "../../test/script-text";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -42,22 +43,18 @@ describe("ScriptEditor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const textarea = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    const noticeLayer = view.container.querySelector<HTMLElement>(".script-timing-notice-layer")!;
-    expect(textarea).toHaveValue("Xin rất chào");
-    expect(noticeLayer.parentElement).toHaveClass("script-editor-stack");
-    expect(noticeLayer).toContainElement(screen.getAllByRole("status")[0]);
-    expect(noticeLayer.textContent).not.toContain(textarea.value);
-    const noticeContent = noticeLayer.querySelector<HTMLElement>(".script-timing-notices")!;
-    vi.spyOn(noticeContent, "getBoundingClientRect").mockReturnValue({ height: 38 } as DOMRect);
-    view.rerender(<ScriptEditor onChange={vi.fn()} value="Xin rất chào" words={[...words]} workflow="speech-to-text" />);
-    expect(noticeLayer.parentElement?.getAttribute("style")).toContain("--script-timing-inset: 38px");
-    textarea.scrollTop = 60;
-    fireEvent.scroll(textarea);
-    expect(noticeLayer.style.transform).toBe("translateY(-60px)");
-    expect(13 + 38 - textarea.scrollTop).toBeLessThan(0);
+    const scroll = view.container.querySelector<HTMLElement>(".script-text-scroll")!;
+    expect(editorText(textarea)).toBe("Xin rất chào");
+    expect(scroll).toContainElement(textarea);
+    const notice = screen.getAllByRole("status").find((item) => item.textContent?.includes("ước lượng"))!;
+    expect(scroll).toContainElement(notice);
+    expect(textarea).not.toContainElement(notice);
+    expect(scroll.firstElementChild).not.toBe(textarea);
+    expect(screen.getByRole("scrollbar", { name: "Thanh cuộn Script" })).toHaveAttribute("aria-controls", scroll.id);
+
   });
 
-  it("commits pending plain text timing before requesting redo so a new edit clears the old redo branch", () => {
+  it("keeps text Undo/Redo local and reconciles pending timing on leaving the shared editor", () => {
     const order: string[] = [];
     const onWordsChange = vi.fn(() => order.push("edit"));
     function Editor() {
@@ -68,9 +65,15 @@ describe("ScriptEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const input = screen.getByRole("textbox", { name: "Script transcript" });
     fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "two" } });
+    changeEditorText(input, "two");
     fireEvent.keyDown(input, { key: "z", ctrlKey: true, shiftKey: true });
-    expect(order).toEqual(["edit", "redo"]);
+    expect(order).toEqual([]);
+    fireEvent.keyDown(input, { key: "z", ctrlKey: true });
+    expect(editorText(input)).toBe("one");
+    fireEvent.keyDown(input, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(editorText(input)).toBe("two");
+    fireEvent.blur(input);
+    expect(order).toEqual(["edit"]);
     expect(onWordsChange).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ text: "two" })]), "two");
   });
   it("selects every logical row and routes bounded history shortcuts while the pointer is in Script", () => {
@@ -175,7 +178,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
   it("lets the user edit transcript text after recognition", () => {
     const onChange = vi.fn();
     render(<ScriptEditor onChange={onChange} value="Bản nhận diện ban đầu" workflow="speech-to-text" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Script transcript" }), { target: { value: "Bản đã được người dùng sửa" } });
+    changeEditorText(screen.getByRole("textbox", { name: "Script transcript" }), "Bản đã được người dùng sửa");
     expect(onChange).toHaveBeenCalledWith("Bản đã được người dùng sửa");
   });
   it("commits native text edits against the pre-edit timing snapshot when focus leaves the editor", () => {
@@ -185,7 +188,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" });
     fireEvent.focus(editor);
-    fireEvent.change(editor, { target: { value: "Xin rất chào" } });
+    changeEditorText(editor, "Xin rất chào");
     fireEvent.blur(editor);
     expect(onWordsChange).toHaveBeenCalledWith([
       words[0],
@@ -203,20 +206,21 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
       const view = render(<ScriptEditor onChange={vi.fn()} value="Xin chào" words={words} workflow="speech-to-text" />);
       fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
       const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-      editor.setSelectionRange(0, 3);
-      const estimatedSpan = view.container.querySelector<HTMLElement>('[data-script-word-index="0"][data-time-estimated="true"]');
-      expect(estimatedSpan).not.toBeNull();
-      vi.spyOn(estimatedSpan!, "getClientRects").mockReturnValue([{ left: 0, right: 80, top: 0, bottom: 30 } as DOMRect] as unknown as DOMRectList);
+      selectEditorText(editor, 0, 3);
+      const cell = editor.querySelector<HTMLElement>("[data-script-text-dialogue]")!;
+      const caret = document.createRange(); caret.setStart(cell.firstChild!, 1); caret.collapse(true);
+      const hitTest = vi.fn(() => caret);
+      Object.defineProperty(document, "caretRangeFromPoint", { configurable: true, value: hitTest });
       fireEvent.pointerMove(editor, { clientX: 12, clientY: 12 });
       act(() => { vi.advanceTimersByTime(1999); });
       expect(screen.queryByRole("status", { name: /Timestamp ước lượng/ })).not.toBeInTheDocument();
       act(() => { vi.advanceTimersByTime(1); });
       expect(view.container.querySelector(".script-table__timing-status")).toHaveTextContent("Timestamp ước lượng · Xin · cần kiểm tra trên waveform");
-      expect(editor.selectionStart).toBe(0);
-      expect(editor.selectionEnd).toBe(3);
+      expect(editorSelection(editor).start).toBe(0);
+      expect(editorSelection(editor).end).toBe(3);
       fireEvent.pointerLeave(editor);
       expect(view.container.querySelector(".script-table__timing-status")).not.toBeInTheDocument();
-    } finally { vi.useRealTimers(); }
+    } finally { vi.useRealTimers(); Reflect.deleteProperty(document, "caretRangeFromPoint"); }
   });
   it("offers copy and paste for a selected Script text range", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -227,12 +231,12 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    editor.setSelectionRange(4, 8);
+    selectEditorText(editor, 4, 8);
     fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("chào"));
 
-    editor.setSelectionRange(4, 8);
+    selectEditorText(editor, 4, 8);
     fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Paste thay đoạn chọn" }));
     await waitFor(() => expect(readText).toHaveBeenCalledOnce());
@@ -249,7 +253,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} sourceDuration={1} value="Xin chào" words={words} workflow="speech-to-text" />);
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    editor.setSelectionRange(1, 1);
+    selectEditorText(editor, 1, 1);
     fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
     expect(screen.getByRole("menuitem", { name: "Add text" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Sửa text đã chọn" })).toBeInTheDocument();
@@ -276,8 +280,8 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
     editor.focus();
-    fireEvent.change(editor, { target: { value: "Xin bạn" } });
-    editor.setSelectionRange(1, 1);
+    changeEditorText(editor, "Xin bạn");
+    selectEditorText(editor, 1, 1);
     fireEvent.contextMenu(editor, { clientX: 900, clientY: 700 });
     expect(screen.getByRole("menu", { name: "Thao tác đoạn Script" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Note" })).toBeInTheDocument();
@@ -286,7 +290,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     fireEvent.pointerEnter(screen.getByRole("menuitem", { name: "Note" }));
     expect(screen.getByRole("menu", { name: "Note — Script" })).toBeInTheDocument();
     expect(commitWords).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("Xin bạn");
+    expect(editorText(screen.getByRole("textbox", { name: "Script transcript" }))).toBe("Xin bạn");
   });
 
   it("deletes the exact caret-targeted native word atomically and leaves native Delete alone", () => {
@@ -295,7 +299,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     const view = render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    editor.setSelectionRange(5, 5);
+    selectEditorText(editor, 5, 5);
     fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
     fireEvent.keyDown(editor, { key: "Delete" });
     expect(onWordsChange).not.toHaveBeenCalled();
@@ -309,11 +313,11 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} sourceDuration={0.8} value="Xin" words={[{ text: "Xin", start: 0.1, end: 0.8 }]} workflow="speech-to-text" />);
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    editor.setSelectionRange(1, 1);
+    selectEditorText(editor, 1, 1);
     fireEvent.contextMenu(editor, { clientX: 12, clientY: 15 });
     fireEvent.click(screen.getByRole("menuitem", { name: "Add text" }));
     const input = screen.getByRole("textbox", { name: "Add text" });
-    fireEvent.change(input, { target: { value: "thêm" } });
+    changeEditorText(input, "thêm");
     fireEvent.submit(screen.getByRole("form", { name: "Add text" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Không còn khoảng thời gian an toàn");
     expect(screen.getByRole("textbox", { name: "Add text" })).toHaveValue("thêm");
@@ -455,7 +459,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     // selected word stays free to be dragged into another row.
     fireEvent.doubleClick(screen.getByRole("button", { name: "Chọn từ Xin" }));
     const editor = screen.getByRole("textbox", { name: "Sửa từ Xin" });
-    fireEvent.change(editor, { target: { value: "Chào" } });
+    changeEditorText(editor, "Chào");
     fireEvent.submit(screen.getByRole("form", { name: "Trình sửa từ Xin" }));
     expect(onWordsChange).toHaveBeenCalledWith([
       expect.objectContaining({ text: "Chào", timingSource: "user-text-preserved", timingTrusted: false, diarizationSpeakerId: "speaker-1", speakerId: "lan", emotion: "good", reviewState: "manual", selectedVariant: "manual", start: 0.12, end: 0.34 }),
@@ -470,7 +474,7 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
     render(<ScriptEditor onChange={vi.fn()} onWordsChange={onWordsChange} value="Xin chào" words={words} workflow="speech-to-text" />);
     fireEvent.doubleClick(screen.getByRole("button", { name: "Chọn từ Xin" }));
     const editor = screen.getByRole("textbox", { name: "Sửa từ Xin" });
-    fireEvent.change(editor, { target: { value: "Thưa" } });
+    changeEditorText(editor, "Thưa");
     fireEvent.blur(editor);
     expect(onWordsChange).toHaveBeenCalledWith([
       expect.objectContaining({ text: "Thưa", timingSource: "user-text-preserved", timingTrusted: false, start: 0, end: 0.3 }),
@@ -612,11 +616,11 @@ it("requires checked rows for the toolbar speaker choice without changing the wh
   it("moves the Script caret by one word with Ctrl+Arrow and extends selection with Ctrl+Shift+Arrow", () => {
     render(<ScriptEditor onChange={() => undefined} value="Xin chào bạn" workflow="speech-to-text" />);
     const editor = screen.getByRole("textbox", { name: "Script transcript" }) as HTMLTextAreaElement;
-    editor.setSelectionRange(0, 0);
+    selectEditorText(editor, 0, 0);
     fireEvent.keyDown(editor, { ctrlKey: true, key: "ArrowRight" });
-    expect([editor.selectionStart, editor.selectionEnd]).toEqual([4, 4]);
+    expect([editorSelection(editor).start, editorSelection(editor).end]).toEqual([4, 4]);
     fireEvent.keyDown(editor, { ctrlKey: true, shiftKey: true, key: "ArrowRight" });
-    expect([editor.selectionStart, editor.selectionEnd]).toEqual([4, 9]);
+    expect([editorSelection(editor).start, editorSelection(editor).end]).toEqual([4, 9]);
   });
 
   it("switches between table and plain text only with DẠNG BẢNG", () => {

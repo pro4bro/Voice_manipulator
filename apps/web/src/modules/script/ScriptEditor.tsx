@@ -19,6 +19,7 @@ import { mapScriptWordsToText, reconcileScriptTextEdit, replaceScriptTextRange, 
 import { useScriptWordDeletion } from "./use-script-word-deletion";
 import { useScriptPlaybackFollow } from "./script-playback-follow";
 import { ScriptScrollbar } from "./ScriptScrollbar";
+import { TranscriptTextView, selectTranscriptTextRange, type TranscriptTextHandle } from "./TranscriptTextView";
 import { findScriptDocumentMatches, replaceScriptDocumentMatches, formatScriptDocumentPauses, type ScriptDocument, type ScriptDocumentChange, type ScriptDocumentMatch } from "./script-document-actions";
 
 export type ScriptFormatKind = "font-size" | "bold" | "italic" | "underline";
@@ -46,6 +47,8 @@ interface ReviewResolution { choice: ReviewChoice; text: string; }
 interface ScriptSelectionMenu { x: number; y: number; start: number; end: number; text: string; wordIndex?: number; revision: string; wordsRevision: StudioWord[]; }
 interface ScriptWordRange { index: number; start: number; end: number; }
 interface EstimatedWordHover { index: number; left: number; top: number; }
+const EMPTY_SCRIPT_WORDS: StudioWord[] = [];
+const EMPTY_SCRIPT_SPEAKERS: SpeakerProfile[] = [];
 const NATIVE_PLAYBACK_TEXT_LIMIT = 3800;
 function isScriptWordCharacter(value: string | undefined) {
   return Boolean(value && /[\p{L}\p{N}]/u.test(value));
@@ -75,9 +78,10 @@ function scriptSegments(value: string, ranges: ScriptWordRange[]): ScriptSegment
 }
 function reviewText(pieces: ReviewPiece[], resolutions: Record<string, ReviewResolution>) { return pieces.map((piece) => piece.kind === "same" ? piece.text : resolutions[piece.id]?.text ?? piece.stt).join(""); }
 
-export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = [], wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = [], environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange, obsFeed, sourceDocuments, renderSources, onSourceDocumentsChange, trackName, sourceDuration, feedMode = "obs" }: ScriptEditorProps) {
+export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value, onChange, workflow, onGenerate, onDeferredAction, onRunAiReview, words = EMPTY_SCRIPT_WORDS, wordTimingQuality = "unverified", wordTimingNote = null, activeWordIndex: explicitActiveWordIndex, playbackAssetId = null, footageName = null, speakers = EMPTY_SCRIPT_SPEAKERS, environments = [], isLiveTranscript = false, emotionStyle = DEFAULT_EMOTION_STYLE, liveTranscriptText = null, aiReviewText = null, aiReviewKey = null, aiReviewBusy = false, canRunAiReview = false, readingCard = null, readingCardNumber = 0, readingCardTotal = 0, readingHeard, readingSpeaking = false, readingFollowerReady = false, onWordsChange, onFormatIntent, wordSelection = EMPTY_SELECTION, onWordSelectionChange, speakerProfileId = null, onSpeakerProfileChange, obsFeed, sourceDocuments, renderSources, onSourceDocumentsChange, trackName, sourceDuration, feedMode = "obs" }: ScriptEditorProps) {
   const contrastPalette = useContrastPalette();
   const commandRef = useRef<HTMLElement>(null);
+  const transcriptTextRef = useRef<TranscriptTextHandle>(null);
   const sourceMatchRef = useRef<ScriptDocumentMatch | null>(null);
   const readOnlyFeed = Boolean(obsFeed && !renderSources);
   const hasTimedWords = words.length > 0 || Boolean(sourceDocuments?.some((source) => source.words.length));
@@ -105,6 +109,7 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
   const timingNoticeContentRef = useRef<HTMLDivElement>(null);
   const [timingNoticeHeight, setTimingNoticeHeight] = useState(0);
   const textEditBaselineRef = useRef<{ text: string; words: StudioWord[] } | null>(null);
+  const playbackTextSelection = useRef<{ start: number; end: number } | null>(null);
   const pendingTextRef = useRef(value);
   const [srtExportOpen, setSrtExportOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
@@ -167,6 +172,7 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
     if (useNativePlayback) {
       const range = wordRangesByIndex.get(activeWordIndex);
       if (!range) return;
+      playbackTextSelection.current = { start: range.start, end: range.end };
       if (document.activeElement !== textarea) textarea.focus();
       textarea.setSelectionRange(range.start, range.end);
       return;
@@ -273,6 +279,8 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
   function chooseReview(piece: Extract<ReviewPiece, { kind: "change" }>, choice: ReviewChoice, text: string) { const next = { ...reviewResolutions, [piece.id]: { choice, text } }; setReviewResolutions(next); onChange(reviewText(reviewPieces, next)); setHoveredReviewId(null); }
   function startManualEdit(piece: Extract<ReviewPiece, { kind: "change" }>) { const existing = reviewResolutions[piece.id]; setManualDraft(existing?.text ?? piece.ai ?? piece.stt); setHoveredReviewId(piece.id); }
   function selectionSnapshot() {
+    const shared = transcriptTextRef.current?.selected();
+    if (shared) return shared;
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? 0; const end = textarea?.selectionEnd ?? start;
     return { start, end, text: value.slice(start, end) };
@@ -281,9 +289,10 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
     onFormatIntent?.({ kind, value: formatValue, selection: selectionSnapshot() });
   }
   function focusRange(start: number, end: number) {
+    if (transcriptTextRef.current) { transcriptTextRef.current.select(start, end); return; }
     if (scriptView === "table") {
       setScriptView("edit");
-      requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(start, end); });
+      requestAnimationFrame(() => { if (transcriptTextRef.current) transcriptTextRef.current.select(start, end); else { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(start, end); } });
       return;
     }
     const textarea = textareaRef.current;
@@ -313,17 +322,16 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
       }
       if (nextIndex !== null) break;
     }
-    if (nextIndex === null) { clearEstimatedWordHover(); return; }
-    const position = { index: nextIndex, left: event.clientX + 12, top: event.clientY + 14 };
-    if (pendingEstimatedHoverRef.current?.index === nextIndex) {
-      pendingEstimatedHoverRef.current = position;
-      return;
-    }
+    queueEstimatedWordHover(nextIndex === null ? null : { index: nextIndex, left: event.clientX + 12, top: event.clientY + 14 });
+  }
+  function queueEstimatedWordHover(position: EstimatedWordHover | null) {
+    if (!position || words[position.index]?.timingSource !== "user-interpolated") { clearEstimatedWordHover(); return; }
+    if (pendingEstimatedHoverRef.current?.index === position.index) { pendingEstimatedHoverRef.current = position; return; }
     clearEstimatedWordHover();
     pendingEstimatedHoverRef.current = position;
     estimatedHoverTimerRef.current = window.setTimeout(() => {
       estimatedHoverTimerRef.current = null;
-      if (pendingEstimatedHoverRef.current?.index === nextIndex) setEstimatedWordHover(pendingEstimatedHoverRef.current);
+      if (pendingEstimatedHoverRef.current?.index === position.index) setEstimatedWordHover(pendingEstimatedHoverRef.current);
     }, 2000);
   }
 
@@ -353,6 +361,8 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
     sourceMatchRef.current = match;
     setScriptView("edit");
     requestAnimationFrame(() => {
+      const source = commandRef.current?.querySelector<HTMLElement>(`[data-script-source-id="${CSS.escape(match.assetId)}"] .script-text-view`);
+      if (source) { selectTranscriptTextRange(source, match.start, match.end); source.scrollIntoView?.({ block: "nearest" }); return; }
       const textarea = Array.from(commandRef.current?.querySelectorAll<HTMLTextAreaElement>("textarea[data-script-source-id]") ?? []).find((element) => element.dataset.scriptSourceId === match.assetId);
       textarea?.focus({ preventScroll: true });
       textarea?.setSelectionRange(match.start, match.end);
@@ -507,11 +517,27 @@ export function ScriptEditor({ subtitleAlignmentControls, onUndo, onRedo, value,
     </div>
     {findOpen ? <div className="script-find-replace" aria-label="Tìm và thay thế"><input aria-label="Tìm text" onChange={(event) => setFindQuery(event.target.value)} placeholder="Tìm" value={findQuery} /><input aria-label="Thay bằng text" onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Thay bằng" value={replaceQuery} /><label><input checked={findCaseSensitive} onChange={(event) => setFindCaseSensitive(event.target.checked)} type="checkbox" /> Phân biệt hoa/thường</label><button onClick={() => findNext(true)} type="button">↑</button><button onClick={() => findNext()} type="button">↓</button><button onClick={replaceCurrent} type="button">REPLACE</button><button onClick={replaceAll} type="button">ALL</button></div> : null}    {resolvedReview.length ? <div className="script-review-history" aria-label="Các phương án đã chọn">{resolvedReview.map(({ piece, resolution }) => <span className={`is-${resolution.choice}`} key={piece.id}><b>{resolution.choice === "stt" ? "STT" : resolution.choice === "ai" ? "AI" : "Sửa tay"}</b><s>{piece.stt.trim() || "∅"}</s><i>→</i><em>{resolution.text.trim() || "∅"}</em></span>)}</div> : null}</div>
     <div className="script-document" style={{ "--script-format-scale": scriptFontScale / 100, "--script-font-adjust": scriptFontScale / 100, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
-    {renderSources ? renderSources(scriptView) : obsFeed ? obsFeed : tableVisible ? <ScriptTable trackName={trackName} deleteBusy={wordDeletion.busy} leadingContent={hasTimingNotices ? timingNotices : undefined} onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={(emotion, preferences) => emotionVisualStyle(emotion, preferences, contrastPalette.field)} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onAddText={onWordsChange ? addScriptText : undefined} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, "--script-timing-inset": `${timingNoticeHeight}px`, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
+    {renderSources ? renderSources(scriptView) : obsFeed ? obsFeed : tableVisible ? <ScriptTable trackName={trackName} deleteBusy={wordDeletion.busy} leadingContent={hasTimingNotices ? timingNotices : undefined} onSelectedRowWordsChange={setSelectedRowWordIndexes} assetId={playbackAssetId} selection={wordSelection} onSelectionChange={(next) => onWordSelectionChange?.(next)} activeWordIndex={activeWordIndex} emotionStyle={emotionStyle} getEmotionStyle={(emotion, preferences) => emotionVisualStyle(emotion, preferences, contrastPalette.field)} onAssignWords={(indexes, profileId) => onWordsChange?.(assignProfileToWords(words, indexes, profileId))} onDeleteWords={onWordsChange ? deleteScriptWords : undefined} onMoveWords={(indexes, row) => onWordsChange?.(moveWordsToRow(words, indexes, row))} onAddText={onWordsChange ? addScriptText : undefined} onUpdateWordText={(index, text) => { const result = replaceScriptWord(value, index, text, words); onWordsChange?.(result.words, result.text); }} defaultSpeakerId={speakerProfileId} speakers={speakers} storageKey={playbackAssetId ?? "draft"} words={words} /> : !tagMode && !comparisonActive && !isLiveTranscript ? <TranscriptTextView ref={transcriptTextRef} value={value} words={words} speakers={speakers} defaultSpeakerId={speakerProfileId} assetId={playbackAssetId} activeWordIndex={activeWordIndex} leadingContent={hasTimingNotices ? timingNotices : undefined}
+      onWordHover={queueEstimatedWordHover}
+      onChange={(text) => { clearEstimatedWordHover(); pendingTextRef.current = text; onChange(text); }}
+      onEditingChange={(editing) => { if (editing) { if (!textEditBaselineRef.current) { textEditBaselineRef.current = { text: value, words: [...words] }; pendingTextRef.current = value; } } else finishNativeTextEdit(); }}
+      onRangeChange={(range) => {
+        if (!range || range.start === range.end) { onWordSelectionChange?.(EMPTY_SELECTION); return; }
+        const indexes = wordRanges.filter((word) => word.end > range.start && word.start < range.end).map((word) => word.index);
+        onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null });
+      }}
+      onContextRange={(range, x, y) => {
+        if (!range) return;
+        const wordRange = wordRanges.find((word) => word.start <= range.start && word.end >= range.end);
+        const start = range.start === range.end && wordRange ? wordRange.start : range.start;
+        const end = range.start === range.end && wordRange ? wordRange.end : range.end;
+        if (end <= start) return;
+        setSelectionMenu({ x, y, start, end, text: value.slice(start, end), wordIndex: wordRange?.index, revision: value, wordsRevision: words });
+      }} /> : <div className={`script-editor-stack ${activeWordIndex >= 0 && !comparisonActive ? "is-tracking" : ""} ${tagMode ? "is-tagging" : ""} ${isLiveTranscript ? "is-live" : ""} ${comparisonActive ? "is-reviewing" : ""} ${hasEmotion ? "has-emotion" : ""}`} data-native-tracking={useNativePlayback ? "true" : undefined} style={{ "--script-format-scale": scriptFontScale / 100, "--script-timing-inset": `${timingNoticeHeight}px`, fontWeight: scriptBold ? 700 : undefined, fontStyle: scriptItalic ? "italic" : undefined, textDecoration: scriptUnderline ? "underline" : undefined } as CSSProperties}>
       {!tagMode && hasTimingNotices ? <div aria-label="Cảnh báo thời gian Script" className="script-timing-notice-layer" style={{ transform: `translateY(-${scriptScrollTop}px)` }}><div className="script-timing-notices" ref={timingNoticeContentRef}>{timingNoticeItems}</div></div> : null}
       {tagMode ? <div aria-label="Gán profile theo từ" className="script-tag-editor">{words.map((word, index) => { const speaker = speakers.find((profile) => profile.id === word.speakerId); const previousSpeakerId = index ? words[index - 1]?.speakerId : null; const wordStyle = { ...emotionVisualStyle(word.emotion, emotionStyle, contrastPalette.field), ...(speaker ? { borderBottomColor: readableColor(speaker.color, contrastPalette.field) } : {}) }; return <Fragment key={`${word.start}-${index}`}>{speaker && speaker.id !== previousSpeakerId ? <span className="script-speaker-cue" style={{ borderColor: readableColor(speaker.color, contrastPalette.field) }}><i style={{ background: readableColor(speaker.color, contrastPalette.field) }} />{speaker.name}</span> : null}<button aria-label={`Gán nhãn cho từ ${word.text}`} className={index === activeWordIndex ? "is-active" : ""} data-emotion={word.emotion ?? "normal"} onClick={() => tagWord(index)} style={wordStyle} title={`${speaker?.name ?? "Chưa gán speaker"} · ${emotionLabel(word.emotion ?? "normal")} · ${word.start.toFixed(2)}s`} type="button">{word.text}<small>{emotionLabel(word.emotion ?? "normal")}</small></button></Fragment>; })}</div> : <><>{comparisonActive ? renderComparisonLayer() : useNativePlayback ? null : <div aria-hidden="true" className="script-playback-layer" ref={playbackLayerRef}>{playbackSegments.map((segment, index) => { const word = segment.wordIndex === null ? undefined : words[segment.wordIndex]; const emotion = word?.emotion; return <span className={`${segment.wordIndex === activeWordIndex ? "is-active" : ""} ${word?.reviewState === "manual" ? "is-edited" : ""} ${word?.timingSource === "user-interpolated" ? "is-time-estimated" : ""}`} data-script-word-index={segment.wordIndex ?? undefined} data-time-estimated={word?.timingSource === "user-interpolated" ? "true" : undefined} key={`${segment.wordIndex ?? "text"}-${index}`} ref={segment.wordIndex === activeWordIndex ? activePlaybackWordRef : undefined} style={emotionVisualStyle(emotion, emotionStyle, contrastPalette.field)}>{segment.text}</span>; })}</div>}</><textarea aria-label="Script transcript" className="script-editor" onBlur={() => { clearEstimatedWordHover(); finishNativeTextEdit(); }} onContextMenu={openSelectionMenu} onSelect={(event) => {
         const { selectionStart: start, selectionEnd: end } = event.currentTarget;
-        if (isLiveTranscript) return;
+        if (isLiveTranscript || playbackTextSelection.current?.start === start && playbackTextSelection.current.end === end) return;
         if (start === end) { onWordSelectionChange?.(EMPTY_SELECTION); return; }
         const indexes = wordRanges.filter((range) => range.end > start && range.start < end).map((range) => range.index);
         onWordSelectionChange?.({ indexes, anchor: indexes.at(-1) ?? null });

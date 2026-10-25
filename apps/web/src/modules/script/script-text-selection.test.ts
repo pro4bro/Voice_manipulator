@@ -21,6 +21,11 @@ function editor() {
 }
 
 describe("Script text selection copy", () => {
+  it("copies only the speaker column when both endpoints are speaker names", () => {
+    const { root, speakers } = editor();
+    expect(selection(root, speakers[0].firstChild!, 0, speakers[1].firstChild!, 4)).toBe("An Vũ\nKhoa");
+    root.remove();
+  });
   it("preserves browser-created block and break newlines in copied dialogue", () => {
     const { root, dialogue } = editor();
     dialogue[0].innerHTML = "Xin<div>chào</div><div><br></div><div>nhé</div>";

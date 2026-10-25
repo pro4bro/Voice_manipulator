@@ -1,3 +1,4 @@
+import { editorText } from "../../test/script-text";
 import "@testing-library/jest-dom/vitest";
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -166,7 +167,7 @@ it("keeps imported channel Script in the editor and routes Timeline to multitrac
     wordSelection: EMPTY_SELECTION, readingSession: null, obsTimelineActive: false } as unknown as StudioContext;
   const script = render(<ModuleRegistry context={context} id="script" />);
   expect(screen.queryByRole("group", { name: "Script theo channel" })).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Script transcript" })).toHaveValue("Desk says hello");
+  expect(editorText(screen.getByRole("textbox", { name: "Script transcript" }))).toBe("Desk says hello");
   script.unmount();
   render(<ModuleRegistry context={context} id="timeline" />);
   expect(screen.getByLabelText("Timeline đa kênh import")).toBeInTheDocument();
