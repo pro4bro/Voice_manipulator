@@ -1,0 +1,15 @@
+.voice-script__text { overflow: auto; }
+.script-text-view { min-width: 560px; min-height: 100%; outline: 0; color: var(--text); background: var(--surface-field); font-family: var(--editorial); font-size: clamp(calc(18px * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1)), calc(1.35vw * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1)), calc(22px * var(--font-scale) * var(--script-font-adjust) * var(--script-format-scale, 1))); font-weight: inherit; font-style: inherit; text-decoration: inherit; }
+.script-text-view__row { display: grid; grid-template-columns: minmax(150px, 24%) minmax(0, 1fr); border-bottom: 1px solid var(--line); }
+.script-text-view__header { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: minmax(150px, 24%) minmax(0, 1fr); border-bottom: 1px solid var(--line-strong, var(--line)); color: var(--text-muted); background: var(--surface-panel); font: 700 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.script-text-view__header > span { padding: 7px 12px; }
+.script-text-view__header > span:first-child { border-right: 1px solid var(--line); }
+.script-text-view__speaker { min-width: 0; padding: 10px 12px; border-right: 1px solid var(--line); background: var(--surface-panel); overflow-wrap: anywhere; color: var(--text); font-size: 12px; font-family: var(--sans); font-weight: 650; }
+.script-text-view__dialogue { min-width: 0; min-height: 42px; padding: 10px 12px; outline: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.script-text-view__dialogue:focus { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-ink) 55%, transparent); }
+.script-text-view__guidance:empty { display: none; }
+.script-text-view[data-edit-guidance]::after { display: block; padding: 6px 12px; color: var(--text-muted); background: var(--surface-panel); content: attr(data-edit-guidance); font-size: 11px; }
+@media (max-width: 640px) {
+  .script-text-view { min-width: 420px; }
+  .script-text-view__row, .script-text-view__header { grid-template-columns: minmax(125px, 32%) minmax(0, 1fr); }
+}

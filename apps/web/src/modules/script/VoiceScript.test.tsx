@@ -3,6 +3,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { VoiceScript } from "./VoiceScript";
+import { readSelectedScriptText } from "./ScriptTextView";
 import type { ProjectVoice, SpeakerProfile, VoiceOutput, VoiceScriptRow } from "../../domain/types";
 import type { WordSelection } from "../../domain/word-selection";
 
@@ -355,11 +356,28 @@ it("places real generation progress in the right settings host outside Script", 
     render(<Harness initial={[{ id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "Xin chào\nKhoa Trịnh: literal quote" }]} onRows={onRows} />);
 
     fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
-    const text = screen.getByLabelText("Script dạng văn bản");
-    expect(text).toHaveValue("Anh Vũ: Xin chào\nKhoa Trịnh: literal quote");
-    fireEvent.change(text, { target: { value: "Anh Vũ: Xin chào nhé\nKhoa Trịnh: literal quote\nKhoa Trịnh: pasted label is still dialogue" } });
+    expect(screen.getByText("Anh Vũ:")).toBeInTheDocument();
+    const text = document.querySelector<HTMLElement>('[data-script-text-dialogue][data-row-id="r1"]')!;
+    expect(text.textContent).toBe("Xin chào\nKhoa Trịnh: literal quote");
+    text.textContent = "Xin chào nhé\nKhoa Trịnh: literal quote\nKhoa Trịnh: pasted label is still dialogue";
+    fireEvent.input(text);
     expect((onRows.mock.lastCall?.[0] as VoiceScriptRow[]).map((row) => [row.id, row.voiceId, row.text])).toEqual([
       ["r1", "an-clone", "Xin chào nhé\nKhoa Trịnh: literal quote\nKhoa Trịnh: pasted label is still dialogue"],
     ]);
+  });
+
+  it("advances Find from the current text row into the next row", () => {
+    render(<Harness initial={[
+      { id: "r1", speakerProfileId: "speaker-an", voiceId: "an-clone", text: "same first same second" },
+      { id: "r2", speakerProfileId: "speaker-khoa", voiceId: "khoa-clone", text: "same in next row" },
+    ]} />);
+    fireEvent.click(screen.getByRole("button", { name: "DẠNG BẢNG" }));
+    fireEvent.click(screen.getByRole("button", { name: "FIND / REPLACE" }));
+    fireEvent.change(screen.getByLabelText("Tìm text"), { target: { value: "same" } });
+    const next = screen.getByRole("button", { name: "↓" });
+    fireEvent.click(next);
+    fireEvent.click(next);
+    fireEvent.click(next);
+    expect(readSelectedScriptText(screen.getByLabelText("Script dạng văn bản"))?.rowId).toBe("r2");
   });
 });

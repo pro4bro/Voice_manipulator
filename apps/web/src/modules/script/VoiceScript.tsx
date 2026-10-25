@@ -6,7 +6,7 @@ import { reconcileListSelection, selectAllListItems, selectListItem, type ListSe
 import { usePlaybackWord } from "../../domain/playback-sync";
 import type { ActivityTask, ProjectVoice, SpeakerProfile, VoiceOutput, VoiceOutputExportMode, VoiceScriptJob, VoiceScriptRow } from "../../domain/types";
 import { EMPTY_SELECTION, type WordSelection } from "../../domain/word-selection";
-import { VOICE_KIND_LABELS, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, rowsToText, scriptReadiness, textToRows, type VoiceCategory } from "../../domain/voiceScript";
+import { VOICE_KIND_LABELS, emptyRow, estimatedSeconds, lineBreakWords, normalizedRowText, resolveRowVoice, rowTimings, scriptReadiness, type VoiceCategory } from "../../domain/voiceScript";
 import { Icon } from "../../ui/Icon";
 import { WordContextMenu, WordNoteItem } from "../../ui/WordContextMenu";
 import { ModuleFrame } from "../../ui/ModuleFrame";
@@ -23,6 +23,7 @@ import "./voice-script-settings.css";
 import { joinScriptSentences, migrateScript } from "../../domain/voice-script-document";
 import { hasMultipleSelectionRanges, productionRanges, selectProductionWord, sweepProductionWords } from "../../domain/production-selection";
 import { scriptHighlightTokens } from "./script-highlight-diff";
+import { readSelectedScriptText, ScriptTextView, selectScriptText } from "./ScriptTextView";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -122,7 +123,6 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   const readiness = scriptReadiness(rows, voices);
   const [durationRefresh, setDurationRefresh] = useState(0);
   const [view, setView] = useState<"table" | "text">("table");
-  const [textDraft, setTextDraft] = useState("");
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [voiceMenu, setVoiceMenu] = useState<{ rowId: string; x: number; y: number } | null>(null);
   const [referenceMenu, setReferenceMenu] = useState<{ selection: WordSelection; word: boolean; revision: VoiceOutput["words"] | undefined; x: number; y: number } | null>(null);
@@ -139,7 +139,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   const scrollRef = useRef<HTMLDivElement>(null);
   const consumedNavigation = useRef<typeof navigation>(undefined);
   const followRoot = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
   const focusRef = useRef<{ rowId: string; start: number; end: number } | null>(null);
   const [, setFocusTick] = useState(0);
   // The row shown while the Script is empty keeps one id, so typing into it
@@ -308,7 +308,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
 
   // ---------- find / replace, over rows in the table and over the text in Text Edit ----------
 
-  const units = view === "table" ? shownRows.map((row) => row.text) : [textDraft];
+  const units = shownRows.map((row) => row.text);
 
   function indexIn(text: string, from: number, reverse: boolean) {
     const source = caseSensitive ? text : text.toLocaleLowerCase("vi");
@@ -319,11 +319,17 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   function findNext(reverse = false) {
     if (!findQuery) return;
     if (view === "text") {
-      const field = textRef.current;
-      if (!field) return;
-      let index = indexIn(textDraft, reverse ? Math.max(0, field.selectionStart - 1) : field.selectionEnd, reverse);
-      if (index < 0) index = indexIn(textDraft, reverse ? textDraft.length : 0, reverse);
-      if (index >= 0) { field.focus(); field.setSelectionRange(index, index + findQuery.length); }
+      const root = textRef.current;
+      if (!root) return;
+      const current = readSelectedScriptText(root);
+      const startRow = Math.max(0, shownRows.findIndex((row) => row.id === current?.rowId));
+      for (let step = 0; step <= shownRows.length; step += 1) {
+        const rowIndex = ((reverse ? startRow - step : startRow + step) % shownRows.length + shownRows.length) % shownRows.length;
+        const row = shownRows[rowIndex];
+        const from = step === 0 && current?.rowId === row.id ? (reverse ? Math.max(0, current.start - 1) : current.end) : reverse ? row.text.length : 0;
+        const index = indexIn(row.text, from, reverse);
+        if (index >= 0) { selectScriptText(root, row.id, index, index + findQuery.length); return; }
+      }
       return;
     }
     const focused = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null;
@@ -345,6 +351,25 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
   }
 
   function replaceCurrent() {
+    if (view === "text" && textRef.current && findQuery) {
+      const selected = readSelectedScriptText(textRef.current);
+      if (selected) {
+        const same = caseSensitive ? selected.text === findQuery : selected.text.toLocaleLowerCase("vi") === findQuery.toLocaleLowerCase("vi");
+        if (same) {
+          const row = shownRows.find((item) => item.id === selected.rowId);
+          if (row) {
+            const next = row.text.slice(0, selected.start) + replaceQuery + row.text.slice(selected.end);
+            const cell = textRef.current.querySelector<HTMLElement>(`[data-script-text-dialogue][data-row-id="${CSS.escape(row.id)}"]`);
+            if (cell) cell.textContent = next;
+            updateRow(row.id, { text: next });
+            selectScriptText(textRef.current, row.id, selected.start + replaceQuery.length, selected.start + replaceQuery.length);
+            return;
+          }
+        }
+      }
+      findNext();
+      return;
+    }
     const field = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null;
     if (field && findQuery) {
       const selected = field.value.slice(field.selectionStart, field.selectionEnd);
@@ -352,8 +377,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       if (same) {
         const next = field.value.slice(0, field.selectionStart) + replaceQuery + field.value.slice(field.selectionEnd);
         const caret = field.selectionStart + replaceQuery.length;
-        if (view === "text") changeText(next);
-        else if (field.dataset.rowId) {
+        if (field.dataset.rowId) {
           focusRef.current = { rowId: field.dataset.rowId, start: caret, end: caret };
           updateRow(field.dataset.rowId, { text: next });
         }
@@ -367,13 +391,12 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     if (!findQuery) return;
     const escaped = findQuery.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     const expression = new RegExp(escaped, caseSensitive ? "gu" : "giu");
-    if (view === "text") changeText(textDraft.replace(expression, () => replaceQuery));
-    else commit(rows.map((row) => ({ ...row, text: row.text.replace(expression, () => replaceQuery) })));
-  }
-
-  function changeText(value: string) {
-    setTextDraft(value);
-    commit(textToRows(value, speakers, voices, rows, textDraft));
+    const replacements = rows.map((row) => ({ ...row, text: row.text.replace(expression, () => replaceQuery) }));
+    commit(replacements);
+    if (view === "text" && textRef.current) for (const row of replacements) {
+      const cell = textRef.current.querySelector<HTMLElement>(`[data-script-text-dialogue][data-row-id="${CSS.escape(row.id)}"]`);
+      if (cell) cell.textContent = row.text;
+    }
   }
 
   function handleRowSelectionKey(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -450,14 +473,12 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     setEditingRowId(null);
     setVoiceMenu(null);
     setExportOpen(false);
-    setTextDraft("");
     onWordSelectionChange?.(EMPTY_SELECTION);
     commit([]);
   }
 
   function toggleView() {
     if (view === "table") {
-      setTextDraft(rowsToText(rows, speakers));
       setView("text");
     } else {
       setView("table");
@@ -606,7 +627,7 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
       <ScriptScrollbar viewportRef={scrollRef} label="Thanh cuộn Voice Script" className="script-table-scrollbar" />
       </div>
     </div> : <div className="script-editor-stack voice-script__text" style={textStyle}>
-      <textarea aria-label="Script dạng văn bản" className="script-editor" onChange={(event) => changeText(event.target.value)} placeholder="Nhập lời thoại; xuống dòng hoặc thêm nhãn speaker vẫn nằm trong đoạn hiện tại." ref={textRef} spellCheck value={textDraft} />
+      <ScriptTextView onRoot={(element) => { textRef.current = element; }} onTextChange={(rowId, text) => updateRow(rowId, { text })} rows={shownRows} speakers={speakers} />
     </div>}
 
     {referenceMenu ? <WordContextMenu x={referenceMenu.x} y={referenceMenu.y} className="script-table__word-menu" onClose={() => setReferenceMenu(null)}>
