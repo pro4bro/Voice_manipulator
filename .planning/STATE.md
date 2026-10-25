@@ -6,11 +6,34 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-25 — VM-LEGACY-SCRIPT-TURNS-01 grouped legacy rows with portable source aliases.
-last_activity_desc: Frontend1324/typecheck/build229 and API26 pass; full API1625 plus existing VibeVoice timeout. Browser verifies multiline turns and unchanged source hashes. Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-25 — VM-SCRIPT-TEXT-FREEZE-01 implemented Script columns and common Timeline scrolling.
+last_activity_desc: Frontend1341/167 files, focused Script37/Timeline79, typecheck/build233 pass. Native browser verification blocked by Work settings. Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## VM-SCRIPT-TEXT-FREEZE-01 — Text columns and common Timeline scrolling (2026-10-25)
+
+Script text view separates speaker names and dialogue into aligned columns.
+Dialogue-only native selections serialize without speaker labels; cross-column
+selections include names in turn order. Multiline text, blank lines, stable IDs,
+external updates/caret and Find/Replace retain row boundaries. Cross-turn copy is
+allowed; destructive cross-turn edits and text drops are guarded.
+
+Master, subtitles and layers now share one vertical viewport. The one top ruler
+stays visible; subtitles freeze beneath it after Master scrolls away. Sticky
+strips/layers share the waveform zoom/pan/playhead; navigator/transport remain
+below the viewport. Direct transfers reject hidden/outside targets and keep
+source/timeline coordinates locked.
+
+Frontend167 files/1341 tests, focused Script37 and Timeline79, typecheck/build233
+pass. Browser verification is still open: Work settings refused local browser use
+before a tab opened. Native selection/clipboard, IME/undo and sticky geometry in
+both themes are unverified. The owned temporary server was stopped; no owner
+project/media/model changed. ADR0146, `docs/VM-SCRIPT-TEXT-FREEZE-PLAN.md` and
+`docs/gates/vm-script-text-freeze-01-20261025.md` hold the contract/evidence.
+Prior full API1625 pass/one existing VibeVoice timeout remains recorded; this UI
+round changes no backend. Phase03 stays60%, Phase06 open. Stop this bounded round.
 
 ## VM-LEGACY-SCRIPT-TURNS-01 — Legacy rows become multiline speaker turns (2026-10-25)
 

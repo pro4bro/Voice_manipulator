@@ -110,14 +110,22 @@ synthesis settings within existing rows whose generated source timing is known.
   signal is drawn when the source waveform is unavailable.
 - Layer Mute takes precedence over Solo. When any Solo is on, enabled solo layers
   alone contribute to the same composition used by playback and export.
-- Master uses the spare stage height. The layer list has vertical scrolling;
-  horizontal wheel/Shift+wheel, arrow keys and the bottom navigator pan the same
-  viewport used by Master and subtitles. Time marks appear only above Master.
+- Master, subtitles and layers share one vertical scroll viewport. The one top
+  ruler stays visible; subtitles freeze directly beneath it when Master scrolls
+  out of view. Horizontal wheel/Shift+wheel, arrow keys and the bottom navigator
+  pan the same viewport used by Master and subtitles. Navigator and transport
+  stay outside vertical scrolling. Clips hidden by frozen subtitles or outside
+  the viewport cannot receive a vertical drag/drop.
 - Enter and paste preserve literal text inside the current Script row, including
   paragraphs, tabs and speaker-looking labels. Text mode preserves existing row
   boundaries without creating new rows from labels. Explicit Add Row remains.
   Automatic transcript rows require diarization/manual identity or Profile changes:
   one continuous speaker turn per row, independent of pauses or punctuation.
+- Text view separates speaker labels and dialogue into aligned columns. A
+  dialogue-to-dialogue selection copies spoken text across rows without identity
+  labels; a selection spanning both columns includes speaker names in turn order.
+  Profile assignment remains in table view. Literal line breaks stay inside their
+  existing turn; cross-row destructive edits cannot erase speaker/row boundaries.
 
 ### Old-project speaker turns
 

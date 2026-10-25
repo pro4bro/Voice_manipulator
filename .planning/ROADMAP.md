@@ -1,5 +1,28 @@
 # Roadmap: Pro4Bro Voice Manipulator
 
+## VM-SCRIPT-TEXT-FREEZE-01 — Text columns and common Timeline scrolling (2026-10-25)
+
+Script text view separates speaker names and dialogue into aligned columns.
+Dialogue-only native selections serialize without speaker labels; cross-column
+selections include names in turn order. Multiline text, blank lines, stable IDs,
+external updates/caret and Find/Replace retain row boundaries. Cross-turn copy is
+allowed; destructive cross-turn edits and text drops are guarded.
+
+Master, subtitles and layers now share one vertical viewport. The one top ruler
+stays visible; subtitles freeze beneath it after Master scrolls away. Sticky
+strips/layers share the waveform zoom/pan/playhead; navigator/transport remain
+below the viewport. Direct transfers reject hidden/outside targets and keep
+source/timeline coordinates locked.
+
+Frontend167 files/1341 tests, focused Script37 and Timeline79, typecheck/build233
+pass. Browser verification is still open: Work settings refused local browser use
+before a tab opened. Native selection/clipboard, IME/undo and sticky geometry in
+both themes are unverified. The owned temporary server was stopped; no owner
+project/media/model changed. ADR0146, `docs/VM-SCRIPT-TEXT-FREEZE-PLAN.md` and
+`docs/gates/vm-script-text-freeze-01-20261025.md` hold the contract/evidence.
+Prior full API1625 pass/one existing VibeVoice timeout remains recorded; this UI
+round changes no backend. Phase03 stays60%, Phase06 open. Stop this bounded round.
+
 ## VM-LEGACY-SCRIPT-TURNS-01 — Legacy rows become multiline speaker turns (2026-10-25)
 
 Old projects group adjacent rows with matching explicit speaker/voice/settings
