@@ -41,6 +41,13 @@ it("shares Master zoom/scroll/playhead with layers and keeps one top ruler and b
   const sharedTransform = view.container.querySelector<HTMLElement>(".voice-layer-timeline__canvas")!.style.transform;
   expect(stack.querySelector(".timeline-sticky-ruler > div")).toHaveStyle({ width: `${width()}px`, transform: sharedTransform });
   expect(stack.querySelector(".timeline-sticky-subtitles > div")).toHaveStyle({ width: `${width()}px`, transform: sharedTransform });
+  const verticalWheel = new WheelEvent("wheel", { deltaY: 90, bubbles: true, cancelable: true });
+  fireEvent(stack.querySelector(".waveform")!, verticalWheel);
+  expect(verticalWheel.defaultPrevented).toBe(false);
+  const previousLeft = scroller.scrollLeft;
+  fireEvent.wheel(stack.querySelector(".word-track")!, { deltaY: 70, shiftKey: true });
+  expect(scroller.scrollLeft).toBe(previousLeft + 70);
+  expect(stack.querySelector(".timeline-sticky-subtitles > div")).toHaveStyle({ transform: `translateX(-${scroller.scrollLeft}px)` });
   const navigator = screen.getByRole("scrollbar", { name: "Thanh cuộn timeline" });
   expect(stack).not.toContainElement(navigator);
   expect(layers.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
