@@ -37,28 +37,25 @@ See `docs/VM-SCRIPT-TEXT-FREEZE-PLAN.md` and ADR0146 for the contract.
 
 ## Browser gate
 
-Completion follow-up: the owner provided Settings screenshots with Browser on.
-The tool still refused access, including after a kernel reset and fresh browser
-inventory. No native UAT was performed. The full backend follow-up now passes
-all1626 tests. See `vm-script-two-round-closure-20261025.md` for exact evidence;
-the native browser checklist remains open.
-
-Native browser verification was attempted through CUA on the isolated local
-fixture at port18130. Creation of a browser tab was refused immediately:
-**Local browser use is disabled in Work settings**. No alternative browser or
-automation channel was used to bypass that setting. The owned fixture server
-was stopped; no owner project/media/model was changed and no synthesis ran.
-
-Native drag selection/clipboard, IME/undo behavior and sticky geometry in both
-themes still require real-browser verification. Unit DOM tests do not establish
-those browser-specific results; no new screenshot or listening claim is made.
+Completion follow-up: Browser briefly worked after the owner's restart. Native
+copy (with/without labels), common vertical scrolling/frozen-subtitle geometry,
+shared zoom/pan and locked layer transfer were observed. Native editing uncovered
+cell splitting/out-of-cell paste; the final literal-text/history repair passes
+39 focused Script tests and1343 full frontend tests across167 files, with
+Typecheck/build233 green. It has not yet been retested natively because CUA
+again refused Browser access after continuation. Real IME, final text/history/
+reload and light-theme/saved screenshot checks remain open. No owner project or
+model was changed. See `vm-script-two-round-closure-20261025.md` for exact evidence
+and the scoped checklist. Earlier blocked-only descriptions are superseded by
+this partial native result, not by a claim of complete browser acceptance.
 
 ## Related backend gate
 
 This UI round changes no backend/audio composition implementation. The preceding
 legacy-turn round completed its full API run:1625 passed, one unchanged60s
 embedded VibeVoice import timeout, three existing warnings. Its focused26 tests
-pass; see `vm-legacy-script-turns-01-20261025.md`. That unrelated gate stays open.
+pass; see `vm-legacy-script-turns-01-20261025.md`. The completion rerun now passes all1626 API tests with three existing warnings;
+the earlier intermittent import delay is not claimed to be root-caused.
 
 Phase03 remains60%, Phase06 open.
 

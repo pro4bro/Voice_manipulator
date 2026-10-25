@@ -28,50 +28,89 @@ re-run without modifying sources or the installed runtime:
 
 ## Script and Timeline browser acceptance
 
-The current browser attempt was refused before a tab opened:
-`Local browser use is disabled in Work settings`.
-The owner confirmed enabling it and supplied three Settings screenshots. They
-show Browser enabled, default browsing requiring approval, a site exception for
-`http://127.0.0.1:18120` and full-CDP enabled. After that confirmation, creation
-of the owned fixture tab was still refused. Resetting the CUA JS kernel and
-calling `cua.getState()` returned no browsers and the same disabled-in-Work error.
-A further inventory check after inspecting the screenshots gave the same result.
-The block occurs before URL/site approval. Its effective-permission mismatch is
-unresolved; no alternative automation channel or permission bypass is used.
+Browser access became available after the owner's restart. CUA opened the owned
+fixture at `http://127.0.0.1:18131/` using the default1280x720 viewport. All browser
+interactions used CUA; read-only DOM geometry was used to verify the native actions.
+No permission bypass or alternative automation channel was used.
 
-Official references reviewed for configuration guidance:
-[Browser](https://learn.chatgpt.com/docs/browser#computer-use-in-the-browser),
-[local security](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-local-security).
-These describe separate browser/native/policy controls but do not establish the
-cause of this particular client mismatch. A client restart is a recovery step
-to try, not a verified fix or instruction to loosen additional permissions.
+### Observed in the actual browser
 
-An isolated copy at `.scratch/vm-round-close-uat` contains4 Script turns and12
-layers, with22 existing synthetic WAV sources. HTTP reads on port18131 confirm
-the current Script and active Version both have4 rows and12 composition layers.
-No owner project/media/model was changed and no inference/training was run.
-`pre-browser-proof.json` confirms all22 WAV and22 output JSON hashes unchanged;
-all source WAVs are mono PCM16 at24kHz. The owned server was stopped after the
-blocked browser attempts; fixture files remain available for the next UAT.
+- Forward and reverse dialogue-to-dialogue drag + Ctrl+C both copied exactly
+  `alpha bright village dream\necho\nXin chào anh.` without either speaker label.
+- Drag starting on a `contenteditable=false` speaker initially selected only that
+  name. Removing the explicit noneditable boundary while retaining edit guards
+  allowed the same drag to copy exactly
+  `An: alpha bright village dream\necho\nBình: Xin chào anh.`.
+- Typing `Z` on the speaker label was refused; all four labels and row identities
+  remained intact. Table view restored the owned first row after temporary edits.
+- At common vertical scrollTop720, the ruler stayed at y398–418 and subtitles at
+  y418–446. Master moved to y-302–-142. Navigator stayed at y617–629 and transport
+  at y644–664; layer12 was reachable in that same viewport. Only one ruler exists.
+- Two Zoom+ clicks gave a4196px canvas. Native horizontal wheel moved the authority
+  viewport to scrollLeft640; ruler, subtitle and layer canvases all used width4196
+  and translateX(-640px). Subtitle `bright` and its source clip both occupied
+  x398.1875–1237.375. This verifies shared zoom/pan geometry on the synthetic fixture.
+- Native drag moved `dream` from Fix1 to Fix2, retaining3.000–4.000s. The toolbar's
+  Move Up returned it to Fix1. A drop onto the frozen subtitle area was rejected.
+  Persisted clip coordinates remain sourceStartFrame0, startFrame72000,
+  frameCount24000 at24kHz. Full remains0–120000frames and bright24000–48000frames.
+- Unicode Vietnamese typing and multiline paste were exercised on intermediate
+  builds. This is not a test of an actual Windows IME composition session.
+- Dark-theme screenshots were displayed by CUA during these actions, but were not
+  saved to a file before access was lost again. No light-theme or saved screenshot
+  result is claimed for this follow-up.
 
-Pending actual-browser checks:
+### Native bugs found and final repair
 
-- [ ] Dialogue-only forward/reverse selection across turns copies no labels.
-- [ ] Cross-column selection copies speaker names and spoken text in turn order.
-- [ ] Native Enter/Alt+Enter, multiline paste, Vietnamese input, undo/redo and
-      reload preserve exact text and row/speaker identity.
-- [ ] Master scrolls with layers; the one ruler remains visible; subtitles freeze
-      directly below it. Navigator and transport stay below the scroll viewport.
-- [ ] Zoom/pan align ruler, waveform, subtitles and source clip waveforms.
-- [ ] Vertical clip transfer and toolbar commands keep source/timeline timecodes;
-      frozen/hidden areas reject drops. Source hashes remain unchanged.
-- [ ] Dark/light visual evidence and actual screenshots saved.
+The original browser `insertText` newline command cloned dialogue grid cells and
+row IDs. An intermediate `insertHTML` approach preserved interior newlines but,
+when pasting leading blank lines at offset0, inserted text outside the dialogue
+cell. That intermediate approach was rejected, not accepted as a completed fix.
+
+The final repair removes browser editing commands for Enter/paste. It replaces
+only the selected cell's literal text, preserves blank lines/HTML-looking text,
+and restores its caret using shared text coordinates. A bounded100-edit,
+session-local history unifies ordinary typing, committed composition, newlines
+and paste; Ctrl+Z, Ctrl+Shift+Z/Ctrl+Y and beforeinput history requests use it.
+External text replacement or row removal clears stale history. Speaker labels
+remain protected by input/cut/paste guards while native selection can cross them.
+ADR0146 records this implementation decision.
+
+Focused Script verification: **4 files /39 tests passed**,5.31s. Typecheck and build
+pass;233 modules. New cases check leading/trailing blank-line paste, literal HTML,
+row/cell counts, repeated Undo/Redo, committed composition, normal input and stale
+history invalidation. DOM simulation is not native-browser acceptance.
+
+### Access lost after continuation
+
+After the owner sent “em hãy làm tiếp”, reloading the final build was refused with
+`Local browser use is disabled in Work settings`. A fresh `cua.getState()` returned
+no browsers and the same error. No final-build native text/history/reload/IME or
+light-theme screenshot result is claimed. The earlier successful native copy,
+scroll, zoom and layer-transfer observations above remain valid as scoped.
+
+The owned fixture still has4 turns/12 layers. `post-browser-proof.json` confirms
+all22 original WAV and22 output JSON hashes unchanged, mono PCM16 at24kHz; current
+Script rows equal the active Version's Script. No owner project/media/model was
+changed and no inference/training was run.
+The owned port18131 server was stopped after verification; the fixture and final
+build remain available. Browser access was lost before clipboard/tab cleanup or
+saving screenshots could run; no successful cleanup of those browser surfaces
+is claimed.
+
+Remaining native checks after Browser access returns:
+
+- [ ] Retest the final literal-text/history path at cell start/middle/end and empty
+      cells: Enter/Alt+Enter, leading/trailing blank-line paste, Undo/Redo, then reload.
+- [ ] Exercise a real Windows IME composition session and inspect browser console.
+- [ ] Verify the light theme and save current dark/light screenshots.
 
 ## Current completion status
 
-The full API gate is closed for this verification run. Browser acceptance remains
-open because the tool still denies access despite the enabled Settings screenshot.
-The previous complete frontend gate remains1341/167 files, typecheck/build233 pass;
-source files were unchanged during this check. Do not interpret
-DOM event simulations or a synthetic runtime-status banner as native-browser or
-real-model acceptance.
+The full API gate remains1626 passed with three existing warnings, unchanged from
+the preceding check. The final standard frontend run passes **167 files /1343 tests**,211.25s, exit0;
+log `.scratch/vm-browser-closure-frontend-final.log`. An intermediate full run
+overlapped source edits and failed the superseded editing-command mock case; it
+was discarded and rerun after the final source freeze. No cases, assertions,
+timeouts or test configuration were weakened. Final typecheck/build233 pass. Native acceptance is partially complete; the final text/history
+patch needs the remaining browser checks above. Phase03 stays60%, Phase06 open.

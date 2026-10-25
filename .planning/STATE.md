@@ -6,31 +6,38 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-25 — Closure check passed all1626 API tests; native UI acceptance remains blocked by effective browser permission.
-last_activity_desc: Browser enabled in owner screenshots but CUA still refuses before URL after reset. Four-turn/twelve-layer fixture ready and sources unchanged. Frontend1341/build233 unchanged; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-25 — Native Browser UAT found Script cell-edit bugs; repaired and frontend1343 green; Browser disabled again before final retest.
+last_activity_desc: Copy/Timeline native paths observed; final literal-text/history IME/reload/theme UAT pending. API1626 remains green; Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
 
 ## Closure check — legacy turns and Script/Timeline UI (2026-10-25)
 
-Verified the two latest rounds without advancing product scope. The full API
-rerun passes1626 tests (three existing warnings,892.83s), including embedded
-VibeVoice checkout import under its unchanged60s deadline. Four isolated runs
-also pass. No speculative source/runtime fix, timeout increase or skipped case;
-the earlier intermittent import delay has not been root-caused.
+Verified the two latest rounds without advancing product scope. The existing full
+API gate is1626 passed (three existing warnings); the intermittent VibeVoice
+import timeout has not been root-caused or represented as a repaired defect.
 
-Native browser acceptance is still blocked. The owner confirmed enabling Browser
-and supplied Settings screenshots. The tool still reports Local browser disabled
-in Work settings before opening a URL, including after a CUA kernel reset and
-fresh inventory. The enabled screenshot and effective tool permission disagree;
-no native selection/clipboard/IME/undo/sticky-geometry result is claimed. An
-isolated4-turn/12-layer fixture is ready;22 WAV and22 output JSON hashes unchanged,
-mono PCM16/24kHz. The owned server was stopped. A client restart is the next
-recovery step to try. See `docs/gates/vm-script-two-round-closure-20261025.md`.
-Frontend's existing1341/167 files and typecheck/build233 remain valid on unchanged
-source. Phase03 stays60%, Phase06 open; the two rounds are not both fully accepted
-until actual browser verification succeeds.
+Browser briefly worked after the owner's restart. Native forward/reverse copy,
+cross-column speaker+dialogue copy, shared vertical Timeline scrolling, frozen
+subtitles under its one ruler, shared zoom/pan geometry and locked vertical clip
+transfer/toolbar return were observed on the owned4-turn/12-layer fixture.
+
+Native UAT exposed speaker selection boundaries and browser editing commands
+splitting cells/inserting paste outside the dialogue. The final repair uses
+protected selectable labels, literal cell text insertion and a bounded100-edit
+session-local typing/composition/paste/newline Undo/Redo history. Focused Script
+39 tests, final standard frontend167 files/1343 tests (211.25s), typecheck/build233
+pass. Source WAV/output metadata22+22 hashes remain unchanged; no owner project
+or model inference/training was touched.
+
+After the owner's continuation, CUA again reports Local browser disabled before
+reloading the final patch; fresh inventory has no browsers. Final native text/
+history/reload/real IME and light-theme/saved-screenshot checks remain open. Do
+not equate the unit gate or earlier intermediate-build text checks with that
+acceptance. See `docs/gates/vm-script-two-round-closure-20261025.md` for precise
+observations and remaining steps. Phase03 stays60%, Phase06 open. Stop this bounded
+verification/fix pass with the browser gap explicit.
 
 ## VM-SCRIPT-TEXT-FREEZE-01 — Text columns and common Timeline scrolling (2026-10-25)
 
