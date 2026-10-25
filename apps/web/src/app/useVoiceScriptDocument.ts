@@ -3,7 +3,9 @@ import { api } from "../api/client";
 import type { VoiceScriptDocument, VoiceScriptRow } from "../domain/types";
 import { groupLegacyScript, migrateScript } from "../domain/voice-script-document";
 
-const content = (document: VoiceScriptDocument) => JSON.stringify({ ...document, revision: 0 });
+const content = (document: VoiceScriptDocument) => JSON.stringify({ ...document, revision: 0 }, (_key, value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
 
 function isScriptRow(value: unknown): value is VoiceScriptRow {
   return Boolean(value && typeof value === "object" && "id" in value && typeof value.id === "string" &&
@@ -62,7 +64,7 @@ export function useVoiceScriptDocument(projectId: string) {
       }
       const next = saved.revision ? migrateScript(saved.rows, saved) : latest.current;
       revision.current = saved.revision;
-      persisted.current = saved.revision ? content(next) : content(migrateScript([]));
+      persisted.current = saved.revision ? content(saved) : content(migrateScript([]));
       setDocument(next);
       setReady(true);
       setError(null);
@@ -103,7 +105,7 @@ export function useVoiceScriptDocument(projectId: string) {
   const update = useCallback((next: VoiceScriptDocument) => setDocument(migrateScript(next.rows, next)), []);
   const adoptSaved = useCallback((saved: VoiceScriptDocument) => {
     const next = migrateScript(saved.rows, saved);
-    latest.current = next; revision.current = saved.revision; persisted.current = content(next);
+    latest.current = next; revision.current = saved.revision; persisted.current = content(saved);
     setDocument(next); setReady(true); setError(null);
   }, []);
   return { document, setRows, update, adoptSaved, ready, error, flush, isSaved: ready && !error && content(document) === persisted.current, reload: () => setRetry((value) => value + 1) };

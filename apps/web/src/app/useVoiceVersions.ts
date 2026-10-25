@@ -327,11 +327,11 @@ export function useVoiceVersions({ projectId, script, config, onRestoreConfig, o
   const selectedVersion = activeVersion(book);
   const configSignature = comparableConfig(config);
   useEffect(() => {
-    if (!loaded || !script.ready || script.error || !selectedVersion || !state || busy) return;
+    if (!loaded || !script.ready || script.error || !selectedVersion || !state || busy || error) return;
     if (comparableScript(script.document) === comparableScript(state.script) && configSignature === comparableConfig(state.config)) return;
     const timer = window.setTimeout(() => { void flush().catch(() => undefined); }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, script.ready, script.error, script.document, configSignature, selectedVersion?.id, state?.revision, state?.script, state?.config, busy, flush]);
+  }, [loaded, script.ready, script.error, script.document, configSignature, selectedVersion?.id, state?.revision, state?.script, state?.config, busy, error, flush]);
 
   const ready = loaded && script.ready && !script.error && (!book?.activeVersionId || Boolean(state && checkedOut.current === `${projectId}:${book.activeVersionId}`));
   return { book, state, activeVersion: selectedVersion, ready, busy, transitioning, error, flush, reload, change, editLayer, adoptOutput, slotAction, refreshAfterGeneration };

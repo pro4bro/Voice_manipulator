@@ -36,7 +36,36 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it("keeps a refused autosave error stable without repeatedly toggling busy until an explicit retry", async () => {
+  const initial = props();
+  const hook = renderHook((value: UseVoiceVersionsProps) => useVoiceVersions(value), { initialProps: initial });
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  const original = fetchMock.getMockImplementation()!;
+  let writes = 0;
+  fetchMock.mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/state") && ++writes === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return { ok: false, status: 409, json: async () => ({ detail: "Script chưa lưu hoặc Version không còn được chọn." }) };
+    }
+    return original(input, init);
+  });
+  vi.useFakeTimers();
+  hook.rerender({ ...initial, config: { rate: 1.2 } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+  expect(hook.result.current.busy).toBe(true);
+  await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+  expect(hook.result.current.error).toContain("Script chưa lưu");
+  expect(hook.result.current.busy).toBe(false);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+  expect(writes).toBe(1);
+  expect(hook.result.current.error).toContain("Script chưa lưu");
+  await act(async () => { await hook.result.current.flush(); });
+  expect(writes).toBe(2);
+  expect(hook.result.current.error).toBeNull();
+  expect(hook.result.current.busy).toBe(false);
+});
 
 function props(overrides: Partial<UseVoiceVersionsProps> = {}): UseVoiceVersionsProps {
   return { projectId: "p", script: { document: scriptDoc(), ready: true, error: null, flush: vi.fn(async () => scriptDoc()), adoptSaved: vi.fn() }, config: { rate: 1 }, onRestoreConfig: vi.fn(), onOpenOutput: vi.fn(), ...overrides };

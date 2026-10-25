@@ -12,6 +12,44 @@ beforeEach(() => {
 });
 const row = { id: "r", text: "Xin chào.", voiceId: "v", speakerProfileId: "s" };
 
+it("persists normalization of orphaned legacy segments before reporting the loaded Script saved", async () => {
+  const saved = migrateScript([row]);
+  saved.revision = 8;
+  saved.segments.push({ id: "orphaned-legacy-segment", name: "Old sentence", settings: {} });
+  mocks.getVoiceScript.mockResolvedValue(saved);
+  const hook = renderHook(() => useVoiceScriptDocument("p"));
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  await act(async () => { await hook.result.current.flush(); });
+  expect(mocks.saveVoiceScript).toHaveBeenCalledTimes(1);
+  expect(mocks.saveVoiceScript.mock.calls[0][1]).toMatchObject({ revision: 8, segments: [{ id: "segment-r" }] });
+  expect(hook.result.current.document.revision).toBe(9);
+  expect(hook.result.current.isSaved).toBe(true);
+});
+
+it("does not rewrite a canonical server document merely because JSON keys are sorted", async () => {
+  const saved = { ...migrateScript([row]), revision: 8 };
+  mocks.getVoiceScript.mockResolvedValue(JSON.parse(JSON.stringify(saved, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)));
+  const hook = renderHook(() => useVoiceScriptDocument("p"));
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  await act(async () => { await hook.result.current.flush(); });
+  expect(mocks.saveVoiceScript).not.toHaveBeenCalled();
+  expect(hook.result.current.isSaved).toBe(true);
+});
+
+it("also saves normalization after a Version checkout instead of adopting it as persisted", async () => {
+  const hook = renderHook(() => useVoiceScriptDocument("p"));
+  await waitFor(() => expect(hook.result.current.ready).toBe(true));
+  const checkout = { ...migrateScript([row]), revision: 12 };
+  checkout.segments.push({ id: "old-segment", name: "Unused", settings: {} });
+  act(() => hook.result.current.adoptSaved(checkout));
+  await act(async () => { await hook.result.current.flush(); });
+  expect(mocks.saveVoiceScript).toHaveBeenCalledTimes(1);
+  expect(mocks.saveVoiceScript.mock.calls[0][1]).toMatchObject({ revision: 12, segments: [{ id: "segment-r" }] });
+  expect(hook.result.current.isSaved).toBe(true);
+});
+
 it("migrates browser-only rows once and opens the project document on a fresh browser", async () => {
   localStorage.setItem("pro4bro:p:voice-script", JSON.stringify([row]));
   const first = renderHook(() => useVoiceScriptDocument("p"));
