@@ -91,6 +91,85 @@ def _trusted_row_words(
     return mapped
 
 
+def project_output_for_script(output: VoiceOutput, script: VoiceScriptDocument) -> VoiceOutput | None:
+    """Safely fold legacy source rows; return None when provenance cannot be exact."""
+    if not any(len(row.legacy_row_ids) > 1 for row in script.rows):
+        return output
+    aliases_to_row: dict[str, str] = {}
+    expected_by_row: dict[str, set[str]] = {}
+    grouped_segments: list[VoiceOutputSegment] = []
+    for row in script.rows:
+        aliases = list(dict.fromkeys([row.id, *row.legacy_row_ids]))
+        expected_by_row[row.id] = set(aliases)
+        for alias in aliases:
+            if alias in aliases_to_row and aliases_to_row[alias] != row.id:
+                return None
+            aliases_to_row[alias] = row.id
+    source_claims: list[set[str]] = []
+    source_targets: list[str | None] = []
+    for segment in output.segments:
+        metadata = segment.script_row if isinstance(segment.script_row, dict) else {}
+        declared = metadata.get("legacyRowIds", metadata.get("legacy_row_ids", []))
+        if not isinstance(declared, list) or any(not isinstance(item, str) for item in declared):
+            return None
+        claims = set([segment.row_id, *declared])
+        target_ids = {aliases_to_row[item] for item in claims if item in aliases_to_row}
+        if len(target_ids) != 1 or any(item not in aliases_to_row for item in claims):
+            return None
+        target_id = next(iter(target_ids))
+        if not claims.issubset(expected_by_row[target_id]):
+            return None
+        source_claims.append(claims)
+        source_targets.append(target_id)
+
+    covered: dict[str, set[str]] = {row_id: set() for row_id in expected_by_row}
+    for claims, target_id in zip(source_claims, source_targets):
+        assert target_id is not None
+        if covered[target_id].intersection(claims):
+            return None
+        covered[target_id].update(claims)
+    for row in script.rows:
+        if row.text.strip() and covered[row.id] != expected_by_row[row.id]:
+            return None
+
+    for row in script.rows:
+        aliases = expected_by_row[row.id]
+        source_positions = [index for index, target in enumerate(source_targets) if target == row.id]
+        sources = [output.segments[index] for index in source_positions]
+        if not sources:
+            if row.text.strip():
+                return None
+            continue
+        if source_positions != list(range(source_positions[0], source_positions[-1] + 1)):
+            return None
+        first = sources[0]
+        grouped_segments.append(first.model_copy(update={
+            "row_id": row.id,
+            "text": "\n".join(segment.text for segment in sources),
+            "start": min(segment.start for segment in sources),
+            "end": max(segment.end for segment in sources),
+        }, deep=True))
+
+    expected_ids = [row.id for row in script.rows if row.text.strip()]
+    if [segment.row_id for segment in grouped_segments] != expected_ids:
+        return None
+    segment_index = {segment.row_id: index for index, segment in enumerate(grouped_segments)}
+    words = []
+    for source_word in output.words:
+        word = dict(source_word)
+        old_index = word.get("segmentIndex")
+        target_id = source_targets[old_index] if isinstance(old_index, int) and 0 <= old_index < len(source_targets) else None
+        if isinstance(old_index, int):
+            if target_id is None or target_id not in segment_index:
+                return None
+            word["segmentIndex"] = segment_index[target_id]
+        words.append(word)
+    return output.model_copy(update={
+        "segments": grouped_segments,
+        "words": words,
+    }, deep=True)
+
+
 def _region(
     row_id: str, text: str, voice_id: str, speaker_profile_id: str | None,
     settings: dict[str, Any], start: int, end: int, reason: str, ordinal: int,
@@ -121,6 +200,9 @@ def plan_version_fix(
         return {"regions": [], "blockers": [
             "No generated Script snapshot is available; run Full generation or review the Timeline before local fixes."]}
 
+    projected_output = project_output_for_script(output, generated_script)
+    if projected_output is not None:
+        output = projected_output
     current_rows = current_script.rows
     generated_rows = generated_script.rows
     current_ids = [row.id for row in current_rows]

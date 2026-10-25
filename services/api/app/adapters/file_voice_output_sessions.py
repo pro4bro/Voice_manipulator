@@ -14,7 +14,8 @@ from app.adapters.file_project_repository import FileProjectRepository
 from app.adapters.file_voice_script import FileVoiceScript, ScriptRevisionConflict
 from app.domain.models import VoiceOutput
 from app.domain.voice_edits import VoiceEditDocument
-from app.domain.voice_script_document import VoiceScriptDocument
+from app.domain.voice_script_document import (VoiceScriptDocument, apply_legacy_row_groups,
+    legacy_row_groups, referenced_script_row_ids)
 from app.domain.voice_versions import VoiceVersionState
 from app.domain.output_lifecycle import (normalize_recycle, find_slot, recycle_slot, restore_slot,
     recycled_entry, output_ids, slot_versions)
@@ -61,7 +62,7 @@ class FileVoiceOutputSessions:
             index += 1
         return index
 
-    def _script_from_output(self, output):
+    def _script_from_output(self, project_id, output):
         rows, segments = [], []
         for segment in output.segments:
             row = copy.deepcopy(segment.script_row or {})
@@ -70,7 +71,72 @@ class FileVoiceOutputSessions:
                 segments.append({"id": sid})
             rows.append({**row, "id": segment.row_id, "text": segment.text, "voiceId": segment.voice_id,
                 "speakerProfileId": segment.speaker_profile_id, "segmentId": sid})
-        return VoiceScriptDocument.model_validate({"segments": segments, "rows": rows})
+        document = VoiceScriptDocument.model_validate({"segments": segments, "rows": rows,
+            "turnGroupingVersion": 1})
+        if output.parameters.get("turnGroupingVersion") == 1:
+            return document
+        protected_ids = referenced_script_row_ids(self._capture_sidecars(project_id))
+        return apply_legacy_row_groups(document, legacy_row_groups(document, protected_row_ids=protected_ids))
+
+    @staticmethod
+    def _migrate_state_turns(state: dict, common_groups: list[list[str]] | None = None) -> bool:
+        """Group legacy Version snapshots together and make migration durable."""
+        changed = False
+        source = state.get("script")
+        if not isinstance(source, dict):
+            return False
+        source_legacy = int(source.get("turnGroupingVersion", 0)) < 1
+        source_doc = VoiceScriptDocument.model_validate({**source, "turnGroupingVersion": 1})
+        related_documents = [VoiceScriptDocument.model_validate({**state[key], "turnGroupingVersion": 1})
+            for key in ("generatedScript", "fullGeneratedScript") if isinstance(state.get(key), dict)]
+        protected = referenced_script_row_ids(state.get("sidecars", {}))
+        groups = (common_groups or legacy_row_groups(source_doc, related_documents, protected)) if source_legacy else [
+            list(dict.fromkeys([row.id, *row.legacy_row_ids])) for row in source_doc.rows]
+        if source_legacy:
+            source_doc = apply_legacy_row_groups(source_doc, groups)
+            state["script"] = source_doc.model_dump(by_alias=True, mode="json")
+            changed = True
+
+        for key in ("generatedScript", "fullGeneratedScript"):
+            related = state.get(key)
+            if not isinstance(related, dict):
+                continue
+            if int(related.get("turnGroupingVersion", 0)) < 1:
+                related_doc = VoiceScriptDocument.model_validate({**related, "turnGroupingVersion": 1})
+                related_doc = apply_legacy_row_groups(related_doc, groups)
+                state[key] = related_doc.model_dump(by_alias=True, mode="json")
+                changed = True
+
+        for item in state.get("history", []):
+            historical = item.get("script") if isinstance(item, dict) else None
+            if isinstance(historical, dict) and int(historical.get("turnGroupingVersion", 0)) < 1:
+                history_doc = VoiceScriptDocument.model_validate({**historical, "turnGroupingVersion": 1})
+                item["script"] = apply_legacy_row_groups(history_doc, groups).model_dump(by_alias=True, mode="json")
+                changed = True
+        if changed:
+            state["revision"] = int(state.get("revision", 0)) + 1
+        return changed
+
+    def _migrate_book_turns(self, book: dict, active_script: VoiceScriptDocument) -> bool:
+        changed = False
+        active_groups = [list(dict.fromkeys([row.id, *row.legacy_row_ids])) for row in active_script.rows]
+
+        def migrate_slot(slot):
+            nonlocal changed
+            if not isinstance(slot, dict):
+                return
+            state = slot.get("state")
+            groups = active_groups if slot.get("id") == book.get("activeVersionId") else None
+            if isinstance(state, dict) and self._migrate_state_turns(state, groups):
+                changed = True
+            for version in slot.get("versions", []):
+                migrate_slot(version)
+
+        for session in book.get("sessions", []):
+            migrate_slot(session)
+        for entry in book.get("recycle", []):
+            migrate_slot(entry.get("snapshot", {}))
+        return changed
 
     def base_composition(self, project_id, output_id):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,119}", output_id):
@@ -111,7 +177,7 @@ class FileVoiceOutputSessions:
                     except Exception:
                         self.outputs.discard(project_id, new_id)
                         raise
-            script = self._script_from_output(output)
+            script = self._script_from_output(project_id, output)
             config = {"generatorParameters": output.parameters.get("generators", {}), "speed": 1, "gain": 0, "generationEngine": None}
             try:
                 composition = self.base_composition(project_id, output_id)
@@ -127,9 +193,13 @@ class FileVoiceOutputSessions:
         exists = path.is_file()
         book = json.loads(path.read_text(encoding="utf-8")) if exists else {
             "schemaVersion": 2, "revision": 0, "activeSessionId": None, "activeVersionId": None, "sessions": [], "recycle": []}
+        original_book = copy.deepcopy(book)
         prior_recycle = encode(book.get("recycle", []))
         normalize_recycle(book)
         changed = prior_recycle != encode(book["recycle"])
+        active_script = self.scripts.get(project_id)
+        turns_migrated = self._migrate_book_turns(book, active_script)
+        changed = changed or turns_migrated
         migrating = not exists or book.get("schemaVersion", 1) < 2
         # Migrate once. Later generated artifacts are explicitly committed to a
         # captured Version, never assigned by timestamp/list order.
@@ -165,6 +235,10 @@ class FileVoiceOutputSessions:
             if current.rows:
                 active["state"]["script"] = current.model_dump(by_alias=True, mode="json")
             active["state"]["sidecars"] = self._capture_sidecars(project_id)
+        if turns_migrated:
+            backup = path.with_name(path.name + ".pre-turn-grouping")
+            if not backup.exists():
+                FileProjectRepository._atomic_write(backup, encode(original_book))
         if changed:
             self._write(project_id, book)
         return book

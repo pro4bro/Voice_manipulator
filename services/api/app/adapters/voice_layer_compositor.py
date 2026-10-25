@@ -178,6 +178,13 @@ class VoiceLayerCompositor:
         words: list[dict[str, Any]] = []
         segments = [segment.model_copy(deep=True) for segment in template_segments]
         target_segment_indices = {segment.row_id: index for index, segment in enumerate(template_segments)}
+        for index, segment in enumerate(template_segments):
+            metadata = segment.script_row or {}
+            aliases = metadata.get("legacyRowIds", metadata.get("legacy_row_ids", []))
+            if isinstance(aliases, list):
+                for alias in aliases:
+                    if isinstance(alias, str):
+                        target_segment_indices[alias] = index
         cropped_words = False
         for interval in intervals:
             source = sources[interval.clip.output_id]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.domain.models import VoiceOutput, VoiceOutputSegment
 from app.domain.voice_script_document import VoiceScriptDocument
-from app.domain.voice_version_fix import plan_version_fix
+from app.domain.voice_version_fix import plan_version_fix, project_output_for_script
 
 RATE = 24000
 
@@ -55,6 +55,47 @@ def test_one_word_text_edit_maps_exact_word_frames():
         "row-0", "love", round(.3 * RATE), round(.2 * RATE))
     assert region["voiceId"] == "voice" and region["speakerProfileId"] == "speaker"
     assert "duration" not in region["settings"]
+
+
+def test_legacy_projection_preserves_source_text_times_and_requires_exact_segments():
+    grouped = VoiceScriptDocument.model_validate({"segments": [{"id": "s"}], "rows": [
+        {"id": "row-1", "legacyRowIds": ["row-1", "row-2"], "segmentId": "s",
+         "text": "alpha\nbravo", "voiceId": "voice", "speakerProfileId": "speaker"},
+    ]})
+    source = _output(["alpha", "bravo"], words=[
+        {"text": "alpha", "start": .1, "end": .2, "segmentIndex": 0, "timingTrusted": True},
+        {"text": "bravo", "start": 1.1, "end": 1.2, "segmentIndex": 1, "timingTrusted": True},
+    ], segments=[VoiceOutputSegment(row_id="row-1", voice_id="voice", voice_name="Voice",
+            speaker_profile_id="speaker", engine="omnivoice", generator_id="omni", text="alpha", start=0, end=1),
+        VoiceOutputSegment(row_id="row-2", voice_id="voice", voice_name="Voice",
+            speaker_profile_id="speaker", engine="omnivoice", generator_id="omni", text="bravo", start=1, end=2)])
+    projected = project_output_for_script(source, grouped)
+    assert projected is not None
+    assert projected.text == source.text
+    assert [segment.row_id for segment in projected.segments] == ["row-1"]
+    assert projected.words == [{**source.words[0], "segmentIndex": 0}, {**source.words[1], "segmentIndex": 0}]
+    assert [(word["start"], word["end"]) for word in projected.words] == [(.1, .2), (1.1, 1.2)]
+
+    already_grouped = _output(["alpha\nbravo"], words=[
+        {"text": "alpha", "start": .1, "end": .2, "segmentIndex": 0, "timingTrusted": True},
+        {"text": "bravo", "start": 1.1, "end": 1.2, "segmentIndex": 0, "timingTrusted": True},
+    ], segments=[VoiceOutputSegment(row_id="row-1", voice_id="voice", voice_name="Voice",
+        speaker_profile_id="speaker", engine="omnivoice", generator_id="omni", text="alpha\nbravo",
+        start=0, end=2, script_row={"id": "row-1", "legacyRowIds": ["row-1", "row-2"]})])
+    repeated = project_output_for_script(already_grouped, grouped)
+    assert repeated is not None
+    assert [segment.row_id for segment in repeated.segments] == ["row-1"]
+    assert repeated.words == already_grouped.words
+
+    extra = _output(["alpha", "bravo", "unexpected"], words=source.words,
+        segments=[*source.segments, VoiceOutputSegment(row_id="unknown", voice_id="voice", voice_name="Voice",
+            speaker_profile_id="speaker", engine="omnivoice", generator_id="omni", text="unexpected", start=2, end=3)])
+    assert project_output_for_script(extra, grouped) is None
+
+    missing = _output(["alpha"], words=source.words[:1], segments=[source.segments[0]])
+    assert project_output_for_script(missing, grouped) is None
+    result = _plan(grouped, grouped, extra)
+    assert result["blockers"] and result["regions"] == []
 
 
 def test_two_disjoint_edits_remain_separate_regions():

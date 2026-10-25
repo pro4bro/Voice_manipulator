@@ -100,10 +100,16 @@ class VoiceVersionGeneration:
             return self._publish_fix(project_id, ticket, candidate)
         actual_frames = len(self._read(self.sessions.root(project_id) / candidate.audio_path)) // 2
         duration = actual_frames / RATE
+        full_rows = {row["id"]: row for row in ticket["script"].get("rows", [])}
         candidate = candidate.model_copy(update={"duration": duration,
-            "segments": [segment.model_copy(update={"end": min(segment.end, duration)}) for segment in candidate.segments],
+            "segments": [segment.model_copy(update={"end": min(segment.end, duration),
+                "script_row": {**(segment.script_row or {}), **full_rows.get(segment.row_id, {}),
+                    "legacyRowIds": list(dict.fromkeys([segment.row_id,
+                        *full_rows.get(segment.row_id, {}).get("legacyRowIds", [])]))}})
+                for segment in candidate.segments],
             "words": [{**word, "start": min(float(word["start"]), duration), "end": min(float(word["end"]), duration)} for word in candidate.words],
             "parameters": {**candidate.parameters,
+            "turnGroupingVersion": 1,
             "voiceVersion": {"versionId": ticket["versionId"], "jobId": job_id, "kind": "full"}}})
         saved = self.outputs.save(project_id, candidate)
         try:
@@ -183,6 +189,8 @@ class VoiceVersionGeneration:
 
     def _publish_fix(self, project_id, ticket, candidate):
         from app.domain.voice_composition import VoiceComposition, VoiceCompositionClip, add_fix_clip
+        from app.domain.voice_script_document import VoiceScriptDocument
+        from app.domain.voice_version_fix import project_output_for_script
         from app.adapters.voice_layer_compositor import VoiceLayerCompositor
         composition = VoiceComposition.model_validate(ticket["composition"])
         reference = self._read(self.outputs.audio_path(project_id, ticket["sourceOutputId"]))
@@ -197,10 +205,22 @@ class VoiceVersionGeneration:
                 composition = add_fix_clip(composition, composition.layers[0].id, clip)
             rendered = VoiceLayerCompositor(self.outputs).render(project_id, composition, ticket["sourceOutputId"])
             created.append(rendered.id)
-            rows = {row["id"]: row for row in ticket["script"]["rows"]}
-            rendered = rendered.model_copy(update={"text": "\n".join(row["text"] for row in ticket["script"]["rows"]),
-                "segments": [segment.model_copy(update={"text": rows[segment.row_id]["text"], "script_row": rows[segment.row_id]}) for segment in rendered.segments],
-                "parameters": {**rendered.parameters, "voiceVersion": {"versionId": ticket["versionId"], "kind": "fix", "regions": ticket["regions"]}}})
+            grouped_script = VoiceScriptDocument.model_validate(ticket["script"])
+            projected = project_output_for_script(rendered, grouped_script)
+            if projected is None:
+                raise ValueError("Cannot safely map legacy Script rows to rendered word timing.")
+            script_rows = {row.id: row for row in grouped_script.rows}
+            projected = projected.model_copy(update={
+                "text": "\n".join(row.text for row in grouped_script.rows),
+                "segments": [segment.model_copy(update={"text": script_rows[segment.row_id].text,
+                    "script_row": {**(segment.script_row or {}),
+                        **script_rows[segment.row_id].model_dump(by_alias=True, mode="json"),
+                        "legacyRowIds": list(dict.fromkeys([segment.row_id,
+                            *script_rows[segment.row_id].legacy_row_ids]))}})
+                    for segment in projected.segments],
+            })
+            rendered = projected.model_copy(update={"parameters": {**projected.parameters, "turnGroupingVersion": 1,
+                "voiceVersion": {"versionId": ticket["versionId"], "kind": "fix", "regions": ticket["regions"]}}})
             self.outputs.save(project_id, rendered)
             self.sessions.publish(project_id, ticket["versionId"], ticket["revision"], rendered, ticket["script"], ticket["config"],
                 composition.model_dump(by_alias=True, mode="json"), expected_script=ticket["script"],
