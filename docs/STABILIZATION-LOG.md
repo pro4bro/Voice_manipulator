@@ -2497,3 +2497,29 @@ full green. Cùng import test chạy riêng pass35.26s với timeout60s nguyên 
 không sửa skip/timeout. Chưa quy được nguyên nhân sâu của stall nhất thời.
 Gate `docs/gates/expressive-engines87-91-20261022.md` giữ chi tiết và log.
 Đây là bổ sung containment/evidence, không đổi con trỏ stabilization NEXT cũ.
+
+
+## Owner training feedback — TRAIN-PORTABLE-RVC-01 (2026-10-25)
+
+### Agent tự kiểm
+
+Job RVC thật đã lỗi sau4m22s tại globalStep0, không còn trainer; screenshot/API
+đều báo failed. Portable Python bỏ qua PYTHONPATH/PYTHONUNBUFFERED, không nạp
+startup hook single GPU và không tìm thấy data_utils; epoch stdout còn bị mất
+khi worker os._exit. Đã sửa startup pth tương đối, flush stdout trong worker,
+regex chọn lỗi cuối và thông báo terminal partial progress. Implementation1032b7c.
+
+Probe GPU cuối qua1epoch/8steps, nhận đúng progress8/8, lưu model55182289byte và
+index16388819byte;457tensor finite. Giữ nguyên source features/hash, job lỗi và
+các checkpoint chủ dự án. Hai OmniVoice gần nhất có adapter107596368byte thật
++config/reference. Không publish smoke hay tự train lại200epoch.
+
+### Kết quả so với ngưỡng
+
+Focused API47/7.21s, focused frontend25/3.68s, full frontend1381/174file/209.23s
+pass; typecheck/build239 pass. Full API1630 pass/1 intermittent VibeVoice import timeout/859.05s; exact case passes alone16.07s, original60s bound unchanged. Full API gate remains open. Không skip/nới timeout
+hoặc sửa assertion cũ. Runtime pth đã sửa tại máy và có backup; API không restart.
+Browser vẫn chặn inventory nên native UI chưa nghiệm thu; chất lượng giọng và
+200epoch còn mở. Gate docs/gates/train-portable-rvc-01-20261025.md và ADR0151
+giữ bằng chứng. Không đổi con trỏ stabilization NEXT cũ; round feedback riêng,
+Phase03 vẫn60%, Phase06 mở.

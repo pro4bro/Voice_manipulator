@@ -6,11 +6,39 @@ current_plan: 3
 total_plans_in_phase: 4
 status: In progress
 progress: 60%
-last_activity: 2026-10-25 — VM-PLAYBACK-IDENTITY-01 fixes competing Timeline publishers and edited word mapping; frontend1380 passes.
-last_activity_desc: Actual imported parent/child and edited merged-turn sync regressions repaired; native Browser acceptance remains open. Audio delivery planned; Phase03 stays60%, Phase06 open.
+last_activity: 2026-10-26 — TRAIN-PORTABLE-RVC-01 repairs actual portable RVC startup and epoch progress; real GPU model/index verified.
+last_activity_desc: GPU1epoch/8steps verified, full frontend1381 passes, full API1630 pass/1 intermittent VibeVoice import timeout; isolated case passes16.07s. Native UI/full200epoch/listening acceptance open; Phase03 stays60%, Phase06 open.
 ---
 
 # Project State
+
+## TRAIN-PORTABLE-RVC-01 — Portable training startup and progress (2026-10-25)
+
+Owner reports hours at15–16% for RVC/OmniVoice. Actual RVC run-f49951fb60ec
+failed18:24:28 after4m22s/globalStep0 with unsupported gloo device. The screenshot
+and API agree it stopped; the partial bar and API traffic looked like ongoing work.
+Both recent OmniVoice400-step runs have real107596368-byte LoRA adapters,394
+valid tensor entries, configs and reference WAVs. No current trainer was running.
+
+Implementation1032b7c fixes portable RVC startup paths for the existing Windows
+single-GPU hook and Applio train modules. Spawned isolated workers now flush epoch
+output before os._exit. The runner's exception selector lost word boundaries to
+literal backspace characters; it now retains the terminal exception. UI labels a
+halted partial bar explicitly and recovers the real exception from legacy journals.
+
+Real GPU smoke1epoch/8steps emits parsed8/8, saves55182289-byte model plus16388819-
+byte index; CPU reload457 finite tensors, epoch1/step8/40k/f0/v2. Source feature
+hashes unchanged. Diagnostic outputs stay in scratch; no owner run/media/voice
+rewrites or automatic200-epoch rerun. Local runtime pth repaired with backup;
+new portable builds carry the fix. Probe processes/junctions cleaned and2.59GB
+of diagnostic optimizer states reclaimed; final model/index/log retained.
+
+Focused API47 pass/7.21s; frontend25 pass/3.68s. Full frontend174 files/1381 tests
+pass209.23s; typecheck/build239 pass, JS index-WSXAL2T5.js. Full API1630 pass/1 intermittent VibeVoice import timeout/859.05s; exact case passes alone16.07s, original60s bound unchanged. Full API gate remains open.
+ADR0151 and docs/gates/train-portable-rvc-01-20261025.md hold reproduction,
+artifacts and boundaries. Browser still denies inventory; native UI, full200epoch
+and listening acceptance remain open. Running API not restarted; reopen app to
+load all new code. Phase03 stays60%, Phase06 open. Stop this bounded round.
 
 ## VM-PLAYBACK-IDENTITY-01 — One source word for subtitle and Script (2026-10-25)
 
