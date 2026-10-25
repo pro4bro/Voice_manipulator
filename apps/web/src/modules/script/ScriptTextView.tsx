@@ -11,6 +11,14 @@ interface ScriptTextViewProps {
   onRoot: (element: HTMLDivElement | null) => void;
 }
 
+interface TextEdit {
+  rowId: string;
+  before: string;
+  after: string;
+  selectionBefore: [number, number];
+  selectionAfter: [number, number];
+}
+
 function selectedDialogue(root: HTMLElement) {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return null;
@@ -46,6 +54,9 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
   const rootRef = useRef<HTMLDivElement>(null);
   const cells = useRef(new Map<string, HTMLElement>());
   const composing = useRef(false);
+  const lastText = useRef(new Map<string, string>());
+  const editSelection = useRef<ReturnType<typeof readSelectedScriptText>>(null);
+  const history = useRef<{ undo: TextEdit[]; redo: TextEdit[] }>({ undo: [], redo: [] });
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -54,9 +65,16 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     const selection = window.getSelection();
     const active = activeElement === root ? activeCell(selection?.anchorNode ?? null) : activeElement;
     const selected = readSelectedScriptText(root);
+    if ([...lastText.current.keys()].some((id) => !rows.some((row) => row.id === id))) {
+      history.current = { undo: [], redo: [] };
+      lastText.current.clear();
+    }
     for (const row of rows) {
       const cell = cells.current.get(row.id);
-      if (!cell || editableText(cell) === row.text || cell === active && composing.current) continue;
+      if (!cell || cell === active && composing.current) continue;
+      if (lastText.current.has(row.id) && lastText.current.get(row.id) !== row.text) history.current = { undo: [], redo: [] };
+      lastText.current.set(row.id, row.text);
+      if (editableText(cell) === row.text) continue;
       cell.textContent = row.text;
       if (selected?.rowId === row.id) {
         const length = row.text.length;
@@ -90,24 +108,55 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
   }
 
   function insertText(cell: HTMLElement, text: string) {
-    const selection = window.getSelection();
-    if (!selection?.rangeCount) return;
-    const range = selection.getRangeAt(0);
-    if (!cell.contains(range.startContainer) || !cell.contains(range.endContainer)) return;
-    if (typeof document.execCommand === "function" && document.execCommand("insertText", false, text)) return;
-    range.deleteContents();
-    const node = document.createTextNode(text);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    const root = rootRef.current;
+    const selected = root && readSelectedScriptText(root);
+    if (!root || !selected || selected.rowId !== cell.dataset.rowId) return;
+    editSelection.current = selected;
+    const value = editableText(cell);
+    // Browser editing commands can split a grid cell or insert before it at offset 0.
+    // Replace only this cell's literal text and keep history independent of DOM markup.
+    cell.textContent = value.slice(0, selected.start) + text + value.slice(selected.end);
+    selectText(root, selected.rowId, selected.start + text.length, selected.start + text.length);
+    commitCell(cell);
+  }
+
+  function commitCell(cell: HTMLElement) {
+    const rowId = cell.dataset.rowId!;
+    const before = lastText.current.get(rowId) ?? "";
+    const after = editableText(cell);
+    if (before === after) return;
+    const selected = rootRef.current && readSelectedScriptText(rootRef.current);
+    const prior = editSelection.current?.rowId === rowId ? editSelection.current : null;
+    history.current.undo.push({ rowId, before, after, selectionBefore: [prior?.start ?? 0, prior?.end ?? 0], selectionAfter: [selected?.start ?? after.length, selected?.end ?? after.length] });
+    if (history.current.undo.length > 100) history.current.undo.shift();
+    history.current.redo = [];
+    lastText.current.set(rowId, after);
+    onTextChange(rowId, after);
+  }
+
+  function replayEdit(direction: "undo" | "redo") {
+    const edit = history.current[direction].pop();
+    const root = rootRef.current;
+    const cell = edit && cells.current.get(edit.rowId);
+    if (!edit || !root || !cell) return;
+    const value = direction === "undo" ? edit.before : edit.after;
+    const [start, end] = direction === "undo" ? edit.selectionBefore : edit.selectionAfter;
+    cell.textContent = value;
+    lastText.current.set(edit.rowId, value);
+    history.current[direction === "undo" ? "redo" : "undo"].push(edit);
+    selectText(root, edit.rowId, start, end);
+    onTextChange(edit.rowId, value);
   }
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return undefined;
     const handleBeforeInput = (event: InputEvent) => {
+      if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+        event.preventDefault();
+        if (!composing.current) replayEdit(event.inputType === "historyUndo" ? "undo" : "redo");
+        return;
+      }
       const cell = activeCell(event.target);
       if (!cell) {
         event.preventDefault();
@@ -116,11 +165,11 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
       }
       if (refuseCrossRowEdit(event)) return;
       if (event.isComposing) return;
+      editSelection.current = readSelectedScriptText(root);
       root.removeAttribute("data-edit-guidance");
       if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
         event.preventDefault();
         insertText(cell, "\n");
-        onTextChange(cell.dataset.rowId!, editableText(cell));
       } else if (/^delete.*(?:Backward|Forward)$/u.test(event.inputType) && window.getSelection()?.rangeCount) {
         const range = window.getSelection()!.getRangeAt(0);
         if (range.collapsed && (event.inputType.endsWith("Backward") && isAtCellEdge(cell, range, "start") || event.inputType.endsWith("Forward") && isAtCellEdge(cell, range, "end"))) event.preventDefault();
@@ -139,18 +188,24 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     event.clipboardData.setData("text/plain", text);
   }} onInput={(event) => {
     const cell = activeCell(event.target);
-    if (cell) onTextChange(cell.dataset.rowId!, editableText(cell));
-  }} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => {
+    if (cell && !composing.current) commitCell(cell);
+  }} onCompositionStart={() => {
+    composing.current = true;
+    editSelection.current = rootRef.current && readSelectedScriptText(rootRef.current);
+  }} onCompositionEnd={(event) => {
     composing.current = false;
     const cell = activeCell(event.target);
-    if (cell) onTextChange(cell.dataset.rowId!, editableText(cell));
+    if (cell) commitCell(cell);
   }} onKeyDown={(event) => {
-    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+    const key = event.key.toLowerCase();
+    if (!event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y")) {
+      event.preventDefault();
+      replayEdit(key === "y" || event.shiftKey ? "redo" : "undo");
+    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       const cell = activeCell(event.target);
       if (cell && !refuseCrossRowEdit(event.nativeEvent)) {
         insertText(cell, "\n");
-        onTextChange(cell.dataset.rowId!, editableText(cell));
       }
     } else if (event.key === "Backspace" || event.key === "Delete") {
       if (refuseCrossRowEdit(event.nativeEvent)) { event.preventDefault(); return; }
@@ -171,13 +226,12 @@ export function ScriptTextView({ rows, speakers, onTextChange, onRoot }: ScriptT
     const cell = activeCell(event.target);
     if (!cell || refuseCrossRowEdit(event.nativeEvent)) return;
     insertText(cell, event.clipboardData.getData("text/plain"));
-    onTextChange(cell.dataset.rowId!, editableText(cell));
   }} onDrop={(event) => { event.preventDefault(); rootRef.current?.setAttribute("data-edit-guidance", "Kéo thả text chưa hỗ trợ; hãy dùng sao chép/dán trong ô lời thoại."); }} ref={(element) => { rootRef.current = element; onRoot(element); }} role="textbox" aria-multiline="true" suppressContentEditableWarning contentEditable spellCheck style={{ whiteSpace: "pre-wrap" }}>
     <div className="script-text-view__header" contentEditable={false}><span>Speaker</span><span>Lời thoại</span></div>
     {rows.map((row, index) => {
       const speaker = speakers.find((profile) => profile.id === row.speakerProfileId);
       return <div className="script-text-view__row" data-script-text-row data-script-row-id={row.id} key={row.id}>
-        <div className="script-text-view__speaker" contentEditable={false} data-script-text-speaker data-script-text-copy-label={speaker?.name ?? "Chưa gán Profile"}>{speaker?.name ?? "Chưa gán Profile"}:</div>
+        <div className="script-text-view__speaker" data-script-text-speaker data-script-text-copy-label={speaker?.name ?? "Chưa gán Profile"}>{speaker?.name ?? "Chưa gán Profile"}:</div>
         <div aria-label={`Lời thoại đoạn ${index + 1}`} className="script-text-view__dialogue" data-script-text-dialogue data-row-id={row.id} ref={(element) => { if (element) cells.current.set(row.id, element); else cells.current.delete(row.id); }} tabIndex={0} />
       </div>;
     })}

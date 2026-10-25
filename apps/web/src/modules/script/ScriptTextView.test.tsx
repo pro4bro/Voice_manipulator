@@ -9,6 +9,23 @@ const rows = [
 const speakers = [{ id: "an", name: "An Vũ" }, { id: "khoa", name: "Khoa Trịnh" }];
 
 describe("Script text view", () => {
+  it("keeps labels in the selection host while blocking edits to speaker names", () => {
+    const onTextChange = vi.fn();
+    render(<ScriptTextView onRoot={() => {}} onTextChange={onTextChange} rows={rows as never} speakers={speakers as never} />);
+    const root = screen.getByTestId("script-text-view");
+    const label = root.querySelector<HTMLElement>("[data-script-text-speaker]")!;
+    expect(label).not.toHaveAttribute("contenteditable", "false");
+    window.getSelection()!.collapse(label.firstChild!, 1);
+    for (const inputType of ["insertText", "insertCompositionText", "deleteContentBackward"]) {
+      const input = new InputEvent("beforeinput", { inputType, bubbles: true, cancelable: true });
+      fireEvent(root, input);
+      expect(input.defaultPrevented).toBe(true);
+    }
+    expect(fireEvent.cut(root)).toBe(false);
+    fireEvent.paste(root, { clipboardData: { getData: () => "replacement" } });
+    expect(label).toHaveTextContent("An Vũ:");
+    expect(onTextChange).not.toHaveBeenCalled();
+  });
   it("finds and copies text after browser block line breaks, with safe delete boundaries", () => {
     const onTextChange = vi.fn();
     render(<ScriptTextView onRoot={() => {}} onTextChange={onTextChange} rows={rows as never} speakers={speakers as never} />);
@@ -121,32 +138,52 @@ describe("Script text view", () => {
     expect(root).toHaveAttribute("data-edit-guidance");
   });
 
-  it("routes custom Enter insertion through the browser undo command when available", () => {
+  it("undoes and redoes newlines and leading/trailing blank-line paste without splitting cells", () => {
     const onTextChange = vi.fn();
-    const exec = vi.fn((_command: string, _showUi?: boolean, value?: string | null) => {
-      const range = window.getSelection()!.getRangeAt(0);
-      const node = document.createTextNode(value ?? "");
-      range.insertNode(node);
-      range.setStartAfter(node);
-      range.collapse(true);
-      window.getSelection()!.removeAllRanges();
-      window.getSelection()!.addRange(range);
-      return true;
-    });
-    Object.defineProperty(document, "execCommand", { configurable: true, value: exec });
-    try {
-      render(<ScriptTextView onRoot={() => {}} onTextChange={onTextChange} rows={rows as never} speakers={speakers as never} />);
-      const cell = document.querySelector<HTMLElement>('[data-script-text-dialogue][data-row-id="r1"]')!;
-      const range = document.createRange();
-      range.setStart(cell.firstChild!, 3);
-      range.collapse(true);
-      window.getSelection()!.removeAllRanges();
-      window.getSelection()!.addRange(range);
-      fireEvent.keyDown(cell, { key: "Enter", altKey: true });
-      expect(exec).toHaveBeenCalledWith("insertText", false, "\n");
-      expect(cell.textContent).toBe("Xin\n chào");
-    } finally {
-      delete (document as unknown as { execCommand?: unknown }).execCommand;
-    }
+    render(<ScriptTextView onRoot={() => {}} onTextChange={onTextChange} rows={rows as never} speakers={speakers as never} />);
+    const root = screen.getByTestId("script-text-view");
+    const cell = root.querySelector<HTMLElement>('[data-row-id="r1"]')!;
+    selectScriptText(root, "r1", 0, 0);
+    fireEvent.keyDown(root, { key: "Enter", altKey: true });
+    expect(cell.textContent).toBe("\nXin chào");
+    fireEvent.paste(root, { clipboardData: { getData: () => "\n\n<b>gõ & dán</b>\n" } });
+    const pasted = "\n\n\n<b>gõ & dán</b>\nXin chào";
+    expect(cell.textContent).toBe(pasted);
+    expect(cell.querySelector("b")).toBeNull();
+    expect(root.querySelectorAll("[data-script-text-dialogue]")).toHaveLength(2);
+    expect(root.querySelectorAll("[data-script-text-row]")).toHaveLength(2);
+    fireEvent.keyDown(root, { key: "z", ctrlKey: true });
+    expect(cell.textContent).toBe("\nXin chào");
+    fireEvent.keyDown(root, { key: "z", ctrlKey: true });
+    expect(cell.textContent).toBe("Xin chào");
+    fireEvent.keyDown(root, { key: "z", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(root, { key: "y", ctrlKey: true });
+    expect(cell.textContent).toBe(pasted);
+    expect(onTextChange).toHaveBeenLastCalledWith("r1", pasted);
+  });
+
+  it("records normal typing and a composition as edits and clears stale history after external replacement", () => {
+    const onTextChange = vi.fn();
+    const props = { onRoot: () => {}, onTextChange, speakers: speakers as never };
+    const { rerender } = render(<ScriptTextView {...props} rows={rows as never} />);
+    const root = screen.getByTestId("script-text-view");
+    const cell = root.querySelector<HTMLElement>('[data-row-id="r1"]')!;
+    selectScriptText(root, "r1", 0, 0);
+    fireEvent(root, new InputEvent("beforeinput", { inputType: "insertText", bubbles: true, cancelable: true }));
+    cell.textContent = "AXin chào";
+    fireEvent.input(cell);
+    fireEvent.compositionStart(cell);
+    cell.textContent = "Tiếng Việt";
+    fireEvent.input(cell);
+    expect(onTextChange).toHaveBeenLastCalledWith("r1", "AXin chào");
+    fireEvent.compositionEnd(cell);
+    expect(onTextChange).toHaveBeenLastCalledWith("r1", "Tiếng Việt");
+    fireEvent(root, new InputEvent("beforeinput", { inputType: "historyUndo", bubbles: true, cancelable: true }));
+    expect(cell.textContent).toBe("AXin chào");
+    fireEvent.keyDown(root, { key: "z", ctrlKey: true });
+    expect(cell.textContent).toBe("Xin chào");
+    rerender(<ScriptTextView {...props} rows={[{ ...rows[0], text: "Thay từ ngoài" }, rows[1]] as never} />);
+    fireEvent.keyDown(root, { key: "y", ctrlKey: true });
+    expect(cell.textContent).toBe("Thay từ ngoài");
   });
 });
