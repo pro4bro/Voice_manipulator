@@ -1685,153 +1685,10 @@ function AudioTimeline({
     } else restoreStretchPlayback();
   }
 
-  return (
-    <ModuleFrame
-      elementRef={moduleRef}
-      eyebrow={liveCaption ?? (isRecording ? "REC LIVE · WAVEFORM" : take?.name ?? "CHƯA CÓ AUDIO")}
-      title="Timeline"
-      index="A1"
-      tone="dark"
-      className={`timeline-module ${layerContent ? "has-audio-layers" : ""}`}
-      action={
-        <div className="timeline-header-actions">
-          {leadingActions}
-          {voiceEdits?.packet ? <div className="timeline-edit-actions" aria-label="Giãn thời lượng">
-            <button type="button" disabled={voiceEdits.busy || !voiceEdits.packet.document.cursor} onClick={() => void navigateStretchHistory("undo")}>Undo giãn</button>
-            <button type="button" disabled={voiceEdits.busy || voiceEdits.packet.document.cursor >= voiceEdits.packet.document.operations.length} onClick={() => void navigateStretchHistory("redo")}>Redo giãn</button>
-            <span role="status">{voiceEdits.busy ? "Đang dựng audio…" : voiceEdits.error ?? (voiceEdits.packet.document.cursor ? "Preview giãn · chưa Fix voice" : "Ctrl + kéo handle để giãn")}</span>
-          </div> : null}
-          <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
-            <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
-            <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>
-            <button disabled={clipTools ? clipTools.busy || !clipTools.canCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : isRecording || !take?.url || currentTime <= 0 || currentTime >= duration} onClick={clipTools ? () => clipTools.onCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : cutMarkedRange} type="button">CUT</button>
-            <button disabled={clipTools ? clipTools.busy || !clipTools.canUncut : (!cutPoints.length && !removedRanges.length) || isRecording} onClick={clipTools ? clipTools.onUncut : uncut} type="button">UNCUT</button>
-            <button className="is-delete" disabled={clipTools ? clipTools.busy || !clipTools.selected : !selectedSections.length || isRecording} onClick={clipTools ? clipTools.onDelete : deleteStagedCut} type="button">DELETE</button>
-            <button disabled={clipTools ? clipTools.busy : !removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={() => { if (clipTools) clipTools.onReset(); resetTimelineEdits(); }} type="button">RESET</button>
-            {clipTools ? <><button aria-label="Chuyển clip lên layer" disabled={clipTools.busy || !clipTools.canMoveUp} onClick={clipTools.onMoveUp} type="button">MOVE ↑</button><button aria-label="Chuyển clip xuống layer" disabled={clipTools.busy || !clipTools.canMoveDown} onClick={clipTools.onMoveDown} type="button">MOVE ↓</button></> : null}
-          </div>
-          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
-          <div className="timeline-zoom">
-            <button aria-label="Thu nhỏ timeline" onClick={() => changeZoom(Math.max(1, zoom / 2))} type="button">−</button>
-            <input
-              aria-label="Zoom timeline"
-              aria-valuetext={zoomResolutionLabel()}
-              disabled={maxTimelineZoom() <= 1}
-              max="1000"
-              min="0"
-              onChange={(event) => setZoomFromSlider(Number(event.currentTarget.value))}
-              step="1"
-              type="range"
-              value={zoomSliderValue()}
-            />
-            <span title="Mật độ hiển thị timeline">{zoomResolutionLabel()}</span>
-            <button aria-label="Phóng to timeline" onClick={() => changeZoom(Math.min(maxTimelineZoom(), zoom * 2))} type="button">+</button>
-          </div>
-        </div>
-      }
-    >
-      {wordDeletion.busy ? <span className="timeline-delete-feedback" role="status">Đang xóa từ đã chọn…</span> : null}
-      {wordDeletion.error ? <span className="timeline-delete-feedback" role="alert">{wordDeletion.error}</span> : null}
-      {promotionNote ? createPortal(<div className="timeline-promotion-note" role="tooltip" style={{ left: promotionNote.x, top: promotionNote.y }}>GÁN TIMESTAMP · {promotionNote.text}<br />Giữ chuột giữa trên waveform: IN → OUT.<br />Chuột trái/phải để kết thúc.</div>, document.body) : null}
-      <div className="timeline-section-strip" aria-label="Các đoạn footage đã chia">{sections.map((section) => <button type="button" key={section.id} aria-label={`Đoạn footage ${section.start.toFixed(2)} đến ${section.end.toFixed(2)}`} aria-pressed={selectedSections.includes(section.id)} className={`${selectedSections.includes(section.id) ? "is-selected" : ""} ${removedRanges.some((range) => range.start <= section.start && range.end >= section.end) ? "is-removed" : ""}`} style={{ width: `${(section.end - section.start) / duration * 100}%` }} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id] : [section.id])}>{section.start.toFixed(1)}–{section.end.toFixed(1)}</button>)}</div>
-      <div className="timeline-stage">
-        <div className="timeline-controls">
-          <label className="timeline-gain">
-            <span>GAIN</span>
-            <input
-              aria-label="Nhập gain dB"
-              className="timeline-gain__number"
-              max="96"
-              min="-96"
-              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
-              onChange={(event) => previewGain(Number(event.currentTarget.value))}
-              onFocus={beginGainPreview}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  gainInteractionRef.current = false;
-                  setDraftGain(gain);
-                  setIsGainPreviewing(false);
-                  event.currentTarget.blur();
-                }
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              step="0.5"
-              type="number"
-              value={draftGain}
-            />
-            <input
-              aria-label="Source gain"
-              max="96"
-              min="-96"
-              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
-              onChange={(event) => previewGain(Number(event.currentTarget.value))}
-              onKeyDown={beginGainPreview}
-              onKeyUp={(event) => commitGain(Number(event.currentTarget.value))}
-              onPointerCancel={(event) => commitGain(Number(event.currentTarget.value))}
-              onPointerDown={beginGainPreview}
-              onPointerUp={(event) => commitGain(Number(event.currentTarget.value))}
-              step="0.5"
-              type="range"
-              value={draftGain}
-            />
-          </label>
-          <div aria-label={`Sound level ${activeSignalDb.toFixed(1)} dB, peak ${activePeakDb.toFixed(1)} dB`} className="timeline-signal">
-            <span>LEVEL</span>
-            <div className="timeline-signal__meter"><i style={{ height: `${meterPercent}%` }} /><b style={{ bottom: `${peakPercent}%` }} /></div>
-            <output>{activeSignalDb.toFixed(0)}</output>
-            <small>PK {activePeakDb.toFixed(0)}</small>
-          </div>
-        </div>
-        <div className="timeline-scroll-shell">
-          <div className="timeline-scroll" onScroll={updateTimelineViewport} ref={timelineScrollRef}>
-          <div className="timeline-canvas" ref={timelineCanvasRef} style={{ "--zoom": zoom } as CSSProperties}>
-            <div className="timeline-ruler">
+  const ruler = (<div className="timeline-ruler">
               {ticks.map((mark) => <span key={mark.time} style={{ left: `${mark.position * 100}%` }}>{mark.label}</span>)}
-            </div>
-            <div
-              className="waveform"
-              aria-label="Waveform timeline"
-              tabIndex={rangeSelectionEnabled ? 0 : undefined}
-              onKeyDown={(event) => { if (onReferenceContext && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); onReferenceContext({ selection: wordSelection, x: rect.left + 10, y: rect.top + 10, origin: "waveform" }); } }}
-              onContextMenu={(event) => {
-                if (!onReferenceContext) return;
-                event.preventDefault();
-                const time = sourceTimeAt(event.clientX);
-                const inside = productionRanges(displaySelection, displayWords).some((range) => time >= range.start && time <= range.end);
-                const index = displayWords.findIndex((word) => word.start <= time && word.end > time);
-                const selection = inside ? wordSelection : index >= 0 ? selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
-                onWordSelectionChange?.(selection);
-                onReferenceContext({ selection, x: event.clientX, y: event.clientY, origin: "waveform" });
-              }}
-              onPointerCancel={(event) => { if (!endRangeSelection(event, true) && !endPromotionDrag(event, true)) endScrub(event); }}
-              onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event) || beginRangeSelection(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
-              onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
-              onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
-            >
-              {rangeSelectionEnabled ? productionRanges(displaySelection, displayWords).map((range) => <div key={range.id}
-                aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range"
-                style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
-                <SelectionReadout range={range} duration={duration} canvasWidth={timelineCanvasWidth || 1000} viewportLeft={timelineViewport.left} viewportWidth={timelineViewport.width || 1000} />
-              </div>) : null}
-              {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(displaySelection, displayWords)} selection={displaySelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
-              {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
-              {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
-              {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
-              {detailWaveformState === "loading" && detailEnvelope?.points.length ? <span className="timeline-waveform-detail-status">PCM PEAK · đang cập nhật vùng nhìn</span> : null}
-              {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
-              {!isRecording ? <ClippingOverlay points={visibleEnvelope} gain={visualGain} windowStart={gainWindowStart} windowDuration={gainWindowDuration} duration={duration}
-                autoCalibrate={autoCalibrate} autoHide={clippingHighlightAutoHide} sourceKey={take?.id ?? "none"} /> : null}
-              {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
-              {excludedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
-              <ScrubPreviewOverlay range={audioScrubber.range} windowSpan={duration} />
-              {cutPoints.map((point) => <i className="timeline-cut-point" key={point} style={{ left: `${point / duration * 100}%` }} />)}
-              {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
-              {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
-              {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
-              {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
-              {layerContent ? <small className="timeline-master-label">MASTER</small> : null}
-            </div>
-            <div className="word-track" onKeyDown={(event) => {
+            </div>);
+  const subtitles = (<div className="word-track" onKeyDown={(event) => {
               if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
               const target = (event.target as HTMLElement).closest<HTMLElement>("[data-timeline-word-index]");
               if (!target) return;
@@ -1910,7 +1767,164 @@ function AudioTimeline({
               })}
               {excludedRanges.map((range) => <i key={range.id} className="timeline-removed-range" style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}
               {wordEditor ? <input aria-label="Sửa subtitle" autoFocus className="timeline-word-edit" placeholder={wordEditor.index === null ? "Nhập text mới · Enter để lưu" : undefined} style={{ left: `${Math.max(timelineViewport.left, Math.min(wordEditor.time / duration * wordTrackCanvasWidth, timelineViewport.left + wordTrackViewportWidth - Math.min(320, wordTrackViewportWidth))) / wordTrackCanvasWidth * 100}%`, width: Math.min(320, wordTrackViewportWidth) }} value={wordEditor.text} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => setWordEditor({ ...wordEditor, text: event.target.value })} onBlur={commitWordEditor} onKeyDown={(event) => { if (!(event.key.toLowerCase() === "z" && (event.ctrlKey || event.metaKey))) event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); commitWordEditor(); } if (event.key === "Escape") { wordEditorRef.current = null; setWordEditor(null); setInsertionError(null); } }} /> : null}
+            </div>);
+  const synchronizedStripStyle: CSSProperties = {
+    width: timelineCanvasWidth || `calc(100% * ${zoom})`,
+    transform: `translateX(-${timelineViewport.left}px)`,
+  };
+
+  return (
+    <ModuleFrame
+      elementRef={moduleRef}
+      eyebrow={liveCaption ?? (isRecording ? "REC LIVE · WAVEFORM" : take?.name ?? "CHƯA CÓ AUDIO")}
+      title="Timeline"
+      index="A1"
+      tone="dark"
+      className={`timeline-module ${layerContent ? "has-audio-layers" : ""}`}
+      action={
+        <div className="timeline-header-actions">
+          {leadingActions}
+          {voiceEdits?.packet ? <div className="timeline-edit-actions" aria-label="Giãn thời lượng">
+            <button type="button" disabled={voiceEdits.busy || !voiceEdits.packet.document.cursor} onClick={() => void navigateStretchHistory("undo")}>Undo giãn</button>
+            <button type="button" disabled={voiceEdits.busy || voiceEdits.packet.document.cursor >= voiceEdits.packet.document.operations.length} onClick={() => void navigateStretchHistory("redo")}>Redo giãn</button>
+            <span role="status">{voiceEdits.busy ? "Đang dựng audio…" : voiceEdits.error ?? (voiceEdits.packet.document.cursor ? "Preview giãn · chưa Fix voice" : "Ctrl + kéo handle để giãn")}</span>
+          </div> : null}
+          <div className="timeline-edit-actions" role="group" aria-label="Timeline edit actions">
+            <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("in")} type="button">MARK IN</button>
+            <button disabled={isRecording || !take?.url} onClick={() => markTimelinePoint("out")} type="button">MARK OUT</button>
+            <button disabled={clipTools ? clipTools.busy || !clipTools.canCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : isRecording || !take?.url || currentTime <= 0 || currentTime >= duration} onClick={clipTools ? () => clipTools.onCut(currentTime, markIn !== null && markOut !== null && markOut > markIn ? { start: markIn, end: markOut } : null) : cutMarkedRange} type="button">CUT</button>
+            <button disabled={clipTools ? clipTools.busy || !clipTools.canUncut : (!cutPoints.length && !removedRanges.length) || isRecording} onClick={clipTools ? clipTools.onUncut : uncut} type="button">UNCUT</button>
+            <button className="is-delete" disabled={clipTools ? clipTools.busy || !clipTools.selected : !selectedSections.length || isRecording} onClick={clipTools ? clipTools.onDelete : deleteStagedCut} type="button">DELETE</button>
+            <button disabled={clipTools ? clipTools.busy : !removedRanges.length && !stagedCut && markIn === null && markOut === null} onClick={() => { if (clipTools) clipTools.onReset(); resetTimelineEdits(); }} type="button">RESET</button>
+            {clipTools ? <><button aria-label="Chuyển clip lên layer" disabled={clipTools.busy || !clipTools.canMoveUp} onClick={clipTools.onMoveUp} type="button">MOVE ↑</button><button aria-label="Chuyển clip xuống layer" disabled={clipTools.busy || !clipTools.canMoveDown} onClick={clipTools.onMoveDown} type="button">MOVE ↓</button></> : null}
+          </div>
+          <button aria-pressed={autoCalibrate} className={`timeline-auto-calibrate ${autoCalibrate ? "is-active" : ""}`} disabled={isRecording || !visibleEnvelope.length} onClick={toggleAutoCalibration} type="button">AUTO CAL</button>
+          <div className="timeline-zoom">
+            <button aria-label="Thu nhỏ timeline" onClick={() => changeZoom(Math.max(1, zoom / 2))} type="button">−</button>
+            <input
+              aria-label="Zoom timeline"
+              aria-valuetext={zoomResolutionLabel()}
+              disabled={maxTimelineZoom() <= 1}
+              max="1000"
+              min="0"
+              onChange={(event) => setZoomFromSlider(Number(event.currentTarget.value))}
+              step="1"
+              type="range"
+              value={zoomSliderValue()}
+            />
+            <span title="Mật độ hiển thị timeline">{zoomResolutionLabel()}</span>
+            <button aria-label="Phóng to timeline" onClick={() => changeZoom(Math.min(maxTimelineZoom(), zoom * 2))} type="button">+</button>
+          </div>
+        </div>
+      }
+    >
+      {wordDeletion.busy ? <span className="timeline-delete-feedback" role="status">Đang xóa từ đã chọn…</span> : null}
+      {wordDeletion.error ? <span className="timeline-delete-feedback" role="alert">{wordDeletion.error}</span> : null}
+      {promotionNote ? createPortal(<div className="timeline-promotion-note" role="tooltip" style={{ left: promotionNote.x, top: promotionNote.y }}>GÁN TIMESTAMP · {promotionNote.text}<br />Giữ chuột giữa trên waveform: IN → OUT.<br />Chuột trái/phải để kết thúc.</div>, document.body) : null}
+      <div className="timeline-section-strip" aria-label="Các đoạn footage đã chia">{sections.map((section) => <button type="button" key={section.id} aria-label={`Đoạn footage ${section.start.toFixed(2)} đến ${section.end.toFixed(2)}`} aria-pressed={selectedSections.includes(section.id)} className={`${selectedSections.includes(section.id) ? "is-selected" : ""} ${removedRanges.some((range) => range.start <= section.start && range.end >= section.end) ? "is-removed" : ""}`} style={{ width: `${(section.end - section.start) / duration * 100}%` }} onClick={(event) => setSelectedSections((current) => event.ctrlKey || event.metaKey ? current.includes(section.id) ? current.filter((id) => id !== section.id) : [...current, section.id] : [section.id])}>{section.start.toFixed(1)}–{section.end.toFixed(1)}</button>)}</div>
+      <div className={layerContent ? "timeline-stack-scroll" : "timeline-stack-pass"} ref={layerScrollRef}
+        role={layerContent ? "region" : undefined} aria-label={layerContent ? "Master, subtitle và audio layers" : undefined}
+        tabIndex={layerContent ? 0 : undefined} onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey) return;
+          if (["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); panLayerViewport(event.key === "ArrowLeft" ? -60 : 60); }
+        }}>
+      {layerContent ? <div className="timeline-sticky-ruler"><div style={synchronizedStripStyle}>{ruler}<i aria-hidden="true" className="timeline-strip-playhead" style={{ left: `${playheadPercent}%` }} /></div></div> : null}
+      <div className="timeline-stage">
+        <div className="timeline-controls">
+          <label className="timeline-gain">
+            <span>GAIN</span>
+            <input
+              aria-label="Nhập gain dB"
+              className="timeline-gain__number"
+              max="96"
+              min="-96"
+              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
+              onChange={(event) => previewGain(Number(event.currentTarget.value))}
+              onFocus={beginGainPreview}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  gainInteractionRef.current = false;
+                  setDraftGain(gain);
+                  setIsGainPreviewing(false);
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              step="0.5"
+              type="number"
+              value={draftGain}
+            />
+            <input
+              aria-label="Source gain"
+              max="96"
+              min="-96"
+              onBlur={(event) => commitGain(Number(event.currentTarget.value))}
+              onChange={(event) => previewGain(Number(event.currentTarget.value))}
+              onKeyDown={beginGainPreview}
+              onKeyUp={(event) => commitGain(Number(event.currentTarget.value))}
+              onPointerCancel={(event) => commitGain(Number(event.currentTarget.value))}
+              onPointerDown={beginGainPreview}
+              onPointerUp={(event) => commitGain(Number(event.currentTarget.value))}
+              step="0.5"
+              type="range"
+              value={draftGain}
+            />
+          </label>
+          <div aria-label={`Sound level ${activeSignalDb.toFixed(1)} dB, peak ${activePeakDb.toFixed(1)} dB`} className="timeline-signal">
+            <span>LEVEL</span>
+            <div className="timeline-signal__meter"><i style={{ height: `${meterPercent}%` }} /><b style={{ bottom: `${peakPercent}%` }} /></div>
+            <output>{activeSignalDb.toFixed(0)}</output>
+            <small>PK {activePeakDb.toFixed(0)}</small>
+          </div>
+        </div>
+        <div className="timeline-scroll-shell">
+          <div className="timeline-scroll" onScroll={updateTimelineViewport} ref={timelineScrollRef}>
+          <div className="timeline-canvas" ref={timelineCanvasRef} style={{ "--zoom": zoom } as CSSProperties}>
+            {!layerContent ? ruler : null}
+            <div
+              className="waveform"
+              aria-label="Waveform timeline"
+              tabIndex={rangeSelectionEnabled ? 0 : undefined}
+              onKeyDown={(event) => { if (onReferenceContext && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); onReferenceContext({ selection: wordSelection, x: rect.left + 10, y: rect.top + 10, origin: "waveform" }); } }}
+              onContextMenu={(event) => {
+                if (!onReferenceContext) return;
+                event.preventDefault();
+                const time = sourceTimeAt(event.clientX);
+                const inside = productionRanges(displaySelection, displayWords).some((range) => time >= range.start && time <= range.end);
+                const index = displayWords.findIndex((word) => word.start <= time && word.end > time);
+                const selection = inside ? wordSelection : index >= 0 ? selectProductionWord(EMPTY_SELECTION, index, displayWords) : EMPTY_SELECTION;
+                onWordSelectionChange?.(selection);
+                onReferenceContext({ selection, x: event.clientX, y: event.clientY, origin: "waveform" });
+              }}
+              onPointerCancel={(event) => { if (!endRangeSelection(event, true) && !endPromotionDrag(event, true)) endScrub(event); }}
+              onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }} onPointerDown={(event) => { if (beginPromotionDrag(event) || beginRangeSelection(event)) return; promoteTimestampWord(null, null); beginScrub(event); }}
+              onPointerMove={(event) => { if (!moveRangeSelection(event) && !movePromotionDrag(event)) scrubTimeline(event); }}
+              onPointerUp={(event) => { if (!endRangeSelection(event) && !endPromotionDrag(event)) endScrub(event); }}
+            >
+              {rangeSelectionEnabled ? productionRanges(displaySelection, displayWords).map((range) => <div key={range.id}
+                aria-label={`Vùng chọn ${range.start.toFixed(3)} đến ${range.end.toFixed(3)} giây`} className="production-selection-range"
+                style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }}>
+                <SelectionReadout range={range} duration={duration} canvasWidth={timelineCanvasWidth || 1000} viewportLeft={timelineViewport.left} viewportWidth={timelineViewport.width || 1000} />
+              </div>) : null}
+              {rangeSelectionEnabled && voiceEdits ? <StretchHandles controller={voiceEdits} ranges={productionRanges(displaySelection, displayWords)} selection={displaySelection} onSelectionChange={onWordSelectionChange} duration={duration} canvasWidth={timelineCanvasWidth} onSuspend={suspendStretchPlayback} onPrepare={prepareStretchPlayback} onRevert={restoreStretchPlayback} onComplete={completeStretchPlayback} /> : null}
+              {isRecording && visibleEnvelope.length ? <canvas aria-label="Natural audio waveform" className="waveform-shape" ref={waveformCanvasRef} /> : null}
+              {detailEnvelope?.points.length ? <canvas aria-label="PCM waveform at zoom" className="waveform-shape waveform-shape--detail" ref={detailWaveformCanvasRef} style={{ left: `${(detailEnvelope.start / duration) * 100}%`, width: `${((detailEnvelope.end - detailEnvelope.start) / duration) * 100}%` }} /> : null}
+              {take && !isRecording && detailWaveformState === "loading" && !detailEnvelope?.points.length ? <div className="timeline-waveform-status">Đang đọc PCM waveform theo vùng nhìn…</div> : null}
+              {detailWaveformState === "loading" && detailEnvelope?.points.length ? <span className="timeline-waveform-detail-status">PCM PEAK · đang cập nhật vùng nhìn</span> : null}
+              {take && !isRecording && detailWaveformState === "error" ? <div className="timeline-waveform-status is-error">Không tải được PCM waveform của footage này.</div> : null}
+              {!isRecording ? <ClippingOverlay points={visibleEnvelope} gain={visualGain} windowStart={gainWindowStart} windowDuration={gainWindowDuration} duration={duration}
+                autoCalibrate={autoCalibrate} autoHide={clippingHighlightAutoHide} sourceKey={take?.id ?? "none"} /> : null}
+              {autoCalibrate ? gainKeyframes.map((frame) => <i aria-label={`Gain keyframe ${frame.gainDb.toFixed(1)} dB tại ${frame.time.toFixed(2)} giây`} className="timeline-gain-keyframe" key={frame.id} style={{ left: `${(frame.time / Math.max(duration, 0.001)) * 100}%` }} />) : null}
+              {excludedRanges.map((range) => <i aria-label={`Đoạn đã loại ${range.start.toFixed(2)} đến ${range.end.toFixed(2)} giây`} className="timeline-removed-range" key={range.id} style={{ left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` }} />)}
+              <ScrubPreviewOverlay range={audioScrubber.range} windowSpan={duration} />
+              {cutPoints.map((point) => <i className="timeline-cut-point" key={point} style={{ left: `${point / duration * 100}%` }} />)}
+              {stagedCut ? <i aria-label="Đoạn đã cắt, sẵn sàng xóa" className="timeline-removed-range is-staged" style={{ left: `${(stagedCut.start / duration) * 100}%`, width: `${((stagedCut.end - stagedCut.start) / duration) * 100}%` }} /> : null}
+              {markIn !== null ? <i className="timeline-mark timeline-mark--in" style={{ left: `${(markIn / duration) * 100}%` }}>IN</i> : null}
+              {markOut !== null ? <i className="timeline-mark timeline-mark--out" style={{ left: `${(markOut / duration) * 100}%` }}>OUT</i> : null}
+              {!take && !isRecording ? <div className="timeline-empty"><Icon name="waveform" /><b>{emptyNote?.title ?? "Import, thu âm hoặc chọn một Take"}</b><span>{emptyNote?.hint ?? "Audio lineage sẽ bắt đầu tại đây"}</span></div> : null}
+              {layerContent ? <small className="timeline-master-label">MASTER</small> : null}
             </div>
+            {!layerContent ? subtitles : null}
             <div aria-label="Playhead indicator" className={`timeline-playhead ${isRecording ? "is-recording" : ""}`} ref={playheadRef} onPointerCancel={endPlayheadDrag} onPointerDown={beginPlayheadDrag} onPointerMove={dragPlayhead} onPointerUp={endPlayheadDrag}  />
           </div>
           </div>
@@ -1924,6 +1938,13 @@ function AudioTimeline({
             <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
           </div> : null}
         </div>
+      </div>
+      {layerContent ? <>
+        <div className="timeline-sticky-subtitles"><div style={synchronizedStripStyle}>{subtitles}<i aria-hidden="true" className="timeline-strip-playhead" style={{ left: `${playheadPercent}%` }} /></div></div>
+        <div className="timeline-audio-layers" tabIndex={0} aria-label="Danh sách audio layer" onKeyDown={(event) => {
+          if (!event.altKey && !event.ctrlKey && !event.metaKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); panLayerViewport(event.key === "ArrowLeft" ? -60 : 60); }
+        }}>{layerContent(currentTime, { canvasWidth: timelineCanvasWidth, viewportWidth: timelineViewport.width, scrollLeft: timelineViewport.left, duration })}</div>
+      </> : null}
       </div>
       {speakerMenu ? <WordContextMenu className="timeline-speaker-menu" x={speakerMenu.x} y={speakerMenu.y} onClose={() => setSpeakerMenu(null)}>
         <strong>TEXT · {speakerMenu.indexes.length} TỪ</strong>
@@ -1943,7 +1964,6 @@ function AudioTimeline({
       </WordContextMenu> : null}
       {insertionError ? <div role="alert" className="timeline-delete-feedback">{insertionError}</div> : null}
       {layerContent ? <>
-        <div ref={layerScrollRef} className="timeline-audio-layers" tabIndex={0} aria-label="Danh sách audio layer" onKeyDown={(event) => { if (!event.altKey && !event.ctrlKey && !event.metaKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); panLayerViewport(event.key === "ArrowLeft" ? -60 : 60); } }}>{layerContent(currentTime, { canvasWidth: timelineCanvasWidth, viewportWidth: timelineViewport.width, scrollLeft: timelineViewport.left, duration })}</div>
         <div ref={timelineNavigatorRef} aria-label="Thanh cuộn timeline" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(timelineNavigator.left)} className={`timeline-navigator timeline-layer-navigator ${timelineNavigator.enabled ? "" : "is-static"}`} onPointerCancel={endTimelineNavigator} onPointerDown={beginTimelineNavigator} onPointerMove={moveTimelineNavigator} onPointerUp={endTimelineNavigator} role="scrollbar" tabIndex={0}>
           <i style={{ left: `${timelineNavigator.left}%`, width: `${timelineNavigator.width}%` }} />
         </div>

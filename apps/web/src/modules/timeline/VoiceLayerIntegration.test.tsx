@@ -32,7 +32,17 @@ it("shares Master zoom/scroll/playhead with layers and keeps one top ruler and b
   expect(view.container.querySelectorAll(".timeline-ruler")).toHaveLength(1);
   expect(view.container.querySelector(".voice-layer-timeline__ruler")).toBeNull();
   const layers = screen.getByLabelText("Danh sách audio layer");
+  const stack = screen.getByRole("region", { name: "Master, subtitle và audio layers" });
+  expect(stack).toContainElement(view.container.querySelector(".waveform"));
+  expect(stack).toContainElement(view.container.querySelector(".word-track"));
+  expect(stack).toContainElement(layers);
+  expect(stack.querySelector(".timeline-sticky-ruler .timeline-ruler")).toBeTruthy();
+  expect(stack.querySelector(".timeline-sticky-subtitles .word-track")).toBeTruthy();
+  const sharedTransform = view.container.querySelector<HTMLElement>(".voice-layer-timeline__canvas")!.style.transform;
+  expect(stack.querySelector(".timeline-sticky-ruler > div")).toHaveStyle({ width: `${width()}px`, transform: sharedTransform });
+  expect(stack.querySelector(".timeline-sticky-subtitles > div")).toHaveStyle({ width: `${width()}px`, transform: sharedTransform });
   const navigator = screen.getByRole("scrollbar", { name: "Thanh cuộn timeline" });
+  expect(stack).not.toContainElement(navigator);
   expect(layers.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(navigator.compareDocumentPosition(screen.getByRole("button", { name: "Phát" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

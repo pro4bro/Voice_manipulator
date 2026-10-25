@@ -79,6 +79,33 @@ it("cancels a footage drag when pointer capture is lost", () => {
   expect(onCommand).not.toHaveBeenCalled();
 });
 
+it("rejects drops hidden behind frozen subtitles or outside the common viewport", () => {
+  const onCommand = vi.fn();
+  const view = render(<div className="timeline-stack-scroll">
+    <div className="timeline-sticky-subtitles" />
+    <div className="timeline-audio-layers"><VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={1} busy={false} onCommand={onCommand} /></div>
+  </div>);
+  vi.spyOn(view.container.firstElementChild!, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 160 } as DOMRect);
+  vi.spyOn(view.container.querySelector(".timeline-sticky-subtitles")!, "getBoundingClientRect").mockReturnValue({ top: 20, bottom: 48 } as DOMRect);
+  const rows = view.container.querySelectorAll("[data-layer-id]");
+  vi.spyOn(rows[0], "getBoundingClientRect").mockReturnValue({ top: 60, bottom: 116 } as DOMRect);
+  const targetBounds = vi.spyOn(rows[1], "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 56 } as DOMRect);
+  const clip = screen.getByRole("button", { name: /Line A · Base/ });
+  function dropAt(y: number) {
+    fireEvent.pointerDown(clip, { pointerId: 7, button: 0, clientY: 85 });
+    fireEvent.pointerMove(clip, { pointerId: 7, clientY: y });
+    fireEvent.pointerUp(clip, { pointerId: 7, clientY: y });
+  }
+  dropAt(30);
+  expect(onCommand).not.toHaveBeenCalled();
+  targetBounds.mockReturnValue({ top: 164, bottom: 220 } as DOMRect);
+  dropAt(180);
+  expect(onCommand).not.toHaveBeenCalled();
+  targetBounds.mockReturnValue({ top: 120, bottom: 176 } as DOMRect);
+  dropAt(140);
+  expect(onCommand).toHaveBeenCalledExactlyOnceWith({ action: "move-clip", clipId: "a", targetLayerId: "fix", startFrame: 24000 });
+});
+
 it("mirrors the Master viewport without a second ruler or horizontal drag", () => {
   const onCommand = vi.fn();
   const view = render(<VoiceLayerTimeline composition={composition()} outputs={outputs} playheadSeconds={2.5} busy={false} onCommand={onCommand}

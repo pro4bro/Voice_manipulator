@@ -75,8 +75,13 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
   }, []);
 
   function layerAt(y: number) {
-    const pane = root.current?.closest<HTMLElement>(".timeline-audio-layers");
-    if (pane) { const rect = pane.getBoundingClientRect(); if (y < rect.top || y > rect.bottom) return null; }
+    const stack = root.current?.closest<HTMLElement>(".timeline-stack-scroll");
+    const pane = stack ?? root.current?.closest<HTMLElement>(".timeline-audio-layers");
+    if (pane) {
+      const rect = pane.getBoundingClientRect();
+      const subtitles = stack?.querySelector(".timeline-sticky-subtitles")?.getBoundingClientRect();
+      if (y < Math.max(rect.top, subtitles?.bottom ?? rect.top) || y > rect.bottom) return null;
+    }
     return Array.from(root.current?.querySelectorAll<HTMLElement>("[data-layer-id]") ?? []).find((row) => {
       const rect = row.getBoundingClientRect(); return y >= rect.top && y <= rect.bottom;
     })?.dataset.layerId ?? null;
@@ -94,10 +99,11 @@ export function VoiceLayerTimeline({ composition, outputs, playheadSeconds, busy
     const tick = (now: number) => {
       const current = drag.current;
       if (!current) return;
-      const pane = root.current?.closest<HTMLElement>(".timeline-audio-layers");
+      const pane = root.current?.closest<HTMLElement>(".timeline-stack-scroll") ?? root.current?.closest<HTMLElement>(".timeline-audio-layers");
       if (pane && current.moved) {
         const bounds = pane.getBoundingClientRect();
-        const direction = current.y < bounds.top + 24 ? -1 : current.y > bounds.bottom - 24 ? 1 : 0;
+        const top = bounds.top + (pane.matches(".timeline-stack-scroll") ? 48 : 0);
+        const direction = current.y < top + 24 ? -1 : current.y > bounds.bottom - 24 ? 1 : 0;
         if (direction) pane.scrollTop += direction * Math.min(50, now - previous) / 1000 * 180;
         setDropLayerId(layerAt(current.y));
       }

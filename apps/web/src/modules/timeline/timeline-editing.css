@@ -1,5 +1,7 @@
 .timeline-module.timeline-module > .module-frame__body { display: flex; flex-direction: column; }
 .timeline-module.timeline-module > .module-frame__body > .timeline-stage { flex: 1 1 auto; }
+.timeline-stack-pass { display: contents; }
+.timeline-stack-pass > .timeline-stage { flex: 1 1 auto; }
 .timeline-module.timeline-module > .module-frame__body > .transport-bar { flex: 0 0 32px; }
 .timeline-section-strip { display: flex; flex: 0 0 22px; height: 22px; background: var(--surface-audio); }
 .timeline-section-strip button { min-width: 0; padding: 0; border: 0; border-right: 1px solid var(--line); color: var(--text-muted); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
