@@ -26,6 +26,7 @@ import { scriptHighlightTokens } from "./script-highlight-diff";
 import { readSelectedScriptText, selectScriptText } from "./ScriptTextView";
 import { mapScriptWordsToText } from "./script-text-reconciliation";
 import { ScriptTextPane } from "./ScriptTextPane";
+import { useScriptTextareaSize } from "./use-script-textarea-size";
 
 const CATEGORY_LABELS: Record<VoiceCategory, string> = { clone: "Nhái giọng", train: "Train giọng" };
 const ENGINE_LABELS: Record<string, string> = { omnivoice: "OmniVoice", vibevoice: "VibeVoice" };
@@ -276,16 +277,16 @@ export function VoiceScript({ onGenerateFixOnly, versionReady, settingsHost, rea
     field.setSelectionRange(request.start, request.end);
   });
 
-  // Rows grow with what is typed; a fixed height would hide the end of a long turn.
-  useLayoutEffect(() => {
-    scrollRef.current?.querySelectorAll<HTMLTextAreaElement>("textarea.voice-script__input").forEach((field) => {
-      field.style.height = "auto";
-      field.style.height = `${field.scrollHeight}px`;
-    });
-  });
+  useScriptTextareaSize(scrollRef, view);
 
-  useScriptPlaybackVisibility(followRoot, scrollRef, playbackId ? [playbackId] : [],
-    playbackId ? { [playbackId]: activeWordIndex } : {}, undefined, view === "table" && !hasMultipleSelectionRanges(wordSelection));
+  const playbackFollow = useScriptPlaybackVisibility(followRoot, scrollRef, playbackId ? [playbackId] : [],
+    playbackId ? { [playbackId]: activeWordIndex } : {}, undefined, view === "table");
+  const multipleSelectionKey = hasMultipleSelectionRanges(wordSelection) ? JSON.stringify(wordSelection) : "";
+  useLayoutEffect(() => {
+    if (multipleSelectionKey) playbackFollow.pause();
+    // A new manual selection pauses reading; dragging Timeline resumes follow
+    // without clearing that selection or being blocked by its continued presence.
+  }, [multipleSelectionKey]);
 
   useEffect(() => {
     if (!voiceMenu) return undefined;

@@ -41,6 +41,7 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
     revision,
     preferredAssetId: state.current.preferredAssetId,
     canFollow: () => !state.current.paused,
+    pause: () => { state.current.paused = true; },
     resume: () => { state.current.paused = false; },
     shouldFollow: (index: number | string | null) => {
       const key = index === null || index === -1 ? "" : String(index);
@@ -49,6 +50,29 @@ export function useScriptPlaybackFollow(root: RefObject<HTMLElement | null>, ide
       return key !== "" && changed && !state.current.paused;
     },
   };
+}
+
+/** Row measurement and wrapping can settle without publishing a different word. */
+export function useScriptFollowLayout(view: RefObject<HTMLElement | null>, reconcile: () => void, binding: unknown) {
+  const latest = useRef(reconcile); latest.current = reconcile;
+  useLayoutEffect(() => {
+    const element = view.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let frame: number | null = null;
+    const resize = new ResizeObserver(() => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => { frame = null; latest.current(); });
+    });
+    const observe = () => {
+      resize.disconnect();
+      resize.observe(element);
+      for (const child of element.children) resize.observe(child);
+    };
+    observe();
+    const mutations = new MutationObserver(observe);
+    mutations.observe(element, { childList: true });
+    return () => { if (frame !== null) cancelAnimationFrame(frame); resize.disconnect(); mutations.disconnect(); };
+  }, [view, binding]);
 }
 
 /** Use viewport rectangles: word wraps are positioned, so offsetTop is not a scroll offset. */
@@ -77,18 +101,20 @@ export function useScriptPlaybackVisibility(
   const assetId = activeIds.find((id) => id === follow.preferredAssetId) ?? activeIds.find((id) => id === previousAsset.current) ?? activeIds[0];
   const index = assetId ? activeWords[assetId] : -1;
   const key = assetId && index >= 0 ? JSON.stringify([assetId, index, Boolean(reveal), enabled]) : null;
-  useLayoutEffect(() => {
+  function reconcile(layoutChanged = false) {
     previousAsset.current = assetId ?? null;
     const changed = follow.shouldFollow(key);
     if (!enabled || !view.current || !key || !follow.canFollow()) { pending.current = null; return; }
-    if (!changed && pending.current !== key) return;
+    if (!changed && pending.current !== key && !layoutChanged) return;
     if (reveal?.(assetId, index)) { pending.current = key; return; }
-    // A virtualized word is mounted on the next commit. Finish positioning it
-    // without waiting for playback to advance to a different word.
     pending.current = null;
+    // Row measurements can change after reveal. A coalesced layout observation
+    // rechecks the latest word without chasing every intermediate spacer commit.
     const target = [...view.current.querySelectorAll<HTMLElement>(`[data-script-word-index="${index}"]`)]
       .find((node) => !node.dataset.scriptSourceId || node.dataset.scriptSourceId === assetId);
     if (target && keepWordInView(view.current, target) !== null) view.current.dispatchEvent(new Event("scroll"));
-  });
+  }
+  useLayoutEffect(reconcile);
+  useScriptFollowLayout(view, () => reconcile(true), JSON.stringify([assetIds, enabled]));
   return { ...follow, followedAssetId: assetId };
 }
